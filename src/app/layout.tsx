@@ -10,7 +10,6 @@ export const metadata: Metadata = {
   title: "Caishen · A little clarity, every day",
   description:
     "Your personal budget, shared expenses, and daily money review, in one calm place.",
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });

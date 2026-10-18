@@ -194,27 +194,10 @@ svg {
   color: var(--primary);
 }
 .brand-mark {
-  display: inline-flex;
-  align-items: end;
-  gap: 3px;
-  width: 25px;
-  height: 25px;
-  transform: rotate(-12deg);
-}
-.brand-mark span {
   display: block;
-  width: 6px;
-  border-radius: 2px;
-  background: var(--primary);
-}
-.brand-mark span:nth-child(1) {
-  height: 12px;
-}
-.brand-mark span:nth-child(2) {
-  height: 22px;
-}
-.brand-mark span:nth-child(3) {
-  height: 17px;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
 }
 
 .app-shell {
@@ -2614,8 +2597,8 @@ input[type="checkbox"] {
     gap: 6px;
   }
   .mobile-topbar .brand-mark {
-    transform: scale(0.7) rotate(-12deg);
-    transform-origin: right center;
+    width: 22px;
+    height: 22px;
   }
   .plan-header {
     padding: 12px;
