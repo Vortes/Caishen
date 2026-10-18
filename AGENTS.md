@@ -3,6 +3,7 @@
 - Do not use the no-mistakes skill, CLI, or pipeline, including for validation, commits, pushes, or deployments.
 - Do not generate documentation unless the user explicitly requests it.
 - Do not preserve the introductory product brief as a project document.
+- Delete one-off scripts and their temporary artifacts before finishing each task, including ignored and untracked files. Keep only reusable development and maintenance commands in `scripts/`.
 
 ## Project structure
 
