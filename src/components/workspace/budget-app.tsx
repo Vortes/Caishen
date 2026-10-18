@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { api } from "~/trpc/react";
 import type { Command } from "~/domain/engine";
-import { currentMonth, monthName, newId } from "~/components/budget/format";
+import { currentMonth, newId } from "~/components/budget/format";
 import type { Panel, State, Tab } from "~/components/budget/types";
 import { BudgetPlan } from "~/components/budget/budget-plan";
 import { CommandDialog } from "~/components/budget/command-dialog";
@@ -191,10 +191,6 @@ function BudgetWorkspace({
     view.budget.transactions.filter(
       (transaction) => !transaction.removed && !transaction.reviewed,
     ).length;
-  const latestUpdate = state.connections
-    .map((connection) => connection.lastSyncedAt)
-    .filter((date): date is Date => date !== null)
-    .sort((a, b) => b.getTime() - a.getTime())[0];
   const targetEmbedded = tab === "budget" && panel?.type === "target";
   const commandDialog = panel && (
     <CommandDialog
@@ -378,7 +374,6 @@ function BudgetWorkspace({
             open={open}
             onError={setFormError}
             onReview={onReview}
-            onAddTransaction={() => startTransaction()}
             targetCategoryId={targetEmbedded ? panel.id : undefined}
             targetEditor={targetEmbedded ? commandDialog : undefined}
             onSelectionChange={() => {
@@ -432,17 +427,6 @@ function BudgetWorkspace({
             />
           </div>
         )}
-        <div className="workspace-status">
-          <span>
-            <span className="status-dot" />
-            {latestUpdate
-              ? `Bank update ${latestUpdate.toLocaleString("en-US", { timeZone: view.budget.settings.timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
-              : state.connections.length
-                ? "Bank update pending"
-                : "Manual accounts"}
-          </span>
-          <span>{loadingMonth ? `Updating ${monthName(month)}…` : "USD"}</span>
-        </div>
       </main>
       {notice && (
         <div className="success-toast" role="status">

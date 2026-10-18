@@ -26,7 +26,6 @@ export function BudgetPlan({
   open,
   onError,
   onReview,
-  onAddTransaction,
   targetEditor,
   targetCategoryId,
   onSelectionChange,
@@ -38,7 +37,6 @@ export function BudgetPlan({
   open: (panel: Panel) => void;
   onError: (message: string) => void;
   onReview: () => void;
-  onAddTransaction: () => void;
   targetEditor?: ReactNode;
   targetCategoryId?: string;
   onSelectionChange: () => void;
@@ -226,28 +224,6 @@ export function BudgetPlan({
             }}
           />
         )}
-        <div className="plan-footer">
-          <span>{view.categories.length} categories</span>
-          {selected.length > 0 && (
-            <button
-              onClick={() => {
-                onSelectionChange();
-                setSelected([]);
-              }}
-            >
-              Clear selection
-            </button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onAddTransaction}
-            disabled={busy || !view.accounts.length}
-          >
-            <Icon name="plus" size={13} />
-            Add transaction
-          </Button>
-        </div>
       </div>
       {compact ? (
         <Dialog
