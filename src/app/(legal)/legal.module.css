@@ -1,0 +1,117 @@
+.page {
+  --policy-text: var(--foreground, var(--ink));
+  --policy-muted: var(--muted-foreground, var(--muted));
+  min-height: 100dvh;
+  background: var(--background, var(--canvas));
+  color: var(--policy-text);
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.header,
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: min(100% - 40px, 960px);
+  margin-inline: auto;
+  padding-block: 24px;
+}
+
+.header {
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+}
+
+.header nav {
+  display: flex;
+  gap: 24px;
+}
+
+.header nav a,
+.footer a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--policy-muted);
+}
+
+.page a {
+  text-underline-offset: 0.2em;
+}
+
+.page a:hover {
+  color: var(--policy-text);
+}
+
+.skipLink {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  transform: translateY(-200%);
+  padding: 8px 16px;
+  background: var(--background, var(--canvas));
+}
+
+.skipLink:focus {
+  transform: translateY(0);
+}
+
+.content {
+  display: grid;
+  gap: 36px;
+  width: min(100% - 40px, 65ch);
+  margin: 64px auto 80px;
+}
+
+.content header,
+.content section {
+  display: grid;
+  gap: 16px;
+}
+
+.content h1 {
+  font-size: clamp(32px, 5vw, 44px);
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
+
+.content h2 {
+  font-size: 21px;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.content header > p:first-of-type {
+  color: var(--policy-muted);
+  font-size: 14px;
+}
+
+.content ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-left: 24px;
+  list-style: disc;
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .content {
+    margin-block: 40px 56px;
+    gap: 32px;
+  }
+}

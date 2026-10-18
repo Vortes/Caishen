@@ -3,6 +3,7 @@
 import { Button } from "~/components/ui/button";
 
 import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { useState } from "react";
 import { Brand, Icon } from "~/components/shared";
 
@@ -65,6 +66,20 @@ export function Welcome() {
             <span>One inbox for the things that need a look</span>
           </li>
         </ul>
+        <nav aria-label="Policies" className="mt-6 flex gap-5 text-sm">
+          <Link
+            className="inline-flex min-h-11 items-center underline underline-offset-4"
+            href="/privacy"
+          >
+            Privacy policy
+          </Link>
+          <Link
+            className="inline-flex min-h-11 items-center underline underline-offset-4"
+            href="/terms"
+          >
+            Terms of service
+          </Link>
+        </nav>
         <span className="sr-only" aria-live="polite">
           {mode === "signup"
             ? "Create an account to start your budget."
