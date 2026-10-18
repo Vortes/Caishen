@@ -10,6 +10,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
+    "db:seed": "node --env-file=.env.local --import tsx scripts/seed-dev.ts",
     "dev": "next dev --turbo",
     "icons:generate": "node --import tsx scripts/generate-icons.ts",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --ignore-path .gitignore --cache",
