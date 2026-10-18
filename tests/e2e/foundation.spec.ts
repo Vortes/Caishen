@@ -72,13 +72,22 @@ async function addCategory(page: Page, name: string) {
   await expect(dialog).not.toBeVisible();
 }
 async function assign(page: Page, name: string, amount: string) {
-  await page.getByTitle(`Assign money to ${name}`, { exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Amount to add ($)", { exact: true }).fill(amount);
-  await dialog
-    .getByRole("button", { name: "Assign money", exact: true })
-    .click();
-  await expect(dialog).not.toBeVisible();
+  const assigned = page.getByTitle(`Assign money to ${name}`, { exact: true });
+  await assigned.click();
+  const editor = page.getByLabel(`Assigned amount for ${name}`, {
+    exact: true,
+  });
+  await editor.fill(amount);
+  await editor.press("Enter");
+  await expect(editor).not.toBeVisible();
+  await expect(assigned).toHaveText(
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(Number(amount)),
+  );
+  await expect(assigned).toBeEnabled();
+  await expect(assigned).toBeFocused();
 }
 async function purchase(
   page: Page,
@@ -88,26 +97,37 @@ async function purchase(
   amount: string,
   sharedCategory?: string,
 ) {
+  const startedOnPlan = await page
+    .getByRole("heading", { name: "Your budget", exact: true })
+    .isVisible();
   await page
     .getByRole("button", { name: "Add transaction", exact: true })
+    .first()
     .click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Payee", { exact: true }).fill(payee);
-  await dialog.getByLabel("Amount ($)", { exact: true }).fill(amount);
-  await dialog
-    .getByLabel("Account", { exact: true })
-    .selectOption({ label: account });
-  await dialog
-    .getByLabel("Category", { exact: true })
-    .selectOption({ label: category });
-  if (sharedCategory)
-    await dialog
+  const editor = page.locator(".transaction-editor-body");
+  await expect(editor).toBeVisible();
+  await editor.getByRole("combobox", { name: "Account", exact: true }).click();
+  await page
+    .getByRole("listbox", { name: "Account options", exact: true })
+    .getByRole("option", { name: account, exact: true })
+    .click();
+  await editor.getByLabel("Payee", { exact: true }).fill(payee);
+  await editor.getByLabel("Outflow", { exact: true }).fill(amount);
+  await editor.getByRole("combobox", { name: "Category", exact: true }).click();
+  await page
+    .getByRole("listbox", { name: "Category options", exact: true })
+    .getByRole("option", { name: category, exact: true })
+    .click();
+  if (sharedCategory) {
+    await editor.getByText("Transaction details", { exact: true }).click();
+    await editor
       .getByLabel("Shared category (optional)", { exact: true })
       .selectOption({ label: sharedCategory });
-  await dialog
-    .getByRole("button", { name: "Record transaction", exact: true })
-    .click();
-  await expect(dialog).not.toBeVisible();
+  }
+  await editor.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  if (startedOnPlan)
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
 }
 
 test.beforeAll(async () => {
@@ -218,7 +238,147 @@ test("two users budget, review, record card and loan payments, and share only au
     await addAccount(page, names.cash, "1000.00");
     await addCategory(page, names.groceries);
     await addCategory(page, names.dining);
+
+    const transactionOpener = page
+      .getByRole("button", {
+        name: "Add transaction",
+        exact: true,
+      })
+      .first();
+    await transactionOpener.click();
+    await expect(page.locator(".transaction-editor-body")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".transaction-editor-body")).not.toBeVisible();
+    await expect(transactionOpener).toBeFocused();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+
+    const monthPicker = page.locator(".month-picker-label");
+    const initialMonth = await monthPicker.innerText();
+    await page.getByRole("button", { name: "Next month", exact: true }).click();
+    await expect(monthPicker).not.toHaveText(initialMonth);
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await expect(monthPicker).toHaveText(initialMonth);
+
+    await page
+      .getByRole("button", { name: "Collapse Everyday", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: names.groceries, exact: true }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Expand Everyday", exact: true })
+      .click();
+    await page
+      .getByRole("checkbox", {
+        name: "Select Everyday categories",
+        exact: true,
+      })
+      .check();
+    await expect(
+      page.getByRole("heading", { name: "2 categories selected", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Clear category selection", exact: true })
+      .click();
+
+    const groceriesName = page.getByRole("button", {
+      name: names.groceries,
+      exact: true,
+    });
+    await groceriesName.focus();
+    await groceriesName.press("Enter");
+    const inspector = page.getByRole("complementary", {
+      name: `${names.groceries} details`,
+      exact: true,
+    });
+    await expect(inspector).toBeVisible();
+    await expect(page.locator(".budget-plan")).toHaveCSS("display", "flex");
+    const planBounds = await page.locator(".plan-main").boundingBox();
+    const inspectorBounds = await inspector.boundingBox();
+    expect(planBounds).not.toBeNull();
+    expect(inspectorBounds).not.toBeNull();
+    expect(inspectorBounds!.x).toBeGreaterThanOrEqual(
+      planBounds!.x + planBounds!.width - 1,
+    );
+    expect(Math.abs(inspectorBounds!.y - planBounds!.y)).toBeLessThanOrEqual(1);
+    await inspector
+      .getByRole("button", {
+        name: `Set target for ${names.groceries}`,
+        exact: true,
+      })
+      .click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await inspector
+      .getByLabel("Target amount ($)", { exact: true })
+      .fill("400.00");
+    await inspector
+      .getByRole("button", { name: "Save target", exact: true })
+      .click();
+    await expect(
+      inspector.getByLabel("Target amount ($)", { exact: true }),
+    ).not.toBeVisible();
+    await expect(inspector).toContainText("Keep your target on track");
+    await expect(inspector).toContainText("$400.00");
+
+    const filters = page.getByRole("group", { name: "Filter categories" });
+    await filters.getByRole("button", { name: /^Underfunded/ }).click();
+    await expect(groceriesName).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: names.dining, exact: true }),
+    ).toHaveCount(0);
+    await filters.getByRole("button", { name: /^Money available/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "No categories match", exact: true }),
+    ).toBeVisible();
+    await filters.getByRole("button", { name: "All", exact: true }).click();
+    const categorySearch = page.getByRole("textbox", {
+      name: "Search categories",
+      exact: true,
+    });
+    await categorySearch.fill(names.groceries);
+    await expect(groceriesName).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: names.dining, exact: true }),
+    ).toHaveCount(0);
+    await categorySearch.clear();
+
     await assign(page, names.groceries, "300.00");
+    await filters.getByRole("button", { name: /^Money available/ }).click();
+    await expect(groceriesName).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: names.dining, exact: true }),
+    ).toHaveCount(0);
+    await filters.getByRole("button", { name: "All", exact: true }).click();
+    await page
+      .getByTitle(`Assign money to ${names.groceries}`, { exact: true })
+      .click();
+    const canceledAssignment = page.getByLabel(
+      `Assigned amount for ${names.groceries}`,
+      { exact: true },
+    );
+    await canceledAssignment.fill("325.00");
+    await canceledAssignment.press("Escape");
+    await expect(canceledAssignment).not.toBeVisible();
+    await expect(
+      page.getByTitle(`Assign money to ${names.groceries}`, { exact: true }),
+    ).toHaveText("$300.00");
+    await assign(page, names.groceries, "350.00");
+    const groceriesAssignment = page.getByTitle(
+      `Assign money to ${names.groceries}`,
+      { exact: true },
+    );
+    await groceriesAssignment.click();
+    const blurredAssignment = page.getByLabel(
+      `Assigned amount for ${names.groceries}`,
+      { exact: true },
+    );
+    await blurredAssignment.fill("300.00");
+    await categorySearch.click();
+    await expect(blurredAssignment).not.toBeVisible();
+    await expect(groceriesAssignment).toHaveText("$300.00");
+    await expect(groceriesAssignment).toBeEnabled();
+    await expect(categorySearch).toBeFocused();
     await assign(page, names.dining, "100.00");
     await purchase(page, names.payee, names.cash, names.groceries, "30.00");
     const groceriesRow = page
@@ -230,19 +390,25 @@ test("two users budget, review, record card and loan payments, and share only au
       page.getByRole("row").filter({ hasText: names.groceries }),
     ).toContainText("$270.00");
 
-    await page.getByRole("button", { name: /^Transactions/ }).click();
+    await page
+      .getByRole("button", { name: "All accounts", exact: true })
+      .click();
     let purchaseRow = page.getByRole("row").filter({ hasText: names.payee });
     await purchaseRow
       .getByRole("button", { name: names.groceries, exact: true })
       .click();
-    let dialog = page.getByRole("dialog");
-    await dialog
-      .getByLabel("Category", { exact: true })
-      .selectOption({ label: names.dining });
-    await dialog
-      .getByRole("button", { name: "Save correction", exact: true })
+    const transactionEditor = page.locator(".transaction-editor-body");
+    await transactionEditor
+      .getByRole("combobox", { name: "Category", exact: true })
       .click();
-    await expect(dialog).not.toBeVisible();
+    await page
+      .getByRole("listbox", { name: "Category options", exact: true })
+      .getByRole("option", { name: names.dining, exact: true })
+      .click();
+    await transactionEditor
+      .getByRole("button", { name: "Save", exact: true })
+      .click();
+    await expect(transactionEditor).not.toBeVisible();
     purchaseRow = page.getByRole("row").filter({ hasText: names.payee });
     await expect(purchaseRow).toContainText(names.dining);
     await purchaseRow.getByRole("checkbox").check();
@@ -253,12 +419,13 @@ test("two users budget, review, record card and loan payments, and share only au
     await purchaseRow
       .getByRole("button", { name: names.payee, exact: true })
       .click();
-    dialog = page.getByRole("dialog");
+    let dialog = page.getByRole("dialog");
     await dialog.getByText(/Transaction history ·/).click();
     await expect(dialog).toContainText("Revision 2");
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
 
-    await page.getByRole("button", { name: "Budget", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    await addAccount(page, `Other card ${suffix}`, "0.00", "credit");
     await addAccount(page, names.card, "200.00", "credit");
     await assign(page, `${names.card} payment`, "200.00");
     await purchase(
@@ -268,14 +435,51 @@ test("two users budget, review, record card and loan payments, and share only au
       names.groceries,
       "50.00",
     );
-    await page.getByRole("button", { name: /Record a card payment/ }).click();
+    await page
+      .getByRole("complementary", { name: "Budget navigation", exact: true })
+      .getByRole("button", { name: new RegExp(names.card) })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: names.card, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("row").filter({ hasText: `Card purchase ${suffix}` }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("row").filter({ hasText: names.payee }),
+    ).toHaveCount(0);
+    const accountTransactionOpener = page.getByRole("button", {
+      name: "Add transaction",
+      exact: true,
+    });
+    await accountTransactionOpener.click();
+    const accountEditor = page.locator(".transaction-editor-body");
+    await accountEditor
+      .getByText("Transaction details", { exact: true })
+      .click();
+    await expect(
+      accountEditor.getByRole("combobox", { name: "Account", exact: true }),
+    ).toHaveText(names.card);
+    await accountEditor
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(accountEditor).not.toBeVisible();
+    await expect(accountTransactionOpener).toBeFocused();
+    await page
+      .getByRole("button", { name: "Account actions", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Record a card payment", exact: true })
+      .click();
     dialog = page.getByRole("dialog");
+    await expect(
+      dialog
+        .getByLabel("Paid to credit card", { exact: true })
+        .locator("option:checked"),
+    ).toHaveText(names.card);
     await dialog
       .getByLabel("Paid from cash account", { exact: true })
       .selectOption({ label: names.cash });
-    await dialog
-      .getByLabel("Paid to credit card", { exact: true })
-      .selectOption({ label: names.card });
     await dialog
       .getByLabel("Payment amount ($)", { exact: true })
       .fill("250.00");
@@ -283,6 +487,12 @@ test("two users budget, review, record card and loan payments, and share only au
       .getByRole("button", { name: "Record payment", exact: true })
       .click();
     await expect(dialog).not.toBeVisible();
+    await page
+      .getByRole("button", { name: "All accounts", exact: true })
+      .click();
+    await expect(
+      page.getByRole("row").filter({ hasText: names.payee }),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: "Loans", exact: true }).click();
     await page.getByRole("button", { name: "Add loan", exact: true }).click();
@@ -307,7 +517,7 @@ test("two users budget, review, record card and loan payments, and share only au
         "This preview changes no funding and initiates no payment.",
       ),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Budget", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await assign(page, `${names.loan} payment`, "150.00");
     await page.getByRole("button", { name: "Loans", exact: true }).click();
     await page
@@ -328,6 +538,14 @@ test("two users budget, review, record card and loan payments, and share only au
       .click();
     await expect(dialog).not.toBeVisible();
     await expect(page.getByText("$4,880.00", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    await page
+      .getByRole("button", { name: names.groceries, exact: true })
+      .click();
+    await page.screenshot({
+      path: "/tmp/caishen-plan-desktop.png",
+      fullPage: true,
+    });
 
     const member = await db.workspaceMember.findUniqueOrThrow({
       where: { clerkUserId: first.id },
@@ -405,6 +623,20 @@ test("two users budget, review, record card and loan payments, and share only au
     expect(await state.text()).not.toContain(names.payee);
 
     await page.getByRole("button", { name: "Shared", exact: true }).click();
+    const sharedWorkspace = page.locator("#main-content");
+    const sharedMonth = await monthPicker.innerText();
+    await page.getByRole("button", { name: "Next month", exact: true }).click();
+    await expect(sharedWorkspace).toHaveAttribute("aria-busy", "false");
+    await expect(
+      page.getByRole("heading", { name: "Shared expenses", exact: true }),
+    ).toBeVisible();
+    await expect(monthPicker).not.toHaveText(sharedMonth);
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    await expect(sharedWorkspace).toHaveAttribute("aria-busy", "false");
+    await expect(
+      page.getByRole("heading", { name: "Shared expenses", exact: true }),
+    ).toBeVisible();
+    await expect(monthPicker).toHaveText(sharedMonth);
     if (
       await page
         .getByRole("button", { name: "Create invitation code", exact: true })
@@ -431,7 +663,7 @@ test("two users budget, review, record card and loan payments, and share only au
       await expect(joinDialog).not.toBeVisible();
     }
     await page.reload();
-    await page.getByRole("button", { name: "Budget", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await expect(
       page.getByText(names.privatePartner, { exact: true }),
     ).toHaveCount(0);
@@ -440,12 +672,87 @@ test("two users budget, review, record card and loan payments, and share only au
       fullPage: true,
     });
     await page.setViewportSize({ width: 390, height: 844 });
+    await page
+      .getByRole("button", { name: "Open navigation", exact: true })
+      .click();
     await expect(
       page.getByRole("button", { name: "Settings", exact: true }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "Settings", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Open navigation", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Your budget", exact: true }),
     ).toBeVisible();
+    const detailsToggle = page.getByRole("button", {
+      name: "Toggle budget details",
+      exact: true,
+    });
+    const detailsDialog = page.getByRole("dialog", {
+      name: "Budget details",
+      exact: true,
+    });
+    const mobileGroceriesCheckbox = page.getByRole("checkbox", {
+      name: `Select ${names.groceries}`,
+      exact: true,
+    });
+    const mobileDiningCheckbox = page.getByRole("checkbox", {
+      name: `Select ${names.dining}`,
+      exact: true,
+    });
+    await mobileGroceriesCheckbox.check();
+    await expect(detailsDialog).not.toBeVisible();
+    await mobileDiningCheckbox.check();
+    await expect(detailsDialog).not.toBeVisible();
+    await expect(mobileGroceriesCheckbox).toBeChecked();
+    await expect(mobileDiningCheckbox).toBeChecked();
+    await detailsToggle.click();
+    await expect(detailsDialog).toBeVisible();
+    await expect(
+      detailsDialog.getByRole("heading", {
+        name: "2 categories selected",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(detailsDialog).not.toBeVisible();
+    await expect(detailsToggle).toBeFocused();
+    await expect(mobileGroceriesCheckbox).not.toBeChecked();
+    await expect(mobileDiningCheckbox).not.toBeChecked();
+    await detailsToggle.click();
+    await expect(detailsDialog).toBeVisible();
+    await expect(detailsDialog).toContainText("Month summary");
+    await expect(
+      detailsDialog.getByRole("button", {
+        name: "Close budget details",
+        exact: true,
+      }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(detailsDialog).not.toBeVisible();
+    await expect(detailsToggle).toBeFocused();
+    const mobileCategory = page.getByRole("button", {
+      name: names.groceries,
+      exact: true,
+    });
+    await mobileCategory.click();
+    await expect(detailsDialog).toBeVisible();
+    await expect(
+      detailsDialog.getByRole("heading", {
+        name: names.groceries,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await detailsDialog
+      .getByRole("button", { name: "Clear category selection", exact: true })
+      .click();
+    await expect(detailsDialog).not.toBeVisible();
+    await expect(mobileCategory).toBeFocused();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -544,7 +851,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       await expect(partner.getByRole("dialog")).not.toBeVisible();
       await page.reload();
     }
-    await page.getByRole("button", { name: "Budget", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await addAccount(page, yourCash, "2000.00");
     await addCategory(page, rent);
     await addCategory(page, utilities);
@@ -567,8 +874,51 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
         .click();
       await expect(dialog).not.toBeVisible();
     }
+    const unusedShared = `Unused shared category ${suffix}`;
+    await page
+      .getByRole("button", { name: "Shared category", exact: true })
+      .click();
+    let unusedDialog = page.getByRole("dialog");
+    await unusedDialog
+      .getByLabel("Shared category name", { exact: true })
+      .fill(unusedShared);
+    await unusedDialog
+      .getByLabel("Your budget category", { exact: true })
+      .selectOption({ label: rent });
+    await unusedDialog
+      .getByRole("button", { name: "Save shared category", exact: true })
+      .click();
+    await expect(unusedDialog).not.toBeVisible();
+    const unusedRow = page
+      .locator(".account-row")
+      .filter({ hasText: unusedShared });
+    await unusedRow.getByRole("button", { name: "Edit", exact: true }).click();
+    unusedDialog = page.getByRole("dialog");
+    await unusedDialog
+      .getByRole("button", { name: "Delete shared category", exact: true })
+      .click();
+    await expect(unusedDialog).toContainText(
+      "Both personal budget categories and their assigned money will be kept.",
+    );
+    await unusedDialog
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await expect(unusedRow).toBeVisible();
+    await unusedRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await unusedDialog
+      .getByRole("button", { name: "Delete shared category", exact: true })
+      .click();
+    await unusedDialog
+      .getByRole("button", { name: "Delete shared category", exact: true })
+      .click();
+    await expect(unusedDialog).not.toBeVisible();
+    await expect(unusedRow).toHaveCount(0);
     await partner.reload();
-    await partner.getByRole("button", { name: "Budget", exact: true }).click();
+    await partner.getByRole("button", { name: "Shared", exact: true }).click();
+    await expect(
+      partner.locator(".account-row").filter({ hasText: unusedShared }),
+    ).toHaveCount(0);
+    await partner.getByRole("button", { name: "Plan", exact: true }).click();
     await addAccount(partner, partnerCash, "3000.00");
     await assign(partner, rent, "2000.00");
     await assign(partner, utilities, "100.00");
@@ -581,7 +931,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       rent,
     );
     await page.reload();
-    await page.getByRole("button", { name: "Budget", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await purchase(
       page,
       `Utility bill ${suffix}`,
@@ -597,14 +947,42 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     await page
       .locator(".account-row")
       .filter({ hasText: rent })
-      .getByRole("button", { name: "Edit split", exact: true })
+      .getByRole("button", { name: "Edit", exact: true })
       .click();
     let dialog = page.getByRole("dialog");
+    const renamedRent = `Household rent ${suffix}`;
+    await expect(
+      dialog.getByLabel("Shared category name", { exact: true }),
+    ).toHaveValue(rent);
+    await dialog
+      .getByLabel("Shared category name", { exact: true })
+      .fill(renamedRent);
     await dialog.getByLabel("Your share (%)", { exact: true }).fill("75");
     await dialog
       .getByRole("button", { name: "Save shared category", exact: true })
       .click();
     await expect(dialog).not.toBeVisible();
+    const renamedRow = page
+      .locator(".account-row")
+      .filter({ hasText: renamedRent });
+    await expect(renamedRow).toContainText("Your split: 75%");
+    await renamedRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await dialog
+      .getByRole("button", { name: "Delete shared category", exact: true })
+      .click();
+    await dialog
+      .getByRole("button", { name: "Delete shared category", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "recorded activity cannot be deleted",
+    );
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(renamedRow).toBeVisible();
+    await partner.reload();
+    await partner.getByRole("button", { name: "Shared", exact: true }).click();
+    await expect(
+      partner.locator(".account-row").filter({ hasText: renamedRent }),
+    ).toContainText("Your split: 25%");
     await expect(page.locator(".report-summary")).toContainText("$900.00");
     await page
       .getByText("Inspect full payments and original splits", { exact: true })
@@ -675,7 +1053,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     ).toBe(partnerBefore.cash + 90000);
 
     await page.reload();
-    await page.getByRole("button", { name: "Budget", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     const reconcileAccount = `Statement checking ${suffix}`;
     await addAccount(page, reconcileAccount, "100.00");
     const statementCategory = `Statement expenses ${suffix}`;
@@ -689,9 +1067,14 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       statementCategory,
       "10.00",
     );
-    await page.getByRole("button", { name: /^Transactions/ }).click();
     await page
-      .getByRole("button", { name: "Reconcile a statement", exact: true })
+      .getByRole("button", { name: "All accounts", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Account actions", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Reconcile a statement", exact: true })
       .click();
     dialog = page.getByRole("dialog");
     await dialog

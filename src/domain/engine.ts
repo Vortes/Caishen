@@ -224,6 +224,18 @@ export const commandSchema = z.discriminatedUnion("type", [
     weights: z.record(z.number().int().min(0).max(10000)),
   }),
   z.object({
+    type: z.literal("shared.update"),
+    id: identifier,
+    sharedCategoryId: identifier,
+    name: z.string().trim().min(1).max(120),
+    weights: z.record(z.number().int().min(0).max(10000)),
+  }),
+  z.object({
+    type: z.literal("shared.remove"),
+    id: identifier,
+    sharedCategoryId: identifier,
+  }),
+  z.object({
     type: z.literal("opening.add"),
     id: identifier,
     obligationId: identifier,
@@ -1856,6 +1868,8 @@ export function execute(
     "target.snooze",
     "shared.create",
     "shared.rule",
+    "shared.update",
+    "shared.remove",
     "opening.add",
     "settlement.record",
     "settlement.receive",
@@ -2324,6 +2338,33 @@ function applyCommand(
       const shared = sharedAccess(book, actorId, command.sharedCategoryId);
       validateWeights(shared.participants, command.weights);
       shared.weights = command.weights;
+      break;
+    }
+    case "shared.update": {
+      const shared = sharedAccess(book, actorId, command.sharedCategoryId);
+      validateWeights(shared.participants, command.weights);
+      shared.name = command.name;
+      shared.weights = command.weights;
+      break;
+    }
+    case "shared.remove": {
+      const shared = sharedAccess(book, actorId, command.sharedCategoryId);
+      if (
+        book.obligations.some(
+          (obligation) => obligation.sharedCategoryId === shared.id,
+        ) ||
+        Object.values(book.budgets).some((member) =>
+          member.transactions.some(
+            (transaction) => transaction.sharedCategoryId === shared.id,
+          ),
+        )
+      )
+        fail(
+          "Shared categories with recorded activity cannot be deleted. Their expense and settlement history must be preserved.",
+        );
+      book.sharedCategories = book.sharedCategories.filter(
+        (category) => category.id !== shared.id,
+      );
       break;
     }
     case "opening.add": {

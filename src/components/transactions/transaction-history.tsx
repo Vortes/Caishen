@@ -1,0 +1,32 @@
+"use client";
+
+import { Amount } from "~/components/shared";
+import type { View } from "~/components/budget/types";
+
+export function TransactionHistory({
+  transaction,
+}: {
+  transaction: NonNullable<View>["budget"]["transactions"][number];
+}) {
+  return (
+    <details>
+      <summary className="small muted" style={{ cursor: "pointer" }}>
+        Transaction history · {transaction.history.length}{" "}
+        {transaction.history.length === 1 ? "record" : "records"}
+      </summary>
+      <ul className="audit-list" style={{ marginTop: 10 }}>
+        {transaction.history.map((entry, index) => (
+          <li key={`${entry.operationId}-${index}`}>
+            <span className="muted">Revision {entry.revision}</span>
+            <span>
+              {entry.reason} · <Amount value={entry.amount} /> · {entry.status}
+              <small className="muted" style={{ display: "block" }}>
+                {entry.date} · {entry.payee}
+              </small>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}

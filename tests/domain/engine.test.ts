@@ -563,6 +563,206 @@ void test("shared split changes affect future expenses, with explicit purchase e
   );
 });
 
+void test("either participant can rename a shared category and update future splits without rewriting history", () => {
+  const setup = household();
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "before-update",
+    accountId: "checking",
+    date,
+    amount: -10_000,
+    payee: "Utilities",
+    categoryId: "utilities",
+    sharedCategoryId: "shared-utilities",
+  });
+  const before = structuredClone(setup.book);
+  setup.run(
+    {
+      type: "shared.update",
+      sharedCategoryId: "shared-utilities",
+      name: " Household bills ",
+      weights: { alan: 25, partner: 75 },
+    },
+    "partner",
+  );
+  for (const actor of ["alan", "partner"]) {
+    const shared = setup
+      .view(actor)
+      .sharedCategories.find((category) => category.id === "shared-utilities")!;
+    assert.equal(shared.name, "Household bills");
+    assert.deepEqual(shared.weights, { alan: 25, partner: 75 });
+    assert.deepEqual(
+      setup.book.budgets[actor],
+      before.budgets[actor],
+      "editing the shared rule preserves personal categories, funding, and transactions",
+    );
+  }
+  assert.deepEqual(setup.book.obligations, before.obligations);
+  assert.deepEqual(bookSchema.parse(setup.book), setup.book);
+  setup.run({
+    type: "shared.update",
+    sharedCategoryId: "shared-utilities",
+    name: "Household bills",
+    weights: { alan: 25, partner: 75 },
+  });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "after-update",
+    accountId: "checking",
+    date,
+    amount: -10_000,
+    payee: "Next bill",
+    categoryId: "utilities",
+    sharedCategoryId: "shared-utilities",
+  });
+  assert.deepEqual(
+    setup.view().budget.transactions.map((transaction) => transaction.shares),
+    [
+      { alan: 5000, partner: 5000 },
+      { alan: 2500, partner: 7500 },
+    ],
+  );
+});
+
+void test("either participant can delete an unused shared category while keeping both funded personal categories", () => {
+  for (const actor of ["alan", "partner"]) {
+    const setup = household();
+    setup.run({ type: "assign", categoryId: "rent", month, amount: 10_000 });
+    setup.run(
+      { type: "assign", categoryId: "partner-rent", month, amount: 20_000 },
+      "partner",
+    );
+    const before = structuredClone(setup.book);
+    const command: Command = {
+      type: "shared.remove",
+      id: "delete-rent",
+      sharedCategoryId: "shared-rent",
+    };
+    setup.book = execute(setup.book, actor, command);
+    assert.deepEqual(setup.book.budgets, before.budgets);
+    assert.deepEqual(setup.book.obligations, before.obligations);
+    assert.deepEqual(setup.book.sharedCategories, [before.sharedCategories[1]]);
+    assert.deepEqual(execute(setup.book, actor, command), setup.book);
+    assert.deepEqual(bookSchema.parse(setup.book), setup.book);
+    for (const participant of ["alan", "partner"])
+      assert.ok(
+        !setup
+          .view(participant)
+          .sharedCategories.some((category) => category.id === "shared-rent"),
+      );
+    assert.throws(
+      () =>
+        setup.run({
+          type: "opening.add",
+          obligationId: "deleted-rent-opening",
+          sharedCategoryId: "shared-rent",
+          debtorId: "alan",
+          creditorId: "partner",
+          amount: 100,
+        }),
+      /access denied/,
+    );
+  }
+});
+
+void test("shared category deletion preserves opening balances even after settlement", () => {
+  const setup = household();
+  setup.run({
+    type: "opening.add",
+    obligationId: "opening-rent",
+    sharedCategoryId: "shared-rent",
+    debtorId: "alan",
+    creditorId: "partner",
+    amount: 1000,
+  });
+  const remove = () =>
+    setup.run({
+      type: "shared.remove",
+      sharedCategoryId: "shared-rent",
+    });
+  assert.throws(remove, /recorded activity cannot be deleted/);
+  setup.run({
+    type: "settlement.record",
+    settlementId: "paid-opening",
+    otherUserId: "partner",
+    date,
+    accountId: "checking",
+    amount: 1000,
+  });
+  assert.equal(setup.view().settlement.net, 0);
+  const before = structuredClone(setup.book);
+  assert.throws(remove, /recorded activity cannot be deleted/);
+  assert.deepEqual(setup.book, before);
+});
+
+void test("shared category deletion checks both participants' transactions including removed expenses with no obligation", () => {
+  const setup = household();
+  setup.run(
+    {
+      type: "transaction.upsert",
+      transactionId: "partner-expense",
+      accountId: "partner-cash",
+      date,
+      amount: -1000,
+      payee: "Rent",
+      categoryId: "partner-rent",
+      sharedCategoryId: "shared-rent",
+      shares: { alan: 0, partner: 1000 },
+    },
+    "partner",
+  );
+  assert.equal(setup.book.obligations.length, 0);
+  const remove = () =>
+    setup.run({
+      type: "shared.remove",
+      sharedCategoryId: "shared-rent",
+    });
+  assert.throws(remove, /recorded activity cannot be deleted/);
+  setup.run(
+    { type: "transaction.remove", transactionId: "partner-expense" },
+    "partner",
+  );
+  assert.throws(remove, /recorded activity cannot be deleted/);
+});
+
+void test("shared updates and deletes enforce participant access and require a user decision", () => {
+  const setup = household();
+  for (const command of [
+    {
+      type: "shared.update",
+      sharedCategoryId: "shared-rent",
+      name: "Housing",
+      weights: { alan: 1, partner: 1 },
+    },
+    { type: "shared.remove", sharedCategoryId: "shared-rent" },
+  ] satisfies WithoutId<Command>[]) {
+    assert.throws(() => setup.run(command, "outsider"), /access denied/);
+    assert.throws(() => setup.run(command, "alan", "agent"), /user action/);
+    assert.throws(
+      () => setup.run({ ...command, sharedCategoryId: "missing" }),
+      /access denied/,
+    );
+  }
+  const invalidUpdates: { name: string; weights: Record<string, number> }[] = [
+    { name: " ", weights: { alan: 1, partner: 1 } },
+    { name: "x".repeat(121), weights: { alan: 1, partner: 1 } },
+    { name: "Housing", weights: { alan: 0, partner: 0 } },
+    { name: "Housing", weights: { alan: -1, partner: 2 } },
+    { name: "Housing", weights: { alan: 1, outsider: 1 } },
+  ];
+  for (const invalid of invalidUpdates) {
+    const before = structuredClone(setup.book);
+    assert.throws(() =>
+      setup.run({
+        type: "shared.update",
+        sharedCategoryId: "shared-rent",
+        ...invalid,
+      }),
+    );
+    assert.deepEqual(setup.book, before);
+  }
+});
+
 void test("rent uses its due expense month while the actual account outflow keeps its payment date", () => {
   const setup = household();
   setup.run({

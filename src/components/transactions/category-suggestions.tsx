@@ -1,11 +1,12 @@
 "use client";
 
-import { api, type RouterOutputs } from "~/trpc/react";
-import { useState } from "react";
-import { type Command } from "~/domain/engine";
-import { Icon } from "~/components/ui";
+import { Button } from "~/components/ui/button";
 
-type State = NonNullable<RouterOutputs["budget"]["state"]>;
+import { api } from "~/trpc/react";
+import { type State } from "~/components/budget/types";
+import { useId, useMemo, useState } from "react";
+import { type Command } from "~/domain/engine";
+import { Icon } from "~/components/shared";
 
 export function CategorySuggestions({
   state,
@@ -20,6 +21,7 @@ export function CategorySuggestions({
 }) {
   const suggestions = api.budget.suggest.useMutation();
   const utils = api.useUtils();
+  const selectionLimitId = useId();
   const [operationId, setOperationId] = useState(() => crypto.randomUUID());
   const approve = api.budget.approveSuggestions.useMutation({
     onSuccess: async () => {
@@ -28,17 +30,37 @@ export function CategorySuggestions({
     },
   });
   const view = state.view!;
+  const selectedIdSet = useMemo(() => new Set(selected), [selected]);
+  const transactionsById = useMemo(
+    () =>
+      new Map(
+        view.budget.transactions.map((transaction) => [
+          transaction.id,
+          transaction,
+        ]),
+      ),
+    [view.budget.transactions],
+  );
+  const categoriesById = useMemo(
+    () => new Map(view.categories.map((category) => [category.id, category])),
+    [view.categories],
+  );
+  const isUnreviewed = (id: string) => {
+    const transaction = transactionsById.get(id);
+    return Boolean(transaction && !transaction.reviewed);
+  };
   const available =
     state.services.find((service) => service.name === "OpenRouter")?.status ===
     "configured";
   const transactionIds = view.budget.transactions
     .filter(
       (transaction) =>
-        selected.includes(transaction.id) &&
+        selectedIdSet.has(transaction.id) &&
         !transaction.removed &&
         transaction.kind === "purchase",
     )
     .map((transaction) => transaction.id);
+  const selectionLimitExceeded = transactionIds.length > 100;
   return (
     <div className="suggestion-area">
       <div className="suggestion-head">
@@ -50,16 +72,28 @@ export function CategorySuggestions({
               : "OpenRouter needs service setup. You can choose categories and approve transactions manually."}
           </p>
         </div>
-        <button
-          className="secondary-button"
+        <Button
+          variant="secondary"
           disabled={
-            !available || !transactionIds.length || suggestions.isPending
+            busy ||
+            !available ||
+            !transactionIds.length ||
+            selectionLimitExceeded ||
+            suggestions.isPending
+          }
+          aria-describedby={
+            selectionLimitExceeded ? selectionLimitId : undefined
           }
           onClick={() => suggestions.mutate({ transactionIds })}
         >
           {suggestions.isPending ? "Reviewing payees…" : "Suggest categories"}
-        </button>
+        </Button>
       </div>
+      {selectionLimitExceeded && (
+        <p id={selectionLimitId} className="muted" role="status">
+          Select up to 100 purchases at a time for category suggestions.
+        </p>
+      )}
       {approve.error && (
         <p className="form-error" role="alert">
           {approve.error.message}
@@ -72,20 +106,16 @@ export function CategorySuggestions({
       )}
       {suggestions.data && (
         <div>
-          <button
-            className="secondary-button"
+          <Button
+            variant="secondary"
             disabled={
               busy ||
               approve.isPending ||
               !suggestions.data.some(
                 (item) =>
                   item.categoryId &&
-                  selected.includes(item.transactionId) &&
-                  view.budget.transactions.some(
-                    (transaction) =>
-                      transaction.id === item.transactionId &&
-                      !transaction.reviewed,
-                  ),
+                  selectedIdSet.has(item.transactionId) &&
+                  isUnreviewed(item.transactionId),
               )
             }
             onClick={() => {
@@ -93,12 +123,8 @@ export function CategorySuggestions({
                 .filter(
                   (item) =>
                     item.categoryId &&
-                    selected.includes(item.transactionId) &&
-                    view.budget.transactions.some(
-                      (transaction) =>
-                        transaction.id === item.transactionId &&
-                        !transaction.reviewed,
-                    ),
+                    selectedIdSet.has(item.transactionId) &&
+                    isUnreviewed(item.transactionId),
                 )
                 .map((item) => ({
                   transactionId: item.transactionId,
@@ -113,14 +139,12 @@ export function CategorySuggestions({
             }}
           >
             {approve.isPending ? "Approving…" : "Approve selected suggestions"}
-          </button>
+          </Button>
           {suggestions.data.map((suggestion) => {
-            const transaction = view.budget.transactions.find(
-              (item) => item.id === suggestion.transactionId,
-            );
-            const category = view.categories.find(
-              (item) => item.id === suggestion.categoryId,
-            );
+            const transaction = transactionsById.get(suggestion.transactionId);
+            const category = suggestion.categoryId
+              ? categoriesById.get(suggestion.categoryId)
+              : undefined;
             return (
               <div className="suggestion-row" key={suggestion.transactionId}>
                 <div>
@@ -130,8 +154,8 @@ export function CategorySuggestions({
                   </strong>
                   <p>{suggestion.reason}</p>
                 </div>
-                <button
-                  className="text-button"
+                <Button
+                  variant="ghost"
                   disabled={
                     busy || !category || transaction?.categoryId === category.id
                   }
@@ -148,7 +172,7 @@ export function CategorySuggestions({
                   {transaction?.categoryId === category?.id
                     ? "Applied"
                     : "Apply category"}
-                </button>
+                </Button>
               </div>
             );
           })}

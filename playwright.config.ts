@@ -10,7 +10,9 @@ export default defineConfig({
   retries: 0,
   timeout: 60_000,
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
     channel: "chrome",
+    actionTimeout: 15_000,
+    screenshot: "only-on-failure",
   },
 });
