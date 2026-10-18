@@ -310,7 +310,8 @@ void test("cancellation retries recover a lost acknowledgement only from a match
   const client = createResendClient(
     { apiKey: "fixture-key", from: "review@example.com" },
     async (url, init) => {
-      if (typeof url !== "string") throw new Error("Expected a fixed URL string.");
+      if (typeof url !== "string")
+        throw new Error("Expected a fixed URL string.");
       calls.push(`${init?.method} ${url}`);
       return init?.method === "POST"
         ? Response.json({ message: "already canceled" }, { status: 400 })
