@@ -46,7 +46,6 @@ function fixture(shared = false) {
     run({
       type: "shared.create",
       sharedCategoryId: "shared-food",
-      name: "Shared food",
       participants: ["alan", "partner"],
       weights: { alan: 1, partner: 3 },
       categoryIds: { alan: "food", partner: "partner-food" },

@@ -18,6 +18,12 @@ export function monthName(month: string) {
     year: "numeric",
   });
 }
+export function shortDate(date: string) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
 export function moveMonth(month: string, delta: number) {
   const date = new Date(`${month}-15T12:00:00`);
   date.setMonth(date.getMonth() + delta);

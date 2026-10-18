@@ -89,6 +89,56 @@ async function assign(page: Page, name: string, amount: string) {
   await expect(assigned).toBeEnabled();
   await expect(assigned).toBeFocused();
 }
+async function connectPartners(page: Page, partner: Page) {
+  await expect(
+    page.getByRole("heading", { name: "Month summary", exact: true }),
+  ).toBeVisible();
+  const createInvite = page.getByRole("button", {
+    name: "Create invitation code",
+    exact: true,
+  });
+  if (!(await createInvite.isVisible())) return;
+  await createInvite.click();
+  await expect(page.locator(".inline-code")).toBeVisible();
+  const code = await page.locator(".inline-code").innerText();
+  await partner.reload();
+  await expect(
+    partner.getByRole("heading", { name: "Month summary", exact: true }),
+  ).toBeVisible();
+  await partner
+    .getByRole("button", { name: "Enter partner’s code", exact: true })
+    .click();
+  const joinDialog = partner.getByRole("dialog");
+  await joinDialog
+    .getByLabel("Partner’s invitation code", { exact: true })
+    .fill(code);
+  await joinDialog
+    .getByRole("button", { name: "Connect budgets", exact: true })
+    .click();
+  await expect(joinDialog).not.toBeVisible();
+  await page.reload();
+}
+function inspectorFor(page: Page, name: string) {
+  return page.getByRole("complementary", {
+    name: `${name} details`,
+    exact: true,
+  });
+}
+async function shareCategory(page: Page, name: string) {
+  await page.getByRole("button", { name, exact: true }).click();
+  const inspector = inspectorFor(page, name);
+  await inspector
+    .getByRole("button", { name: "Share this category", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: "Save shared category", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    inspector.getByText("Shared with your partner", { exact: true }),
+  ).toBeVisible();
+}
 async function purchase(
   page: Page,
   payee: string,
@@ -100,6 +150,10 @@ async function purchase(
   const startedOnPlan = await page
     .getByRole("heading", { name: "Your budget", exact: true })
     .isVisible();
+  if (startedOnPlan)
+    await page
+      .getByRole("button", { name: "All accounts", exact: true })
+      .click();
   await page
     .getByRole("button", { name: "Add transaction", exact: true })
     .first()
@@ -239,6 +293,9 @@ test("two users budget, review, record card and loan payments, and share only au
     await addCategory(page, names.groceries);
     await addCategory(page, names.dining);
 
+    await page
+      .getByRole("button", { name: "All accounts", exact: true })
+      .click();
     const transactionOpener = page
       .getByRole("button", {
         name: "Add transaction",
@@ -622,47 +679,8 @@ test("two users budget, review, record card and loan payments, and share only au
     expect(state.status()).toBe(200);
     expect(await state.text()).not.toContain(names.payee);
 
-    await page.getByRole("button", { name: "Shared", exact: true }).click();
-    const sharedWorkspace = page.locator("#main-content");
-    const sharedMonth = await monthPicker.innerText();
-    await page.getByRole("button", { name: "Next month", exact: true }).click();
-    await expect(sharedWorkspace).toHaveAttribute("aria-busy", "false");
-    await expect(
-      page.getByRole("heading", { name: "Shared expenses", exact: true }),
-    ).toBeVisible();
-    await expect(monthPicker).not.toHaveText(sharedMonth);
-    await page.getByRole("button", { name: "Today", exact: true }).click();
-    await expect(sharedWorkspace).toHaveAttribute("aria-busy", "false");
-    await expect(
-      page.getByRole("heading", { name: "Shared expenses", exact: true }),
-    ).toBeVisible();
-    await expect(monthPicker).toHaveText(sharedMonth);
-    if (
-      await page
-        .getByRole("button", { name: "Create invitation code", exact: true })
-        .isVisible()
-    ) {
-      await page
-        .getByRole("button", { name: "Create invitation code", exact: true })
-        .click();
-      await expect(page.locator(".inline-code")).toBeVisible();
-      const code = await page.locator(".inline-code").innerText();
-      await partner
-        .getByRole("button", { name: "Shared", exact: true })
-        .click();
-      await partner
-        .getByRole("button", { name: "Enter partner’s code", exact: true })
-        .click();
-      const joinDialog = partner.getByRole("dialog");
-      await joinDialog
-        .getByLabel("Partner’s invitation code", { exact: true })
-        .fill(code);
-      await joinDialog
-        .getByRole("button", { name: "Connect budgets", exact: true })
-        .click();
-      await expect(joinDialog).not.toBeVisible();
-    }
     await page.reload();
+    await connectPartners(page, partner);
     await page.getByRole("button", { name: "Plan", exact: true }).click();
     await expect(
       page.getByText(names.privatePartner, { exact: true }),
@@ -818,82 +836,45 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       timeZone: "America/Los_Angeles",
     })
     .slice(0, 7);
+  const monthLabel = new Date(`${month}-15T12:00:00`).toLocaleDateString(
+    "en-US",
+    { month: "long", year: "numeric" },
+  );
   try {
     await signIn(page, first.email);
     await onboard(page, `Shared test budget ${suffix}`);
     await signIn(partner, second.email);
     await onboard(partner, `Shared partner budget ${suffix}`);
-    await page.getByRole("button", { name: "Shared", exact: true }).click();
-    if (
-      await page
-        .getByRole("button", { name: "Create invitation code", exact: true })
-        .isVisible()
-    ) {
-      await page
-        .getByRole("button", { name: "Create invitation code", exact: true })
-        .click();
-      await expect(page.locator(".inline-code")).toBeVisible();
-      const code = await page.locator(".inline-code").innerText();
-      await partner
-        .getByRole("button", { name: "Shared", exact: true })
-        .click();
-      await partner
-        .getByRole("button", { name: "Enter partner’s code", exact: true })
-        .click();
-      await partner
-        .getByRole("dialog")
-        .getByLabel("Partner’s invitation code", { exact: true })
-        .fill(code);
-      await partner
-        .getByRole("dialog")
-        .getByRole("button", { name: "Connect budgets", exact: true })
-        .click();
-      await expect(partner.getByRole("dialog")).not.toBeVisible();
-      await page.reload();
-    }
+    await connectPartners(page, partner);
+    const statementFor = async (userId: string) => {
+      const saved = await db.workspaceMember.findUniqueOrThrow({
+        where: { clerkUserId: userId },
+        include: { workspace: true },
+      });
+      return projectBook(bookSchema.parse(saved.workspace.book), userId, month);
+    };
+    expect(
+      (await statementFor(first.id)).settlement.net,
+      "the shared e2e household starts each run settled",
+    ).toBe(0);
     await page.getByRole("button", { name: "Plan", exact: true }).click();
     await addAccount(page, yourCash, "2000.00");
     await addCategory(page, rent);
     await addCategory(page, utilities);
     await assign(page, rent, "1000.00");
     await assign(page, utilities, "200.00");
-    await page.getByRole("button", { name: "Shared", exact: true }).click();
-    for (const name of [rent, utilities]) {
-      await page
-        .getByRole("button", { name: "Shared category", exact: true })
-        .click();
-      const dialog = page.getByRole("dialog");
-      await dialog
-        .getByLabel("Shared category name", { exact: true })
-        .fill(name);
-      await dialog
-        .getByLabel("Your budget category", { exact: true })
-        .selectOption({ label: name });
-      await dialog
-        .getByRole("button", { name: "Save shared category", exact: true })
-        .click();
-      await expect(dialog).not.toBeVisible();
-    }
     const unusedShared = `Unused shared category ${suffix}`;
-    await page
-      .getByRole("button", { name: "Shared category", exact: true })
-      .click();
-    let unusedDialog = page.getByRole("dialog");
-    await unusedDialog
-      .getByLabel("Shared category name", { exact: true })
-      .fill(unusedShared);
-    await unusedDialog
-      .getByLabel("Your budget category", { exact: true })
-      .selectOption({ label: rent });
-    await unusedDialog
-      .getByRole("button", { name: "Save shared category", exact: true })
-      .click();
-    await expect(unusedDialog).not.toBeVisible();
-    const unusedRow = page
-      .locator(".account-row")
-      .filter({ hasText: unusedShared });
-    await unusedRow.getByRole("button", { name: "Edit", exact: true }).click();
-    unusedDialog = page.getByRole("dialog");
+    await addCategory(page, unusedShared);
+    for (const name of [rent, utilities, unusedShared])
+      await shareCategory(page, name);
+    await page.getByRole("button", { name: unusedShared, exact: true }).click();
+    const unusedInspector = inspectorFor(page, unusedShared);
+    const editUnused = unusedInspector.getByRole("button", {
+      name: `Edit ${unusedShared} split`,
+      exact: true,
+    });
+    await editUnused.click();
+    const unusedDialog = page.getByRole("dialog");
     await unusedDialog
       .getByRole("button", { name: "Delete shared category", exact: true })
       .click();
@@ -903,8 +884,8 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     await unusedDialog
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
-    await expect(unusedRow).toBeVisible();
-    await unusedRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(editUnused).toBeVisible();
+    await editUnused.click();
     await unusedDialog
       .getByRole("button", { name: "Delete shared category", exact: true })
       .click();
@@ -912,12 +893,25 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       .getByRole("button", { name: "Delete shared category", exact: true })
       .click();
     await expect(unusedDialog).not.toBeVisible();
-    await expect(unusedRow).toHaveCount(0);
-    await partner.reload();
-    await partner.getByRole("button", { name: "Shared", exact: true }).click();
     await expect(
-      partner.locator(".account-row").filter({ hasText: unusedShared }),
+      unusedInspector.getByRole("button", {
+        name: "Share this category",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await partner.reload();
+    await expect(
+      partner
+        .getByRole("row")
+        .filter({ hasText: unusedShared })
+        .locator(".shared-mark"),
     ).toHaveCount(0);
+    await expect(
+      partner
+        .getByRole("row")
+        .filter({ hasText: rent })
+        .locator(".shared-mark"),
+    ).toHaveText(/50\/50/);
     await partner.getByRole("button", { name: "Plan", exact: true }).click();
     await addAccount(partner, partnerCash, "3000.00");
     await assign(partner, rent, "2000.00");
@@ -940,33 +934,46 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       "200.00",
       utilities,
     );
-    await page.getByRole("button", { name: "Shared", exact: true }).click();
-    await expect(page.locator(".report-summary")).toContainText("$1,000.00");
-    await expect(page.locator(".report-summary")).toContainText("$100.00");
-    await expect(page.locator(".report-summary")).toContainText("$900.00");
-    await page
-      .locator(".account-row")
-      .filter({ hasText: rent })
-      .getByRole("button", { name: "Edit", exact: true })
+    await page.reload();
+    const balance = page.locator(".shared-balance");
+    const statement = balance.getByRole("list", {
+      name: `${monthLabel} shared statement`,
+      exact: true,
+    });
+    const line = (name: string | RegExp) =>
+      statement.getByRole("listitem").filter({ hasText: name });
+    await expect(balance.locator(".shared-verdict")).toContainText("$900.00");
+    await expect(line(rent)).toContainText("1 shared purchase");
+    await expect(line(rent)).toContainText("$1,000.00you owe");
+    await expect(line(utilities)).toContainText("$100.00owed to you");
+    await expect(line(/^Balance/)).toContainText("$900.00");
+    const shown = (await statementFor(first.id)).sharedStatement;
+    expect(shown.balance).toBe(90000);
+    expect(
+      shown.categories.find((category) => category.name === rent)?.effect,
+    ).toBe(100000);
+    expect(
+      shown.categories.find((category) => category.name === utilities)?.effect,
+    ).toBe(-10000);
+    await page.getByRole("button", { name: rent, exact: true }).click();
+    const rentInspector = inspectorFor(page, rent);
+    await rentInspector
+      .getByRole("button", { name: `Edit ${rent} split`, exact: true })
       .click();
     let dialog = page.getByRole("dialog");
-    const renamedRent = `Household rent ${suffix}`;
-    await expect(
-      dialog.getByLabel("Shared category name", { exact: true }),
-    ).toHaveValue(rent);
-    await dialog
-      .getByLabel("Shared category name", { exact: true })
-      .fill(renamedRent);
     await dialog.getByLabel("Your share (%)", { exact: true }).fill("75");
     await dialog
       .getByRole("button", { name: "Save shared category", exact: true })
       .click();
     await expect(dialog).not.toBeVisible();
-    const renamedRow = page
-      .locator(".account-row")
-      .filter({ hasText: renamedRent });
-    await expect(renamedRow).toContainText("Your split: 75%");
-    await renamedRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(rentInspector.locator(".shared-rule")).toContainText(
+      "You 75% · partner 25%",
+    );
+    const editRent = rentInspector.getByRole("button", {
+      name: `Edit ${rent} split`,
+      exact: true,
+    });
+    await editRent.click();
     await dialog
       .getByRole("button", { name: "Delete shared category", exact: true })
       .click();
@@ -977,24 +984,40 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       "recorded activity cannot be deleted",
     );
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(renamedRow).toBeVisible();
+    await expect(editRent).toBeVisible();
     await partner.reload();
-    await partner.getByRole("button", { name: "Shared", exact: true }).click();
+    await partner.getByRole("button", { name: rent, exact: true }).click();
     await expect(
-      partner.locator(".account-row").filter({ hasText: renamedRent }),
-    ).toContainText("Your split: 25%");
-    await expect(page.locator(".report-summary")).toContainText("$900.00");
+      inspectorFor(partner, rent).locator(".shared-rule"),
+    ).toContainText("You 25% · partner 75%");
+    await expect(rentInspector.locator(".shared-balance")).toHaveCount(0);
     await page
-      .getByText("Inspect full payments and original splits", { exact: true })
+      .getByRole("button", { name: "Clear category selection", exact: true })
       .click();
-    const rentRow = page
-      .locator(".shared-inspection")
-      .getByRole("row")
+    const summary = page.locator(".shared-balance");
+    await expect(summary.locator(".shared-verdict")).toContainText("$900.00");
+    await line(rent).getByRole("button").click();
+    const breakdown = page.getByRole("dialog", {
+      name: `${rent} in ${monthLabel.split(" ")[0]}`,
+      exact: true,
+    });
+    const rentItem = breakdown
+      .getByRole("listitem")
       .filter({ hasText: `Rent payment ${suffix}` });
-    await expect(rentRow).toContainText("$2,000.00");
-    expect(await rentRow.getByText("$1,000.00", { exact: true }).count()).toBe(
-      2,
+    await expect(rentItem).toContainText("$2,000.00");
+    await expect(rentItem).toContainText(
+      "Your partner paid · your share $1,000.00",
     );
+    await expect(rentItem).toContainText("you owe $1,000.00");
+    await expect(
+      rentItem.getByTitle("Split differs from the current rule"),
+    ).toHaveText("50/50");
+    await page.screenshot({
+      path: "/tmp/caishen-shared-breakdown.png",
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+    await expect(breakdown).not.toBeVisible();
     const member = await db.workspaceMember.findUniqueOrThrow({
       where: { clerkUserId: first.id },
       include: { workspace: true },
@@ -1002,7 +1025,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     const beforeBook = bookSchema.parse(member.workspace.book);
     const before = projectBook(beforeBook, first.id, month);
     const partnerBefore = projectBook(beforeBook, second.id, month);
-    await page
+    await summary
       .getByRole("button", { name: "Record net repayment", exact: true })
       .click();
     dialog = page.getByRole("dialog");
@@ -1023,6 +1046,17 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     const after = projectBook(settledBook, first.id, month);
     const partnerAfter = projectBook(settledBook, second.id, month);
     expect(after.settlement.net).toBe(0);
+    expect(after.sharedStatement.balance).toBe(0);
+    await expect(summary.locator(".shared-verdict")).toContainText(
+      "You’re even",
+    );
+    const repaymentLine = line("You paid your partner").filter({
+      hasText: "Waiting for your partner to confirm",
+    });
+    await expect(repaymentLine).toHaveCount(1);
+    await expect(repaymentLine).toContainText("$900.00");
+    await expect(line(rent)).toContainText("$1,000.00you owe");
+    await expect(line(/^Balance/)).toContainText("Even");
     expect(after.cash).toBe(before.cash - 90000);
     expect(after.readyToAssign).toBe(before.readyToAssign + 10000);
     expect(partnerAfter.cash).toBe(partnerBefore.cash);
@@ -1033,8 +1067,8 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       ),
     ).toHaveLength(0);
     await partner.reload();
-    await partner.getByRole("button", { name: "Shared", exact: true }).click();
     await partner
+      .locator(".shared-balance")
       .getByRole("button", { name: "Record receipt", exact: true })
       .click();
     const receive = partner.getByRole("dialog");
@@ -1124,7 +1158,8 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       dialog.getByText("There is a difference to investigate", { exact: true }),
     ).toBeVisible();
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    await page.getByRole("button", { name: "Shared", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    await page.getByRole("button", { name: rent, exact: true }).click();
     await page.screenshot({
       path: "/tmp/caishen-shared-settlement.png",
       fullPage: true,

@@ -395,7 +395,6 @@ function household() {
   setup.run({
     type: "shared.create",
     sharedCategoryId: "shared-rent",
-    name: "Rent",
     participants: ["alan", "partner"],
     weights: { alan: 1, partner: 1 },
     categoryIds: { alan: "rent", partner: "partner-rent" },
@@ -403,7 +402,6 @@ function household() {
   setup.run({
     type: "shared.create",
     sharedCategoryId: "shared-utilities",
-    name: "Utilities",
     participants: ["alan", "partner"],
     weights: { alan: 1, partner: 1 },
     categoryIds: { alan: "utilities", partner: "partner-utilities" },
@@ -563,7 +561,52 @@ void test("shared split changes affect future expenses, with explicit purchase e
   );
 });
 
-void test("either participant can rename a shared category and update future splits without rewriting history", () => {
+void test("each participant sees a shared category under their own paired category name", () => {
+  const setup = fixture(500_000);
+  setup.book = addMember(setup.book, "partner", "Partner", month);
+  setup.run({
+    type: "category.add",
+    categoryId: "utilities",
+    name: "Utilities",
+  });
+  setup.run(
+    { type: "category.add", categoryId: "bills", name: "Monthly bills" },
+    "partner",
+  );
+  setup.run({ type: "category.add", categoryId: "rent", name: "Rent" });
+  for (const [sharedCategoryId, partnerCategory] of [
+    ["shared-utilities", "bills"],
+    ["shared-rent", "partner-rent"],
+  ] as const)
+    setup.run({
+      type: "shared.create",
+      sharedCategoryId,
+      participants: ["alan", "partner"],
+      weights: { alan: 1, partner: 1 },
+      categoryIds: {
+        alan: sharedCategoryId.slice("shared-".length),
+        partner: partnerCategory,
+      },
+    });
+  const names = (actor: string) =>
+    setup.view(actor).sharedCategories.map((shared) => shared.name);
+  assert.deepEqual(names("alan"), ["Utilities", "Rent"]);
+  assert.deepEqual(names("partner"), ["Monthly bills", "Rent"]);
+  assert.deepEqual(
+    setup.book.budgets.partner?.categories.find(
+      (category) => category.id === "partner-rent",
+    )?.name,
+    "Rent",
+    "a category created for the partner is named after the sharer's category",
+  );
+  assert.equal(
+    "name" in (setup.book.sharedCategories[0] ?? {}),
+    false,
+    "shared categories store no name of their own",
+  );
+});
+
+void test("either participant can change a shared split for future purchases without rewriting history", () => {
   const setup = household();
   setup.run({
     type: "transaction.upsert",
@@ -578,9 +621,8 @@ void test("either participant can rename a shared category and update future spl
   const before = structuredClone(setup.book);
   setup.run(
     {
-      type: "shared.update",
+      type: "shared.rule",
       sharedCategoryId: "shared-utilities",
-      name: " Household bills ",
       weights: { alan: 25, partner: 75 },
     },
     "partner",
@@ -589,7 +631,6 @@ void test("either participant can rename a shared category and update future spl
     const shared = setup
       .view(actor)
       .sharedCategories.find((category) => category.id === "shared-utilities")!;
-    assert.equal(shared.name, "Household bills");
     assert.deepEqual(shared.weights, { alan: 25, partner: 75 });
     assert.deepEqual(
       setup.book.budgets[actor],
@@ -600,9 +641,8 @@ void test("either participant can rename a shared category and update future spl
   assert.deepEqual(setup.book.obligations, before.obligations);
   assert.deepEqual(bookSchema.parse(setup.book), setup.book);
   setup.run({
-    type: "shared.update",
+    type: "shared.rule",
     sharedCategoryId: "shared-utilities",
-    name: "Household bills",
     weights: { alan: 25, partner: 75 },
   });
   setup.run({
@@ -729,9 +769,8 @@ void test("shared updates and deletes enforce participant access and require a u
   const setup = household();
   for (const command of [
     {
-      type: "shared.update",
+      type: "shared.rule",
       sharedCategoryId: "shared-rent",
-      name: "Housing",
       weights: { alan: 1, partner: 1 },
     },
     { type: "shared.remove", sharedCategoryId: "shared-rent" },
@@ -743,20 +782,18 @@ void test("shared updates and deletes enforce participant access and require a u
       /access denied/,
     );
   }
-  const invalidUpdates: { name: string; weights: Record<string, number> }[] = [
-    { name: " ", weights: { alan: 1, partner: 1 } },
-    { name: "x".repeat(121), weights: { alan: 1, partner: 1 } },
-    { name: "Housing", weights: { alan: 0, partner: 0 } },
-    { name: "Housing", weights: { alan: -1, partner: 2 } },
-    { name: "Housing", weights: { alan: 1, outsider: 1 } },
+  const invalidWeights: Record<string, number>[] = [
+    { alan: 0, partner: 0 },
+    { alan: -1, partner: 2 },
+    { alan: 1, outsider: 1 },
   ];
-  for (const invalid of invalidUpdates) {
+  for (const weights of invalidWeights) {
     const before = structuredClone(setup.book);
     assert.throws(() =>
       setup.run({
-        type: "shared.update",
+        type: "shared.rule",
         sharedCategoryId: "shared-rent",
-        ...invalid,
+        weights,
       }),
     );
     assert.deepEqual(setup.book, before);
@@ -835,7 +872,7 @@ void test("server projections exclude unrelated partner spending, account detail
   );
 });
 
-void test("shared projection exposes enough historical expense facts to verify a changed split", () => {
+void test("shared statement exposes enough purchase facts to verify a changed split without partner account details", () => {
   const setup = household();
   setup.run(
     {
@@ -856,14 +893,418 @@ void test("shared projection exposes enough historical expense facts to verify a
     sharedCategoryId: "shared-rent",
     weights: { alan: 1, partner: 1 },
   });
-  const shared = setup.view().sharedExpenses[0]!;
-  assert.equal(shared.amountPaid, 10_001);
-  assert.deepEqual(shared.shares, { alan: 7001, partner: 3000 });
-  assert.equal(shared.payerId, "partner");
-  assert.equal(shared.history[0]?.amount, -10_001);
-  assert.ok(!JSON.stringify(shared).includes("partner-cash"));
-  assert.ok(!JSON.stringify(shared).includes("partner-rent"));
-  assert.ok(!("accountId" in shared));
+  const rent = setup
+    .view()
+    .sharedStatement.categories.find(
+      (category) => category.sharedCategoryId === "shared-rent",
+    )!;
+  const purchase = rent.purchases[0]!;
+  assert.equal(purchase.amountPaid, 10_001);
+  assert.equal(purchase.yourShare, 7001);
+  assert.equal(purchase.partnerShare, 3000);
+  assert.equal(purchase.paidByYou, false);
+  assert.equal(purchase.effect, 7001);
+  assert.equal(purchase.splitDiffersFromRule, true);
+  assert.ok(!JSON.stringify(rent).includes("partner-cash"));
+  assert.ok(!JSON.stringify(rent).includes("partner-rent"));
+  assert.ok(!("accountId" in purchase));
+});
+
+type Household = ReturnType<typeof household>;
+function sharedPurchase(
+  setup: Household,
+  actor: "alan" | "partner",
+  transactionId: string,
+  shared: "rent" | "utilities",
+  amount: number,
+  day = date,
+  shares?: Record<string, number>,
+) {
+  setup.run(
+    {
+      type: "transaction.upsert",
+      transactionId,
+      accountId: actor === "alan" ? "checking" : "partner-cash",
+      date: day,
+      amount: -amount,
+      payee: transactionId,
+      categoryId: actor === "alan" ? shared : `partner-${shared}`,
+      sharedCategoryId: `shared-${shared}`,
+      shares,
+    },
+    actor,
+  );
+}
+function statementLines(setup: Household, actor = "alan", selected = month) {
+  const view = setup.view(actor, selected);
+  const statement = view.sharedStatement;
+  assert.equal(
+    statement.balance,
+    view.settlement.net,
+    `${actor} ${selected}: statement must reconcile with the net settlement`,
+  );
+  assert.equal(
+    view.categories.reduce((total, category) => total + category.reserved, 0),
+    view.settlement.youOwe,
+    "set-aside cash covers exactly the unpaid amounts you owe",
+  );
+  for (const category of view.categories)
+    assert.equal(category.spendable, category.available - category.reserved);
+  return {
+    view,
+    statement,
+    carried: statement.carried.amount,
+    effect: (shared: string) =>
+      statement.categories.find(
+        (category) => category.sharedCategoryId === `shared-${shared}`,
+      )!.effect,
+  };
+}
+
+void test("the monthly shared statement lists each category's own purchases and reconciles with the net after partial repayments", () => {
+  const setup = household();
+  setup.run({ type: "assign", categoryId: "rent", month, amount: 130_000 });
+  sharedPurchase(setup, "partner", "rent-oct", "rent", 260_000, "2026-10-02");
+  sharedPurchase(setup, "alan", "power-oct", "utilities", 18_942, "2026-10-03");
+  sharedPurchase(setup, "alan", "water-oct", "utilities", 5_001, "2026-10-04");
+  let lines = statementLines(setup);
+  assert.equal(lines.effect("rent"), 130_000);
+  assert.equal(lines.effect("utilities"), -(9_471 + 2_500));
+  assert.equal(lines.view.settlement.net, 130_000 - 11_971);
+  assert.deepEqual(
+    lines.statement.categories
+      .find((category) => category.sharedCategoryId === "shared-utilities")!
+      .purchases.map((purchase) => [purchase.payee, purchase.effect]),
+    [
+      ["power-oct", -9_471],
+      ["water-oct", -2_500],
+    ],
+  );
+  setup.run({
+    type: "settlement.record",
+    settlementId: "partial",
+    otherUserId: "partner",
+    date: "2026-10-16",
+    accountId: "checking",
+    amount: 25_000,
+  });
+  lines = statementLines(setup);
+  assert.equal(
+    lines.effect("rent"),
+    130_000,
+    "category lines show the month's purchases, not how repayments were allocated",
+  );
+  assert.equal(lines.effect("utilities"), -11_971);
+  assert.deepEqual(
+    lines.statement.repayments.map((repayment) => [
+      repayment.amount,
+      repayment.effect,
+      repayment.paidByYou,
+      repayment.receivedOn,
+    ]),
+    [[25_000, -25_000, true, undefined]],
+  );
+  assert.equal(lines.view.settlement.net, 130_000 - 11_971 - 25_000);
+  const partnerLines = statementLines(setup, "partner");
+  assert.equal(partnerLines.effect("rent"), -130_000);
+  assert.equal(partnerLines.statement.balance, -lines.statement.balance);
+  assert.deepEqual(
+    partnerLines.statement.awaitingYourConfirmation.map(
+      (item) => item.settlementId,
+    ),
+    ["partial"],
+  );
+  setup.run(
+    {
+      type: "settlement.receive",
+      settlementId: "partial",
+      accountId: "partner-cash",
+      date: "2026-10-18",
+    },
+    "partner",
+  );
+  assert.equal(
+    statementLines(setup, "partner").statement.repayments[0]?.receivedOn,
+    "2026-10-18",
+  );
+  assert.equal(
+    statementLines(setup).statement.repayments[0]?.receivedOn,
+    "2026-10-18",
+    "the payer sees when their repayment was confirmed",
+  );
+});
+
+void test("a purchase keeps the split it was recorded with after the rule changes mid-month", () => {
+  const setup = household();
+  sharedPurchase(setup, "alan", "early", "utilities", 10_000, "2026-10-02");
+  setup.run(
+    {
+      type: "shared.rule",
+      sharedCategoryId: "shared-utilities",
+      weights: { alan: 3, partner: 1 },
+    },
+    "partner",
+  );
+  sharedPurchase(setup, "alan", "late", "utilities", 10_000, "2026-10-20");
+  sharedPurchase(setup, "partner", "custom", "utilities", 9_999, "2026-10-21", {
+    alan: 1_000,
+    partner: 8_999,
+  });
+  const lines = statementLines(setup);
+  const purchases = lines.statement.categories.find(
+    (category) => category.sharedCategoryId === "shared-utilities",
+  )!.purchases;
+  assert.deepEqual(
+    purchases.map((purchase) => [
+      purchase.transactionId,
+      purchase.yourShare,
+      purchase.effect,
+      purchase.splitDiffersFromRule,
+    ]),
+    [
+      ["early", 5_000, -5_000, true],
+      ["late", 7_500, -2_500, false],
+      ["custom", 1_000, 1_000, true],
+    ],
+  );
+  assert.equal(lines.effect("utilities"), -6_500);
+});
+
+void test("opening amounts are carried into the first month and then roll into each month's closing balance", () => {
+  const setup = household();
+  setup.run({
+    type: "opening.add",
+    obligationId: "old-rent",
+    sharedCategoryId: "shared-rent",
+    debtorId: "alan",
+    creditorId: "partner",
+    amount: 17_500,
+  });
+  setup.run({
+    type: "opening.add",
+    obligationId: "old-power",
+    sharedCategoryId: "shared-utilities",
+    debtorId: "partner",
+    creditorId: "alan",
+    amount: 2_500,
+  });
+  let october = statementLines(setup);
+  assert.equal(october.statement.carried.from, "opening");
+  assert.equal(october.carried, 15_000);
+  assert.deepEqual(
+    october.statement.carried.opening.map((item) => [item.name, item.effect]),
+    [
+      ["Rent", 17_500],
+      ["Utilities", -2_500],
+    ],
+  );
+  sharedPurchase(setup, "partner", "rent-oct", "rent", 200_000, "2026-10-02");
+  setup.run({
+    type: "settlement.record",
+    settlementId: "october",
+    otherUserId: "partner",
+    date: "2026-10-20",
+    accountId: "checking",
+    amount: 115_000,
+  });
+  october = statementLines(setup);
+  assert.equal(october.statement.balance, 0);
+  const november = statementLines(setup, "alan", "2026-11");
+  assert.equal(november.statement.carried.from, "earlier-months");
+  assert.equal(november.carried, 0);
+  const partnerOctober = statementLines(setup, "partner");
+  assert.equal(partnerOctober.carried, -15_000);
+});
+
+void test("past months keep their own statement while later activity carries forward", () => {
+  const setup = household();
+  sharedPurchase(setup, "partner", "rent-oct", "rent", 200_000, "2026-10-02");
+  sharedPurchase(setup, "alan", "power-oct", "utilities", 20_000, "2026-10-05");
+  setup.run({
+    type: "settlement.record",
+    settlementId: "late-october",
+    otherUserId: "partner",
+    date: "2026-10-30",
+    accountId: "checking",
+    amount: 50_000,
+  });
+  sharedPurchase(setup, "alan", "power-nov", "utilities", 30_000, "2026-11-04");
+  sharedPurchase(setup, "partner", "rent-nov", "rent", 200_000, "2026-11-02");
+  setup.run(
+    {
+      type: "settlement.receive",
+      settlementId: "late-october",
+      accountId: "partner-cash",
+      date: "2026-11-01",
+    },
+    "partner",
+  );
+  setup.run({
+    type: "settlement.record",
+    settlementId: "november",
+    otherUserId: "partner",
+    date: "2026-11-20",
+    accountId: "checking",
+    amount: 10_000,
+  });
+  const october = statementLines(setup);
+  assert.equal(october.carried, 0);
+  assert.equal(october.statement.carried.from, "nothing");
+  assert.equal(october.statement.balance, 100_000 - 10_000 - 50_000);
+  assert.deepEqual(
+    october.statement.repayments.map((item) => [
+      item.settlementId,
+      item.receivedOn,
+    ]),
+    [["late-october", undefined]],
+    "a receipt recorded after the month is not shown as received in that month",
+  );
+  assert.deepEqual(
+    statementLines(setup, "partner").statement.awaitingYourConfirmation.map(
+      (item) => item.settlementId,
+    ),
+    ["late-october"],
+  );
+  const november = statementLines(setup, "alan", "2026-11");
+  assert.equal(november.carried, october.statement.balance);
+  assert.equal(november.effect("rent"), 100_000);
+  assert.equal(november.effect("utilities"), -15_000);
+  assert.deepEqual(
+    november.statement.repayments.map((item) => item.settlementId),
+    ["november"],
+  );
+  assert.equal(november.statement.balance, 40_000 + 100_000 - 15_000 - 10_000);
+  assert.equal(
+    statementLines(setup, "alan", "2026-12").carried,
+    november.statement.balance,
+  );
+});
+
+void test("a repayment from the partner while they owe the net adds to the viewer's side of the statement", () => {
+  const setup = household();
+  sharedPurchase(setup, "alan", "costco", "utilities", 28_000, "2026-10-01");
+  setup.run(
+    {
+      type: "settlement.record",
+      settlementId: "partner-pays",
+      otherUserId: "alan",
+      date: "2026-10-01",
+      accountId: "partner-cash",
+      amount: 12_000,
+    },
+    "partner",
+  );
+  sharedPurchase(setup, "partner", "rent", "rent", 200_000, "2026-10-02");
+  const lines = statementLines(setup);
+  assert.deepEqual(
+    lines.statement.repayments.map((item) => [item.paidByYou, item.effect]),
+    [[false, 12_000]],
+  );
+  assert.equal(lines.statement.balance, -14_000 + 12_000 + 100_000);
+  assert.deepEqual(
+    lines.statement.awaitingYourConfirmation.map((item) => item.amount),
+    [12_000],
+  );
+  assert.throws(
+    () =>
+      setup.run(
+        {
+          type: "settlement.record",
+          settlementId: "wrong-direction",
+          otherUserId: "alan",
+          date: "2026-10-03",
+          accountId: "partner-cash",
+          amount: 1_000,
+        },
+        "partner",
+      ),
+    /The other member owes the net payment/,
+  );
+});
+
+void test("shared statements reconcile with the net settlement for both members across varied months", () => {
+  const setup = household();
+  let seed = 7;
+  const next = () => (seed = (seed * 48_271) % 2_147_483_647);
+  const months = ["2026-10", "2026-11", "2026-12"];
+  for (const [index, selected] of months.entries())
+    for (let step = 0; step < 12; step++) {
+      const day = `${selected}-${String(1 + step * 2).padStart(2, "0")}`;
+      const choice = next() % 5;
+      if (choice < 3)
+        sharedPurchase(
+          setup,
+          next() % 2 ? "alan" : "partner",
+          `p-${index}-${step}`,
+          next() % 2 ? "rent" : "utilities",
+          1 + (next() % 40_000),
+          day,
+        );
+      else if (choice === 3)
+        setup.run(
+          {
+            type: "shared.rule",
+            sharedCategoryId: next() % 2 ? "shared-rent" : "shared-utilities",
+            weights: { alan: 1 + (next() % 5), partner: 1 + (next() % 5) },
+          },
+          next() % 2 ? "alan" : "partner",
+        );
+      else {
+        const net = projectBook(setup.book, "alan", selected).settlement.net;
+        if (!net) continue;
+        const payer = net > 0 ? "alan" : "partner";
+        setup.run(
+          {
+            type: "settlement.record",
+            settlementId: `s-${index}-${step}`,
+            otherUserId: payer === "alan" ? "partner" : "alan",
+            date: day,
+            accountId: payer === "alan" ? "checking" : "partner-cash",
+            amount: Math.max(1, Math.floor(Math.abs(net) / 2)),
+          },
+          payer,
+        );
+      }
+    }
+  for (const selected of months)
+    for (const actor of ["alan", "partner"]) {
+      const lines = statementLines(setup, actor, selected);
+      const previous = months[months.indexOf(selected) - 1];
+      if (previous)
+        assert.equal(
+          lines.carried,
+          setup.view(actor, previous).sharedStatement.balance,
+        );
+    }
+});
+
+void test("a personal category can belong to only one shared category", () => {
+  const setup = household();
+  assert.throws(
+    () =>
+      setup.run({
+        type: "shared.create",
+        sharedCategoryId: "shared-rent-again",
+        participants: ["alan", "partner"],
+        weights: { alan: 1, partner: 1 },
+        categoryIds: { alan: "rent", partner: "partner-rent-again" },
+      }),
+    /already shared/,
+  );
+  assert.throws(
+    () =>
+      setup.run(
+        {
+          type: "shared.create",
+          sharedCategoryId: "partner-side-again",
+          participants: ["alan", "partner"],
+          weights: { alan: 1, partner: 1 },
+          categoryIds: { alan: "alan-new", partner: "partner-rent" },
+        },
+        "partner",
+      ),
+    /already shared/,
+  );
 });
 
 void test("cash reimbursements do not fund envelopes until received and then return to Ready to Assign without earnings", () => {

@@ -16,7 +16,6 @@ import {
 const navigation: { id: Tab; label: string; icon: IconName }[] = [
   { id: "budget", label: "Plan", icon: "budget" },
   { id: "transactions", label: "All accounts", icon: "bank" },
-  { id: "shared", label: "Shared", icon: "shared" },
   { id: "loans", label: "Loans", icon: "loans" },
 ];
 

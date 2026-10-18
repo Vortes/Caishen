@@ -28,10 +28,9 @@ export function buildSharedCommand({
       };
       if (shared)
         command = {
-          type: "shared.update",
+          type: "shared.rule",
           id,
           sharedCategoryId: shared.id,
-          name: text(data, "name"),
           weights,
         };
       else
@@ -39,7 +38,6 @@ export function buildSharedCommand({
           type: "shared.create",
           id,
           sharedCategoryId: entityId,
-          name: text(data, "name"),
           participants: [view.budget.userId, partner.userId],
           weights,
           categoryIds: {

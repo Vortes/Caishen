@@ -212,7 +212,6 @@ export const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("shared.create"),
     id: identifier,
     sharedCategoryId: identifier,
-    name: z.string().min(1).max(120),
     participants: z.array(identifier).length(2),
     weights: z.record(z.number().int().min(0).max(10000)),
     categoryIds: z.record(identifier),
@@ -221,13 +220,6 @@ export const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("shared.rule"),
     id: identifier,
     sharedCategoryId: identifier,
-    weights: z.record(z.number().int().min(0).max(10000)),
-  }),
-  z.object({
-    type: z.literal("shared.update"),
-    id: identifier,
-    sharedCategoryId: identifier,
-    name: z.string().trim().min(1).max(120),
     weights: z.record(z.number().int().min(0).max(10000)),
   }),
   z.object({
@@ -431,7 +423,6 @@ export type Budget = {
 };
 export type SharedCategory = {
   id: string;
-  name: string;
   participants: string[];
   weights: Record<string, number>;
   categoryIds: Record<string, string>;
@@ -613,7 +604,6 @@ export const bookSchema: z.ZodType<Book, z.ZodTypeDef, unknown> = z
     sharedCategories: z.array(
       z.object({
         id: storedIdentifier,
-        name: z.string(),
         participants: z.array(storedIdentifier).length(2),
         weights: z.record(nonnegativeCents),
         categoryIds: z.record(storedIdentifier),
@@ -1547,6 +1537,167 @@ export function forecastLoan(loan: Loan, month: string, extra = 0): Forecast {
   };
 }
 
+/**
+ * The month's shared balance as a statement built from recorded activity.
+ * Every effect is signed from the viewer's side: positive adds to what they
+ * owe their partner, negative adds to what their partner owes them. Offsets
+ * inside a settlement cancel out, so the carried balance plus the month's
+ * purchases and repayments always equals the net settlement at month end.
+ */
+export function sharedStatement(book: Book, userId: string, month: string) {
+  const budget = ownBudget(book, userId);
+  const cutoff = endOf(month);
+  const shared = book.sharedCategories.filter((category) =>
+    category.participants.includes(userId),
+  );
+  const obligations = book.obligations.filter(
+    (obligation) =>
+      obligation.debtorId === userId || obligation.creditorId === userId,
+  );
+  const signed = (obligation: Obligation, amount: number) =>
+    obligation.debtorId === userId ? amount : -amount;
+  const balanceAt = (day: string) =>
+    sum(
+      obligations
+        .filter((obligation) => !obligation.date || obligation.date <= day)
+        .map((obligation) =>
+          signed(obligation, outstanding(book, obligation, day)),
+        ),
+    );
+  const nameOf = (sharedCategoryId: string) =>
+    getCategory(
+      budget,
+      shared.find((category) => category.id === sharedCategoryId)!.categoryIds[
+        userId
+      ]!,
+    ).name;
+  const opening = obligations
+    .filter((obligation) => obligation.opening)
+    .map((obligation) => ({
+      obligationId: obligation.id,
+      sharedCategoryId: obligation.sharedCategoryId,
+      name: nameOf(obligation.sharedCategoryId),
+      effect: signed(obligation, obligation.amount),
+    }));
+  const monthStart = `${month}-01`;
+  const carried = balanceAt(endOf(nextMonth(month, -1)));
+  const earlierActivity =
+    obligations.some(
+      (obligation) => obligation.date && obligation.date < monthStart,
+    ) ||
+    book.settlements.some(
+      (settlement) =>
+        (settlement.payerId === userId || settlement.recipientId === userId) &&
+        settlement.date < monthStart,
+    );
+  const categories = shared.map((category) => {
+    const purchases = Object.values(book.budgets)
+      .flatMap((owner) =>
+        owner.transactions
+          .filter(
+            (transaction) =>
+              active(transaction) &&
+              transaction.sharedCategoryId === category.id &&
+              transaction.shares &&
+              transaction.amount < 0 &&
+              monthOf(transaction.date) === month,
+          )
+          .map((transaction) => {
+            const paidByYou = owner.userId === userId;
+            const amountPaid = -transaction.amount;
+            const yourShare = transaction.shares![userId] ?? 0;
+            const partnerShare = safe(amountPaid - yourShare);
+            const ruleShares = splitAmount(amountPaid, category.weights);
+            return {
+              transactionId: transaction.id,
+              payee: transaction.payee,
+              date: transaction.date,
+              expenseMonth: transaction.expenseMonth,
+              status: transaction.status,
+              paidByYou,
+              amountPaid,
+              yourShare,
+              partnerShare,
+              effect: paidByYou ? -partnerShare : yourShare,
+              splitDiffersFromRule: (ruleShares[userId] ?? 0) !== yourShare,
+            };
+          }),
+      )
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          a.transactionId.localeCompare(b.transactionId),
+      );
+    return {
+      sharedCategoryId: category.id,
+      name: getCategory(budget, category.categoryIds[userId]!).name,
+      weights: structuredClone(category.weights),
+      purchases,
+      effect: sum(purchases.map((purchase) => purchase.effect)),
+    };
+  });
+  const receiptDate = (settlement: Settlement) =>
+    settlement.amount === 0
+      ? settlement.date
+      : ownBudget(book, settlement.recipientId).transactions.find(
+          (transaction) =>
+            active(transaction) &&
+            transaction.kind === "reimbursement" &&
+            transaction.linkedId === settlement.id,
+        )?.date;
+  const settlements = book.settlements
+    .filter(
+      (settlement) =>
+        (settlement.payerId === userId || settlement.recipientId === userId) &&
+        settlement.date <= cutoff,
+    )
+    .map((settlement) => {
+      const receivedOn = receiptDate(settlement);
+      return {
+        settlementId: settlement.id,
+        date: settlement.date,
+        amount: settlement.amount,
+        paidByYou: settlement.payerId === userId,
+        effect:
+          settlement.payerId === userId
+            ? -settlement.amount
+            : settlement.amount,
+        receivedOn: receivedOn && receivedOn <= cutoff ? receivedOn : undefined,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.settlementId.localeCompare(b.settlementId),
+    );
+  const repayments = settlements.filter(
+    (settlement) => monthOf(settlement.date) === month,
+  );
+  return {
+    month,
+    carried: {
+      amount: carried,
+      from: earlierActivity
+        ? ("earlier-months" as const)
+        : opening.length
+          ? ("opening" as const)
+          : ("nothing" as const),
+      opening,
+    },
+    categories,
+    repayments,
+    awaitingYourConfirmation: settlements.filter(
+      (settlement) => !settlement.paidByYou && !settlement.receivedOn,
+    ),
+    balance: sum([
+      carried,
+      ...categories.map((category) => category.effect),
+      ...repayments.map((repayment) => repayment.effect),
+    ]),
+  };
+}
+export type SharedStatement = ReturnType<typeof sharedStatement>;
+
 export function projectBook(
   book: Book,
   userId: string,
@@ -1657,44 +1808,12 @@ export function projectBook(
     personalSpending,
     amountPaid,
     earnings,
-    obligations,
-    sharedExpenses: Object.values(book.budgets).flatMap((owner) =>
-      owner.transactions
-        .filter(
-          (transaction) =>
-            active(transaction) &&
-            transaction.date <= cutoff &&
-            transaction.sharedCategoryId &&
-            sharedCategories.some(
-              (shared) => shared.id === transaction.sharedCategoryId,
-            ),
-        )
-        .map((transaction) => ({
-          transactionId: transaction.id,
-          payerId: owner.userId,
-          payee: transaction.payee,
-          date: transaction.date,
-          expenseMonth: transaction.expenseMonth,
-          sharedCategoryId: transaction.sharedCategoryId!,
-          amountPaid: -transaction.amount,
-          shares: structuredClone(transaction.shares ?? {}),
-          splitWeights: structuredClone(transaction.splitWeights ?? {}),
-          history: transaction.history.map((entry) => ({
-            amount: entry.amount,
-            status: entry.status,
-            date: entry.date,
-            reason: entry.reason,
-          })),
-        })),
-    ),
-    sharedCategories: structuredClone(sharedCategories),
+    sharedCategories: sharedCategories.map((shared) => ({
+      ...structuredClone(shared),
+      name: getCategory(budget, shared.categoryIds[userId] ?? "").name,
+    })),
     settlement: { youOwe, owedToYou, net: safe(youOwe - owedToYou) },
-    settlements: structuredClone(
-      book.settlements.filter(
-        (settlement) =>
-          settlement.payerId === userId || settlement.recipientId === userId,
-      ),
-    ),
+    sharedStatement: sharedStatement(book, userId, month),
     reimbursements: budget.reimbursements.map((claim) => ({
       ...structuredClone(claim),
       outstanding: safe(
@@ -1868,7 +1987,6 @@ export function execute(
     "target.snooze",
     "shared.create",
     "shared.rule",
-    "shared.update",
     "shared.remove",
     "opening.add",
     "settlement.record",
@@ -2307,6 +2425,21 @@ function applyCommand(
       validateWeights(command.participants, command.weights);
       if (Object.keys(command.categoryIds).length !== 2)
         fail("Each participant needs a paired category");
+      if (
+        book.sharedCategories.some((existing) =>
+          command.participants.some(
+            (id) =>
+              existing.participants.includes(id) &&
+              existing.categoryIds[id] === command.categoryIds[id],
+          ),
+        )
+      )
+        fail("This category is already shared");
+      const source = getCategory(
+        ownBudget(book, actorId),
+        command.categoryIds[actorId] ??
+          fail("Each participant needs a paired category"),
+      );
       for (const id of command.participants) {
         const member = ownBudget(book, id);
         const categoryId =
@@ -2318,7 +2451,7 @@ function applyCommand(
         )
           member.categories.push({
             id: categoryId,
-            name: command.name,
+            name: source.name,
             group: "Shared",
           });
         const category = getCategory(member, categoryId);
@@ -2327,7 +2460,6 @@ function applyCommand(
       }
       book.sharedCategories.push({
         id: command.sharedCategoryId,
-        name: command.name,
         participants: command.participants,
         weights: command.weights,
         categoryIds: command.categoryIds,
@@ -2337,13 +2469,6 @@ function applyCommand(
     case "shared.rule": {
       const shared = sharedAccess(book, actorId, command.sharedCategoryId);
       validateWeights(shared.participants, command.weights);
-      shared.weights = command.weights;
-      break;
-    }
-    case "shared.update": {
-      const shared = sharedAccess(book, actorId, command.sharedCategoryId);
-      validateWeights(shared.participants, command.weights);
-      shared.name = command.name;
       shared.weights = command.weights;
       break;
     }

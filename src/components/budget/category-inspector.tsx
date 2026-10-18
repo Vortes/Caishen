@@ -6,6 +6,17 @@ import type { Panel, State, View } from "~/components/budget/types";
 import type { Category } from "~/components/budget/category-table";
 import { Amount, Icon } from "~/components/shared";
 import { Button } from "~/components/ui/button";
+import { ReimbursementsSection } from "~/components/reimbursements/reimbursements-section";
+import { SharedBalance } from "~/components/shared-expenses/shared-balance";
+import {
+  PartnerInvite,
+  ShareCategory,
+} from "~/components/shared-expenses/share-category";
+import {
+  partnerOf,
+  sharePercent,
+  sharedCategoryFor,
+} from "~/components/shared-expenses/split";
 
 export function CategoryInspector({
   view,
@@ -32,6 +43,8 @@ export function CategoryInspector({
   const values = selected.length ? selected : view.categories;
   const total = (key: "assigned" | "activity" | "available") =>
     values.reduce((sum, item) => sum + item[key], 0);
+  const partner = partnerOf(view);
+  const shared = category && sharedCategoryFor(view, category.id);
   return (
     <aside
       className="category-inspector"
@@ -59,6 +72,26 @@ export function CategoryInspector({
           </Button>
         )}
       </div>
+      {shared && (
+        <div className="shared-rule">
+          <span className="shared-mark">
+            <Icon name="shared" size={13} />
+            Shared with your partner
+          </span>
+          <span>
+            You {sharePercent(shared.weights, view.budget.userId)}% · partner{" "}
+            {100 - sharePercent(shared.weights, view.budget.userId)}%
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Edit ${shared.name} split`}
+            onClick={() => open({ type: "shared-category", id: shared.id })}
+          >
+            Edit split
+          </Button>
+        </div>
+      )}
       <section className="inspector-section">
         <h3>
           {selected.length ? "Available balance" : "Available in categories"}
@@ -89,7 +122,7 @@ export function CategoryInspector({
           {category && category.reserved > 0 && (
             <>
               <div>
-                <dt>Reserved for shared costs</dt>
+                <dt>Set aside for your partner</dt>
                 <dd>
                   <Amount value={category.reserved} />
                 </dd>
@@ -283,6 +316,33 @@ export function CategoryInspector({
           </Button>
         </section>
       )}
+      {category &&
+        partner &&
+        !shared &&
+        !category.pairedAccountId &&
+        !category.pairedLoanId && (
+          <ShareCategory category={category} open={open} />
+        )}
+      {!selected.length &&
+        (!partner ? (
+          <PartnerInvite open={open} />
+        ) : view.sharedCategories.length ? (
+          <SharedBalance view={view} open={open} />
+        ) : (
+          <section className="inspector-section">
+            <h3>
+              <span>
+                <Icon name="shared" size={15} />
+                Shared with your partner
+              </span>
+            </h3>
+            <p className="inspector-note">
+              Select a category like rent or groceries, then choose Share this
+              category to split it.
+            </p>
+          </section>
+        ))}
+      {!selected.length && <ReimbursementsSection view={view} open={open} />}
       {state.evidence.length > 0 && !selected.length && (
         <section className="inspector-section">
           <h3>Latest reconciliation</h3>

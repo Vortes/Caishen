@@ -1,35 +1,25 @@
 "use client";
 
-import { FormField, SelectField } from "~/components/shared";
+import { FormField } from "~/components/shared";
 import type { View } from "~/components/budget/types";
-import { EntityOptions } from "~/components/budget/form-options";
+import {
+  sharePercent,
+  type SharedCategory,
+} from "~/components/shared-expenses/split";
 
 export function SharedCategoryForm({
   view,
   shared,
+  categoryId,
 }: {
   view: View;
-  shared?: View["sharedCategories"][number];
+  shared?: SharedCategory;
+  categoryId?: string;
 }) {
   return (
     <>
-      <FormField
-        label="Shared category name"
-        name="name"
-        placeholder="Rent"
-        defaultValue={shared?.name}
-        maxLength={120}
-        required
-      />
-      {!shared && (
-        <SelectField label="Your budget category" name="categoryId" required>
-          <EntityOptions
-            items={view.categories.filter(
-              (item) => !item.pairedAccountId && !item.pairedLoanId,
-            )}
-            emptyLabel="Create a category first"
-          />
-        </SelectField>
+      {!shared && categoryId && (
+        <input type="hidden" name="categoryId" value={categoryId} />
       )}
       <FormField
         label="Your share (%)"
@@ -39,16 +29,7 @@ export function SharedCategoryForm({
         max="100"
         step="1"
         defaultValue={
-          shared
-            ? Math.round(
-                ((shared.weights[view.budget.userId] ?? 0) /
-                  Object.values(shared.weights).reduce(
-                    (sum, weight) => sum + weight,
-                    0,
-                  )) *
-                  100,
-              )
-            : 50
+          shared ? sharePercent(shared.weights, view.budget.userId) : 50
         }
         required
         hint="Your partner’s share is the remainder. Either person may change this rule."

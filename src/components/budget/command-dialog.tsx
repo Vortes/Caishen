@@ -57,7 +57,7 @@ const dialogTitles: Record<Panel["type"], string> = {
   "statement-credit": "Record a statement credit",
   reimbursement: "Expect a reimbursement",
   receive: "Record money received",
-  "shared-category": "Set up a shared category",
+  "shared-category": "Share with your partner",
   opening: "Opening amount owed",
   settlement: "Record a net repayment",
   loan: "Add a loan",
@@ -137,14 +137,7 @@ function CommandDialogContent({
       "loan-payment",
       "reconcile",
     ].includes(panel.type) && !view.accounts.length;
-  const noCategories =
-    panel.type === "assign"
-      ? view.categories.length === 0
-      : panel.type === "shared-category" &&
-        !shared &&
-        !view.categories.some(
-          (item) => !item.pairedAccountId && !item.pairedLoanId,
-        );
+  const noCategories = panel.type === "assign" && view.categories.length === 0;
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -259,9 +252,21 @@ function CommandDialogContent({
         {panel.type === "reimbursement" && (
           <ExpectedReimbursementForm view={view} />
         )}
-        {panel.type === "receive" && <ReceiptForm view={view} claim={claim} />}
+        {panel.type === "receive" && (
+          <ReceiptForm
+            view={view}
+            claim={claim}
+            settlement={view.sharedStatement.awaitingYourConfirmation.find(
+              (item) => `settlement:${item.settlementId}` === panel.id,
+            )}
+          />
+        )}
         {panel.type === "shared-category" && !confirmSharedDelete && (
-          <SharedCategoryForm view={view} shared={shared} />
+          <SharedCategoryForm
+            view={view}
+            shared={shared}
+            categoryId={panel.categoryId}
+          />
         )}
         {panel.type === "shared-category" && confirmSharedDelete && shared && (
           <p>

@@ -1,6 +1,6 @@
 import { type RouterOutputs } from "~/trpc/react";
 
-export type Tab = "budget" | "transactions" | "shared" | "loans" | "settings";
+export type Tab = "budget" | "transactions" | "loans" | "settings";
 export type Panel = {
   type:
     | "account"
@@ -24,6 +24,7 @@ export type Panel = {
     | "history";
   id?: string;
   accountId?: string;
+  categoryId?: string;
 };
 export type State = NonNullable<RouterOutputs["budget"]["state"]>;
 export type View = NonNullable<State["view"]>;

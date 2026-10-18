@@ -11,6 +11,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Clock3Icon,
+  CopyIcon,
   CreditCardIcon,
   FolderIcon,
   InfoIcon,
@@ -58,6 +59,7 @@ const icons = {
   calendar: CalendarDaysIcon,
   refresh: RefreshCwIcon,
   folder: FolderIcon,
+  copy: CopyIcon,
   "arrow-down": ArrowDownIcon,
   "arrow-up": ArrowUpIcon,
 };

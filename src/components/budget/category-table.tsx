@@ -47,6 +47,7 @@ export function CategoryTable({
   onAssign,
   onError,
   busy,
+  sharedSplits,
 }: {
   categories: Category[];
   selected: string[];
@@ -54,6 +55,7 @@ export function CategoryTable({
   onAssign: (category: Category, amount: number) => void;
   onError: (message: string) => void;
   busy: boolean;
+  sharedSplits: Map<string, number[]>;
 }) {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const groups = [...new Set(categories.map((category) => category.group))];
@@ -132,6 +134,8 @@ export function CategoryTable({
                   items.map((category) => {
                     const progress = category.targetProgress;
                     const status = categoryStatus(category);
+                    const splits = sharedSplits.get(category.id) ?? [];
+                    const split = splits[0];
                     const percent = progress
                       ? Math.min(
                           100,
@@ -164,15 +168,35 @@ export function CategoryTable({
                               />
                             </span>
                             <div className="category-name-content">
-                              <button
-                                className="category-name"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onSelect([category.id], true);
-                                }}
-                              >
-                                {category.name}
-                              </button>
+                              <div className="category-name-line">
+                                <button
+                                  className="category-name"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onSelect([category.id], true);
+                                  }}
+                                >
+                                  {category.name}
+                                </button>
+                                {split !== undefined && (
+                                  <span
+                                    className="shared-mark"
+                                    title="Shared with your partner"
+                                  >
+                                    <Icon name="shared" size={12} />
+                                    <span aria-hidden="true">
+                                      {splits.length > 1
+                                        ? "Multiple splits"
+                                        : `${split}/${100 - split}`}
+                                    </span>
+                                    <span className="sr-only">
+                                      {splits.length > 1
+                                        ? `Shared with your partner using ${splits.length} split rules`
+                                        : `Shared with your partner. Your share ${split} percent, partner’s share ${100 - split} percent`}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
                               {progress && (
                                 <>
                                   <span className="category-target-note">

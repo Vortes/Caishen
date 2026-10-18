@@ -105,7 +105,6 @@ async function openFixture(page: Page) {
       type: "shared.create",
       id: "seed-shared",
       sharedCategoryId: "shared-rent",
-      name: "Shared rent",
       participants: [user.id, "transaction-fixture-partner"],
       weights: { [user.id]: 1, "transaction-fixture-partner": 1 },
       categoryIds: {
@@ -318,7 +317,7 @@ test("invalid drafts remain editable and account context survives cancellation o
   await editor.getByText("Transaction details", { exact: true }).click();
   await editor
     .getByLabel("Shared category (optional)", { exact: true })
-    .selectOption({ label: "Shared rent" });
+    .selectOption({ label: "Rent" });
   await editor
     .getByLabel("Your share override ($, optional)", { exact: true })
     .fill("101.00");

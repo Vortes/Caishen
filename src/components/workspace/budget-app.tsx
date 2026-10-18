@@ -12,7 +12,6 @@ import { CommandDialog } from "~/components/budget/command-dialog";
 import { LoansView } from "~/components/loans/loans-view";
 import { Onboarding } from "~/components/onboarding/onboarding";
 import { SettingsView } from "~/components/settings/settings-view";
-import { SharedView } from "~/components/shared-expenses/shared-view";
 import { Amount, Brand, Icon } from "~/components/shared";
 import { TransactionRegister } from "~/components/transactions/transaction-register";
 import { Button } from "~/components/ui/button";
@@ -121,7 +120,6 @@ function BudgetWorkspace({
     },
     onError: (error) => setFormError(error.message),
   });
-  const invite = api.budget.invite.useMutation();
   const join = api.budget.join.useMutation({
     onSuccess: async () => {
       await refresh();
@@ -293,34 +291,17 @@ function BudgetWorkspace({
                   <Icon name="chevron-down" size={13} />
                 </Button>
               </div>
-              <Button
-                className="plan-header-share"
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("shared")}
-              >
-                <Icon name="shared" size={15} />
-                Shared expenses
-              </Button>
             </header>
           </>
         ) : (
           tab !== "transactions" && (
             <header className="feature-header">
               <div>
-                <h1>
-                  {tab === "shared"
-                    ? "Shared expenses"
-                    : tab === "loans"
-                      ? "Your loans"
-                      : "Settings"}
-                </h1>
+                <h1>{tab === "loans" ? "Your loans" : "Settings"}</h1>
                 <p>
-                  {tab === "shared"
-                    ? "Your share, what was paid, and what’s left to settle."
-                    : tab === "loans"
-                      ? "Confirmed balances and payoff forecasts."
-                      : "Your preferences and connected services."}
+                  {tab === "loans"
+                    ? "Confirmed balances and payoff forecasts."
+                    : "Your preferences and connected services."}
                 </p>
               </div>
               <div className="feature-header-actions">
@@ -331,15 +312,6 @@ function BudgetWorkspace({
                     timezone={view.budget.settings.timezone}
                     onChange={onMonthChange}
                   />
-                )}
-                {tab === "shared" && (
-                  <Button
-                    onClick={() => open({ type: "shared-category" })}
-                    disabled={view.members.length < 2}
-                  >
-                    <Icon name="plus" size={15} />
-                    Shared category
-                  </Button>
                 )}
                 {tab === "loans" && (
                   <Button onClick={() => open({ type: "loan" })}>
@@ -396,19 +368,6 @@ function BudgetWorkspace({
             onCloseTransaction={() => setTransactionEditor(null)}
             onSaveTransaction={saveTransaction}
           />
-        )}
-        {tab === "shared" && (
-          <div className="feature-content">
-            <SharedView
-              view={view}
-              month={month}
-              open={open}
-              inviteCode={invite.data?.code}
-              inviteBusy={invite.isPending}
-              inviteError={invite.error?.message}
-              onInvite={() => invite.mutate()}
-            />
-          </div>
         )}
         {tab === "loans" && (
           <div className="feature-content">

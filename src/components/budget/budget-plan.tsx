@@ -17,6 +17,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Dialog, DialogContent, DialogTitle } from "~/components/ui/dialog";
 import { useMediaQuery } from "~/components/shared/use-media-query";
+import { sharePercent } from "~/components/shared-expenses/split";
 
 export function BudgetPlan({
   state,
@@ -57,6 +58,14 @@ export function BudgetPlan({
       matchesFilter(category, filter) &&
       category.name.toLowerCase().includes(search.toLowerCase()),
   );
+  const sharedSplits = new Map<string, number[]>();
+  for (const shared of view.sharedCategories) {
+    const categoryId = shared.categoryIds[view.budget.userId];
+    if (!categoryId) continue;
+    const splits = sharedSplits.get(categoryId) ?? [];
+    splits.push(sharePercent(shared.weights, view.budget.userId));
+    sharedSplits.set(categoryId, splits);
+  }
   const selectedCategories = view.categories.filter((category) =>
     targetCategoryId
       ? category.id === targetCategoryId
@@ -209,6 +218,7 @@ export function BudgetPlan({
             selected={selected}
             onSelect={onSelect}
             busy={busy}
+            sharedSplits={sharedSplits}
             onError={onError}
             onAssign={(category, amount) => {
               const key = `${state.revision}:${view.month}:${category.id}:${amount}`;

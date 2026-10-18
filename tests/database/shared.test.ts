@@ -62,15 +62,14 @@ void test("two private server budgets record the exact rent/utilities settlement
         categoryId: id!,
         name: name!,
       });
-    for (const [sharedId, name, own, other] of [
-      ["rent", "Rent", "rent-a", "rent-b"],
-      ["utilities", "Utilities", "utility-a", "utility-b"],
+    for (const [sharedId, own, other] of [
+      ["rent", "rent-a", "rent-b"],
+      ["utilities", "utility-a", "utility-b"],
     ])
       await run(a, {
         type: "shared.create",
         id: randomUUID(),
         sharedCategoryId: sharedId!,
-        name: name!,
         participants: [a, b],
         weights: { [a]: 1, [b]: 1 },
         categoryIds: { [a]: own!, [b]: other! },
@@ -116,6 +115,20 @@ void test("two private server budgets record the exact rent/utilities settlement
     assert.equal(before.view!.personalSpending, 110000);
     assert.equal(before.view!.amountPaid, 20000);
     assert.equal((await state(b)).view!.personalSpending, 110000);
+    const statement = before.view!.sharedStatement;
+    assert.deepEqual(
+      statement.categories.map((category) => [
+        category.name,
+        category.effect,
+        category.purchases.map((purchase) => purchase.payee),
+      ]),
+      [
+        ["Rent", 100000, ["Rent due October"]],
+        ["Utilities", -10000, ["Utilities"]],
+      ],
+      "statement lines are read back from the stored workspace book",
+    );
+    assert.equal(statement.balance, before.view!.settlement.net);
     const repeated = await state(a);
     assert.equal(repeated.revision, before.revision);
     assert.equal(repeated.view!.settlement.net, 90000);
@@ -160,6 +173,15 @@ void test("two private server budgets record the exact rent/utilities settlement
     });
     assert.equal((await state(b)).view!.cash, 390000);
     assert.equal((await state(b)).view!.earnings, 0);
+    assert.deepEqual(
+      (await state(a)).view!.sharedStatement.repayments.map((repayment) => [
+        repayment.amount,
+        repayment.paidByYou,
+        repayment.receivedOn,
+      ]),
+      [[90000, true, "2026-10-03"]],
+    );
+    assert.equal((await state(a)).view!.sharedStatement.balance, 0);
     assert.equal(
       (await state(a)).view!.cash + (await state(b)).view!.cash,
       780000,
