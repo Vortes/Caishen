@@ -21,6 +21,8 @@ import {
   type Funding,
 } from "./model";
 import { FundingBar } from "./funding-bar";
+import { useTransactionEntry } from "./transaction-entry";
+import { TransactionEditor } from "./transaction-form";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
@@ -370,6 +372,7 @@ export function RegisterView({
   onSelect: (id: string) => void;
 }) {
   const { transactions, accounts, month, today } = useShellData();
+  const { session, placement } = useTransactionEntry();
   // The register follows the month picker, like the plan. The review inbox
   // spans every month, so nothing waiting is hidden by the picker.
   const rows = transactions.filter(
@@ -377,7 +380,15 @@ export function RegisterView({
       (!accountId || item.accountId === accountId) &&
       (reviewOnly ? item.needsReview : item.date.startsWith(month.key)),
   );
-  if (!rows.length) {
+  // In the register the editor takes its transaction's row. A new one, or one
+  // this month or filter hides, opens at the top.
+  const rowEditor = session && placement === "register";
+  const editingId = session?.initial?.id;
+  const inPlace =
+    rowEditor && rows.some((item) => item.id === editingId)
+      ? editingId
+      : undefined;
+  if (!rows.length && !rowEditor) {
     return reviewOnly ? (
       <Empty title="Everything here is reviewed." icon={CheckIcon}>
         New bank imports will show up as they arrive.
@@ -396,6 +407,7 @@ export function RegisterView({
       aria-label="Transactions"
       onKeyDown={moveSelection}
     >
+      {rowEditor && !inPlace && <TransactionEditor placement="register" />}
       {days.map((day) => {
         const items = rows.filter((item) => item.date === day);
         const label = dayLabel(day, today);
@@ -412,11 +424,14 @@ export function RegisterView({
               const account = accounts.find(
                 (entry) => entry.id === item.accountId,
               );
+              if (item.id === inPlace)
+                return <TransactionEditor key={item.id} placement="register" />;
               return (
                 <button
                   type="button"
                   key={item.id}
                   data-row
+                  data-transaction-row={item.id}
                   className={`${styles.txColumns} ${styles.row}`}
                   aria-current={selectedId === item.id ? "true" : undefined}
                   onClick={() => onSelect(item.id)}

@@ -1,0 +1,340 @@
+/* The transaction editor, in a register row or an inspector card. Fields
+   copy the move-money popover's filled wells; there is no field primitive
+   yet. */
+
+/* In the register the editor takes the row's place, raised above the rows
+   around it. Its radius is the field's plus its padding and border. */
+.rowEditor {
+  margin: 4px 0;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: calc(var(--radius-row) + 9px);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Date and month pickers and selects draw their own popups. */
+  color-scheme: dark;
+}
+:global([data-theme="light"]) .form {
+  color-scheme: light;
+}
+.form[data-placement="register"] {
+  padding: 2px 4px 0;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.form[data-placement="register"] .title {
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+
+/* Stacked in two columns by default, the inspector's layout. A register
+   wide enough holds the row's own order on one line. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "date date"
+    "payee payee"
+    "categoryId categoryId"
+    "outflow inflow"
+    "accountId status";
+  gap: 10px 8px;
+}
+@container (min-width: 640px) {
+  .fields[data-placement="register"] {
+    grid-template-columns:
+      9rem minmax(0, 1.2fr) minmax(0, 1.2fr)
+      minmax(6rem, 0.55fr) minmax(6rem, 0.55fr);
+    grid-template-areas:
+      "date payee categoryId outflow inflow"
+      "accountId accountId status . .";
+  }
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.field[data-area="date"] {
+  grid-area: date;
+}
+.field[data-area="payee"] {
+  grid-area: payee;
+}
+.field[data-area="categoryId"] {
+  grid-area: categoryId;
+}
+.field[data-area="outflow"] {
+  grid-area: outflow;
+}
+.field[data-area="inflow"] {
+  grid-area: inflow;
+}
+.field[data-area="accountId"] {
+  grid-area: accountId;
+}
+.field[data-area="status"] {
+  grid-area: status;
+}
+.label {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* A filled well, like the shell's controls, with a ring on focus. */
+.well {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--size-control);
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  transition: border-color 150ms;
+}
+.well:focus-within {
+  border-color: var(--focus-ring);
+}
+/* Keyboard focus adds the shell's 2px ring, laid over the border so it
+   reads as one ring. */
+.well:has(.input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.well[data-invalid] {
+  border-color: var(--danger-line);
+}
+.well[data-disabled] {
+  color: var(--text-secondary);
+  background: var(--surface-group);
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+/* The well draws the focus ring, in place of the shell's own. */
+.well .input:focus-visible {
+  outline: none;
+}
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+.input:disabled {
+  cursor: not-allowed;
+}
+.input[role="combobox"]:not(:disabled) {
+  cursor: pointer;
+}
+.input[role="combobox"][aria-expanded="true"] {
+  cursor: text;
+}
+.well[data-select] .input {
+  appearance: none;
+  padding-right: 18px;
+  cursor: pointer;
+}
+.well[data-select] .input option {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+.prefix {
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.well[data-select] .chevron {
+  position: absolute;
+  right: 10px;
+}
+
+.hint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.fieldError,
+.formError {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--danger-text);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.fieldError > svg,
+.formError > svg {
+  flex: none;
+  transform: translateY(2px);
+}
+.formError {
+  outline: none;
+}
+.notice {
+  padding: 8px 10px;
+  border-radius: var(--radius-row);
+  background: var(--feedback-attention-bg);
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.guidance {
+  padding-top: 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+
+.detailsToggle {
+  display: flex;
+  margin: -4px 0 -4px -10px;
+}
+.details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 10px 8px;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* The option list under a field, on the same surface as the move-money
+   popover. */
+.listPopover {
+  z-index: 70;
+  width: min(
+    max(var(--radix-popover-trigger-width), 16rem),
+    calc(100vw - 24px)
+  );
+  max-height: min(18rem, var(--radix-popover-content-available-height));
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  color-scheme: dark;
+}
+:global([data-theme="light"]) .listPopover {
+  color-scheme: light;
+}
+.group {
+  padding: 8px 8px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-caption);
+  font-weight: 500;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--size-row-sm);
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-row);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.option > :nth-child(2) {
+  flex: 1;
+}
+.option[data-active] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.option[aria-selected="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.option[aria-disabled] {
+  cursor: default;
+  opacity: 0.45;
+}
+.check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--accent-solid);
+}
+.optionAmount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.optionAmount[data-tone="positive"] {
+  color: var(--money-positive);
+}
+.optionAmount[data-tone="negative"] {
+  color: var(--money-negative);
+}
+.optionAmount[data-tone="zero"] {
+  color: var(--text-tertiary);
+}
+.empty {
+  padding: 12px 8px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Touch: taller targets, and title-size (16px) text so focusing a field doesn't zoom
+   the page. */
+@media (pointer: coarse) {
+  .well {
+    height: 44px;
+  }
+  .input {
+    font-size: var(--type-title);
+  }
+  .option {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .well {
+    transition: none;
+  }
+}

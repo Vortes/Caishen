@@ -8,6 +8,7 @@ import { z } from "zod";
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
 import {
+  addMember,
   commandSchema,
   createBook,
   execute,
@@ -122,7 +123,12 @@ const historySchema = z.object({
 // step, and budget.changeHistory steps through those, each checking the
 // revision like the server does. Every other write is refused and recorded
 // in writes.
-export async function openPrototype(page: Page) {
+//
+// With shared, a connected partner splits Rent with the user.
+export async function openPrototype(
+  page: Page,
+  { shared = false }: { shared?: boolean } = {},
+) {
   await clerkSetup();
   const [user] = z
     .array(z.object({ id: z.string(), email: z.string().email() }))
@@ -138,6 +144,7 @@ export async function openPrototype(page: Page) {
   const month = currentMonth();
   const date = `${month}-01`;
   let book = createBook(user.id, "Prototype fixture", month);
+  if (shared) book = addMember(book, "prototype-partner", "Sam", month);
   const target = (amount: number) => ({
     cadence: "monthly" as const,
     behavior: "contribution" as const,
@@ -219,6 +226,21 @@ export async function openPrototype(page: Page) {
       amount: -15_000,
       categoryId: "household",
     },
+    ...(shared
+      ? [
+          {
+            type: "shared.create",
+            id: "seed-shared-rent",
+            sharedCategoryId: "shared-rent",
+            participants: [user.id, "prototype-partner"],
+            weights: { [user.id]: 1, "prototype-partner": 1 },
+            categoryIds: {
+              [user.id]: "rent",
+              "prototype-partner": "partner-rent",
+            },
+          } satisfies Command,
+        ]
+      : []),
   ];
   for (const command of initial) book = execute(book, user.id, command);
   type Step = { before: Book; after: Book; label: string };
@@ -227,6 +249,7 @@ export async function openPrototype(page: Page) {
   let revision = 0;
   const writes: string[] = [];
   const commands: Command[] = [];
+  const executions: z.infer<typeof executeSchema>[] = [];
   const historyCalls: z.infer<typeof historySchema>[] = [];
   const executeGate = gate();
   const historyGate = gate();
@@ -263,6 +286,7 @@ export async function openPrototype(page: Page) {
     writes.push(names.join(","));
     if (names.length === 1 && name === "budget.execute") {
       const input = executeSchema.parse(inputs(route)[0]);
+      executions.push(input);
       await executeGate.wait();
       if (rejectExecute) {
         const error = rejectExecute;
@@ -335,6 +359,9 @@ export async function openPrototype(page: Page) {
       readyToAssign: view.readyToAssign,
       category: (id: string) =>
         view.categories.find((category) => category.id === id)!,
+      transaction: (id: string) =>
+        view.budget.transactions.find((transaction) => transaction.id === id),
+      transactions: view.budget.transactions,
     };
   };
   return {
@@ -343,6 +370,9 @@ export async function openPrototype(page: Page) {
     writes,
     // The commands budget.execute ran, in order.
     commands,
+    // Every budget.execute request, including refused ones, with the
+    // revision it expected.
+    executions,
     historyCalls,
     // The budget as the fixture's server holds it now.
     saved: () => summarize(book),
@@ -364,6 +394,17 @@ export async function openPrototype(page: Page) {
     // A change saved outside this session's history, like a partner's edit:
     // the revision moves on and, as on the server, the undo stack empties.
     editElsewhere: () => {
+      revision++;
+      undo.length = 0;
+      redo.length = 0;
+    },
+    // The same, applying a command, like the user's own edit in another tab.
+    changeElsewhere: (command: Command) => {
+      book = execute(
+        book,
+        user.id,
+        prepareUserCommand(book.budgets[user.id]!, command),
+      );
       revision++;
       undo.length = 0;
       redo.length = 0;

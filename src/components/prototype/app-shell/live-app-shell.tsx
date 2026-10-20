@@ -17,11 +17,13 @@ import { useWorkspaceHistory } from "~/components/workspace/use-workspace-histor
 import { AppShellPrototype } from "./app-shell-prototype";
 import { toShellData } from "./model";
 import type { MoveMoney } from "./move-money";
+import type { TransactionSaver } from "./transaction-entry";
 import styles from "./shell.module.css";
 
-// Reads the signed-in budget through the production query. Moving money is
-// real: it sends the legacy plan's commands through the same optimistic
-// path and shares its undo history. The other actions stay inert.
+// Reads the signed-in budget through the production query. Moving money and
+// adding or editing transactions are real: they send the legacy app's
+// commands through the same optimistic path and share its undo history. The
+// other actions stay inert.
 export function LiveAppShell() {
   const { isLoaded, userId } = useAuth();
   const [month, setMonth] = useState(currentMonth);
@@ -76,7 +78,7 @@ type Notice = {
   id: string;
   tone: "neutral" | "attention";
   message: string;
-  // The revision a move saved as, while its toast offers to undo it.
+  // The revision a change saved as, while its toast offers to undo it.
   revision?: number;
 };
 
@@ -100,9 +102,9 @@ function LiveWorkspace({
     tone: Notice["tone"] = "neutral",
     revision?: number,
   ) => setNotice({ id: crypto.randomUUID(), tone, message, revision });
-  // Each move's confirmation, by command id, until the server answers.
+  // Each change's confirmation, by command id, until the server answers.
   const summaries = useRef(new Map<string, string>());
-  const { blocked, run } = useRunBudgetCommand({
+  const { blocked, run, execute } = useRunBudgetCommand({
     state,
     loadingMonth,
     refreshError,
@@ -134,6 +136,21 @@ function LiveWorkspace({
   };
 
   const busy = useIsMutating() > 0 || loadingMonth || Boolean(refreshError);
+  const transactionSaver: TransactionSaver = {
+    view: state.view!,
+    busy,
+    blocked: () => {
+      const reason = blocked();
+      return reason && blockMessage[reason];
+    },
+    // Settles with the server's answer, so the editor stays open with its
+    // draft when the save fails.
+    save: async (command, summary) => {
+      summaries.current.set(command.id, summary);
+      await execute.mutateAsync({ command, expectedRevision: state.revision });
+    },
+    holdOpen,
+  };
   const history = useWorkspaceHistory({
     state,
     disabled: busy || openPopovers > 0,
@@ -157,6 +174,7 @@ function LiveWorkspace({
       loadingMonth={loadingMonth}
       onMonthChange={onMonthChange}
       moveMoney={moveMoney}
+      transactionSaver={transactionSaver}
       notifications={
         <ToastRegion>
           {refreshError && (
