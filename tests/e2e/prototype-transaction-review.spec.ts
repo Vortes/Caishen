@@ -255,19 +255,23 @@ async function barLayout(page: Page, summary: string, width: number) {
     register(page).getByRole("button", { name: "Clear", exact: true }),
     approve(page),
   ];
-  const boxes: Box[] = [];
-  for (const part of parts) {
-    await expect(part).toBeVisible();
-    const box = await part.boundingBox();
-    expect(box).not.toBeNull();
-    boxes.push(box!);
-  }
-  for (const [index, box] of boxes.entries()) {
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(width);
-    for (const other of boxes.slice(index + 1))
-      expect(overlaps(box, other)).toBe(false);
-  }
+  let boxes: Box[] = [];
+  await expect(async () => {
+    const measured: Box[] = [];
+    for (const part of parts) {
+      await expect(part).toBeVisible();
+      const box = await part.boundingBox();
+      expect(box).not.toBeNull();
+      measured.push(box!);
+    }
+    for (const [index, box] of measured.entries()) {
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      for (const other of measured.slice(index + 1))
+        expect(overlaps(box, other)).toBe(false);
+    }
+    boxes = measured;
+  }).toPass();
   const [label, count, clear] = boxes as [Box, Box, Box, Box];
   return { label, count, clear };
 }
