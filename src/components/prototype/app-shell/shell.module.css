@@ -59,7 +59,8 @@
   outline-offset: -2px;
   border-radius: 6px;
 }
-:global(html[data-resizing]) * {
+:global(html[data-resizing]) .root,
+:global(html[data-resizing]) .root * {
   cursor: col-resize !important;
   user-select: none;
 }
