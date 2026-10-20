@@ -54,6 +54,16 @@
   --space-card: 16px;
   --space-stack: 10px;
   --space-row-x: 14px;
+  /* Concentric corners: outer radius = inner radius + padding, where the
+     padding includes the container's 1px border. Inner radii are the fixed
+     choices; containers grow to fit them. */
+  --radius-row: 6px;
+  --radius-card: 12px;
+  --space-inset: 8px;
+  --radius-panel: calc(var(--radius-card) + var(--space-inset) + 1px);
+  --radius-peek: calc(var(--radius-row) + 8px + 1px);
+  --radius-menu: calc(var(--radius-row) + 4px + 1px);
+  --radius-segmented: calc(var(--radius-row) + 2px + 1px);
 
   --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
   --panel-duration: 260ms;
@@ -192,7 +202,7 @@
   height: var(--size-control);
   padding: 0 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-row);
   background: transparent;
   font-weight: 500;
 }
@@ -245,7 +255,7 @@
   height: var(--nav-row);
   padding: 0 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-row);
   background: transparent;
   color: var(--text-2);
   text-align: left;
@@ -404,7 +414,7 @@
   height: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   background: var(--panel);
 }
 .header {
@@ -779,7 +789,7 @@
   flex-direction: column;
   gap: var(--space-stack);
   height: 100%;
-  padding: 0 10px 10px 12px;
+  padding: 0 var(--space-inset) var(--space-inset) 12px;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -790,7 +800,7 @@
   gap: 2px;
   padding: var(--space-card);
   border: 1px solid var(--card-line);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--raised);
   box-shadow: var(--card-shadow);
 }
@@ -1433,7 +1443,7 @@ button.actionItem:hover {
   padding: 8px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-peek);
   background: var(--bg);
   box-shadow: var(--drawer-shadow);
   visibility: hidden;
@@ -1459,7 +1469,7 @@ button.actionItem:hover {
   right: var(--gutter);
   bottom: var(--gutter);
   left: var(--gutter);
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
   background: oklch(0 0 0 / 0.4);
   opacity: 0;
   pointer-events: none;
