@@ -17,14 +17,19 @@
   gap: 12px;
   min-width: 0;
 }
+/* In a narrow column the name keeps its room and the status truncates. */
 .name {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
-  min-width: 0;
+  max-width: 100%;
 }
 .status {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-left: auto;
   color: var(--text-2);
   font-size: var(--font-small);
