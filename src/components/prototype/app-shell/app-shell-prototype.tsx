@@ -8,6 +8,7 @@ import {
   ListFilterIcon,
   PanelLeftIcon,
   PanelRightIcon,
+  PlusIcon,
   RotateCcwIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
@@ -26,6 +27,12 @@ import type { ShellData } from "./model";
 import { MoveMoneyProvider, type MoveMoney } from "./move-money";
 import { PlanViews } from "./plan-views";
 import { ShellDataProvider } from "./shell-data";
+import {
+  TransactionEntryProvider,
+  useTransactionEntryController,
+  type TransactionEntry,
+  type TransactionSaver,
+} from "./transaction-entry";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
@@ -68,12 +75,14 @@ export function AppShellPrototype({
   loadingMonth,
   onMonthChange,
   moveMoney,
+  transactionSaver,
   notifications,
 }: {
   data: ShellData;
   loadingMonth: boolean;
   onMonthChange: (month: string) => void;
   moveMoney: MoveMoney;
+  transactionSaver: TransactionSaver;
   // The shell's ToastRegion, rendered inside its themed root.
   notifications: ReactNode;
 }) {
@@ -124,6 +133,8 @@ export function AppShellPrototype({
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
   const narrow = useMediaQuery("(max-width: 860px)");
+  // A phone is too narrow for the details panel's saved width.
+  const phone = useMediaQuery("(max-width: 560px)");
   const [drawer, setDrawer] = useState({ sidebar: false, inspector: false });
   // Linear-style peek: with the sidebar collapsed, hovering the left edge or
   // the sidebar button floats it over the content until the pointer leaves.
@@ -152,7 +163,10 @@ export function AppShellPrototype({
     ? { ...settings.sidebar, collapsed: !drawer.sidebar }
     : settings.sidebar;
   const inspectorState = narrow
-    ? { ...settings.inspector, collapsed: !drawer.inspector }
+    ? {
+        width: phone ? INSPECTOR.min : settings.inspector.width,
+        collapsed: !drawer.inspector,
+      }
     : settings.inspector;
 
   const sidebar = usePanel({
@@ -177,6 +191,14 @@ export function AppShellPrototype({
         : setSettings((value) => ({ ...value, inspector: next })),
   });
 
+  const entry = useTransactionEntryController({
+    saver: transactionSaver,
+    // On a narrow screen the drawers cover the register.
+    reveal: () => {
+      if (narrow) setDrawer({ sidebar: false, inspector: false });
+    },
+  });
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTyping(event.target) || event.metaKey || event.ctrlKey) return;
@@ -188,7 +210,15 @@ export function AppShellPrototype({
         return;
       if (event.key === "[") sidebar.toggle();
       else if (event.key === "]") inspector.toggle();
-      else if (event.key === "Escape") {
+      else if (event.key === "n" && screen.type === "register") {
+        if (!entry.start({ accountId: screen.accountId })) return;
+      } else if (
+        event.key === "e" &&
+        screen.type === "register" &&
+        selectedId
+      ) {
+        if (!entry.start({ transactionId: selectedId })) return;
+      } else if (event.key === "Escape") {
         if (peekOpen) setPeek(false);
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
           setDrawer({ sidebar: false, inspector: false });
@@ -211,11 +241,14 @@ export function AppShellPrototype({
     drawer,
     peekOpen,
     checked.length,
-    screen.type,
+    screen,
     path,
+    entry,
+    selectedId,
   ]);
 
   const navigate = (next: Screen, id?: string) => {
+    if (entry.holdForDraft()) return;
     setScreen(next);
     setSelectedId(id ?? null);
     setChecked([]);
@@ -227,6 +260,7 @@ export function AppShellPrototype({
   const select = (id: string) => setSelectedId(id);
 
   const reset = () => {
+    if (entry.holdForDraft()) return;
     localStorage.removeItem(STORAGE_KEY);
     setSettings(defaults);
     setScreen({ type: "plan" });
@@ -265,7 +299,7 @@ export function AppShellPrototype({
 
   return (
     <ShellDataProvider value={data}>
-      <MoveMoneyProvider value={moveMoney}>
+      <ActionProviders moveMoney={moveMoney} transactionEntry={entry}>
         <div
           ref={attachRoot}
           className={styles.root}
@@ -429,6 +463,26 @@ export function AppShellPrototype({
                       To review
                       <span className={styles.numeric}>{reviewCount}</span>
                     </Button>
+                  )}
+                  {screen.type === "register" && (
+                    <AddTransactionTooltip editing={Boolean(entry.session)}>
+                      <Button
+                        size="sm"
+                        aria-label={phone ? "Add transaction" : undefined}
+                        data-transaction-opener="new"
+                        disabled={
+                          Boolean(entry.session) ||
+                          entry.busy ||
+                          !accounts.length
+                        }
+                        onClick={() =>
+                          entry.start({ accountId: screen.accountId })
+                        }
+                      >
+                        <PlusIcon aria-hidden />
+                        {phone ? "Add" : "Add transaction"}
+                      </Button>
+                    </AddTransactionTooltip>
                   )}
                   <div className={styles.toolbarActions}>
                     {screen.type !== "reflect" && (
@@ -641,8 +695,44 @@ export function AppShellPrototype({
             {notifications}
           </TooltipProvider>
         </div>
-      </MoveMoneyProvider>
+      </ActionProviders>
     </ShellDataProvider>
+  );
+}
+
+// While the editor is open Add is disabled, and its tooltip, left open
+// under the pointer that clicked it, would take the editor's Escape.
+function AddTransactionTooltip({
+  editing,
+  children,
+}: {
+  editing: boolean;
+  children: ReactNode;
+}) {
+  if (editing) return children;
+  return (
+    <Tooltip label="Add a transaction" shortcut="N">
+      {children}
+    </Tooltip>
+  );
+}
+
+// The shell's real actions: moving money and entering transactions.
+function ActionProviders({
+  moveMoney,
+  transactionEntry,
+  children,
+}: {
+  moveMoney: MoveMoney;
+  transactionEntry: TransactionEntry;
+  children: ReactNode;
+}) {
+  return (
+    <MoveMoneyProvider value={moveMoney}>
+      <TransactionEntryProvider value={transactionEntry}>
+        {children}
+      </TransactionEntryProvider>
+    </MoveMoneyProvider>
   );
 }
 

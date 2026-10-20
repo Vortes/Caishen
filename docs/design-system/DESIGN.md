@@ -39,7 +39,7 @@ you use.
 | [scale.md](scale.md)       | Type sizes, control and row heights, spacing, radii, motion |
 | [buttons.md](buttons.md)   | `Button`, `IconButton`                                      |
 | [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`            |
-| [labels.md](labels.md)     | `Tag`, `Badge`                                              |
+| [labels.md](labels.md)     | `Tag`, the review dot                                       |
 | [surfaces.md](surfaces.md) | `Card`, `Tooltip`, portals                                  |
 | [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                      |
 | [loading.md](loading.md)   | `Skeleton`, and which loading state to use                  |

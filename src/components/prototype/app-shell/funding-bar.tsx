@@ -62,7 +62,7 @@ export function fundingPieces(category: FundingBarCategory): Piece[] {
     };
     fill("spent", 0, covered);
     fill("available", covered, funds);
-    fill("needed", funds, Infinity);
+    if (spent <= funds) fill("needed", funds, Infinity);
     start = end;
   }
   if (spent > funds)

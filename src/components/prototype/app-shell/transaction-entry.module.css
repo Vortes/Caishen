@@ -1,0 +1,346 @@
+/* The transaction editor, in a register row. Fields copy the move-money
+   popover's filled wells; there is no field primitive yet. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 4px;
+  border-radius: var(--radius-row);
+  background: var(--surface-selected);
+  /* Inputs draw their autofill and scrollbars in the theme's scheme. */
+  color-scheme: dark;
+}
+:global([data-theme="light"]) .form {
+  color-scheme: light;
+}
+
+/* The editor is one row on the register's own grid, each field under its
+   column header. */
+.entryRow {
+  align-items: start;
+  padding-block: 6px;
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+/* The column header names the field on screen. */
+.cellLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.well[data-amount] .input {
+  text-align: right;
+}
+.rowFooter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px var(--space-row-x) 8px 34px;
+}
+/* The actions sit at the row's end, clear of the calendar that opens under
+   the date. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* On a phone the row stacks: each field takes its label back. */
+@container (max-width: 560px) {
+  .entryRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 8px;
+    padding: 10px var(--space-row-x);
+  }
+  .entryRow > [data-column="date"],
+  .entryRow > [data-column="payee"],
+  .entryRow > [data-column="category"],
+  .entryRow > [data-column="account"] {
+    grid-column: 1 / -1;
+  }
+  .entryRow > [data-column="status"] {
+    display: none;
+  }
+  .entryRow > .amountError {
+    grid-column: 1 / -1;
+  }
+  .cellLabel {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    color: var(--text-tertiary);
+    font-size: var(--type-small);
+  }
+  .rowFooter {
+    padding-left: var(--space-row-x);
+  }
+}
+
+/* A filled well, like the shell's controls, with a ring on focus. */
+.well {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--size-control);
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  transition: border-color 150ms;
+}
+.well:focus-within {
+  border-color: var(--focus-ring);
+}
+/* Keyboard focus adds the shell's 2px ring, laid over the border so it
+   reads as one ring. */
+.well:has(.input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+/* With its calendar open, the date is the field being filled in, though
+   focus sits on a day inside the calendar. */
+.well[data-date]:has(.input[aria-expanded="true"]) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.well[data-date]:not([data-invalid]):has(.input[aria-expanded="true"]) {
+  border-color: var(--focus-ring);
+}
+.well[data-invalid] {
+  border-color: var(--danger-line);
+}
+.well[data-disabled] {
+  color: var(--text-secondary);
+  background: var(--surface-group);
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+/* The well draws the focus ring, in place of the shell's own. */
+.well .input:focus-visible {
+  outline: none;
+}
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+.input:disabled {
+  cursor: not-allowed;
+}
+.input[role="combobox"]:not(:disabled) {
+  cursor: pointer;
+}
+.input[role="combobox"][aria-expanded="true"] {
+  cursor: text;
+}
+.prefix {
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.fieldError,
+.amountError,
+.formError {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--danger-text);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.fieldError > svg,
+.amountError > svg,
+.formError > svg {
+  flex: none;
+  transform: translateY(2px);
+}
+.formError {
+  outline: none;
+}
+/* Under both amount columns, which end just before the status column. */
+.amountError {
+  grid-column: -4 / -2;
+}
+.notice {
+  padding: 8px 10px;
+  border-radius: var(--radius-row);
+  background: var(--feedback-attention-bg);
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.guidance {
+  padding-top: 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+
+/* The option list under a field, on the same surface as the move-money
+   popover. */
+.listPopover {
+  z-index: 70;
+  width: min(
+    max(var(--radix-popover-trigger-width), 16rem),
+    calc(100vw - 24px)
+  );
+  max-height: min(18rem, var(--radix-popover-content-available-height));
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  color-scheme: dark;
+}
+.listPopover[data-wide] {
+  width: min(
+    max(var(--radix-popover-trigger-width), 20rem),
+    calc(100vw - 24px)
+  );
+}
+:global([data-theme="light"]) .listPopover {
+  color-scheme: light;
+}
+.group {
+  padding: 8px 8px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-caption);
+  font-weight: 500;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--size-row-sm);
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-row);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+/* Lines up with the text typed in the field above. */
+.option[data-suggestion] {
+  padding-left: 6px;
+}
+.optionLabel {
+  flex: 1;
+}
+.option[data-active] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.option[aria-selected="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.option[aria-disabled] {
+  cursor: default;
+  opacity: 0.45;
+}
+.check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--accent-solid);
+}
+.optionAmount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.optionAmount[data-tone="positive"] {
+  color: var(--money-positive);
+}
+.optionAmount[data-tone="negative"] {
+  color: var(--money-negative);
+}
+.optionAmount[data-tone="zero"] {
+  color: var(--text-tertiary);
+}
+.empty {
+  padding: 12px 8px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* The date shows a calendar icon; on touch it's a button inside the
+   well's right edge. */
+.dateIcon {
+  flex: none;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.dateTrigger {
+  display: none;
+}
+@media (pointer: coarse) {
+  .well[data-date] {
+    padding-right: 2px;
+  }
+  .dateIcon {
+    display: none;
+  }
+  .dateTrigger {
+    display: flex;
+  }
+}
+
+/* The date calendar, on the popover surface. The calendar pads itself. */
+.calendar {
+  z-index: 70;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  outline: none;
+}
+
+/* Touch: taller targets, and title-size (16px) text so focusing a field doesn't zoom
+   the page. */
+@media (pointer: coarse) {
+  .well {
+    height: 44px;
+  }
+  .input {
+    font-size: var(--type-title);
+  }
+  .option {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .well {
+    transition: none;
+  }
+}

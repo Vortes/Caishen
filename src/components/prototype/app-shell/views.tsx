@@ -13,14 +13,10 @@ import {
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Tag } from "~/components/ui/tag";
-import {
-  dayLabel,
-  money,
-  shortDay,
-  type Category,
-  type Funding,
-} from "./model";
+import { dayLabel, money, type Category, type Funding } from "./model";
 import { FundingBar } from "./funding-bar";
+import { useTransactionEntry } from "./transaction-entry";
+import { TransactionEditor } from "./transaction-form";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
@@ -370,6 +366,7 @@ export function RegisterView({
   onSelect: (id: string) => void;
 }) {
   const { transactions, accounts, month, today } = useShellData();
+  const { session } = useTransactionEntry();
   // The register follows the month picker, like the plan. The review inbox
   // spans every month, so nothing waiting is hidden by the picker.
   const rows = transactions.filter(
@@ -377,7 +374,14 @@ export function RegisterView({
       (!accountId || item.accountId === accountId) &&
       (reviewOnly ? item.needsReview : item.date.startsWith(month.key)),
   );
-  if (!rows.length) {
+  // In the register the editor takes its transaction's row. A new one, or one
+  // this month or filter hides, opens at the top.
+  const editingId = session?.initial?.id;
+  const inPlace =
+    session && rows.some((item) => item.id === editingId)
+      ? editingId
+      : undefined;
+  if (!rows.length && !session) {
     return reviewOnly ? (
       <Empty title="Everything here is reviewed." icon={CheckIcon}>
         New bank imports will show up as they arrive.
@@ -388,97 +392,139 @@ export function RegisterView({
       </Empty>
     );
   }
-  const days = [...new Set(rows.map((item) => item.date))];
+  // Every row, the headers, and the editor share one grid, so each field
+  // sits under the column it fills. All accounts leads with an Account
+  // column, since that's what a new entry picks first.
+  const accountColumn = !accountId;
   return (
     <div
-      className={styles.list}
+      className={`${styles.list} ${styles.register}`}
+      data-accounts={accountColumn || undefined}
       role="group"
       aria-label="Transactions"
       onKeyDown={moveSelection}
     >
-      {days.map((day) => {
-        const items = rows.filter((item) => item.date === day);
-        const label = dayLabel(day, today);
+      <div className={`${styles.txColumns} ${styles.columnHeader}`} aria-hidden>
+        {accountColumn && (
+          <span data-column="account" data-optional>
+            Account
+          </span>
+        )}
+        <span data-column="date" data-optional>
+          Date
+        </span>
+        <span data-column="payee">Payee</span>
+        <span data-column="category">Category</span>
+        <span className={styles.numeric} data-column="outflow" data-wide>
+          Outflow
+        </span>
+        <span className={styles.numeric} data-column="inflow" data-wide>
+          Inflow
+        </span>
+        <span className={styles.numeric} data-narrow>
+          Amount
+        </span>
+        <span data-column="status" />
+      </div>
+      {session && !inPlace && (
+        <TransactionEditor accountColumn={accountColumn} />
+      )}
+      {rows.map((item) => {
+        const status = statusIcon[item.status];
+        const account = accounts.find((entry) => entry.id === item.accountId);
+        // Marks the row in its first column.
+        const reviewDot = (
+          <span
+            className={styles.reviewDot}
+            data-on={item.needsReview ? "" : undefined}
+          >
+            {item.needsReview && <span className="sr-only">Needs review</span>}
+          </span>
+        );
+        if (item.id === inPlace)
+          return (
+            <TransactionEditor key={item.id} accountColumn={accountColumn} />
+          );
         return (
-          <div key={day}>
-            <div className={styles.dayRow}>
-              <span>{label}</span>
-              {label !== shortDay(day) && (
-                <span className={styles.groupCount}>{shortDay(day)}</span>
+          <button
+            type="button"
+            key={item.id}
+            data-row
+            data-transaction-row={item.id}
+            className={`${styles.txColumns} ${styles.row}`}
+            aria-current={selectedId === item.id ? "true" : undefined}
+            onClick={() => onSelect(item.id)}
+          >
+            {accountColumn && (
+              <span
+                className={styles.rowName}
+                data-column="account"
+                data-optional
+              >
+                {reviewDot}
+                <span className={`${styles.truncate} ${styles.faint}`}>
+                  {account?.name ?? "Unlinked bank account"}
+                </span>
+              </span>
+            )}
+            <span className={styles.rowName} data-column="date" data-optional>
+              {!accountColumn && reviewDot}
+              <span className={`${styles.truncate} ${styles.muted}`}>
+                {dayLabel(item.date, today)}
+              </span>
+            </span>
+            <span className={styles.rowName} data-column="payee">
+              <span className={styles.truncate}>{item.payee}</span>
+              {item.shared && (
+                <UsersIcon
+                  size={12}
+                  className={styles.inlineIcon}
+                  aria-label="Shared"
+                />
               )}
-            </div>
-            {items.map((item) => {
-              const status = statusIcon[item.status];
-              const account = accounts.find(
-                (entry) => entry.id === item.accountId,
-              );
-              return (
-                <button
-                  type="button"
-                  key={item.id}
-                  data-row
-                  className={`${styles.txColumns} ${styles.row}`}
-                  aria-current={selectedId === item.id ? "true" : undefined}
-                  onClick={() => onSelect(item.id)}
-                >
-                  <span className={styles.rowName}>
-                    <span
-                      className={styles.reviewDot}
-                      data-on={item.needsReview ? "" : undefined}
-                    >
-                      {item.needsReview && (
-                        <span className="sr-only">Needs review</span>
-                      )}
-                    </span>
-                    {item.source === "bank" ? (
-                      <InboxIcon
-                        size={14}
-                        className={styles.statusIcon}
-                        aria-label="Bank import"
-                      />
-                    ) : (
-                      <status.icon
-                        size={14}
-                        className={styles.statusIcon}
-                        data-status={item.status}
-                        aria-label={status.label}
-                      />
-                    )}
-                    <span className={styles.truncate}>{item.payee}</span>
-                    {item.shared && (
-                      <UsersIcon
-                        size={12}
-                        className={styles.inlineIcon}
-                        aria-label="Shared"
-                      />
-                    )}
-                  </span>
-                  <span className={styles.truncate}>
-                    {item.needsCategory ? (
-                      <Tag tone="attention">{item.categoryLabel}</Tag>
-                    ) : (
-                      <span className={styles.muted}>{item.categoryLabel}</span>
-                    )}
-                    {item.forMonth && (
-                      <span className={styles.faint}> · {item.forMonth}</span>
-                    )}
-                  </span>
-                  <span
-                    className={`${styles.truncate} ${styles.faint}`}
-                    data-optional
-                  >
-                    {account?.name ?? "Unlinked bank account"}
-                  </span>
-                  <span
-                    className={styles.numeric}
-                    data-inflow={item.amount > 0 || undefined}
-                  >
-                    {money(item.amount, true)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+            </span>
+            <span className={styles.truncate} data-column="category">
+              {item.needsCategory ? (
+                <Tag tone="attention">{item.categoryLabel}</Tag>
+              ) : (
+                <span className={styles.muted}>{item.categoryLabel}</span>
+              )}
+              {item.forMonth && (
+                <span className={styles.faint}> · {item.forMonth}</span>
+              )}
+            </span>
+            <span
+              className={styles.numeric}
+              data-column="outflow"
+              data-empty={item.amount < 0 ? undefined : true}
+            >
+              {item.amount < 0 && money(-item.amount)}
+            </span>
+            <span
+              className={styles.numeric}
+              data-column="inflow"
+              data-empty={item.amount > 0 ? undefined : true}
+              data-inflow={item.amount > 0 || undefined}
+            >
+              {item.amount > 0 && money(item.amount)}
+            </span>
+            <span className={styles.statusCell} data-column="status">
+              {item.source === "bank" ? (
+                <InboxIcon
+                  size={14}
+                  className={styles.statusIcon}
+                  aria-label="Bank import"
+                />
+              ) : (
+                <status.icon
+                  size={14}
+                  className={styles.statusIcon}
+                  data-status={item.status}
+                  aria-label={status.label}
+                />
+              )}
+            </span>
+          </button>
         );
       })}
     </div>

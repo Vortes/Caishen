@@ -86,7 +86,7 @@ What does the color communicate?
  │    Button variant="primary"; never set them directly
  ├── A destructive confirm → --danger-text and --danger-line, through
  │    Button variant="danger"
- └── Checked boxes, counts, the focus ring → --accent-solid, --focus-ring
+ └── Checked boxes, the focus ring → --accent-solid, --focus-ring
 ```
 
 Spent money in a funding bar uses `--status-funded-spent` or

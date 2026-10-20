@@ -42,7 +42,21 @@ export function Tooltip({
   const container = useContext(PortalContainer);
   return (
     <Primitive.Root>
-      <Primitive.Trigger asChild>{children}</Primitive.Trigger>
+      <Primitive.Trigger
+        asChild
+        // Focus opens the tooltip only when the user moved it there with the
+        // keyboard. Focus put back after an editor or menu closes has no
+        // element it came from, and a click doesn't show the focus ring.
+        onFocus={(event) => {
+          if (
+            !event.relatedTarget ||
+            !event.currentTarget.matches(":focus-visible")
+          )
+            event.preventDefault();
+        }}
+      >
+        {children}
+      </Primitive.Trigger>
       <Primitive.Portal container={container}>
         <Primitive.Content
           className={styles.tooltip}
