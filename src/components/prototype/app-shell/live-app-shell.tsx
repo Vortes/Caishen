@@ -7,10 +7,12 @@ import { currentMonth } from "~/components/budget/format";
 import { api } from "~/trpc/react";
 import { AppShellPrototype } from "./app-shell-prototype";
 import { toShellData } from "./model";
+import { applyMoves, type Move } from "./simulated-moves";
 import styles from "./shell.module.css";
 
 // Reads the signed-in budget through the production query. Nothing here
-// writes: the shell's actions stay inert, as in the rest of the prototype.
+// writes: money moved in the shell is simulated over the live month (see
+// simulated-moves), and the other actions stay inert.
 export function LiveAppShell() {
   const { isLoaded, userId } = useAuth();
   const [month, setMonth] = useState(currentMonth);
@@ -18,9 +20,11 @@ export function LiveAppShell() {
     { month },
     { enabled: Boolean(userId), placeholderData: (previous) => previous },
   );
+  const [moves, setMoves] = useState<Move[]>([]);
   const data = useMemo(
-    () => (state.data?.view ? toShellData(state.data) : null),
-    [state.data],
+    () =>
+      state.data?.view ? toShellData(applyMoves(state.data, moves)) : null,
+    [state.data, moves],
   );
 
   if (!isLoaded || (userId && state.isPending))
@@ -55,6 +59,8 @@ export function LiveAppShell() {
       data={data}
       loadingMonth={state.isPlaceholderData}
       onMonthChange={setMonth}
+      moves={moves}
+      onMovesChange={setMoves}
     />
   );
 }

@@ -17,6 +17,7 @@ import { useId, useState, type ReactNode } from "react";
 import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
 import { Card, Figure, Property, Title } from "./cards";
 import { money, shortDay, type Category, type Transaction } from "./model";
+import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import type { Screen } from "./sidebar";
@@ -325,6 +326,13 @@ function CategoryDetails({ category }: { category: Category }) {
           caption={category.status || fallback}
           tone={category.funding}
         />
+        <div className={styles.cardActions}>
+          <MoveMoneyPopover category={category} align="start">
+            <button type="button" className={styles.control}>
+              {category.available < 0 ? "Cover overspending" : "Move money"}
+            </button>
+          </MoveMoneyPopover>
+        </div>
       </Card>
       <Card>
         <Property label="Assigned">{money(category.assigned)}</Property>

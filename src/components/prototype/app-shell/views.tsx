@@ -20,6 +20,8 @@ import {
   type Funding,
 } from "./model";
 import { FundingBar } from "./funding-bar";
+import { MoveMoneyPopover } from "./move-money";
+import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 
@@ -196,10 +198,25 @@ export function PlanView({
                       >
                         {money(category.activity)}
                       </span>
-                      <span className={styles.numeric}>
-                        <AvailablePill category={category} />
+                      <span className={styles.numeric} aria-hidden>
+                        <span className={moveStyles.placeholder}>
+                          <AvailablePill category={category} />
+                        </span>
                       </span>
                     </button>
+                    <MoveMoneyPopover category={category} align="end">
+                      <button
+                        type="button"
+                        className={moveStyles.pillButton}
+                        aria-label={`${money(category.available)} available in ${category.name}. ${
+                          category.available < 0
+                            ? "Cover overspending"
+                            : "Move money"
+                        }`}
+                      >
+                        <AvailablePill category={category} />
+                      </button>
+                    </MoveMoneyPopover>
                   </div>
                 );
               })}

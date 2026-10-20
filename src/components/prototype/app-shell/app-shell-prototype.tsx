@@ -16,7 +16,10 @@ import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
 import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
-import type { ShellData } from "./model";
+import { money, type ShellData } from "./model";
+import { MoveMoneyProvider } from "./move-money";
+import moveStyles from "./move-money.module.css";
+import { READY_TO_ASSIGN, type Move } from "./simulated-moves";
 import { ShellDataProvider } from "./shell-data";
 import { Tip, TooltipLayer } from "./tooltip";
 import { IconButton, Sidebar, type Screen } from "./sidebar";
@@ -72,10 +75,14 @@ export function AppShellPrototype({
   data,
   loadingMonth,
   onMonthChange,
+  moves,
+  onMovesChange,
 }: {
   data: ShellData;
   loadingMonth: boolean;
   onMonthChange: (month: string) => void;
+  moves: Move[];
+  onMovesChange: (moves: Move[]) => void;
 }) {
   const { accounts, transactions } = data;
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -118,6 +125,23 @@ export function AppShellPrototype({
         : current.filter((id) => !ids.includes(id)),
     );
   const [reviewOnly, setReviewOnly] = useState(false);
+  // The move the undo toast offers to take back.
+  const [toastId, setToastId] = useState<string | null>(null);
+  const toastMove = moves.find((move) => move.id === toastId);
+  useEffect(() => {
+    if (!toastId) return;
+    const timer = window.setTimeout(() => setToastId(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [toastId]);
+  const moveMoney = (move: Omit<Move, "id" | "month">) => {
+    const id = crypto.randomUUID();
+    onMovesChange([...moves, { ...move, id, month: data.month.key }]);
+    setToastId(id);
+  };
+  const placeName = (id: string) =>
+    id === READY_TO_ASSIGN
+      ? "Ready to Assign"
+      : (data.categories.find((item) => item.id === id)?.name ?? "a category");
   const [controlsOpen, setControlsOpen] = useState(true);
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
@@ -239,6 +263,8 @@ export function AppShellPrototype({
     setPath({});
     setGrouping("categories");
     setDrawer({ sidebar: false, inspector: false });
+    onMovesChange([]);
+    setToastId(null);
   };
 
   // Flip colors in one frame instead of letting each control run its own
@@ -266,366 +292,398 @@ export function AppShellPrototype({
 
   return (
     <ShellDataProvider value={data}>
-      <div
-        ref={attachRoot}
-        className={styles.root}
-        data-theme={settings.theme}
-        data-palette={palette?.name}
-        style={palette ? paletteVars(palette) : undefined}
-        data-ready={ready || undefined}
-        data-narrow={narrow || undefined}
-        data-dragging={sidebar.dragging || inspector.dragging || undefined}
-        data-peekable={peekable || undefined}
-      >
-        <TooltipLayer container={rootElement}>
-          <a className={styles.skipLink} href="#prototype-content">
-            Skip to content
-          </a>
+      <MoveMoneyProvider value={{ move: moveMoney }}>
+        <div
+          ref={attachRoot}
+          className={styles.root}
+          data-theme={settings.theme}
+          data-palette={palette?.name}
+          style={palette ? paletteVars(palette) : undefined}
+          data-ready={ready || undefined}
+          data-narrow={narrow || undefined}
+          data-dragging={sidebar.dragging || inspector.dragging || undefined}
+          data-peekable={peekable || undefined}
+        >
+          <TooltipLayer container={rootElement}>
+            <a className={styles.skipLink} href="#prototype-content">
+              Skip to content
+            </a>
 
-          <aside
-            id="prototype-sidebar"
-            className={styles.sidebar}
-            style={{ width: sidebar.width }}
-            data-open={sidebar.width > 0 || undefined}
-            aria-hidden={sidebar.width === 0 || undefined}
-            inert={sidebar.width === 0}
-          >
-            <div
-              className={styles.sidebarInner}
-              style={{ width: sidebar.contentWidth }}
+            <aside
+              id="prototype-sidebar"
+              className={styles.sidebar}
+              style={{ width: sidebar.width }}
+              data-open={sidebar.width > 0 || undefined}
+              aria-hidden={sidebar.width === 0 || undefined}
+              inert={sidebar.width === 0}
             >
-              <Sidebar
-                screen={screen}
-                selectedId={selectedId}
-                onNavigate={navigate}
-                toggleLabel="Hide sidebar"
-                onToggle={sidebar.toggle}
-              />
-            </div>
-          </aside>
-
-          {peekable && (
-            <>
               <div
-                className={styles.peekScrim}
-                data-open={peekOpen || undefined}
-                aria-hidden
-                onClick={() => closePeek(0)}
-              />
-              <div
-                className={styles.peek}
-                data-open={peekOpen || undefined}
-                style={{ width: settings.sidebar.width }}
-                aria-hidden={!peekOpen || undefined}
-                inert={!peekOpen}
-                onPointerEnter={openPeek}
-                onPointerLeave={() => closePeek()}
+                className={styles.sidebarInner}
+                style={{ width: sidebar.contentWidth }}
               >
                 <Sidebar
                   screen={screen}
                   selectedId={selectedId}
                   onNavigate={navigate}
-                  // The peek floats a collapsed sidebar; its toggle pins
-                  // it open.
-                  toggleLabel="Show sidebar"
-                  onToggle={() => {
-                    closePeek(0);
-                    sidebar.toggle();
-                  }}
+                  toggleLabel="Hide sidebar"
+                  onToggle={sidebar.toggle}
                 />
               </div>
-            </>
-          )}
+            </aside>
 
-          {narrow && (drawer.sidebar || drawer.inspector) && (
-            <div
-              className={styles.scrim}
-              aria-hidden
-              onClick={() => setDrawer({ sidebar: false, inspector: false })}
-            />
-          )}
-
-          <div className={styles.main}>
-            <div
-              {...sidebar.handleProps}
-              className={styles.handle}
-              data-side="left"
-              aria-label="Resize sidebar"
-              aria-controls="prototype-sidebar"
-              data-active={sidebar.dragging || undefined}
-              onPointerEnter={peekable ? openPeek : undefined}
-              onPointerLeave={peekable ? () => closePeek() : undefined}
-            />
-            <div className={styles.panel}>
-              <header className={styles.header}>
+            {peekable && (
+              <>
                 <div
-                  className={styles.toggleSlot}
-                  data-show={sidebarState.collapsed || undefined}
-                  onPointerEnter={peekable ? openPeek : undefined}
-                  onPointerLeave={peekable ? () => closePeek() : undefined}
+                  className={styles.peekScrim}
+                  data-open={peekOpen || undefined}
+                  aria-hidden
+                  onClick={() => closePeek(0)}
+                />
+                <div
+                  className={styles.peek}
+                  data-open={peekOpen || undefined}
+                  style={{ width: settings.sidebar.width }}
+                  aria-hidden={!peekOpen || undefined}
+                  inert={!peekOpen}
+                  onPointerEnter={openPeek}
+                  onPointerLeave={() => closePeek()}
                 >
-                  <div>
-                    <IconButton
-                      label="Show sidebar"
-                      shortcut="["
-                      icon={PanelLeftIcon}
-                      onClick={() => {
-                        closePeek(0);
-                        sidebar.toggle();
+                  <Sidebar
+                    screen={screen}
+                    selectedId={selectedId}
+                    onNavigate={navigate}
+                    // The peek floats a collapsed sidebar; its toggle pins
+                    // it open.
+                    toggleLabel="Show sidebar"
+                    onToggle={() => {
+                      closePeek(0);
+                      sidebar.toggle();
+                    }}
+                  />
+                </div>
+              </>
+            )}
+
+            {narrow && (drawer.sidebar || drawer.inspector) && (
+              <div
+                className={styles.scrim}
+                aria-hidden
+                onClick={() => setDrawer({ sidebar: false, inspector: false })}
+              />
+            )}
+
+            <div className={styles.main}>
+              <div
+                {...sidebar.handleProps}
+                className={styles.handle}
+                data-side="left"
+                aria-label="Resize sidebar"
+                aria-controls="prototype-sidebar"
+                data-active={sidebar.dragging || undefined}
+                onPointerEnter={peekable ? openPeek : undefined}
+                onPointerLeave={peekable ? () => closePeek() : undefined}
+              />
+              <div className={styles.panel}>
+                <header className={styles.header}>
+                  <div
+                    className={styles.toggleSlot}
+                    data-show={sidebarState.collapsed || undefined}
+                    onPointerEnter={peekable ? openPeek : undefined}
+                    onPointerLeave={peekable ? () => closePeek() : undefined}
+                  >
+                    <div>
+                      <IconButton
+                        label="Show sidebar"
+                        shortcut="["
+                        icon={PanelLeftIcon}
+                        onClick={() => {
+                          closePeek(0);
+                          sidebar.toggle();
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <HeaderTitle screen={screen} accountName={account?.name} />
+                  {screen.type === "reflect" ? (
+                    <ReportTabs value={reportKind} onChange={setReportKind} />
+                  ) : (
+                    <MonthNav
+                      month={data.month}
+                      onChange={(next) => {
+                        if (screen.type === "register") setSelectedId(null);
+                        onMonthChange(next);
                       }}
                     />
-                  </div>
-                </div>
-                <HeaderTitle screen={screen} accountName={account?.name} />
-                {screen.type === "reflect" ? (
-                  <ReportTabs value={reportKind} onChange={setReportKind} />
-                ) : (
-                  <MonthNav
-                    month={data.month}
-                    onChange={(next) => {
-                      if (screen.type === "register") setSelectedId(null);
-                      onMonthChange(next);
-                    }}
-                  />
-                )}
-                {loadingMonth && (
-                  <div className={styles.monthLoading} role="status">
-                    <span className="sr-only">Loading {data.month.label}</span>
-                  </div>
-                )}
-              </header>
-
-              <div className={styles.toolbar}>
-                {screen.type === "reflect" && (
-                  <ReflectFilters
-                    filters={filters}
-                    onChange={(next) => {
-                      setFilters(next);
-                      setPath({});
-                    }}
-                  />
-                )}
-                {screen.type === "register" && (
-                  <button
-                    type="button"
-                    className={`${styles.control} ${styles.filterChip}`}
-                    aria-pressed={reviewOnly}
-                    onClick={() => {
-                      setReviewOnly((value) => !value);
-                      setSelectedId(null);
-                    }}
-                  >
-                    <span className={styles.reviewDot} data-on />
-                    To review
-                    <span className={styles.numeric}>{reviewCount}</span>
-                  </button>
-                )}
-                <div className={styles.toolbarActions}>
-                  {screen.type !== "reflect" && (
-                    <>
-                      <IconButton
-                        label="Filter"
-                        shortcut="F"
-                        icon={ListFilterIcon}
-                        className={styles.control}
-                      />
-                      <IconButton
-                        label="Display options"
-                        icon={SlidersHorizontalIcon}
-                        className={styles.control}
-                      />
-                    </>
                   )}
-                  <IconButton
-                    label={
-                      inspectorState.collapsed ? "Show details" : "Hide details"
-                    }
-                    shortcut="]"
-                    icon={PanelRightIcon}
-                    pressed={!inspectorState.collapsed}
-                    onClick={inspector.toggle}
-                    className={styles.control}
-                  />
-                </div>
-              </div>
+                  {loadingMonth && (
+                    <div className={styles.monthLoading} role="status">
+                      <span className="sr-only">
+                        Loading {data.month.label}
+                      </span>
+                    </div>
+                  )}
+                </header>
 
-              <div className={styles.body}>
-                <main
-                  id="prototype-content"
-                  className={styles.content}
-                  tabIndex={-1}
-                >
-                  {screen.type === "plan" && (
-                    <PlanView
-                      // Like YNAB, clicking a row selects just that row: its
-                      // checkbox ticks and any others clear. Clicking a
-                      // selected row deselects it. Checkboxes add to or
-                      // remove from the selection.
-                      onSelect={(id) => {
-                        if (checked.includes(id)) {
-                          setChecked(checked.filter((item) => item !== id));
-                          setSelectedId(null);
-                        } else {
-                          setSelectedId(id);
-                          setChecked([id]);
-                        }
+                <div className={styles.toolbar}>
+                  {screen.type === "reflect" && (
+                    <ReflectFilters
+                      filters={filters}
+                      onChange={(next) => {
+                        setFilters(next);
+                        setPath({});
                       }}
-                      checked={checked}
-                      onCheck={check}
                     />
                   )}
                   {screen.type === "register" && (
-                    <RegisterView
-                      accountId={screen.accountId}
-                      reviewOnly={reviewOnly}
-                      selectedId={selectedId}
-                      onSelect={select}
-                    />
-                  )}
-                  {screen.type === "loans" && (
-                    <LoansView selectedId={selectedId} onSelect={select} />
-                  )}
-                  {screen.type === "reflect" && (
-                    <ReflectView
-                      spending={spending}
-                      highlight={highlight}
-                      grouping={grouping}
-                      onGroupingChange={(next) => {
-                        setGrouping(next);
-                        setPath({});
+                    <button
+                      type="button"
+                      className={`${styles.control} ${styles.filterChip}`}
+                      aria-pressed={reviewOnly}
+                      onClick={() => {
+                        setReviewOnly((value) => !value);
+                        setSelectedId(null);
                       }}
-                      showList={inspectorState.collapsed}
-                      kind={reportKind}
-                      filters={filters}
-                      path={path}
-                      onPath={setPath}
-                      onFiltersChange={setFilters}
-                      onOpenTransaction={(entry) => {
-                        // Like YNAB: the transaction, selected, in its own
-                        // account's register for the month it happened.
-                        onMonthChange(entry.date.slice(0, 7));
-                        navigate(
-                          {
-                            type: "register",
-                            accountId: entry.accountId ?? null,
-                          },
-                          entry.transactionId,
-                        );
-                      }}
-                    />
-                  )}
-                </main>
-
-                <div className={styles.inspectorSlot}>
-                  <div
-                    {...inspector.handleProps}
-                    className={styles.handle}
-                    data-side="right"
-                    aria-label="Resize details panel"
-                    data-active={inspector.dragging || undefined}
-                  />
-                  <aside
-                    className={styles.inspector}
-                    style={{ width: inspector.width }}
-                    aria-label="Details"
-                    aria-hidden={inspector.width === 0 || undefined}
-                    inert={inspector.width === 0}
-                  >
-                    <div
-                      className={styles.inspectorInner}
-                      style={{ width: inspector.contentWidth }}
                     >
-                      {screen.type === "reflect" ? (
-                        spending.report && (
-                          <section className={styles.card}>
-                            <SpendingList
-                              report={spending.report}
-                              path={path}
-                              highlight={highlight}
-                            />
-                          </section>
-                        )
-                      ) : (
-                        <Inspector
-                          screen={screen}
-                          selectedId={selectedId}
-                          checked={checked}
+                      <span className={styles.reviewDot} data-on />
+                      To review
+                      <span className={styles.numeric}>{reviewCount}</span>
+                    </button>
+                  )}
+                  <div className={styles.toolbarActions}>
+                    {screen.type !== "reflect" && (
+                      <>
+                        <IconButton
+                          label="Filter"
+                          shortcut="F"
+                          icon={ListFilterIcon}
+                          className={styles.control}
                         />
-                      )}
-                    </div>
-                  </aside>
+                        <IconButton
+                          label="Display options"
+                          icon={SlidersHorizontalIcon}
+                          className={styles.control}
+                        />
+                      </>
+                    )}
+                    <IconButton
+                      label={
+                        inspectorState.collapsed
+                          ? "Show details"
+                          : "Hide details"
+                      }
+                      shortcut="]"
+                      icon={PanelRightIcon}
+                      pressed={!inspectorState.collapsed}
+                      onClick={inspector.toggle}
+                      className={styles.control}
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.body}>
+                  <main
+                    id="prototype-content"
+                    className={styles.content}
+                    tabIndex={-1}
+                  >
+                    {screen.type === "plan" && (
+                      <PlanView
+                        // Like YNAB, clicking a row selects just that row: its
+                        // checkbox ticks and any others clear. Clicking a
+                        // selected row deselects it. Checkboxes add to or
+                        // remove from the selection.
+                        onSelect={(id) => {
+                          if (checked.includes(id)) {
+                            setChecked(checked.filter((item) => item !== id));
+                            setSelectedId(null);
+                          } else {
+                            setSelectedId(id);
+                            setChecked([id]);
+                          }
+                        }}
+                        checked={checked}
+                        onCheck={check}
+                      />
+                    )}
+                    {screen.type === "register" && (
+                      <RegisterView
+                        accountId={screen.accountId}
+                        reviewOnly={reviewOnly}
+                        selectedId={selectedId}
+                        onSelect={select}
+                      />
+                    )}
+                    {screen.type === "loans" && (
+                      <LoansView selectedId={selectedId} onSelect={select} />
+                    )}
+                    {screen.type === "reflect" && (
+                      <ReflectView
+                        spending={spending}
+                        highlight={highlight}
+                        grouping={grouping}
+                        onGroupingChange={(next) => {
+                          setGrouping(next);
+                          setPath({});
+                        }}
+                        showList={inspectorState.collapsed}
+                        kind={reportKind}
+                        filters={filters}
+                        path={path}
+                        onPath={setPath}
+                        onFiltersChange={setFilters}
+                        onOpenTransaction={(entry) => {
+                          // Like YNAB: the transaction, selected, in its own
+                          // account's register for the month it happened.
+                          onMonthChange(entry.date.slice(0, 7));
+                          navigate(
+                            {
+                              type: "register",
+                              accountId: entry.accountId ?? null,
+                            },
+                            entry.transactionId,
+                          );
+                        }}
+                      />
+                    )}
+                  </main>
+
+                  <div className={styles.inspectorSlot}>
+                    <div
+                      {...inspector.handleProps}
+                      className={styles.handle}
+                      data-side="right"
+                      aria-label="Resize details panel"
+                      data-active={inspector.dragging || undefined}
+                    />
+                    <aside
+                      className={styles.inspector}
+                      style={{ width: inspector.width }}
+                      aria-label="Details"
+                      aria-hidden={inspector.width === 0 || undefined}
+                      inert={inspector.width === 0}
+                    >
+                      <div
+                        className={styles.inspectorInner}
+                        style={{ width: inspector.contentWidth }}
+                      >
+                        {screen.type === "reflect" ? (
+                          spending.report && (
+                            <section className={styles.card}>
+                              <SpendingList
+                                report={spending.report}
+                                path={path}
+                                highlight={highlight}
+                              />
+                            </section>
+                          )
+                        ) : (
+                          <Inspector
+                            screen={screen}
+                            selectedId={selectedId}
+                            checked={checked}
+                          />
+                        )}
+                      </div>
+                    </aside>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div
-            className={styles.controls}
-            data-open={controlsOpen || undefined}
-          >
-            <button
-              type="button"
-              className={styles.controlsTag}
-              aria-expanded={controlsOpen}
-              onClick={() => setControlsOpen((value) => !value)}
+            <div
+              className={styles.controls}
+              data-open={controlsOpen || undefined}
             >
-              Prototype
-              {controlsOpen ? (
-                <ChevronDownIcon size={12} aria-hidden />
-              ) : (
-                <ChevronUpIcon size={12} aria-hidden />
+              <button
+                type="button"
+                className={styles.controlsTag}
+                aria-expanded={controlsOpen}
+                onClick={() => setControlsOpen((value) => !value)}
+              >
+                Prototype
+                {controlsOpen ? (
+                  <ChevronDownIcon size={12} aria-hidden />
+                ) : (
+                  <ChevronUpIcon size={12} aria-hidden />
+                )}
+              </button>
+              {controlsOpen && (
+                <>
+                  <Segmented
+                    label="Theme"
+                    value={settings.theme}
+                    options={[
+                      ["dark", "Dark"],
+                      ["light", "Light"],
+                    ]}
+                    onChange={(theme) => switchColors({ theme })}
+                  />
+                  <PalettePicker
+                    value={settings.palette}
+                    // Monkeytype's palettes are dark, so picking one leaves
+                    // light mode.
+                    onChange={(name) =>
+                      switchColors({ palette: name, theme: "dark" })
+                    }
+                  />
+                  {moves.length > 0 && (
+                    <span className={styles.readout}>
+                      {moves.length} simulated{" "}
+                      {moves.length === 1 ? "move" : "moves"}, not saved
+                    </span>
+                  )}
+                  <span className={styles.readout} aria-live="polite">
+                    Sidebar{" "}
+                    {sidebarState.collapsed
+                      ? "closed"
+                      : `${Math.round(sidebar.width)}px`}
+                    {" · "}
+                    Details{" "}
+                    {inspectorState.collapsed
+                      ? "closed"
+                      : `${Math.round(inspector.width)}px`}
+                  </span>
+                  <span className={styles.keys}>
+                    <kbd>[</kbd>
+                    <kbd>]</kbd>
+                    <kbd>↑</kbd>
+                    <kbd>↓</kbd>
+                    <kbd>Esc</kbd>
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.resetButton}
+                    onClick={reset}
+                  >
+                    <RotateCcwIcon size={12} aria-hidden />
+                    Reset
+                  </button>
+                </>
               )}
-            </button>
-            {controlsOpen && (
-              <>
-                <Segmented
-                  label="Theme"
-                  value={settings.theme}
-                  options={[
-                    ["dark", "Dark"],
-                    ["light", "Light"],
-                  ]}
-                  onChange={(theme) => switchColors({ theme })}
-                />
-                <PalettePicker
-                  value={settings.palette}
-                  // Monkeytype's palettes are dark, so picking one leaves
-                  // light mode.
-                  onChange={(name) =>
-                    switchColors({ palette: name, theme: "dark" })
-                  }
-                />
-                <span className={styles.readout} aria-live="polite">
-                  Sidebar{" "}
-                  {sidebarState.collapsed
-                    ? "closed"
-                    : `${Math.round(sidebar.width)}px`}
-                  {" · "}
-                  Details{" "}
-                  {inspectorState.collapsed
-                    ? "closed"
-                    : `${Math.round(inspector.width)}px`}
-                </span>
-                <span className={styles.keys}>
-                  <kbd>[</kbd>
-                  <kbd>]</kbd>
-                  <kbd>↑</kbd>
-                  <kbd>↓</kbd>
-                  <kbd>Esc</kbd>
+            </div>
+            {toastMove && (
+              <div className={moveStyles.toast} role="status">
+                <span>
+                  Moved {money(toastMove.amount)} from{" "}
+                  {placeName(toastMove.from)} to {placeName(toastMove.to)}
                 </span>
                 <button
                   type="button"
-                  className={styles.resetButton}
-                  onClick={reset}
+                  className={`${styles.control} ${moveStyles.button}`}
+                  onClick={() => {
+                    onMovesChange(
+                      moves.filter((move) => move.id !== toastMove.id),
+                    );
+                    setToastId(null);
+                  }}
                 >
-                  <RotateCcwIcon size={12} aria-hidden />
-                  Reset
+                  Undo
                 </button>
-              </>
+              </div>
             )}
-          </div>
-        </TooltipLayer>
-      </div>
+          </TooltipLayer>
+        </div>
+      </MoveMoneyProvider>
     </ShellDataProvider>
   );
 }

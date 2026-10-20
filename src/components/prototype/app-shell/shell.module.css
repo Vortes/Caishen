@@ -882,6 +882,15 @@
   color: var(--text-3);
   font-size: var(--font-small);
 }
+.cardActions {
+  display: flex;
+  gap: 8px;
+  padding-top: 10px;
+}
+.cardActions .control {
+  height: var(--size-control-sm);
+  font-size: var(--font-small);
+}
 .figure[data-state="funded"] strong {
   color: var(--green);
 }
