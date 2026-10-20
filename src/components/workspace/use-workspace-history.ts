@@ -93,9 +93,12 @@ export function useWorkspaceHistory({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const direction = shortcutDirection(event);
-      if (!direction || isEditing(event) || unavailable || !history[direction])
-        return;
+      if (!direction || isEditing(event)) return;
+      // Outside a text field the shortcut belongs to the budget's history.
+      // The browser's own undo would jump into the last edited field and
+      // revert it, so it never runs here, even while history waits.
       event.preventDefault();
+      if (unavailable || !history[direction]) return;
       perform(direction);
     };
     window.addEventListener("keydown", onKeyDown);

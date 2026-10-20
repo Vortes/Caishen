@@ -110,6 +110,15 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: -1px;
 }
+/* With its calendar open, the date is the field being filled in, though
+   focus sits on a day inside the calendar. */
+.well[data-date]:has(.input[aria-expanded="true"]) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.well[data-date]:not([data-invalid]):has(.input[aria-expanded="true"]) {
+  border-color: var(--focus-ring);
+}
 .well[data-invalid] {
   border-color: var(--danger-line);
 }

@@ -285,7 +285,7 @@ test("clicking the payee lists recent payees, and the category keeps its name wh
     .sort((a, b) => b.date.localeCompare(a.date))[0]!.payee;
   await expect(suggestions.getByRole("option").first()).toHaveText(latest);
   // A suggestion's text lines up with what's typed in the field.
-  const typed = (await payee.boundingBox())!.x + 11;
+  const typed = (await payee.boundingBox())!.x;
   const optionText = await suggestions
     .getByRole("option")
     .first()
@@ -495,6 +495,10 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await page.keyboard.press("e");
   const inline = content(page).getByRole("form", { name: "Edit transaction" });
   await expect(field(inline, "Payee")).toHaveValue("Bistro");
+  // Edit lands on the category with its list open, over the row's actions.
+  await expect(page.getByRole("listbox", { name: "Category" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox", { name: "Category" })).toHaveCount(0);
   await inline.getByRole("button", { name: "Cancel" }).click();
   await expect(inline).toHaveCount(0);
   await expect(
@@ -612,9 +616,12 @@ test("validation waits for Save, errors sit by their fields, and Escape closes o
   await expect(category).toBeFocused();
   await expect(payee).toHaveValue("Draft");
 
-  // Undo waits while the editor is open, wherever focus is.
+  // Undo waits while the editor is open, wherever focus is, and the
+  // browser's own undo doesn't reach back into a field.
   await form.getByRole("button", { name: "Cancel" }).focus();
   await page.keyboard.press("Meta+z");
+  await expect(form.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await expect(page.getByRole("listbox", { name: "Category" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(form).toHaveCount(0);
   await expect(addButton(page)).toBeFocused();
@@ -934,6 +941,12 @@ test("Add opens the first column at once, and the entry row sits under the regis
     await expect(today(page).locator("xpath=..")).toHaveAttribute(
       "aria-selected",
       "true",
+    );
+
+    // Focus is on a day, but the date is the field being filled in.
+    await expect(field(form, "Date").locator("..")).toHaveCSS(
+      "outline-style",
+      "solid",
     );
 
     // The calendar opens under the date field.
