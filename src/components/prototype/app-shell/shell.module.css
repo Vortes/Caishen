@@ -1,0 +1,1473 @@
+/* Surfaces come from one hue and one tint amount, like Linear's LCH theme
+   generator. "Neutral" nearly removes the hue; "Indigo" keeps Caishen's. */
+.root {
+  --hue: 282;
+  --tint: 0.004;
+  --bg: oklch(0.15 var(--tint) var(--hue));
+  --panel: oklch(0.178 var(--tint) var(--hue));
+  --raised: oklch(0.205 var(--tint) var(--hue));
+  --group: oklch(0.192 var(--tint) var(--hue));
+  --hover: oklch(0.222 var(--tint) var(--hue));
+  --selected: oklch(0.245 calc(var(--tint) * 1.5) var(--hue));
+  --line: oklch(0.24 var(--tint) var(--hue));
+  --line-strong: oklch(0.34 var(--tint) var(--hue));
+  --text: oklch(0.95 calc(var(--tint) * 0.5) var(--hue));
+  --text-2: oklch(0.79 calc(var(--tint) * 0.8) var(--hue));
+  --text-3: oklch(0.64 var(--tint) var(--hue));
+  --control: oklch(0.2 var(--tint) var(--hue));
+  --control-hover: oklch(0.232 var(--tint) var(--hue));
+  --control-active: oklch(0.29 var(--tint) var(--hue));
+  --control-line: oklch(0.26 var(--tint) var(--hue));
+  --control-active-line: oklch(0.34 var(--tint) var(--hue));
+  --card-line: oklch(0.25 var(--tint) var(--hue));
+  --edge-lit: oklch(0.56 var(--tint) var(--hue));
+  --accent: oklch(0.6 0.17 282);
+  --accent-hover: color-mix(in oklch, var(--accent) 88%, white);
+  --green: oklch(0.8 0.13 150);
+  --green-bg: oklch(0.4 0.07 150 / 0.38);
+  --amber: oklch(0.85 0.12 82);
+  --amber-bg: oklch(0.45 0.08 75 / 0.36);
+  --red: oklch(0.74 0.15 22);
+  --red-bg: oklch(0.42 0.11 22 / 0.4);
+
+  --card-shadow: 0 1px 2px oklch(0 0 0 / 0.24), 0 4px 14px oklch(0 0 0 / 0.16);
+  --drawer-shadow:
+    0 8px 24px oklch(0 0 0 / 0.35), 0 24px 64px oklch(0 0 0 / 0.3);
+
+  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
+  --panel-duration: 260ms;
+  --row: 32px;
+  --nav-row: 28px;
+  --gutter: 8px;
+
+  position: fixed;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+  padding: var(--gutter);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
+}
+.root[data-tint="indigo"] {
+  --tint: 0.024;
+}
+
+/* Light theme: same hue and tint, new lightness. Borders turn translucent so
+   they recede on light surfaces; status colors darken to stay readable. */
+.root[data-theme="light"] {
+  color-scheme: light;
+  --bg: oklch(0.958 var(--tint) var(--hue));
+  --panel: oklch(0.995 calc(var(--tint) * 0.3) var(--hue));
+  --raised: oklch(0.982 calc(var(--tint) * 0.6) var(--hue));
+  --group: oklch(0.976 calc(var(--tint) * 0.6) var(--hue));
+  --hover: oklch(0.952 var(--tint) var(--hue));
+  --selected: oklch(0.928 calc(var(--tint) * 1.5) var(--hue));
+  --line: oklch(0.25 var(--tint) var(--hue) / 0.09);
+  --line-strong: oklch(0.25 var(--tint) var(--hue) / 0.18);
+  --text: oklch(0.22 var(--tint) var(--hue));
+  --text-2: oklch(0.42 var(--tint) var(--hue));
+  --text-3: oklch(0.54 var(--tint) var(--hue));
+  --control: oklch(0.995 calc(var(--tint) * 0.3) var(--hue));
+  --control-hover: oklch(0.965 var(--tint) var(--hue));
+  --control-active: oklch(0.925 calc(var(--tint) * 1.2) var(--hue));
+  --control-line: oklch(0.25 var(--tint) var(--hue) / 0.12);
+  --control-active-line: oklch(0.25 var(--tint) var(--hue) / 0.2);
+  --card-line: oklch(0.25 var(--tint) var(--hue) / 0.08);
+  --edge-lit: oklch(0.25 var(--tint) var(--hue) / 0.45);
+  --accent: oklch(0.55 0.19 282);
+  --accent-hover: color-mix(in oklch, var(--accent) 88%, black);
+  --green: oklch(0.52 0.13 150);
+  --green-bg: oklch(0.94 0.05 150);
+  --amber: oklch(0.56 0.12 65);
+  --amber-bg: oklch(0.95 0.06 85);
+  --red: oklch(0.55 0.19 25);
+  --red-bg: oklch(0.95 0.035 22);
+  --card-shadow:
+    0 1px 2px oklch(0.2 0.01 var(--hue) / 0.05),
+    0 4px 14px oklch(0.2 0.01 var(--hue) / 0.05);
+  --drawer-shadow:
+    0 8px 24px oklch(0.2 0.01 var(--hue) / 0.12),
+    0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
+}
+.root[data-switching] *,
+.root[data-switching] *::after {
+  transition: none !important;
+}
+.root[data-theme="light"] .scrim {
+  background: oklch(0.2 0.01 var(--hue) / 0.2);
+}
+.root[data-density="comfortable"] {
+  --row: 38px;
+  --nav-row: 32px;
+}
+.root :where(button) {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  transition: none;
+}
+.root :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+:global(html[data-resizing]) * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.skipLink {
+  position: absolute;
+  z-index: 100;
+  top: 12px;
+  left: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  transform: translateY(-200%);
+}
+.skipLink:focus-visible {
+  transform: none;
+}
+
+/* ---------- Sidebar ---------- */
+
+/* The slot's width animates; its content keeps a fixed width and hugs the
+   right edge, so closing slides the content out to the left. */
+.sidebar {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  overflow: hidden;
+  height: 100%;
+}
+.root[data-ready] .sidebar,
+.root[data-ready] .inspector {
+  transition: width var(--panel-duration) var(--ease-panel);
+}
+.root[data-dragging] .sidebar,
+.root[data-dragging] .inspector {
+  transition: none;
+}
+.sidebarInner {
+  flex: none;
+  height: 100%;
+  padding-right: var(--gutter);
+}
+.sidebarNav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  margin-bottom: 8px;
+}
+.switcher {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-weight: 500;
+}
+.switcher:hover {
+  background: var(--hover);
+}
+.switcher > svg {
+  flex: none;
+  color: var(--text-3);
+}
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: oklch(0.6 0.15 30);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+}
+.switcherName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebarScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.navItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--nav-row);
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+}
+.navItem:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.navItem[aria-current="page"] {
+  background: var(--selected);
+  color: var(--text);
+}
+.navIcon {
+  flex: none;
+  color: var(--text-3);
+}
+.navItem[aria-current="page"] .navIcon {
+  color: var(--text-2);
+}
+.navLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.navValue,
+.sectionTotal {
+  flex: none;
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.navCount {
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.warningDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+.navSection {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+.sectionHeading:hover {
+  color: var(--text-2);
+}
+.sectionCaret {
+  transition: transform 150ms var(--ease-panel);
+}
+.sectionHeading[aria-expanded="false"] .sectionCaret {
+  transform: rotate(-90deg);
+}
+.sectionTotal {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.sectionHeading:hover .sectionTotal,
+.sectionHeading:focus-visible .sectionTotal {
+  opacity: 1;
+}
+.sidebarFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding-top: 8px;
+}
+.footerItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+}
+.footerItem:hover {
+  background: var(--hover);
+  color: var(--text-2);
+}
+
+/* ---------- Main panel ---------- */
+
+.main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+/* Reserves room for the sidebar toggle only while the sidebar is closed. */
+.toggleSlot {
+  display: grid;
+  grid-template-columns: 0fr;
+  margin-right: -8px;
+  opacity: 0;
+  transition:
+    grid-template-columns var(--panel-duration) var(--ease-panel),
+    margin-right var(--panel-duration) var(--ease-panel),
+    opacity 150ms;
+}
+.toggleSlot > div {
+  min-width: 0;
+  overflow: hidden;
+}
+.toggleSlot[data-show] {
+  grid-template-columns: 1fr;
+  margin-right: 0;
+  margin-left: -4px;
+  opacity: 1;
+}
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.headerTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: inherit;
+  white-space: nowrap;
+}
+.crumb {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.crumbSeparator {
+  flex: none;
+  color: var(--text-3);
+}
+.monthNav {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+.monthButton {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.monthButton:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 10px 0 20px;
+}
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+/* ---------- Ready to Assign ---------- */
+
+.rtaCard {
+  --tone: var(--green);
+}
+.rtaCard[data-state="zero"] {
+  --tone: var(--text-2);
+}
+.rtaCard[data-state="over"] {
+  --tone: var(--red);
+}
+.rtaButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px 0 10px;
+  border: 1px solid color-mix(in oklab, var(--tone) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--tone) 22%, var(--panel));
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 150ms,
+    transform 100ms;
+}
+.rtaButton:hover {
+  background: color-mix(in oklab, var(--tone) 32%, var(--panel));
+}
+.rtaButton:active {
+  transform: scale(0.97);
+}
+
+/* Inspector: the first card, so the header stays as clean as Linear's. */
+.rtaCard {
+  gap: 4px;
+  border-color: color-mix(in oklab, var(--tone) 28%, transparent);
+  background: color-mix(in oklab, var(--tone) 9%, var(--raised));
+}
+.rtaCardLabel {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.rtaCard strong {
+  color: var(--tone);
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.rtaCard p {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.rtaCard .rtaButton {
+  height: 30px;
+  margin-top: 6px;
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--line-strong);
+}
+.iconButton {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+}
+.iconButton:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.iconButton:active {
+  transform: scale(0.94);
+}
+.iconButton[aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--text);
+}
+/* Tooltip: delayed on first hover, never interactive. Scales from its
+   trigger; reopening while another is showing skips the animation. */
+.tooltip {
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  box-shadow: 0 4px 12px oklch(0 0 0 / 0.2);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+  animation: tooltip-in 120ms var(--ease-panel);
+}
+.tooltip[data-state="instant-open"] {
+  animation: none;
+}
+.tooltip kbd {
+  color: var(--text-3);
+  font-family: inherit;
+}
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.filterChip {
+  gap: 6px;
+  font-size: 12px;
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  container-type: inline-size;
+  outline: none;
+}
+
+/* ---------- Controls: Linear-style filled pills ---------- */
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--control-line);
+  border-radius: 999px;
+  background: var(--control);
+  color: var(--text-2);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms,
+    transform 100ms;
+}
+.control:hover {
+  background: var(--control-hover);
+  color: var(--text);
+}
+.control:active {
+  transform: scale(0.97);
+}
+.control[aria-pressed="true"],
+.control[aria-selected="true"] {
+  border-color: var(--control-active-line);
+  background: var(--control-active);
+  color: var(--text);
+}
+.control.iconButton {
+  width: 28px;
+  padding: 0;
+  border-radius: 50%;
+}
+.root .control:focus-visible {
+  border-radius: 999px;
+  outline-offset: 2px;
+}
+
+/* ---------- Resize handles ---------- */
+
+.handle {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.handle[data-side="left"] {
+  left: calc(var(--gutter) * -1 - 2px);
+}
+.handle[data-side="right"] {
+  left: 0;
+}
+/* Linear-style resize affordance: a 1px beam that stops short of the ends
+   and fades out toward them. The short delay keeps it quiet when the cursor
+   just passes by; it stays lit while dragging. */
+.handle::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: var(--edge-lit);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 20%,
+    black 80%,
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+/* Sidebar: on the main panel's left border. */
+.handle[data-side="left"]::after {
+  left: calc(var(--gutter) + 2px);
+}
+/* Details: down the middle of the gap before the cards. */
+.handle[data-side="right"]::after {
+  left: 6px;
+}
+.handle:hover::after,
+.handle:focus-visible::after,
+.handle[data-active]::after {
+  opacity: 1;
+  transition: opacity 320ms var(--ease-panel) 100ms;
+}
+.root .handle:focus-visible {
+  outline: none;
+}
+
+/* ---------- Inspector ---------- */
+
+.inspectorSlot {
+  position: relative;
+  flex: none;
+  display: flex;
+}
+.inspector {
+  display: flex;
+  justify-content: flex-start;
+  overflow: hidden;
+  height: 100%;
+}
+.inspectorInner {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 0 10px 10px 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--card-line);
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: var(--card-shadow);
+}
+/* The last card runs to the bottom of the panel, like Linear's. */
+.card:last-child {
+  flex: 1;
+}
+.cardTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 2px 6px;
+}
+.cardTitle p {
+  color: var(--text-3);
+  font-size: 12px;
+  text-wrap: pretty;
+}
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.cardTitleRow h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.titleIcon {
+  flex: none;
+  color: var(--text-3);
+}
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 2px 2px;
+}
+.figure strong {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.figure span {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.figure[data-state="funded"] strong {
+  color: var(--green);
+}
+.figure[data-state="underfunded"] span {
+  color: var(--amber);
+}
+.figure[data-state="overspent"] strong,
+.figure[data-state="overspent"] span {
+  color: var(--red);
+}
+.property {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  min-height: 30px;
+}
+.propertyLabel {
+  padding-left: 2px;
+  color: var(--text-3);
+}
+.propertyValue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 26px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.propertyValue:hover {
+  background: var(--hover);
+}
+.propertyValue > svg {
+  flex: none;
+  color: var(--text-3);
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+.tab {
+  font-size: 12px;
+}
+.tabBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tabEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 2px;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+.textButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-weight: 500;
+}
+.textButton:hover {
+  color: var(--text);
+}
+.actionList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.actionItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+}
+.actionItem > span:nth-last-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.actionItem:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.actionItem > svg {
+  flex: none;
+  color: var(--text-3);
+}
+.note {
+  display: flex;
+  gap: 8px;
+  padding: 6px 2px;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.note > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 2px 4px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.meterTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--hover);
+}
+.meterTrack > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transform-origin: left;
+}
+.meter[data-state="underfunded"] .meterTrack > span {
+  background: var(--amber);
+}
+.meter[data-state="overspent"] .meterTrack > span {
+  background: var(--red);
+}
+.meter[data-state="overspent"] {
+  color: var(--red);
+}
+.reviewNote {
+  padding: 2px 2px 8px;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.secondaryButton {
+  align-self: flex-start;
+}
+
+/* ---------- Lists ---------- */
+
+/* Rows sit inset from the panel edge with a wide left padding that holds
+   the checkbox, keeping row controls clear of the strip at the window edge
+   that opens the collapsed sidebar. */
+.list {
+  padding: 0 8px 72px;
+}
+.columns,
+.txColumns,
+.loanColumns {
+  display: grid;
+  align-items: center;
+  column-gap: 16px;
+  width: 100%;
+  padding: 0 12px 0 34px;
+}
+.columns {
+  grid-template-columns: minmax(0, 1fr) 104px 104px 116px;
+}
+.txColumns {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr) 104px;
+}
+.loanColumns {
+  grid-template-columns: minmax(0, 1fr) 80px 96px 128px;
+}
+@container (max-width: 560px) {
+  .list [data-optional] {
+    display: none;
+  }
+  .columns {
+    grid-template-columns: minmax(0, 1fr) 116px;
+  }
+  .txColumns {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 104px;
+  }
+  .loanColumns {
+    grid-template-columns: minmax(0, 1fr) 128px;
+  }
+}
+.columnHeader {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  height: 32px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-3);
+  font-size: 12px;
+}
+.groupRow,
+.dayRow {
+  height: var(--row);
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--group);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+.groupRow:hover {
+  color: var(--text);
+}
+.groupRow .numeric {
+  color: var(--text-3);
+  font-weight: 400;
+}
+.dayRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 34px;
+}
+.groupName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.groupCaret {
+  color: var(--text-3);
+  transition: transform 150ms var(--ease-panel);
+}
+.groupRow[aria-expanded="false"] .groupCaret {
+  transform: rotate(-90deg);
+}
+.groupCount {
+  color: var(--text-3);
+  font-weight: 400;
+}
+.row {
+  height: var(--row);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.row:hover {
+  background: var(--hover);
+}
+.row[aria-current="true"] {
+  background: var(--selected);
+}
+.root .row:focus-visible,
+.root .groupRow:focus-visible {
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.rowWrap {
+  position: relative;
+}
+/* The checkbox overlays the row, so hover is tracked on the wrapper to keep
+   the row highlighted while the pointer is on the checkbox. */
+.rowWrap:hover > .row {
+  background: var(--hover);
+}
+.rowWrap:hover > .groupRow {
+  color: var(--text);
+}
+.rowWrap[data-checked] > .row {
+  background: color-mix(in oklch, var(--accent) 16%, var(--panel));
+}
+.rowWrap[data-checked]:hover > .row {
+  background: color-mix(in oklch, var(--accent) 22%, var(--panel));
+}
+.checkbox {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  opacity: 0;
+}
+.checkbox > span {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: white;
+}
+.rowWrap:hover .checkbox,
+.list[data-selecting] .checkbox,
+.checkbox:focus-visible,
+.checkbox[aria-checked="true"],
+.checkbox[aria-checked="mixed"] {
+  opacity: 1;
+}
+.checkbox:hover > span {
+  border-color: var(--accent);
+}
+.checkbox[aria-checked="true"] > span,
+.checkbox[aria-checked="mixed"] > span {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.root .checkbox:focus-visible {
+  outline-offset: -4px;
+}
+.rowName {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.numeric {
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.numeric[data-inflow] {
+  color: var(--green);
+}
+.muted {
+  color: var(--text-2);
+}
+.faint {
+  color: var(--text-3);
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--text-2);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pill[data-state="funded"] {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.pill[data-state="underfunded"] {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.pill[data-state="overspent"] {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.chip[data-tone="amber"] {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.ring {
+  flex: none;
+}
+.ringTrack {
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+}
+.ring[data-state="underfunded"] .ringTrack {
+  stroke: var(--amber);
+}
+.ringArc {
+  fill: none;
+  stroke: var(--amber);
+}
+.ringFill {
+  fill: var(--green);
+}
+.ring[data-state="overspent"] .ringFill {
+  fill: var(--red);
+}
+.ringMark {
+  fill: none;
+  stroke: var(--panel);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.statusIcon {
+  flex: none;
+  color: var(--text-3);
+}
+.statusIcon[data-status="cleared"] {
+  color: var(--green);
+}
+.reviewDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: -12px;
+  margin-right: -4px;
+  border-radius: 50%;
+}
+.reviewDot[data-on] {
+  background: var(--accent);
+}
+.filterChip .reviewDot,
+.actionItem .reviewDot {
+  margin: 0;
+}
+.empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 360px;
+  margin: 96px auto;
+  color: var(--text-3);
+}
+.empty > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--green);
+}
+.empty strong {
+  display: block;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ---------- Funding indicator variants ---------- */
+
+.nameStack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.bar {
+  display: none;
+  width: 100%;
+  max-width: var(--bar-width, 704px);
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--hover);
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transform-origin: left;
+}
+.bar[data-state="underfunded"] > span {
+  background: var(--amber);
+}
+.bar[data-state="overspent"] > span {
+  background: var(--red);
+}
+.root[data-indicator="bar"] .bar {
+  display: block;
+  margin-top: 4px;
+}
+.root[data-indicator="bar"] .ring {
+  display: none;
+}
+
+/* ---------- Collapsed sidebar peek ---------- */
+
+/* Floats below the header so the breadcrumb and sidebar button stay usable.
+   Slides in from past the window edge; leaves faster than it arrives. */
+.peek {
+  position: absolute;
+  z-index: 40;
+  top: calc(var(--gutter) + 52px);
+  bottom: calc(var(--gutter) + 6px);
+  left: calc(var(--gutter) + 4px);
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--drawer-shadow);
+  visibility: hidden;
+  transform: translateX(calc(-100% - var(--gutter) - 8px));
+  transition:
+    transform 180ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s 180ms;
+}
+.peek[data-open] {
+  visibility: visible;
+  transform: none;
+  transition:
+    transform 260ms var(--ease-panel),
+    visibility 0s;
+}
+.peek .sidebarHeader {
+  height: 28px;
+}
+.peekScrim {
+  position: absolute;
+  z-index: 35;
+  top: calc(var(--gutter) + 45px);
+  right: var(--gutter);
+  bottom: var(--gutter);
+  left: var(--gutter);
+  border-radius: 0 0 10px 10px;
+  background: oklch(0 0 0 / 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-in;
+}
+.peekScrim[data-open] {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 260ms var(--ease-panel);
+}
+.root[data-theme="light"] .peekScrim {
+  background: oklch(0.2 0.01 var(--hue) / 0.14);
+}
+/* While collapsed the left edge opens the peek, so it shows no resize beam. */
+.root[data-peekable] .handle[data-side="left"]::after {
+  display: none;
+}
+/* A wider hot zone, since the cursor is usually flung to the window edge. */
+.root[data-peekable] .handle[data-side="left"] {
+  width: 18px;
+}
+
+/* ---------- Narrow screens: panels float over content ---------- */
+
+.root[data-narrow] .iconButton::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.root[data-narrow] .sidebar {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  padding: var(--gutter) 0 var(--gutter) var(--gutter);
+  background: var(--bg);
+}
+.root[data-narrow] .sidebar[data-open] {
+  box-shadow:
+    0 0 0 1px var(--line),
+    var(--drawer-shadow);
+}
+.root[data-narrow] .inspectorSlot {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--panel);
+}
+.root[data-narrow] .handle {
+  display: none;
+}
+.scrim {
+  position: absolute;
+  z-index: 15;
+  inset: 0;
+  background: oklch(0 0 0 / 0.4);
+}
+
+/* ---------- Prototype controls (not part of the design) ---------- */
+
+.controls {
+  position: fixed;
+  z-index: 60;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  max-width: calc(100vw - 340px);
+  min-height: 40px;
+  padding: 4px 6px;
+  border: 1px solid oklch(0.4 0.02 82);
+  border-radius: 10px;
+  background: oklch(0.22 0.012 82);
+  box-shadow:
+    0 2px 6px oklch(0 0 0 / 0.3),
+    0 12px 32px oklch(0 0 0 / 0.35);
+  color: oklch(0.86 0.02 82);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.controlsTag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: oklch(0.78 0.12 82);
+  color: oklch(0.2 0.03 82);
+  font-weight: 600;
+}
+.segmented {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.segmentedLabel {
+  margin-right: 6px;
+  color: oklch(0.68 0.02 82);
+}
+.segmented button {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+.segmented button:hover {
+  background: oklch(0.28 0.012 82);
+}
+.segmented button[aria-checked="true"] {
+  background: oklch(0.34 0.015 82);
+  color: white;
+}
+.readout {
+  min-width: 190px;
+  color: oklch(0.68 0.02 82);
+  font-variant-numeric: tabular-nums;
+}
+.keys {
+  display: flex;
+  gap: 3px;
+}
+.keys kbd {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid oklch(0.38 0.015 82);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.resetButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid oklch(0.4 0.02 82);
+  border-radius: 6px;
+  background: transparent;
+}
+.resetButton:hover {
+  background: oklch(0.28 0.012 82);
+}
+@media (max-width: 1600px) {
+  .keys,
+  .readout {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    --panel-duration: 0ms;
+  }
+  .root *,
+  .root *::after {
+    transition-duration: 0ms !important;
+  }
+}
