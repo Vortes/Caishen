@@ -1,0 +1,80 @@
+/* The funding bar: sections split into spent (striped), available (solid),
+   and still needed (empty track), with overspending striped red. Tokens come
+   from the shell root, so both themes apply. */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  /* The status text ends where the bar ends. */
+  max-width: 704px;
+}
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.status {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: var(--font-small);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bar {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  height: 6px;
+}
+.segment {
+  --tone: var(--green);
+  min-width: 2px;
+  border-radius: 3px;
+}
+/* YNAB's three bar colors: green, yellow while a target is unmet, and red
+   for overspending of either kind. */
+.segment[data-tone="underfunded"] {
+  --tone: var(--amber);
+}
+.segment[data-tone="overspent"] {
+  --tone: var(--red);
+}
+.segment[data-kind="available"] {
+  background: var(--tone);
+}
+/* Spent money keeps its tone but reads as used: bright stripes over a dim
+   wash of the same color. */
+.segment[data-kind="spent"],
+.segment[data-kind="over"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--tone) 0 1.5px,
+    color-mix(in oklch, var(--tone) 28%, transparent) 1.5px 4px
+  );
+}
+.segment[data-kind="needed"] {
+  flex-grow: 1;
+  background: var(--hover);
+}
+
+.swatch {
+  display: flex;
+  flex: none;
+  width: 32px;
+  height: 6px;
+}
+.swatch > .segment {
+  flex-grow: 1;
+}

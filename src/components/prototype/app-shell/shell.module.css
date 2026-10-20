@@ -1349,12 +1349,6 @@ button.actionItem:hover {
     transform: rotate(360deg);
   }
 }
-.nameLine {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
 .inlineIcon {
   flex: none;
   color: var(--text-3);
@@ -1390,44 +1384,6 @@ button.actionItem:hover {
   to {
     transform: translateX(340%);
   }
-}
-
-/* ---------- Funding bar ---------- */
-
-.nameStack {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.bar {
-  display: block;
-  margin-top: 4px;
-  width: 100%;
-  max-width: 704px;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 2px;
-  background: var(--hover);
-}
-.bar > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--green);
-  transform-origin: left;
-}
-.bar[data-state="underfunded"] > span {
-  background: var(--amber);
-}
-.bar[data-state="credit"] > span {
-  background: var(--amber);
-}
-.bar[data-state="snoozed"] > span {
-  background: var(--text-3);
-}
-.bar[data-state="overspent"] > span {
-  background: var(--red);
 }
 
 /* ---------- Collapsed sidebar peek ---------- */

@@ -19,6 +19,7 @@ import {
   type Category,
   type Funding,
 } from "./model";
+import { FundingBar } from "./funding-bar";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 
@@ -170,21 +171,18 @@ export function PlanView({
                       onClick={() => onSelect(category.id)}
                     >
                       <span className={styles.rowName}>
-                        <span className={styles.nameStack}>
-                          <span className={styles.nameLine}>
-                            <span className={styles.truncate}>
-                              {category.name}
-                            </span>
-                            {category.sharePercents.length > 0 && (
-                              <UsersIcon
-                                size={12}
-                                className={styles.inlineIcon}
-                                aria-label="Shared"
-                              />
-                            )}
+                        <FundingBar category={category}>
+                          <span className={styles.truncate}>
+                            {category.name}
                           </span>
-                          <FundingBar category={category} />
-                        </span>
+                          {category.sharePercents.length > 0 && (
+                            <UsersIcon
+                              size={12}
+                              className={styles.inlineIcon}
+                              aria-label="Shared"
+                            />
+                          )}
+                        </FundingBar>
                       </span>
                       <span
                         className={`${styles.numeric} ${styles.muted}`}
@@ -310,22 +308,6 @@ export function FundingRing({
         </>
       )}
     </svg>
-  );
-}
-
-// How funded the category is, under its name. FundingRing marks the same
-// state as the inspector's title icon.
-function FundingBar({ category }: { category: Category }) {
-  const state = category.funding;
-  return (
-    <span
-      className={styles.bar}
-      data-state={state}
-      role="img"
-      aria-label={fundingLabel[state]}
-    >
-      <span style={{ transform: `scaleX(${category.fundedRatio})` }} />
-    </span>
   );
 }
 

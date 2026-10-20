@@ -7,7 +7,8 @@ import { describeTarget } from "~/components/budget/target-section";
 import type { State, View } from "~/components/budget/types";
 import { partnerOf, sharePercent } from "~/components/shared-expenses/split";
 import { transactionCategory } from "~/components/transactions/transaction-row";
-import type { AutoAssignCategory } from "~/domain/auto-assign";
+import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
+import type { Target } from "~/domain/engine";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
 
 // The shell's read-only view of one budget month, built from the same
@@ -33,6 +34,9 @@ export type Category = {
     funded: number;
     total: number;
     needed: number;
+    // The progress bar's sections, in cents, before any extra section for
+    // money past the target. See targetSections.
+    sections: number[];
   };
   pays?: { type: "card" | "loan"; id: string; name: string };
   reserved: number;
@@ -161,6 +165,27 @@ const historyReason: Record<
   removed: "Removed",
 };
 
+// YNAB's progress bar sections (support.ynab.com, "Progress Bars"): weekly
+// targets get a section per week; "set aside another" targets also get a
+// first section for money that rolled over. Otherwise one section is the
+// month or the target period.
+function targetSections(
+  target: Target,
+  total: number,
+  rollover: number,
+  month: string,
+): number[] {
+  const setAside = target.behavior === "contribution" && rollover > 0;
+  if (target.cadence === "weekly") {
+    const weeks = weekdaysIn(month, target.weekday ?? 0).map(
+      () => target.amount,
+    );
+    return setAside ? [rollover, ...weeks] : weeks;
+  }
+  if (target.cadence === "monthly" && setAside) return [rollover, total];
+  return [total];
+}
+
 export function toShellData(state: State): ShellData {
   const view = state.view!;
   const month = view.month;
@@ -209,6 +234,12 @@ export function toShellData(state: State): ShellData {
               funded: progress.funded,
               total: progress.total,
               needed: progress.needed,
+              sections: targetSections(
+                item.target,
+                progress.total,
+                item.opening,
+                month,
+              ),
             }
           : undefined,
       pays: item.pairedAccountId
