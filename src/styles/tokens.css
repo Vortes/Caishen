@@ -176,6 +176,16 @@
     var(--status-underfunded) 45%,
     var(--surface-panel)
   );
+
+  /* Loading skeletons: a bone one step above the selected surface, so it
+     reads on panels and cards alike, and a shine that sweeps across it. */
+  --skeleton-bone: var(--surface-selected);
+  --skeleton-shine: var(--border-strong);
+}
+/* Light borders are translucent, so the shine is the panel instead: a band
+   of light, as in the dark theme. */
+[data-theme="light"] {
+  --skeleton-shine: var(--surface-panel);
 }
 
 /* ---------- Scale ---------- */
@@ -220,4 +230,6 @@
 
   --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
   --duration-panel: 260ms;
+  /* One pass of a skeleton's shine across the window. */
+  --duration-shimmer: 1600ms;
 }

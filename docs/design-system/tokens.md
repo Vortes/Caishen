@@ -99,5 +99,9 @@ everywhere else a status color appears at full strength.
 card takes no cash, it adds card debt the plan hasn't funded yet. Only
 `--status-overspent` (cash) is red.
 
+Loading skeletons: `--skeleton-bone` fills a bone and `--skeleton-shine`
+is the band that sweeps it. Only `Skeleton` uses them; a hand-drawn bone in
+`--surface-selected` misses the shine and drifts if the bone color changes.
+
 Shadows: `--shadow-card` for cards, `--shadow-drawer` for anything that
 floats over content (drawers, popovers), `--shadow-tooltip` for tooltips.

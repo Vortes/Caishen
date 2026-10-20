@@ -205,7 +205,7 @@ export function Sidebar({
 
 // Linear's section caret: a small filled triangle that turns to point right
 // when the section closes.
-function Caret() {
+export function Caret() {
   return (
     <svg
       width="8"

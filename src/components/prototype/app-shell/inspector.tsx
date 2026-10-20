@@ -135,7 +135,7 @@ function LoanIcon() {
   );
 }
 
-const autoAssignOptions: [AutoAssignOption, string][] = [
+export const autoAssignOptions: [AutoAssignOption, string][] = [
   ["underfunded", "Underfunded"],
   ["assigned-last-month", "Assigned last month"],
   ["spent-last-month", "Spent last month"],
