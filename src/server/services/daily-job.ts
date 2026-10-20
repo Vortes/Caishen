@@ -1,5 +1,6 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { bookSchema } from "~/domain/engine";
+import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import {
   buildDailyReviewMessage,
   createResendClient,
@@ -102,7 +103,7 @@ async function preparePayload(
     budget.transactions.filter(
       (transaction) => !transaction.removed && !transaction.reviewed,
     ).length +
-    imports.length +
+    imports.filter(bankImportNeedsReview).length +
     discrepancies;
   const allUpdated =
     freshness.length > 0 &&

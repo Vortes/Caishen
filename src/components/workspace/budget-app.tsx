@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "~/lib/utils";
+import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { api } from "~/trpc/react";
@@ -181,7 +182,7 @@ function BudgetWorkspace({
     join.isPending ||
     loadingMonth;
   const pending =
-    state.imports.length +
+    state.imports.filter(bankImportNeedsReview).length +
     view.budget.transactions.filter(
       (transaction) => !transaction.removed && !transaction.reviewed,
     ).length;

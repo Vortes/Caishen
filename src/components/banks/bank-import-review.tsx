@@ -40,8 +40,9 @@ export function BankImportReview({
     <div className="bank-import-review stack">
       {item.removed && (
         <p className="field-hint">
-          The bank removed this transaction. Check its history before ignoring
-          it.
+          This imported record is no longer in the latest bank data. This does
+          not confirm a cancellation or refund. Compare it with your account
+          activity before dismissing this update.
         </p>
       )}
       {item.needsMatchReview && (

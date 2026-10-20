@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import type { Command } from "~/domain/engine";
+import { bankImportNeedsReview } from "~/lib/bank-import-review";
 
 type RegisterRow =
   | {
@@ -148,7 +149,7 @@ export function TransactionRegister({
   const activeImport = state.imports.find(
     (item) => importRowId(item) === activeImportId,
   );
-  const inboxCount = reviewCount + imports.length;
+  const inboxCount = reviewCount + imports.filter(bankImportNeedsReview).length;
   const query = search.trim().toLowerCase();
   const transactions = useMemo(
     () =>
@@ -170,7 +171,9 @@ export function TransactionRegister({
     }));
     for (const item of imports) {
       if (
-        (reviewOnly || item.date <= `${month}-31`) &&
+        (reviewOnly
+          ? bankImportNeedsReview(item)
+          : item.date <= `${month}-31`) &&
         item.payee.toLowerCase().includes(query)
       ) {
         rows.push({

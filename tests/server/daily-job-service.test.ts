@@ -272,6 +272,38 @@ void test("late batch prepares an immediate request for today's already due emai
   assert.equal([...h.rows.values()][0]!.sentAt, null);
 });
 
+void test("daily review counts posted activity and matching problems without alerting on routine pending imports", async () => {
+  const h = harness();
+  const item = {
+    connectionId: "bank",
+    logicalId: "pending",
+    providerAccountId: "provider-checking",
+    accountId: "checking",
+    date: "2026-10-17",
+    payee: "Pending purchase",
+    amount: -1200,
+    pending: true,
+    removed: false,
+    needsMatchReview: false,
+    error: null,
+    history: [],
+    reviewEvidence: [],
+  };
+  const result = await runDailyJob(h.db, now, {
+    ...h.dependencies,
+    bankInbox: async () => [
+      item,
+      { ...item, logicalId: "posted", pending: false },
+      { ...item, logicalId: "uncertain", needsMatchReview: true },
+    ],
+  });
+  assert.equal(result.scheduled, 1);
+  assert.match(
+    h.send.mock.calls[0]!.arguments[0].message.text,
+    /2 unresolved items are/,
+  );
+});
+
 void test("disabled email creates no delivery while bank refresh uses UTC dates despite scheduler jitter", async () => {
   const h = harness([makeMember("user_daily", false)]);
   h.connections.push({ lastSyncedAt: new Date("2026-10-16T00:50:00Z") });
