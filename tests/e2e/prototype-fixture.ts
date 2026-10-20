@@ -8,6 +8,7 @@ import { z } from "zod";
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
 import {
+  AccountingError,
   addMember,
   commandSchema,
   createBook,
@@ -323,7 +324,9 @@ export async function openPrototype(
           prepareUserCommand(budget, input.command, now),
         );
       } catch (error) {
-        await respond(route, [{ error: (error as Error).message }]);
+        // The engine refuses it, as the server would.
+        if (!(error instanceof AccountingError)) throw error;
+        await respond(route, [{ error: error.message }]);
         return;
       }
       commands.push(input.command);

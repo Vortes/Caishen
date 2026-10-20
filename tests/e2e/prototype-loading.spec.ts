@@ -13,7 +13,9 @@ test("the loading skeleton keeps the saved layout until the budget arrives", asy
   page,
 }) => {
   const { month } = await openPrototype(page);
-  await page.evaluate(() =>
+  // Saved before the reload's scripts run, so the shell still open can't
+  // write its own settings over it.
+  await page.addInitScript(() =>
     localStorage.setItem(
       "caishen.prototype.app-shell.v2",
       JSON.stringify({
