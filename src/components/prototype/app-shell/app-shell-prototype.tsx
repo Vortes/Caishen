@@ -475,6 +475,7 @@ export function AppShellPrototype({
                         // selected row deselects it. Checkboxes add to or
                         // remove from the selection.
                         onSelect={(id) => {
+                          if (inspectorState.collapsed) inspector.toggle();
                           if (checked.includes(id)) {
                             setChecked(checked.filter((item) => item !== id));
                             setSelectedId(null);
