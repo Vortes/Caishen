@@ -96,6 +96,7 @@ Pills (buttons, tags) use `999px`; that is a shape, not a size.
 ## Motion
 
 Panels open and close with `--duration-panel` (260ms) and `--ease-panel`.
-Hover and press feedback is 150ms on color and 100ms on transform. Under
-`prefers-reduced-motion`, panel motion is 0ms; never add animation that
-ignores it.
+Hover and press feedback is 150ms on color and 100ms on transform. A
+skeleton's shine takes `--duration-shimmer` (1600ms) per pass. Under
+`prefers-reduced-motion`, panel motion is 0ms and skeletons hold still;
+never add animation that ignores it.

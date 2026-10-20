@@ -1,6 +1,6 @@
-/* The funding bar: sections split into spent (striped), available (solid),
-   and still needed (empty track), with overspending striped red. Tokens come
-   from the shell root, so both themes apply. */
+/* The funding bar: sections split into spent (a darker shade, striped),
+   available (solid), and still needed (empty track), with overspending
+   striped red. Tokens come from the shell root, so both themes apply. */
 
 .stack {
   display: flex;
@@ -45,6 +45,7 @@
 }
 .segment {
   --tone: var(--status-funded);
+  --tone-spent: var(--status-funded-spent);
   min-width: 2px;
   border-radius: 3px;
 }
@@ -52,6 +53,7 @@
    for overspending of either kind. */
 .segment[data-tone="underfunded"] {
   --tone: var(--status-underfunded);
+  --tone-spent: var(--status-underfunded-spent);
 }
 .segment[data-tone="overspent"] {
   --tone: var(--status-overspent);
@@ -59,9 +61,17 @@
 .segment[data-kind="available"] {
   background: var(--tone);
 }
-/* Spent money keeps its tone but reads as used: bright stripes over a dim
-   wash of the same color. */
-.segment[data-kind="spent"],
+/* Spent money keeps its hue but recedes: a darker shade of the tone with
+   darker stripes, so it separates from unspent money by lightness, not
+   texture alone. */
+.segment[data-kind="spent"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--tone-spent) 55%, var(--surface-panel)) 0 1.5px,
+    var(--tone-spent) 1.5px 4px
+  );
+}
+/* Overspending stays loud: bright stripes over a dim wash of red. */
 .segment[data-kind="over"] {
   background: repeating-linear-gradient(
     -45deg,

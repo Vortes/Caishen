@@ -15,7 +15,8 @@ export type FundingBarCategory = Pick<
 type Tone = "funded" | "underfunded" | "overspent";
 
 type Piece = {
-  // spent: money assigned and already spent, drawn striped.
+  // spent: money assigned and already spent, drawn in a darker
+  // shade of the tone, striped.
   // available: money assigned and still unspent, drawn solid.
   // needed: what the target still asks for, drawn as empty track.
   // over: spending past the money assigned, striped red.

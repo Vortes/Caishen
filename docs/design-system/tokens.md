@@ -72,6 +72,8 @@ Pick by what the color says, never by the hue you want.
 What does the color communicate?
  ├── A category's funding state → --status-{funded, underfunded, credit,
  │                                 overspent}, plus -bg for pill fills
+ │                                 and --status-{funded, underfunded}-spent
+ │                                 for a funding bar's spent segment
  ├── A signed amount outside a category (inflow, Ready to Assign)
  │    → --money-positive or --money-negative. Every inflow in a list
  │      is --money-positive; outflows stay --text-primary, because
@@ -87,9 +89,19 @@ What does the color communicate?
  └── Checked boxes, the focus ring → --accent-solid, --focus-ring
 ```
 
+Spent money in a funding bar uses `--status-funded-spent` or
+`--status-underfunded-spent`: the status color mixed 45% into
+`--surface-panel`, so it reads darker than unspent money in the dark theme
+and paler in the light one. Use them only for the bar's spent segment;
+everywhere else a status color appears at full strength.
+
 `--status-credit` is amber, like underfunded, not red: spending on a credit
 card takes no cash, it adds card debt the plan hasn't funded yet. Only
 `--status-overspent` (cash) is red.
+
+Loading skeletons: `--skeleton-bone` fills a bone and `--skeleton-shine`
+is the band that sweeps it. Only `Skeleton` uses them; a hand-drawn bone in
+`--surface-selected` misses the shine and drifts if the bone color changes.
 
 Shadows: `--shadow-card` for cards, `--shadow-drawer` for anything that
 floats over content (drawers, popovers), `--shadow-tooltip` for tooltips.

@@ -1,0 +1,32 @@
+/* The app shell's loading skeleton. Layout comes from shell.module.css and
+   bones from the Skeleton primitive; this file places the bones and holds
+   the skeleton's own narrow layout. */
+
+.month {
+  display: inline-flex;
+  align-items: center;
+}
+/* A category's name over its funding bar. */
+.category {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 704px;
+}
+
+/* Narrow screens open both panels as drawers, closed at first, like the
+   shell. This is a media query rather than the shell's JavaScript check, so
+   the server-rendered skeleton is already right. */
+@media (max-width: 860px) {
+  .root .sidebar,
+  .root .inspector {
+    display: none;
+  }
+  .root .toggleSlot {
+    grid-template-columns: 1fr;
+    margin-right: 0;
+    margin-left: -4px;
+    opacity: 1;
+  }
+}

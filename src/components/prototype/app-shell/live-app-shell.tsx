@@ -2,9 +2,9 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useIsMutating } from "@tanstack/react-query";
-import { InfoIcon, LoaderCircleIcon, LogInIcon } from "lucide-react";
+import { InfoIcon, LogInIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import { currentMonth } from "~/components/budget/format";
+import { currentMonth, monthName } from "~/components/budget/format";
 import type { State } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { Toast, ToastRegion } from "~/components/ui/toast";
@@ -17,6 +17,8 @@ import { useWorkspaceHistory } from "~/components/workspace/use-workspace-histor
 import { AppShellPrototype } from "./app-shell-prototype";
 import { toShellData } from "./model";
 import type { MoveMoney } from "./move-money";
+import { useSavedSettings } from "./settings";
+import { ShellSkeleton } from "./shell-skeleton";
 import type { TransactionSaver } from "./transaction-entry";
 import styles from "./shell.module.css";
 
@@ -28,13 +30,10 @@ export function LiveAppShell() {
   const { isLoaded, userId } = useAuth();
   const [month, setMonth] = useState(currentMonth);
   const state = useBudgetState(month, Boolean(userId));
+  const settings = useSavedSettings();
 
   if (!isLoaded || (userId && state.isPending))
-    return (
-      <Status icon={<LoaderCircleIcon size={18} className={styles.spin} />}>
-        <strong>Opening your budget…</strong>
-      </Status>
-    );
+    return <ShellSkeleton settings={settings} month={monthName(month)} />;
   if (!userId)
     return (
       <Status icon={<LogInIcon size={18} />}>

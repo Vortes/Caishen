@@ -42,6 +42,7 @@ you use.
 | [labels.md](labels.md)     | `Tag`, the review dot                                       |
 | [surfaces.md](surfaces.md) | `Card`, `Tooltip`, portals                                  |
 | [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                      |
+| [loading.md](loading.md)   | `Skeleton`, and which loading state to use                  |
 
 ## Not in the system yet
 

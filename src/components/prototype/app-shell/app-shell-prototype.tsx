@@ -25,7 +25,7 @@ import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
 import type { ShellData } from "./model";
 import { MoveMoneyProvider, type MoveMoney } from "./move-money";
-import { PlanViews, type PlanView as PlanViewId } from "./plan-views";
+import { PlanViews } from "./plan-views";
 import { ShellDataProvider } from "./shell-data";
 import {
   TransactionEntryProvider,
@@ -38,7 +38,7 @@ import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
 import { Sidebar, type Screen } from "./sidebar";
-import { usePanel, type PanelState } from "./use-panel";
+import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Highlight } from "./reflect/chart-utils";
 import { SpendingList } from "./reflect/spending-list";
@@ -52,34 +52,15 @@ import {
   type ReportKind,
 } from "./reflect/report";
 import { useSpendingReport } from "./reflect/use-spending-report";
+import {
+  defaults,
+  INSPECTOR,
+  readSettings,
+  SIDEBAR,
+  STORAGE_KEY,
+  type Settings,
+} from "./settings";
 import styles from "./shell.module.css";
-
-// v2: the layout variants were settled, so earlier saved settings no longer
-// apply.
-const STORAGE_KEY = "caishen.prototype.app-shell.v2";
-
-const SIDEBAR = { defaultWidth: 320, min: 200, max: 360 };
-const INSPECTOR = { defaultWidth: 520, min: 288, max: 520 };
-
-type Theme = "dark" | "light";
-type Settings = {
-  sidebar: PanelState;
-  inspector: PanelState;
-  theme: Theme;
-  // A Monkeytype palette name, applied over the dark theme; null keeps the
-  // shell's own colors.
-  palette: string | null;
-  // The plan's focused view; like YNAB, remembered on this device.
-  planView: PlanViewId | null;
-};
-
-const defaults: Settings = {
-  sidebar: { width: SIDEBAR.defaultWidth, collapsed: false },
-  inspector: { width: INSPECTOR.defaultWidth, collapsed: false },
-  theme: "dark",
-  palette: null,
-  planView: null,
-};
 
 function isTyping(target: EventTarget | null) {
   return (
@@ -112,7 +93,9 @@ export function AppShellPrototype({
     rootRef.current = element;
     setRootElement(element);
   }, []);
-  const [settings, setSettings] = useState<Settings>(defaults);
+  // The shell mounts on the client once the budget arrives, so it starts
+  // from the saved layout the loading skeleton already showed.
+  const [settings, setSettings] = useState<Settings>(readSettings);
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>({ type: "plan" });
   const [reportKind, setReportKind] = useState<ReportKind>("breakdown");
@@ -166,12 +149,9 @@ export function AppShellPrototype({
     peekTimer.current = window.setTimeout(() => setPeek(false), delay);
   };
 
+  // Enable transitions only after the first paint, so a saved collapsed
+  // state doesn't animate on load.
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved)
-      setSettings({ ...defaults, ...(JSON.parse(saved) as Partial<Settings>) });
-    // Enable transitions only after restoring, so a saved collapsed state
-    // doesn't animate on load.
     requestAnimationFrame(() => setReady(true));
   }, []);
 
@@ -549,6 +529,7 @@ export function AppShellPrototype({
                         // selected row deselects it. Checkboxes add to or
                         // remove from the selection.
                         onSelect={(id) => {
+                          if (inspectorState.collapsed) inspector.toggle();
                           if (checked.includes(id)) {
                             setChecked(checked.filter((item) => item !== id));
                             setSelectedId(null);

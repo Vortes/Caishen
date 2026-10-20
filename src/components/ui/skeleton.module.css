@@ -1,0 +1,74 @@
+.skeleton {
+  flex: none;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 10px;
+  /* Text bones take exactly the line the text will: the bone is shorter
+     than the glyphs, and the margins make up the rest of the line height
+     it inherits. */
+  margin-block: calc((1lh - 10px) / 2);
+  border-radius: 999px;
+  background-color: var(--skeleton-bone);
+  /* One band of shine sweeps every bone at once: the gradient is fixed to
+     the viewport, so bones side by side share it instead of each running
+     its own. */
+  background-image: linear-gradient(
+    100deg,
+    transparent 40%,
+    var(--skeleton-shine) 50%,
+    transparent 60%
+  );
+  background-attachment: fixed;
+  background-size: 200vw 100%;
+  background-repeat: no-repeat;
+  animation: shimmer var(--duration-shimmer) linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100vw 0;
+  }
+  to {
+    background-position: -100vw 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/* A figure's line, at the figure's type size, so it takes the same
+   height wherever it sits. */
+.skeleton[data-shape="figure"] {
+  height: 22px;
+  margin-block: calc((1lh - 22px) / 2);
+  border-radius: var(--radius-row);
+  font-size: var(--type-figure);
+  line-height: 1.2;
+}
+.skeleton[data-shape="avatar"],
+.skeleton[data-shape="pill"],
+.skeleton[data-shape="button"],
+.skeleton[data-shape="button-sm"],
+.skeleton[data-shape="funding-bar"] {
+  margin-block: 0;
+}
+.skeleton[data-shape="avatar"] {
+  width: var(--size-badge);
+  height: var(--size-badge);
+  border-radius: var(--radius-row);
+}
+.skeleton[data-shape="pill"] {
+  height: var(--size-pill);
+}
+.skeleton[data-shape="button"] {
+  height: var(--size-control);
+}
+.skeleton[data-shape="button-sm"] {
+  height: var(--size-control-xs);
+}
+.skeleton[data-shape="funding-bar"] {
+  height: 6px;
+}
