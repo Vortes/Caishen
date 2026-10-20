@@ -1,6 +1,7 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import type { Command } from "~/domain/engine";
+import { budgetDay } from "~/domain/user-command";
 
 type Transaction = View["budget"]["transactions"][number];
 
@@ -135,6 +136,8 @@ export function buildTransactionDraftCommand({
   else if (account && date < account.date)
     fields.date =
       "The transaction date must be on or after the account opening date.";
+  else if (date > budgetDay(view.budget.settings.timezone))
+    fields.date = "The transaction date must be today or earlier.";
 
   if (expenseMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(expenseMonth))
     fields.expenseMonth = "Enter a valid expense month.";
@@ -170,9 +173,9 @@ export function buildTransactionDraftCommand({
     else if (account?.kind === "credit")
       fields.categoryId =
         "Use a card payment or statement credit for card inflows.";
-  } else if (!category || category.pairedAccountId || category.pairedLoanId)
-    fields.categoryId =
-      "Choose a spending category or Ready to Assign for a cash inflow.";
+  } else if (!categoryId) fields.categoryId = "Choose a category.";
+  else if (!category || category.pairedAccountId || category.pairedLoanId)
+    fields.categoryId = "Choose a spending category or Ready to Assign.";
   if (
     transaction?.categoryId &&
     (categoryId === READY_TO_ASSIGN || !categoryId)
@@ -236,7 +239,6 @@ export function buildTransactionDraftCommand({
     expenseMonth: expenseMonth || undefined,
     sharedCategoryId: sharedCategoryId || undefined,
     shares,
-    reviewed: false,
     revision: transaction ? transaction.revision + 1 : undefined,
   };
 }

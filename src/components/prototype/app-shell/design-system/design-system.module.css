@@ -255,3 +255,8 @@
 .lead + .contexts {
   margin-top: 20px;
 }
+/* A funding bar at the width of its bone in the shape table. */
+.specimenBar {
+  display: flex;
+  width: 160px;
+}

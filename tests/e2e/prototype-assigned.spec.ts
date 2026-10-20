@@ -73,7 +73,8 @@ test("a typed total assigns the difference, once, before the server answers", as
     await expect(pill(page, "Gifts")).toHaveText(
       money(expected.category("gifts").available),
     );
-    expect(plan.writes).toEqual(["budget.execute"]);
+    // The screen updates first; the request reaches the server just after.
+    await expect.poll(() => plan.writes).toEqual(["budget.execute"]);
     expect(plan.commands).toEqual([]);
   } finally {
     release();
@@ -83,7 +84,7 @@ test("a typed total assigns the difference, once, before the server answers", as
   await expect(amount(page, "Gifts")).toHaveText("$75.50");
   // Focus had moved on before the save finished, so it stays there.
   await expect(amount(page, "Gifts")).not.toBeFocused();
-  expect(plan.attempts).toEqual([
+  expect(plan.executions).toEqual([
     {
       command: {
         type: "assign",
@@ -207,8 +208,8 @@ test("a failed save rolls back and retries the same change", async ({
   const release = plan.holdExecute();
   try {
     await expect(async () => {
-      if (plan.attempts.length < 2) await input.press("Enter");
-      expect(plan.attempts).toHaveLength(2);
+      if (plan.executions.length < 2) await input.press("Enter");
+      expect(plan.executions).toHaveLength(2);
     }).toPass();
     await expect(pill(page, "Gifts")).toHaveText("$90.00");
   } finally {
@@ -216,7 +217,7 @@ test("a failed save rolls back and retries the same change", async ({
   }
   await moveSaved(page);
   await expect(amount(page, "Gifts")).toHaveText("$90.00");
-  const [failed, retried] = plan.attempts;
+  const [failed, retried] = plan.executions;
   expect(retried).toEqual(failed);
   expect(plan.commands).toEqual([
     expect.objectContaining({ amount: -1_000, id: failed!.command.id }),
@@ -227,11 +228,11 @@ test("a failed save rolls back and retries the same change", async ({
   await next.fill("80");
   await next.press("Enter");
   await moveSaved(page);
-  expect(plan.attempts[2]).toEqual({
+  expect(plan.executions[2]).toEqual({
     command: expect.objectContaining({ amount: -1_000 }),
     expectedRevision: 1,
   });
-  expect(plan.attempts[2]!.command.id).not.toBe(failed!.command.id);
+  expect(plan.executions[2]!.command.id).not.toBe(failed!.command.id);
 });
 
 test("more than Ready to Assign holds is refused and keeps the draft", async ({
@@ -248,7 +249,7 @@ test("more than Ready to Assign holds is refused and keeps the draft", async ({
   await expect(amount(page, "Phone")).toHaveCount(0);
   await expect(pill(page, "Phone")).toHaveText("$0.00");
   expect(plan.commands).toEqual([]);
-  expect(plan.attempts).toEqual([
+  expect(plan.executions).toEqual([
     {
       command: expect.objectContaining({
         categoryId: "phone",
@@ -281,14 +282,16 @@ test("a change saved elsewhere while editing asks before saving over it", async 
       { timeout: 500 },
     );
   }).toPass();
-  expect(plan.attempts).toHaveLength(1);
+  expect(plan.executions).toHaveLength(1);
   await input.press("Enter");
   await moveSaved(page);
-  expect(plan.attempts[1]).toEqual({
+  expect(plan.executions[1]).toEqual({
     command: expect.objectContaining({ amount: -1_000 }),
     expectedRevision: 1,
   });
-  expect(plan.attempts[1]!.command.id).not.toBe(plan.attempts[0]!.command.id);
+  expect(plan.executions[1]!.command.id).not.toBe(
+    plan.executions[0]!.command.id,
+  );
 });
 
 test("moves and Assigned edits share one undo history", async ({ page }) => {

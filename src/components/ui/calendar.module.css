@@ -1,0 +1,132 @@
+/* shadcn's calendar on the system's tokens: square day cells that touch
+   across a week, weeks spaced apart, the month centered between its
+   buttons. */
+
+.root {
+  width: fit-content;
+  padding: 12px;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+}
+.months,
+.month {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The month buttons sit at either end of the caption row. */
+.nav {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--size-control);
+  pointer-events: none;
+}
+.nav > * {
+  pointer-events: auto;
+}
+.caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--size-control);
+  padding: 0 var(--size-control);
+}
+.title {
+  margin: 0;
+  font-size: var(--type-body);
+  font-weight: 500;
+  user-select: none;
+}
+
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+.week {
+  display: flex;
+  width: 100%;
+}
+.weeks .week {
+  margin-top: 8px;
+}
+.weekday {
+  flex: 1;
+  padding: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-caption);
+  font-weight: 400;
+  user-select: none;
+}
+.day {
+  position: relative;
+  flex: 1;
+  padding: 0;
+  text-align: center;
+  user-select: none;
+}
+
+.dayButton {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-width: var(--size-control);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.dayButton:hover {
+  background: var(--surface-hover);
+}
+.dayButton:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+}
+.day[data-outside] .dayButton {
+  color: var(--text-tertiary);
+}
+.day[data-today] .dayButton {
+  background: var(--surface-selected);
+}
+.day[data-selected] .dayButton {
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
+}
+.day[data-disabled] .dayButton {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.day[data-disabled] .dayButton:hover {
+  background: transparent;
+}
+
+/* Touch: days large enough to tap. */
+@media (pointer: coarse) {
+  .dayButton {
+    min-width: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dayButton {
+    transition: none;
+  }
+}

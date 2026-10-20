@@ -29,6 +29,7 @@ import {
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
 import type { Command } from "~/domain/engine";
+import { budgetDay } from "~/domain/user-command";
 
 type Transaction = View["budget"]["transactions"][number];
 type SaveAttempt = { fingerprint: string; command: Command };
@@ -320,6 +321,7 @@ export function TransactionEditor({
           {input("date", "Date", {
             type: "date",
             min: selectedAccount?.date ?? `${view.budget.startMonth}-01`,
+            max: budgetDay(view.budget.settings.timezone),
             required: true,
           })}
         </td>

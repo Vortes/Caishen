@@ -12,6 +12,7 @@ import { money, type Funding } from "../model";
 import shell from "../shell.module.css";
 import { AvailablePill } from "../views";
 import { ButtonSpecimens } from "./button-specimens";
+import { SkeletonSpecimens } from "./skeleton-specimens";
 import { TagSpecimens } from "./tag-specimens";
 import { ToastSpecimens } from "./toast-specimens";
 import styles from "./design-system.module.css";
@@ -60,7 +61,7 @@ const groups: { title: string; description: string; rows: Specimen[] }[] = [
   {
     title: "Funded",
     description:
-      "The target is met, it's snoozed, or there's no target and money is available. Unspent money is solid; spent money is striped. Weekly targets get a section per week, and “set aside another” targets that carried money over get a first section for it.",
+      "The target is met, it's snoozed, or there's no target and money is available. Unspent money is solid; spent money is a darker, striped shade of the same color. Weekly targets get a section per week, and “set aside another” targets that carried money over get a first section for it.",
     rows: [
       specimen("Rent", "funded", "Funded", {
         assigned: 152_000,
@@ -205,6 +206,8 @@ export function DesignSystem() {
         <TagSpecimens />
 
         <ToastSpecimens />
+
+        <SkeletonSpecimens />
 
         <section className={styles.section} aria-labelledby="funding-bar">
           <h2 id="funding-bar">Funding bar</h2>

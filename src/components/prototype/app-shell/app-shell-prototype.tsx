@@ -8,6 +8,7 @@ import {
   ListFilterIcon,
   PanelLeftIcon,
   PanelRightIcon,
+  PlusIcon,
   RotateCcwIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
@@ -24,14 +25,20 @@ import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
 import type { ShellData } from "./model";
 import { MoveMoneyProvider, type MoveMoney } from "./move-money";
-import { PlanViews, type PlanView as PlanViewId } from "./plan-views";
+import { PlanViews } from "./plan-views";
 import { ShellDataProvider } from "./shell-data";
+import {
+  TransactionEntryProvider,
+  useTransactionEntryController,
+  type TransactionEntry,
+  type TransactionSaver,
+} from "./transaction-entry";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
 import { Sidebar, type Screen } from "./sidebar";
-import { usePanel, type PanelState } from "./use-panel";
+import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Highlight } from "./reflect/chart-utils";
 import { SpendingList } from "./reflect/spending-list";
@@ -45,34 +52,15 @@ import {
   type ReportKind,
 } from "./reflect/report";
 import { useSpendingReport } from "./reflect/use-spending-report";
+import {
+  defaults,
+  INSPECTOR,
+  readSettings,
+  SIDEBAR,
+  STORAGE_KEY,
+  type Settings,
+} from "./settings";
 import styles from "./shell.module.css";
-
-// v2: the layout variants were settled, so earlier saved settings no longer
-// apply.
-const STORAGE_KEY = "caishen.prototype.app-shell.v2";
-
-const SIDEBAR = { defaultWidth: 320, min: 200, max: 360 };
-const INSPECTOR = { defaultWidth: 520, min: 288, max: 520 };
-
-type Theme = "dark" | "light";
-type Settings = {
-  sidebar: PanelState;
-  inspector: PanelState;
-  theme: Theme;
-  // A Monkeytype palette name, applied over the dark theme; null keeps the
-  // shell's own colors.
-  palette: string | null;
-  // The plan's focused view; like YNAB, remembered on this device.
-  planView: PlanViewId | null;
-};
-
-const defaults: Settings = {
-  sidebar: { width: SIDEBAR.defaultWidth, collapsed: false },
-  inspector: { width: INSPECTOR.defaultWidth, collapsed: false },
-  theme: "dark",
-  palette: null,
-  planView: null,
-};
 
 function isTyping(target: EventTarget | null) {
   return (
@@ -87,12 +75,14 @@ export function AppShellPrototype({
   loadingMonth,
   onMonthChange,
   moveMoney,
+  transactionSaver,
   notifications,
 }: {
   data: ShellData;
   loadingMonth: boolean;
   onMonthChange: (month: string) => void;
   moveMoney: MoveMoney;
+  transactionSaver: TransactionSaver;
   // The shell's ToastRegion, rendered inside its themed root.
   notifications: ReactNode;
 }) {
@@ -103,7 +93,9 @@ export function AppShellPrototype({
     rootRef.current = element;
     setRootElement(element);
   }, []);
-  const [settings, setSettings] = useState<Settings>(defaults);
+  // The shell mounts on the client once the budget arrives, so it starts
+  // from the saved layout the loading skeleton already showed.
+  const [settings, setSettings] = useState<Settings>(readSettings);
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>({ type: "plan" });
   const [reportKind, setReportKind] = useState<ReportKind>("breakdown");
@@ -141,6 +133,8 @@ export function AppShellPrototype({
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
   const narrow = useMediaQuery("(max-width: 860px)");
+  // A phone is too narrow for the details panel's saved width.
+  const phone = useMediaQuery("(max-width: 560px)");
   const [drawer, setDrawer] = useState({ sidebar: false, inspector: false });
   // Linear-style peek: with the sidebar collapsed, hovering the left edge or
   // the sidebar button floats it over the content until the pointer leaves.
@@ -155,12 +149,9 @@ export function AppShellPrototype({
     peekTimer.current = window.setTimeout(() => setPeek(false), delay);
   };
 
+  // Enable transitions only after the first paint, so a saved collapsed
+  // state doesn't animate on load.
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved)
-      setSettings({ ...defaults, ...(JSON.parse(saved) as Partial<Settings>) });
-    // Enable transitions only after restoring, so a saved collapsed state
-    // doesn't animate on load.
     requestAnimationFrame(() => setReady(true));
   }, []);
 
@@ -172,7 +163,10 @@ export function AppShellPrototype({
     ? { ...settings.sidebar, collapsed: !drawer.sidebar }
     : settings.sidebar;
   const inspectorState = narrow
-    ? { ...settings.inspector, collapsed: !drawer.inspector }
+    ? {
+        width: phone ? INSPECTOR.min : settings.inspector.width,
+        collapsed: !drawer.inspector,
+      }
     : settings.inspector;
 
   const sidebar = usePanel({
@@ -197,6 +191,14 @@ export function AppShellPrototype({
         : setSettings((value) => ({ ...value, inspector: next })),
   });
 
+  const entry = useTransactionEntryController({
+    saver: transactionSaver,
+    // On a narrow screen the drawers cover the register.
+    reveal: () => {
+      if (narrow) setDrawer({ sidebar: false, inspector: false });
+    },
+  });
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTyping(event.target) || event.metaKey || event.ctrlKey) return;
@@ -208,7 +210,15 @@ export function AppShellPrototype({
         return;
       if (event.key === "[") sidebar.toggle();
       else if (event.key === "]") inspector.toggle();
-      else if (event.key === "Escape") {
+      else if (event.key === "n" && screen.type === "register") {
+        if (!entry.start({ accountId: screen.accountId })) return;
+      } else if (
+        event.key === "e" &&
+        screen.type === "register" &&
+        selectedId
+      ) {
+        if (!entry.start({ transactionId: selectedId })) return;
+      } else if (event.key === "Escape") {
         if (peekOpen) setPeek(false);
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
           setDrawer({ sidebar: false, inspector: false });
@@ -231,11 +241,14 @@ export function AppShellPrototype({
     drawer,
     peekOpen,
     checked.length,
-    screen.type,
+    screen,
     path,
+    entry,
+    selectedId,
   ]);
 
   const navigate = (next: Screen, id?: string) => {
+    if (entry.holdForDraft()) return;
     setScreen(next);
     setSelectedId(id ?? null);
     setChecked([]);
@@ -247,6 +260,7 @@ export function AppShellPrototype({
   const select = (id: string) => setSelectedId(id);
 
   const reset = () => {
+    if (entry.holdForDraft()) return;
     localStorage.removeItem(STORAGE_KEY);
     setSettings(defaults);
     setScreen({ type: "plan" });
@@ -285,7 +299,7 @@ export function AppShellPrototype({
 
   return (
     <ShellDataProvider value={data}>
-      <MoveMoneyProvider value={moveMoney}>
+      <ActionProviders moveMoney={moveMoney} transactionEntry={entry}>
         <div
           ref={attachRoot}
           className={styles.root}
@@ -404,7 +418,10 @@ export function AppShellPrototype({
                     <MonthNav
                       month={data.month}
                       onChange={(next) => {
-                        if (screen.type === "register") setSelectedId(null);
+                        if (screen.type === "register") {
+                          setSelectedId(null);
+                          setChecked([]);
+                        }
                         onMonthChange(next);
                       }}
                     />
@@ -443,12 +460,33 @@ export function AppShellPrototype({
                       onClick={() => {
                         setReviewOnly((value) => !value);
                         setSelectedId(null);
+                        setChecked([]);
                       }}
                     >
                       <span className={styles.reviewDot} data-on data-inline />
                       To review
                       <span className={styles.numeric}>{reviewCount}</span>
                     </Button>
+                  )}
+                  {screen.type === "register" && (
+                    <AddTransactionTooltip editing={Boolean(entry.session)}>
+                      <Button
+                        size="sm"
+                        aria-label={phone ? "Add transaction" : undefined}
+                        data-transaction-opener="new"
+                        disabled={
+                          Boolean(entry.session) ||
+                          entry.busy ||
+                          !accounts.length
+                        }
+                        onClick={() =>
+                          entry.start({ accountId: screen.accountId })
+                        }
+                      >
+                        <PlusIcon aria-hidden />
+                        {phone ? "Add" : "Add transaction"}
+                      </Button>
+                    </AddTransactionTooltip>
                   )}
                   <div className={styles.toolbarActions}>
                     {screen.type !== "reflect" && (
@@ -495,6 +533,7 @@ export function AppShellPrototype({
                         // selected row deselects it. Checkboxes add to or
                         // remove from the selection.
                         onSelect={(id) => {
+                          if (inspectorState.collapsed) inspector.toggle();
                           if (checked.includes(id)) {
                             setChecked(checked.filter((item) => item !== id));
                             setSelectedId(null);
@@ -513,6 +552,8 @@ export function AppShellPrototype({
                         reviewOnly={reviewOnly}
                         selectedId={selectedId}
                         onSelect={select}
+                        checked={checked}
+                        onCheck={check}
                       />
                     )}
                     {screen.type === "loans" && (
@@ -660,8 +701,44 @@ export function AppShellPrototype({
             {notifications}
           </TooltipProvider>
         </div>
-      </MoveMoneyProvider>
+      </ActionProviders>
     </ShellDataProvider>
+  );
+}
+
+// While the editor is open Add is disabled, and its tooltip, left open
+// under the pointer that clicked it, would take the editor's Escape.
+function AddTransactionTooltip({
+  editing,
+  children,
+}: {
+  editing: boolean;
+  children: ReactNode;
+}) {
+  if (editing) return children;
+  return (
+    <Tooltip label="Add a transaction" shortcut="N">
+      {children}
+    </Tooltip>
+  );
+}
+
+// The shell's real actions: moving money and entering transactions.
+function ActionProviders({
+  moveMoney,
+  transactionEntry,
+  children,
+}: {
+  moveMoney: MoveMoney;
+  transactionEntry: TransactionEntry;
+  children: ReactNode;
+}) {
+  return (
+    <MoveMoneyProvider value={moveMoney}>
+      <TransactionEntryProvider value={transactionEntry}>
+        {children}
+      </TransactionEntryProvider>
+    </MoveMoneyProvider>
   );
 }
 

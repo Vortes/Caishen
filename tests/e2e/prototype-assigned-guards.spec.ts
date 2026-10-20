@@ -57,7 +57,7 @@ for (const theme of ["Dark", "Light"] as const) {
         amount: -5_000,
       }),
     ]);
-    expect(plan.attempts).toHaveLength(1);
+    expect(plan.executions).toHaveLength(1);
   });
 }
 
@@ -93,9 +93,11 @@ test("retrying an earlier failed total reuses its operation after another failed
   await input.fill("150");
   await input.press("Enter");
   await moveSaved(page);
-  expect(plan.attempts).toHaveLength(3);
-  expect(plan.attempts[0]!.command.id).not.toBe(plan.attempts[1]!.command.id);
-  expect(plan.attempts[2]).toEqual(plan.attempts[0]);
+  expect(plan.executions).toHaveLength(3);
+  expect(plan.executions[0]!.command.id).not.toBe(
+    plan.executions[1]!.command.id,
+  );
+  expect(plan.executions[2]).toEqual(plan.executions[0]);
   expect(plan.commands).toHaveLength(1);
 });
 
@@ -145,7 +147,7 @@ test("Assigned stays blocked after a failed refresh and recovers with Try again"
   await expect(amount(page, "Rent")).toHaveAttribute("aria-disabled", "true");
   await amount(page, "Rent").click({ force: true });
   await expect(field(page, "Rent")).toHaveCount(0);
-  expect(plan.attempts).toHaveLength(1);
+  expect(plan.executions).toHaveLength(1);
   await page.unroute("**/api/trpc/**", refuseRefresh);
   await notifications(page)
     .getByRole("button", { name: "Try again", exact: true })
