@@ -237,6 +237,11 @@
   text-align: center;
 }
 
+/* Why the move can't be sent yet, above the buttons that retry it. */
+.formError {
+  padding: 10px 12px 0;
+}
+
 .footer {
   display: flex;
   align-items: center;
@@ -277,40 +282,6 @@
   outline-offset: 2px;
 }
 
-/* The undo toast after a move, in the corner the prototype controls leave
-   free. */
-.toast {
-  position: fixed;
-  z-index: 50;
-  right: 16px;
-  bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: 320px;
-  height: 40px;
-  padding: 0 6px 0 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-primary);
-  font-size: var(--type-small);
-  white-space: nowrap;
-  animation: toast-in 200ms var(--ease-panel);
-}
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-.toast > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 @media (pointer: coarse) {
   .option {
     min-height: 44px;
@@ -326,8 +297,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .popover,
-  .toast {
+  .popover {
     animation: none;
   }
   .listFrame,

@@ -11,16 +11,24 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { newId } from "~/components/budget/format";
+import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { useShellData } from "./shell-data";
-import { READY_TO_ASSIGN, type Move } from "./simulated-moves";
 import shell from "./shell.module.css";
 import styles from "./move-money.module.css";
 
-type MoveMoney = {
-  move: (move: Omit<Move, "id" | "month">) => void;
+const READY_TO_ASSIGN = "ready-to-assign";
+
+export type MoveMoney = {
+  // Sends the move's command with a summary for its confirmation. Returns
+  // why it can't be sent right now, or null once it's on its way.
+  move: (command: Command, summary: string) => string | null;
+  // Called with a cleanup while a move popover is open, so the shell can
+  // hold its undo shortcut until it closes.
+  holdOpen: () => () => void;
 };
 
 const MoveMoneyContext = createContext<MoveMoney | null>(null);
@@ -55,6 +63,8 @@ export function MoveMoneyPopover({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listOpen = useRef(false);
   const cover = category.available < 0;
+  const { holdOpen } = useMoveMoney();
+  useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (
     <Popover.Root
       open={open}
@@ -126,7 +136,7 @@ function MoveForm({
   listOpen: { current: boolean };
   onDone: () => void;
 }) {
-  const { categories, readyToAssign } = useShellData();
+  const { categories, readyToAssign, month } = useShellData();
   const { move } = useMoveMoney();
   const cover = category.available < 0;
   const [amount, setAmount] = useState(
@@ -136,7 +146,7 @@ function MoveForm({
   );
   const [other, setOther] = useState<string | null>(null);
   const [error, setError] = useState<{
-    field: "amount" | "other";
+    field: "amount" | "other" | "form";
     message: string;
   } | null>(null);
   const amountId = useId();
@@ -191,12 +201,36 @@ function MoveForm({
       });
       return;
     }
-    move(
-      cover
-        ? { from: chosen.id, to: category.id, amount: cents }
-        : { from: category.id, to: chosen.id, amount: cents },
+    // The same commands as the legacy plan: Ready to Assign on either side
+    // is an assignment, negative when money leaves the category; two
+    // categories are a cover from one to the other.
+    const id = newId();
+    const command: Command =
+      chosen.id === READY_TO_ASSIGN
+        ? {
+            type: "assign",
+            id,
+            categoryId: category.id,
+            month: month.key,
+            amount: cover ? cents : -cents,
+          }
+        : {
+            type: "cover",
+            id,
+            fromCategoryId: cover ? chosen.id : category.id,
+            toCategoryId: cover ? category.id : chosen.id,
+            month: month.key,
+            amount: cents,
+          };
+    const [fromName, toName] = cover
+      ? [chosen.name, category.name]
+      : [category.name, chosen.name];
+    const blocked = move(
+      command,
+      `Moved ${money(cents)} from ${fromName} to ${toName}`,
     );
-    onDone();
+    if (blocked) setError({ field: "form", message: blocked });
+    else onDone();
   };
 
   const amountField = (
@@ -265,6 +299,11 @@ function MoveForm({
       </div>
       {amountField}
       {destination}
+      {error?.field === "form" && (
+        <div className={styles.formError}>
+          <FieldError id={`${amountId}-form-error`} message={error.message} />
+        </div>
+      )}
       <div className={styles.footer}>
         <Popover.Close asChild>
           <Button size="sm">Cancel</Button>

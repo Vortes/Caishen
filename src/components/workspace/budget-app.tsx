@@ -5,7 +5,6 @@ import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
-import { getMutationKey } from "@trpc/react-query";
 import { api } from "~/trpc/react";
 import type { Command } from "~/domain/engine";
 import { currentMonth, newId } from "~/components/budget/format";
@@ -21,29 +20,13 @@ import { Button } from "~/components/ui-legacy/button";
 import { MonthPicker } from "~/components/workspace/month-picker";
 import { WorkspaceSidebar } from "~/components/workspace/workspace-sidebar";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
-import { useBudgetCommand } from "~/components/workspace/use-budget-command";
+import { useRunBudgetCommand } from "~/components/workspace/use-budget-command";
+import { useBudgetState } from "~/components/workspace/use-budget-state";
 
 export function BudgetApp() {
   const { userId } = useAuth();
-  const queryClient = useQueryClient();
   const [month, setMonth] = useState(currentMonth);
-  const state = api.budget.state.useQuery(
-    { month },
-    {
-      enabled: Boolean(userId),
-      refetchOnMount: "always",
-      refetchOnWindowFocus: () =>
-        queryClient.isMutating({
-          mutationKey: getMutationKey(api.budget.execute),
-        }) === 0,
-      refetchOnReconnect: () =>
-        queryClient.isMutating({
-          mutationKey: getMutationKey(api.budget.execute),
-        }) === 0,
-      placeholderData: (previous) => previous,
-      trpc: { abortOnUnmount: true },
-    },
-  );
+  const state = useBudgetState(month, Boolean(userId));
   if (
     state.isPending ||
     (state.data?.view && state.data.view.budget.userId !== userId)
@@ -117,7 +100,10 @@ function BudgetWorkspace({
   const queryClient = useQueryClient();
   const activeMutations = useIsMutating();
   const refresh = () => utils.budget.state.invalidate();
-  const execute = useBudgetCommand({
+  const { execute, run: send } = useRunBudgetCommand({
+    state,
+    loadingMonth,
+    refreshError,
     onSuccess: (command) => {
       setPanel(null);
       setFormError("");
@@ -156,9 +142,7 @@ function BudgetWorkspace({
     return () => clearTimeout(timer);
   }, [notice]);
   const run = (command: Command) => {
-    if (queryClient.isMutating() > 0 || loadingMonth || refreshError) return;
-    setFormError("");
-    execute.mutate({ command, expectedRevision: state.revision });
+    if (send(command)) setFormError("");
   };
   const open = (next: Panel) => {
     if (loadingMonth) return;

@@ -8,11 +8,15 @@ import { z } from "zod";
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
 import {
+  commandSchema,
   createBook,
   execute,
   projectBook,
+  type Book,
   type Command,
 } from "../../src/domain/engine";
+import { prepareUserCommand } from "../../src/domain/user-command";
+import { workspaceChangeLabel } from "../../src/server/services/workspace-history";
 
 // tRPC batches calls made in the same tick into one request, so a path can
 // name a procedure more than once ("budget.state,budget.state").
@@ -21,40 +25,103 @@ function procedures(route: Route) {
   return pathname.slice(pathname.lastIndexOf("/") + 1).split(",");
 }
 
-// Answers every call in the request with the same value.
-async function respond(route: Route, value: unknown) {
-  const count = procedures(route).length;
-  if (route.request().headers()["trpc-accept"] === "application/jsonl") {
-    const stream = jsonlStreamProducer({
-      data: Object.fromEntries(
-        Array.from({ length: count }, (_, index) => [
-          index,
-          { result: { data: value } },
-        ]),
-      ),
-      serialize: superjson.serialize,
-    });
+// Each call's input, in the order the path names them.
+function inputs(route: Route) {
+  const request = route.request();
+  const url = new URL(request.url());
+  const raw: unknown =
+    request.method() === "GET"
+      ? JSON.parse(url.searchParams.get("input") ?? "{}")
+      : request.postDataJSON();
+  const batch = url.searchParams.has("batch")
+    ? z.record(z.unknown()).parse(raw ?? {})
+    : { 0: raw };
+  return procedures(route).map((_, index) =>
+    superjson.deserialize(
+      batch[index] as ReturnType<typeof superjson.serialize>,
+    ),
+  );
+}
+
+type Answer = { data: unknown } | { error: string };
+
+// Answers each call in the request in order, as the stream link expects.
+async function respond(route: Route, answers: Answer[]) {
+  const failure = (message: string, index: number) => ({
+    message,
+    code: -32603,
+    data: {
+      code: "INTERNAL_SERVER_ERROR",
+      httpStatus: 500,
+      path: procedures(route)[index],
+    },
+  });
+  const results = answers.map((answer, index) =>
+    "data" in answer
+      ? { result: { data: answer.data } }
+      : { error: failure(answer.error, index) },
+  );
+  if (route.request().headers()["trpc-accept"] !== "application/jsonl") {
+    const serialized = answers.map((answer, index) =>
+      "data" in answer
+        ? { result: { data: superjson.serialize(answer.data) } }
+        : { error: superjson.serialize(failure(answer.error, index)) },
+    );
     await route.fulfill({
-      contentType: "application/jsonl",
-      body: await new Response(stream).text(),
+      status: answers.some((answer) => "error" in answer) ? 500 : 200,
+      json: new URL(route.request().url()).searchParams.has("batch")
+        ? serialized
+        : serialized[0],
     });
     return;
   }
-  const result = { result: { data: superjson.serialize(value) } };
+  const stream = jsonlStreamProducer({
+    data: Object.fromEntries(results.map((result, index) => [index, result])),
+    serialize: superjson.serialize,
+  });
   await route.fulfill({
-    json: new URL(route.request().url()).searchParams.has("batch")
-      ? Array.from({ length: count }, () => result)
-      : result,
+    contentType: "application/jsonl",
+    body: await new Response(stream).text(),
   });
 }
 
-// The app shell prototype, signed in, over a month served through the real
-// engine with no database.
+// Holds requests until the test lets them through.
+function gate() {
+  let waiting: Promise<void> | null = null;
+  return {
+    wait: () => waiting,
+    hold: () => {
+      let release!: () => void;
+      waiting = new Promise((resolve) => {
+        release = resolve;
+      });
+      return () => {
+        waiting = null;
+        release();
+      };
+    },
+  };
+}
+
+const executeSchema = z.object({
+  command: commandSchema,
+  expectedRevision: z.number().int().nonnegative(),
+});
+const historySchema = z.object({
+  direction: z.enum(["undo", "redo"]),
+  expectedRevision: z.number().int().nonnegative(),
+  operationId: z.string().uuid(),
+});
+
+// The app shell prototype, signed in, over a month with cash overspending
+// (Dining), credit overspending (Household), money to spare (Gifts), and an
+// unfunded target (Phone).
 //
-// A month with cash overspending (Dining), credit overspending (Household),
-// money to spare (Gifts), and an unfunded target (Phone), served through the
-// real engine with no database. The prototype only reads it: any write fails
-// the test.
+// The fixture plays the server with the real engine and no database:
+// budget.execute runs each command over the book and records it as one undo
+// step, and budget.changeHistory steps through those, each checking the
+// revision like the server does. Every other write is refused and recorded
+// in writes.
 export async function openPrototype(page: Page) {
   await clerkSetup();
   const [user] = z
@@ -154,23 +221,105 @@ export async function openPrototype(page: Page) {
     },
   ];
   for (const command of initial) book = execute(book, user.id, command);
+  type Step = { before: Book; after: Book; label: string };
+  const undo: Step[] = [];
+  const redo: Step[] = [];
+  let revision = 0;
   const writes: string[] = [];
+  const commands: Command[] = [];
+  const historyCalls: z.infer<typeof historySchema>[] = [];
+  const executeGate = gate();
+  const historyGate = gate();
+  let rejectExecute: string | null = null;
+  let rejectHistory: string | null = null;
+  const state = (month: string): State => ({
+    view: projectBook(book, user.id, month),
+    revision,
+    history: {
+      undo: undo.at(-1)?.label ?? null,
+      redo: redo.at(-1)?.label ?? null,
+    },
+    services: [],
+    connections: [],
+    evidence: [],
+    imports: [],
+  });
+  const conflict = (expected: number) =>
+    expected === revision
+      ? null
+      : { error: "Your budget changed. Refresh and try again." };
   await page.route("**/api/trpc/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (procedures(route).every((name) => name === "budget.state")) {
-      const state: State = {
-        view: projectBook(book, user.id, month),
-        revision: 0,
-        history: { undo: null, redo: null },
-        services: [],
-        connections: [],
-        evidence: [],
-        imports: [],
-      };
-      await respond(route, state);
+    const names = procedures(route);
+    const [name] = names;
+    if (names.every((item) => item === "budget.state")) {
+      await respond(
+        route,
+        inputs(route).map((input) => ({
+          data: state(z.object({ month: z.string() }).parse(input).month),
+        })),
+      );
       return;
     }
-    writes.push(url.pathname);
+    writes.push(names.join(","));
+    if (names.length === 1 && name === "budget.execute") {
+      const input = executeSchema.parse(inputs(route)[0]);
+      await executeGate.wait();
+      if (rejectExecute) {
+        const error = rejectExecute;
+        rejectExecute = null;
+        await respond(route, [{ error }]);
+        return;
+      }
+      const stale = conflict(input.expectedRevision);
+      if (stale) {
+        await respond(route, [stale]);
+        return;
+      }
+      const before = structuredClone(book);
+      const budget = book.budgets[user.id]!;
+      book = execute(book, user.id, prepareUserCommand(budget, input.command));
+      commands.push(input.command);
+      undo.push({
+        before,
+        after: structuredClone(book),
+        label: workspaceChangeLabel([input.command]),
+      });
+      redo.length = 0;
+      revision++;
+      await respond(route, [{ data: { revision } }]);
+      return;
+    }
+    if (names.length === 1 && name === "budget.changeHistory") {
+      const input = historySchema.parse(inputs(route)[0]);
+      historyCalls.push(input);
+      await historyGate.wait();
+      if (rejectHistory) {
+        const error = rejectHistory;
+        rejectHistory = null;
+        await respond(route, [{ error }]);
+        return;
+      }
+      const from = input.direction === "undo" ? undo : redo;
+      const to = input.direction === "undo" ? redo : undo;
+      const stale = conflict(input.expectedRevision);
+      const step = from.at(-1);
+      if (stale || !step) {
+        await respond(route, [stale ?? { error: "There is nothing to undo." }]);
+        return;
+      }
+      from.pop();
+      to.push(step);
+      // History restores the budget, not its audit trail.
+      book = {
+        ...structuredClone(
+          input.direction === "undo" ? step.before : step.after,
+        ),
+        audit: book.audit,
+      };
+      revision++;
+      await respond(route, [{ data: { revision, warning: null } }]);
+      return;
+    }
     await route.abort("blockedbyclient");
   });
   await page.setViewportSize({ width: 1600, height: 1000 });
@@ -180,26 +329,62 @@ export async function openPrototype(page: Page) {
   await expect(
     page.getByRole("heading", { name: "Plan", exact: true }),
   ).toBeVisible();
+  const summarize = (from: Book) => {
+    const view = projectBook(from, user.id, month);
+    return {
+      readyToAssign: view.readyToAssign,
+      category: (id: string) =>
+        view.categories.find((category) => category.id === id)!,
+    };
+  };
   return {
-    writes,
-    // What the engine would show after these commands, to check the
-    // simulation against.
-    expected: (commands: Command[]) => {
-      let next = book;
-      for (const command of commands) next = execute(next, user.id, command);
-      const view = projectBook(next, user.id, month);
-      return {
-        readyToAssign: view.readyToAssign,
-        category: (id: string) =>
-          view.categories.find((category) => category.id === id)!,
-      };
-    },
     month,
+    // Every write the page sent, by procedure path.
+    writes,
+    // The commands budget.execute ran, in order.
+    commands,
+    historyCalls,
+    // The budget as the fixture's server holds it now.
+    saved: () => summarize(book),
+    // What the engine would show after these commands on top of the saved
+    // budget.
+    expected: (next: Command[]) =>
+      summarize(
+        next.reduce((value, command) => execute(value, user.id, command), book),
+      ),
+    // Hold saves or history changes until the returned release is called.
+    holdExecute: executeGate.hold,
+    holdHistory: historyGate.hold,
+    rejectNextExecute: (message: string) => {
+      rejectExecute = message;
+    },
+    rejectNextHistory: (message: string) => {
+      rejectHistory = message;
+    },
+    // A change saved outside this session's history, like a partner's edit:
+    // the revision moves on and, as on the server, the undo stack empties.
+    editElsewhere: () => {
+      revision++;
+      undo.length = 0;
+      redo.length = 0;
+    },
   };
 }
 
 export const pill = (page: Page, name: string) =>
   page.getByRole("button", { name: new RegExp(`available in ${name}\\.`) });
+// The toast corner, and the Undo a move's toast offers.
+export const notifications = (page: Page) =>
+  page.getByRole("region", { name: "Notifications" });
+export const toastUndo = (page: Page) =>
+  notifications(page).getByRole("button", { name: "Undo", exact: true });
+
+// A move is saved once its toast can undo it: the server answered and the
+// saved budget is back on screen.
+export async function moveSaved(page: Page) {
+  await expect(toastUndo(page)).toBeEnabled();
+}
+
 export const money = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     cents / 100,

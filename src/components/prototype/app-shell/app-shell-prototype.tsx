@@ -11,16 +11,20 @@ import {
   RotateCcwIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
 import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
-import { money, type ShellData } from "./model";
-import { MoveMoneyProvider } from "./move-money";
+import type { ShellData } from "./model";
+import { MoveMoneyProvider, type MoveMoney } from "./move-money";
 import { PlanViews, type PlanView as PlanViewId } from "./plan-views";
-import moveStyles from "./move-money.module.css";
-import { READY_TO_ASSIGN, type Move } from "./simulated-moves";
 import { ShellDataProvider } from "./shell-data";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
@@ -82,14 +86,15 @@ export function AppShellPrototype({
   data,
   loadingMonth,
   onMonthChange,
-  moves,
-  onMovesChange,
+  moveMoney,
+  notifications,
 }: {
   data: ShellData;
   loadingMonth: boolean;
   onMonthChange: (month: string) => void;
-  moves: Move[];
-  onMovesChange: (moves: Move[]) => void;
+  moveMoney: MoveMoney;
+  // The shell's ToastRegion, rendered inside its themed root.
+  notifications: ReactNode;
 }) {
   const { accounts, transactions } = data;
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -132,23 +137,6 @@ export function AppShellPrototype({
         : current.filter((id) => !ids.includes(id)),
     );
   const [reviewOnly, setReviewOnly] = useState(false);
-  // The move the undo toast offers to take back.
-  const [toastId, setToastId] = useState<string | null>(null);
-  const toastMove = moves.find((move) => move.id === toastId);
-  useEffect(() => {
-    if (!toastId) return;
-    const timer = window.setTimeout(() => setToastId(null), 6000);
-    return () => window.clearTimeout(timer);
-  }, [toastId]);
-  const moveMoney = (move: Omit<Move, "id" | "month">) => {
-    const id = crypto.randomUUID();
-    onMovesChange([...moves, { ...move, id, month: data.month.key }]);
-    setToastId(id);
-  };
-  const placeName = (id: string) =>
-    id === READY_TO_ASSIGN
-      ? "Ready to Assign"
-      : (data.categories.find((item) => item.id === id)?.name ?? "a category");
   const [controlsOpen, setControlsOpen] = useState(true);
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
@@ -270,8 +258,6 @@ export function AppShellPrototype({
     setPath({});
     setGrouping("categories");
     setDrawer({ sidebar: false, inspector: false });
-    onMovesChange([]);
-    setToastId(null);
   };
 
   // Flip colors in one frame instead of letting each control run its own
@@ -299,7 +285,7 @@ export function AppShellPrototype({
 
   return (
     <ShellDataProvider value={data}>
-      <MoveMoneyProvider value={{ move: moveMoney }}>
+      <MoveMoneyProvider value={moveMoney}>
         <div
           ref={attachRoot}
           className={styles.root}
@@ -642,12 +628,6 @@ export function AppShellPrototype({
                       switchColors({ palette: name, theme: "dark" })
                     }
                   />
-                  {moves.length > 0 && (
-                    <span className={styles.readout}>
-                      {moves.length} simulated{" "}
-                      {moves.length === 1 ? "move" : "moves"}, not saved
-                    </span>
-                  )}
                   <span className={styles.readout} aria-live="polite">
                     Sidebar{" "}
                     {sidebarState.collapsed
@@ -677,25 +657,7 @@ export function AppShellPrototype({
                 </>
               )}
             </div>
-            {toastMove && (
-              <div className={moveStyles.toast} role="status">
-                <span>
-                  Moved {money(toastMove.amount)} from{" "}
-                  {placeName(toastMove.from)} to {placeName(toastMove.to)}
-                </span>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    onMovesChange(
-                      moves.filter((move) => move.id !== toastMove.id),
-                    );
-                    setToastId(null);
-                  }}
-                >
-                  Undo
-                </Button>
-              </div>
-            )}
+            {notifications}
           </TooltipProvider>
         </div>
       </MoveMoneyProvider>

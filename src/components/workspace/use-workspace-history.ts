@@ -5,9 +5,9 @@ import { useCallback, useEffect, useRef } from "react";
 import type { State } from "~/components/budget/types";
 import { api } from "~/trpc/react";
 
-type Direction = "undo" | "redo";
+export type HistoryDirection = "undo" | "redo";
 
-function shortcutDirection(event: KeyboardEvent): Direction | null {
+function shortcutDirection(event: KeyboardEvent): HistoryDirection | null {
   if (
     event.defaultPrevented ||
     event.isComposing ||
@@ -35,6 +35,8 @@ function isEditing(event: KeyboardEvent) {
     );
 }
 
+// Binds Cmd+Z, Cmd+Shift+Z, and Ctrl+Y to the saved history, and returns the
+// same guarded change for any visible control that offers it.
 export function useWorkspaceHistory({
   state,
   disabled,
@@ -70,7 +72,7 @@ export function useWorkspaceHistory({
   const history = state.history;
   const unavailable = disabled || mutations > 0;
   const perform = useCallback(
-    (direction: Direction) => {
+    (direction: HistoryDirection) => {
       if (
         disabled ||
         locked.current ||
@@ -99,4 +101,6 @@ export function useWorkspaceHistory({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [history, perform, unavailable]);
+
+  return { change: perform, unavailable };
 }
