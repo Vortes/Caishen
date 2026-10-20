@@ -3,32 +3,22 @@
 import {
   CalendarDaysIcon,
   CreditCardIcon,
-  EllipsisIcon,
   FolderIcon,
+  HistoryIcon,
+  InboxIcon,
   LandmarkIcon,
   RefreshCwIcon,
-  StickyNoteIcon,
   TargetIcon,
   ChartNoAxesCombinedIcon,
+  UsersIcon,
   ZapIcon,
-  type LucideIcon,
 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
-import {
-  accounts,
-  allCategories,
-  available,
-  balance,
-  fundedRatio,
-  funding,
-  groups,
-  loans,
-  money,
-  month,
-  transactions,
-  type Transaction,
-} from "./data";
-import { RtaCard, type RtaState } from "./ready-to-assign";
+import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
+import { Card, Figure, Property, Title } from "./cards";
+import { money, shortDay, type Category, type Transaction } from "./model";
+import { RtaCard } from "./ready-to-assign";
+import { useShellData } from "./shell-data";
 import type { Screen } from "./sidebar";
 import { FundingRing } from "./views";
 import styles from "./shell.module.css";
@@ -37,18 +27,17 @@ export function Inspector({
   screen,
   selectedId,
   checked,
-  rtaState,
 }: {
   screen: Screen;
   selectedId: string | null;
   checked: string[];
-  rtaState: RtaState;
 }) {
+  const { categories, transactions, loans, readyToAssign } = useShellData();
   if (screen.type === "plan") {
-    const category = allCategories.find((item) => item.id === selectedId);
+    const category = categories.find((item) => item.id === selectedId);
     return (
       <>
-        <RtaCard state={rtaState} />
+        <RtaCard amount={readyToAssign} />
         {checked.length ? (
           <CheckedDetails ids={checked} />
         ) : category ? (
@@ -62,7 +51,7 @@ export function Inspector({
   if (screen.type === "register") {
     const transaction = transactions.find((item) => item.id === selectedId);
     return transaction ? (
-      <TransactionDetails item={transaction} />
+      <TransactionDetails key={transaction.id} item={transaction} />
     ) : (
       <AccountDetails accountId={screen.accountId} />
     );
@@ -75,7 +64,11 @@ export function Inspector({
           <Title
             icon={<LoanIcon />}
             title="Loans"
-            subtitle="Nothing selected. Pick a loan to see its payoff."
+            subtitle={
+              loans.length
+                ? "Nothing selected. Pick a loan to see its payoff."
+                : "No loans yet."
+            }
           />
           <Figure
             value={money(-loans.reduce((sum, item) => sum + item.balance, 0))}
@@ -85,6 +78,9 @@ export function Inspector({
         <Card>
           <Property label="Monthly">
             {money(loans.reduce((sum, item) => sum + item.payment, 0))}
+          </Property>
+          <Property label="Funded">
+            {money(loans.reduce((sum, item) => sum + item.funded, 0))}
           </Property>
         </Card>
       </>
@@ -97,9 +93,24 @@ export function Inspector({
         <Figure value={money(-loan.balance)} caption="Remaining balance" />
       </Card>
       <Card>
-        <Property label="Rate">{loan.rate}</Property>
+        <Property label="Rate">
+          {loan.rate ?? <span className={styles.faint}>No rate yet</span>}
+          {loan.variable && <span className={styles.faint}>Variable</span>}
+        </Property>
         <Property label="Payment">{money(loan.payment)} monthly</Property>
-        <Property label="Payoff">{loan.payoff}</Property>
+        <Property label="Funded">{money(loan.funded)} this month</Property>
+        <Property label="Payoff" icon={CalendarDaysIcon}>
+          {loan.payoff}
+        </Property>
+      </Card>
+      <Card>
+        <Property label="Interest">
+          {loan.interest === null
+            ? "Unknown"
+            : `${money(loan.interest)} left to pay`}
+        </Property>
+        <Property label="Borrowed">{money(loan.principal)}</Property>
+        <Property label="Payments">{loan.payments} recorded</Property>
       </Card>
     </>
   );
@@ -115,15 +126,109 @@ function LoanIcon() {
   );
 }
 
-function MonthDetails() {
-  const categories = groups.flatMap((group) => group.categories);
-  const sum = (pick: (value: (typeof categories)[number]) => number) =>
-    categories.reduce((total, item) => total + pick(item), 0);
-  const underfunded = categories.reduce(
-    (total, item) =>
-      total + Math.max(0, (item.target?.amount ?? 0) - item.assigned),
-    0,
+const autoAssignOptions: [AutoAssignOption, string][] = [
+  ["underfunded", "Underfunded"],
+  ["assigned-last-month", "Assigned last month"],
+  ["spent-last-month", "Spent last month"],
+  ["average-assigned", "Average assigned"],
+  ["average-spent", "Average spent"],
+  ["reduce-overfunding", "Reduce overfunding"],
+];
+
+function AutoAssign({ scope }: { scope: Category[] }) {
+  const categories = scope.map((item) => item.autoAssign);
+  return (
+    <AutoAssignList
+      items={autoAssignOptions.map(([option, label]) => [
+        label,
+        optionAmount(option, categories),
+      ])}
+    />
   );
+}
+
+function sum(categories: Category[], pick: (item: Category) => number) {
+  return categories.reduce((total, item) => total + pick(item), 0);
+}
+
+function MonthDetails() {
+  const {
+    categories,
+    month,
+    costToBeMe,
+    expectedIncome,
+    partner,
+    reimbursements,
+  } = useShellData();
+  const owed = reimbursements.filter((item) => item.outstanding > 0);
+  const tabs = [
+    { label: "Auto-Assign", content: <AutoAssign scope={categories} /> },
+    {
+      label: "Cost to Be Me",
+      content: (
+        <div className={styles.tabBody}>
+          <Figure
+            value={money(costToBeMe)}
+            caption={`What your targets ask for in ${month.short}`}
+          />
+          {expectedIncome === null ? (
+            <p className={styles.tabEmpty}>
+              Add expected income to see how much of it your targets use.
+            </p>
+          ) : (
+            <Meter
+              ratio={costToBeMe ? Math.min(1, expectedIncome / costToBeMe) : 1}
+              tone={expectedIncome < costToBeMe ? "underfunded" : "funded"}
+              label={
+                expectedIncome < costToBeMe
+                  ? `${money(costToBeMe - expectedIncome)} more than your expected ${money(expectedIncome)}`
+                  : `${money(expectedIncome - costToBeMe)} left from your expected ${money(expectedIncome)}`
+              }
+            />
+          )}
+        </div>
+      ),
+    },
+  ];
+  if (partner)
+    tabs.push({
+      label: "Shared",
+      content: (
+        <div className={styles.tabBody}>
+          <Property label="You owe" icon={UsersIcon}>
+            {money(partner.youOwe)}
+          </Property>
+          <Property label="Owed to you">{money(partner.owedToYou)}</Property>
+          <p className={styles.tabEmpty}>
+            {partner.youOwe === partner.owedToYou
+              ? `You and ${partner.name} are settled up.`
+              : partner.youOwe > partner.owedToYou
+                ? `You owe ${partner.name} ${money(partner.youOwe - partner.owedToYou)} overall.`
+                : `${partner.name} owes you ${money(partner.owedToYou - partner.youOwe)} overall.`}
+          </p>
+        </div>
+      ),
+    });
+  if (reimbursements.length)
+    tabs.push({
+      label: `Reimbursements ${owed.length}`,
+      content: owed.length ? (
+        <ul className={styles.actionList}>
+          {owed.map((item) => (
+            <li key={item.id}>
+              <div className={styles.actionItem}>
+                <span>{item.name}</span>
+                <span className={styles.numeric}>
+                  {money(item.outstanding)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={styles.tabEmpty}>Every reimbursement has arrived.</p>
+      ),
+    });
   return (
     <>
       <Card>
@@ -135,63 +240,31 @@ function MonthDetails() {
               aria-hidden
             />
           }
-          title={month.short}
+          title={month.label}
           subtitle="Nothing selected. Pick a category to see its details."
         />
       </Card>
       <Card>
         <Property label="Assigned">
-          {money(sum((item) => item.assigned))}
+          {money(sum(categories, (item) => item.assigned))}
         </Property>
         <Property label="Activity">
-          {money(sum((item) => item.activity))}
+          {money(sum(categories, (item) => item.activity))}
         </Property>
-        <Property label="Available">{money(sum(available))}</Property>
+        <Property label="Available">
+          {money(sum(categories, (item) => item.available))}
+        </Property>
       </Card>
-      <Tabs
-        tabs={[
-          {
-            label: "Auto-Assign",
-            content: (
-              <AutoAssignList
-                items={[
-                  ["Underfunded", underfunded],
-                  ["Assigned last month", 702400],
-                  ["Spent last month", 688912],
-                  ["Average assigned", 695150],
-                  ["Reset available amounts", 0],
-                ]}
-              />
-            ),
-          },
-          {
-            label: "Cost to Be Me",
-            content: (
-              <div className={styles.tabBody}>
-                <Figure
-                  value={money(711400)}
-                  caption="Each month, from your targets"
-                />
-                <Meter ratio={0.78} label="78% covered by expected income" />
-              </div>
-            ),
-          },
-        ]}
-      />
+      <Tabs tabs={tabs} />
     </>
   );
 }
 
 function CheckedDetails({ ids }: { ids: string[] }) {
-  const categories = allCategories.filter((item) => ids.includes(item.id));
-  const sum = (pick: (value: (typeof categories)[number]) => number) =>
-    categories.reduce((total, item) => total + pick(item), 0);
-  const underfunded = categories.reduce(
-    (total, item) =>
-      total + Math.max(0, (item.target?.amount ?? 0) - item.assigned),
-    0,
+  const categories = useShellData().categories.filter((item) =>
+    ids.includes(item.id),
   );
-  const overspent = categories.filter((item) => available(item) < 0);
+  const overspent = categories.filter((item) => item.available < 0);
   return (
     <>
       <Card>
@@ -200,7 +273,7 @@ function CheckedDetails({ ids }: { ids: string[] }) {
           subtitle={categories.map((item) => item.name).join(", ")}
         />
         <Figure
-          value={money(sum(available))}
+          value={money(sum(categories, (item) => item.available))}
           caption={
             overspent.length
               ? `Available, with ${overspent.length} overspent`
@@ -211,51 +284,28 @@ function CheckedDetails({ ids }: { ids: string[] }) {
       </Card>
       <Card>
         <Property label="Assigned">
-          {money(sum((item) => item.assigned))}
+          {money(sum(categories, (item) => item.assigned))}
         </Property>
         <Property label="Activity">
-          {money(sum((item) => item.activity))}
+          {money(sum(categories, (item) => item.activity))}
         </Property>
         <Property label="Last month">
-          {money(sum((item) => item.carryover))}
+          {money(sum(categories, (item) => item.carryover))}
         </Property>
       </Card>
       <Tabs
         tabs={[
-          {
-            label: "Auto-Assign",
-            content: (
-              <AutoAssignList
-                items={[
-                  ["Underfunded", underfunded],
-                  ["Assigned last month", sum((item) => item.assigned)],
-                  ["Spent last month", -sum((item) => item.activity)],
-                ]}
-              />
-            ),
-          },
+          { label: "Auto-Assign", content: <AutoAssign scope={categories} /> },
         ]}
       />
     </>
   );
 }
 
-function CategoryDetails({
-  category,
-}: {
-  category: (typeof allCategories)[number];
-}) {
-  const state = funding(category);
-  const value = available(category);
-  const needed = category.target
-    ? Math.max(0, category.target.amount - category.assigned)
-    : 0;
-  const status = {
-    funded: category.target ? "Fully funded this month" : "Money available",
-    underfunded: `${money(needed)} more needed${category.target?.due ? ` by ${category.target.due}` : " this month"}`,
-    overspent: `Overspent by ${money(-value)}. Cover it from another category.`,
-    empty: "No money assigned yet",
-  }[state];
+function CategoryDetails({ category }: { category: Category }) {
+  const target = category.target;
+  const fallback =
+    category.available > 0 ? "Money available" : "No money assigned yet";
   return (
     <>
       <Card>
@@ -265,7 +315,11 @@ function CategoryDetails({
           subtitle={category.group}
           menu
         />
-        <Figure value={money(value)} caption={status} tone={state} />
+        <Figure
+          value={money(category.available)}
+          caption={category.status || fallback}
+          tone={category.funding}
+        />
       </Card>
       <Card>
         <Property label="Assigned">{money(category.assigned)}</Property>
@@ -274,27 +328,53 @@ function CategoryDetails({
         <Property label="Group" icon={FolderIcon}>
           {category.group}
         </Property>
+        {category.pays && (
+          <Property
+            label="Pays"
+            icon={category.pays.type === "card" ? CreditCardIcon : LandmarkIcon}
+          >
+            {category.pays.name}
+          </Property>
+        )}
       </Card>
+      {(category.sharePercents.length > 0 || category.reserved > 0) && (
+        <Card>
+          {category.sharePercents.length > 0 && (
+            <Property label="Shared" icon={UsersIcon}>
+              Your share{" "}
+              {category.sharePercents.map((value) => `${value}%`).join(", ")}
+            </Property>
+          )}
+          {category.reserved > 0 && (
+            <>
+              <Property label="Reserved">{money(category.reserved)}</Property>
+              <Property label="Spendable">{money(category.spendable)}</Property>
+            </>
+          )}
+        </Card>
+      )}
       <Tabs
         tabs={[
           {
             label: "Target",
-            content: category.target ? (
+            content: target ? (
               <div className={styles.tabBody}>
-                <Property label="Amount" icon={TargetIcon}>
-                  {money(category.target.amount)}
+                <Property label="Goal" icon={TargetIcon}>
+                  {target.action}
                 </Property>
-                <Property label="Repeats">{category.target.cadence}</Property>
-                {category.target.due && (
-                  <Property label="Due">{category.target.due}</Property>
-                )}
+                <Property label="Due">{target.when}</Property>
+                <Property label="Funded">
+                  {money(target.funded)} of {money(target.total)}
+                </Property>
                 <Meter
-                  ratio={fundedRatio(category)}
-                  tone={state}
+                  ratio={category.fundedRatio}
+                  tone={category.funding}
                   label={
-                    state === "overspent"
-                      ? `Target met, but spending is ${money(-value)} over`
-                      : `${Math.round(fundedRatio(category) * 100)}% funded`
+                    category.funding === "snoozed"
+                      ? "Snoozed this month"
+                      : target.needed > 0
+                        ? `${money(target.needed)} more needed`
+                        : `${Math.round(category.fundedRatio * 100)}% funded`
                   }
                 />
               </div>
@@ -310,28 +390,7 @@ function CategoryDetails({
           },
           {
             label: "Auto-Assign",
-            content: (
-              <AutoAssignList
-                items={[
-                  ["Underfunded", needed],
-                  ["Assigned last month", category.assigned],
-                  ["Spent last month", -category.activity],
-                ]}
-              />
-            ),
-          },
-          {
-            label: "Notes",
-            content: category.note ? (
-              <p className={styles.note}>
-                <StickyNoteIcon size={13} aria-hidden />
-                {category.note}
-              </p>
-            ) : (
-              <p className={styles.tabEmpty}>
-                No notes. Use notes to remember why this category exists.
-              </p>
-            ),
+            content: <AutoAssign scope={[category]} />,
           },
         ]}
       />
@@ -340,13 +399,15 @@ function CategoryDetails({
 }
 
 function AccountDetails({ accountId }: { accountId: string | null }) {
+  const { accounts, transactions } = useShellData();
   const account = accounts.find((item) => item.id === accountId);
   const scope = account ? [account] : accounts;
-  const cleared = scope.reduce((sum, item) => sum + item.cleared, 0);
-  const uncleared = scope.reduce((sum, item) => sum + item.uncleared, 0);
+  const balance = scope.reduce((total, item) => total + item.balance, 0);
+  const pending = scope.reduce((total, item) => total + item.pending, 0);
   const review = transactions.filter(
     (item) => item.needsReview && (!account || item.accountId === account.id),
   );
+  const connection = account?.connection;
   return (
     <>
       <Card>
@@ -369,24 +430,28 @@ function AccountDetails({ accountId }: { accountId: string | null }) {
           title={account?.name ?? "All accounts"}
           subtitle={
             account
-              ? `${account.institution} · ${account.syncedAgo === "Needs reconnect" ? "Connection needs attention" : `Synced ${account.syncedAgo}`}`
-              : `${accounts.length} accounts on budget`
+              ? connection
+                ? `${connection.institution} · ${connection.needsAttention ? "Connection needs attention" : `Synced ${connection.synced}`}`
+                : "Manual account"
+              : `${accounts.length} ${accounts.length === 1 ? "account" : "accounts"} on budget`
           }
           menu={Boolean(account)}
         />
-        <Figure value={money(cleared + uncleared)} caption="Working balance" />
+        <Figure value={money(balance)} caption="Working balance" />
       </Card>
       <Card>
-        <Property label="Cleared">{money(cleared)}</Property>
-        <Property label="Uncleared">{money(uncleared)}</Property>
+        <Property label="Posted">{money(balance - pending)}</Property>
+        <Property label="Pending">{money(pending)}</Property>
         {account && (
           <Property label="Sync" icon={RefreshCwIcon}>
-            {account.syncedAgo === "Needs reconnect" ? (
+            {!connection ? (
+              <span className={styles.faint}>Not connected to a bank</span>
+            ) : connection.needsAttention ? (
               <span className={styles.chip} data-tone="amber">
                 Reconnect
               </span>
             ) : (
-              account.syncedAgo
+              connection.synced
             )}
           </Property>
         )}
@@ -415,19 +480,21 @@ function AccountDetails({ accountId }: { accountId: string | null }) {
           },
           {
             label: "Balances",
-            content: (
+            content: scope.length ? (
               <ul className={styles.actionList}>
                 {scope.map((item) => (
                   <li key={item.id}>
                     <div className={styles.actionItem}>
                       <span>{item.name}</span>
                       <span className={styles.numeric}>
-                        {money(balance(item))}
+                        {money(item.balance)}
                       </span>
                     </div>
                   </li>
                 ))}
               </ul>
+            ) : (
+              <p className={styles.tabEmpty}>No accounts yet.</p>
             ),
           },
         ]}
@@ -436,67 +503,113 @@ function AccountDetails({ accountId }: { accountId: string | null }) {
   );
 }
 
+const longDate = (date: string) =>
+  new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
 function TransactionDetails({ item }: { item: Transaction }) {
-  const account = accounts.find((entry) => entry.id === item.accountId);
-  const category = allCategories.find((entry) => entry.id === item.categoryId);
+  const account = useShellData().accounts.find(
+    (entry) => entry.id === item.accountId,
+  );
+  const fromBank = item.source === "bank";
   return (
     <>
       <Card>
         <Title
           title={item.payee}
-          subtitle={`${item.date} · ${account?.name}`}
+          subtitle={`${shortDay(item.date)} · ${account?.name ?? "Unlinked bank account"}`}
           menu
         />
         <Figure
           value={money(item.amount, true)}
           caption={
-            item.status === "pending"
-              ? "Pending at the bank"
-              : item.status === "cleared"
-                ? "Cleared"
-                : "Reconciled"
+            fromBank
+              ? "Waiting in your bank inbox"
+              : item.status === "pending"
+                ? "Pending at the bank"
+                : "Posted"
           }
           tone={item.amount > 0 ? "funded" : undefined}
         />
       </Card>
       <Card>
         <Property label="Category" icon={FolderIcon}>
-          {category ? (
-            category.name
-          ) : item.amount > 0 ? (
-            "Ready to Assign"
-          ) : (
+          {item.needsCategory ? (
             <span className={styles.chip} data-tone="amber">
-              Needs category
+              {item.categoryLabel}
             </span>
+          ) : (
+            <span className={styles.truncate}>{item.categoryLabel}</span>
           )}
         </Property>
         <Property
           label="Account"
           icon={account?.kind === "credit" ? CreditCardIcon : LandmarkIcon}
         >
-          {account?.name}
+          {account?.name ?? (
+            <span className={styles.chip} data-tone="amber">
+              Not linked
+            </span>
+          )}
         </Property>
         <Property label="Date" icon={CalendarDaysIcon}>
-          {item.date}, 2026
+          {longDate(item.date)}
         </Property>
-        <Property label="Memo" icon={StickyNoteIcon}>
-          {item.memo ?? <span className={styles.faint}>Add a memo</span>}
-        </Property>
+        {item.forMonth && (
+          <Property label="Counts for">{item.forMonth}</Property>
+        )}
+        {item.shared && (
+          <Property label="Shared" icon={UsersIcon}>
+            Split with your partner
+          </Property>
+        )}
       </Card>
       {item.needsReview && (
         <Card>
           <p className={styles.reviewNote}>
-            Imported from {account?.institution}. Check the category, then mark
-            it reviewed.
+            {fromBank ? (
+              <>
+                <InboxIcon size={13} aria-hidden />
+                {item.reviewReason ?? "Imported from your bank."}
+              </>
+            ) : (
+              "Check the category, then mark it reviewed."
+            )}
           </p>
           <button
             type="button"
             className={`${styles.control} ${styles.secondaryButton}`}
           >
-            Mark reviewed
+            {fromBank ? "Review import" : "Mark reviewed"}
           </button>
         </Card>
+      )}
+      {item.history.length > 1 && (
+        <Tabs
+          tabs={[
+            {
+              label: `History ${item.history.length}`,
+              content: (
+                <ul className={styles.actionList}>
+                  {[...item.history].reverse().map((entry, index) => (
+                    <li key={index}>
+                      <div className={styles.actionItem}>
+                        <HistoryIcon size={13} aria-hidden />
+                        <span>{entry.reason}</span>
+                        <span className={styles.numeric}>
+                          {money(entry.amount, true)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ),
+            },
+          ]}
+        />
       )}
     </>
   );
@@ -515,78 +628,6 @@ function AutoAssignList({ items }: { items: [string, number][] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-function Card({ children }: { children: ReactNode }) {
-  return <section className={styles.card}>{children}</section>;
-}
-
-function Title({
-  icon,
-  title,
-  subtitle,
-  menu,
-}: {
-  icon?: ReactNode;
-  title: string;
-  subtitle?: string;
-  menu?: boolean;
-}) {
-  return (
-    <div className={styles.cardTitle}>
-      <div className={styles.cardTitleRow}>
-        {icon}
-        <h2 className={styles.truncate}>{title}</h2>
-        {menu && (
-          <button
-            type="button"
-            className={styles.iconButton}
-            aria-label={`${title} actions`}
-          >
-            <EllipsisIcon size={15} aria-hidden />
-          </button>
-        )}
-      </div>
-      {subtitle && <p>{subtitle}</p>}
-    </div>
-  );
-}
-
-function Figure({
-  value,
-  caption,
-  tone,
-}: {
-  value: string;
-  caption: string;
-  tone?: string;
-}) {
-  return (
-    <div className={styles.figure} data-state={tone}>
-      <strong>{value}</strong>
-      <span>{caption}</span>
-    </div>
-  );
-}
-
-function Property({
-  label,
-  icon: Icon,
-  children,
-}: {
-  label: string;
-  icon?: LucideIcon;
-  children: ReactNode;
-}) {
-  return (
-    <div className={styles.property}>
-      <span className={styles.propertyLabel}>{label}</span>
-      <span className={styles.propertyValue}>
-        {Icon && <Icon size={13} aria-hidden />}
-        {children}
-      </span>
-    </div>
   );
 }
 

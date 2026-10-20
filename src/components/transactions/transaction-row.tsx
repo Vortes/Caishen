@@ -150,7 +150,7 @@ export function TransactionRow({
   );
 }
 
-function transactionCategory(kind: Transaction["kind"], amount: number) {
+export function transactionCategory(kind: Transaction["kind"], amount: number) {
   switch (kind) {
     case "card-payment":
       return "Credit card payment";

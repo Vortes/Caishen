@@ -3,6 +3,7 @@
 import {
   ArrowLeftRightIcon,
   ChartNoAxesCombinedIcon,
+  ChartPieIcon,
   ChevronDownIcon,
   PlusIcon,
   SearchIcon,
@@ -12,16 +13,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { accounts, balance, loans, money, transactions } from "./data";
+import { money } from "./model";
+import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 import { Tip } from "./tooltip";
 
 export type Screen =
   | { type: "plan" }
+  | { type: "reflect" }
   | { type: "register"; accountId: string | null }
   | { type: "loans" };
-
-const reviewCount = transactions.filter((item) => item.needsReview).length;
 
 export function Sidebar({
   screen,
@@ -32,6 +33,8 @@ export function Sidebar({
   selectedId: string | null;
   onNavigate: (screen: Screen, selectedId?: string) => void;
 }) {
+  const { accounts, loans, transactions, budgetName } = useShellData();
+  const reviewCount = transactions.filter((item) => item.needsReview).length;
   const [closed, setClosed] = useState<string[]>([]);
   const toggle = (id: string) =>
     setClosed((values) =>
@@ -44,13 +47,14 @@ export function Sidebar({
     {
       id: "cash",
       label: "Cash",
+      empty: "No cash accounts yet",
       items: accounts
         .filter((account) => account.kind === "cash")
         .map((account) => ({
           id: account.id,
           label: account.name,
-          value: balance(account),
-          warning: false,
+          value: account.balance,
+          warning: Boolean(account.connection?.needsAttention),
           current:
             screen.type === "register" && screen.accountId === account.id,
           go: () => onNavigate({ type: "register", accountId: account.id }),
@@ -59,13 +63,14 @@ export function Sidebar({
     {
       id: "credit",
       label: "Credit",
+      empty: "No credit cards yet",
       items: accounts
         .filter((account) => account.kind === "credit")
         .map((account) => ({
           id: account.id,
           label: account.name,
-          value: balance(account),
-          warning: account.syncedAgo === "Needs reconnect",
+          value: account.balance,
+          warning: Boolean(account.connection?.needsAttention),
           current:
             screen.type === "register" && screen.accountId === account.id,
           go: () => onNavigate({ type: "register", accountId: account.id }),
@@ -74,6 +79,7 @@ export function Sidebar({
     {
       id: "loans",
       label: "Loans",
+      empty: undefined,
       items: loans.map((loan) => ({
         id: loan.id,
         label: loan.name,
@@ -83,16 +89,16 @@ export function Sidebar({
         go: () => onNavigate({ type: "loans" }, loan.id),
       })),
     },
-  ];
+  ].filter((section) => section.items.length || section.empty);
 
   return (
     <nav className={styles.sidebarNav} aria-label="Budget navigation">
       <div className={styles.sidebarHeader}>
         <button type="button" className={styles.switcher}>
           <span className={styles.avatar} aria-hidden>
-            W
+            {budgetName.trim().charAt(0).toUpperCase() || "C"}
           </span>
-          <span className={styles.switcherName}>Weng household</span>
+          <span className={styles.switcherName}>{budgetName}</span>
           <ChevronDownIcon size={12} aria-hidden />
         </button>
         <IconButton label="Search" shortcut="⌘K" icon={SearchIcon} />
@@ -106,6 +112,12 @@ export function Sidebar({
             label="Plan"
             current={screen.type === "plan"}
             onClick={() => onNavigate({ type: "plan" })}
+          />
+          <NavItem
+            icon={ChartPieIcon}
+            label="Reflect"
+            current={screen.type === "reflect"}
+            onClick={() => onNavigate({ type: "reflect" })}
           />
           <NavItem
             icon={ArrowLeftRightIcon}
@@ -138,28 +150,36 @@ export function Sidebar({
                 onClick={() => toggle(section.id)}
               >
                 <span>{section.label}</span>
-                <ChevronDownIcon
-                  size={10}
-                  strokeWidth={2.5}
-                  className={styles.sectionCaret}
-                  aria-hidden
-                />
+                <Caret />
                 <span className={styles.sectionTotal}>{money(total)}</span>
               </button>
-              {open && (
-                <ul className={styles.navList}>
-                  {section.items.map((item) => (
-                    <NavItem
-                      key={item.id}
-                      label={item.label}
-                      value={money(item.value)}
-                      warning={item.warning}
-                      current={item.current}
-                      onClick={item.go}
-                    />
-                  ))}
-                </ul>
-              )}
+              {/* Stays mounted so it can animate closed; inert while hidden
+                  so its rows drop out of the tab order. */}
+              <div
+                className={styles.sectionBody}
+                data-open={open}
+                inert={!open}
+                aria-hidden={!open || undefined}
+              >
+                <div>
+                  {section.items.length ? (
+                    <ul className={`${styles.navList} ${styles.nested}`}>
+                      {section.items.map((item) => (
+                        <NavItem
+                          key={item.id}
+                          label={item.label}
+                          value={money(item.value)}
+                          warning={item.warning}
+                          current={item.current}
+                          onClick={item.go}
+                        />
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={styles.navEmpty}>{section.empty}</p>
+                  )}
+                </div>
+              </div>
             </section>
           );
         })}
@@ -173,6 +193,22 @@ export function Sidebar({
         <IconButton label="Add account" icon={PlusIcon} />
       </div>
     </nav>
+  );
+}
+
+// Linear's section caret: a small filled triangle that turns to point right
+// when the section closes.
+function Caret() {
+  return (
+    <svg
+      width="8"
+      height="8"
+      viewBox="0 0 8 8"
+      className={styles.sectionCaret}
+      aria-hidden
+    >
+      <path d="M1.5 2.5h5L4 5.5z" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -209,7 +245,7 @@ function NavItem({
           <span
             className={styles.warningDot}
             role="img"
-            aria-label="Needs reconnect"
+            aria-label="Connection needs attention"
           />
         )}
         {value && <span className={styles.navValue}>{value}</span>}

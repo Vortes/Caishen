@@ -1,0 +1,743 @@
+/* Reflect spending reports. Surface, text, and series tokens come from the
+   shell root (shell.module.css), so both themes apply here unchanged. */
+
+/* ---------- Filter bar ---------- */
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.filterTrigger {
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  font-size: var(--font-small);
+}
+.filterTrigger > svg {
+  flex: none;
+  color: var(--text-3);
+}
+/* A narrowed filter reads as on, like a pressed control. */
+/* ‹ date › as one control, like YNAB's month stepper. */
+.stepper {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 1px;
+  border: 1px solid var(--control-line);
+  border-radius: 999px;
+  background: var(--control);
+}
+.stepper .filterTrigger,
+.stepper .filterTrigger[data-active] {
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+}
+.step {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+}
+.step:hover:not(:disabled) {
+  background: var(--control-hover);
+  color: var(--text);
+}
+.step:disabled {
+  opacity: 0.35;
+}
+.filterTrigger[data-active] {
+  border-color: var(--control-active-line);
+  background: var(--control-active);
+  color: var(--text);
+}
+
+.popover {
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: 288px;
+  max-height: min(440px, var(--radix-popover-content-available-height));
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: var(--drawer-shadow);
+  color: var(--text-2);
+  font-size: var(--font-body);
+  transform-origin: var(--radix-popover-content-transform-origin);
+  animation: popover-in 150ms var(--ease-panel);
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.popoverHeader,
+.popoverFooter {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+.popoverHeader {
+  border-bottom: 1px solid var(--line);
+}
+.popoverFooter {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+}
+.textAction {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: var(--font-small);
+  font-weight: 500;
+}
+.textAction:hover:not(:disabled) {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.textAction:disabled {
+  color: var(--text-3);
+  opacity: 0.6;
+}
+.done {
+  height: 26px;
+  font-size: var(--font-small);
+}
+
+.checklist {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+.checkGroup {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.checkGroup + .checkGroup {
+  margin-top: 4px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px 0 28px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.check:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.check[data-strong] {
+  padding-left: 8px;
+  color: var(--text);
+  font-weight: 500;
+}
+.check input {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.check span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presets {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+}
+.preset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+}
+.preset:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.preset[aria-pressed="true"] {
+  color: var(--text);
+  font-weight: 500;
+}
+.custom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+.customTitle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-3);
+  font-size: var(--font-small);
+}
+.custom label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: var(--font-small);
+}
+.custom select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-body);
+}
+.custom .done {
+  grid-column: 2;
+  justify-self: end;
+}
+
+/* ---------- Report body ---------- */
+
+.report {
+  display: flex;
+  flex-direction: column;
+}
+.crumbs {
+  flex: none;
+  padding: 12px 12px 4px;
+}
+.crumbs ol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-body);
+}
+.crumbs li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.crumbs button {
+  height: 24px;
+  padding: 0 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+}
+.crumbs button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.crumbs [aria-current] {
+  color: var(--text);
+  font-weight: 500;
+}
+.crumbSeparator {
+  flex: none;
+  color: var(--text-3);
+}
+
+.chartBand {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: 16px 12px 24px;
+}
+.chartBand[data-kind="trends"] {
+  display: block;
+}
+
+/* ---------- Charts ---------- */
+
+/* The ring's center readout: the total, or the hovered or focused item. */
+.donutCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 52px;
+  text-align: center;
+  pointer-events: none;
+}
+.donutCenter strong {
+  color: var(--text);
+  font-size: var(--font-figure);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.donutCenter span {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--font-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.average line {
+  stroke: var(--text-3);
+  stroke-width: 1px;
+  shape-rendering: crispEdges;
+}
+.average text {
+  fill: var(--text-3);
+  font-size: var(--font-caption);
+}
+
+/* ---------- Dither Kit ---------- */
+
+/* Dither Kit styles its axes and tooltip with shadcn's theme variables; point
+   them at the shell's tokens so both themes match the rest of the panel. */
+.dither {
+  --card: var(--raised);
+  --foreground: var(--text);
+  --muted-foreground: var(--text-3);
+  --border: var(--line-strong);
+  position: relative;
+}
+/* The ring centers in a wider stage that holds its slice labels. */
+.stageFrame {
+  width: 100%;
+}
+.stage {
+  position: relative;
+  width: 100%;
+}
+/* Where the slice was clicked; the popover points at it. */
+.anchor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.stage > .ditherDonut {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.sliceLabel {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: var(--font-small);
+  line-height: 1.3;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: opacity 150ms;
+}
+.sliceLabel[data-side="left"] {
+  align-items: flex-end;
+  transform: translate(-100%, -50%);
+}
+.sliceLabel span:first-child {
+  color: var(--text-2);
+  font-weight: 500;
+}
+.sliceLabel span:last-child {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.sliceLabel[data-dim] {
+  opacity: 0.4;
+}
+.ditherTrends {
+  width: 100%;
+  height: 248px;
+}
+.ditherDonut[data-clickable] {
+  cursor: pointer;
+}
+
+/* ---------- Slice popover ---------- */
+
+.slicePopover {
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(420px, var(--radix-popover-content-available-height));
+}
+.sliceHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 12px 8px;
+}
+.sliceHeader strong {
+  color: var(--text);
+  font-size: var(--font-title);
+  font-weight: 600;
+}
+.sliceHeader > span:last-child {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--font-small);
+  font-variant-numeric: tabular-nums;
+}
+.sliceSwatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.sliceTable {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sliceRows {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+.sliceColumns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1.4fr) 88px;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--font-body);
+  text-align: start;
+}
+.sliceColumns > span:nth-child(2),
+.sliceColumns > span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+.sliceColumns > span:last-child {
+  color: var(--text);
+  text-align: end;
+}
+.sliceColumns > span[data-inflow] {
+  color: var(--green);
+}
+/* Inside the scroller, so it shares the rows' width and stays in view. */
+.sliceColumns[data-header] {
+  position: sticky;
+  z-index: 1;
+  top: -4px;
+  min-height: 28px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--raised);
+  color: var(--text-3);
+  font-size: var(--font-small);
+}
+.sliceColumns[data-header] > span:last-child {
+  color: var(--text-3);
+}
+button.sliceColumns:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.sliceColumns[data-static] {
+  color: var(--text-3);
+}
+.popoverArrow {
+  fill: var(--raised);
+}
+
+/* ---------- Headline, grouping, stats ---------- */
+
+.headline {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 12px 0;
+}
+.headlineFigure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.headlineFigure > span {
+  color: var(--text-2);
+  font-size: var(--font-small);
+  font-weight: 500;
+}
+/* The same figure step as the inspector cards. */
+.headline strong {
+  color: var(--text);
+  font-size: var(--font-figure);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: var(--control);
+}
+.switch button {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--font-small);
+  font-weight: 500;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.switch button:hover {
+  color: var(--text-2);
+}
+.switch button[aria-checked="true"] {
+  background: var(--control-active);
+  color: var(--text);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 16px 12px 0;
+  border-block: 1px solid var(--line);
+}
+.stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 16px 12px 0;
+}
+.stats > div + div {
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+.stats dt {
+  color: var(--text-3);
+  font-size: var(--font-small);
+}
+.stats dd {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-title);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.stats small {
+  color: var(--text-3);
+  font-size: var(--font-small);
+  font-weight: 400;
+}
+@container (max-width: 700px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stats > div:nth-child(3) {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .stats > div:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* ---------- Spending list (details panel, or under the chart) ---------- */
+
+.spendingList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.listHeader {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: var(--font-small);
+}
+.listRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  row-gap: 6px;
+  column-gap: 12px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: start;
+}
+.listRow:hover,
+.listRow[data-active] {
+  background: var(--hover);
+}
+.listName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text);
+}
+.listAmount {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.listAmount[data-inflow] {
+  color: var(--green);
+}
+.shareLine {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Bars scale within what's left after the percentage, so 100% still fits. */
+.shareLine {
+  --label: 44px;
+}
+.shareBar {
+  flex: none;
+  height: 6px;
+  border-radius: 3px;
+}
+.sharePercent {
+  color: var(--text-3);
+  font-size: var(--font-small);
+  font-variant-numeric: tabular-nums;
+}
+.listNote {
+  margin: 0;
+  padding: 0 8px;
+  color: var(--text-3);
+  font-size: var(--font-small);
+  text-wrap: pretty;
+}
+
+/* ---------- Report tables ---------- */
+
+.itemColumns,
+.entryColumns {
+  display: grid;
+  align-items: center;
+  column-gap: 16px;
+  width: 100%;
+  padding: 0 12px;
+}
+.itemColumns {
+  grid-template-columns: minmax(0, 1fr) 128px 64px 116px;
+}
+.entryColumns {
+  grid-template-columns: 72px minmax(0, 1.2fr) minmax(0, 1fr) 116px;
+}
+@container (max-width: 560px) {
+  .itemColumns {
+    grid-template-columns: minmax(0, 1fr) 56px 104px;
+  }
+  .entryColumns {
+    grid-template-columns: 64px minmax(0, 1fr) 104px;
+  }
+}
+.drillIcon {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 150ms;
+}
+/* Space between the report's tables, so each header reads as its own. */
+.section {
+  margin-top: 24px;
+}
+.staticRow {
+  height: var(--row);
+  color: var(--text-2);
+}
+/* Two classes, so it outranks the shell's green check on .empty icons. */
+.notice > .noticeIcon {
+  color: var(--text-3);
+}
+.noticeText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+}
+
+/* Touch: rows and controls in the popovers reach a 44px target, and the
+   month pickers use 16px text so iOS doesn't zoom when they're focused. */
+@media (pointer: coarse) {
+  .check,
+  .preset {
+    min-height: 44px;
+  }
+  .textAction {
+    min-height: 44px;
+  }
+  .custom select {
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover {
+    animation: none;
+  }
+  .drillIcon {
+    transition: none;
+  }
+}

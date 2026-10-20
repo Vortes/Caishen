@@ -25,6 +25,11 @@ export function TooltipLayer({
   );
 }
 
+// Popovers portal into the same root, for the same reason.
+export function usePortalContainer() {
+  return useContext(Container);
+}
+
 export function Tip({
   label,
   shortcut,

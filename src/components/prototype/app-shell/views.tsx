@@ -5,23 +5,21 @@ import {
   ChevronDownIcon,
   CircleCheckIcon,
   Clock3Icon,
-  LockIcon,
+  InboxIcon,
+  LandmarkIcon,
   MinusIcon,
+  UsersIcon,
+  type LucideIcon,
 } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
-  accounts,
-  allCategories,
-  available,
-  fundedRatio,
-  funding,
-  groups,
-  loans,
+  dayLabel,
   money,
-  transactions,
+  shortDay,
   type Category,
   type Funding,
-} from "./data";
+} from "./model";
+import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 
 // Arrow keys move the selection through the rows of a list, like Linear's j/k.
@@ -57,7 +55,15 @@ export function PlanView({
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
 }) {
+  const { groups } = useShellData();
   const [closed, setClosed] = useState<string[]>([]);
+  if (!groups.length) {
+    return (
+      <Empty title="No categories yet.">
+        Categories you create in Caishen show up here.
+      </Empty>
+    );
+  }
   return (
     <div
       className={styles.list}
@@ -134,7 +140,9 @@ export function PlanView({
                 <span className={styles.numeric} data-optional>
                   {money(sum((item) => item.activity))}
                 </span>
-                <span className={styles.numeric}>{money(sum(available))}</span>
+                <span className={styles.numeric}>
+                  {money(sum((item) => item.available))}
+                </span>
               </button>
             </div>
             {open &&
@@ -162,10 +170,18 @@ export function PlanView({
                       onClick={() => onSelect(category.id)}
                     >
                       <span className={styles.rowName}>
-                        <FundingRing category={category} />
                         <span className={styles.nameStack}>
-                          <span className={styles.truncate}>
-                            {category.name}
+                          <span className={styles.nameLine}>
+                            <span className={styles.truncate}>
+                              {category.name}
+                            </span>
+                            {category.sharePercents.length > 0 && (
+                              <UsersIcon
+                                size={12}
+                                className={styles.inlineIcon}
+                                aria-label="Shared"
+                              />
+                            )}
                           </span>
                           <FundingBar category={category} />
                         </span>
@@ -231,6 +247,8 @@ const fundingLabel: Record<Funding, string> = {
   funded: "Funded",
   underfunded: "Underfunded",
   overspent: "Overspent",
+  credit: "Overspent on credit",
+  snoozed: "Target snoozed",
   empty: "No money assigned",
 };
 
@@ -241,8 +259,8 @@ export function FundingRing({
   category: Category;
   size?: number;
 }) {
-  const state = funding(category);
-  const ratio = fundedRatio(category);
+  const state = category.funding;
+  const ratio = category.fundedRatio;
   const radius = 5;
   const circumference = 2 * Math.PI * radius;
   return (
@@ -255,7 +273,7 @@ export function FundingRing({
       role="img"
       aria-label={fundingLabel[state]}
     >
-      {state === "funded" || state === "overspent" ? (
+      {state === "funded" || state === "overspent" || state === "credit" ? (
         <>
           <circle cx="7" cy="7" r="6" className={styles.ringFill} />
           {state === "funded" ? (
@@ -271,8 +289,13 @@ export function FundingRing({
             cy="7"
             r="6"
             className={styles.ringTrack}
-            strokeDasharray={state === "empty" ? "1.6 1.6" : undefined}
+            strokeDasharray={
+              state === "empty" || state === "snoozed" ? "1.6 1.6" : undefined
+            }
           />
+          {state === "snoozed" && (
+            <path d="M5 7h4" className={styles.ringSnooze} />
+          )}
           {state === "underfunded" && (
             <circle
               cx="7"
@@ -290,9 +313,10 @@ export function FundingRing({
   );
 }
 
-// Alternative to FundingRing; the prototype's indicator switch shows one.
+// How funded the category is, under its name. FundingRing marks the same
+// state as the inspector's title icon.
 function FundingBar({ category }: { category: Category }) {
-  const state = funding(category);
+  const state = category.funding;
   return (
     <span
       className={styles.bar}
@@ -300,23 +324,22 @@ function FundingBar({ category }: { category: Category }) {
       role="img"
       aria-label={fundingLabel[state]}
     >
-      <span style={{ transform: `scaleX(${fundedRatio(category)})` }} />
+      <span style={{ transform: `scaleX(${category.fundedRatio})` }} />
     </span>
   );
 }
 
 function AvailablePill({ category }: { category: Category }) {
   return (
-    <span className={styles.pill} data-state={funding(category)}>
-      {money(available(category))}
+    <span className={styles.pill} data-state={category.funding}>
+      {money(category.available)}
     </span>
   );
 }
 
 const statusIcon = {
   pending: { icon: Clock3Icon, label: "Pending" },
-  cleared: { icon: CircleCheckIcon, label: "Cleared" },
-  reconciled: { icon: LockIcon, label: "Reconciled" },
+  posted: { icon: CircleCheckIcon, label: "Posted" },
 };
 
 export function RegisterView({
@@ -330,23 +353,26 @@ export function RegisterView({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const { transactions, accounts, month, today } = useShellData();
+  // The register follows the month picker, like the plan. The review inbox
+  // spans every month, so nothing waiting is hidden by the picker.
   const rows = transactions.filter(
     (item) =>
       (!accountId || item.accountId === accountId) &&
-      (!reviewOnly || item.needsReview),
+      (reviewOnly ? item.needsReview : item.date.startsWith(month.key)),
   );
-  const days = [...new Set(rows.map((item) => item.day))];
   if (!rows.length) {
-    return (
-      <div className={styles.empty}>
-        <CheckIcon size={18} aria-hidden />
-        <p>
-          <strong>Everything here is reviewed.</strong>
-          New bank imports will show up as they arrive.
-        </p>
-      </div>
+    return reviewOnly ? (
+      <Empty title="Everything here is reviewed." icon={CheckIcon}>
+        New bank imports will show up as they arrive.
+      </Empty>
+    ) : (
+      <Empty title={`No transactions in ${month.label}.`}>
+        Pick another month, or add one with New transaction.
+      </Empty>
     );
   }
+  const days = [...new Set(rows.map((item) => item.date))];
   return (
     <div
       className={styles.list}
@@ -355,18 +381,18 @@ export function RegisterView({
       onKeyDown={moveSelection}
     >
       {days.map((day) => {
-        const items = rows.filter((item) => item.day === day);
+        const items = rows.filter((item) => item.date === day);
+        const label = dayLabel(day, today);
         return (
           <div key={day}>
             <div className={styles.dayRow}>
-              <span>{day}</span>
-              <span className={styles.groupCount}>{items[0]?.date}</span>
+              <span>{label}</span>
+              {label !== shortDay(day) && (
+                <span className={styles.groupCount}>{shortDay(day)}</span>
+              )}
             </div>
             {items.map((item) => {
               const status = statusIcon[item.status];
-              const category = allCategories.find(
-                (entry) => entry.id === item.categoryId,
-              );
               const account = accounts.find(
                 (entry) => entry.id === item.accountId,
               );
@@ -388,30 +414,46 @@ export function RegisterView({
                         <span className="sr-only">Needs review</span>
                       )}
                     </span>
-                    <status.icon
-                      size={14}
-                      className={styles.statusIcon}
-                      data-status={item.status}
-                      aria-label={status.label}
-                    />
+                    {item.source === "bank" ? (
+                      <InboxIcon
+                        size={14}
+                        className={styles.statusIcon}
+                        aria-label="Bank import"
+                      />
+                    ) : (
+                      <status.icon
+                        size={14}
+                        className={styles.statusIcon}
+                        data-status={item.status}
+                        aria-label={status.label}
+                      />
+                    )}
                     <span className={styles.truncate}>{item.payee}</span>
+                    {item.shared && (
+                      <UsersIcon
+                        size={12}
+                        className={styles.inlineIcon}
+                        aria-label="Shared"
+                      />
+                    )}
                   </span>
                   <span className={styles.truncate}>
-                    {category ? (
-                      <span className={styles.muted}>{category.name}</span>
-                    ) : item.amount > 0 ? (
-                      <span className={styles.muted}>Ready to Assign</span>
-                    ) : (
+                    {item.needsCategory ? (
                       <span className={styles.chip} data-tone="amber">
-                        Needs category
+                        {item.categoryLabel}
                       </span>
+                    ) : (
+                      <span className={styles.muted}>{item.categoryLabel}</span>
+                    )}
+                    {item.forMonth && (
+                      <span className={styles.faint}> · {item.forMonth}</span>
                     )}
                   </span>
                   <span
                     className={`${styles.truncate} ${styles.faint}`}
                     data-optional
                   >
-                    {account?.name}
+                    {account?.name ?? "Unlinked bank account"}
                   </span>
                   <span
                     className={styles.numeric}
@@ -429,6 +471,26 @@ export function RegisterView({
   );
 }
 
+function Empty({
+  title,
+  icon: Icon = LandmarkIcon,
+  children,
+}: {
+  title: string;
+  icon?: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <div className={styles.empty}>
+      <Icon size={18} aria-hidden />
+      <p>
+        <strong>{title}</strong>
+        {children}
+      </p>
+    </div>
+  );
+}
+
 export function LoansView({
   selectedId,
   onSelect,
@@ -436,6 +498,14 @@ export function LoansView({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const { loans } = useShellData();
+  if (!loans.length) {
+    return (
+      <Empty title="No loans yet.">
+        Loans you add in Caishen show their payoff here.
+      </Empty>
+    );
+  }
   return (
     <div
       className={styles.list}
@@ -463,7 +533,7 @@ export function LoansView({
         >
           <span className={styles.truncate}>{loan.name}</span>
           <span className={styles.muted} data-optional>
-            {loan.rate}
+            {loan.rate ?? "No rate"}
           </span>
           <span className={styles.muted} data-optional>
             {loan.payoff}

@@ -1,5 +1,5 @@
 import { type Metadata } from "next";
-import { AppShellPrototype } from "~/components/prototype/app-shell/app-shell-prototype";
+import { LiveAppShell } from "~/components/prototype/app-shell/live-app-shell";
 
 export const metadata: Metadata = {
   title: "App shell prototype · Caishen",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function AppShellPrototypePage() {
-  return <AppShellPrototype />;
+  return <LiveAppShell />;
 }

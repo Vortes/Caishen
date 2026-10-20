@@ -160,7 +160,7 @@ export function TargetSection({
   );
 }
 
-function describe(target: Target) {
+export function describeTarget(target: Target) {
   const amount = formatMoney(target.amount);
   const action =
     target.cadence === "card-monthly" || target.cadence === "loan"
@@ -212,7 +212,7 @@ function TargetSummary({
   run: (command: Command) => void;
   onEdit: () => void;
 }) {
-  const { action, when } = describe(target);
+  const { action, when } = describeTarget(target);
   const assigned = Math.max(0, category.assigned);
   const { needed, snoozed } = progress;
   const ratio =

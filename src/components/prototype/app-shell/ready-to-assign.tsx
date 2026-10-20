@@ -1,30 +1,23 @@
 "use client";
 
 import { ChevronDownIcon } from "lucide-react";
-import { money } from "./data";
+import { money } from "./model";
 import styles from "./shell.module.css";
 
-export type RtaState = "positive" | "zero" | "over";
-
-const states: Record<
-  RtaState,
-  { amount: number; label: string; action?: string }
-> = {
-  positive: {
-    amount: 128416,
-    label: "Ready to Assign",
-    action: "Assign money",
-  },
-  zero: { amount: 0, label: "All money assigned" },
-  over: {
-    amount: -21350,
-    label: "Overassigned",
-    action: "Fix overassigned money",
-  },
-};
-
-export function RtaCard({ state }: { state: RtaState }) {
-  const { amount, label, action } = states[state];
+export function RtaCard({ amount }: { amount: number }) {
+  const state = amount > 0 ? "positive" : amount < 0 ? "over" : "zero";
+  const label =
+    state === "over"
+      ? "Overassigned"
+      : state === "zero"
+        ? "All money assigned"
+        : "Ready to Assign";
+  const action =
+    state === "over"
+      ? "Fix overassigned money"
+      : state === "positive"
+        ? "Assign money"
+        : undefined;
   return (
     <section className={`${styles.card} ${styles.rtaCard}`} data-state={state}>
       <span className={styles.rtaCardLabel}>{label}</span>
