@@ -22,6 +22,20 @@ const raw = (id: string) => ({
   date: "2026-10-10",
   name: "Store",
 });
+const rawAccount = (id: string, current: number) => ({
+  account_id: id,
+  name: id,
+  official_name: null,
+  mask: "1234",
+  type: "depository",
+  subtype: "checking",
+  balances: {
+    current,
+    available: current,
+    iso_currency_code: "USD",
+    unofficial_currency_code: null,
+  },
+});
 const page = (overrides: Record<string, unknown> = {}) => ({
   added: [],
   modified: [],
@@ -63,7 +77,12 @@ void test("Plaid sync buffers all pages and restarts from original cursor after 
     attempt += 1;
     if (attempt === 1)
       return Response.json(
-        page({ added: [raw("stale")], next_cursor: "page-2", has_more: true }),
+        page({
+          added: [raw("stale")],
+          accounts: [rawAccount("discarded", 999)],
+          next_cursor: "page-2",
+          has_more: true,
+        }),
       );
     if (attempt === 2)
       return Response.json(
@@ -74,6 +93,7 @@ void test("Plaid sync buffers all pages and restarts from original cursor after 
       return Response.json(
         page({
           added: [raw("final-1")],
+          accounts: [rawAccount("checking", 100)],
           next_cursor: "page-2b",
           has_more: true,
         }),
@@ -81,6 +101,7 @@ void test("Plaid sync buffers all pages and restarts from original cursor after 
     return Response.json(
       page({
         modified: [raw("final-2")],
+        accounts: [rawAccount("savings", 200)],
         removed: [{ transaction_id: "removed-1", account_id: "checking" }],
       }),
     );
@@ -102,6 +123,52 @@ void test("Plaid sync buffers all pages and restarts from original cursor after 
   assert.equal(result.modified[0]!.providerTransactionId, "final-2");
   assert.equal(result.removed[0]!.providerTransactionId, "removed-1");
   assert.equal(result.nextCursor, "done");
+  assert.deepEqual(
+    result.accounts.map((account) => [
+      account.accountId,
+      account.currentBalance,
+    ]),
+    [
+      ["checking", 100],
+      ["savings", 200],
+    ],
+  );
+});
+
+void test("Plaid restarts the whole sync when paginated account balances disagree", async () => {
+  let calls = 0;
+  const cursors: unknown[] = [];
+  const client = createPlaidClient(
+    { clientId: "id", secret: "secret", environment: "sandbox" },
+    async (_url, init) => {
+      cursors.push(
+        (JSON.parse(init?.body as string) as { cursor: unknown }).cursor,
+      );
+      calls++;
+      if (calls === 1)
+        return Response.json(
+          page({
+            added: [raw("discarded")],
+            accounts: [rawAccount("checking", 100)],
+            next_cursor: "page-two",
+            has_more: true,
+          }),
+        );
+      return Response.json(
+        page({
+          added: [raw(calls === 2 ? "conflict" : "final")],
+          accounts: [rawAccount("checking", 80)],
+        }),
+      );
+    },
+  );
+  const result = await client.syncTransactions("token", "original");
+  assert.deepEqual(cursors, ["original", "page-two", "original"]);
+  assert.deepEqual(
+    result.added.map((record) => record.providerTransactionId),
+    ["final"],
+  );
+  assert.equal(result.accounts[0]!.currentBalance, 80);
 });
 
 void test("Plaid refuses stalled pagination, missing credentials and leaking provider error messages", async () => {
@@ -136,6 +203,158 @@ void test("Plaid refuses stalled pagination, missing credentials and leaking pro
       error.code === "INVALID_ACCESS_TOKEN" &&
       !error.message.includes("sensitive-token"),
   );
+});
+
+void test("Plaid OAuth sends the registered redirect for initial and update Link sessions", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const plaid = createPlaidClient(
+    {
+      clientId: "id",
+      secret: "secret",
+      environment: "production",
+      redirectUri: "https://caishen.example/plaid/oauth",
+    },
+    async (url, init) => {
+      assert.equal(url, "https://production.plaid.com/link/token/create");
+      requests.push(
+        JSON.parse(init?.body as string) as Record<string, unknown>,
+      );
+      return Response.json({
+        link_token: "link-session",
+        expiration: "2026-10-20T12:00:00Z",
+      });
+    },
+  );
+  await plaid.createLinkToken("alice");
+  await plaid.createLinkToken("alice", "private-access-token");
+  assert.equal(
+    requests[0]!.redirect_uri,
+    "https://caishen.example/plaid/oauth",
+  );
+  assert.equal(requests[1]!.redirect_uri, requests[0]!.redirect_uri);
+  assert.deepEqual(requests[0]!.products, ["transactions"]);
+  assert.equal(requests[0]!.access_token, undefined);
+  assert.equal(requests[1]!.products, undefined);
+  assert.equal(requests[1]!.access_token, "private-access-token");
+  assert.deepEqual(requests[1]!.user, { client_user_id: "alice" });
+});
+
+void test("Plaid rejects unsupported OAuth redirects and allows sandbox HTTP only on loopback", () => {
+  const config = {
+    clientId: "id",
+    secret: "secret",
+    environment: "production" as const,
+  };
+  for (const redirectUri of [
+    undefined,
+    "/plaid/oauth",
+    "http://caishen.example/plaid/oauth",
+    "https://caishen.example/plaid/oauth?next=/budget",
+    "https://caishen.example/plaid/oauth#fragment",
+    "https://user:password@caishen.example/plaid/oauth",
+  ])
+    assert.throws(
+      () => createPlaidClient({ ...config, redirectUri }),
+      /PLAID_REDIRECT_URI/,
+    );
+  assert.throws(
+    () =>
+      createPlaidClient({
+        ...config,
+        environment: "sandbox",
+        redirectUri: "http://caishen.example/plaid/oauth",
+      }),
+    /PLAID_REDIRECT_URI/,
+  );
+  for (const redirectUri of [
+    "http://localhost:3000/plaid/oauth",
+    "http://127.0.0.1:3000/plaid/oauth",
+    "http://[::1]:3000/plaid/oauth",
+  ])
+    assert.doesNotThrow(() =>
+      createPlaidClient({ ...config, environment: "sandbox", redirectUri }),
+    );
+});
+
+void test("Plaid account details preserve cached currency balances and exclude unrelated provider fields", async () => {
+  const plaid = createPlaidClient(
+    { clientId: "id", secret: "secret", environment: "sandbox" },
+    async (url, init) => {
+      assert.equal(url, "https://sandbox.plaid.com/accounts/get");
+      assert.equal(
+        (JSON.parse(init?.body as string) as { access_token: string })
+          .access_token,
+        "private-token",
+      );
+      return Response.json({
+        accounts: [
+          {
+            account_id: "amex-card",
+            name: "Everyday card",
+            official_name: "American Express Card",
+            mask: "1001",
+            type: "credit",
+            subtype: "credit card",
+            balances: {
+              current: 123.45,
+              available: null,
+              iso_currency_code: "USD",
+              unofficial_currency_code: null,
+            },
+            account_number: "never-expose-this",
+          },
+          {
+            account_id: "chase-checking",
+            name: "Checking",
+            official_name: null,
+            mask: null,
+            type: "depository",
+            subtype: "checking",
+            balances: {
+              current: null,
+              available: 500,
+              iso_currency_code: "USD",
+              unofficial_currency_code: null,
+            },
+          },
+        ],
+        item: {
+          institution_id: "institution-1",
+          institution_name: "Bank",
+          webhook: "private-webhook",
+        },
+      });
+    },
+  );
+  const result = await plaid.getAccounts("private-token");
+  assert.deepEqual(result, {
+    accounts: [
+      {
+        accountId: "amex-card",
+        name: "Everyday card",
+        officialName: "American Express Card",
+        mask: "1001",
+        type: "credit",
+        subtype: "credit card",
+        currentBalance: 123.45,
+        availableBalance: null,
+        currency: "USD",
+      },
+      {
+        accountId: "chase-checking",
+        name: "Checking",
+        officialName: null,
+        mask: null,
+        type: "depository",
+        subtype: "checking",
+        currentBalance: null,
+        availableBalance: 500,
+        currency: "USD",
+      },
+    ],
+    institutionId: "institution-1",
+    institutionName: "Bank",
+  });
 });
 
 void test("model result validation accepts only known category suggestions, never accounting commands", () => {

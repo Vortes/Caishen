@@ -130,6 +130,7 @@ async function openFixture(page: Page, large = false) {
     date,
     payee,
     amount,
+    categoryName: null,
     pending: false,
     removed: false,
     needsMatchReview: false,
@@ -142,8 +143,12 @@ async function openFixture(page: Page, large = false) {
       ...bankImport("coffee", "Imported coffee", `${month}-03`, -1800),
       pending: true,
       needsMatchReview: true,
+      categoryName: "Dining out",
     },
-    bankImport("purchase", "Imported market", `${month}-04`, -2500),
+    {
+      ...bankImport("purchase", "Imported market", `${month}-04`, -2500),
+      pending: true,
+    },
     bankImport("savings", "Imported interest", `${month}-05`, 1287, null),
     {
       ...bankImport("old", "Older bank activity", "2000-01-01", -100),
@@ -270,6 +275,28 @@ test("bank activity shares register sorting, search, review filtering, and virtu
     .filter({ hasText: "Imported coffee" });
   await expect(coffee).toContainText("Check match");
   await expect(coffee).toContainText("Pending");
+  await expect(coffee.locator(".register-category-cell")).toHaveText(
+    "Dining out",
+  );
+  await expect(coffee.locator(".register-status-cell")).toContainText(
+    "Check match",
+  );
+  const purchase = table
+    .locator("tr[data-bank-import]")
+    .filter({ hasText: "Imported market" });
+  await expect(purchase.locator(".register-category-cell")).toHaveText(
+    "Choose category",
+  );
+  await expect(purchase.locator(".register-status-cell")).toContainText(
+    "Pending",
+  );
+  await expect(purchase.locator(".register-needs-review")).toHaveCount(0);
+  await expect(
+    table
+      .locator("tr[data-bank-import]")
+      .filter({ hasText: "Imported interest" })
+      .locator(".register-category-cell"),
+  ).toHaveText("Choose category");
   await search.fill("missing payee");
   await expect(
     page.getByRole("heading", { name: "No matching transactions" }),
@@ -279,17 +306,39 @@ test("bank activity shares register sorting, search, review filtering, and virtu
     .getByRole("button", { name: "View transactions", exact: true })
     .click();
   await page
-    .getByRole("menuitemradio", { name: "Needs review (6)", exact: true })
+    .getByRole("menuitemradio", { name: "Needs review (5)", exact: true })
     .click();
   await expect(page.locator(".register-footer")).toContainText(
-    "6 transactions",
+    "5 transactions",
   );
   await expect(
     table.getByRole("button", { name: "Future bank activity", exact: true }),
   ).toBeVisible();
+  const posted = table
+    .locator("tr[data-bank-import]")
+    .filter({ hasText: "Future bank activity" });
+  await expect(posted.locator(".register-status-cell")).toContainText("Posted");
+  await expect(posted.locator(".register-needs-review")).toHaveCount(0);
   await expect(
     table.getByRole("button", { name: "Older bank activity", exact: true }),
   ).toBeVisible();
+  const removed = table
+    .locator("tr[data-bank-import]")
+    .filter({ hasText: "Older bank activity" });
+  await expect(removed.locator(".register-category-cell")).toHaveText(
+    "Choose category",
+  );
+  await expect(removed.locator(".register-status-cell")).toContainText(
+    "Check bank update",
+  );
+  await expect(
+    table.locator(".register-category-cell").filter({
+      hasText: /Removed by bank|Needs review|Check match|Connect account/,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    table.getByRole("button", { name: "Imported market", exact: true }),
+  ).toHaveCount(0);
   await expect(
     table.getByRole("button", { name: "Recorded coffee", exact: true }),
   ).toHaveCount(0);
@@ -440,6 +489,9 @@ test("bank rows support validation, categorization, matching, account mapping, a
   await table
     .getByRole("button", { name: "Older bank activity", exact: true })
     .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "This does not confirm a cancellation or refund.",
+  );
   await expect(
     page
       .getByRole("dialog")

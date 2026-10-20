@@ -15,9 +15,105 @@ export interface PlaidConfig {
   clientId: string;
   secret: string;
   environment: "sandbox" | "production";
+  redirectUri?: string;
 }
 
+export function validatePlaidRedirectUri(
+  value: string | undefined,
+  environment: PlaidConfig["environment"],
+): string | undefined {
+  if (!value) {
+    if (environment === "sandbox") return undefined;
+    throw new IntegrationError(
+      "Plaid",
+      "NOT_CONFIGURED",
+      "Set PLAID_REDIRECT_URI to the registered HTTPS OAuth redirect before connecting production accounts.",
+    );
+  }
+  let url: URL | undefined;
+  try {
+    url = new URL(value);
+  } catch {
+    // Report configuration errors without including the configured URL.
+  }
+  const loopback =
+    url &&
+    (url.hostname === "localhost" ||
+      url.hostname === "[::1]" ||
+      /^127\.\d+\.\d+\.\d+$/.test(url.hostname));
+  if (
+    !url ||
+    value !== value.trim() ||
+    url.username ||
+    url.password ||
+    value.includes("?") ||
+    value.includes("#") ||
+    (url.protocol !== "https:" &&
+      !(environment === "sandbox" && url.protocol === "http:" && loopback))
+  )
+    throw new IntegrationError(
+      "Plaid",
+      "NOT_CONFIGURED",
+      "PLAID_REDIRECT_URI must be an absolute HTTPS URL without credentials, query parameters, or a fragment; sandbox also supports HTTP loopback URLs.",
+    );
+  return value;
+}
+
+export const bankAccountSchema = z.object({
+  accountId: providerIdSchema,
+  name: z.string().min(1).max(1024),
+  officialName: z.string().max(1024).nullable(),
+  mask: z.string().max(20).nullable(),
+  type: z.string().min(1).max(64),
+  subtype: z.string().max(100).nullable(),
+  currentBalance: z.number().finite().nullable(),
+  availableBalance: z.number().finite().nullable(),
+  currency: z.string().max(20).nullable(),
+});
+export type BankAccount = z.infer<typeof bankAccountSchema>;
+
+const rawAccountSchema = z.object({
+  account_id: providerIdSchema,
+  name: bankAccountSchema.shape.name,
+  official_name: bankAccountSchema.shape.officialName,
+  mask: bankAccountSchema.shape.mask,
+  type: bankAccountSchema.shape.type,
+  subtype: bankAccountSchema.shape.subtype,
+  balances: z.object({
+    current: bankAccountSchema.shape.currentBalance,
+    available: bankAccountSchema.shape.availableBalance,
+    iso_currency_code: bankAccountSchema.shape.currency,
+    unofficial_currency_code: bankAccountSchema.shape.currency,
+  }),
+});
+const rawAccountsSchema = z.array(rawAccountSchema).max(1000);
+function normalizeAccount(
+  account: z.infer<typeof rawAccountSchema>,
+): BankAccount {
+  return {
+    accountId: account.account_id,
+    name: account.name,
+    officialName: account.official_name,
+    mask: account.mask,
+    type: account.type,
+    subtype: account.subtype,
+    currentBalance: account.balances.current,
+    availableBalance: account.balances.available,
+    currency:
+      account.balances.iso_currency_code ??
+      account.balances.unofficial_currency_code,
+  };
+}
+const accountsResponseSchema = z.object({
+  accounts: rawAccountsSchema,
+  item: z.object({
+    institution_id: providerIdSchema.nullish(),
+    institution_name: z.string().max(1024).nullish(),
+  }),
+});
+
 const syncPageSchema = z.object({
+  accounts: rawAccountsSchema.default([]),
   added: z.array(plaidTransactionSchema).max(500),
   modified: z.array(plaidTransactionSchema).max(500),
   removed: z
@@ -54,6 +150,7 @@ export function createPlaidClient(
   const environment = z
     .enum(["sandbox", "production"])
     .parse(config.environment);
+  const redirectUri = validatePlaidRedirectUri(config.redirectUri, environment);
   const baseUrl =
     environment === "production"
       ? "https://production.plaid.com"
@@ -93,6 +190,7 @@ export function createPlaidClient(
   return {
     async createLinkToken(
       clientUserId: string,
+      accessToken?: string,
     ): Promise<{ linkToken: string; expiration: string }> {
       const result = z
         .object({
@@ -104,7 +202,12 @@ export function createPlaidClient(
             client_name: "Caishen",
             language: "en",
             country_codes: ["US"],
-            products: ["transactions"],
+            ...(accessToken !== undefined
+              ? {
+                  access_token: z.string().min(1).max(2048).parse(accessToken),
+                }
+              : { products: ["transactions"] }),
+            ...(redirectUri ? { redirect_uri: redirectUri } : {}),
             user: { client_user_id: providerIdSchema.parse(clientUserId) },
           }),
         );
@@ -127,11 +230,32 @@ export function createPlaidClient(
       return { accessToken: result.access_token, itemId: result.item_id };
     },
 
+    async getAccounts(accessToken: string): Promise<{
+      accounts: BankAccount[];
+      institutionId: string | null;
+      institutionName: string | null;
+    }> {
+      const result = accountsResponseSchema.parse(
+        await request("/accounts/get", {
+          access_token: z.string().min(1).max(2048).parse(accessToken),
+        }),
+      );
+      return {
+        accounts: result.accounts.map(normalizeAccount),
+        institutionId: result.item.institution_id ?? null,
+        institutionName: result.item.institution_name ?? null,
+      };
+    },
+
     async syncTransactions(
       accessToken: string,
       cursor?: string | null,
     ): Promise<
-      TransactionSyncDelta & { nextCursor: string; updateStatus: string | null }
+      TransactionSyncDelta & {
+        nextCursor: string;
+        updateStatus: string | null;
+        accounts: BankAccount[];
+      }
     > {
       z.string().min(1).max(2048).parse(accessToken);
       z.string().max(4096).nullish().parse(cursor);
@@ -143,6 +267,7 @@ export function createPlaidClient(
         };
         let nextCursor = cursor ?? undefined;
         let updateStatus: string | null = null;
+        const accounts = new Map<string, BankAccount>();
         try {
           for (let pageCount = 0; pageCount < 100; pageCount += 1) {
             const page = syncPageSchema.parse(
@@ -152,6 +277,21 @@ export function createPlaidClient(
                 count: 500,
               }),
             );
+            for (const account of page.accounts.map(normalizeAccount)) {
+              const previous = accounts.get(account.accountId);
+              if (
+                previous &&
+                (previous.currentBalance !== account.currentBalance ||
+                  previous.availableBalance !== account.availableBalance ||
+                  previous.currency !== account.currency)
+              )
+                throw new IntegrationError(
+                  "Plaid",
+                  "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION",
+                  "Bank balances changed during the paginated update. No partial update was saved.",
+                );
+              accounts.set(account.accountId, account);
+            }
             delta.added.push(...page.added.map(normalizePlaidTransaction));
             delta.modified.push(
               ...page.modified.map(normalizePlaidTransaction),
@@ -164,7 +304,12 @@ export function createPlaidClient(
             );
             updateStatus = page.transactions_update_status ?? updateStatus;
             if (!page.has_more)
-              return { ...delta, nextCursor: page.next_cursor, updateStatus };
+              return {
+                ...delta,
+                nextCursor: page.next_cursor,
+                updateStatus,
+                accounts: [...accounts.values()],
+              };
             if (!page.next_cursor || page.next_cursor === nextCursor)
               throw new IntegrationError(
                 "Plaid",

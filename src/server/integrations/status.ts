@@ -1,3 +1,5 @@
+import { validatePlaidRedirectUri } from "./plaid";
+
 export interface IntegrationServiceStatus {
   name: string;
   status: "configured" | "not configured";
@@ -26,6 +28,7 @@ export function integrationStatus(
       "PLAID_SECRET",
       "PLAID_ENV",
       "BANK_TOKEN_ENCRYPTION_KEY",
+      ...(environment.PLAID_ENV === "production" ? ["PLAID_REDIRECT_URI"] : []),
     ],
     "Credentials are present. Connect an eligible institution to verify live access; bank updates are periodic.",
   );
@@ -39,6 +42,24 @@ export function integrationStatus(
   if (environment.PLAID_ENV === "sandbox" && plaid.status === "configured")
     plaid.detail =
       "Sandbox credentials are present. Sandbox connections use test bank data and do not connect real accounts.";
+  if (
+    environment.PLAID_REDIRECT_URI &&
+    (environment.PLAID_ENV === "sandbox" ||
+      environment.PLAID_ENV === "production")
+  ) {
+    try {
+      validatePlaidRedirectUri(
+        environment.PLAID_REDIRECT_URI,
+        environment.PLAID_ENV,
+      );
+    } catch (error) {
+      plaid.status = "not configured";
+      plaid.detail =
+        error instanceof Error
+          ? error.message
+          : "PLAID_REDIRECT_URI is invalid.";
+    }
+  }
   if (
     environment.BANK_TOKEN_ENCRYPTION_KEY &&
     !/^[a-f0-9]{64}$/i.test(environment.BANK_TOKEN_ENCRYPTION_KEY)

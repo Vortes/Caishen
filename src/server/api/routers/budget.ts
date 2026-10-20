@@ -27,12 +27,16 @@ import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import { mutateWorkspace, readWorkspace } from "~/server/services/workspace";
 import {
   bankInbox,
+  bankAccountDetails,
   exchangeBankToken,
   linkBankToken,
   syncBanks,
   resolveImport,
   mapBankAccount,
+  reconnectBank,
+  setupBankAccounts,
 } from "~/server/services/banks";
+import { setupBankAccountsSchema } from "~/server/services/bank-account-setup";
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const revision = z.number().int().nonnegative();
@@ -56,7 +60,7 @@ export const budgetRouter = createTRPCRouter({
   state: protectedProcedure
     .input(z.object({ month }))
     .query(async ({ ctx, input }) => {
-      const [member, connections, evidence, imports] = await Promise.all([
+      const [member, savedConnections, evidence, imports] = await Promise.all([
         readWorkspace(ctx.db, ctx.userId),
         ctx.db.bankConnection.findMany({
           where: { clerkUserId: ctx.userId },
@@ -67,6 +71,7 @@ export const budgetRouter = createTRPCRouter({
             lastAttemptAt: true,
             error: true,
             accountMappings: true,
+            imports: true,
           },
         }),
         ctx.db.reviewEvidence.findMany({
@@ -84,6 +89,12 @@ export const budgetRouter = createTRPCRouter({
         }),
         bankInbox(ctx.db, ctx.userId),
       ]);
+      const connections = savedConnections.map(
+        ({ imports, ...connection }) => ({
+          ...connection,
+          ...bankAccountDetails(imports),
+        }),
+      );
       if (!member)
         return {
           view: null,
@@ -536,13 +547,24 @@ export const budgetRouter = createTRPCRouter({
       }
     }),
 
-  plaidLinkToken: protectedProcedure.mutation(({ ctx }) =>
-    linkBankToken(ctx.userId),
-  ),
+  plaidLinkToken: protectedProcedure
+    .input(
+      z
+        .object({ connectionId: z.string().min(1).max(256).optional() })
+        .optional(),
+    )
+    .mutation(({ ctx, input }) =>
+      linkBankToken(ctx.db, ctx.userId, input?.connectionId),
+    ),
   plaidExchange: protectedProcedure
     .input(z.object({ publicToken: z.string().min(1).max(2048) }))
     .mutation(({ ctx, input }) =>
       exchangeBankToken(ctx.db, ctx.userId, input.publicToken),
+    ),
+  plaidReconnect: protectedProcedure
+    .input(z.object({ connectionId: z.string().min(1).max(256) }))
+    .mutation(({ ctx, input }) =>
+      reconnectBank(ctx.db, ctx.userId, input.connectionId),
     ),
   mapBankAccount: protectedProcedure
     .input(
@@ -554,6 +576,9 @@ export const budgetRouter = createTRPCRouter({
       }),
     )
     .mutation(({ ctx, input }) => mapBankAccount(ctx.db, ctx.userId, input)),
+  setupBankAccounts: protectedProcedure
+    .input(setupBankAccountsSchema)
+    .mutation(({ ctx, input }) => setupBankAccounts(ctx.db, ctx.userId, input)),
   sync: protectedProcedure.mutation(({ ctx }) => syncBanks(ctx.db, ctx.userId)),
   resolveImport: protectedProcedure
     .input(

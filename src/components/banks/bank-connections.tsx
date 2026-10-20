@@ -1,169 +1,195 @@
 "use client";
 
 import { Button } from "~/components/ui/button";
-
-import { useState } from "react";
-import { api } from "~/trpc/react";
 import { type State } from "~/components/budget/types";
 import { Icon } from "~/components/shared";
+import { usePlaidLink } from "./use-plaid-link";
+import {
+  BankAccountSetup,
+  bankAccountMappings,
+  hasUnmappedBankAccounts,
+  useBankAccountSetup,
+} from "./bank-account-setup";
 
-type PlaidHandler = { open: () => void; destroy: () => void };
-type PlaidSdk = {
-  create: (options: {
-    token: string;
-    onSuccess: (publicToken: string) => void;
-    onExit: (
-      error: { display_message?: string; error_message?: string } | null,
-    ) => void;
-  }) => PlaidHandler;
-};
-declare global {
-  interface Window {
-    Plaid?: PlaidSdk;
-  }
-}
-
-async function loadPlaid() {
-  if (window.Plaid) return window.Plaid;
-  await new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () =>
-      reject(
-        new Error(
-          "Plaid Link could not load. Check your connection and try again.",
-        ),
-      );
-    document.head.appendChild(script);
-  });
-  if (!window.Plaid)
-    throw new Error("Plaid Link did not initialize. Try again.");
-  return window.Plaid;
+function balance(value: number | null, currency: string | null) {
+  if (value === null) return "Unavailable";
+  if (!currency || !/^[A-Z]{3}$/.test(currency))
+    return `${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ""}`;
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
+    value,
+  );
 }
 
 export function BankConnections({ state }: { state: State }) {
-  const utils = api.useUtils();
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  const token = api.budget.plaidLinkToken.useMutation();
-  const exchange = api.budget.plaidExchange.useMutation();
+  const link = usePlaidLink();
+  const setup = useBankAccountSetup(
+    state,
+    link.saved ? link.connectionId : undefined,
+    !link.busy,
+  );
   const available =
     state.services.find((service) => service.name === "Plaid")?.status ===
     "configured";
-  const connect = async () => {
-    setError("");
-    setMessage("");
-    setLoading(true);
-    try {
-      const [sdk, result] = await Promise.all([
-        loadPlaid(),
-        token.mutateAsync(),
-      ]);
-      const handler = sdk.create({
-        token: result.linkToken,
-        onSuccess: (publicToken) => {
-          void exchange
-            .mutateAsync({ publicToken })
-            .then(async () => {
-              await utils.budget.state.invalidate();
-              setMessage(
-                "Bank connection saved. Update accounts, then map each bank account in the review inbox.",
-              );
-            })
-            .catch((failure: unknown) =>
-              setError(
-                failure instanceof Error
-                  ? failure.message
-                  : "The connection could not be saved.",
-              ),
-            )
-            .finally(() => {
-              setLoading(false);
-              handler.destroy();
-            });
-        },
-        onExit: (failure) => {
-          if (failure)
-            setError(
-              failure.display_message ??
-                failure.error_message ??
-                "Plaid connection ended before completion.",
-            );
-          setLoading(false);
-          handler.destroy();
-        },
-      });
-      handler.open();
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "Bank connection could not start.",
-      );
-      setLoading(false);
-    }
-  };
   return (
     <section className="panel">
       <div className="panel-header">
         <div>
           <h2>Bank connections</h2>
           <p>
-            Plaid · Chase, Amex, and Discover eligibility depends on the
-            institution.
+            Securely connect Chase, American Express, and other banks through
+            Plaid.
           </p>
         </div>
         <Button
           type="button"
           variant="secondary"
-          disabled={!available || loading}
-          onClick={connect}
+          disabled={!available || !link.userId || link.busy}
+          onClick={() => void link.start()}
         >
-          {loading ? "Connecting…" : "Connect a bank"}
+          {link.busy && !link.connectionId ? "Connecting…" : "Connect a bank"}
           <Icon name="arrow" size={14} />
         </Button>
       </div>
       <div className="panel-body">
-        {error && (
+        {link.error && (
           <p className="form-error" role="alert">
-            ! {error}
+            {link.error}
           </p>
         )}
-        {message && (
+        {link.canonicalOrigin && (
+          <Button asChild variant="secondary">
+            <a href={link.canonicalOrigin}>
+              Open {new URL(link.canonicalOrigin).host}
+              <Icon name="arrow" size={14} />
+            </a>
+          </Button>
+        )}
+        {link.message && (
           <p className="notice" role="status">
-            {message}
+            {link.message}
           </p>
+        )}
+        {link.phase === "saving" && (
+          <p role="status">Saving your bank connection…</p>
+        )}
+        {link.phase === "syncing" && (
+          <p role="status">Updating your bank accounts and activity…</p>
+        )}
+        {link.needsSync && (
+          <Button
+            variant="secondary"
+            disabled={link.busy}
+            onClick={() => void link.retrySync()}
+          >
+            {link.busy ? "Updating…" : "Retry bank update"}
+          </Button>
         )}
         {state.connections.length ? (
           state.connections.map((connection, index) => (
-            <div className="service-row" key={connection.id}>
+            <div
+              className="service-row flex-wrap items-start"
+              key={connection.id}
+            >
               <span className="account-symbol">
                 <Icon name="bank" size={18} />
               </span>
-              <div>
-                <strong>Bank connection {index + 1}</strong>
+              <div className="min-w-0">
+                <strong>
+                  {connection.institutionName ?? `Bank connection ${index + 1}`}
+                </strong>
                 <p>
                   {connection.lastSyncedAt
                     ? `Last successful update: ${new Date(connection.lastSyncedAt).toLocaleString("en-US", { timeZone: state.view?.budget.settings.timezone })}`
-                    : "No successful updates yet."}
+                    : "No successful activity updates yet."}
                 </p>
+                {connection.accounts.length > 0 && (
+                  <ul
+                    className="mt-3 grid list-none gap-3"
+                    aria-label="Connected bank accounts"
+                  >
+                    {connection.accounts.map((account) => (
+                      <li
+                        className="flex flex-wrap items-start justify-between gap-x-5 gap-y-1 text-sm"
+                        key={account.accountId}
+                      >
+                        <span>
+                          {account.name}
+                          {account.mask ? ` · ••${account.mask}` : ""}
+                          {account.subtype && (
+                            <span className="muted block text-xs capitalize">
+                              {account.subtype.replaceAll("_", " ")}
+                            </span>
+                          )}
+                          {bankAccountMappings(connection.accountMappings).has(
+                            account.accountId,
+                          ) && (
+                            <span className="muted block text-xs">
+                              Added to your budget
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-right tabular-nums">
+                          {balance(account.currentBalance, account.currency)}
+                          <span className="muted block text-xs">
+                            {account.type === "credit"
+                              ? "Current balance owed"
+                              : "Current balance"}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {connection.error && (
                   <p className="negative">{connection.error}</p>
                 )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {hasUnmappedBankAccounts(connection) && (
+                  <Button
+                    variant="secondary"
+                    disabled={link.busy}
+                    onClick={() => setup.open(connection.id)}
+                  >
+                    Set up accounts
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  disabled={!available || link.busy}
+                  onClick={() => void link.start(connection.id)}
+                  aria-label={`Reconnect ${connection.institutionName ?? `bank connection ${index + 1}`}`}
+                >
+                  {link.busy && link.connectionId === connection.id
+                    ? "Reconnecting…"
+                    : "Reconnect"}
+                </Button>
               </div>
             </div>
           ))
         ) : (
           <p className="small muted">
             {available
-              ? "Connect your institution to bring posted and pending activity into your private inbox."
+              ? "Connect your bank to see account balances and bring posted and pending activity into your private review inbox."
               : "Bank connection needs service setup. You can use manual accounts and transactions now."}
           </p>
         )}
+        {state.connections.length > 0 && (
+          <p className="small muted mt-4">
+            Name your connected accounts to add them to Cash or Credit. Bank
+            balances reflect the latest saved bank data; new activity appears in
+            your review inbox.
+          </p>
+        )}
       </div>
+      {setup.connection && (
+        <BankAccountSetup
+          key={setup.connection.id}
+          state={state}
+          connection={setup.connection}
+          onClose={setup.close}
+        />
+      )}
     </section>
   );
 }

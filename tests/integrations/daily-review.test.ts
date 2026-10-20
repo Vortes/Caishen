@@ -340,6 +340,31 @@ void test("cancellation retries recover a lost acknowledgement only from a match
   }
 });
 
+void test("production Plaid status requires a registered HTTPS OAuth redirect", () => {
+  const credentials = {
+    PLAID_CLIENT_ID: "present",
+    PLAID_SECRET: "present",
+    PLAID_ENV: "production",
+    BANK_TOKEN_ENCRYPTION_KEY: "a".repeat(64),
+  };
+  const plaidStatus = (redirectUri?: string) =>
+    integrationStatus({ ...credentials, PLAID_REDIRECT_URI: redirectUri }).find(
+      (service) => service.name === "Plaid",
+    )!;
+  assert.equal(plaidStatus().status, "not configured");
+  assert.match(plaidStatus().detail, /PLAID_REDIRECT_URI/);
+  for (const redirect of [
+    "http://localhost:3000/plaid/oauth",
+    "https://caishen.example/plaid/oauth?next=1",
+    "https://caishen.example/plaid/oauth#return",
+  ])
+    assert.equal(plaidStatus(redirect).status, "not configured");
+  assert.equal(
+    plaidStatus("https://caishen.example/plaid/oauth").status,
+    "configured",
+  );
+});
+
 void test("service status reports missing credentials and labels sandbox as test data", () => {
   const missing = integrationStatus({});
   assert.ok(missing.every((service) => service.status === "not configured"));

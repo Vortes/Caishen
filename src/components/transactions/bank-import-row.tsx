@@ -29,13 +29,14 @@ export function BankImportRow({
   rowRef?: RefCallback<HTMLTableRowElement>;
   onReview: () => void;
 }) {
-  const reason = !item.accountId
+  const reviewReason = !item.accountId
     ? "Connect account"
-    : item.removed
-      ? "Removed by bank"
+    : item.removed || item.error
+      ? "Check bank update"
       : item.needsMatchReview
         ? "Check match"
-        : "Needs review";
+        : null;
+  const category = item.categoryName ?? "Choose category";
   return (
     <tr
       ref={rowRef}
@@ -71,11 +72,11 @@ export function BankImportRow({
       <td className="register-category-cell">
         <button
           type="button"
-          className="register-cell-button register-import-review"
+          className="register-cell-button"
           onClick={onReview}
+          title={`Edit category for ${item.payee}`}
         >
-          <Icon name="info" size={14} />
-          {reason}
+          {category}
         </button>
       </td>
       <td className="number register-outflow-cell">
@@ -86,12 +87,14 @@ export function BankImportRow({
       </td>
       <td className="register-status-cell">
         <div className="register-status-indicators">
-          <span className="register-needs-review" title="Needs review">
-            <Icon name="info" size={14} />
-            <span className="sr-only">Needs review</span>
-          </span>
+          {reviewReason && (
+            <span className="register-needs-review" title={reviewReason}>
+              <Icon name="info" size={14} />
+              <span className="sr-only">{reviewReason}</span>
+            </span>
+          )}
           <span
-            className={item.pending ? "register-pending" : "register-posted"}
+            className={item.pending ? "register-approved" : "register-posted"}
             title={item.pending ? "Pending" : "Posted"}
           >
             <Icon name={item.pending ? "clock" : "posted"} size={14} />
