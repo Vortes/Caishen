@@ -2,11 +2,8 @@
 
 import { EllipsisIcon, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { IconButton } from "~/components/ui/icon-button";
 import styles from "./shell.module.css";
-
-export function Card({ children }: { children: ReactNode }) {
-  return <section className={styles.card}>{children}</section>;
-}
 
 export function Title({
   icon,
@@ -25,13 +22,9 @@ export function Title({
         {icon}
         <h2 className={styles.truncate}>{title}</h2>
         {menu && (
-          <button
-            type="button"
-            className={styles.iconButton}
-            aria-label={`${title} actions`}
-          >
-            <EllipsisIcon size={15} aria-hidden />
-          </button>
+          <IconButton label={`${title} actions`}>
+            <EllipsisIcon aria-hidden />
+          </IconButton>
         )}
       </div>
       {subtitle && <p>{subtitle}</p>}

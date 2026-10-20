@@ -9,8 +9,8 @@ import { formatMoney, money, newId } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import type { Category } from "~/components/budget/category-table";
 import { Amount } from "~/components/shared";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
+import { Button } from "~/components/ui-legacy/button";
+import { Input } from "~/components/ui-legacy/input";
 
 const readyToAssign = "ready-to-assign";
 

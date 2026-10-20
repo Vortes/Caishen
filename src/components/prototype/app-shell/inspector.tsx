@@ -13,9 +13,12 @@ import {
   UsersIcon,
   ZapIcon,
 } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
 import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
-import { Card, Figure, Property, Title } from "./cards";
+import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
+import { Tag } from "~/components/ui/tag";
+import { Figure, Property, Title } from "./cards";
 import { money, shortDay, type Category, type Transaction } from "./model";
 import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
@@ -168,8 +171,13 @@ function MonthDetails() {
   } = useShellData();
   const owed = reimbursements.filter((item) => item.outstanding > 0);
   const tabs = [
-    { label: "Auto-Assign", content: <AutoAssign scope={categories} /> },
     {
+      value: "auto-assign",
+      label: "Auto-Assign",
+      content: <AutoAssign scope={categories} />,
+    },
+    {
+      value: "cost-to-be-me",
       label: "Cost to Be Me",
       content: (
         <div className={styles.tabBody}>
@@ -198,6 +206,7 @@ function MonthDetails() {
   ];
   if (partner)
     tabs.push({
+      value: "shared",
       label: "Shared",
       content: (
         <div className={styles.tabBody}>
@@ -217,6 +226,7 @@ function MonthDetails() {
     });
   if (reimbursements.length)
     tabs.push({
+      value: "reimbursements",
       label: `Reimbursements ${owed.length}`,
       content: owed.length ? (
         <ul className={styles.actionList}>
@@ -248,7 +258,22 @@ function MonthDetails() {
           {money(sum(categories, (item) => item.available))}
         </Property>
       </Card>
-      <Tabs tabs={tabs} />
+      <Card>
+        <Tabs defaultValue="auto-assign">
+          <TabsList aria-label="Month details">
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {tabs.map((tab) => (
+            <TabsContent key={tab.value} value={tab.value}>
+              {tab.content}
+            </TabsContent>
+          ))}
+        </Tabs>
+      </Card>
     </>
   );
 }
@@ -286,11 +311,16 @@ function CheckedDetails({ ids }: { ids: string[] }) {
           {money(sum(categories, (item) => item.carryover))}
         </Property>
       </Card>
-      <Tabs
-        tabs={[
-          { label: "Auto-Assign", content: <AutoAssign scope={categories} /> },
-        ]}
-      />
+      <Card>
+        <Tabs defaultValue="auto-assign">
+          <TabsList aria-label="Selection details">
+            <TabsTrigger value="auto-assign">Auto-Assign</TabsTrigger>
+          </TabsList>
+          <TabsContent value="auto-assign">
+            <AutoAssign scope={categories} />
+          </TabsContent>
+        </Tabs>
+      </Card>
     </>
   );
 }
@@ -353,11 +383,14 @@ function CategoryDetails({ category }: { category: Category }) {
           )}
         </Card>
       )}
-      <Tabs
-        tabs={[
-          {
-            label: "Target",
-            content: target ? (
+      <Card>
+        <Tabs defaultValue="target">
+          <TabsList aria-label="Category details">
+            <TabsTrigger value="target">Target</TabsTrigger>
+            <TabsTrigger value="auto-assign">Auto-Assign</TabsTrigger>
+          </TabsList>
+          <TabsContent value="target">
+            {target ? (
               <div className={styles.tabBody}>
                 <Property label="Goal" icon={TargetIcon}>
                   {target.action}
@@ -382,18 +415,15 @@ function CategoryDetails({ category }: { category: Category }) {
               <p className={styles.tabEmpty}>
                 No target yet. Set one to see what this category needs each
                 month.
-                <button type="button" className={styles.textButton}>
-                  Create target
-                </button>
+                <Button variant="quiet">Create target</Button>
               </p>
-            ),
-          },
-          {
-            label: "Auto-Assign",
-            content: <AutoAssign scope={[category]} />,
-          },
-        ]}
-      />
+            )}
+          </TabsContent>
+          <TabsContent value="auto-assign">
+            <AutoAssign scope={[category]} />
+          </TabsContent>
+        </Tabs>
+      </Card>
     </>
   );
 }
@@ -447,20 +477,21 @@ function AccountDetails({ accountId }: { accountId: string | null }) {
             {!connection ? (
               <span className={styles.faint}>Not connected to a bank</span>
             ) : connection.needsAttention ? (
-              <span className={styles.chip} data-tone="amber">
-                Reconnect
-              </span>
+              <Tag tone="attention">Reconnect</Tag>
             ) : (
               connection.synced
             )}
           </Property>
         )}
       </Card>
-      <Tabs
-        tabs={[
-          {
-            label: `To review ${review.length}`,
-            content: review.length ? (
+      <Card>
+        <Tabs defaultValue="review">
+          <TabsList aria-label="Account details">
+            <TabsTrigger value="review">To review {review.length}</TabsTrigger>
+            <TabsTrigger value="balances">Balances</TabsTrigger>
+          </TabsList>
+          <TabsContent value="review">
+            {review.length ? (
               <ul className={styles.actionList}>
                 {review.map((item) => (
                   <li key={item.id}>
@@ -476,11 +507,10 @@ function AccountDetails({ accountId }: { accountId: string | null }) {
               </ul>
             ) : (
               <p className={styles.tabEmpty}>Nothing to review.</p>
-            ),
-          },
-          {
-            label: "Balances",
-            content: scope.length ? (
+            )}
+          </TabsContent>
+          <TabsContent value="balances">
+            {scope.length ? (
               <ul className={styles.actionList}>
                 {scope.map((item) => (
                   <li key={item.id}>
@@ -495,10 +525,10 @@ function AccountDetails({ accountId }: { accountId: string | null }) {
               </ul>
             ) : (
               <p className={styles.tabEmpty}>No accounts yet.</p>
-            ),
-          },
-        ]}
-      />
+            )}
+          </TabsContent>
+        </Tabs>
+      </Card>
     </>
   );
 }
@@ -538,9 +568,7 @@ function TransactionDetails({ item }: { item: Transaction }) {
       <Card>
         <Property label="Category" icon={FolderIcon}>
           {item.needsCategory ? (
-            <span className={styles.chip} data-tone="amber">
-              {item.categoryLabel}
-            </span>
+            <Tag tone="attention">{item.categoryLabel}</Tag>
           ) : (
             <span className={styles.truncate}>{item.categoryLabel}</span>
           )}
@@ -549,11 +577,7 @@ function TransactionDetails({ item }: { item: Transaction }) {
           label="Account"
           icon={account?.kind === "credit" ? CreditCardIcon : LandmarkIcon}
         >
-          {account?.name ?? (
-            <span className={styles.chip} data-tone="amber">
-              Not linked
-            </span>
-          )}
+          {account?.name ?? <Tag tone="attention">Not linked</Tag>}
         </Property>
         <Property label="Date" icon={CalendarDaysIcon}>
           {longDate(item.date)}
@@ -579,37 +603,38 @@ function TransactionDetails({ item }: { item: Transaction }) {
               "Check the category, then mark it reviewed."
             )}
           </p>
-          <button
-            type="button"
-            className={`${styles.control} ${styles.secondaryButton}`}
-          >
-            {fromBank ? "Review import" : "Mark reviewed"}
-          </button>
+          <div>
+            <Button variant="primary">
+              {fromBank ? "Review import" : "Mark reviewed"}
+            </Button>
+          </div>
         </Card>
       )}
       {item.history.length > 1 && (
-        <Tabs
-          tabs={[
-            {
-              label: `History ${item.history.length}`,
-              content: (
-                <ul className={styles.actionList}>
-                  {[...item.history].reverse().map((entry, index) => (
-                    <li key={index}>
-                      <div className={styles.actionItem}>
-                        <HistoryIcon size={13} aria-hidden />
-                        <span>{entry.reason}</span>
-                        <span className={styles.numeric}>
-                          {money(entry.amount, true)}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ),
-            },
-          ]}
-        />
+        <Card>
+          <Tabs defaultValue="history">
+            <TabsList aria-label="Transaction details">
+              <TabsTrigger value="history">
+                History {item.history.length}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="history">
+              <ul className={styles.actionList}>
+                {[...item.history].reverse().map((entry, index) => (
+                  <li key={index}>
+                    <div className={styles.actionItem}>
+                      <HistoryIcon size={13} aria-hidden />
+                      <span>{entry.reason}</span>
+                      <span className={styles.numeric}>
+                        {money(entry.amount, true)}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </TabsContent>
+          </Tabs>
+        </Card>
       )}
     </>
   );
@@ -647,47 +672,5 @@ function Meter({
       </span>
       <span>{label}</span>
     </div>
-  );
-}
-
-function Tabs({ tabs }: { tabs: { label: string; content: ReactNode }[] }) {
-  const [active, setActive] = useState(0);
-  const id = useId();
-  return (
-    <section className={styles.card}>
-      <div className={styles.tabs} role="tablist">
-        {tabs.map((tab, index) => (
-          <button
-            type="button"
-            role="tab"
-            key={tab.label}
-            id={`${id}-tab-${index}`}
-            aria-selected={active === index}
-            aria-controls={`${id}-panel`}
-            tabIndex={active === index ? 0 : -1}
-            className={`${styles.control} ${styles.tab}`}
-            onClick={() => setActive(index)}
-            onKeyDown={(event) => {
-              if (event.key !== "ArrowRight" && event.key !== "ArrowLeft")
-                return;
-              const next =
-                (active + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
-                tabs.length;
-              setActive(next);
-              document.getElementById(`${id}-tab-${next}`)?.focus();
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div
-        role="tabpanel"
-        id={`${id}-panel`}
-        aria-labelledby={`${id}-tab-${active}`}
-      >
-        {tabs[active]?.content}
-      </div>
-    </section>
   );
 }

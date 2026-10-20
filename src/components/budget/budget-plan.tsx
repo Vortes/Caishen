@@ -13,9 +13,13 @@ import {
 } from "~/components/budget/category-table";
 import { CategoryInspector } from "~/components/budget/category-inspector";
 import { EmptyState, Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import { Dialog, DialogContent, DialogTitle } from "~/components/ui/dialog";
+import { Button } from "~/components/ui-legacy/button";
+import { Input } from "~/components/ui-legacy/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "~/components/ui-legacy/dialog";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { sharePercent } from "~/components/shared-expenses/split";
 

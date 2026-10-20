@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { parseAssignedAmount } from "~/components/budget/assigned-amount";
 import { Amount } from "~/components/shared";
-import { Input } from "~/components/ui/input";
+import { Input } from "~/components/ui-legacy/input";
 
 export function AssignedInput({
   name,

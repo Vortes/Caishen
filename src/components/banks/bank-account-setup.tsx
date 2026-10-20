@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { State } from "~/components/budget/types";
 import { FormField, SelectField } from "~/components/shared";
-import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
+import { Button } from "~/components/ui-legacy/button";
+import { Checkbox } from "~/components/ui-legacy/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "~/components/ui/dialog";
+} from "~/components/ui-legacy/dialog";
 import { api } from "~/trpc/react";
 
 type Connection = State["connections"][number];

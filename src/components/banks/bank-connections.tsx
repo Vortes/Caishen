@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import { type State } from "~/components/budget/types";
 import { Icon } from "~/components/shared";
 import { usePlaidLink } from "./use-plaid-link";

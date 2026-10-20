@@ -13,14 +13,14 @@ import {
 } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Amount, FormField, Icon, SelectField } from "~/components/shared";
-import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
+import { Button } from "~/components/ui-legacy/button";
+import { Checkbox } from "~/components/ui-legacy/checkbox";
 import {
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
-} from "~/components/ui/popover";
+} from "~/components/ui-legacy/popover";
 
 type Cadence = Target["cadence"];
 type Behavior = Target["behavior"];

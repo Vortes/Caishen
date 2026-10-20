@@ -7,11 +7,12 @@ import {
   Clock3Icon,
   InboxIcon,
   LandmarkIcon,
-  MinusIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { Checkbox } from "~/components/ui/checkbox";
+import { Tag } from "~/components/ui/tag";
 import {
   dayLabel,
   money,
@@ -125,7 +126,7 @@ export function PlanView({
         return (
           <div key={group.id}>
             <div className={styles.rowWrap}>
-              <Checkbox
+              <RowCheckbox
                 label={`Select ${group.name}`}
                 state={
                   count === 0 ? false : count === ids.length ? true : "mixed"
@@ -176,7 +177,7 @@ export function PlanView({
                     className={styles.rowWrap}
                     data-checked={isChecked || undefined}
                   >
-                    <Checkbox
+                    <RowCheckbox
                       label={`Select ${category.name}`}
                       state={isChecked}
                       onChange={() => onCheck([category.id], !isChecked)}
@@ -249,8 +250,8 @@ export function PlanView({
 }
 
 // Lives in the row's left padding; shows on hover, focus, or once anything
-// in the list is checked.
-function Checkbox({
+// in the list is checked. The label is the hit area: the full row height.
+function RowCheckbox({
   label,
   state,
   onChange,
@@ -260,22 +261,13 @@ function Checkbox({
   onChange: () => void;
 }) {
   return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={state}
-      aria-label={label}
-      className={styles.checkbox}
-      onClick={onChange}
-    >
-      <span aria-hidden>
-        {state === "mixed" ? (
-          <MinusIcon size={10} strokeWidth={3} />
-        ) : state ? (
-          <CheckIcon size={10} strokeWidth={3} />
-        ) : null}
-      </span>
-    </button>
+    <label className={styles.checkboxSlot}>
+      <Checkbox
+        aria-label={label}
+        checked={state === "mixed" ? "indeterminate" : state}
+        onCheckedChange={onChange}
+      />
+    </label>
   );
 }
 
@@ -463,9 +455,7 @@ export function RegisterView({
                   </span>
                   <span className={styles.truncate}>
                     {item.needsCategory ? (
-                      <span className={styles.chip} data-tone="amber">
-                        {item.categoryLabel}
-                      </span>
+                      <Tag tone="attention">{item.categoryLabel}</Tag>
                     ) : (
                       <span className={styles.muted}>{item.categoryLabel}</span>
                     )}

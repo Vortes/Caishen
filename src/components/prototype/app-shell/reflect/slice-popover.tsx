@@ -4,8 +4,9 @@ import { Popover } from "radix-ui";
 import type { SpendingEntry } from "~/domain/spending";
 import { money, shortDay } from "../model";
 import { useShellData } from "../shell-data";
+import { Button } from "~/components/ui/button";
+import { usePortalContainer } from "~/components/ui/tooltip";
 import shell from "../shell.module.css";
-import { usePortalContainer } from "../tooltip";
 import { seriesColor } from "./chart-utils";
 import type { ChartItem } from "./report";
 import styles from "./reflect.module.css";
@@ -98,16 +99,12 @@ export function SlicePopover({
         </div>
         <div className={styles.popoverFooter}>
           {onDrill && (
-            <button
-              type="button"
-              className={styles.textAction}
-              onClick={onDrill}
-            >
+            <Button variant="quiet" size="sm" onClick={onDrill}>
               Show categories
-            </button>
+            </Button>
           )}
-          <Popover.Close className={`${shell.control} ${styles.done}`}>
-            Close
+          <Popover.Close asChild>
+            <Button size="sm">Close</Button>
           </Popover.Close>
         </div>
         <Popover.Arrow className={styles.popoverArrow} width={14} height={7} />

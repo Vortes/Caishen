@@ -17,7 +17,7 @@ import { Onboarding } from "~/components/onboarding/onboarding";
 import { SettingsView } from "~/components/settings/settings-view";
 import { Amount, Brand, Icon } from "~/components/shared";
 import { TransactionRegister } from "~/components/transactions/transaction-register";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import { MonthPicker } from "~/components/workspace/month-picker";
 import { WorkspaceSidebar } from "~/components/workspace/workspace-sidebar";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";

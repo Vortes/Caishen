@@ -1,0 +1,58 @@
+"use client";
+
+import { Tooltip as Primitive } from "radix-ui";
+import { createContext, useContext, type ReactNode } from "react";
+import styles from "./tooltip.module.css";
+
+// Tooltips and popovers render through a portal so panels that clip their
+// overflow can't cut them off. The portal targets the themed root rather than
+// <body>, so a data-theme set there still applies to what's portaled.
+const PortalContainer = createContext<HTMLElement | null>(null);
+
+export function TooltipProvider({
+  container,
+  children,
+}: {
+  container: HTMLElement | null;
+  children: ReactNode;
+}) {
+  return (
+    <PortalContainer.Provider value={container}>
+      <Primitive.Provider delayDuration={500} skipDelayDuration={300}>
+        {children}
+      </Primitive.Provider>
+    </PortalContainer.Provider>
+  );
+}
+
+export function usePortalContainer() {
+  return useContext(PortalContainer);
+}
+
+// Wraps one focusable element. The shortcut is shown as written, e.g. "⌘K".
+export function Tooltip({
+  label,
+  shortcut,
+  children,
+}: {
+  label: string;
+  shortcut?: string;
+  children: ReactNode;
+}) {
+  const container = useContext(PortalContainer);
+  return (
+    <Primitive.Root>
+      <Primitive.Trigger asChild>{children}</Primitive.Trigger>
+      <Primitive.Portal container={container}>
+        <Primitive.Content
+          className={styles.tooltip}
+          sideOffset={6}
+          collisionPadding={8}
+        >
+          {label}
+          {shortcut && <kbd>{shortcut}</kbd>}
+        </Primitive.Content>
+      </Primitive.Portal>
+    </Primitive.Root>
+  );
+}

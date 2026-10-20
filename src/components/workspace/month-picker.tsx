@@ -2,12 +2,12 @@
 
 import { monthName, moveMonth, currentMonth } from "~/components/budget/format";
 import { Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "~/components/ui/popover";
+} from "~/components/ui-legacy/popover";
 
 export function MonthPicker({
   month,

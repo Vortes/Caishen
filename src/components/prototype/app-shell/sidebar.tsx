@@ -12,10 +12,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { Badge } from "~/components/ui/badge";
+import { IconButton } from "~/components/ui/icon-button";
 import { money } from "./model";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
-import { Tip } from "./tooltip";
 
 export type Screen =
   | { type: "plan" }
@@ -104,12 +105,9 @@ export function Sidebar({
           <span className={styles.switcherName}>{budgetName}</span>
           <ChevronDownIcon size={12} aria-hidden />
         </button>
-        <IconButton
-          label={toggleLabel}
-          shortcut="["
-          icon={PanelLeftIcon}
-          onClick={onToggle}
-        />
+        <IconButton label={toggleLabel} shortcut="[" onClick={onToggle}>
+          <PanelLeftIcon aria-hidden />
+        </IconButton>
       </div>
 
       <div className={styles.sidebarScroll}>
@@ -197,7 +195,9 @@ export function Sidebar({
           <SettingsIcon size={14} aria-hidden />
           Settings
         </button>
-        <IconButton label="Add account" icon={PlusIcon} />
+        <IconButton label="Add account">
+          <PlusIcon aria-hidden />
+        </IconButton>
       </div>
     </nav>
   );
@@ -257,42 +257,11 @@ function NavItem({
         )}
         {value && <span className={styles.navValue}>{value}</span>}
         {count ? (
-          <span className={styles.navCount} aria-label={countLabel}>
+          <Badge tone="accent" aria-label={countLabel}>
             {count}
-          </span>
+          </Badge>
         ) : null}
       </button>
     </li>
-  );
-}
-
-export function IconButton({
-  label,
-  shortcut,
-  icon: Icon,
-  pressed,
-  onClick,
-  className,
-}: {
-  label: string;
-  shortcut?: string;
-  icon: LucideIcon;
-  pressed?: boolean;
-  onClick?: () => void;
-  className?: string;
-}) {
-  return (
-    <Tip label={label} shortcut={shortcut}>
-      <button
-        type="button"
-        className={`${styles.iconButton} ${className ?? ""}`}
-        aria-label={label}
-        aria-pressed={pressed}
-        aria-keyshortcuts={shortcut?.replace("⌘", "Meta+")}
-        onClick={onClick}
-      >
-        <Icon size={15} aria-hidden />
-      </button>
-    </Tip>
   );
 }

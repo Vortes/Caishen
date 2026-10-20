@@ -14,7 +14,7 @@ import {
 } from "~/components/budget/category-row-status";
 import { MoveMoneyPopover } from "~/components/budget/move-money-popover";
 import { Amount, Icon } from "~/components/shared";
-import { Checkbox } from "~/components/ui/checkbox";
+import { Checkbox } from "~/components/ui-legacy/checkbox";
 
 export type Category = View["categories"][number];
 export type BudgetFilter =

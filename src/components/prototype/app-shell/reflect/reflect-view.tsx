@@ -8,6 +8,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "~/components/ui/button";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "~/components/ui/segmented-control";
 import { money, shortDay } from "../model";
 import { useShellData } from "../shell-data";
 import shell from "../shell.module.css";
@@ -77,26 +82,26 @@ export function ReflectView({
   const narrowed = filters.categoryIds !== null || filters.accountIds !== null;
   const showAllDates =
     filters.range.preset !== "all" ? (
-      <button
-        type="button"
-        className={styles.textAction}
+      <Button
+        variant="quiet"
+        size="sm"
         onClick={() =>
           onFiltersChange({ ...filters, range: { preset: "all" } })
         }
       >
         Show all dates
-      </button>
+      </Button>
     ) : null;
   const clearFilters = narrowed ? (
-    <button
-      type="button"
-      className={styles.textAction}
+    <Button
+      variant="quiet"
+      size="sm"
       onClick={() =>
         onFiltersChange({ ...filters, categoryIds: null, accountIds: null })
       }
     >
       Show all categories and accounts
-    </button>
+    </Button>
   ) : null;
   const nothing =
     !report.items.length && !report.inflows.length && !report.entries.length;
@@ -195,19 +200,17 @@ function GroupingSwitch({
     ["groups", "Groups"],
   ];
   return (
-    <div className={styles.switch} role="radiogroup" aria-label="Group by">
+    <SegmentedControl
+      aria-label="Group by"
+      value={value}
+      onValueChange={(next) => onChange(next as Grouping)}
+    >
       {options.map(([option, label]) => (
-        <button
-          type="button"
-          role="radio"
-          key={option}
-          aria-checked={value === option}
-          onClick={() => onChange(option)}
-        >
+        <SegmentedControlItem key={option} value={option}>
           {label}
-        </button>
+        </SegmentedControlItem>
       ))}
-    </div>
+    </SegmentedControl>
   );
 }
 

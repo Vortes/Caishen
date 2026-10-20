@@ -5,7 +5,7 @@ import type { Command } from "~/domain/engine";
 import type { View } from "~/components/budget/types";
 import { money, monthName, newId } from "~/components/budget/format";
 import { Amount } from "~/components/shared";
-import { Input } from "~/components/ui/input";
+import { Input } from "~/components/ui-legacy/input";
 import { cn } from "~/lib/utils";
 
 const cents = (value: number | null) =>

@@ -22,8 +22,11 @@ import { PlanViews, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
 import { READY_TO_ASSIGN, type Move } from "./simulated-moves";
 import { ShellDataProvider } from "./shell-data";
-import { Tip, TooltipLayer } from "./tooltip";
-import { IconButton, Sidebar, type Screen } from "./sidebar";
+import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
+import { IconButton } from "~/components/ui/icon-button";
+import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
+import { Sidebar, type Screen } from "./sidebar";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Highlight } from "./reflect/chart-utils";
@@ -308,7 +311,7 @@ export function AppShellPrototype({
           data-dragging={sidebar.dragging || inspector.dragging || undefined}
           data-peekable={peekable || undefined}
         >
-          <TooltipLayer container={rootElement}>
+          <TooltipProvider container={rootElement}>
             <a className={styles.skipLink} href="#prototype-content">
               Skip to content
             </a>
@@ -399,12 +402,13 @@ export function AppShellPrototype({
                       <IconButton
                         label="Show sidebar"
                         shortcut="["
-                        icon={PanelLeftIcon}
                         onClick={() => {
                           closePeek(0);
                           sidebar.toggle();
                         }}
-                      />
+                      >
+                        <PanelLeftIcon aria-hidden />
+                      </IconButton>
                     </div>
                   </div>
                   <HeaderTitle screen={screen} accountName={account?.name} />
@@ -447,19 +451,18 @@ export function AppShellPrototype({
                     />
                   )}
                   {screen.type === "register" && (
-                    <button
-                      type="button"
-                      className={`${styles.control} ${styles.filterChip}`}
+                    <Button
+                      size="sm"
                       aria-pressed={reviewOnly}
                       onClick={() => {
                         setReviewOnly((value) => !value);
                         setSelectedId(null);
                       }}
                     >
-                      <span className={styles.reviewDot} data-on />
+                      <span className={styles.reviewDot} data-on data-inline />
                       To review
                       <span className={styles.numeric}>{reviewCount}</span>
-                    </button>
+                    </Button>
                   )}
                   <div className={styles.toolbarActions}>
                     {screen.type !== "reflect" && (
@@ -467,14 +470,13 @@ export function AppShellPrototype({
                         <IconButton
                           label="Filter"
                           shortcut="F"
-                          icon={ListFilterIcon}
-                          className={styles.control}
-                        />
-                        <IconButton
-                          label="Display options"
-                          icon={SlidersHorizontalIcon}
-                          className={styles.control}
-                        />
+                          variant="secondary"
+                        >
+                          <ListFilterIcon aria-hidden />
+                        </IconButton>
+                        <IconButton label="Display options" variant="secondary">
+                          <SlidersHorizontalIcon aria-hidden />
+                        </IconButton>
                       </>
                     )}
                     <IconButton
@@ -484,11 +486,12 @@ export function AppShellPrototype({
                           : "Hide details"
                       }
                       shortcut="]"
-                      icon={PanelRightIcon}
+                      variant="secondary"
                       pressed={!inspectorState.collapsed}
                       onClick={inspector.toggle}
-                      className={styles.control}
-                    />
+                    >
+                      <PanelRightIcon aria-hidden />
+                    </IconButton>
                   </div>
                 </div>
 
@@ -581,13 +584,13 @@ export function AppShellPrototype({
                       >
                         {screen.type === "reflect" ? (
                           spending.report && (
-                            <section className={styles.card}>
+                            <Card>
                               <SpendingList
                                 report={spending.report}
                                 path={path}
                                 highlight={highlight}
                               />
-                            </section>
+                            </Card>
                           )
                         ) : (
                           <Inspector
@@ -694,7 +697,7 @@ export function AppShellPrototype({
                 </button>
               </div>
             )}
-          </TooltipLayer>
+          </TooltipProvider>
         </div>
       </MoveMoneyProvider>
     </ShellDataProvider>
@@ -783,16 +786,14 @@ function MonthNav({
 }) {
   return (
     <div className={styles.monthNav}>
-      <button
-        type="button"
-        className={styles.iconButton}
-        aria-label="Previous month"
+      <IconButton
+        label="Previous month"
         disabled={!month.canGoBack}
         onClick={() => onChange(moveMonth(month.key, -1))}
       >
-        <ChevronLeftIcon size={14} aria-hidden />
-      </button>
-      <Tip label="Go to this month">
+        <ChevronLeftIcon aria-hidden />
+      </IconButton>
+      <Tooltip label="Go to this month">
         <button
           type="button"
           className={styles.monthButton}
@@ -800,15 +801,13 @@ function MonthNav({
         >
           {month.label}
         </button>
-      </Tip>
-      <button
-        type="button"
-        className={styles.iconButton}
-        aria-label="Next month"
+      </Tooltip>
+      <IconButton
+        label="Next month"
         onClick={() => onChange(moveMonth(month.key, 1))}
       >
-        <ChevronRightIcon size={14} aria-hidden />
-      </button>
+        <ChevronRightIcon aria-hidden />
+      </IconButton>
     </div>
   );
 }

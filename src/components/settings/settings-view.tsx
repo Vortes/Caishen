@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "~/lib/utils";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 
 import { type Command } from "~/domain/engine";
 import { FormField, Icon, SelectField } from "~/components/shared";

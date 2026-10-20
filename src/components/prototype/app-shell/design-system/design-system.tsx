@@ -2,6 +2,7 @@
 
 import { ArrowLeftIcon } from "lucide-react";
 import { useState, type ComponentProps } from "react";
+import { Button } from "~/components/ui/button";
 import {
   FundingBar,
   FundingSwatch,
@@ -10,6 +11,8 @@ import {
 import { money, type Funding } from "../model";
 import shell from "../shell.module.css";
 import { AvailablePill } from "../views";
+import { ButtonSpecimens } from "./button-specimens";
+import { TagSpecimens } from "./tag-specimens";
 import styles from "./design-system.module.css";
 
 // The app shell's components with hardcoded examples, so every state can be
@@ -180,15 +183,13 @@ export function DesignSystem() {
           <div className={styles.headerActions}>
             <div className={styles.theme} role="group" aria-label="Theme">
               {(["dark", "light"] as const).map((option) => (
-                <button
-                  type="button"
+                <Button
                   key={option}
-                  className={shell.control}
                   aria-pressed={theme === option}
                   onClick={() => setTheme(option)}
                 >
                   {option === "dark" ? "Dark" : "Light"}
-                </button>
+                </Button>
               ))}
             </div>
             <a className={styles.back} href="/prototype/app-shell">
@@ -197,6 +198,10 @@ export function DesignSystem() {
             </a>
           </div>
         </header>
+
+        <ButtonSpecimens />
+
+        <TagSpecimens />
 
         <section className={styles.section} aria-labelledby="funding-bar">
           <h2 id="funding-bar">Funding bar</h2>

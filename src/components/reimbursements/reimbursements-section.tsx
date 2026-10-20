@@ -2,7 +2,7 @@
 
 import type { Panel, View } from "~/components/budget/types";
 import { Amount, Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 
 export function ReimbursementsSection({
   view,

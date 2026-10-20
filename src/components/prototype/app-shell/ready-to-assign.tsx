@@ -1,6 +1,8 @@
 "use client";
 
 import { ChevronDownIcon } from "lucide-react";
+import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { money } from "./model";
 import styles from "./shell.module.css";
 
@@ -19,17 +21,21 @@ export function RtaCard({ amount }: { amount: number }) {
         ? "Assign money"
         : undefined;
   return (
-    <section className={`${styles.card} ${styles.rtaCard}`} data-state={state}>
-      <span className={styles.rtaCardLabel}>{label}</span>
-      <strong>{money(amount)}</strong>
-      {action ? (
-        <button type="button" className={styles.rtaButton}>
-          {action}
-          <ChevronDownIcon size={13} aria-hidden />
-        </button>
-      ) : (
-        <p>Every dollar has a job this month.</p>
-      )}
-    </section>
+    <Card>
+      <div className={styles.rtaCard} data-state={state}>
+        <span className={styles.rtaCardLabel}>{label}</span>
+        <strong>{money(amount)}</strong>
+        {action ? (
+          <div className={styles.rtaAction}>
+            <Button variant="primary">
+              {action}
+              <ChevronDownIcon aria-hidden />
+            </Button>
+          </div>
+        ) : (
+          <p>Every dollar has a job this month.</p>
+        )}
+      </div>
+    </Card>
   );
 }

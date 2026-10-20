@@ -1,52 +1,38 @@
-import * as React from "react";
 import { Slot } from "radix-ui";
-import { cva, type VariantProps } from "class-variance-authority";
+import type { ComponentProps } from "react";
+import styles from "./button.module.css";
 
-import { cn } from "~/lib/utils";
+// primary: the one committing action in a form or dialog. secondary: every
+// other button, and the default. quiet: inline actions inside rows and
+// sections. danger: only the confirm button of a destructive dialog.
+export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
 
-const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-ui leading-[1.4] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        destructive: "bg-destructive text-white hover:bg-destructive/90",
-      },
-      size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 gap-1.5 px-3",
-        icon: "size-9",
-      },
-    },
-    defaultVariants: { variant: "default", size: "default" },
-  },
-);
+export type ButtonProps = Omit<
+  ComponentProps<"button">,
+  "className" | "style"
+> & {
+  variant?: ButtonVariant;
+  size?: "md" | "sm";
+  // Renders the single child element instead of a <button>, for Radix
+  // triggers and closes or links that should look like a button.
+  asChild?: boolean;
+};
 
-function Button({
-  className,
-  variant,
-  size,
+export function Button({
+  variant = "secondary",
+  size = "md",
   asChild = false,
   type = "button",
   ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
+}: ButtonProps) {
   const Comp = asChild ? Slot.Root : "button";
   return (
     <Comp
-      data-slot="button"
-      data-size={size ?? "default"}
-      data-variant={variant ?? "default"}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...(!asChild ? { type } : {})}
+      className={styles.button}
+      data-variant={variant}
+      data-size={size}
+      {...(asChild ? {} : { type })}
       {...props}
     />
   );
 }
-
-export { Button, buttonVariants };

@@ -1,0 +1,78 @@
+/* Selectors carry an attribute so they outrank a container's button reset. */
+
+.iconButton[data-variant] {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--size-control);
+  height: var(--size-control);
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms,
+    transform 100ms;
+}
+.iconButton[data-size="sm"] {
+  width: var(--size-control-xs);
+  height: var(--size-control-xs);
+}
+.iconButton svg {
+  width: 15px;
+  height: 15px;
+}
+.iconButton[data-size="sm"] svg {
+  width: 14px;
+  height: 14px;
+}
+.iconButton:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.iconButton:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.iconButton[aria-pressed="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.iconButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.iconButton[data-variant="secondary"] {
+  border: 1px solid var(--control-border);
+  border-radius: 50%;
+  background: var(--control-bg);
+  color: var(--text-secondary);
+}
+.iconButton[data-variant="secondary"]:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+}
+.iconButton[data-variant="secondary"]:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.iconButton[data-variant="secondary"][aria-pressed="true"] {
+  border-color: var(--control-border-active);
+  background: var(--control-bg-active);
+}
+/* Doubled to outrank a container's inset focus ring. */
+.iconButton.iconButton[data-variant="secondary"]:focus-visible {
+  border-radius: 999px;
+  outline-offset: 2px;
+}
+
+/* A touch target at least 44px across, without changing the layout. */
+@media (pointer: coarse) {
+  .iconButton::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+}

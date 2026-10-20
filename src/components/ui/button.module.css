@@ -1,0 +1,94 @@
+/* Secondary is the shell's existing control pill. Primary and danger are the
+   same pill with the role's color in its border and label, so the shell stays
+   neutral and only the committing action carries color. The base rule carries
+   an attribute so it outranks the shell root's font and transition reset. */
+
+.button[data-variant] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--size-control);
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms,
+    transform 100ms;
+}
+.button[data-variant][data-size="sm"] {
+  height: var(--size-control-xs);
+  padding: 0 10px;
+  font-size: var(--type-small);
+}
+.button svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.button[data-size="sm"] svg {
+  width: 13px;
+  height: 13px;
+}
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* Doubled to outrank the shell root's inset focus ring. */
+.button.button:focus-visible {
+  border-radius: 999px;
+  outline-offset: 2px;
+}
+
+.button[data-variant="secondary"] {
+  border-color: var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+}
+.button[data-variant="secondary"]:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+  color: var(--text-primary);
+}
+/* A secondary button that toggles a filter or a setting on. */
+.button[data-variant="secondary"][aria-pressed="true"] {
+  border-color: var(--control-border-active);
+  background: var(--control-bg-active);
+  color: var(--text-primary);
+}
+
+.button[data-variant="quiet"][data-size] {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+}
+.button[data-variant="quiet"]:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+.button[data-variant="quiet"]:active:not(:disabled) {
+  transform: none;
+}
+
+.button[data-variant="primary"],
+.button[data-variant="danger"] {
+  background: var(--control-bg);
+}
+.button[data-variant="primary"]:hover:not(:disabled),
+.button[data-variant="danger"]:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+}
+.button[data-variant="primary"] {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.button[data-variant="danger"] {
+  border-color: var(--danger-line);
+  color: var(--danger-text);
+}

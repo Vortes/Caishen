@@ -2,16 +2,20 @@
 
 import { UserButton } from "@clerk/nextjs";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogTitle } from "~/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "~/components/ui-legacy/dialog";
 import type { Panel, Tab, View } from "~/components/budget/types";
 import { Amount, Brand, Icon, type IconName } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
+} from "~/components/ui-legacy/dropdown-menu";
 
 const navigation: { id: Tab; label: string; icon: IconName }[] = [
   { id: "budget", label: "Plan", icon: "budget" },

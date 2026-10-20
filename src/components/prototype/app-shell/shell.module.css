@@ -1,152 +1,45 @@
-/* Surfaces come from one hue and one tint amount, like Linear's LCH theme
-   generator. The tint is small enough that the chrome reads neutral. */
 .root {
-  --hue: 282;
-  --tint: 0.004;
-  --bg: oklch(0.15 var(--tint) var(--hue));
-  --panel: oklch(0.178 var(--tint) var(--hue));
-  --raised: oklch(0.205 var(--tint) var(--hue));
-  --group: oklch(0.192 var(--tint) var(--hue));
-  --hover: oklch(0.222 var(--tint) var(--hue));
-  --selected: oklch(0.245 calc(var(--tint) * 1.5) var(--hue));
-  --line: oklch(0.24 var(--tint) var(--hue));
-  --line-strong: oklch(0.34 var(--tint) var(--hue));
-  --text: oklch(0.95 calc(var(--tint) * 0.5) var(--hue));
-  --text-2: oklch(0.79 calc(var(--tint) * 0.8) var(--hue));
-  --text-3: oklch(0.64 var(--tint) var(--hue));
-  --control: oklch(0.2 var(--tint) var(--hue));
-  --control-hover: oklch(0.232 var(--tint) var(--hue));
-  --control-active: oklch(0.29 var(--tint) var(--hue));
-  --control-line: oklch(0.26 var(--tint) var(--hue));
-  --control-active-line: oklch(0.34 var(--tint) var(--hue));
-  --card-line: oklch(0.25 var(--tint) var(--hue));
-  --edge-lit: oklch(0.56 var(--tint) var(--hue));
-  --accent: oklch(0.6 0.17 282);
-  --on-accent: white;
-  --green: oklch(0.8 0.13 150);
-  --green-bg: oklch(0.4 0.07 150 / 0.38);
-  --amber: oklch(0.85 0.12 82);
-  --amber-bg: oklch(0.45 0.08 75 / 0.36);
-  --red: oklch(0.74 0.15 22);
-  --red-bg: oklch(0.42 0.11 22 / 0.4);
-
-  --card-shadow: 0 1px 2px oklch(0 0 0 / 0.24), 0 4px 14px oklch(0 0 0 / 0.16);
-  --drawer-shadow:
-    0 8px 24px oklch(0 0 0 / 0.35), 0 24px 64px oklch(0 0 0 / 0.3);
-
-  /* Type steps, named by role, on the scale 12, 13, 14, 16, 24. */
-  --font-caption: 12px;
-  --font-small: 13px;
-  --font-body: 14px;
-  --font-title: 16px;
-  --font-figure: 24px;
-  /* Sizes that hold text, on a 4px rhythm sized for that type. */
-  --size-badge: 20px;
-  --size-pill: 22px;
-  --size-control-xs: 28px;
-  --size-control-sm: 30px;
-  --size-control: 32px;
-  --size-row-sm: 34px;
-  --size-row-md: 36px;
-  --size-sidebar-header: 40px;
-  --size-header: 48px;
-  --size-toolbar: 52px;
-  --size-popover: 320px;
-  --space-card: 16px;
-  --space-stack: 10px;
-  --space-row-x: 14px;
-  /* Concentric corners: outer radius = inner radius + padding, where the
-     padding includes the container's 1px border. Inner radii are the fixed
-     choices; containers grow to fit them. */
-  --radius-row: 6px;
-  --radius-card: 12px;
-  --space-inset: 8px;
-  --radius-panel: calc(var(--radius-card) + var(--space-inset) + 1px);
-  --radius-peek: calc(var(--radius-row) + 8px + 1px);
-  --radius-menu: calc(var(--radius-row) + 4px + 1px);
-  --radius-segmented: calc(var(--radius-row) + 2px + 1px);
-
-  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
-  --panel-duration: 260ms;
-  --row: 44px;
-  --nav-row: var(--size-row-md);
-  --gutter: 8px;
-
   position: fixed;
   inset: 0;
   display: flex;
   overflow: hidden;
-  padding: var(--gutter);
-  background: var(--bg);
-  color: var(--text);
-  font-size: var(--font-body);
+  padding: var(--space-gutter);
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-size: var(--type-body);
   line-height: 1.4;
   letter-spacing: -0.003em;
   -webkit-font-smoothing: antialiased;
-}
-/* Light theme: same hue and tint, new lightness. Borders turn translucent so
-   they recede on light surfaces; status colors darken to stay readable. */
-.root[data-theme="light"] {
-  color-scheme: light;
-  --bg: oklch(0.958 var(--tint) var(--hue));
-  --panel: oklch(0.995 calc(var(--tint) * 0.3) var(--hue));
-  --raised: oklch(0.982 calc(var(--tint) * 0.6) var(--hue));
-  --group: oklch(0.976 calc(var(--tint) * 0.6) var(--hue));
-  --hover: oklch(0.952 var(--tint) var(--hue));
-  --selected: oklch(0.928 calc(var(--tint) * 1.5) var(--hue));
-  --line: oklch(0.25 var(--tint) var(--hue) / 0.09);
-  --line-strong: oklch(0.25 var(--tint) var(--hue) / 0.18);
-  --text: oklch(0.22 var(--tint) var(--hue));
-  --text-2: oklch(0.42 var(--tint) var(--hue));
-  --text-3: oklch(0.54 var(--tint) var(--hue));
-  --control: oklch(0.995 calc(var(--tint) * 0.3) var(--hue));
-  --control-hover: oklch(0.965 var(--tint) var(--hue));
-  --control-active: oklch(0.925 calc(var(--tint) * 1.2) var(--hue));
-  --control-line: oklch(0.25 var(--tint) var(--hue) / 0.12);
-  --control-active-line: oklch(0.25 var(--tint) var(--hue) / 0.2);
-  --card-line: oklch(0.25 var(--tint) var(--hue) / 0.08);
-  --edge-lit: oklch(0.25 var(--tint) var(--hue) / 0.45);
-  --accent: oklch(0.55 0.19 282);
-  --green: oklch(0.52 0.13 150);
-  --green-bg: oklch(0.94 0.05 150);
-  --amber: oklch(0.56 0.12 65);
-  --amber-bg: oklch(0.95 0.06 85);
-  --red: oklch(0.55 0.19 25);
-  --red-bg: oklch(0.95 0.035 22);
-  --card-shadow:
-    0 1px 2px oklch(0.2 0.01 var(--hue) / 0.05),
-    0 4px 14px oklch(0.2 0.01 var(--hue) / 0.05);
-  --drawer-shadow:
-    0 8px 24px oklch(0.2 0.01 var(--hue) / 0.12),
-    0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
 }
 /* A Monkeytype palette sets five raw colors inline (--mt-*). Its background
    becomes the panel, and the rest of the surface ladder steps from it by the
    same lightness offsets as the default dark theme. Status green and amber
    keep their money meaning, so only red follows the palette. */
 .root[data-palette] {
-  --panel: var(--mt-bg);
-  --bg: oklch(from var(--mt-bg) calc(l - 0.028) c h);
-  --control: oklch(from var(--mt-bg) calc(l + 0.022) c h);
-  --group: oklch(from var(--mt-bg) calc(l + 0.014) c h);
-  --raised: oklch(from var(--mt-bg) calc(l + 0.027) c h);
-  --hover: oklch(from var(--mt-bg) calc(l + 0.044) c h);
-  --control-hover: oklch(from var(--mt-bg) calc(l + 0.054) c h);
-  --line: oklch(from var(--mt-bg) calc(l + 0.062) c h);
-  --selected: oklch(from var(--mt-bg) calc(l + 0.067) c h);
-  --card-line: oklch(from var(--mt-bg) calc(l + 0.072) c h);
-  --control-line: oklch(from var(--mt-bg) calc(l + 0.082) c h);
-  --control-active: oklch(from var(--mt-bg) calc(l + 0.112) c h);
-  --line-strong: oklch(from var(--mt-bg) calc(l + 0.162) c h);
-  --control-active-line: var(--line-strong);
-  --edge-lit: oklch(from var(--mt-bg) calc(l + 0.38) c h);
-  --text: var(--mt-text);
-  --text-2: color-mix(in oklch, var(--mt-text) 55%, var(--mt-sub));
-  --text-3: var(--mt-sub);
-  --accent: var(--mt-main);
-  --on-accent: var(--mt-bg);
-  --red: var(--mt-error);
-  --red-bg: oklch(from var(--mt-error) 0.42 calc(c * 0.7) h / 0.4);
+  --surface-panel: var(--mt-bg);
+  --surface-app: oklch(from var(--mt-bg) calc(l - 0.028) c h);
+  --control-bg: oklch(from var(--mt-bg) calc(l + 0.022) c h);
+  --surface-group: oklch(from var(--mt-bg) calc(l + 0.014) c h);
+  --surface-raised: oklch(from var(--mt-bg) calc(l + 0.027) c h);
+  --surface-hover: oklch(from var(--mt-bg) calc(l + 0.044) c h);
+  --control-bg-hover: oklch(from var(--mt-bg) calc(l + 0.054) c h);
+  --border-subtle: oklch(from var(--mt-bg) calc(l + 0.062) c h);
+  --surface-selected: oklch(from var(--mt-bg) calc(l + 0.067) c h);
+  --border-card: oklch(from var(--mt-bg) calc(l + 0.072) c h);
+  --control-border: oklch(from var(--mt-bg) calc(l + 0.082) c h);
+  --control-bg-active: oklch(from var(--mt-bg) calc(l + 0.112) c h);
+  --border-strong: oklch(from var(--mt-bg) calc(l + 0.162) c h);
+  --control-border-active: var(--border-strong);
+  --border-edge-lit: oklch(from var(--mt-bg) calc(l + 0.38) c h);
+  --text-primary: var(--mt-text);
+  --text-secondary: color-mix(in oklch, var(--mt-text) 55%, var(--mt-sub));
+  --text-tertiary: var(--mt-sub);
+  --accent-solid: var(--mt-main);
+  --text-on-accent: var(--mt-bg);
+  --focus-ring: var(--mt-main);
+  --status-overspent: var(--mt-error);
+  --status-overspent-bg: oklch(from var(--mt-error) 0.42 calc(c * 0.7) h / 0.4);
+  --money-negative: var(--mt-error);
 }
 .root[data-switching] *,
 .root[data-switching] *::after {
@@ -162,7 +55,7 @@
   transition: none;
 }
 .root :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-solid);
   outline-offset: -2px;
   border-radius: 6px;
 }
@@ -178,8 +71,8 @@
   left: 12px;
   padding: 6px 10px;
   border-radius: 6px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
   transform: translateY(-200%);
 }
 .skipLink:focus-visible {
@@ -199,7 +92,7 @@
 }
 .root[data-ready] .sidebar,
 .root[data-ready] .inspector {
-  transition: width var(--panel-duration) var(--ease-panel);
+  transition: width var(--duration-panel) var(--ease-panel);
 }
 .root[data-dragging] .sidebar,
 .root[data-dragging] .inspector {
@@ -208,7 +101,7 @@
 .sidebarInner {
   flex: none;
   height: 100%;
-  padding-right: var(--gutter);
+  padding-right: var(--space-gutter);
 }
 .sidebarNav {
   display: flex;
@@ -236,11 +129,11 @@
   font-weight: 500;
 }
 .switcher:hover {
-  background: var(--hover);
+  background: var(--surface-hover);
 }
 .switcher > svg {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .avatar {
   flex: none;
@@ -251,7 +144,7 @@
   border-radius: 5px;
   background: oklch(0.6 0.15 30);
   color: white;
-  font-size: var(--font-caption);
+  font-size: var(--type-caption);
   font-weight: 600;
 }
 .switcherName {
@@ -281,28 +174,28 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: var(--nav-row);
+  height: var(--size-row-md);
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-row);
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-secondary);
   text-align: left;
 }
 .navItem:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 .navItem[aria-current="page"] {
-  background: var(--selected);
-  color: var(--text);
+  background: var(--surface-selected);
+  color: var(--text-primary);
 }
 .navIcon {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .navItem[aria-current="page"] .navIcon {
-  color: var(--text-2);
+  color: var(--text-secondary);
 }
 .navLabel {
   flex: 1;
@@ -314,22 +207,8 @@
 .navValue,
 .sectionTotal {
   flex: none;
-  color: var(--text-3);
-  font-size: var(--font-small);
-  font-variant-numeric: tabular-nums;
-}
-.navCount {
-  flex: none;
-  min-width: 18px;
-  height: var(--size-badge);
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: var(--font-caption);
-  font-weight: 600;
-  line-height: 18px;
-  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
   font-variant-numeric: tabular-nums;
 }
 .warningDot {
@@ -337,7 +216,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--amber);
+  background: var(--feedback-attention);
 }
 .navSection {
   display: flex;
@@ -352,13 +231,13 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-3);
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
   font-weight: 500;
   text-align: left;
 }
 .sectionHeading:hover {
-  color: var(--text-2);
+  color: var(--text-secondary);
 }
 .sectionCaret {
   flex: none;
@@ -422,11 +301,11 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .footerItem:hover {
-  background: var(--hover);
-  color: var(--text-2);
+  background: var(--surface-hover);
+  color: var(--text-secondary);
 }
 
 /* ---------- Main panel ---------- */
@@ -442,9 +321,9 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-panel);
-  background: var(--panel);
+  background: var(--surface-panel);
 }
 .header {
   position: relative;
@@ -454,7 +333,7 @@
   gap: 8px;
   height: var(--size-header);
   padding: 0 8px 0 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--border-subtle);
 }
 /* Reserves room for the sidebar toggle only while the sidebar is closed. */
 .toggleSlot {
@@ -463,8 +342,8 @@
   margin-right: -8px;
   opacity: 0;
   transition:
-    grid-template-columns var(--panel-duration) var(--ease-panel),
-    margin-right var(--panel-duration) var(--ease-panel),
+    grid-template-columns var(--duration-panel) var(--ease-panel),
+    margin-right var(--duration-panel) var(--ease-panel),
     opacity 150ms;
 }
 .toggleSlot > div {
@@ -485,18 +364,18 @@
 }
 .headerTitle {
   margin: 0;
-  font-size: var(--font-body);
+  font-size: var(--type-body);
   font-weight: 500;
   letter-spacing: inherit;
   white-space: nowrap;
 }
 .crumb {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   white-space: nowrap;
 }
 .crumbSeparator {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .reportTabs {
   display: flex;
@@ -510,19 +389,19 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-weight: 500;
   transition:
     background-color 150ms,
     color 150ms;
 }
 .reportTab:hover {
-  background: var(--hover);
-  color: var(--text-2);
+  background: var(--surface-hover);
+  color: var(--text-secondary);
 }
 .reportTab[aria-selected="true"] {
-  background: var(--selected);
-  color: var(--text);
+  background: var(--surface-selected);
+  color: var(--text-primary);
 }
 .monthNav {
   display: flex;
@@ -535,12 +414,12 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .monthButton:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 .toolbar {
   flex: none;
@@ -559,132 +438,51 @@
 /* ---------- Ready to Assign ---------- */
 
 .rtaCard {
-  --tone: var(--green);
+  --tone: var(--money-positive);
 }
 .rtaCard[data-state="zero"] {
-  --tone: var(--text-2);
+  --tone: var(--text-secondary);
 }
 .rtaCard[data-state="over"] {
-  --tone: var(--red);
-}
-.rtaButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: var(--size-control-xs);
-  padding: 0 8px 0 10px;
-  border: 1px solid color-mix(in oklab, var(--tone) 35%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--tone) 22%, var(--panel));
-  color: var(--text);
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background-color 150ms,
-    transform 100ms;
-}
-.rtaButton:hover {
-  background: color-mix(in oklab, var(--tone) 32%, var(--panel));
-}
-.rtaButton:active {
-  transform: scale(0.97);
+  --tone: var(--money-negative);
 }
 
 /* On Plan, Ready to Assign leads the inspector as its own card. */
+/* Sets the tone for the figure and button inside the Card. */
 .rtaCard {
-  gap: 4px;
-  border-color: color-mix(in oklab, var(--tone) 28%, transparent);
-  background: color-mix(in oklab, var(--tone) 9%, var(--raised));
+  display: contents;
 }
 .rtaCardLabel {
-  color: var(--text-2);
-  font-size: var(--font-small);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
   font-weight: 500;
 }
 /* The same figure step as the other inspector cards (.figure): one card's
    headline, not the page's. */
 .rtaCard strong {
   color: var(--tone);
-  font-size: var(--font-figure);
+  font-size: var(--type-figure);
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 .rtaCard p {
-  color: var(--text-3);
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
-.rtaCard .rtaButton {
-  height: var(--size-row-sm);
+/* A column, so the primary button spans the card. */
+.rtaAction {
+  display: flex;
+  flex-direction: column;
   margin-top: 6px;
 }
 
-.iconButton {
-  position: relative;
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: var(--size-control);
-  height: var(--size-control);
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-3);
-}
-.iconButton:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-.iconButton:active {
-  transform: scale(0.94);
-}
-.iconButton:disabled,
 .monthButton:disabled {
   background: transparent;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   opacity: 0.5;
   transform: none;
-}
-.iconButton[aria-pressed="true"] {
-  background: var(--selected);
-  color: var(--text);
-}
-/* Tooltip: delayed on first hover, never interactive. Scales from its
-   trigger; reopening while another is showing skips the animation. */
-.tooltip {
-  z-index: 70;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--raised);
-  box-shadow: 0 4px 12px oklch(0 0 0 / 0.2);
-  color: var(--text-2);
-  font-size: var(--font-small);
-  line-height: 1.4;
-  transform-origin: var(--radix-tooltip-content-transform-origin);
-  animation: tooltip-in 120ms var(--ease-panel);
-}
-.tooltip[data-state="instant-open"] {
-  animation: none;
-}
-.tooltip kbd {
-  color: var(--text-3);
-  font-family: inherit;
-}
-@keyframes tooltip-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-}
-.filterChip {
-  gap: 6px;
-  font-size: var(--font-small);
 }
 
 /* The plan's focused views: one row of chips that scrolls sideways when the
@@ -752,47 +550,6 @@
 
 /* ---------- Controls: Linear-style filled pills ---------- */
 
-.control {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: var(--size-control);
-  padding: 0 12px;
-  border: 1px solid var(--control-line);
-  border-radius: 999px;
-  background: var(--control);
-  color: var(--text-2);
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background-color 150ms,
-    border-color 150ms,
-    color 150ms,
-    transform 100ms;
-}
-.control:hover {
-  background: var(--control-hover);
-  color: var(--text);
-}
-.control:active {
-  transform: scale(0.97);
-}
-.control[aria-pressed="true"],
-.control[aria-selected="true"] {
-  border-color: var(--control-active-line);
-  background: var(--control-active);
-  color: var(--text);
-}
-.control.iconButton {
-  width: var(--size-control);
-  padding: 0;
-  border-radius: 50%;
-}
-.root .control:focus-visible {
-  border-radius: 999px;
-  outline-offset: 2px;
-}
-
 /* ---------- Resize handles ---------- */
 
 .handle {
@@ -805,7 +562,7 @@
   touch-action: none;
 }
 .handle[data-side="left"] {
-  left: calc(var(--gutter) * -1 - 2px);
+  left: calc(var(--space-gutter) * -1 - 2px);
 }
 .handle[data-side="right"] {
   left: 0;
@@ -819,7 +576,7 @@
   top: 12px;
   bottom: 12px;
   width: 1px;
-  background: var(--edge-lit);
+  background: var(--border-edge-lit);
   mask-image: linear-gradient(
     to bottom,
     transparent,
@@ -832,7 +589,7 @@
 }
 /* Sidebar: on the main panel's left border. */
 .handle[data-side="left"]::after {
-  left: calc(var(--gutter) + 2px);
+  left: calc(var(--space-gutter) + 2px);
 }
 /* Details: down the middle of the gap before the cards. */
 .handle[data-side="right"]::after {
@@ -871,19 +628,8 @@
   overflow-y: auto;
   scrollbar-width: none;
 }
-.card {
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  gap: 2px;
-  padding: var(--space-card);
-  border: 1px solid var(--card-line);
-  border-radius: var(--radius-card);
-  background: var(--raised);
-  box-shadow: var(--card-shadow);
-}
 /* The last card runs to the bottom of the panel, like Linear's. */
-.card:last-child {
+.inspectorInner > :last-child {
   flex: 1;
 }
 .cardTitle {
@@ -893,8 +639,8 @@
   padding: 2px 2px 6px;
 }
 .cardTitle p {
-  color: var(--text-3);
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
   text-wrap: pretty;
 }
 .cardTitleRow {
@@ -906,13 +652,13 @@
 .cardTitleRow h2 {
   flex: 1;
   margin: 0;
-  font-size: var(--font-title);
+  font-size: var(--type-title);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 .titleIcon {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .figure {
   display: flex;
@@ -921,15 +667,15 @@
   padding: 4px 2px 2px;
 }
 .figure strong {
-  font-size: var(--font-figure);
+  font-size: var(--type-figure);
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 .figure span {
-  color: var(--text-3);
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 .cardActions {
   display: flex;
@@ -941,18 +687,18 @@
   font-size: var(--font-small);
 }
 .figure[data-state="funded"] strong {
-  color: var(--green);
+  color: var(--status-funded);
 }
 .figure[data-state="underfunded"] span {
-  color: var(--amber);
+  color: var(--status-underfunded);
 }
 .figure[data-state="overspent"] strong,
 .figure[data-state="overspent"] span {
-  color: var(--red);
+  color: var(--status-overspent);
 }
 .figure[data-state="credit"] strong,
 .figure[data-state="credit"] span {
-  color: var(--amber);
+  color: var(--status-credit);
 }
 .property {
   display: grid;
@@ -962,7 +708,7 @@
 }
 .propertyLabel {
   padding-left: 2px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .propertyValue {
   display: flex;
@@ -976,20 +722,11 @@
   font-variant-numeric: tabular-nums;
 }
 .propertyValue:hover {
-  background: var(--hover);
+  background: var(--surface-hover);
 }
 .propertyValue > svg {
   flex: none;
-  color: var(--text-3);
-}
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-bottom: 8px;
-}
-.tab {
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
 }
 .tabBody {
   display: flex;
@@ -1002,18 +739,8 @@
   align-items: flex-start;
   gap: 8px;
   padding: 6px 2px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   text-wrap: pretty;
-}
-.textButton {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-2);
-  font-weight: 500;
-}
-.textButton:hover {
-  color: var(--text);
 }
 .actionList {
   margin: 0;
@@ -1030,7 +757,7 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-secondary);
   text-align: left;
 }
 .actionItem > span:nth-last-child(2) {
@@ -1041,71 +768,68 @@
   white-space: nowrap;
 }
 button.actionItem:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 .actionItem > svg {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .note {
   display: flex;
   gap: 8px;
   padding: 6px 2px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   text-wrap: pretty;
 }
 .note > svg {
   flex: none;
   margin-top: 2px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .meter {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 8px 2px 4px;
-  color: var(--text-3);
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 .meterTrack {
   height: 4px;
   overflow: hidden;
   border-radius: 2px;
-  background: var(--hover);
+  background: var(--surface-hover);
 }
 .meterTrack > span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--green);
+  background: var(--status-funded);
   transform-origin: left;
 }
 .meter[data-state="underfunded"] .meterTrack > span {
-  background: var(--amber);
+  background: var(--status-underfunded);
 }
 .meter[data-state="overspent"] .meterTrack > span {
-  background: var(--red);
+  background: var(--status-overspent);
 }
 .meter[data-state="overspent"] {
-  color: var(--red);
+  color: var(--status-overspent);
 }
 .meter[data-state="credit"] .meterTrack > span {
-  background: var(--amber);
+  background: var(--status-credit);
 }
 .meter[data-state="snoozed"] .meterTrack > span {
-  background: var(--text-3);
+  background: var(--text-tertiary);
 }
 .reviewNote {
   display: flex;
   align-items: baseline;
   gap: 8px;
   padding: 2px 2px 8px;
-  color: var(--text-2);
+  color: var(--text-secondary);
   text-wrap: pretty;
-}
-.secondaryButton {
-  align-self: flex-start;
 }
 
 /* ---------- Lists ---------- */
@@ -1153,28 +877,28 @@ button.actionItem:hover {
   z-index: 2;
   top: 0;
   height: var(--size-row-md);
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--text-3);
-  font-size: var(--font-small);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 .groupRow,
 .dayRow {
-  height: var(--row);
+  height: var(--size-row-lg);
   margin-top: 4px;
   border: 0;
   border-radius: 6px;
-  background: var(--group);
-  color: var(--text-2);
-  font-size: var(--font-body);
+  background: var(--surface-group);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
   font-weight: 500;
   text-align: left;
 }
 .groupRow:hover {
-  color: var(--text);
+  color: var(--text-primary);
 }
 .groupRow .numeric {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-weight: 400;
 }
 .dayRow {
@@ -1189,28 +913,28 @@ button.actionItem:hover {
   gap: 8px;
 }
 .groupCaret {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   transition: transform 150ms var(--ease-panel);
 }
 .groupRow[aria-expanded="false"] .groupCaret {
   transform: rotate(-90deg);
 }
 .groupCount {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-weight: 400;
 }
 .row {
-  height: var(--row);
+  height: var(--size-row-lg);
   border: 0;
   border-radius: 6px;
   background: transparent;
   text-align: left;
 }
 .row:hover {
-  background: var(--hover);
+  background: var(--surface-hover);
 }
 .row[aria-current="true"] {
-  background: var(--selected);
+  background: var(--surface-selected);
 }
 .root .row:focus-visible,
 .root .groupRow:focus-visible {
@@ -1223,18 +947,26 @@ button.actionItem:hover {
 /* The checkbox overlays the row, so hover is tracked on the wrapper to keep
    the row highlighted while the pointer is on the checkbox. */
 .rowWrap:hover > .row {
-  background: var(--hover);
+  background: var(--surface-hover);
 }
 .rowWrap:hover > .groupRow {
-  color: var(--text);
+  color: var(--text-primary);
 }
 .rowWrap[data-checked] > .row {
-  background: color-mix(in oklch, var(--accent) 16%, var(--panel));
+  background: color-mix(
+    in oklch,
+    var(--accent-solid) 16%,
+    var(--surface-panel)
+  );
 }
 .rowWrap[data-checked]:hover > .row {
-  background: color-mix(in oklch, var(--accent) 22%, var(--panel));
+  background: color-mix(
+    in oklch,
+    var(--accent-solid) 22%,
+    var(--surface-panel)
+  );
 }
-.checkbox {
+.checkboxSlot {
   position: absolute;
   z-index: 1;
   top: 0;
@@ -1243,38 +975,15 @@ button.actionItem:hover {
   display: grid;
   place-items: center;
   width: 26px;
-  padding: 0;
-  border: 0;
-  background: none;
+  cursor: pointer;
   opacity: 0;
 }
-.checkbox > span {
-  display: grid;
-  place-items: center;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 4px;
-  background: var(--panel);
-  color: var(--on-accent);
-}
-.rowWrap:hover .checkbox,
-.list[data-selecting] .checkbox,
-.checkbox:focus-visible,
-.checkbox[aria-checked="true"],
-.checkbox[aria-checked="mixed"] {
+.rowWrap:hover .checkboxSlot,
+.list[data-selecting] .checkboxSlot,
+.checkboxSlot:focus-within,
+.checkboxSlot:has([data-state="checked"]),
+.checkboxSlot:has([data-state="indeterminate"]) {
   opacity: 1;
-}
-.checkbox:hover > span {
-  border-color: var(--accent);
-}
-.checkbox[aria-checked="true"] > span,
-.checkbox[aria-checked="mixed"] > span {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-.root .checkbox:focus-visible {
-  outline-offset: -4px;
 }
 .rowName {
   display: flex;
@@ -1294,13 +1003,13 @@ button.actionItem:hover {
   white-space: nowrap;
 }
 .numeric[data-inflow] {
-  color: var(--green);
+  color: var(--money-positive);
 }
 .muted {
-  color: var(--text-2);
+  color: var(--text-secondary);
 }
 .faint {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .pill {
   display: inline-flex;
@@ -1308,85 +1017,72 @@ button.actionItem:hover {
   height: var(--size-pill);
   padding: 0 8px;
   border-radius: 999px;
-  background: var(--hover);
-  color: var(--text-2);
+  background: var(--surface-hover);
+  color: var(--text-secondary);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .pill[data-state="funded"] {
-  background: var(--green-bg);
-  color: var(--green);
+  background: var(--status-funded-bg);
+  color: var(--status-funded);
 }
 .pill[data-state="underfunded"] {
-  background: var(--amber-bg);
-  color: var(--amber);
+  background: var(--status-underfunded-bg);
+  color: var(--status-underfunded);
 }
 .pill[data-state="credit"] {
-  background: var(--amber-bg);
-  color: var(--amber);
+  background: var(--status-credit-bg);
+  color: var(--status-credit);
 }
 .pill[data-state="overspent"] {
-  background: var(--red-bg);
-  color: var(--red);
-}
-.chip {
-  display: inline-flex;
-  align-items: center;
-  height: var(--size-pill);
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: var(--font-small);
-  font-weight: 500;
-}
-.chip[data-tone="amber"] {
-  background: var(--amber-bg);
-  color: var(--amber);
+  background: var(--status-overspent-bg);
+  color: var(--status-overspent);
 }
 .ring {
   flex: none;
 }
 .ringTrack {
   fill: none;
-  stroke: var(--text-3);
+  stroke: var(--text-tertiary);
   stroke-width: 1.5;
 }
 .ring[data-state="underfunded"] .ringTrack {
-  stroke: var(--amber);
+  stroke: var(--status-underfunded);
 }
 .ringArc {
   fill: none;
-  stroke: var(--amber);
+  stroke: var(--status-underfunded);
 }
 .ringFill {
-  fill: var(--green);
+  fill: var(--status-funded);
 }
 .ring[data-state="overspent"] .ringFill {
-  fill: var(--red);
+  fill: var(--status-overspent);
 }
 /* Overspending that went on a card is debt, not missing cash: amber, like
    YNAB's yellow, instead of red. */
 .ring[data-state="credit"] .ringFill {
-  fill: var(--amber);
+  fill: var(--status-credit);
 }
 .ringSnooze {
   fill: none;
-  stroke: var(--text-3);
+  stroke: var(--text-tertiary);
   stroke-width: 1.5;
   stroke-linecap: round;
 }
 .ringMark {
   fill: none;
-  stroke: var(--panel);
+  stroke: var(--surface-panel);
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .statusIcon {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .statusIcon[data-status="cleared"] {
-  color: var(--green);
+  color: var(--feedback-success);
 }
 .reviewDot {
   flex: none;
@@ -1397,9 +1093,9 @@ button.actionItem:hover {
   border-radius: 50%;
 }
 .reviewDot[data-on] {
-  background: var(--accent);
+  background: var(--accent-solid);
 }
-.filterChip .reviewDot,
+.reviewDot[data-inline],
 .actionItem .reviewDot {
   margin: 0;
 }
@@ -1409,26 +1105,26 @@ button.actionItem:hover {
   gap: 12px;
   max-width: 360px;
   margin: 96px auto;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .empty > svg {
   flex: none;
   margin-top: 2px;
-  color: var(--green);
+  color: var(--feedback-success);
 }
 .empty strong {
   display: block;
-  color: var(--text);
+  color: var(--text-primary);
   font-weight: 500;
 }
 .empty a {
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-weight: 500;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .empty > .spin {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   animation: spin 900ms linear infinite;
 }
 @keyframes spin {
@@ -1438,13 +1134,13 @@ button.actionItem:hover {
 }
 .inlineIcon {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .navEmpty {
   margin: 0;
   padding: 4px 8px 4px 20px;
-  color: var(--text-3);
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 /* Indeterminate progress along the header's bottom edge while another
    month loads; the previous month stays on screen until it arrives. */
@@ -1461,7 +1157,7 @@ button.actionItem:hover {
   position: absolute;
   inset: 0;
   width: 30%;
-  background: var(--accent);
+  background: var(--accent-solid);
   animation: month-loading 900ms ease-in-out infinite;
 }
 @keyframes month-loading {
@@ -1480,17 +1176,17 @@ button.actionItem:hover {
 .peek {
   position: absolute;
   z-index: 40;
-  top: calc(var(--gutter) + var(--size-header) + 8px);
-  bottom: calc(var(--gutter) + 6px);
-  left: calc(var(--gutter) + 4px);
+  top: calc(var(--space-gutter) + var(--size-header) + 8px);
+  bottom: calc(var(--space-gutter) + 6px);
+  left: calc(var(--space-gutter) + 4px);
   padding: 8px;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-peek);
-  background: var(--bg);
-  box-shadow: var(--drawer-shadow);
+  background: var(--surface-app);
+  box-shadow: var(--shadow-drawer);
   visibility: hidden;
-  transform: translateX(calc(-100% - var(--gutter) - 8px));
+  transform: translateX(calc(-100% - var(--space-gutter) - 8px));
   transition:
     transform 180ms cubic-bezier(0.4, 0, 1, 1),
     visibility 0s 180ms;
@@ -1508,10 +1204,10 @@ button.actionItem:hover {
 .peekScrim {
   position: absolute;
   z-index: 35;
-  top: calc(var(--gutter) + var(--size-header) + 1px);
-  right: var(--gutter);
-  bottom: var(--gutter);
-  left: var(--gutter);
+  top: calc(var(--space-gutter) + var(--size-header) + 1px);
+  right: var(--space-gutter);
+  bottom: var(--space-gutter);
+  left: var(--space-gutter);
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
   background: oklch(0 0 0 / 0.4);
   opacity: 0;
@@ -1537,25 +1233,19 @@ button.actionItem:hover {
 
 /* ---------- Narrow screens: panels float over content ---------- */
 
-.root[data-narrow] .iconButton::before {
-  content: "";
-  position: absolute;
-  inset: -8px;
-}
-
 .root[data-narrow] .sidebar {
   position: absolute;
   z-index: 30;
   top: 0;
   bottom: 0;
   left: 0;
-  padding: var(--gutter) 0 var(--gutter) var(--gutter);
-  background: var(--bg);
+  padding: var(--space-gutter) 0 var(--space-gutter) var(--space-gutter);
+  background: var(--surface-app);
 }
 .root[data-narrow] .sidebar[data-open] {
   box-shadow:
-    0 0 0 1px var(--line),
-    var(--drawer-shadow);
+    0 0 0 1px var(--border-subtle),
+    var(--shadow-drawer);
 }
 .root[data-narrow] .inspectorSlot {
   position: absolute;
@@ -1563,7 +1253,7 @@ button.actionItem:hover {
   top: 0;
   right: 0;
   bottom: 0;
-  background: var(--panel);
+  background: var(--surface-panel);
 }
 .root[data-narrow] .handle {
   display: none;
@@ -1825,7 +1515,7 @@ button.actionItem:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .root {
-    --panel-duration: 0ms;
+    --duration-panel: 0ms;
   }
   .root *,
   .root *::after {

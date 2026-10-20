@@ -7,10 +7,12 @@ import {
   ChevronRightIcon,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
+import { IconButton } from "~/components/ui/icon-button";
+import { usePortalContainer } from "~/components/ui/tooltip";
 import { useShellData } from "../shell-data";
-import shell from "../shell.module.css";
-import { Tip, usePortalContainer } from "../tooltip";
 import {
   filterableCategories,
   monthsBetween,
@@ -128,31 +130,28 @@ function StepButton({
   onStep: (range: DateRange) => void;
 }) {
   return (
-    <Tip label={label}>
-      <button
-        type="button"
-        className={styles.step}
-        aria-label={`${label} dates`}
-        disabled={!to}
-        onClick={() => to && onStep(to)}
-      >
-        <Icon size={14} aria-hidden />
-      </button>
-    </Tip>
+    <IconButton
+      label={`${label} dates`}
+      size="sm"
+      disabled={!to}
+      onClick={() => to && onStep(to)}
+    >
+      <Icon aria-hidden />
+    </IconButton>
   );
 }
 
 function FilterPopover({
   name,
   label,
-  active,
+  variant = "secondary",
   children,
   open,
   onOpenChange,
 }: {
   name: string;
   label: string;
-  active: boolean;
+  variant?: "secondary" | "quiet";
   children: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -161,17 +160,16 @@ function FilterPopover({
   return (
     <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger asChild>
-        <button
-          type="button"
-          className={`${shell.control} ${styles.filterTrigger}`}
-          data-active={active || undefined}
+        <Button
+          size="sm"
+          variant={variant}
           // Names the filter, so it isn't confused with the "All categories"
           // breadcrumb beside the report.
           aria-label={`${name}: ${label}`}
         >
           {label}
-          <ChevronDownIcon size={13} aria-hidden />
-        </button>
+          <ChevronDownIcon aria-hidden />
+        </Button>
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
@@ -222,24 +220,24 @@ function ChecklistFilter({
         ? `No ${noun}`
         : `${count} of ${all.length} ${noun}`;
   return (
-    <FilterPopover name={name} label={label} active={count !== all.length}>
+    <FilterPopover name={name} label={label}>
       <div className={styles.popoverHeader}>
-        <button
-          type="button"
-          className={styles.textAction}
+        <Button
+          variant="quiet"
+          size="sm"
           disabled={count === all.length}
           onClick={() => onChange(null)}
         >
           Select all
-        </button>
-        <button
-          type="button"
-          className={styles.textAction}
+        </Button>
+        <Button
+          variant="quiet"
+          size="sm"
           disabled={count === 0}
           onClick={() => onChange([])}
         >
           Select none
-        </button>
+        </Button>
       </div>
       <div className={styles.checklist}>
         {sections.map((section) => {
@@ -271,8 +269,8 @@ function ChecklistFilter({
         })}
       </div>
       <div className={styles.popoverFooter}>
-        <Popover.Close className={`${shell.control} ${styles.done}`}>
-          Done
+        <Popover.Close asChild>
+          <Button size="sm">Done</Button>
         </Popover.Close>
       </div>
     </FilterPopover>
@@ -292,17 +290,11 @@ function Check({
   strong?: boolean;
   onChange: (value: boolean) => void;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = mixed;
-  }, [mixed]);
   return (
     <label className={styles.check} data-strong={strong || undefined}>
-      <input
-        ref={ref}
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
+      <Checkbox
+        checked={mixed ? "indeterminate" : checked}
+        onCheckedChange={(value) => onChange(value === true)}
       />
       <span>{label}</span>
     </label>
@@ -342,7 +334,7 @@ function DatesFilter({
     <FilterPopover
       name="Dates"
       label={label}
-      active={range.preset !== "latest-6"}
+      variant="quiet"
       open={open}
       onOpenChange={(value) => {
         if (value) {
@@ -414,9 +406,11 @@ function DatesFilter({
             ))}
           </select>
         </label>
-        <button type="submit" className={`${shell.control} ${styles.done}`}>
-          Apply
-        </button>
+        <div className={styles.customSubmit}>
+          <Button variant="primary" size="sm" type="submit">
+            Apply
+          </Button>
+        </div>
       </form>
     </FilterPopover>
   );

@@ -4,7 +4,7 @@ import { SignInButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Brand, Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import { usePlaidLink } from "./use-plaid-link";
 import { currentMonth } from "~/components/budget/format";
 import { api } from "~/trpc/react";

@@ -31,8 +31,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   margin-left: auto;
-  color: var(--text-2);
-  font-size: var(--font-small);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -44,17 +44,17 @@
   height: 6px;
 }
 .segment {
-  --tone: var(--green);
+  --tone: var(--status-funded);
   min-width: 2px;
   border-radius: 3px;
 }
 /* YNAB's three bar colors: green, yellow while a target is unmet, and red
    for overspending of either kind. */
 .segment[data-tone="underfunded"] {
-  --tone: var(--amber);
+  --tone: var(--status-underfunded);
 }
 .segment[data-tone="overspent"] {
-  --tone: var(--red);
+  --tone: var(--status-overspent);
 }
 .segment[data-kind="available"] {
   background: var(--tone);
@@ -71,7 +71,7 @@
 }
 .segment[data-kind="needed"] {
   flex-grow: 1;
-  background: var(--hover);
+  background: var(--surface-hover);
 }
 
 .swatch {
