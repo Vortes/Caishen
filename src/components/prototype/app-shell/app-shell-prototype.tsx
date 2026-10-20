@@ -683,9 +683,8 @@ export function AppShellPrototype({
                   Moved {money(toastMove.amount)} from{" "}
                   {placeName(toastMove.from)} to {placeName(toastMove.to)}
                 </span>
-                <button
-                  type="button"
-                  className={`${styles.control} ${moveStyles.button}`}
+                <Button
+                  size="sm"
                   onClick={() => {
                     onMovesChange(
                       moves.filter((move) => move.id !== toastMove.id),
@@ -694,7 +693,7 @@ export function AppShellPrototype({
                   }}
                 >
                   Undo
-                </button>
+                </Button>
               </div>
             )}
           </TooltipProvider>

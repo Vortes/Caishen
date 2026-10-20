@@ -25,8 +25,10 @@ test("YNAB's preset views filter the plan and count their categories", async ({
   await openPrototype(page);
   await expect(chip(page, "All")).toHaveAttribute("aria-pressed", "true");
   await expect(chip(page, "Overspent")).toHaveText("Overspent2");
-  // Dining's overspending is cash, so the chip is red, not yellow.
-  await expect(chip(page, "Overspent")).toHaveAttribute("data-tone", "red");
+  // Dining's overspending is cash, so the count is red, not yellow.
+  await expect(
+    chip(page, "Overspent").locator('[data-state="overspent"]'),
+  ).toHaveText("2");
   await expect(chip(page, "Snoozed")).toHaveText("Snoozed0");
   await expect(chip(page, "Underfunded")).toHaveText("Underfunded3");
   await expect(chip(page, "Overfunded")).toHaveText("Overfunded0");

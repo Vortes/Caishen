@@ -5,12 +5,12 @@
   width: var(--size-popover);
   /* Not capped to the room on its side: a capped popover always fits, so
      Radix would never flip it. */
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-menu);
-  background: var(--raised);
-  box-shadow: var(--drawer-shadow);
-  color: var(--text-2);
-  font-size: var(--font-body);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
   transform-origin: var(--radix-popover-content-transform-origin);
   animation: popover-in 150ms var(--ease-panel);
 }
@@ -21,7 +21,7 @@
   }
 }
 .arrow {
-  fill: var(--raised);
+  fill: var(--surface-raised);
 }
 
 .form {
@@ -33,32 +33,34 @@
   align-items: center;
   gap: 6px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .headerLabel {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .header strong {
   flex: 1;
-  color: var(--text);
+  color: var(--text-primary);
   font-weight: 500;
 }
 .balance {
   flex: none;
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .balance[data-state="funded"] {
-  color: var(--green);
+  color: var(--status-funded);
 }
-.balance[data-state="underfunded"],
+.balance[data-state="underfunded"] {
+  color: var(--status-underfunded);
+}
 .balance[data-state="credit"] {
-  color: var(--amber);
+  color: var(--status-credit);
 }
 .balance[data-state="overspent"] {
-  color: var(--red);
+  color: var(--status-overspent);
 }
 
 .field {
@@ -68,8 +70,8 @@
   padding: 10px 12px 0;
 }
 .field label {
-  color: var(--text-3);
-  font-size: var(--font-small);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 
 /* Inputs are filled wells, like the shell's controls, with a ring on focus. */
@@ -80,22 +82,22 @@
   gap: 6px;
   height: var(--size-control);
   padding: 0 10px;
-  border: 1px solid var(--control-line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-row);
-  background: var(--control);
-  color: var(--text);
+  background: var(--control-bg);
+  color: var(--text-primary);
   transition: border-color 150ms;
 }
 .amountInput:focus-within,
 .search:focus-within {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
 }
 .amountInput[data-invalid],
 .search[data-invalid] {
-  border-color: var(--red);
+  border-color: var(--danger-line);
 }
 .amountInput > span {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
 .amountInput input,
@@ -117,7 +119,7 @@
 }
 .amountInput input::placeholder,
 .search input::placeholder {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .search {
   cursor: text;
@@ -130,15 +132,15 @@
 }
 .searchIcon {
   flex: none;
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 .error {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--red);
-  font-size: var(--font-small);
+  color: var(--danger-text);
+  font-size: var(--type-small);
 }
 
 /* The destination list opens by growing its row from 0fr to 1fr while the
@@ -180,8 +182,8 @@
 
 .group {
   padding: 8px 8px 4px;
-  color: var(--text-3);
-  font-size: var(--font-caption);
+  color: var(--text-tertiary);
+  font-size: var(--type-caption);
   font-weight: 500;
 }
 .option {
@@ -191,18 +193,18 @@
   height: var(--size-row-sm);
   padding: 0 8px 0 4px;
   border-radius: var(--radius-row);
-  color: var(--text-2);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 .option > :nth-child(2) {
   flex: 1;
 }
 .option[data-active] {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 .option[aria-selected="true"] {
-  color: var(--text);
+  color: var(--text-primary);
   font-weight: 500;
 }
 .option[aria-disabled] {
@@ -214,24 +216,24 @@
   flex: none;
   place-items: center;
   width: 16px;
-  color: var(--accent);
+  color: var(--accent-solid);
 }
 .optionAmount {
   flex: none;
   font-variant-numeric: tabular-nums;
 }
 .optionAmount[data-tone="positive"] {
-  color: var(--green);
+  color: var(--money-positive);
 }
 .optionAmount[data-tone="negative"] {
-  color: var(--red);
+  color: var(--money-negative);
 }
 .optionAmount[data-tone="zero"] {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 .empty {
   padding: 16px 8px;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   text-align: center;
 }
 
@@ -242,20 +244,7 @@
   gap: 8px;
   margin-top: 12px;
   padding: 8px 12px;
-  border-top: 1px solid var(--line);
-}
-.button {
-  height: var(--size-control-sm);
-  font-size: var(--font-small);
-}
-.primary {
-  border-color: transparent;
-  background: var(--accent);
-  color: var(--on-accent);
-}
-.primary:hover {
-  background: color-mix(in oklch, var(--accent) 88%, white);
-  color: var(--on-accent);
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* Holds the row's Available column open under the pill button. */
@@ -301,12 +290,12 @@
   max-width: 320px;
   height: 40px;
   padding: 0 6px 0 14px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: var(--raised);
-  box-shadow: var(--drawer-shadow);
-  color: var(--text);
-  font-size: var(--font-small);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-primary);
+  font-size: var(--type-small);
   white-space: nowrap;
   animation: toast-in 200ms var(--ease-panel);
 }
@@ -320,9 +309,6 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.toast .button {
-  height: var(--size-control-xs);
 }
 
 @media (pointer: coarse) {

@@ -12,9 +12,10 @@ import {
   type ReactNode,
 } from "react";
 import { money, type Category } from "./model";
+import { Button } from "~/components/ui/button";
+import { usePortalContainer } from "~/components/ui/tooltip";
 import { useShellData } from "./shell-data";
 import { READY_TO_ASSIGN, type Move } from "./simulated-moves";
-import { usePortalContainer } from "./tooltip";
 import shell from "./shell.module.css";
 import styles from "./move-money.module.css";
 
@@ -265,15 +266,12 @@ function MoveForm({
       {amountField}
       {destination}
       <div className={styles.footer}>
-        <Popover.Close className={`${shell.control} ${styles.button}`}>
-          Cancel
+        <Popover.Close asChild>
+          <Button size="sm">Cancel</Button>
         </Popover.Close>
-        <button
-          type="submit"
-          className={`${shell.control} ${styles.button} ${styles.primary}`}
-        >
+        <Button variant="primary" size="sm" type="submit">
           {cover ? "Cover" : "Move"}
-        </button>
+        </Button>
       </div>
     </form>
   );

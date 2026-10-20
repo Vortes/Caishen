@@ -345,9 +345,11 @@ function CategoryDetails({ category }: { category: Category }) {
         />
         <div className={styles.cardActions}>
           <MoveMoneyPopover category={category} align="start">
-            <button type="button" className={styles.control}>
-              {category.available < 0 ? "Cover overspending" : "Move money"}
-            </button>
+            {category.available < 0 ? (
+              <Button variant="primary">Cover overspending</Button>
+            ) : (
+              <Button>Move money</Button>
+            )}
           </MoveMoneyPopover>
         </div>
       </Card>

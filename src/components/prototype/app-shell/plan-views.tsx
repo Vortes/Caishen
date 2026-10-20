@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "~/components/ui/button";
 import { overfunded, underfunded } from "~/domain/auto-assign";
 import type { Category } from "./model";
 import { useShellData } from "./shell-data";
@@ -84,22 +85,21 @@ export function PlanViews({
   const { categories } = useShellData();
   const overspent = categories.filter((category) => category.available < 0);
   // YNAB colors Overspent red when any of it is cash, yellow when it's all
-  // on credit.
-  const overspentTone = overspent.some(
+  // on credit: the funding states of the categories it lists.
+  const overspentState = overspent.some(
     (category) => category.funding === "overspent",
   )
-    ? "red"
-    : "amber";
+    ? "overspent"
+    : "credit";
   return (
     <div className={styles.views} role="group" aria-label="Plan views">
-      <button
-        type="button"
-        className={`${styles.control} ${styles.filterChip}`}
+      <Button
+        size="sm"
         aria-pressed={value === null}
         onClick={() => onChange(null)}
       >
         All
-      </button>
+      </Button>
       {views.map((view) => {
         const count = categories.filter(view.matches).length;
         // Overspent stays while it's selected, so covering the last one
@@ -107,19 +107,24 @@ export function PlanViews({
         if (view.id === "overspent" && count === 0 && value !== "overspent")
           return null;
         return (
-          <button
-            type="button"
+          <Button
+            size="sm"
             key={view.id}
-            className={`${styles.control} ${styles.filterChip}`}
             aria-pressed={value === view.id}
-            data-tone={
-              view.id === "overspent" && count > 0 ? overspentTone : undefined
-            }
             onClick={() => onChange(value === view.id ? null : view.id)}
           >
             {view.label}
-            <span className={styles.chipCount}>{count}</span>
-          </button>
+            <span
+              className={styles.chipCount}
+              data-state={
+                view.id === "overspent" && count > 0
+                  ? overspentState
+                  : undefined
+              }
+            >
+              {count}
+            </span>
+          </Button>
         );
       })}
     </div>

@@ -495,43 +495,20 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
-.views .control {
-  flex: none;
-  height: var(--size-control-sm);
-}
 .chipCount {
-  color: var(--text-3);
+  color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
-.control[aria-pressed="true"] .chipCount {
-  color: var(--text-2);
+[aria-pressed="true"] > .chipCount {
+  color: var(--text-secondary);
 }
-/* Overspent takes the funding colors: red with cash overspending, amber when
-   it's all on credit. */
-.control[data-tone="red"] {
-  border-color: transparent;
-  background: var(--red-bg);
-  color: var(--red);
+/* Overspent's count takes the funding state of what it lists: overspent with
+   cash overspending, credit when it's all on a card. */
+.chipCount[data-state="overspent"] {
+  color: var(--status-overspent);
 }
-.control[data-tone="amber"] {
-  border-color: transparent;
-  background: var(--amber-bg);
-  color: var(--amber);
-}
-.control[data-tone] .chipCount {
-  color: inherit;
-}
-.control[data-tone="red"]:hover,
-.control[data-tone="red"][aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--red) 45%, transparent);
-  background: color-mix(in oklch, var(--red-bg), var(--red) 12%);
-  color: var(--red);
-}
-.control[data-tone="amber"]:hover,
-.control[data-tone="amber"][aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--amber) 45%, transparent);
-  background: color-mix(in oklch, var(--amber-bg), var(--amber) 12%);
-  color: var(--amber);
+.chipCount[data-state="credit"] {
+  color: var(--status-credit);
 }
 
 .body {
@@ -681,10 +658,6 @@
   display: flex;
   gap: 8px;
   padding-top: 10px;
-}
-.cardActions .control {
-  height: var(--size-control-sm);
-  font-size: var(--font-small);
 }
 .figure[data-state="funded"] strong {
   color: var(--status-funded);

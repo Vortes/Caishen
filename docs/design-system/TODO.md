@@ -10,20 +10,35 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] `NavItem`: sidebar items, section headings, budget switcher, Settings
       (`sidebar.tsx`)
 - [ ] Menu row: date presets (`reflect/filters.tsx`), auto-assign items
-      (`inspector.tsx`)
+      (`inspector.tsx`), the move-money destination options (`move-money.tsx`)
 - [ ] Breadcrumbs (`reflect/reflect-view.tsx`)
 - [ ] Header tabs: Spending Breakdown / Trends, and decide whether they become
       a `Tabs` variant or take the pill look (`app-shell-prototype.tsx`)
 - [ ] Month label button in the header (`app-shell-prototype.tsx`)
 - [ ] `Select`: the custom date range's native selects (`reflect/filters.tsx`)
-- [ ] `Popover` surface: the Reflect filters and slice popovers style their own
-      (`reflect/reflect.module.css`)
+- [ ] `Popover` surface: the Reflect filters, slice, and move-money popovers
+      style their own (`reflect/reflect.module.css`, `move-money.module.css`)
+- [ ] Text field and combobox: the move-money amount input and its searchable
+      destination list, including their invalid state and field error
+      (`move-money.tsx`)
+- [ ] Toast: the undo toast after a simulated move (`move-money.module.css`,
+      `.toast`)
+- [ ] Filter chip: the plan's focused views are `Button size="sm"` toggles,
+      which have no tone, so Overspent lost YNAB's red or yellow fill and only
+      its count takes the funding color; decide whether chips become a
+      primitive with a funding tone (`plan-views.tsx`)
+- [ ] The Available pill as a button: plan rows lay a bare `<button>` over the
+      pill to open move money (`move-money.module.css`, `.pillButton`); decide
+      whether funding pills get a pressable form
 - [ ] Funding components (`AvailablePill`, `FundingBar`, `FundingRing`,
       `Meter`, `Figure`) move out of the prototype; type `Figure` and `Meter`
       tone props as `Funding` instead of `string`
 
 ## Tokens
 
+- [ ] Add a field-error token: move-money's invalid inputs and error text use
+      `--danger-line` and `--danger-text`, which are meant for destructive
+      confirms (`move-money.module.css`, `[data-invalid]`, `.error`)
 - [ ] Add an `--overlay` token for the scrims behind the peeking sidebar and
       the narrow drawer (`shell.module.css`, `.scrim`, `.peekScrim`)
 - [ ] Budget avatar's raw orange and white (`shell.module.css`, `.avatar`)
