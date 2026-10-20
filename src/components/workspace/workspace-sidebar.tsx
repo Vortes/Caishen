@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogTitle } from "~/components/ui/dialog";
 import type { Panel, Tab, View } from "~/components/budget/types";
 import { Amount, Brand, Icon, type IconName } from "~/components/shared";
 import { Button } from "~/components/ui/button";
-import { HistoryControls } from "~/components/workspace/history-controls";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +29,6 @@ export function WorkspaceSidebar({
   onNavigate,
   onAccount,
   open,
-  history,
 }: {
   view: View;
   tab: Tab;
@@ -41,7 +39,6 @@ export function WorkspaceSidebar({
   onNavigate: (tab: Tab) => void;
   onAccount: (id: string) => void;
   open: (panel: Panel) => void;
-  history: React.ComponentProps<typeof HistoryControls>;
 }) {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const toggle = (id: string) =>
@@ -147,10 +144,6 @@ export function WorkspaceSidebar({
                       }
                       onClick={() => onAccount(account.id)}
                     >
-                      <Icon
-                        name={kind === "cash" ? "bank" : "card"}
-                        size={13}
-                      />
                       <span title={account.name}>{account.name}</span>
                       <Amount
                         value={account.balance}
@@ -191,7 +184,6 @@ export function WorkspaceSidebar({
                   key={loan.id}
                   onClick={() => onNavigate("loans")}
                 >
-                  <Icon name="loans" size={13} />
                   <span title={loan.name}>{loan.name}</span>
                   <Amount value={-loan.balance} />
                 </button>
@@ -218,7 +210,6 @@ export function WorkspaceSidebar({
         </div>
       </div>
       <div className="sidebar-footer">
-        <HistoryControls {...history} />
         <Button
           variant="ghost"
           size="sm"

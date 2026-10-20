@@ -346,8 +346,6 @@ const assigned = (page: Page) =>
   page.getByTitle("Assign money to Groceries", { exact: true });
 const assignmentEditor = (page: Page) =>
   page.getByLabel("Assigned amount for Groceries", { exact: true });
-const undoButton = (page: Page) =>
-  page.getByRole("button", { name: "Undo", exact: true });
 
 async function assign(page: Page, amount: string) {
   await assigned(page).click();
@@ -360,7 +358,9 @@ test("assignment previews all balances immediately and waits for the saved revis
 }) => {
   const fixture = await openFixture(page);
   await expect(assigned(page)).toHaveText("$200.00");
-  await expect(undoButton(page)).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: /^(Undo|Redo)$/, includeHidden: true }),
+  ).toHaveCount(0);
   const execution = fixture.holdExecution();
   let refresh: ReturnType<typeof fixture.holdRefresh> | undefined;
   try {
@@ -372,7 +372,7 @@ test("assignment previews all balances immediately and waits for the saved revis
       page.getByRole("button", { name: /^Groceries available/ }),
     ).toContainText("$250.00");
     expect(fixture.projection().categories[0]!.assigned).toBe(20_000);
-    await expect(undoButton(page)).toBeDisabled();
+    await expect(assigned(page)).toBeDisabled();
 
     await assigned(page).click({ force: true });
     await expect(assignmentEditor(page)).not.toBeVisible();
@@ -385,13 +385,13 @@ test("assignment previews all balances immediately and waits for the saved revis
     await refresh.requested;
     await expect(assigned(page)).toHaveText("$250.00");
     await expect(assigned(page)).toBeDisabled();
-    await expect(undoButton(page)).toBeDisabled();
+    await page.keyboard.press("Meta+z");
+    expect(fixture.historyCalls).toHaveLength(0);
   } finally {
     execution.succeed();
     refresh?.release();
   }
   await expect(assigned(page)).toBeEnabled();
-  await expect(undoButton(page)).toBeEnabled();
   await assign(page, "300.00");
   await expect(assigned(page)).toHaveText("$300.00");
   await expect(assigned(page)).toBeEnabled();
@@ -422,7 +422,8 @@ test("a failed assignment rolls back before refresh and survives a refresh outag
     await expect(page.locator('.workspace-notice[role="alert"]')).toContainText(
       "The update could not be saved. Try again.",
     );
-    await expect(undoButton(page)).toBeDisabled();
+    await page.keyboard.press("Meta+z");
+    expect(fixture.historyCalls).toHaveLength(0);
     expect(fixture.projection().readyToAssign).toBe(80_000);
     fixture.setRefreshUnavailable(true);
   } finally {
@@ -434,7 +435,8 @@ test("a failed assignment rolls back before refresh and survives a refresh outag
   await expect(assigned(page)).toHaveText("$200.00");
   await expect(page.locator(".ready-to-assign")).toContainText("$800.00");
   await expect(assigned(page)).toBeDisabled();
-  await expect(undoButton(page)).toBeDisabled();
+  await page.keyboard.press("Meta+z");
+  expect(fixture.historyCalls).toHaveLength(0);
   fixture.setRefreshUnavailable(false);
   await retry.click();
   await expect(retry).not.toBeVisible();
@@ -596,7 +598,8 @@ test("connected budgets preview assignments and money moves without exposing the
     ).toContainText("$210.00");
     await expect(partnerVerdict(page)).toContainText("$30.00");
     expect(fixture.projection().readyToAssign).toBe(70_000);
-    await expect(undoButton(page)).toBeDisabled();
+    await page.keyboard.press("Meta+z");
+    expect(fixture.historyCalls).toHaveLength(0);
   } finally {
     assignment.succeed();
   }
@@ -662,7 +665,7 @@ test("new and edited shared purchases preview cash and the partner balance befor
   } finally {
     purchase.succeed();
   }
-  await expect(undoButton(page)).toBeEnabled();
+  await expect(assigned(page)).toBeEnabled();
   await page.getByRole("button", { name: "All accounts", exact: true }).click();
   await page
     .getByTitle("Edit category for Own shared market", { exact: true })
@@ -686,7 +689,7 @@ test("new and edited shared purchases preview cash and the partner balance befor
   } finally {
     edit.succeed();
   }
-  await expect(undoButton(page)).toBeEnabled();
+  await expect(assigned(page)).toBeEnabled();
   expect(fixture.calls.map((call) => call.expectedRevision)).toEqual([0, 1]);
   expect(fixture.projection().settlement.net).toBe(-4_000);
 });
@@ -797,7 +800,7 @@ test("sharing a category previews its split and rolls back a rejected save witho
   await expect(dialog).not.toBeVisible();
   await expect(badge).toContainText("35/65");
   await expect(split).toContainText("Shared · you 35%");
-  await expect(undoButton(page)).toBeEnabled();
+  await expect(assigned(page)).toBeEnabled();
   expect(
     fixture
       .projection()

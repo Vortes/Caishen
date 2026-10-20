@@ -243,10 +243,19 @@ async function openFixture(
   };
 }
 
-const undoButton = (page: Page) =>
-  page.getByRole("button", { name: "Undo", exact: true });
-const redoButton = (page: Page) =>
-  page.getByRole("button", { name: "Redo", exact: true });
+async function workspaceReady(page: Page) {
+  await expect(
+    page
+      .getByTitle("Assign money to Groceries", { exact: true })
+      .or(page.locator(".register-add-transaction"))
+      .or(page.getByRole("button", { name: "Save preferences", exact: true })),
+  ).toBeEnabled();
+}
+
+async function shortcut(page: Page, keys = "Meta+z") {
+  await page.getByRole("button", { name: "Plan", exact: true }).focus();
+  await page.keyboard.press(keys);
+}
 
 async function assign(page: Page, amount: string) {
   const assigned = page.getByTitle("Assign money to Groceries", {
@@ -266,35 +275,41 @@ async function assign(page: Page, amount: string) {
     }).format(Number(amount)),
   );
   await expect(assigned).toBeEnabled();
-  await expect(undoButton(page)).toBeEnabled();
 }
 
 test("saved actions undo and redo across workspace tabs and reloads", async ({
   page,
 }) => {
   const fixture = await openFixture(page);
-  await expect(undoButton(page)).toBeDisabled();
-  await expect(redoButton(page)).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /^(Undo|Redo)$/, includeHidden: true }),
+  ).toHaveCount(0);
+  await shortcut(page);
+  await shortcut(page, "Meta+Shift+z");
+  expect(fixture.historyCalls).toHaveLength(0);
   await assign(page, "20.00");
   await page.getByRole("button", { name: "All accounts", exact: true }).click();
-  await page.keyboard.press("Meta+z");
+  await shortcut(page);
   await expect.poll(fixture.assigned).toBe(0);
-  await expect(redoButton(page)).toBeEnabled();
-  await page.keyboard.press("Meta+Shift+z");
+  await workspaceReady(page);
+  await shortcut(page, "Meta+Shift+z");
   await expect.poll(fixture.assigned).toBe(2_000);
-  await expect(undoButton(page)).toBeEnabled();
+  await workspaceReady(page);
   await page.getByRole("button", { name: "Plan", exact: true }).click();
   await expect(
     page.getByTitle("Assign money to Groceries", { exact: true }),
   ).toHaveText("$20.00");
   await page.reload();
-  await expect(undoButton(page)).toBeEnabled();
-  await undoButton(page).click();
+  await expect(
+    page.getByTitle("Assign money to Groceries", { exact: true }),
+  ).toHaveText("$20.00");
+  await workspaceReady(page);
+  await shortcut(page);
   await expect.poll(fixture.assigned).toBe(0);
-  await expect(redoButton(page)).toBeEnabled();
-  await page.keyboard.press("Control+y");
+  await workspaceReady(page);
+  await shortcut(page, "Control+y");
   await expect.poll(fixture.assigned).toBe(2_000);
-  await expect(undoButton(page)).toBeEnabled();
+  await workspaceReady(page);
   expect(fixture.historyCalls.map((call) => call.direction)).toEqual([
     "undo",
     "redo",
@@ -312,15 +327,14 @@ test("a successful new action clears the abandoned redo branch", async ({
   const fixture = await openFixture(page);
   await assign(page, "20.00");
   await assign(page, "30.00");
-  await undoButton(page).click();
+  await shortcut(page);
   await expect.poll(fixture.assigned).toBe(2_000);
-  await expect(redoButton(page)).toBeEnabled();
+  await workspaceReady(page);
   await assign(page, "40.00");
-  await expect(redoButton(page)).toBeDisabled();
-  await page.keyboard.press("Meta+Shift+z");
-  await undoButton(page).click();
+  await shortcut(page, "Meta+Shift+z");
+  await shortcut(page);
   await expect.poll(fixture.assigned).toBe(2_000);
-  await expect(redoButton(page)).toBeEnabled();
+  await workspaceReady(page);
   expect(fixture.historyCalls.map((call) => call.direction)).toEqual([
     "undo",
     "undo",
@@ -371,7 +385,7 @@ test("editing fields retain their native undo and redo shortcuts", async ({
   });
   expect(editingShortcutsPreserved).toBe(true);
   expect(fixture.historyCalls).toHaveLength(0);
-  await undoButton(page).click();
+  await shortcut(page);
   await expect.poll(fixture.assigned).toBe(0);
 });
 
@@ -384,14 +398,8 @@ test("modal and transaction drafts block saved-action shortcuts", async ({
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
   await page.keyboard.press("Meta+z");
-  await expect(
-    page.getByRole("button", {
-      name: "Undo",
-      exact: true,
-      includeHidden: true,
-    }),
-  ).toBeDisabled();
   expect(fixture.historyCalls).toHaveLength(0);
+  expect(fixture.assigned()).toBe(2_000);
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await page.getByRole("button", { name: "All accounts", exact: true }).click();
@@ -399,11 +407,11 @@ test("modal and transaction drafts block saved-action shortcuts", async ({
   const editor = page.locator(".transaction-editor-body");
   await editor.getByRole("button", { name: "Save", exact: true }).focus();
   await page.keyboard.press("Meta+z");
-  await expect(undoButton(page)).toBeDisabled();
   expect(fixture.historyCalls).toHaveLength(0);
+  expect(fixture.assigned()).toBe(2_000);
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(undoButton(page)).toBeEnabled();
-  await undoButton(page).click();
+  await workspaceReady(page);
+  await shortcut(page);
   await expect.poll(fixture.assigned).toBe(0);
 });
 
@@ -427,9 +435,11 @@ test("repeated keys and in-flight updates cannot apply a second undo", async ({
       ),
     );
     expect(repeatedKeyPreserved).toBe(true);
-    await page.keyboard.press("Meta+z");
+    await shortcut(page);
     await expect.poll(() => fixture.historyCalls.length).toBe(1);
-    await expect(undoButton(page)).toBeDisabled();
+    await expect(
+      page.getByTitle("Assign money to Groceries", { exact: true }),
+    ).toBeDisabled();
     await page.keyboard.press("Meta+z");
     await page.keyboard.press("Control+z");
     expect(fixture.historyCalls).toHaveLength(1);
@@ -437,7 +447,7 @@ test("repeated keys and in-flight updates cannot apply a second undo", async ({
     release();
   }
   await expect.poll(fixture.assigned).toBe(2_000);
-  await expect(undoButton(page)).toBeEnabled();
+  await workspaceReady(page);
   expect(fixture.historyCalls).toHaveLength(1);
 
   const releaseState = fixture.holdState();
@@ -448,12 +458,11 @@ test("repeated keys and in-flight updates cannot apply a second undo", async ({
       "true",
     );
     await page.keyboard.press("Meta+z");
-    await expect(undoButton(page)).toBeDisabled();
     expect(fixture.historyCalls).toHaveLength(1);
   } finally {
     releaseState();
   }
-  await expect(undoButton(page)).toBeEnabled();
+  await workspaceReady(page);
 });
 
 test("a rejected undo preserves the saved action and can be retried", async ({
@@ -462,16 +471,17 @@ test("a rejected undo preserves the saved action and can be retried", async ({
   const fixture = await openFixture(page);
   await assign(page, "20.00");
   fixture.rejectNextHistory();
-  await undoButton(page).click();
+  await shortcut(page);
   await expect(page.locator('.workspace-notice[role="alert"]')).toContainText(
     "Undo is temporarily unavailable. Try again.",
   );
-  await expect(undoButton(page)).toBeEnabled();
-  await expect(redoButton(page)).toBeDisabled();
+  await workspaceReady(page);
   expect(fixture.assigned()).toBe(2_000);
-  await undoButton(page).click();
+  await shortcut(page, "Meta+Shift+z");
+  expect(fixture.historyCalls).toHaveLength(1);
+  await shortcut(page);
   await expect.poll(fixture.assigned).toBe(0);
-  await expect(redoButton(page)).toBeEnabled();
+  await workspaceReady(page);
   expect(fixture.historyCalls).toHaveLength(2);
 });
 
@@ -491,26 +501,27 @@ test("settings fields stay synchronized when saved preferences undo and redo", a
   await page
     .getByRole("button", { name: "Save preferences", exact: true })
     .click();
-  await expect(undoButton(page)).toBeEnabled();
+  await expect.poll(() => fixture.commands.length).toBe(1);
+  await workspaceReady(page);
   await expect(name).toHaveValue("Updated budget name");
   await expect(email).toBeChecked({ checked: !initialEmail });
 
-  await undoButton(page).click();
+  await shortcut(page);
   await expect(name).toHaveValue(initialName);
   await expect(email).toBeChecked({ checked: initialEmail });
-  await expect(redoButton(page)).toBeEnabled();
+  await workspaceReady(page);
 
-  await redoButton(page).click();
+  await shortcut(page, "Meta+Shift+z");
   await expect(name).toHaveValue("Updated budget name");
   await expect(email).toBeChecked({ checked: !initialEmail });
-  await expect(undoButton(page)).toBeEnabled();
+  await workspaceReady(page);
   expect(fixture.historyCalls.map((call) => call.direction)).toEqual([
     "undo",
     "redo",
   ]);
 });
 
-test("mobile undo and redo close navigation and reveal the restored budget", async ({
+test("mobile navigation omits history buttons and saved actions keep their keyboard shortcuts", async ({
   page,
 }) => {
   const fixture = await openFixture(page);
@@ -525,22 +536,29 @@ test("mobile undo and redo close navigation and reveal the restored budget", asy
     exact: true,
   });
   await opener.click();
-  await navigation.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /^(Undo|Redo)$/, includeHidden: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Meta+z");
+  expect(fixture.historyCalls).toHaveLength(0);
+  await navigation
+    .getByRole("button", { name: "Close navigation", exact: true })
+    .click();
   await expect(navigation).not.toBeVisible();
   await expect(opener).toBeFocused();
+  await page.keyboard.press("Meta+z");
   await expect.poll(fixture.assigned).toBe(0);
   await expect(
     page.getByTitle("Assign money to Groceries", { exact: true }),
   ).toHaveText("$0.00");
+  await workspaceReady(page);
 
-  await opener.click();
-  await navigation.getByRole("button", { name: "Redo", exact: true }).click();
-  await expect(navigation).not.toBeVisible();
-  await expect(opener).toBeFocused();
+  await page.keyboard.press("Meta+Shift+z");
   await expect.poll(fixture.assigned).toBe(2_000);
   await expect(
     page.getByTitle("Assign money to Groceries", { exact: true }),
   ).toHaveText("$20.00");
+  await workspaceReady(page);
 });
 
 test("assigned amounts calculate additions and subtractions as one undoable action", async ({
@@ -566,10 +584,10 @@ test("assigned amounts calculate additions and subtractions as one undoable acti
   expect(fixture.assigned()).toBe(160_000);
   expect(fixture.commands).toHaveLength(2);
 
-  await undoButton(page).click();
+  await shortcut(page);
   await expect(assigned).toHaveText("$1,000.00");
-  await expect(redoButton(page)).toBeEnabled();
-  await redoButton(page).click();
+  await workspaceReady(page);
+  await shortcut(page, "Meta+Shift+z");
   await expect(assigned).toHaveText("$1,600.00");
   await expect(assigned).toBeEnabled();
   expect(fixture.commands).toHaveLength(2);

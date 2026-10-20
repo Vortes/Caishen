@@ -99,11 +99,4 @@ export function useWorkspaceHistory({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [history, perform, unavailable]);
-
-  return {
-    history,
-    disabled: unavailable,
-    undo: () => perform("undo"),
-    redo: () => perform("redo"),
-  };
 }

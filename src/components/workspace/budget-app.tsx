@@ -194,7 +194,7 @@ function BudgetWorkspace({
     setFormError("");
   };
   const busy = activeMutations > 0 || loadingMonth || Boolean(refreshError);
-  const history = useWorkspaceHistory({
+  useWorkspaceHistory({
     state,
     disabled: busy || Boolean(panel) || Boolean(transactionEditor),
     onSuccess: (message) => {
@@ -239,18 +239,6 @@ function BudgetWorkspace({
         accountId={accountId}
         pending={pending}
         open={open}
-        history={{
-          history: history.history,
-          disabled: history.disabled,
-          onUndo: () => {
-            history.undo();
-            setMobileOpen(false);
-          },
-          onRedo: () => {
-            history.redo();
-            setMobileOpen(false);
-          },
-        }}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
         onNavigate={navigate}
