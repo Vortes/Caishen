@@ -449,11 +449,17 @@ export function AppShellPrototype({
                   {screen.type === "plan" && (
                     <PlanView
                       // Like YNAB, clicking a row selects just that row: its
-                      // checkbox ticks and any others clear. Checkboxes add
-                      // to or remove from the selection.
+                      // checkbox ticks and any others clear. Clicking a
+                      // selected row deselects it. Checkboxes add to or
+                      // remove from the selection.
                       onSelect={(id) => {
-                        setSelectedId(id);
-                        setChecked([id]);
+                        if (checked.includes(id)) {
+                          setChecked(checked.filter((item) => item !== id));
+                          setSelectedId(null);
+                        } else {
+                          setSelectedId(id);
+                          setChecked([id]);
+                        }
                       }}
                       checked={checked}
                       onCheck={check}
