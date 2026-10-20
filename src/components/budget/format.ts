@@ -30,7 +30,10 @@ export function moveMonth(month: string, delta: number) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 export function money(data: FormData, key: string) {
-  const value = text(data, key).replace(/[$,\s]/g, "");
+  return parseMoney(text(data, key));
+}
+export function parseMoney(input: string) {
+  const value = input.replace(/[$,\s]/g, "");
   if (!/^-?\d+(\.\d{1,2})?$/.test(value))
     throw new Error(
       "Enter a dollar amount with no more than two decimal places.",

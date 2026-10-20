@@ -4,6 +4,8 @@ import { cn } from "~/lib/utils";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
+import { useIsMutating, useQueryClient } from "@tanstack/react-query";
+import { getMutationKey } from "@trpc/react-query";
 import { api } from "~/trpc/react";
 import type { Command } from "~/domain/engine";
 import { currentMonth, newId } from "~/components/budget/format";
@@ -18,22 +20,30 @@ import { TransactionRegister } from "~/components/transactions/transaction-regis
 import { Button } from "~/components/ui/button";
 import { MonthPicker } from "~/components/workspace/month-picker";
 import { WorkspaceSidebar } from "~/components/workspace/workspace-sidebar";
+import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
+import { useBudgetCommand } from "~/components/workspace/use-budget-command";
 
 export function BudgetApp() {
   const { userId } = useAuth();
+  const queryClient = useQueryClient();
   const [month, setMonth] = useState(currentMonth);
   const state = api.budget.state.useQuery(
     { month },
     {
       enabled: Boolean(userId),
       refetchOnMount: "always",
+      refetchOnWindowFocus: () =>
+        queryClient.isMutating({
+          mutationKey: getMutationKey(api.budget.execute),
+        }) === 0,
+      refetchOnReconnect: () =>
+        queryClient.isMutating({
+          mutationKey: getMutationKey(api.budget.execute),
+        }) === 0,
       placeholderData: (previous) => previous,
+      trpc: { abortOnUnmount: true },
     },
   );
-  const refetch = state.refetch;
-  useEffect(() => {
-    if (userId) void refetch();
-  }, [userId, refetch]);
   if (
     state.isPending ||
     (state.data?.view && state.data.view.budget.userId !== userId)
@@ -50,7 +60,7 @@ export function BudgetApp() {
         <p role="status">Opening your personal budget…</p>
       </main>
     );
-  if (state.error)
+  if (state.error && !state.data)
     return (
       <main className="onboarding">
         <Brand />
@@ -69,6 +79,8 @@ export function BudgetApp() {
       state={state.data}
       month={month}
       loadingMonth={state.isPlaceholderData}
+      refreshError={state.error?.message}
+      onRetry={() => void state.refetch()}
       onMonthChange={setMonth}
     />
   );
@@ -79,11 +91,15 @@ function BudgetWorkspace({
   month,
   onMonthChange,
   loadingMonth,
+  refreshError,
+  onRetry,
 }: {
   state: State;
   month: string;
   onMonthChange: (month: string) => void;
   loadingMonth: boolean;
+  refreshError?: string;
+  onRetry: () => void;
 }) {
   const view = state.view!;
   const [tab, setTab] = useState<Tab>("budget");
@@ -98,19 +114,17 @@ function BudgetWorkspace({
   const [notice, setNotice] = useState("");
   const [formError, setFormError] = useState("");
   const utils = api.useUtils();
+  const queryClient = useQueryClient();
+  const activeMutations = useIsMutating();
   const refresh = () => utils.budget.state.invalidate();
-  const execute = api.budget.execute.useMutation({
-    onSuccess: async (_result, variables) => {
-      await refresh();
+  const execute = useBudgetCommand({
+    onSuccess: (command) => {
       setPanel(null);
       setFormError("");
-      if (variables.command.type === "settings.update")
-        setNotice("Preferences saved.");
+      if (command.type === "settings.update") setNotice("Preferences saved.");
     },
-    onError: (error, variables) => {
-      if (variables.command.type !== "transaction.upsert")
-        setFormError(error.message);
-      if (error.data?.code === "CONFLICT") void refresh();
+    onError: (error, command) => {
+      if (command.type !== "transaction.upsert") setFormError(error.message);
     },
   });
   const importCategories = api.budget.importCategories.useMutation({
@@ -142,7 +156,7 @@ function BudgetWorkspace({
     return () => clearTimeout(timer);
   }, [notice]);
   const run = (command: Command) => {
-    if (execute.isPending || loadingMonth) return;
+    if (queryClient.isMutating() > 0 || loadingMonth || refreshError) return;
     setFormError("");
     execute.mutate({ command, expectedRevision: state.revision });
   };
@@ -153,7 +167,8 @@ function BudgetWorkspace({
     setMobileOpen(false);
   };
   const startTransaction = (transactionId?: string) => {
-    if (execute.isPending || loadingMonth || !view.accounts.length) return;
+    if (queryClient.isMutating() > 0 || loadingMonth || !view.accounts.length)
+      return;
     setFormError("");
     setPanel(null);
     setTab("transactions");
@@ -161,7 +176,9 @@ function BudgetWorkspace({
     setTransactionEditor({ key: newId(), transactionId });
   };
   const saveTransaction = async (command: Command) => {
-    if (execute.isPending || loadingMonth)
+    if (refreshError)
+      throw new Error("Refresh your budget before saving again.");
+    if (queryClient.isMutating() > 0 || loadingMonth)
       throw new Error(
         "Wait for the current update to finish, then save again.",
       );
@@ -176,11 +193,16 @@ function BudgetWorkspace({
     setMobileOpen(false);
     setFormError("");
   };
-  const busy =
-    execute.isPending ||
-    importCategories.isPending ||
-    join.isPending ||
-    loadingMonth;
+  const busy = activeMutations > 0 || loadingMonth || Boolean(refreshError);
+  const history = useWorkspaceHistory({
+    state,
+    disabled: busy || Boolean(panel) || Boolean(transactionEditor),
+    onSuccess: (message) => {
+      setFormError("");
+      setNotice(message);
+    },
+    onError: setFormError,
+  });
   const pending =
     state.imports.filter(bankImportNeedsReview).length +
     view.budget.transactions.filter(
@@ -217,6 +239,18 @@ function BudgetWorkspace({
         accountId={accountId}
         pending={pending}
         open={open}
+        history={{
+          history: history.history,
+          disabled: history.disabled,
+          onUndo: () => {
+            history.undo();
+            setMobileOpen(false);
+          },
+          onRedo: () => {
+            history.redo();
+            setMobileOpen(false);
+          },
+        }}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
         onNavigate={navigate}
@@ -317,6 +351,17 @@ function BudgetWorkspace({
               </div>
             </header>
           )
+        )}
+        {refreshError && (
+          <div className="notice error workspace-notice" role="alert">
+            <Icon name="info" size={16} />
+            <p>
+              Your budget couldn’t refresh. Refresh before making more changes.
+            </p>
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              Try again
+            </Button>
+          </div>
         )}
         {formError && !panel && (
           <div className="notice error workspace-notice" role="alert">

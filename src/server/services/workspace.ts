@@ -1,6 +1,12 @@
 import { TRPCError } from "@trpc/server";
-import { Prisma, type PrismaClient } from "~/generated/prisma";
+import { Prisma, type PrismaClient, type Workspace } from "~/generated/prisma";
 import { commandHash, domainError, jsonValue } from "./safety";
+import {
+  recordWorkspaceHistory,
+  restoreWorkspaceHistory,
+  workspaceChangeLabel,
+  type HistoryDirection,
+} from "./workspace-history";
 
 export type Database = PrismaClient;
 export type MutationOperation = { id: string; type: string };
@@ -19,6 +25,71 @@ export async function mutateWorkspace<T extends MutationOperation>(
   operations: T[],
   source: "user" | "agent" | "provider",
   reduce: (book: Prisma.JsonValue, operations: T[]) => unknown,
+  label?: string,
+) {
+  return commitWorkspaceOperations(
+    db,
+    actorId,
+    expectedRevision,
+    operations,
+    source,
+    (workspace, fresh) => {
+      const book = reduce(workspace.book, fresh);
+      return {
+        book,
+        history:
+          source === "user"
+            ? recordWorkspaceHistory(
+                workspace.history,
+                actorId,
+                workspace.revision,
+                workspace.book,
+                book,
+                label ?? workspaceChangeLabel(fresh),
+              )
+            : {},
+      };
+    },
+  );
+}
+
+export async function changeWorkspaceHistory(
+  db: Database,
+  actorId: string,
+  input: {
+    direction: HistoryDirection;
+    expectedRevision: number;
+    operationId: string;
+  },
+) {
+  return commitWorkspaceOperations(
+    db,
+    actorId,
+    input.expectedRevision,
+    [{ id: input.operationId, type: `history.${input.direction}` }],
+    "user",
+    (workspace) =>
+      restoreWorkspaceHistory(
+        workspace.history,
+        actorId,
+        workspace.revision,
+        workspace.book,
+        input.direction,
+        input.operationId,
+      ),
+  );
+}
+
+async function commitWorkspaceOperations<T extends MutationOperation>(
+  db: Database,
+  actorId: string,
+  expectedRevision: number,
+  operations: T[],
+  source: "user" | "agent" | "provider",
+  change: (
+    workspace: Workspace,
+    operations: T[],
+  ) => { book: unknown; history: unknown },
 ) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -63,10 +134,14 @@ export async function mutateWorkspace<T extends MutationOperation>(
               message:
                 "Your budget changed in another session. Refresh before saving.",
             });
-          const book = reduce(workspace.book, fresh);
+          const { book, history } = change(workspace, fresh);
           const updated = await tx.workspace.updateMany({
             where: { id: workspace.id, revision: expectedRevision },
-            data: { book: jsonValue(book), revision: { increment: 1 } },
+            data: {
+              book: jsonValue(book),
+              history: jsonValue(history),
+              revision: { increment: 1 },
+            },
           });
           if (updated.count !== 1)
             throw new TRPCError({

@@ -1,6 +1,27 @@
 import { TRPCError } from "@trpc/server";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { Prisma } from "~/generated/prisma";
+import type { Prisma } from "~/generated/prisma";
+
+const prismaErrorNames = new Set([
+  "PrismaClientKnownRequestError",
+  "PrismaClientUnknownRequestError",
+  "PrismaClientInitializationError",
+  "PrismaClientValidationError",
+  "PrismaClientRustPanicError",
+]);
+export const DATABASE_ERROR_MESSAGE =
+  "The budget could not be saved. Try again.";
+
+export function isPrismaError(
+  error: unknown,
+): error is Error & { clientVersion: string; code?: unknown } {
+  return (
+    error instanceof Error &&
+    prismaErrorNames.has(error.name) &&
+    "clientVersion" in error &&
+    typeof error.clientVersion === "string"
+  );
+}
 
 export function commandHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -12,15 +33,18 @@ export function jsonValue(value: unknown): Prisma.InputJsonValue {
 
 export function domainError(error: unknown): never {
   if (error instanceof TRPCError) throw error;
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === "P2034" || error.code === "P2002")
+  if (isPrismaError(error)) {
+    if (
+      error.name === "PrismaClientKnownRequestError" &&
+      (error.code === "P2034" || error.code === "P2002")
+    )
       throw new TRPCError({
         code: "CONFLICT",
         message: "Your budget changed. Refresh and try again.",
       });
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: "The budget could not be saved. Try again.",
+      message: DATABASE_ERROR_MESSAGE,
     });
   }
   throw new TRPCError({

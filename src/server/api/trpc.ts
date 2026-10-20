@@ -1,8 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
-import { ZodError } from "zod";
 
+import { formatTRPCError } from "~/server/api/error-formatter";
 import { db } from "~/server/db";
 import { ensureLocalUser } from "~/server/users";
 
@@ -14,16 +14,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 
 const t = initTRPC.context<typeof createTRPCContext>().create({
   transformer: superjson,
-  errorFormatter({ shape, error }) {
-    return {
-      ...shape,
-      data: {
-        ...shape.data,
-        zodError:
-          error.cause instanceof ZodError ? error.cause.flatten() : null,
-      },
-    };
-  },
+  errorFormatter: formatTRPCError,
 });
 
 export const createCallerFactory = t.createCallerFactory;

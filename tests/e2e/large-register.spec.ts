@@ -57,6 +57,7 @@ test("large account registers scroll, search, and select across unmounted rows",
   const state: State = {
     view: projectBook(bookSchema.parse(book), user.id, month),
     revision: 0,
+    history: { undo: null, redo: null },
     services: [
       { name: "OpenRouter", status: "configured", detail: "Test fixture" },
     ],

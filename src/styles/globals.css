@@ -378,6 +378,15 @@ svg {
   color: var(--muted-foreground);
   font-size: var(--font-size-ui);
 }
+.workspace-history {
+  display: flex;
+  gap: 4px;
+}
+.workspace-history > button {
+  flex: 1;
+  min-height: 44px;
+  color: var(--muted-foreground);
+}
 .sidebar-user {
   display: flex;
   gap: 10px;

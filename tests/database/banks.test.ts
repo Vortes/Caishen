@@ -6,6 +6,7 @@ import { PrismaClient } from "../../src/generated/prisma";
 import {
   createBook,
   execute,
+  parseBook,
   type Book,
   type Command,
 } from "../../src/domain/engine";
@@ -16,6 +17,7 @@ import {
   type StoredImport,
 } from "../../src/server/integrations/transactions";
 import { commandHash, jsonValue } from "../../src/server/services/safety";
+import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 
 const connectionUrl = process.env.DATABASE_URL;
 if (
@@ -315,6 +317,8 @@ void test(
         { code: "BAD_REQUEST" },
       );
       const mappedState = await state();
+      assert.equal(mappedState.revision, ownInbox.revision + 1);
+      assert.deepEqual(mappedState.history, { undo: null, redo: null });
       assert.ok(
         !mappedState.imports.some((item) => item.logicalId === preopening.id),
       );
@@ -353,6 +357,8 @@ void test(
         existingTransactionId: "existing-exact",
       });
       const linkedState = await state();
+      assert.equal(linkedState.revision, mappedState.revision + 1);
+      assert.deepEqual(linkedState.history, { undo: null, redo: null });
       assert.equal(
         linkedState.view!.budget.transactions.length,
         transactionCount,
@@ -424,3 +430,285 @@ void test(
     }
   },
 );
+
+void test(
+  "bank mappings and existing-transaction links prevent undo from deleting referenced ledger records",
+  { timeout: 90_000 },
+  async () => {
+    const db = new PrismaClient();
+    const userId = `test-bank-history-${randomUUID()}`;
+    const connectionId = `fixture-bank-history-${randomUUID()}`;
+    const api = createCaller({ db, userId, headers: new Headers() });
+    const record = fixtureRecord(connectionId, "history-purchase");
+    try {
+      await db.user.create({ data: { clerkUserId: userId } });
+      await db.workspace.create({
+        data: {
+          book: jsonValue(fixtureBook(userId, "history")),
+          members: { create: { clerkUserId: userId } },
+        },
+      });
+      await db.bankConnection.create({
+        data: {
+          id: connectionId,
+          clerkUserId: userId,
+          itemId: `fixture-item-${randomUUID()}`,
+          encryptedToken: "fixture-no-provider-token",
+          imports: jsonValue({ records: [record], resolved: {}, errors: {} }),
+          accountMappings: {},
+        },
+      });
+      await api.budget.execute({
+        expectedRevision: 0,
+        command: {
+          type: "account.add",
+          id: randomUUID(),
+          accountId: "mapped-account",
+          name: "Mapped checking",
+          kind: "cash",
+          openingBalance: 10000,
+          date: "2026-10-01",
+        },
+      });
+      assert.equal(
+        (await api.budget.state({ month: "2026-10" })).history.undo,
+        "Add account",
+      );
+      await api.budget.mapBankAccount({
+        connectionId,
+        providerAccountId: "fixture-provider-checking",
+        accountId: "mapped-account",
+        startDate: "2026-10-02",
+      });
+      let state = await api.budget.state({ month: "2026-10" });
+      assert.equal(state.revision, 2);
+      assert.deepEqual(state.history, { undo: null, redo: null });
+      await assert.rejects(
+        api.budget.changeHistory({
+          direction: "undo",
+          operationId: randomUUID(),
+          expectedRevision: 1,
+        }),
+        { code: "CONFLICT" },
+      );
+      await assert.rejects(
+        api.budget.changeHistory({
+          direction: "undo",
+          operationId: randomUUID(),
+          expectedRevision: 2,
+        }),
+        { code: "BAD_REQUEST" },
+      );
+      assert.ok(
+        state.view!.budget.accounts.some(
+          (account) => account.id === "mapped-account",
+        ),
+      );
+
+      await api.budget.execute({
+        expectedRevision: state.revision,
+        command: {
+          type: "transaction.upsert",
+          id: randomUUID(),
+          transactionId: "linked-transaction",
+          accountId: "mapped-account",
+          date: record.current.date,
+          amount: -record.current.amountCents,
+          payee: "Fixture coffee",
+          categoryId: "food",
+        },
+      });
+      state = await api.budget.state({ month: "2026-10" });
+      assert.equal(state.history.undo, "Save transaction");
+      await api.budget.resolveImport({
+        connectionId,
+        logicalId: record.id,
+        existingTransactionId: "linked-transaction",
+        expectedRevision: state.revision,
+      });
+      const linked = await api.budget.state({ month: "2026-10" });
+      assert.equal(linked.revision, state.revision + 1);
+      assert.deepEqual(linked.history, { undo: null, redo: null });
+      await assert.rejects(
+        api.budget.changeHistory({
+          direction: "undo",
+          operationId: randomUUID(),
+          expectedRevision: linked.revision,
+        }),
+        { code: "BAD_REQUEST" },
+      );
+      assert.ok(
+        linked.view!.budget.transactions.some(
+          (transaction) =>
+            transaction.id === "linked-transaction" && !transaction.removed,
+        ),
+      );
+      assert.ok(!linked.imports.some((item) => item.logicalId === record.id));
+    } finally {
+      await db.bankConnection.deleteMany({ where: { clerkUserId: userId } });
+      await db.workspace.deleteMany({
+        where: { members: { some: { clerkUserId: userId } } },
+      });
+      await db.user.deleteMany({ where: { clerkUserId: userId } });
+      await db.$disconnect();
+    }
+  },
+);
+
+for (const boundary of ["mapping", "existing transaction link"] as const)
+  void test(
+    `concurrent ${boundary} and undo cannot commit a dangling bank reference`,
+    { timeout: 90_000 },
+    async () => {
+      const db = new PrismaClient();
+      const userId = `test-bank-race-${randomUUID()}`;
+      const connectionId = `fixture-bank-race-${randomUUID()}`;
+      const record = fixtureRecord(connectionId, "race-purchase");
+      const api = createCaller({ db, userId, headers: new Headers() });
+      const accountId =
+        boundary === "mapping" ? "race-account" : "race-checking";
+      try {
+        await db.user.create({ data: { clerkUserId: userId } });
+        const workspace = await db.workspace.create({
+          data: {
+            book: jsonValue(fixtureBook(userId, "race")),
+            members: { create: { clerkUserId: userId } },
+          },
+        });
+        await db.bankConnection.create({
+          data: {
+            id: connectionId,
+            clerkUserId: userId,
+            itemId: `fixture-item-${randomUUID()}`,
+            encryptedToken: "fixture-no-provider-token",
+            imports: jsonValue({ records: [record], resolved: {}, errors: {} }),
+            accountMappings:
+              boundary === "mapping"
+                ? {}
+                : {
+                    "fixture-provider-checking": {
+                      accountId,
+                      startDate: "2026-10-02",
+                    },
+                  },
+          },
+        });
+        await api.budget.execute({
+          expectedRevision: 0,
+          command:
+            boundary === "mapping"
+              ? {
+                  type: "account.add",
+                  id: randomUUID(),
+                  accountId,
+                  name: "Race checking",
+                  kind: "cash",
+                  openingBalance: 10000,
+                  date: "2026-10-01",
+                }
+              : {
+                  type: "transaction.upsert",
+                  id: randomUUID(),
+                  transactionId: "race-transaction",
+                  accountId,
+                  amount: -record.current.amountCents,
+                  date: record.current.date,
+                  payee: "Fixture coffee",
+                  categoryId: "food",
+                },
+        });
+        let reads = 0;
+        let release!: () => void;
+        const bothRead = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const concurrentDb = db.$extends({
+          query: {
+            workspaceMember: {
+              async findUnique({ args, query }) {
+                const member = await query(args);
+                if (
+                  args.where.clerkUserId === userId &&
+                  args.include?.workspace &&
+                  reads < 2
+                ) {
+                  reads++;
+                  if (reads === 2) release();
+                  await bothRead;
+                }
+                return member;
+              },
+            },
+          },
+        }) as unknown as PrismaClient;
+        const racer = createCaller({
+          db: concurrentDb,
+          userId,
+          headers: new Headers(),
+        });
+        const results = await Promise.allSettled([
+          boundary === "mapping"
+            ? racer.budget.mapBankAccount({
+                connectionId,
+                providerAccountId: "fixture-provider-checking",
+                accountId,
+                startDate: "2026-10-02",
+              })
+            : racer.budget.resolveImport({
+                connectionId,
+                logicalId: record.id,
+                existingTransactionId: "race-transaction",
+                expectedRevision: 1,
+              }),
+          racer.budget.changeHistory({
+            direction: "undo",
+            expectedRevision: 1,
+            operationId: randomUUID(),
+          }),
+        ]);
+        assert.equal(reads, 2);
+        assert.equal(
+          results.filter((result) => result.status === "fulfilled").length,
+          1,
+        );
+        const [savedWorkspace, connection] = await Promise.all([
+          db.workspace.findUniqueOrThrow({ where: { id: workspace.id } }),
+          db.bankConnection.findUniqueOrThrow({ where: { id: connectionId } }),
+        ]);
+        const budget = parseBook(savedWorkspace.book).budgets[userId]!;
+        const externalCommitted = results[0].status === "fulfilled";
+        if (boundary === "mapping") {
+          const mapping = bankMappingsSchema.parse(connection.accountMappings)[
+            "fixture-provider-checking"
+          ];
+          assert.equal(Boolean(mapping), externalCommitted);
+          assert.equal(
+            budget.accounts.some((account) => account.id === accountId),
+            externalCommitted,
+          );
+        } else {
+          const resolved = connection.imports as {
+            resolved: Record<string, { transactionId: string }>;
+          };
+          assert.equal(
+            Boolean(resolved.resolved[record.id]),
+            externalCommitted,
+          );
+          assert.equal(
+            budget.transactions.some(
+              (transaction) =>
+                transaction.id === "race-transaction" && !transaction.removed,
+            ),
+            externalCommitted,
+          );
+        }
+      } finally {
+        await db.bankConnection.deleteMany({ where: { clerkUserId: userId } });
+        await db.workspace.deleteMany({
+          where: { members: { some: { clerkUserId: userId } } },
+        });
+        await db.user.deleteMany({ where: { clerkUserId: userId } });
+        await db.$disconnect();
+      }
+    },
+  );

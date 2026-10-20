@@ -1,5 +1,5 @@
 import { env } from "~/env";
-import { PrismaClient } from "~/generated/prisma";
+import { Prisma, PrismaClient } from "~/generated/prisma";
 
 const createPrismaClient = () =>
   new PrismaClient({
@@ -8,8 +8,16 @@ const createPrismaClient = () =>
 
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof createPrismaClient> | undefined;
+  prismaSchema: string | undefined;
 };
 
-export const db = globalForPrisma.prisma ?? createPrismaClient();
+const schema = JSON.stringify(Prisma.dmmf.datamodel);
+export const db =
+  globalForPrisma.prismaSchema === schema && globalForPrisma.prisma
+    ? globalForPrisma.prisma
+    : createPrismaClient();
 
-if (env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+if (env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = db;
+  globalForPrisma.prismaSchema = schema;
+}

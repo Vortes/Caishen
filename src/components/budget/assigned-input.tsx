@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { money } from "~/components/budget/format";
+import { parseAssignedAmount } from "~/components/budget/assigned-amount";
 import { Amount } from "~/components/shared";
 import { Input } from "~/components/ui/input";
 
@@ -33,13 +33,13 @@ export function AssignedInput({
   const commit = (input: string) => {
     if (finished.current) return;
     try {
-      const data = new FormData();
-      data.set("amount", input);
-      const next = money(data, "amount");
+      const next = parseAssignedAmount(input);
       finished.current = true;
+      onError("");
       if (next !== value) onChange(next);
       setEditing(false);
     } catch (error) {
+      returnFocus.current = false;
       onError(
         error instanceof Error ? error.message : "Enter a dollar amount.",
       );
@@ -84,6 +84,7 @@ export function AssignedInput({
           if (event.key === "Escape") {
             event.stopPropagation();
             finished.current = true;
+            onError("");
             returnFocus.current = true;
             setEditing(false);
           }

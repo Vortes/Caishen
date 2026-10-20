@@ -127,6 +127,7 @@ async function openFixture(
       const state: State = {
         view: projectBook(book, user.id, month),
         revision: 0,
+        history: { undo: null, redo: null },
         services: [
           { name: "Plaid", status: "configured", detail: "Test connection" },
         ],

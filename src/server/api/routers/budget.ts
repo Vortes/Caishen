@@ -12,6 +12,7 @@ import {
   type Book,
   type Command,
 } from "~/domain/engine";
+import { budgetDay, prepareUserCommand } from "~/domain/user-command";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { parseCategoryImport } from "~/server/categories";
 import { createOpenRouterProvider } from "~/server/integrations/model";
@@ -24,7 +25,12 @@ import {
 import { dateSchema, centsSchema } from "~/server/integrations/validation";
 import { commandHash, domainError, jsonValue } from "~/server/services/safety";
 import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
-import { mutateWorkspace, readWorkspace } from "~/server/services/workspace";
+import {
+  changeWorkspaceHistory,
+  mutateWorkspace,
+  readWorkspace,
+} from "~/server/services/workspace";
+import { historySummary } from "~/server/services/workspace-history";
 import {
   bankInbox,
   bankAccountDetails,
@@ -40,17 +46,8 @@ import { setupBankAccountsSchema } from "~/server/services/bank-account-setup";
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const revision = z.number().int().nonnegative();
-function currentDay(zone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: zone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  return `${parts.find((p) => p.type === "year")!.value}-${parts.find((p) => p.type === "month")!.value}-${parts.find((p) => p.type === "day")!.value}`;
-}
 function currentMonth(zone: string) {
-  return currentDay(zone).slice(0, 7);
+  return budgetDay(zone).slice(0, 7);
 }
 function parseBook(value: unknown): Book {
   return bookSchema.parse(value);
@@ -99,6 +96,7 @@ export const budgetRouter = createTRPCRouter({
         return {
           view: null,
           revision: 0,
+          history: { undo: null, redo: null },
           services: integrationStatus(process.env),
           connections,
           evidence: [],
@@ -125,6 +123,11 @@ export const budgetRouter = createTRPCRouter({
             currentMonth(budget.settings.timezone),
           ),
           revision: member.workspace.revision,
+          history: historySummary(
+            member.workspace.history,
+            ctx.userId,
+            member.workspace.revision,
+          ),
           services: integrationStatus(process.env),
           connections,
           evidence: currentEvidence,
@@ -174,34 +177,13 @@ export const budgetRouter = createTRPCRouter({
         "user",
         (value, commands) => {
           let book = parseBook(value);
-          for (let command of commands) {
+          for (const command of commands) {
             const budget = book.budgets[ctx.userId]!;
-            const today = currentDay(budget.settings.timezone);
-            const datedActivity = [
-              "transaction.upsert",
-              "card.payment",
-              "card.credit",
-              "reimbursement.receive",
-              "loan.payment",
-              "settlement.record",
-              "settlement.receive",
-              "account.add",
-            ].includes(command.type);
-            const date =
-              command.type === "account.add"
-                ? (command.date ?? `${budget.startMonth}-01`)
-                : "date" in command
-                  ? command.date
-                  : undefined;
-            if (datedActivity && date && date > today)
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message:
-                  "Record confirmed activity on or before today in your budget's timezone. Future activity cannot create or consume available cash.",
-              });
-            if (command.type === "target.snooze")
-              command = { ...command, currentMonth: today.slice(0, 7) };
-            book = execute(book, ctx.userId, command);
+            book = execute(
+              book,
+              ctx.userId,
+              prepareUserCommand(budget, command),
+            );
           }
           return book;
         },
@@ -221,6 +203,30 @@ export const budgetRouter = createTRPCRouter({
         }
       }
       return result;
+    }),
+
+  changeHistory: protectedProcedure
+    .input(
+      z.object({
+        direction: z.enum(["undo", "redo"]),
+        expectedRevision: revision,
+        operationId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await changeWorkspaceHistory(ctx.db, ctx.userId, input);
+      let warning: string | null = null;
+      try {
+        const member = await readWorkspace(ctx.db, ctx.userId);
+        const budget =
+          member && parseBook(member.workspace.book).budgets[ctx.userId];
+        if (budget && !budget.settings.emailEnabled)
+          await cancelScheduledDailyReviews(ctx.db, ctx.userId);
+      } catch {
+        warning =
+          "Your change was saved, but queued email could not be checked. Review your email preferences in Settings.";
+      }
+      return { ...result, warning };
     }),
 
   approveSuggestions: protectedProcedure
@@ -264,6 +270,7 @@ export const budgetRouter = createTRPCRouter({
             (book, command) => execute(book, ctx.userId, command),
             parseBook(value),
           ),
+        "Approve suggested categories",
       );
     }),
 

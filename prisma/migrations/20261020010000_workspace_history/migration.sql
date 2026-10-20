@@ -1,0 +1,1 @@
+ALTER TABLE "Workspace" ADD COLUMN "history" JSONB NOT NULL DEFAULT '{}';

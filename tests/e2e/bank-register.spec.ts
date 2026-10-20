@@ -173,6 +173,7 @@ async function openFixture(page: Page, large = false) {
       const state: State = {
         view: projectBook(book, user.id, month),
         revision,
+        history: { undo: null, redo: null },
         services: [],
         connections: [],
         evidence: [],

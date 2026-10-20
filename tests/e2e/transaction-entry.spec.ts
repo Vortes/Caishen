@@ -27,10 +27,12 @@ const mutationSchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
 });
 
-async function respond(route: Route, value: unknown) {
+async function respond(route: Route, values: unknown[]) {
   if (route.request().headers()["trpc-accept"] === "application/jsonl") {
     const stream = jsonlStreamProducer({
-      data: { 0: { result: { data: value } } },
+      data: Object.fromEntries(
+        values.map((value, index) => [index, { result: { data: value } }]),
+      ),
       serialize: superjson.serialize,
     });
     await route.fulfill({
@@ -39,11 +41,13 @@ async function respond(route: Route, value: unknown) {
     });
     return;
   }
-  const result = { result: { data: superjson.serialize(value) } };
+  const results = values.map((value) => ({
+    result: { data: superjson.serialize(value) },
+  }));
   await route.fulfill({
     json: new URL(route.request().url()).searchParams.has("batch")
-      ? [result]
-      : result,
+      ? results
+      : results[0],
   });
 }
 
@@ -127,16 +131,33 @@ async function openFixture(page: Page) {
   const unexpectedRequests: string[] = [];
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/budget.state")) {
-      const state: State = {
-        view: projectBook(book, user.id, month),
-        revision,
-        services: [],
-        connections: [],
-        evidence: [],
-        imports: [],
-      };
-      await respond(route, state);
+    const procedures = url.pathname.split("/").at(-1)!.split(",");
+    if (procedures.every((procedure) => procedure === "budget.state")) {
+      const payload: unknown = JSON.parse(
+        url.searchParams.get("input") ?? "{}",
+      );
+      const inputs: Record<string, unknown> = url.searchParams.has("batch")
+        ? z.record(z.unknown()).parse(payload)
+        : { 0: payload };
+      const states: State[] = procedures.map((_procedure, index) => {
+        const input = z
+          .object({ month: z.string() })
+          .parse(
+            superjson.deserialize(
+              inputs[String(index)] as ReturnType<typeof superjson.serialize>,
+            ),
+          );
+        return {
+          view: projectBook(book, user.id, input.month),
+          revision,
+          history: { undo: null, redo: null },
+          services: [],
+          connections: [],
+          evidence: [],
+          imports: [],
+        };
+      });
+      await respond(route, states);
       return;
     }
     if (url.pathname.endsWith("/budget.execute")) {
@@ -152,7 +173,7 @@ async function openFixture(page: Page) {
       book = execute(book, user.id, input.command);
       commands.push(input.command);
       revision++;
-      await respond(route, { revision });
+      await respond(route, [{ revision }]);
       return;
     }
     unexpectedRequests.push(url.pathname);

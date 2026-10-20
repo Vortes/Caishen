@@ -162,6 +162,7 @@ async function openPlan(page: Page) {
       const state: State = {
         view: projectBook(book, user.id, month),
         revision,
+        history: { undo: null, redo: null },
         services: [],
         connections: [],
         evidence: [],

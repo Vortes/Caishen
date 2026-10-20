@@ -23,6 +23,7 @@ model Workspace {
   id         String            @id @default(cuid())
   revision   Int               @default(0)
   book       Json
+  history    Json              @default("{}")
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
   members    WorkspaceMember[]

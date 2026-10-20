@@ -1,4 +1,14 @@
 import { z } from "zod";
+import {
+  isPersonalLedger,
+  ledgerHasSharedActivity,
+  ledgerMembers,
+  ledgerReceiptDate,
+  ledgerSharedPurchases,
+  projectSharedLedger,
+  type AccountingState,
+  type PersonalLedger,
+} from "./shared-ledger";
 
 const identifier = z.string().min(1).max(160);
 const cents = z.number().int().safe();
@@ -369,7 +379,14 @@ export type TransactionHistory = {
   date: string;
   payee: string;
   operationId: string;
-  reason: "created" | "updated" | "categorized" | "merged" | "removed";
+  reason:
+    | "created"
+    | "updated"
+    | "categorized"
+    | "merged"
+    | "removed"
+    | "undone"
+    | "redone";
   combinedId?: string;
 };
 export type Transaction = {
@@ -500,7 +517,15 @@ const historySchema = z.object({
   date: daySchema,
   payee: z.string(),
   operationId: storedIdentifier,
-  reason: z.enum(["created", "updated", "categorized", "merged", "removed"]),
+  reason: z.enum([
+    "created",
+    "updated",
+    "categorized",
+    "merged",
+    "removed",
+    "undone",
+    "redone",
+  ]),
   combinedId: storedIdentifier.optional(),
 });
 const transactionSchema = z.object({
@@ -704,13 +729,14 @@ export const bookSchema: z.ZodType<Book, z.ZodTypeDef, unknown> = z
       if (
         budget.transactions.some(
           (transaction) =>
-            !budget.accounts.some(
+            !transaction.removed &&
+            (!budget.accounts.some(
               (account) => account.id === transaction.accountId,
             ) ||
-            (transaction.categoryId &&
-              !budget.categories.some(
-                (category) => category.id === transaction.categoryId,
-              )),
+              (transaction.categoryId &&
+                !budget.categories.some(
+                  (category) => category.id === transaction.categoryId,
+                ))),
         )
       )
         context.addIssue({
@@ -773,9 +799,17 @@ const monthDistance = (start: string, end: string): number => {
   const b = end.split("-").map(Number);
   return (b[0]! - a[0]!) * 12 + b[1]! - a[1]!;
 };
-const ownBudget = (book: Book, userId: string): Budget =>
-  (Object.hasOwn(book.budgets, userId) ? book.budgets[userId] : undefined) ??
-  fail("Budget access denied");
+const ownBudget = (book: AccountingState, userId: string): Budget =>
+  (isPersonalLedger(book)
+    ? book.budget.userId === userId
+      ? book.budget
+      : undefined
+    : Object.hasOwn(book.budgets, userId)
+      ? book.budgets[userId]
+      : undefined) ?? fail("Budget access denied");
+const memberName = (book: AccountingState, userId: string): string =>
+  ledgerMembers(book).find((member) => member.userId === userId)?.name ??
+  fail("Household member access denied");
 const getAccount = (budget: Budget, id: string): Account =>
   budget.accounts.find((account) => account.id === id) ??
   fail("Account access denied");
@@ -900,7 +934,7 @@ export function splitAmount(
 
 const active = (transaction: Transaction): boolean => !transaction.removed;
 function sharedAccess(
-  book: Book,
+  book: AccountingState,
   actorId: string,
   sharedId: string,
 ): SharedCategory {
@@ -924,32 +958,24 @@ function validateWeights(
     fail("A split must include both participants and positive total weight");
 }
 
-function synchronizeObligations(book: Book): void {
+function synchronizeObligations(book: AccountingState): void {
   const generated: Obligation[] = [];
-  for (const budget of Object.values(book.budgets))
-    for (const transaction of budget.transactions.filter(active)) {
-      if (
-        !transaction.sharedCategoryId ||
-        !transaction.shares ||
-        transaction.amount >= 0
-      )
-        continue;
-      for (const [debtorId, amount] of Object.entries(transaction.shares))
-        if (debtorId !== budget.userId && amount > 0)
-          generated.push({
-            id: `shared:${budget.userId}:${transaction.id}:${debtorId}`,
-            sharedCategoryId: transaction.sharedCategoryId,
-            debtorId,
-            creditorId: budget.userId,
-            amount,
-            expenseMonth: transaction.expenseMonth,
-            transactionId: transaction.id,
-            payerId: budget.userId,
-            payee: transaction.payee,
-            date: transaction.date,
-            opening: false,
-          });
-    }
+  for (const transaction of ledgerSharedPurchases(book))
+    for (const [debtorId, amount] of Object.entries(transaction.shares))
+      if (debtorId !== transaction.payerId && amount > 0)
+        generated.push({
+          id: `shared:${transaction.payerId}:${transaction.id}:${debtorId}`,
+          sharedCategoryId: transaction.sharedCategoryId,
+          debtorId,
+          creditorId: transaction.payerId,
+          amount,
+          expenseMonth: transaction.expenseMonth,
+          transactionId: transaction.id,
+          payerId: transaction.payerId,
+          payee: transaction.payee,
+          date: transaction.date,
+          opening: false,
+        });
   const all = [
     ...book.obligations.filter((obligation) => obligation.opening),
     ...generated,
@@ -978,7 +1004,7 @@ function synchronizeObligations(book: Book): void {
 }
 
 export function outstanding(
-  book: Book,
+  book: AccountingState,
   obligation: Obligation,
   cutoff?: string,
 ): number {
@@ -1026,7 +1052,7 @@ type Materialized = {
 };
 
 function materialize(
-  book: Book,
+  book: AccountingState,
   userId: string,
   month: string,
   cutoff = endOf(month),
@@ -1644,7 +1670,11 @@ export function forecastLoan(loan: Loan, month: string, extra = 0): Forecast {
  * inside a settlement cancel out, so the carried balance plus the month's
  * purchases and repayments always equals the net settlement at month end.
  */
-export function sharedStatement(book: Book, userId: string, month: string) {
+export function sharedStatement(
+  book: AccountingState,
+  userId: string,
+  month: string,
+) {
   const budget = ownBudget(book, userId);
   const cutoff = endOf(month);
   const shared = book.sharedCategories.filter((category) =>
@@ -1690,39 +1720,34 @@ export function sharedStatement(book: Book, userId: string, month: string) {
         (settlement.payerId === userId || settlement.recipientId === userId) &&
         settlement.date < monthStart,
     );
+  const sharedPurchases = ledgerSharedPurchases(book);
   const categories = shared.map((category) => {
-    const purchases = Object.values(book.budgets)
-      .flatMap((owner) =>
-        owner.transactions
-          .filter(
-            (transaction) =>
-              active(transaction) &&
-              transaction.sharedCategoryId === category.id &&
-              transaction.shares &&
-              transaction.amount < 0 &&
-              monthOf(transaction.date) === month,
-          )
-          .map((transaction) => {
-            const paidByYou = owner.userId === userId;
-            const amountPaid = -transaction.amount;
-            const yourShare = transaction.shares![userId] ?? 0;
-            const partnerShare = safe(amountPaid - yourShare);
-            const ruleShares = splitAmount(amountPaid, category.weights);
-            return {
-              transactionId: transaction.id,
-              payee: transaction.payee,
-              date: transaction.date,
-              expenseMonth: transaction.expenseMonth,
-              status: transaction.status,
-              paidByYou,
-              amountPaid,
-              yourShare,
-              partnerShare,
-              effect: paidByYou ? -partnerShare : yourShare,
-              splitDiffersFromRule: (ruleShares[userId] ?? 0) !== yourShare,
-            };
-          }),
+    const purchases = sharedPurchases
+      .filter(
+        (transaction) =>
+          transaction.sharedCategoryId === category.id &&
+          monthOf(transaction.date) === month,
       )
+      .map((transaction) => {
+        const paidByYou = transaction.payerId === userId;
+        const amountPaid = -transaction.amount;
+        const yourShare = transaction.shares[userId] ?? 0;
+        const partnerShare = safe(amountPaid - yourShare);
+        const ruleShares = splitAmount(amountPaid, category.weights);
+        return {
+          transactionId: transaction.id,
+          payee: transaction.payee,
+          date: transaction.date,
+          expenseMonth: transaction.expenseMonth,
+          status: transaction.status,
+          paidByYou,
+          amountPaid,
+          yourShare,
+          partnerShare,
+          effect: paidByYou ? -partnerShare : yourShare,
+          splitDiffersFromRule: (ruleShares[userId] ?? 0) !== yourShare,
+        };
+      })
       .sort(
         (a, b) =>
           a.date.localeCompare(b.date) ||
@@ -1736,15 +1761,6 @@ export function sharedStatement(book: Book, userId: string, month: string) {
       effect: sum(purchases.map((purchase) => purchase.effect)),
     };
   });
-  const receiptDate = (settlement: Settlement) =>
-    settlement.amount === 0
-      ? settlement.date
-      : ownBudget(book, settlement.recipientId).transactions.find(
-          (transaction) =>
-            active(transaction) &&
-            transaction.kind === "reimbursement" &&
-            transaction.linkedId === settlement.id,
-        )?.date;
   const settlements = book.settlements
     .filter(
       (settlement) =>
@@ -1752,7 +1768,7 @@ export function sharedStatement(book: Book, userId: string, month: string) {
         settlement.date <= cutoff,
     )
     .map((settlement) => {
-      const receivedOn = receiptDate(settlement);
+      const receivedOn = ledgerReceiptDate(book, settlement);
       return {
         settlementId: settlement.id,
         date: settlement.date,
@@ -1804,6 +1820,15 @@ export function projectBook(
   month: string,
   currentMonth = month,
 ) {
+  return projectAccountingState(book, userId, month, currentMonth);
+}
+
+function projectAccountingState(
+  book: AccountingState,
+  userId: string,
+  month: string,
+  currentMonth: string,
+) {
   const budget = ownBudget(book, userId);
   const calculated = materialize(book, userId, month);
   const cutoff = endOf(month);
@@ -1833,30 +1858,41 @@ export function projectBook(
   let personalSpending = 0;
   let amountPaid = 0;
   let earnings = 0;
-  for (const owner of Object.values(book.budgets))
-    for (const transaction of owner.transactions.filter(active)) {
-      if (transaction.expenseMonth !== month) continue;
-      if (owner.userId === userId) {
-        if (transaction.kind === "income" && transaction.status === "posted")
-          earnings = safe(earnings + transaction.amount);
-        if (transaction.kind === "purchase" || transaction.kind === "refund") {
-          amountPaid = safe(amountPaid - transaction.amount);
+  const sharedPurchases = ledgerSharedPurchases(book);
+  for (const owner of ledgerMembers(book)) {
+    if (owner.userId !== userId) {
+      for (const transaction of sharedPurchases)
+        if (
+          transaction.payerId === owner.userId &&
+          transaction.expenseMonth === month &&
+          transaction.shares[userId]
+        )
           personalSpending = safe(
-            personalSpending +
-              (transaction.shares?.[userId] ?? -transaction.amount),
+            personalSpending + transaction.shares[userId],
           );
-        }
-        if (transaction.kind === "loan-payment")
-          personalSpending = safe(
-            personalSpending +
-              (owner.loans
-                .flatMap((loan) => loan.payments)
-                .find((payment) => payment.id === transaction.linkedId)
-                ?.interest ?? 0),
-          );
-      } else if (transaction.sharedCategoryId && transaction.shares?.[userId])
-        personalSpending = safe(personalSpending + transaction.shares[userId]);
+      continue;
     }
+    for (const transaction of budget.transactions.filter(active)) {
+      if (transaction.expenseMonth !== month) continue;
+      if (transaction.kind === "income" && transaction.status === "posted")
+        earnings = safe(earnings + transaction.amount);
+      if (transaction.kind === "purchase" || transaction.kind === "refund") {
+        amountPaid = safe(amountPaid - transaction.amount);
+        personalSpending = safe(
+          personalSpending +
+            (transaction.shares?.[userId] ?? -transaction.amount),
+        );
+      }
+      if (transaction.kind === "loan-payment")
+        personalSpending = safe(
+          personalSpending +
+            (budget.loans
+              .flatMap((loan) => loan.payments)
+              .find((payment) => payment.id === transaction.linkedId)
+              ?.interest ?? 0),
+        );
+    }
+  }
   const result = {
     budget: structuredClone(budget),
     month,
@@ -1926,6 +1962,7 @@ export function projectBook(
     })),
     settlement: { youOwe, owedToYou, net: safe(youOwe - owedToYou) },
     sharedStatement: sharedStatement(book, userId, month),
+    sharedLedger: projectSharedLedger(book, userId),
     reimbursements: budget.reimbursements.map((claim) => ({
       ...structuredClone(claim),
       outstanding: safe(
@@ -1937,10 +1974,7 @@ export function projectBook(
           ),
       ),
     })),
-    members: Object.values(book.budgets).map((member) => ({
-      userId: member.userId,
-      name: member.name,
-    })),
+    members: ledgerMembers(book),
     loans: budget.loans.map((loan) => ({
       ...structuredClone(loan),
       balance: safe(
@@ -1986,6 +2020,33 @@ export function projectBook(
 }
 export type BudgetProjection = ReturnType<typeof projectBook>;
 export type ProjectedBook = BudgetProjection;
+
+export function previewBudgetProjection(
+  view: BudgetProjection,
+  command: Command,
+  currentMonth = view.month,
+): BudgetProjection {
+  if (
+    view.sharedLedger.version !== 1 ||
+    !view.members.some((member) => member.userId === view.budget.userId)
+  )
+    fail("Budget access denied");
+  const ledger: PersonalLedger = {
+    ...view.sharedLedger,
+    kind: "personal",
+    budget: view.budget,
+    members: view.members,
+    sharedCategories: view.sharedCategories,
+    audit: view.audit,
+  };
+  const next = executeAccountingState(ledger, view.budget.userId, command);
+  return projectAccountingState(
+    next,
+    view.budget.userId,
+    view.month,
+    currentMonth,
+  );
+}
 
 function appendTransaction(
   budget: Budget,
@@ -2092,6 +2153,15 @@ export function execute(
   input: Command,
   source: "user" | "agent" = "user",
 ): Book {
+  return executeAccountingState(original, actorId, input, source);
+}
+
+function executeAccountingState<T extends AccountingState>(
+  original: T,
+  actorId: string,
+  input: Command,
+  source: "user" | "agent" = "user",
+): T {
   const command = commandSchema.parse(input);
   ownBudget(original, actorId);
   const fingerprint = JSON.stringify(command);
@@ -2152,7 +2222,7 @@ export function execute(
 }
 
 function applyCommand(
-  book: Book,
+  book: AccountingState,
   budget: Budget,
   command: ParsedCommand,
   source: "user" | "agent",
@@ -2630,6 +2700,13 @@ function applyCommand(
           fail("Each participant needs a paired category"),
       );
       for (const id of command.participants) {
+        if (isPersonalLedger(book) && id !== actorId) {
+          if (!command.categoryIds[id])
+            fail("Each participant needs a paired category");
+          memberName(book, id);
+          // The server validates the peer's private category before committing.
+          continue;
+        }
         const member = ownBudget(book, id);
         const categoryId =
           command.categoryIds[id] ??
@@ -2667,11 +2744,7 @@ function applyCommand(
         book.obligations.some(
           (obligation) => obligation.sharedCategoryId === shared.id,
         ) ||
-        Object.values(book.budgets).some((member) =>
-          member.transactions.some(
-            (transaction) => transaction.sharedCategoryId === shared.id,
-          ),
-        )
+        ledgerHasSharedActivity(book, shared.id)
       )
         fail(
           "Shared categories with recorded activity cannot be deleted. Their expense and settlement history must be preserved.",
@@ -2713,7 +2786,7 @@ function applyCommand(
         )
       )
         fail("Settlement ID already exists");
-      ownBudget(book, command.otherUserId);
+      memberName(book, command.otherUserId);
       if (actorId === command.otherUserId) fail("Select the other member");
       const eligible = book.obligations
         .filter(
@@ -2792,7 +2865,7 @@ function applyCommand(
           accountId: command.accountId!,
           date: command.date,
           amount: -command.amount,
-          payee: `Settlement with ${ownBudget(book, command.otherUserId).name}`,
+          payee: `Settlement with ${memberName(book, command.otherUserId)}`,
           status: "posted",
           expenseMonth: monthOf(command.date),
           kind: "settlement",

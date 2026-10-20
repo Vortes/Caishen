@@ -495,7 +495,11 @@ export async function setupBankAccounts(
                 id: member.workspaceId,
                 revision: input.expectedRevision,
               },
-              data: { book: jsonValue(book), revision: { increment: 1 } },
+              data: {
+                book: jsonValue(book),
+                history: {},
+                revision: { increment: 1 },
+              },
             });
             if (saved.count !== 1) throw new TRPCError({ code: "CONFLICT" });
             await tx.bankConnection.update({
@@ -611,6 +615,18 @@ export async function mapBankAccount(
           accountId: input.accountId,
           startDate: input.startDate,
         };
+        const saved = await tx.workspace.updateMany({
+          where: {
+            id: member.workspaceId,
+            revision: member.workspace.revision,
+          },
+          data: { history: {}, revision: { increment: 1 } },
+        });
+        if (saved.count !== 1)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Your budget changed. Refresh before linking accounts.",
+          });
         await tx.bankConnection.update({
           where: { id: connection.id },
           data: { accountMappings: jsonValue(mappings) },
@@ -963,14 +979,6 @@ export async function resolveImport(
               providerId: record.current.providerTransactionId,
             });
             transactionId = command.transactionId;
-            const saved = await tx.workspace.updateMany({
-              where: {
-                id: member.workspaceId,
-                revision: input.expectedRevision,
-              },
-              data: { book: jsonValue(book), revision: { increment: 1 } },
-            });
-            if (saved.count !== 1) throw new TRPCError({ code: "CONFLICT" });
             await tx.budgetOperation.create({
               data: {
                 workspaceId: member.workspaceId,
@@ -983,6 +991,18 @@ export async function resolveImport(
               },
             });
           }
+          const saved = await tx.workspace.updateMany({
+            where: {
+              id: member.workspaceId,
+              revision: input.expectedRevision,
+            },
+            data: {
+              book: jsonValue(book),
+              history: {},
+              revision: { increment: 1 },
+            },
+          });
+          if (saved.count !== 1) throw new TRPCError({ code: "CONFLICT" });
           record.matchStatus = "confirmed";
           state.resolved[record.id] = {
             fingerprint: fingerprint(record),

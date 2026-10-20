@@ -37,6 +37,7 @@ export function SettingsView({
             </div>
           </div>
           <form
+            key={JSON.stringify([view.budget.name, view.budget.settings])}
             className="panel-body"
             onSubmit={(event) => {
               event.preventDefault();
