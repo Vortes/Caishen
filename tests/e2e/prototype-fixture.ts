@@ -8,6 +8,7 @@ import { z } from "zod";
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
 import {
+  addMember,
   commandSchema,
   createBook,
   execute,
@@ -123,9 +124,19 @@ const historySchema = z.object({
 // revision like the server does. A command the engine refuses fails with its
 // message, as on the server. Every other write is refused and recorded in
 // writes. Options add commands after the seed and bank imports to the state.
+//
+// With shared, a connected partner splits Rent with the user.
 export async function openPrototype(
   page: Page,
-  options: { commands?: Command[]; imports?: State["imports"] } = {},
+  {
+    commands: extra = [],
+    imports = [],
+    shared = false,
+  }: {
+    commands?: Command[];
+    imports?: State["imports"];
+    shared?: boolean;
+  } = {},
 ) {
   await clerkSetup();
   const [user] = z
@@ -141,7 +152,13 @@ export async function openPrototype(
     );
   const month = currentMonth();
   const date = `${month}-01`;
+  // Today is pinned to noon on the 20th in the budget's timezone, for the
+  // page and for the fixture's server, so every test has days on both sides
+  // of today whatever day it runs.
+  const today = `${month}-20`;
+  const now = new Date(`${today}T19:00:00Z`);
   let book = createBook(user.id, "Prototype fixture", month);
+  if (shared) book = addMember(book, "prototype-partner", "Sam", month);
   const target = (amount: number) => ({
     cadence: "monthly" as const,
     behavior: "contribution" as const,
@@ -223,8 +240,23 @@ export async function openPrototype(
       amount: -15_000,
       categoryId: "household",
     },
+    ...(shared
+      ? [
+          {
+            type: "shared.create",
+            id: "seed-shared-rent",
+            sharedCategoryId: "shared-rent",
+            participants: [user.id, "prototype-partner"],
+            weights: { [user.id]: 1, "prototype-partner": 1 },
+            categoryIds: {
+              [user.id]: "rent",
+              "prototype-partner": "partner-rent",
+            },
+          } satisfies Command,
+        ]
+      : []),
   ];
-  for (const command of [...initial, ...(options.commands ?? [])])
+  for (const command of [...initial, ...extra])
     book = execute(book, user.id, command);
   type Step = { before: Book; after: Book; label: string };
   const undo: Step[] = [];
@@ -232,6 +264,7 @@ export async function openPrototype(
   let revision = 0;
   const writes: string[] = [];
   const commands: Command[] = [];
+  const executions: z.infer<typeof executeSchema>[] = [];
   const historyCalls: z.infer<typeof historySchema>[] = [];
   const executeGate = gate();
   const historyGate = gate();
@@ -247,7 +280,7 @@ export async function openPrototype(
     services: [],
     connections: [],
     evidence: [],
-    imports: options.imports ?? [],
+    imports,
   });
   const conflict = (expected: number) =>
     expected === revision
@@ -268,6 +301,7 @@ export async function openPrototype(
     writes.push(names.join(","));
     if (names.length === 1 && name === "budget.execute") {
       const input = executeSchema.parse(inputs(route)[0]);
+      executions.push(input);
       await executeGate.wait();
       if (rejectExecute) {
         const error = rejectExecute;
@@ -286,7 +320,7 @@ export async function openPrototype(
         book = execute(
           book,
           user.id,
-          prepareUserCommand(budget, input.command),
+          prepareUserCommand(budget, input.command, now),
         );
       } catch (error) {
         await respond(route, [{ error: (error as Error).message }]);
@@ -339,6 +373,7 @@ export async function openPrototype(
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/");
   await clerk.signIn({ page, emailAddress: user.email });
+  await page.clock.setFixedTime(now);
   await page.goto("/prototype/app-shell");
   await expect(
     page.getByRole("heading", { name: "Plan", exact: true }),
@@ -349,14 +384,22 @@ export async function openPrototype(
       readyToAssign: view.readyToAssign,
       category: (id: string) =>
         view.categories.find((category) => category.id === id)!,
+      transaction: (id: string) =>
+        view.budget.transactions.find((transaction) => transaction.id === id),
+      transactions: view.budget.transactions,
     };
   };
   return {
     month,
+    // The pinned day, YYYY-MM-DD.
+    today,
     // Every write the page sent, by procedure path.
     writes,
     // The commands budget.execute ran, in order.
     commands,
+    // Every budget.execute request, including refused ones, with the
+    // revision it expected.
+    executions,
     historyCalls,
     // The budget as the fixture's server holds it now.
     saved: () => summarize(book),
@@ -378,6 +421,17 @@ export async function openPrototype(
     // A change saved outside this session's history, like a partner's edit:
     // the revision moves on and, as on the server, the undo stack empties.
     editElsewhere: () => {
+      revision++;
+      undo.length = 0;
+      redo.length = 0;
+    },
+    // The same, applying a command, like the user's own edit in another tab.
+    changeElsewhere: (command: Command) => {
+      book = execute(
+        book,
+        user.id,
+        prepareUserCommand(book.budgets[user.id]!, command, now),
+      );
       revision++;
       undo.length = 0;
       redo.length = 0;

@@ -76,20 +76,23 @@ const markReviewed = (page: Page) =>
 const reviewFilter = (page: Page) =>
   page.getByRole("button", { name: /^To review/ });
 const allAccounts = (page: Page) =>
-  page.getByRole("button", { name: /^All accounts/ });
+  page
+    .getByRole("navigation", { name: "Budget navigation" })
+    .getByRole("button", { name: /^All accounts/ });
 
-// The sidebar's review badge, by what it's named.
-const sidebarCount = (page: Page, count: number) =>
-  expect(allAccounts(page)).toHaveAccessibleName(
-    new RegExp(`^All accounts\\s*${count} to review$`),
-  );
+// The sidebar marks All accounts with a dot, without a number, while
+// anything waits for review.
+const sidebarDot = (page: Page, count: number) =>
+  expect(
+    allAccounts(page).getByRole("img", { name: "Transactions to review" }),
+  ).toHaveCount(count ? 1 : 0);
 
-// The review count on the toolbar filter and in the sidebar.
+// The review count on the toolbar filter, and the sidebar's dot.
 async function reviewCount(page: Page, count: number) {
   await expect(reviewFilter(page)).toHaveText(
     new RegExp(`To review\\s*${count}$`),
   );
-  await sidebarCount(page, count);
+  await sidebarDot(page, count);
 }
 
 async function changeHistory(
@@ -155,9 +158,10 @@ test("Mark reviewed approves one transaction on screen first and shares undo wit
   await changeHistory(page, plan.historyCalls);
   await expect(pill(page, "Gifts")).toHaveText("$100.00");
   await changeHistory(page, plan.historyCalls);
-  await sidebarCount(page, 4);
+  await allAccounts(page).click();
+  await reviewCount(page, 4);
   await changeHistory(page, plan.historyCalls, "Meta+Shift+z");
-  await sidebarCount(page, 3);
+  await reviewCount(page, 3);
   expect(plan.historyCalls.map((call) => call.direction)).toEqual([
     "undo",
     "undo",
@@ -405,7 +409,10 @@ test("review waits while a change saves, a month loads, or the budget is stale",
 
   // The selection belongs to one register.
   await rowCheck(page, "Corner coffee").click();
-  await page.getByRole("button", { name: /^Checking/ }).click();
+  await page
+    .getByRole("navigation", { name: "Budget navigation" })
+    .getByRole("button", { name: /^Checking/ })
+    .click();
   await expect(register(page)).not.toContainText("selected");
   await allAccounts(page).click();
 

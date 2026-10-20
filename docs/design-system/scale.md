@@ -11,7 +11,7 @@ Five steps: 12, 13, 14, 16, 24. Nothing in between, nothing larger.
 
 | Token            | Size | Use                                              |
 | ---------------- | ---- | ------------------------------------------------ |
-| `--type-caption` | 12px | Badge counts, chart labels, avatar initials      |
+| `--type-caption` | 12px | Chart labels, avatar initials                    |
 | `--type-small`   | 13px | Secondary text, captions, small buttons, tabs    |
 | `--type-body`    | 14px | Default for everything, including medium buttons |
 | `--type-title`   | 16px | A card's title                                   |
@@ -52,7 +52,7 @@ rows line up across panels.
 
 | Token                   | Height | Use                                        |
 | ----------------------- | ------ | ------------------------------------------ |
-| `--size-badge`          | 20px   | `Badge`                                    |
+| `--size-badge`          | 20px   | The budget avatar                          |
 | `--size-pill`           | 22px   | `Tag`, funding pills                       |
 | `--size-control-xs`     | 28px   | `Button size="sm"`, `IconButton size="sm"` |
 | `--size-control-sm`     | 30px   | Header controls: month picker, report tabs |
@@ -91,11 +91,12 @@ Never pick an outer radius by eye.
 | `--radius-peek`      | row + 9px  | The peeking sidebar                   |
 | `--radius-panel`     | card + 9px | A panel around its cards              |
 
-Pills (buttons, tags, badges) use `999px`; that is a shape, not a size.
+Pills (buttons, tags) use `999px`; that is a shape, not a size.
 
 ## Motion
 
 Panels open and close with `--duration-panel` (260ms) and `--ease-panel`.
-Hover and press feedback is 150ms on color and 100ms on transform. Under
-`prefers-reduced-motion`, panel motion is 0ms; never add animation that
-ignores it.
+Hover and press feedback is 150ms on color and 100ms on transform. A
+skeleton's shine takes `--duration-shimmer` (1600ms) per pass. Under
+`prefers-reduced-motion`, panel motion is 0ms and skeletons hold still;
+never add animation that ignores it.

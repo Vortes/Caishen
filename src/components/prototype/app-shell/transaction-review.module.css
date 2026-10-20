@@ -1,6 +1,6 @@
-/* The register's selection bar, pinned above its rows like the plan's
-   column header. Its checkbox lines up with the rows' checkboxes and its
-   label lines up with their text. */
+/* The register's selection bar, pinned above its rows with the column
+   headers. Its checkbox lines up with the rows' checkboxes and its label
+   lines up with their text. */
 
 .bar {
   position: sticky;

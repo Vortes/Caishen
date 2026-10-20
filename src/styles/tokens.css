@@ -159,6 +159,35 @@
     0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
 }
 
+/* ---------- Semantic: derived ---------- */
+
+/* Spent money in the funding bar: the status color mixed into the panel, so
+   it reads darker than unspent money in the dark theme and paler in the light
+   one. Declared on every themed element so it follows the theme it sits in. */
+:root,
+[data-theme] {
+  --status-funded-spent: color-mix(
+    in oklab,
+    var(--status-funded) 45%,
+    var(--surface-panel)
+  );
+  --status-underfunded-spent: color-mix(
+    in oklab,
+    var(--status-underfunded) 45%,
+    var(--surface-panel)
+  );
+
+  /* Loading skeletons: a bone one step above the selected surface, so it
+     reads on panels and cards alike, and a shine that sweeps across it. */
+  --skeleton-bone: var(--surface-selected);
+  --skeleton-shine: var(--border-strong);
+}
+/* Light borders are translucent, so the shine is the panel instead: a band
+   of light, as in the dark theme. */
+[data-theme="light"] {
+  --skeleton-shine: var(--surface-panel);
+}
+
 /* ---------- Scale ---------- */
 
 :root {
@@ -201,4 +230,6 @@
 
   --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
   --duration-panel: 260ms;
+  /* One pass of a skeleton's shine across the window. */
+  --duration-shimmer: 1600ms;
 }

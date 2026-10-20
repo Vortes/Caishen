@@ -24,6 +24,7 @@ import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import type { Screen } from "./sidebar";
+import { TransactionEditAction } from "./transaction-form";
 import { ReviewAction } from "./transaction-review";
 import { FundingRing } from "./views";
 import styles from "./shell.module.css";
@@ -136,7 +137,7 @@ function LoanIcon() {
   );
 }
 
-const autoAssignOptions: [AutoAssignOption, string][] = [
+export const autoAssignOptions: [AutoAssignOption, string][] = [
   ["underfunded", "Underfunded"],
   ["assigned-last-month", "Assigned last month"],
   ["spent-last-month", "Spent last month"],
@@ -567,6 +568,7 @@ function TransactionDetails({ item }: { item: Transaction }) {
           }
           tone={item.amount > 0 ? "funded" : undefined}
         />
+        {!fromBank && <TransactionEditAction transactionId={item.id} />}
       </Card>
       <Card>
         <Property label="Category" icon={FolderIcon}>
