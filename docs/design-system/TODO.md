@@ -21,8 +21,8 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] Text field and combobox: the move-money amount input and its searchable
       destination list, including their invalid state and field error
       (`move-money.tsx`)
-- [ ] Toast: the undo toast after a simulated move (`move-money.module.css`,
-      `.toast`)
+- [x] Toast: the undo toast after a move (`src/components/ui/toast.tsx`,
+      [toasts.md](toasts.md))
 - [ ] Filter chip: the plan's focused views are `Button size="sm"` toggles,
       which have no tone, so Overspent lost YNAB's red or yellow fill and only
       its count takes the funding color; decide whether chips become a

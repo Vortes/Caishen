@@ -208,6 +208,12 @@
   gap: 8px;
   margin-top: 12px;
 }
+/* A toast shown in place, with room for one that wraps. */
+.stage {
+  display: flex;
+  align-items: flex-start;
+  min-height: 72px;
+}
 .spacer {
   flex: 1;
 }

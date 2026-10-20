@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { openPrototype, pill } from "./prototype-fixture";
+import { moveSaved, openPrototype, pill } from "./prototype-fixture";
 
 const views = (page: Page) => page.getByRole("group", { name: "Plan views" });
 const chip = (page: Page, name: string) =>
@@ -17,6 +17,7 @@ async function move(page: Page, from: string, to: string, amount?: string) {
   await popover.getByRole("option", { name: new RegExp(`^${to}`) }).click();
   await popover.getByRole("button", { name: /^(Move|Cover)$/ }).click();
   await expect(popover).not.toBeVisible();
+  await moveSaved(page);
 }
 
 test("YNAB's preset views filter the plan and count their categories", async ({

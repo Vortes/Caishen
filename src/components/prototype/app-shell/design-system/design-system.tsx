@@ -13,6 +13,7 @@ import shell from "../shell.module.css";
 import { AvailablePill } from "../views";
 import { ButtonSpecimens } from "./button-specimens";
 import { TagSpecimens } from "./tag-specimens";
+import { ToastSpecimens } from "./toast-specimens";
 import styles from "./design-system.module.css";
 
 // The app shell's components with hardcoded examples, so every state can be
@@ -202,6 +203,8 @@ export function DesignSystem() {
         <ButtonSpecimens />
 
         <TagSpecimens />
+
+        <ToastSpecimens />
 
         <section className={styles.section} aria-labelledby="funding-bar">
           <h2 id="funding-bar">Funding bar</h2>

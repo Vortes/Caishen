@@ -41,6 +41,7 @@ you use.
 | [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`            |
 | [labels.md](labels.md)     | `Tag`, `Badge`                                              |
 | [surfaces.md](surfaces.md) | `Card`, `Tooltip`, portals                                  |
+| [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                      |
 
 ## Not in the system yet
 
