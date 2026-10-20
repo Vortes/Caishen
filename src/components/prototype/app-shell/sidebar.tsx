@@ -5,10 +5,9 @@ import {
   ChartNoAxesCombinedIcon,
   ChartPieIcon,
   ChevronDownIcon,
+  PanelLeftIcon,
   PlusIcon,
-  SearchIcon,
   SettingsIcon,
-  SquarePenIcon,
   WalletCardsIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -28,10 +27,14 @@ export function Sidebar({
   screen,
   selectedId,
   onNavigate,
+  toggleLabel,
+  onToggle,
 }: {
   screen: Screen;
   selectedId: string | null;
   onNavigate: (screen: Screen, selectedId?: string) => void;
+  toggleLabel: string;
+  onToggle: () => void;
 }) {
   const { accounts, loans, transactions, budgetName } = useShellData();
   const reviewCount = transactions.filter((item) => item.needsReview).length;
@@ -101,8 +104,12 @@ export function Sidebar({
           <span className={styles.switcherName}>{budgetName}</span>
           <ChevronDownIcon size={12} aria-hidden />
         </button>
-        <IconButton label="Search" shortcut="⌘K" icon={SearchIcon} />
-        <IconButton label="New transaction" shortcut="N" icon={SquarePenIcon} />
+        <IconButton
+          label={toggleLabel}
+          shortcut="["
+          icon={PanelLeftIcon}
+          onClick={onToggle}
+        />
       </div>
 
       <div className={styles.sidebarScroll}>

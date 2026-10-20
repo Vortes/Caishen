@@ -354,7 +354,7 @@ export function RegisterView({
       </Empty>
     ) : (
       <Empty title={`No transactions in ${month.label}.`}>
-        Pick another month, or add one with New transaction.
+        Pick another month to see its transactions.
       </Empty>
     );
   }

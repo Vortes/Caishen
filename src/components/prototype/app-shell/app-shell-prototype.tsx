@@ -298,6 +298,8 @@ export function AppShellPrototype({
                 screen={screen}
                 selectedId={selectedId}
                 onNavigate={navigate}
+                toggleLabel="Hide sidebar"
+                onToggle={sidebar.toggle}
               />
             </div>
           </aside>
@@ -323,6 +325,13 @@ export function AppShellPrototype({
                   screen={screen}
                   selectedId={selectedId}
                   onNavigate={navigate}
+                  // The peek floats a collapsed sidebar; its toggle pins
+                  // it open.
+                  toggleLabel="Show sidebar"
+                  onToggle={() => {
+                    closePeek(0);
+                    sidebar.toggle();
+                  }}
                 />
               </div>
             </>
