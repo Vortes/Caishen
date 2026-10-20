@@ -12,6 +12,7 @@ import {
   type Book,
   type Command,
 } from "~/domain/engine";
+import { personalSpendingEntries } from "~/domain/spending";
 import { budgetDay, prepareUserCommand } from "~/domain/user-command";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { parseCategoryImport } from "~/server/categories";
@@ -137,6 +138,23 @@ export const budgetRouter = createTRPCRouter({
         domainError(error);
       }
     }),
+
+  // Every month of personal spending, for reports that filter and group it
+  // on the client.
+  spending: protectedProcedure.query(async ({ ctx }) => {
+    const member = await readWorkspace(ctx.db, ctx.userId);
+    if (!member) return { entries: [] };
+    try {
+      return {
+        entries: personalSpendingEntries(
+          parseBook(member.workspace.book),
+          ctx.userId,
+        ),
+      };
+    } catch (error) {
+      domainError(error);
+    }
+  }),
 
   onboard: protectedProcedure
     .input(

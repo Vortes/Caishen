@@ -27,6 +27,7 @@ prisma/
   migrations/          Versioned database migration history
 docs/
   GLOSSARY.md          Budgeting terminology and accounting rules
+  design-system/       Design tokens and component rules, starting at DESIGN.md
   architecture-decision-records/  Existing architecture decisions
   ynab-indexes/        YNAB source references, including ynab-links.md
 public/                Static assets served directly by Next.js
@@ -38,4 +39,5 @@ scripts/               Development and maintenance commands
 - Prisma generates its client in `src/generated/prisma/`. Import it through `~/generated/prisma` in application code; regenerate it instead of editing generated files.
 - Keep dependencies, build output, test output, and caches ignored. TypeScript's incremental cache belongs in `.next/cache/`; these generated artifacts are not source files to reorganize manually.
 - Preserve database migration history when removing unused application code. Moving files does not require a database migration.
+- Before building or changing UI, read `docs/design-system/DESIGN.md` and the topic file for each component you use.
 - Before changing budgeting behavior, read `docs/GLOSSARY.md` and the relevant decisions in `docs/architecture-decision-records/`. YNAB reference links are in `docs/ynab-indexes/ynab-links.md`.

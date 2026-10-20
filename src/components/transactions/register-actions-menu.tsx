@@ -4,14 +4,14 @@ import { useRef } from "react";
 
 import type { Panel } from "~/components/budget/types";
 import { Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
+} from "~/components/ui-legacy/dropdown-menu";
 
 export function RegisterActionsMenu({
   accountId,

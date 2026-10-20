@@ -5,7 +5,7 @@ import type { View } from "~/components/budget/types";
 import type { Category } from "~/components/budget/category-table";
 import { newId } from "~/components/budget/format";
 import { Amount } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import { MoveMoneyPopover } from "~/components/budget/move-money-popover";
 import { cn } from "~/lib/utils";
 import { useState } from "react";

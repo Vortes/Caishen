@@ -13,7 +13,7 @@ import { formatMoney, newId } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import type { Category } from "~/components/budget/category-table";
 import { Amount, Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "~/components/ui/dialog";
+} from "~/components/ui-legacy/dialog";
 
 const fillOptions: { id: AutoAssignOption; label: string }[] = [
   { id: "underfunded", label: "Underfunded" },

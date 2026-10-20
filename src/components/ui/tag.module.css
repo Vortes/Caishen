@@ -1,0 +1,17 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: var(--size-pill);
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.tag[data-tone="neutral"] {
+  background: var(--surface-selected);
+  color: var(--text-secondary);
+}
+.tag[data-tone="attention"] {
+  background: var(--feedback-attention-bg);
+  color: var(--feedback-attention);
+}

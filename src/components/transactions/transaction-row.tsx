@@ -5,7 +5,7 @@ import type { RefCallback } from "react";
 import { monthName } from "~/components/budget/format";
 import type { Panel, View } from "~/components/budget/types";
 import { Amount, Icon } from "~/components/shared";
-import { Checkbox } from "~/components/ui/checkbox";
+import { Checkbox } from "~/components/ui-legacy/checkbox";
 import { cn } from "~/lib/utils";
 
 type Transaction = View["budget"]["transactions"][number];
@@ -150,7 +150,7 @@ export function TransactionRow({
   );
 }
 
-function transactionCategory(kind: Transaction["kind"], amount: number) {
+export function transactionCategory(kind: Transaction["kind"], amount: number) {
   switch (kind) {
     case "card-payment":
       return "Credit card payment";

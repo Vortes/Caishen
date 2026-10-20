@@ -1,0 +1,29 @@
+.root {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-segmented);
+  background: var(--control-bg);
+}
+/* Selectors carry an attribute so they outrank a container's button reset. */
+.item[role="radio"] {
+  height: var(--size-control-xs);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.item:hover {
+  color: var(--text-secondary);
+}
+.item[aria-checked="true"] {
+  background: var(--control-bg-active);
+  color: var(--text-primary);
+}

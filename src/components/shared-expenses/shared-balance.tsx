@@ -10,20 +10,20 @@ import {
   shortDate,
 } from "~/components/budget/format";
 import { Amount, Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
+} from "~/components/ui-legacy/dropdown-menu";
 import {
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
-} from "~/components/ui/popover";
+} from "~/components/ui-legacy/popover";
 
 type Statement = View["sharedStatement"];
 type StatementCategory = Statement["categories"][number];

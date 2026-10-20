@@ -5,7 +5,7 @@ import type { Panel, State, View } from "~/components/budget/types";
 import type { Category } from "~/components/budget/category-table";
 import { monthName } from "~/components/budget/format";
 import { Amount, Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import { AutoAssignSection } from "~/components/budget/auto-assign-section";
 import { AvailableSection } from "~/components/budget/available-section";
 import { CostToBeMe } from "~/components/budget/cost-to-be-me";

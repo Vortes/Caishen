@@ -170,7 +170,7 @@ export function underfundedOrder(
   );
 }
 
-function weekdaysIn(month: string, weekday: number) {
+export function weekdaysIn(month: string, weekday: number) {
   const days: number[] = [];
   const date = new Date(`${month}-01T00:00:00Z`);
   while (date.toISOString().startsWith(month)) {

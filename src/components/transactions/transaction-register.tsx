@@ -24,23 +24,23 @@ import { RegisterHeader } from "~/components/transactions/register-header";
 import { TransactionRow } from "~/components/transactions/transaction-row";
 import { BankImportRow } from "~/components/transactions/bank-import-row";
 import { TransactionEditor } from "~/components/transactions/transaction-editor";
-import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
-import { Input } from "~/components/ui/input";
+import { Button } from "~/components/ui-legacy/button";
+import { Checkbox } from "~/components/ui-legacy/checkbox";
+import { Input } from "~/components/ui-legacy/input";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "~/components/ui/dialog";
+} from "~/components/ui-legacy/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
+} from "~/components/ui-legacy/dropdown-menu";
 import type { Command } from "~/domain/engine";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
 

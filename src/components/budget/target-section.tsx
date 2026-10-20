@@ -13,14 +13,14 @@ import {
 } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Amount, FormField, Icon, SelectField } from "~/components/shared";
-import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
+import { Button } from "~/components/ui-legacy/button";
+import { Checkbox } from "~/components/ui-legacy/checkbox";
 import {
   Popover,
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
-} from "~/components/ui/popover";
+} from "~/components/ui-legacy/popover";
 
 type Cadence = Target["cadence"];
 type Behavior = Target["behavior"];
@@ -160,7 +160,7 @@ export function TargetSection({
   );
 }
 
-function describe(target: Target) {
+export function describeTarget(target: Target) {
   const amount = formatMoney(target.amount);
   const action =
     target.cadence === "card-monthly" || target.cadence === "loan"
@@ -212,7 +212,7 @@ function TargetSummary({
   run: (command: Command) => void;
   onEdit: () => void;
 }) {
-  const { action, when } = describe(target);
+  const { action, when } = describeTarget(target);
   const assigned = Math.max(0, category.assigned);
   const { needed, snoozed } = progress;
   const ratio =

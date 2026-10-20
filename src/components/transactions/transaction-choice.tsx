@@ -3,13 +3,13 @@
 import { useId, useRef, useState, type Ref } from "react";
 
 import { Amount, Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
+import { Button } from "~/components/ui-legacy/button";
+import { Input } from "~/components/ui-legacy/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "~/components/ui/popover";
+} from "~/components/ui-legacy/popover";
 import { cn } from "~/lib/utils";
 
 export type TransactionChoiceOption = {

@@ -1,0 +1,20 @@
+.badge {
+  flex: none;
+  min-width: 18px;
+  height: var(--size-badge);
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: var(--type-caption);
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.badge[data-tone="neutral"] {
+  background: var(--control-bg-active);
+  color: var(--text-secondary);
+}
+.badge[data-tone="accent"] {
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
+}

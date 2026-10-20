@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 import { api } from "~/trpc/react";
 import type { State } from "~/components/budget/types";
 import { FormField, SelectField } from "~/components/shared";

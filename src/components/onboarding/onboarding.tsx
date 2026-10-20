@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 
 import { api } from "~/trpc/react";
 import { Brand, FormField, Icon, SelectField } from "~/components/shared";

@@ -13,8 +13,8 @@ import {
 import { formatMoney, newId } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
+import { Button } from "~/components/ui-legacy/button";
+import { Input } from "~/components/ui-legacy/input";
 import {
   TransactionChoice,
   type TransactionChoiceOption,

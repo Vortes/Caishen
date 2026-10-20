@@ -1,0 +1,204 @@
+/* Design tokens. Components use only the semantic layer; primitives exist so
+   the semantic layer has named values to point at. Dark is the default theme.
+   Any element can switch its subtree with data-theme="light". */
+
+/* ---------- Primitives ---------- */
+
+:root {
+  /* Neutrals are generated from one hue and one tint amount, like Linear's
+     LCH theme generator. The tint is small enough that the chrome reads
+     neutral. Each semantic surface picks its own lightness from this pair. */
+  --hue: 282;
+  --tint: 0.004;
+
+  --violet-300: oklch(0.8 0.11 282);
+  --violet-500: oklch(0.6 0.17 282);
+  --violet-600: oklch(0.55 0.19 282);
+  --violet-700: oklch(0.5 0.2 282);
+
+  --green-100: oklch(0.94 0.05 150);
+  --green-300: oklch(0.8 0.13 150);
+  --green-600: oklch(0.52 0.13 150);
+  --green-800-a: oklch(0.4 0.07 150 / 0.38);
+
+  --amber-100: oklch(0.95 0.06 85);
+  --amber-300: oklch(0.85 0.12 82);
+  --amber-600: oklch(0.56 0.12 65);
+  --amber-800-a: oklch(0.45 0.08 75 / 0.36);
+
+  --red-100: oklch(0.95 0.035 22);
+  --red-300: oklch(0.74 0.15 22);
+  --red-500: oklch(0.6 0.16 22);
+  --red-600: oklch(0.55 0.19 25);
+  --red-700: oklch(0.5 0.19 25);
+  --red-800-a: oklch(0.42 0.11 22 / 0.4);
+}
+
+/* ---------- Semantic: dark ---------- */
+
+:root,
+[data-theme="dark"] {
+  /* Surfaces, from the back of the window forward. */
+  --surface-app: oklch(0.15 var(--tint) var(--hue));
+  --surface-panel: oklch(0.178 var(--tint) var(--hue));
+  --surface-group: oklch(0.192 var(--tint) var(--hue));
+  --surface-raised: oklch(0.205 var(--tint) var(--hue));
+  --surface-hover: oklch(0.222 var(--tint) var(--hue));
+  --surface-selected: oklch(0.245 calc(var(--tint) * 1.5) var(--hue));
+
+  --border-subtle: oklch(0.24 var(--tint) var(--hue));
+  --border-card: oklch(0.25 var(--tint) var(--hue));
+  --border-strong: oklch(0.34 var(--tint) var(--hue));
+  --border-edge-lit: oklch(0.56 var(--tint) var(--hue));
+
+  --text-primary: oklch(0.95 calc(var(--tint) * 0.5) var(--hue));
+  --text-secondary: oklch(0.79 calc(var(--tint) * 0.8) var(--hue));
+  --text-tertiary: oklch(0.64 var(--tint) var(--hue));
+  --text-on-accent: white;
+
+  /* Buttons and other pills you can press. */
+  --control-bg: oklch(0.2 var(--tint) var(--hue));
+  --control-bg-hover: oklch(0.232 var(--tint) var(--hue));
+  --control-bg-active: oklch(0.29 var(--tint) var(--hue));
+  --control-border: oklch(0.26 var(--tint) var(--hue));
+  --control-border-active: oklch(0.34 var(--tint) var(--hue));
+
+  /* Accent marks: checked boxes, counts, focus. accent-text and accent-line
+     are the primary button's label and border. */
+  --accent-solid: var(--violet-500);
+  --accent-text: var(--violet-300);
+  --accent-line: oklch(from var(--violet-500) l c h / 0.6);
+  --focus-ring: var(--accent-solid);
+
+  --danger-text: var(--red-300);
+  --danger-line: oklch(from var(--red-500) l c h / 0.6);
+
+  /* A category's funding state. Credit overspending is amber, not red: it
+     takes no cash, it adds card debt the plan hasn't funded yet. */
+  --status-funded: var(--green-300);
+  --status-funded-bg: var(--green-800-a);
+  --status-underfunded: var(--amber-300);
+  --status-underfunded-bg: var(--amber-800-a);
+  --status-credit: var(--amber-300);
+  --status-credit-bg: var(--amber-800-a);
+  --status-overspent: var(--red-300);
+  --status-overspent-bg: var(--red-800-a);
+
+  /* Signed amounts outside a category: inflows, Ready to Assign. */
+  --money-positive: var(--green-300);
+  --money-negative: var(--red-300);
+
+  /* Anything that isn't money. Attention means the user has to act. */
+  --feedback-success: var(--green-300);
+  --feedback-attention: var(--amber-300);
+  --feedback-attention-bg: var(--amber-800-a);
+
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.24), 0 4px 14px oklch(0 0 0 / 0.16);
+  --shadow-drawer:
+    0 8px 24px oklch(0 0 0 / 0.35), 0 24px 64px oklch(0 0 0 / 0.3);
+  --shadow-tooltip: 0 4px 12px oklch(0 0 0 / 0.2);
+}
+
+/* ---------- Semantic: light ---------- */
+
+/* Same hue and tint, new lightness. Borders turn translucent so they recede
+   on light surfaces; status colors darken to stay readable. */
+[data-theme="light"] {
+  color-scheme: light;
+  --surface-app: oklch(0.958 var(--tint) var(--hue));
+  --surface-panel: oklch(0.995 calc(var(--tint) * 0.3) var(--hue));
+  --surface-group: oklch(0.976 calc(var(--tint) * 0.6) var(--hue));
+  --surface-raised: oklch(0.982 calc(var(--tint) * 0.6) var(--hue));
+  --surface-hover: oklch(0.952 var(--tint) var(--hue));
+  --surface-selected: oklch(0.928 calc(var(--tint) * 1.5) var(--hue));
+
+  --border-subtle: oklch(0.25 var(--tint) var(--hue) / 0.09);
+  --border-card: oklch(0.25 var(--tint) var(--hue) / 0.08);
+  --border-strong: oklch(0.25 var(--tint) var(--hue) / 0.18);
+  --border-edge-lit: oklch(0.25 var(--tint) var(--hue) / 0.45);
+
+  --text-primary: oklch(0.22 var(--tint) var(--hue));
+  --text-secondary: oklch(0.42 var(--tint) var(--hue));
+  --text-tertiary: oklch(0.54 var(--tint) var(--hue));
+
+  --control-bg: oklch(0.995 calc(var(--tint) * 0.3) var(--hue));
+  --control-bg-hover: oklch(0.965 var(--tint) var(--hue));
+  --control-bg-active: oklch(0.925 calc(var(--tint) * 1.2) var(--hue));
+  --control-border: oklch(0.25 var(--tint) var(--hue) / 0.12);
+  --control-border-active: oklch(0.25 var(--tint) var(--hue) / 0.2);
+
+  --accent-solid: var(--violet-600);
+  --accent-text: var(--violet-700);
+  --accent-line: oklch(from var(--violet-600) l c h / 0.55);
+  --focus-ring: var(--accent-solid);
+
+  --danger-text: var(--red-700);
+  --danger-line: oklch(from var(--red-600) l c h / 0.55);
+
+  --status-funded: var(--green-600);
+  --status-funded-bg: var(--green-100);
+  --status-underfunded: var(--amber-600);
+  --status-underfunded-bg: var(--amber-100);
+  --status-credit: var(--amber-600);
+  --status-credit-bg: var(--amber-100);
+  --status-overspent: var(--red-600);
+  --status-overspent-bg: var(--red-100);
+
+  --money-positive: var(--green-600);
+  --money-negative: var(--red-600);
+
+  --feedback-success: var(--green-600);
+  --feedback-attention: var(--amber-600);
+  --feedback-attention-bg: var(--amber-100);
+
+  --shadow-card:
+    0 1px 2px oklch(0.2 0.01 var(--hue) / 0.05),
+    0 4px 14px oklch(0.2 0.01 var(--hue) / 0.05);
+  --shadow-drawer:
+    0 8px 24px oklch(0.2 0.01 var(--hue) / 0.12),
+    0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
+}
+
+/* ---------- Scale ---------- */
+
+:root {
+  /* Type steps, named by role, on the scale 12, 13, 14, 16, 24. */
+  --type-caption: 12px;
+  --type-small: 13px;
+  --type-body: 14px;
+  --type-title: 16px;
+  --type-figure: 24px;
+
+  /* Sizes that hold text, on a 4px rhythm sized for that type. */
+  --size-badge: 20px;
+  --size-pill: 22px;
+  --size-control-xs: 28px;
+  --size-control-sm: 30px;
+  --size-control: 32px;
+  --size-row-sm: 34px;
+  --size-row-md: 36px;
+  --size-sidebar-header: 40px;
+  --size-row-lg: 44px;
+  --size-header: 48px;
+  --size-toolbar: 52px;
+  --size-popover: 320px;
+
+  --space-gutter: 8px;
+  --space-inset: 8px;
+  --space-stack: 10px;
+  --space-row-x: 14px;
+  --space-card: 16px;
+
+  /* Concentric corners: outer radius = inner radius + padding, where the
+     padding includes the container's 1px border. Inner radii are the fixed
+     choices; containers grow to fit them. */
+  --radius-row: 6px;
+  --radius-card: 12px;
+  --radius-panel: calc(var(--radius-card) + var(--space-inset) + 1px);
+  --radius-peek: calc(var(--radius-row) + 8px + 1px);
+  --radius-menu: calc(var(--radius-row) + 4px + 1px);
+  --radius-segmented: calc(var(--radius-row) + 2px + 1px);
+
+  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-panel: 260ms;
+}

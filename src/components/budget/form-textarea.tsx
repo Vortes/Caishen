@@ -1,7 +1,7 @@
 "use client";
 
 import { Field } from "~/components/shared";
-import { Textarea } from "~/components/ui/textarea";
+import { Textarea } from "~/components/ui-legacy/textarea";
 
 export function FormTextArea({
   label,

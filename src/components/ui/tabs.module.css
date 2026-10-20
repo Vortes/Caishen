@@ -1,0 +1,44 @@
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+/* The secondary button pill; the selected tab takes its pressed look.
+   Selectors carry an attribute so they outrank a container's button reset. */
+.trigger[role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--size-control);
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms,
+    transform 100ms;
+}
+.trigger:hover {
+  background: var(--control-bg-hover);
+  color: var(--text-primary);
+}
+.trigger:active {
+  transform: scale(0.97);
+}
+.trigger[aria-selected="true"] {
+  border-color: var(--control-border-active);
+  background: var(--control-bg-active);
+  color: var(--text-primary);
+}
+/* Doubled to outrank a container's inset focus ring. */
+.trigger.trigger:focus-visible {
+  border-radius: 999px;
+  outline-offset: 2px;
+}

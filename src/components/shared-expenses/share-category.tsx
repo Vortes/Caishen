@@ -5,7 +5,7 @@ import { api } from "~/trpc/react";
 import type { Panel } from "~/components/budget/types";
 import type { Category } from "~/components/budget/category-table";
 import { Icon } from "~/components/shared";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui-legacy/button";
 
 export function ShareCategory({
   category,
