@@ -188,8 +188,10 @@ export function AppShellPrototype({
         if (peekOpen) setPeek(false);
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
           setDrawer({ sidebar: false, inspector: false });
-        } else if (checked.length) setChecked([]);
-        else if (screen.type === "reflect" && (path.group ?? path.categoryId))
+        } else if (checked.length) {
+          setChecked([]);
+          setSelectedId(null);
+        } else if (screen.type === "reflect" && (path.group ?? path.categoryId))
           // Escape climbs one level of the report, like its breadcrumbs.
           setPath(path.categoryId && path.group ? { group: path.group } : {});
         else setSelectedId(null);
@@ -424,8 +426,13 @@ export function AppShellPrototype({
                 >
                   {screen.type === "plan" && (
                     <PlanView
-                      selectedId={selectedId}
-                      onSelect={select}
+                      // Like YNAB, clicking a row selects just that row: its
+                      // checkbox ticks and any others clear. Checkboxes add
+                      // to or remove from the selection.
+                      onSelect={(id) => {
+                        setSelectedId(id);
+                        setChecked([id]);
+                      }}
                       checked={checked}
                       onCheck={check}
                     />

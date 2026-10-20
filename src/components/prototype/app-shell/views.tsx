@@ -46,12 +46,10 @@ function moveSelection(event: KeyboardEvent<HTMLElement>) {
 }
 
 export function PlanView({
-  selectedId,
   onSelect,
   checked,
   onCheck,
 }: {
-  selectedId: string | null;
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
@@ -166,7 +164,9 @@ export function PlanView({
                       data-id={category.id}
                       className={`${styles.columns} ${styles.row}`}
                       aria-current={
-                        selectedId === category.id ? "true" : undefined
+                        checked.length === 1 && checked[0] === category.id
+                          ? "true"
+                          : undefined
                       }
                       onClick={() => onSelect(category.id)}
                     >

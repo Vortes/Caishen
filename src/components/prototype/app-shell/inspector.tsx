@@ -34,11 +34,16 @@ export function Inspector({
 }) {
   const { categories, transactions, loans, readyToAssign } = useShellData();
   if (screen.type === "plan") {
-    const category = categories.find((item) => item.id === selectedId);
+    // The plan's selection is its checked rows: one shows that category,
+    // several show their combined details.
+    const category =
+      checked.length === 1
+        ? categories.find((item) => item.id === checked[0])
+        : undefined;
     return (
       <>
         <RtaCard amount={readyToAssign} />
-        {checked.length ? (
+        {checked.length > 1 ? (
           <CheckedDetails ids={checked} />
         ) : category ? (
           <CategoryDetails key={category.id} category={category} />
