@@ -10,7 +10,7 @@ export type Category = {
   note?: string;
 };
 
-export type CategoryGroup = {
+type CategoryGroup = {
   id: string;
   name: string;
   categories: Category[];

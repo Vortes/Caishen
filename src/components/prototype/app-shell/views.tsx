@@ -30,7 +30,7 @@ function moveSelection(event: KeyboardEvent<HTMLElement>) {
   const rows = [
     ...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-row]"),
   ];
-  const index = rows.indexOf(document.activeElement as HTMLButtonElement);
+  const index = rows.findIndex((row) => row === document.activeElement);
   const next =
     rows[
       index === -1
@@ -305,7 +305,7 @@ function FundingBar({ category }: { category: Category }) {
   );
 }
 
-export function AvailablePill({ category }: { category: Category }) {
+function AvailablePill({ category }: { category: Category }) {
   return (
     <span className={styles.pill} data-state={funding(category)}>
       {money(available(category))}

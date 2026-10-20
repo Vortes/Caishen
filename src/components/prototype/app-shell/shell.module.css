@@ -22,7 +22,6 @@
   --card-line: oklch(0.25 var(--tint) var(--hue));
   --edge-lit: oklch(0.56 var(--tint) var(--hue));
   --accent: oklch(0.6 0.17 282);
-  --accent-hover: color-mix(in oklch, var(--accent) 88%, white);
   --green: oklch(0.8 0.13 150);
   --green-bg: oklch(0.4 0.07 150 / 0.38);
   --amber: oklch(0.85 0.12 82);
@@ -79,7 +78,6 @@
   --card-line: oklch(0.25 var(--tint) var(--hue) / 0.08);
   --edge-lit: oklch(0.25 var(--tint) var(--hue) / 0.45);
   --accent: oklch(0.55 0.19 282);
-  --accent-hover: color-mix(in oklch, var(--accent) 88%, black);
   --green: oklch(0.52 0.13 150);
   --green-bg: oklch(0.94 0.05 150);
   --amber: oklch(0.56 0.12 65);
@@ -483,7 +481,7 @@
   transform: scale(0.97);
 }
 
-/* Inspector: the first card, so the header stays as clean as Linear's. */
+/* On Plan, Ready to Assign leads the inspector as its own card. */
 .rtaCard {
   gap: 4px;
   border-color: color-mix(in oklab, var(--tone) 28%, transparent);
@@ -510,12 +508,6 @@
   margin-top: 6px;
 }
 
-.divider {
-  width: 1px;
-  height: 16px;
-  margin: 0 4px;
-  background: var(--line-strong);
-}
 .iconButton {
   position: relative;
   flex: none;

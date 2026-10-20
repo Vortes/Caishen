@@ -26,6 +26,7 @@ import {
   money,
   month,
   transactions,
+  type Transaction,
 } from "./data";
 import { RtaCard, type RtaState } from "./ready-to-assign";
 import type { Screen } from "./sidebar";
@@ -51,7 +52,7 @@ export function Inspector({
         {checked.length ? (
           <CheckedDetails ids={checked} />
         ) : category ? (
-          <CategoryDetails key={category.id} categoryId={category.id} />
+          <CategoryDetails key={category.id} category={category} />
         ) : (
           <MonthDetails />
         )}
@@ -61,16 +62,38 @@ export function Inspector({
   if (screen.type === "register") {
     const transaction = transactions.find((item) => item.id === selectedId);
     return transaction ? (
-      <TransactionDetails id={transaction.id} />
+      <TransactionDetails item={transaction} />
     ) : (
       <AccountDetails accountId={screen.accountId} />
     );
   }
-  const loan = loans.find((item) => item.id === selectedId) ?? loans[0]!;
+  const loan = loans.find((item) => item.id === selectedId);
+  if (!loan) {
+    return (
+      <>
+        <Card>
+          <Title
+            icon={<LoanIcon />}
+            title="Loans"
+            subtitle="Nothing selected. Pick a loan to see its payoff."
+          />
+          <Figure
+            value={money(-loans.reduce((sum, item) => sum + item.balance, 0))}
+            caption="Total remaining"
+          />
+        </Card>
+        <Card>
+          <Property label="Monthly">
+            {money(loans.reduce((sum, item) => sum + item.payment, 0))}
+          </Property>
+        </Card>
+      </>
+    );
+  }
   return (
     <>
       <Card>
-        <Title icon={<ChartIcon />} title={loan.name} />
+        <Title icon={<LoanIcon />} title={loan.name} />
         <Figure value={money(-loan.balance)} caption="Remaining balance" />
       </Card>
       <Card>
@@ -82,7 +105,7 @@ export function Inspector({
   );
 }
 
-function ChartIcon() {
+function LoanIcon() {
   return (
     <ChartNoAxesCombinedIcon
       size={15}
@@ -130,25 +153,15 @@ function MonthDetails() {
           {
             label: "Auto-Assign",
             content: (
-              <ul className={styles.actionList}>
-                {[
+              <AutoAssignList
+                items={[
                   ["Underfunded", underfunded],
                   ["Assigned last month", 702400],
                   ["Spent last month", 688912],
                   ["Average assigned", 695150],
                   ["Reset available amounts", 0],
-                ].map(([label, value]) => (
-                  <li key={label}>
-                    <button type="button" className={styles.actionItem}>
-                      <ZapIcon size={13} aria-hidden />
-                      <span>{label}</span>
-                      <span className={styles.numeric}>
-                        {money(value as number)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                ]}
+              />
             ),
           },
           {
@@ -212,23 +225,13 @@ function CheckedDetails({ ids }: { ids: string[] }) {
           {
             label: "Auto-Assign",
             content: (
-              <ul className={styles.actionList}>
-                {[
+              <AutoAssignList
+                items={[
                   ["Underfunded", underfunded],
                   ["Assigned last month", sum((item) => item.assigned)],
                   ["Spent last month", -sum((item) => item.activity)],
-                ].map(([label, amount]) => (
-                  <li key={label}>
-                    <button type="button" className={styles.actionItem}>
-                      <ZapIcon size={13} aria-hidden />
-                      <span>{label}</span>
-                      <span className={styles.numeric}>
-                        {money(amount as number)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                ]}
+              />
             ),
           },
         ]}
@@ -237,8 +240,11 @@ function CheckedDetails({ ids }: { ids: string[] }) {
   );
 }
 
-function CategoryDetails({ categoryId }: { categoryId: string }) {
-  const category = allCategories.find((item) => item.id === categoryId)!;
+function CategoryDetails({
+  category,
+}: {
+  category: (typeof allCategories)[number];
+}) {
   const state = funding(category);
   const value = available(category);
   const needed = category.target
@@ -305,23 +311,13 @@ function CategoryDetails({ categoryId }: { categoryId: string }) {
           {
             label: "Auto-Assign",
             content: (
-              <ul className={styles.actionList}>
-                {[
+              <AutoAssignList
+                items={[
                   ["Underfunded", needed],
                   ["Assigned last month", category.assigned],
                   ["Spent last month", -category.activity],
-                ].map(([label, amount]) => (
-                  <li key={label}>
-                    <button type="button" className={styles.actionItem}>
-                      <ZapIcon size={13} aria-hidden />
-                      <span>{label}</span>
-                      <span className={styles.numeric}>
-                        {money(amount as number)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                ]}
+              />
             ),
           },
           {
@@ -440,8 +436,7 @@ function AccountDetails({ accountId }: { accountId: string | null }) {
   );
 }
 
-function TransactionDetails({ id }: { id: string }) {
-  const item = transactions.find((entry) => entry.id === id)!;
+function TransactionDetails({ item }: { item: Transaction }) {
   const account = accounts.find((entry) => entry.id === item.accountId);
   const category = allCategories.find((entry) => entry.id === item.categoryId);
   return (
@@ -504,6 +499,22 @@ function TransactionDetails({ id }: { id: string }) {
         </Card>
       )}
     </>
+  );
+}
+
+function AutoAssignList({ items }: { items: [string, number][] }) {
+  return (
+    <ul className={styles.actionList}>
+      {items.map(([label, amount]) => (
+        <li key={label}>
+          <button type="button" className={styles.actionItem}>
+            <ZapIcon size={13} aria-hidden />
+            <span>{label}</span>
+            <span className={styles.numeric}>{money(amount)}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
