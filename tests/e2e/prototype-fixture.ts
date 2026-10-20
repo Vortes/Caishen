@@ -143,6 +143,11 @@ export async function openPrototype(
     );
   const month = currentMonth();
   const date = `${month}-01`;
+  // Today is pinned to noon on the 20th in the budget's timezone, for the
+  // page and for the fixture's server, so every test has days on both sides
+  // of today whatever day it runs.
+  const today = `${month}-20`;
+  const now = new Date(`${today}T19:00:00Z`);
   let book = createBook(user.id, "Prototype fixture", month);
   if (shared) book = addMember(book, "prototype-partner", "Sam", month);
   const target = (amount: number) => ({
@@ -301,7 +306,11 @@ export async function openPrototype(
       }
       const before = structuredClone(book);
       const budget = book.budgets[user.id]!;
-      book = execute(book, user.id, prepareUserCommand(budget, input.command));
+      book = execute(
+        book,
+        user.id,
+        prepareUserCommand(budget, input.command, now),
+      );
       commands.push(input.command);
       undo.push({
         before,
@@ -349,6 +358,7 @@ export async function openPrototype(
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/");
   await clerk.signIn({ page, emailAddress: user.email });
+  await page.clock.setFixedTime(now);
   await page.goto("/prototype/app-shell");
   await expect(
     page.getByRole("heading", { name: "Plan", exact: true }),
@@ -366,6 +376,8 @@ export async function openPrototype(
   };
   return {
     month,
+    // The pinned day, YYYY-MM-DD.
+    today,
     // Every write the page sent, by procedure path.
     writes,
     // The commands budget.execute ran, in order.
@@ -403,7 +415,7 @@ export async function openPrototype(
       book = execute(
         book,
         user.id,
-        prepareUserCommand(book.budgets[user.id]!, command),
+        prepareUserCommand(book.budgets[user.id]!, command, now),
       );
       revision++;
       undo.length = 0;

@@ -65,6 +65,8 @@ function parseDate(text: string, today: string, finished: boolean) {
 
 // The transaction date: typed as text, or picked from a calendar that opens
 // under the field. The calendar is a dialog, and Escape closes only it.
+// Activity is recorded once it happened, so no day after today can be
+// picked.
 export function DateField({
   id,
   label,
@@ -289,6 +291,7 @@ export function DateField({
             value={chosen}
             today={today}
             min={min}
+            max={today}
             onSelect={pick}
           />
         </Popover.Content>

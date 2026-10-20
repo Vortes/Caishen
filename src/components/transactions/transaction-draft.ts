@@ -1,6 +1,7 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import type { Command } from "~/domain/engine";
+import { budgetDay } from "~/domain/user-command";
 
 type Transaction = View["budget"]["transactions"][number];
 
@@ -135,6 +136,8 @@ export function buildTransactionDraftCommand({
   else if (account && date < account.date)
     fields.date =
       "The transaction date must be on or after the account opening date.";
+  else if (date > budgetDay(view.budget.settings.timezone))
+    fields.date = "The transaction date must be today or earlier.";
 
   if (expenseMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(expenseMonth))
     fields.expenseMonth = "Enter a valid expense month.";

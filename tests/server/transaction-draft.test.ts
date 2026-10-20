@@ -16,6 +16,7 @@ import {
   TransactionDraftError,
   type TransactionDraft,
 } from "../../src/components/transactions/transaction-draft";
+import { budgetDay } from "../../src/domain/user-command";
 
 const month = "2026-10";
 const date = "2026-10-10";
@@ -207,7 +208,7 @@ void test("invalid dual, signed, zero, imprecise, and unsafe amounts never chang
   assert.deepEqual(setup.book, before);
 });
 
-void test("calendar and account opening dates are validated without removing future date entry", () => {
+void test("calendar, account opening, and future dates are validated", () => {
   const setup = fixture();
   assert.throws(
     () => setup.build(setup.draft({ date: "2026-02-31" })),
@@ -229,9 +230,20 @@ void test("calendar and account opening dates are validated without removing fut
     () => setup.build(setup.draft({ accountId: "new-account" })),
     TransactionDraftError,
   );
-  setup.save(setup.draft({ date: "2026-11-10" }));
-  assert.equal(setup.view().cash, 100_000);
-  assert.equal(projectBook(setup.book, "alan", "2026-11").cash, 97_499);
+  // Activity is recorded once it happened: today in the budget's timezone
+  // is the last day a transaction can take.
+  const today = budgetDay(setup.view().budget.settings.timezone);
+  const [year, month, day] = today.split("-").map(Number);
+  const tomorrow = new Date(Date.UTC(year!, month! - 1, day! + 1))
+    .toISOString()
+    .slice(0, 10);
+  assert.throws(
+    () => setup.build(setup.draft({ date: tomorrow })),
+    (error) =>
+      error instanceof TransactionDraftError &&
+      error.fields.date === "The transaction date must be today or earlier.",
+  );
+  assert.equal(setup.save(setup.draft({ date: today })).date, today);
 });
 
 void test("a competing category and payee edit blocks the engine's stale no-op path", () => {

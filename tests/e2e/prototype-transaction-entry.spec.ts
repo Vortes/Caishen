@@ -1011,7 +1011,7 @@ test("Add opens the first column at once, and the entry row sits under the regis
   }
 });
 
-test("the calendar changes months, picks a day, takes a typed date, and closes before the editor", async ({
+test("the calendar keeps to the account's dates, picks a day, takes a typed date, and closes before the editor", async ({
   page,
 }) => {
   const plan = await openPrototype(page);
@@ -1021,28 +1021,29 @@ test("the calendar changes months, picks a day, takes a typed date, and closes b
   const date = field(form, "Date");
   await expect(date).toHaveAttribute("aria-expanded", "true");
 
-  // The account opened this month, so earlier months can't be shown and
-  // its days before the opening can't be picked.
+  // The account opened this month and nothing can be dated after today, so
+  // the calendar keeps to this month: no earlier or later month, and no day
+  // after today.
+  await expect(
+    calendar(page).getByRole("heading", { name: monthTitle(plan.month) }),
+  ).toBeVisible();
   await expect(
     calendar(page).getByRole("button", { name: "Show previous month" }),
   ).toBeDisabled();
   await expect(
-    calendar(page).getByRole("heading", { name: monthTitle(plan.month) }),
-  ).toBeVisible();
+    calendar(page).getByRole("button", { name: "Show next month" }),
+  ).toBeDisabled();
+  await expect(dayButton(page, plan.today)).toBeEnabled();
+  await expect(dayButton(page, `${plan.month}-21`)).toBeDisabled();
 
-  // Next month, then a day: the date fills in and focus moves to the payee.
-  const next = addMonths(plan.month, 1);
-  await calendar(page).getByRole("button", { name: "Show next month" }).click();
-  await expect(
-    calendar(page).getByRole("heading", { name: monthTitle(next) }),
-  ).toBeVisible();
-  await dayButton(page, `${next}-15`).click();
+  // A day: the date fills in and focus moves to the payee.
+  await dayButton(page, `${plan.month}-15`).click();
   await expect(calendar(page)).toHaveCount(0);
-  await expect(date).toHaveValue(display(`${next}-15`));
+  await expect(date).toHaveValue(display(`${plan.month}-15`));
   await expect(field(form, "Payee")).toBeFocused();
 
   // The keyboard: Arrow Down in the field opens on the chosen day; arrows
-  // move by day and Page Up by month; Enter picks without saving.
+  // move by day; Enter picks without saving.
   await date.focus();
   await date.press("ArrowDown");
   const chosen = calendar(page)
@@ -1050,10 +1051,6 @@ test("the calendar changes months, picks a day, takes a typed date, and closes b
     .getByRole("button");
   await expect(chosen).toBeFocused();
   await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("PageUp");
-  await expect(
-    calendar(page).getByRole("heading", { name: monthTitle(plan.month) }),
-  ).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(date).toHaveValue(display(`${plan.month}-16`));
   await expect(form).toBeVisible();
@@ -1102,6 +1099,11 @@ test("the calendar changes months, picks a day, takes a typed date, and closes b
   await date.fill("13/45");
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form).toContainText("Enter a valid transaction date.");
+  // A typed day after today waits for a fix too; it never reaches the server.
+  await date.fill(display(`${plan.month}-21`));
+  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(date).toHaveAttribute("aria-invalid", "true");
+  await expect(form).toContainText("must be today or earlier");
   expect(plan.writes).toEqual([]);
 
   await date.fill(display(`${plan.month}-07`));

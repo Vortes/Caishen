@@ -126,6 +126,7 @@ export function Calendar({
   value,
   today,
   min,
+  max,
   onSelect,
   ref,
 }: {
@@ -134,6 +135,8 @@ export function Calendar({
   today: string;
   // The first day that can be picked. Earlier months can't be shown.
   min?: string;
+  // The last day that can be picked. Later months can't be shown.
+  max?: string;
   // A day was picked, including the one already selected.
   onSelect: (date: string) => void;
   ref?: Ref<CalendarHandle>;
@@ -157,6 +160,7 @@ export function Calendar({
   }));
 
   const earliest = min ? toDate(min) : undefined;
+  const latest = max ? toDate(max) : undefined;
 
   return (
     <div ref={root}>
@@ -170,7 +174,11 @@ export function Calendar({
         onMonthChange={setMonth}
         today={toDate(today)}
         startMonth={earliest}
-        disabled={earliest ? { before: earliest } : undefined}
+        endMonth={latest}
+        disabled={[
+          ...(earliest ? [{ before: earliest }] : []),
+          ...(latest ? [{ after: latest }] : []),
+        ]}
         labels={labels}
         classNames={classNames}
         components={components}
