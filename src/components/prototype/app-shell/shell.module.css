@@ -843,6 +843,10 @@ button.actionItem:hover {
 .register .txColumns > [data-narrow] {
   display: none;
 }
+/* Under the review bar, the column headers pin just below it. */
+.register[data-review-bar] .columnHeader {
+  top: var(--size-row-md);
+}
 .statusCell {
   display: flex;
   justify-content: center;

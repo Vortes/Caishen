@@ -121,13 +121,22 @@ const historySchema = z.object({
 // The fixture plays the server with the real engine and no database:
 // budget.execute runs each command over the book and records it as one undo
 // step, and budget.changeHistory steps through those, each checking the
-// revision like the server does. Every other write is refused and recorded
-// in writes.
+// revision like the server does. A command the engine refuses fails with its
+// message, as on the server. Every other write is refused and recorded in
+// writes. Options add commands after the seed and bank imports to the state.
 //
 // With shared, a connected partner splits Rent with the user.
 export async function openPrototype(
   page: Page,
-  { shared = false }: { shared?: boolean } = {},
+  {
+    commands: extra = [],
+    imports = [],
+    shared = false,
+  }: {
+    commands?: Command[];
+    imports?: State["imports"];
+    shared?: boolean;
+  } = {},
 ) {
   await clerkSetup();
   const [user] = z
@@ -247,7 +256,8 @@ export async function openPrototype(
         ]
       : []),
   ];
-  for (const command of initial) book = execute(book, user.id, command);
+  for (const command of [...initial, ...extra])
+    book = execute(book, user.id, command);
   type Step = { before: Book; after: Book; label: string };
   const undo: Step[] = [];
   const redo: Step[] = [];
@@ -270,7 +280,7 @@ export async function openPrototype(
     services: [],
     connections: [],
     evidence: [],
-    imports: [],
+    imports,
   });
   const conflict = (expected: number) =>
     expected === revision
@@ -306,11 +316,16 @@ export async function openPrototype(
       }
       const before = structuredClone(book);
       const budget = book.budgets[user.id]!;
-      book = execute(
-        book,
-        user.id,
-        prepareUserCommand(budget, input.command, now),
-      );
+      try {
+        book = execute(
+          book,
+          user.id,
+          prepareUserCommand(budget, input.command, now),
+        );
+      } catch (error) {
+        await respond(route, [{ error: (error as Error).message }]);
+        return;
+      }
       commands.push(input.command);
       undo.push({
         before,

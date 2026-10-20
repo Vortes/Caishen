@@ -21,7 +21,9 @@ import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
+import { ReviewBar, useReviewSelection } from "./transaction-review";
 import styles from "./shell.module.css";
+import reviewStyles from "./transaction-review.module.css";
 
 // Arrow keys move the selection through the rows of a list, like Linear's j/k.
 function moveSelection(event: KeyboardEvent<HTMLElement>) {
@@ -359,11 +361,15 @@ export function RegisterView({
   reviewOnly,
   selectedId,
   onSelect,
+  checked,
+  onCheck,
 }: {
   accountId: string | null;
   reviewOnly: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  checked: string[];
+  onCheck: (ids: string[], value: boolean) => void;
 }) {
   const { transactions, accounts, month, today } = useShellData();
   const { session } = useTransactionEntry();
@@ -374,6 +380,7 @@ export function RegisterView({
       (!accountId || item.accountId === accountId) &&
       (reviewOnly ? item.needsReview : item.date.startsWith(month.key)),
   );
+  const selection = useReviewSelection({ rows, checked, onCheck });
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
   const editingId = session?.initial?.id;
@@ -402,8 +409,23 @@ export function RegisterView({
       data-accounts={accountColumn || undefined}
       role="group"
       aria-label="Transactions"
-      onKeyDown={moveSelection}
+      data-selecting={selection.selected.length > 0 || undefined}
+      data-review-bar={selection.selectable.length > 0 || undefined}
+      onKeyDown={(event) => {
+        // x toggles the focused row's checkbox, like the plan.
+        const id =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement.dataset.id
+            : undefined;
+        if (event.key === "x" && id) {
+          event.preventDefault();
+          onCheck([id], !checked.includes(id));
+          return;
+        }
+        moveSelection(event);
+      }}
     >
+      <ReviewBar selection={selection} onCheck={onCheck} />
       <div className={`${styles.txColumns} ${styles.columnHeader}`} aria-hidden>
         {accountColumn && (
           <span data-column="account" data-optional>
@@ -445,86 +467,101 @@ export function RegisterView({
           return (
             <TransactionEditor key={item.id} accountColumn={accountColumn} />
           );
+        const checkable = item.source === "budget";
+        const isChecked = checkable && checked.includes(item.id);
         return (
-          <button
-            type="button"
+          <div
             key={item.id}
-            data-row
-            data-transaction-row={item.id}
-            className={`${styles.txColumns} ${styles.row}`}
-            aria-current={selectedId === item.id ? "true" : undefined}
-            onClick={() => onSelect(item.id)}
+            className={`${styles.rowWrap} ${reviewStyles.checkable}`}
+            data-checked={isChecked || undefined}
           >
-            {accountColumn && (
-              <span
-                className={styles.rowName}
-                data-column="account"
-                data-optional
-              >
-                {reviewDot}
-                <span className={`${styles.truncate} ${styles.faint}`}>
-                  {account?.name ?? "Unlinked bank account"}
+            {checkable && (
+              <RowCheckbox
+                label={`Select ${item.payee}`}
+                state={isChecked}
+                onChange={() => onCheck([item.id], !isChecked)}
+              />
+            )}
+            <button
+              type="button"
+              data-row
+              data-id={checkable ? item.id : undefined}
+              data-transaction-row={item.id}
+              className={`${styles.txColumns} ${styles.row}`}
+              aria-current={selectedId === item.id ? "true" : undefined}
+              onClick={() => onSelect(item.id)}
+            >
+              {accountColumn && (
+                <span
+                  className={styles.rowName}
+                  data-column="account"
+                  data-optional
+                >
+                  {reviewDot}
+                  <span className={`${styles.truncate} ${styles.faint}`}>
+                    {account?.name ?? "Unlinked bank account"}
+                  </span>
+                </span>
+              )}
+              <span className={styles.rowName} data-column="date" data-optional>
+                {!accountColumn && reviewDot}
+                <span className={`${styles.truncate} ${styles.muted}`}>
+                  {dayLabel(item.date, today)}
                 </span>
               </span>
-            )}
-            <span className={styles.rowName} data-column="date" data-optional>
-              {!accountColumn && reviewDot}
-              <span className={`${styles.truncate} ${styles.muted}`}>
-                {dayLabel(item.date, today)}
+              <span className={styles.rowName} data-column="payee">
+                <span className={styles.truncate}>{item.payee}</span>
+                {item.shared && (
+                  <UsersIcon
+                    size={12}
+                    className={styles.inlineIcon}
+                    aria-label="Shared"
+                  />
+                )}
               </span>
-            </span>
-            <span className={styles.rowName} data-column="payee">
-              <span className={styles.truncate}>{item.payee}</span>
-              {item.shared && (
-                <UsersIcon
-                  size={12}
-                  className={styles.inlineIcon}
-                  aria-label="Shared"
-                />
-              )}
-            </span>
-            <span className={styles.truncate} data-column="category">
-              {item.needsCategory ? (
-                <Tag tone="attention">{item.categoryLabel}</Tag>
-              ) : (
-                <span className={styles.muted}>{item.categoryLabel}</span>
-              )}
-              {item.forMonth && (
-                <span className={styles.faint}> · {item.forMonth}</span>
-              )}
-            </span>
-            <span
-              className={styles.numeric}
-              data-column="outflow"
-              data-empty={item.amount < 0 ? undefined : true}
-            >
-              {item.amount < 0 && money(-item.amount)}
-            </span>
-            <span
-              className={styles.numeric}
-              data-column="inflow"
-              data-empty={item.amount > 0 ? undefined : true}
-              data-inflow={item.amount > 0 || undefined}
-            >
-              {item.amount > 0 && money(item.amount)}
-            </span>
-            <span className={styles.statusCell} data-column="status">
-              {item.source === "bank" ? (
-                <InboxIcon
-                  size={14}
-                  className={styles.statusIcon}
-                  aria-label="Bank import"
-                />
-              ) : (
-                <status.icon
-                  size={14}
-                  className={styles.statusIcon}
-                  data-status={item.status}
-                  aria-label={status.label}
-                />
-              )}
-            </span>
-          </button>
+              <span className={styles.truncate} data-column="category">
+                {item.needsCategory ? (
+                  <Tag tone="attention">{item.categoryLabel}</Tag>
+                ) : (
+                  <span className={styles.muted}>{item.categoryLabel}</span>
+                )}
+                {item.forMonth && (
+                  <span className={styles.faint}> · {item.forMonth}</span>
+                )}
+              </span>
+              <span
+                className={styles.numeric}
+                data-column="outflow"
+                data-empty={item.amount < 0 ? undefined : true}
+              >
+                {item.amount < 0 && money(-item.amount)}
+              </span>
+              <span
+                className={styles.numeric}
+                data-column="inflow"
+                data-empty={item.amount > 0 ? undefined : true}
+                data-inflow={item.amount > 0 || undefined}
+              >
+                {item.amount > 0 && money(item.amount)}
+              </span>
+              <span className={styles.statusCell} data-column="status">
+                {item.source === "bank" ? (
+                  <InboxIcon
+                    size={14}
+                    className={styles.statusIcon}
+                    aria-label="Bank import"
+                  />
+                ) : (
+                  <status.icon
+                    size={14}
+                    className={styles.statusIcon}
+                    data-status={item.status}
+                    aria-label={status.label}
+                  />
+                )}
+              </span>
+            </button>
+          </div>
         );
       })}
     </div>
