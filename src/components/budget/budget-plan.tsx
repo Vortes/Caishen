@@ -194,6 +194,8 @@ export function BudgetPlan({
           </EmptyState>
         ) : (
           <CategoryTable
+            view={view}
+            run={run}
             categories={categories}
             selected={selected}
             onSelect={onSelect}

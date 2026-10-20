@@ -3,8 +3,16 @@
 import { cn } from "~/lib/utils";
 import { useState } from "react";
 import type { View } from "~/components/budget/types";
+import type { Command } from "~/domain/engine";
 import { formatMoney } from "~/components/budget/format";
 import { AssignedInput } from "~/components/budget/assigned-input";
+import {
+  CategoryBar,
+  StatusIcon,
+  categoryStatus,
+  statusLine,
+} from "~/components/budget/category-row-status";
+import { MoveMoneyPopover } from "~/components/budget/move-money-popover";
 import { Amount, Icon } from "~/components/shared";
 import { Checkbox } from "~/components/ui/checkbox";
 
@@ -32,15 +40,10 @@ export function matchesFilter(category: Category, filter: BudgetFilter) {
       return true;
   }
 }
-export function categoryStatus(category: Category) {
-  if (category.available < 0) return "overspent";
-  if (category.targetProgress?.snoozed) return "snoozed";
-  if ((category.targetProgress?.needed ?? 0) > 0) return "underfunded";
-  if (category.available > 0) return "funded";
-  return "empty";
-}
 
 export function CategoryTable({
+  view,
+  run,
   categories,
   selected,
   onSelect,
@@ -49,6 +52,8 @@ export function CategoryTable({
   busy,
   sharedSplits,
 }: {
+  view: View;
+  run: (command: Command) => void;
   categories: Category[];
   selected: string[];
   onSelect: (ids: string[], showDetails?: boolean) => void;
@@ -58,6 +63,7 @@ export function CategoryTable({
   sharedSplits: Map<string, number[]>;
 }) {
   const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [moving, setMoving] = useState<string | null>(null);
   const groups = [...new Set(categories.map((category) => category.group))];
   const selectMany = (ids: string[], checked: boolean) =>
     onSelect(
@@ -132,21 +138,10 @@ export function CategoryTable({
               >
                 {!isCollapsed &&
                   items.map((category) => {
-                    const progress = category.targetProgress;
                     const status = categoryStatus(category);
+                    const line = statusLine(category, status);
                     const splits = sharedSplits.get(category.id) ?? [];
                     const split = splits[0];
-                    const percent = progress
-                      ? Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            progress.total > 0
-                              ? (progress.funded / progress.total) * 100
-                              : 100,
-                          ),
-                        )
-                      : 0;
                     return (
                       <tr
                         className={cn(
@@ -196,24 +191,18 @@ export function CategoryTable({
                                     </span>
                                   </span>
                                 )}
-                              </div>
-                              {progress && (
-                                <>
-                                  <span className="category-target-note">
-                                    {progress.snoozed
-                                      ? "Snoozed"
-                                      : progress.needed > 0
-                                        ? `${formatMoney(progress.needed)} needed`
-                                        : "Funded"}
-                                  </span>
+                                {line && (
                                   <span
-                                    className={`category-progress ${status}`}
-                                    aria-hidden="true"
+                                    className={`category-status is-${status}`}
                                   >
-                                    <span style={{ width: `${percent}%` }} />
+                                    {line}
                                   </span>
-                                </>
-                              )}
+                                )}
+                              </div>
+                              <CategoryBar
+                                category={category}
+                                status={status}
+                              />
                             </div>
                           </div>
                         </td>
@@ -230,22 +219,26 @@ export function CategoryTable({
                           <Amount value={category.activity} />
                         </td>
                         <td className="number">
-                          <button
-                            className={`available-pill ${status}`}
-                            aria-label={`${category.name} available ${formatMoney(category.available)}. View details`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onSelect([category.id], true);
+                          <MoveMoneyPopover
+                            view={view}
+                            category={category}
+                            open={moving === category.id}
+                            onOpenChange={(open) => {
+                              setMoving(open ? category.id : null);
+                              if (open) onSelect([category.id]);
                             }}
+                            run={run}
                           >
-                            {status === "funded" && (
-                              <Icon name="check" size={12} />
-                            )}
-                            {status === "overspent" && (
-                              <Icon name="info" size={12} />
-                            )}
-                            <Amount value={category.available} />
-                          </button>
+                            <button
+                              className={`available-pill ${status}`}
+                              aria-label={`${category.name} available ${formatMoney(category.available)}. ${status === "overspent" || status === "credit" ? "Cover overspending" : "Move money"}`}
+                              disabled={busy}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <StatusIcon category={category} status={status} />
+                              <Amount value={category.available} />
+                            </button>
+                          </MoveMoneyPopover>
                         </td>
                       </tr>
                     );
