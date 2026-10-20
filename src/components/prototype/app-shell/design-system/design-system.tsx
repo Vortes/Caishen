@@ -12,6 +12,7 @@ import { money, type Funding } from "../model";
 import shell from "../shell.module.css";
 import { AvailablePill } from "../views";
 import { ButtonSpecimens } from "./button-specimens";
+import { SkeletonSpecimens } from "./skeleton-specimens";
 import { TagSpecimens } from "./tag-specimens";
 import { ToastSpecimens } from "./toast-specimens";
 import styles from "./design-system.module.css";
@@ -205,6 +206,8 @@ export function DesignSystem() {
         <TagSpecimens />
 
         <ToastSpecimens />
+
+        <SkeletonSpecimens />
 
         <section className={styles.section} aria-labelledby="funding-bar">
           <h2 id="funding-bar">Funding bar</h2>
