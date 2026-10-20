@@ -15,13 +15,19 @@ import {
 import { useBudgetState } from "~/components/workspace/use-budget-state";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
 import { AppShellPrototype } from "./app-shell-prototype";
+import {
+  AssignMoneyProvider,
+  useAssignAttempts,
+  type AssignMoney,
+} from "./assigned";
 import { toShellData } from "./model";
 import type { MoveMoney } from "./move-money";
 import styles from "./shell.module.css";
 
-// Reads the signed-in budget through the production query. Moving money is
-// real: it sends the legacy plan's commands through the same optimistic
-// path and shares its undo history. The other actions stay inert.
+// Reads the signed-in budget through the production query. Moving money and
+// editing Assigned are real: they send the legacy plan's commands through
+// the same optimistic path and share its undo history. The other actions
+// stay inert.
 export function LiveAppShell() {
   const { isLoaded, userId } = useAuth();
   const [month, setMonth] = useState(currentMonth);
@@ -100,8 +106,15 @@ function LiveWorkspace({
     tone: Notice["tone"] = "neutral",
     revision?: number,
   ) => setNotice({ id: crypto.randomUUID(), tone, message, revision });
-  // Each move's confirmation, by command id, until the server answers.
+  // Each change's confirmation, by command id, until the server answers.
   const summaries = useRef(new Map<string, string>());
+  // Who's waiting to hear whether a command saved, by command id.
+  const settles = useRef(new Map<string, (saved: boolean) => void>());
+  const settle = (command: { id: string }, saved: boolean) => {
+    const callback = settles.current.get(command.id);
+    settles.current.delete(command.id);
+    callback?.(saved);
+  };
   const { blocked, run } = useRunBudgetCommand({
     state,
     loadingMonth,
@@ -110,10 +123,12 @@ function LiveWorkspace({
       const summary = summaries.current.get(command.id);
       summaries.current.delete(command.id);
       if (summary) notify(summary, "neutral", revision);
+      settle(command, true);
     },
     onError: (error, command) => {
       summaries.current.delete(command.id);
       notify(error.message, "attention");
+      settle(command, false);
     },
   });
 
@@ -134,6 +149,22 @@ function LiveWorkspace({
   };
 
   const busy = useIsMutating() > 0 || loadingMonth || Boolean(refreshError);
+  const attemptId = useAssignAttempts(state.revision);
+  const assignMoney: AssignMoney = {
+    revision: state.revision,
+    busy,
+    assign: (command, summary, settled) => {
+      const reason = blocked();
+      if (reason) return blockMessage[reason];
+      summaries.current.set(command.id, summary);
+      settles.current.set(command.id, settled);
+      run(command);
+      return null;
+    },
+    attemptId,
+    alert: (message) => notify(message, "attention"),
+    holdOpen,
+  };
   const history = useWorkspaceHistory({
     state,
     disabled: busy || openPopovers > 0,
@@ -152,49 +183,52 @@ function LiveWorkspace({
   const canUndo = offerUndo && state.revision === saved && !history.unavailable;
 
   return (
-    <AppShellPrototype
-      data={data}
-      loadingMonth={loadingMonth}
-      onMonthChange={onMonthChange}
-      moveMoney={moveMoney}
-      notifications={
-        <ToastRegion>
-          {refreshError && (
-            <Toast
-              tone="attention"
-              action={
-                <Button size="sm" onClick={onRetry}>
-                  Try again
-                </Button>
-              }
-            >
-              Your budget couldn’t refresh. Refresh before making more changes.
-            </Toast>
-          )}
-          {notice && (
-            <Toast
-              key={notice.id}
-              tone={notice.tone}
-              duration={saved === undefined ? undefined : 8000}
-              onDismiss={() => setNotice(null)}
-              action={
-                offerUndo && (
-                  <Button
-                    size="sm"
-                    disabled={!canUndo}
-                    onClick={() => history.change("undo")}
-                  >
-                    Undo
+    <AssignMoneyProvider value={assignMoney}>
+      <AppShellPrototype
+        data={data}
+        loadingMonth={loadingMonth}
+        onMonthChange={onMonthChange}
+        moveMoney={moveMoney}
+        notifications={
+          <ToastRegion>
+            {refreshError && (
+              <Toast
+                tone="attention"
+                action={
+                  <Button size="sm" onClick={onRetry}>
+                    Try again
                   </Button>
-                )
-              }
-            >
-              {notice.message}
-            </Toast>
-          )}
-        </ToastRegion>
-      }
-    />
+                }
+              >
+                Your budget couldn’t refresh. Refresh before making more
+                changes.
+              </Toast>
+            )}
+            {notice && (
+              <Toast
+                key={notice.id}
+                tone={notice.tone}
+                duration={saved === undefined ? undefined : 8000}
+                onDismiss={() => setNotice(null)}
+                action={
+                  offerUndo && (
+                    <Button
+                      size="sm"
+                      disabled={!canUndo}
+                      onClick={() => history.change("undo")}
+                    >
+                      Undo
+                    </Button>
+                  )
+                }
+              >
+                {notice.message}
+              </Toast>
+            )}
+          </ToastRegion>
+        }
+      />
+    </AssignMoneyProvider>
   );
 }
 

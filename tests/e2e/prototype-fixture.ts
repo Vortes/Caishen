@@ -8,6 +8,7 @@ import { z } from "zod";
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
 import {
+  AccountingError,
   commandSchema,
   createBook,
   execute,
@@ -227,6 +228,7 @@ export async function openPrototype(page: Page) {
   let revision = 0;
   const writes: string[] = [];
   const commands: Command[] = [];
+  const attempts: z.infer<typeof executeSchema>[] = [];
   const historyCalls: z.infer<typeof historySchema>[] = [];
   const executeGate = gate();
   const historyGate = gate();
@@ -263,6 +265,7 @@ export async function openPrototype(page: Page) {
     writes.push(names.join(","));
     if (names.length === 1 && name === "budget.execute") {
       const input = executeSchema.parse(inputs(route)[0]);
+      attempts.push(input);
       await executeGate.wait();
       if (rejectExecute) {
         const error = rejectExecute;
@@ -277,7 +280,18 @@ export async function openPrototype(page: Page) {
       }
       const before = structuredClone(book);
       const budget = book.budgets[user.id]!;
-      book = execute(book, user.id, prepareUserCommand(budget, input.command));
+      try {
+        book = execute(
+          book,
+          user.id,
+          prepareUserCommand(budget, input.command),
+        );
+      } catch (error) {
+        // The engine refuses it, as the server would.
+        if (!(error instanceof AccountingError)) throw error;
+        await respond(route, [{ error: error.message }]);
+        return;
+      }
       commands.push(input.command);
       undo.push({
         before,
@@ -343,6 +357,9 @@ export async function openPrototype(page: Page) {
     writes,
     // The commands budget.execute ran, in order.
     commands,
+    // Every budget.execute call, with its expected revision, including the
+    // ones refused.
+    attempts,
     historyCalls,
     // The budget as the fixture's server holds it now.
     saved: () => summarize(book),

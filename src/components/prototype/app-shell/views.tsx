@@ -20,6 +20,7 @@ import {
   type Category,
   type Funding,
 } from "./model";
+import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
@@ -211,8 +212,11 @@ export function PlanView({
                       <span
                         className={`${styles.numeric} ${styles.muted}`}
                         data-optional
+                        aria-hidden
                       >
-                        {money(category.assigned)}
+                        <span className={moveStyles.placeholder}>
+                          {money(category.assigned)}
+                        </span>
                       </span>
                       <span
                         className={`${styles.numeric} ${styles.muted}`}
@@ -226,6 +230,7 @@ export function PlanView({
                         </span>
                       </span>
                     </button>
+                    <AssignedCell category={category} />
                     <MoveMoneyPopover category={category} align="end">
                       <button
                         type="button"
