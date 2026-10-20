@@ -1,0 +1,113 @@
+/* The design system page sits inside the shell root, so it uses the same
+   tokens and themes as the app it documents. */
+
+.page {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 40px 48px 96px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+  container-type: inline-size;
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1040px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+}
+.header h1 {
+  margin: 4px 0 6px;
+  font-size: var(--font-figure);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.header p {
+  margin: 0;
+  color: var(--text-2);
+}
+.eyebrow {
+  font-size: var(--font-small);
+}
+.header .eyebrow {
+  color: var(--text-3);
+}
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.theme {
+  display: flex;
+  gap: 4px;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--font-small);
+  font-weight: 500;
+  text-decoration: none;
+}
+.back:hover {
+  color: var(--text);
+}
+
+.section {
+  max-width: 1040px;
+  padding-top: 32px;
+}
+.section h2 {
+  margin: 0 0 8px;
+  font-size: var(--font-title);
+  font-weight: 600;
+}
+.lead {
+  max-width: 65ch;
+  margin: 0;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.key {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 10px 32px;
+  margin: 20px 0 0;
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--font-small);
+  list-style: none;
+}
+.key li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group {
+  margin-top: 32px;
+}
+.group h3 {
+  margin: 0 0 4px;
+  font-size: var(--font-body);
+  font-weight: 600;
+}
+.group > p {
+  max-width: 65ch;
+  margin: 0 0 12px;
+  color: var(--text-3);
+  font-size: var(--font-small);
+  text-wrap: pretty;
+}
+.table {
+  border-radius: var(--radius-card);
+}
+.table .row {
+  cursor: default;
+}

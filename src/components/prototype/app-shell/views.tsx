@@ -311,7 +311,11 @@ export function FundingRing({
   );
 }
 
-function AvailablePill({ category }: { category: Category }) {
+export function AvailablePill({
+  category,
+}: {
+  category: Pick<Category, "funding" | "available">;
+}) {
   return (
     <span className={styles.pill} data-state={category.funding}>
       {money(category.available)}
