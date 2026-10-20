@@ -4,7 +4,7 @@
 What is the label?
  ├── A category's funding state or available amount
  │    → a funding component (AvailablePill, FundingRing); never a Tag
- ├── A number of things waiting → Badge
+ ├── Something waiting for the user to check → review dot
  └── A short word about a row or property → Tag
 ```
 
@@ -47,28 +47,31 @@ twice.
 <Tag tone="amber">Underfunded</Tag>
 ```
 
-## Badge
+## Review dot
 
-`src/components/ui/badge.tsx`. Tones: `neutral`, `accent`. Nothing else
-exists.
+Something waiting for the user to check, like transactions to review, is a
+6px dot in `--text-secondary`: `.reviewDot` with `data-on` in the prototype.
+It says "look here", never how many. Never a number and never the accent:
+a colored count in the sidebar competes with money states for attention,
+and the register already shows what is waiting.
 
-- `accent` for work waiting on the user, like transactions to review in the
-  sidebar. At most one accent badge per list, or none of them stand out.
-- `neutral` for a plain count.
-
-Pass `aria-label` saying what the number counts; a bare "3" means nothing to
-a screen reader. Hide the badge when the count is 0.
+Give a standalone dot `role="img"` and an `aria-label` saying what is
+waiting. Drop the dot when nothing is.
 
 ```tsx
-// Correct: countLabel is `${reviewCount} to review`
+// Correct
 {
-  count ? (
-    <Badge tone="accent" aria-label={countLabel}>
-      {count}
-    </Badge>
-  ) : null;
+  toReview && (
+    <span
+      className={styles.reviewDot}
+      data-on
+      data-inline
+      role="img"
+      aria-label="Transactions to review"
+    />
+  );
 }
 
-// Incorrect: a count with no meaning and a zero that shouldn't show
-<Badge tone="accent">{0}</Badge>;
+// Incorrect: a count, in the accent color
+<span className={styles.count}>{reviewCount}</span>;
 ```

@@ -12,7 +12,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "~/components/ui/badge";
 import { IconButton } from "~/components/ui/icon-button";
 import { money } from "./model";
 import { useShellData } from "./shell-data";
@@ -127,8 +126,7 @@ export function Sidebar({
           <NavItem
             icon={ArrowLeftRightIcon}
             label="All accounts"
-            count={reviewCount}
-            countLabel={`${reviewCount} to review`}
+            toReview={reviewCount > 0}
             current={screen.type === "register" && !screen.accountId}
             onClick={() => onNavigate({ type: "register", accountId: null })}
           />
@@ -223,8 +221,7 @@ function NavItem({
   icon: Icon,
   label,
   current,
-  count,
-  countLabel,
+  toReview,
   value,
   warning,
   onClick,
@@ -232,8 +229,8 @@ function NavItem({
   icon?: LucideIcon;
   label: string;
   current: boolean;
-  count?: number;
-  countLabel?: string;
+  // Transactions are waiting for review.
+  toReview?: boolean;
   value?: string;
   warning?: boolean;
   onClick: () => void;
@@ -256,11 +253,15 @@ function NavItem({
           />
         )}
         {value && <span className={styles.navValue}>{value}</span>}
-        {count ? (
-          <Badge tone="accent" aria-label={countLabel}>
-            {count}
-          </Badge>
-        ) : null}
+        {toReview && (
+          <span
+            className={styles.reviewDot}
+            data-on
+            data-inline
+            role="img"
+            aria-label="Transactions to review"
+          />
+        )}
       </button>
     </li>
   );

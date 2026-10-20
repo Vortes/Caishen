@@ -31,6 +31,9 @@ type FieldProps = {
   disabled?: boolean;
   readOnly?: boolean;
   inputRef?: Ref<HTMLInputElement>;
+  // Moves on to the next field after a click or Enter takes an option.
+  // Tab already moves on by itself.
+  onPicked?: (value: string) => void;
 };
 
 // The list under a field. Focus stays in the field, which moves the active
@@ -41,6 +44,7 @@ function OptionList({
   listId,
   label,
   anchor,
+  wide = false,
   children,
 }: {
   open: boolean;
@@ -48,6 +52,8 @@ function OptionList({
   listId: string;
   label: string;
   anchor: ReactNode;
+  // Room for a long name beside its balance.
+  wide?: boolean;
   children: ReactNode;
 }) {
   const container = usePortalContainer();
@@ -68,6 +74,7 @@ function OptionList({
           role="listbox"
           aria-label={label}
           className={styles.listPopover}
+          data-wide={wide || undefined}
           align="start"
           sideOffset={4}
           collisionPadding={12}
@@ -102,7 +109,9 @@ function Option({
 }: {
   id: string;
   label: string;
-  selected: boolean;
+  // Absent for a suggestion, which is never the field's current choice, so
+  // its label lines up with the typed text instead of a check column.
+  selected?: boolean;
   active: boolean;
   disabled?: boolean;
   amount?: number;
@@ -113,17 +122,20 @@ function Option({
     <div
       id={id}
       role="option"
-      aria-selected={selected}
+      aria-selected={selected ?? false}
       aria-disabled={disabled ? true : undefined}
       data-active={active || undefined}
       className={styles.option}
+      data-suggestion={selected === undefined || undefined}
       onMouseMove={disabled ? undefined : onActivate}
       onClick={disabled ? undefined : onPick}
     >
-      <span className={styles.check} aria-hidden>
-        {selected && <CheckIcon size={13} strokeWidth={2.5} />}
-      </span>
-      <span className={shell.truncate}>{label}</span>
+      {selected !== undefined && (
+        <span className={styles.check} aria-hidden>
+          {selected && <CheckIcon size={13} strokeWidth={2.5} />}
+        </span>
+      )}
+      <span className={`${shell.truncate} ${styles.optionLabel}`}>{label}</span>
       {amount !== undefined && (
         <span className={styles.optionAmount} data-tone={tone(amount)}>
           {money(amount)}
@@ -134,7 +146,7 @@ function Option({
 }
 
 // Picks one option by typing to filter, like the move-money destination.
-// Tabbing in selects the current choice so typing replaces it; Enter or Tab
+// Arriving in the field opens its list, so typing filters it; Enter or Tab
 // takes the highlighted match, and Escape closes only the list.
 export function ChoiceField({
   id,
@@ -142,18 +154,17 @@ export function ChoiceField({
   value,
   options,
   placeholder,
-  searchPlaceholder,
   describedBy,
   invalid,
   disabled,
   readOnly,
   inputRef,
   onChange,
+  onPicked,
 }: FieldProps & {
   value: string;
   options: ChoiceOption[];
   placeholder: string;
-  searchPlaceholder: string;
   onChange: (value: string) => void;
 }) {
   const listId = `${id}-list`;
@@ -178,11 +189,12 @@ export function ChoiceField({
     setActive(null);
     setExpanded(true);
   };
-  const pick = (option: ChoiceOption) => {
+  const pick = (option: ChoiceOption, advance = true) => {
     if (option.disabled) return;
     onChange(option.value);
     setExpanded(false);
     setQuery("");
+    if (advance) onPicked?.(option.value);
   };
   const step = (by: number) => {
     const index = current ? pickable.indexOf(current) : -1;
@@ -207,7 +219,7 @@ export function ChoiceField({
       event.stopPropagation();
       setExpanded(false);
     } else if (event.key === "Tab" && open && search && current) {
-      pick(current);
+      pick(current, false);
     }
   };
 
@@ -218,6 +230,7 @@ export function ChoiceField({
       onClose={() => setExpanded(false)}
       listId={listId}
       label={label}
+      wide
       anchor={
         <div
           className={styles.well}
@@ -243,9 +256,11 @@ export function ChoiceField({
             aria-describedby={describedBy}
             disabled={disabled}
             readOnly={readOnly}
-            placeholder={open ? searchPlaceholder : placeholder}
+            placeholder={placeholder}
             value={open ? query : (selected?.label ?? "")}
-            onFocus={(event) => event.currentTarget.select()}
+            onFocus={() => {
+              if (!open) show();
+            }}
             onClick={() => {
               if (!open) show();
             }}
@@ -253,14 +268,6 @@ export function ChoiceField({
             onChange={(event) => show(event.target.value)}
             onKeyDown={onKeyDown}
           />
-          {!open && selected?.amount !== undefined && (
-            <span
-              className={styles.optionAmount}
-              data-tone={tone(selected.amount)}
-            >
-              {money(selected.amount)}
-            </span>
-          )}
           <ChevronDownIcon size={12} className={styles.chevron} aria-hidden />
         </div>
       }
@@ -301,47 +308,54 @@ export function ChoiceField({
   );
 }
 
-// Free text with the budget's earlier payees as suggestions. Suggestions are
-// only taken with the arrow keys or a click, so Enter still saves the form.
+// Free text with the budget's earlier payees as suggestions, most recent
+// first. Arriving in the field opens them before anything is typed.
+// Suggestions are only taken with the arrow keys or a click, so Enter on
+// typed text still saves the form.
 export function PayeeField({
   id,
   label,
   value,
   payees,
+  placeholder = "Who you paid or who paid you",
   describedBy,
   invalid,
   disabled,
   readOnly,
   inputRef,
   onChange,
+  onPicked,
 }: FieldProps & {
   value: string;
   payees: string[];
+  placeholder?: string;
   onChange: (value: string) => void;
 }) {
   const listId = `${id}-list`;
   const [expanded, setExpanded] = useState(false);
   const [active, setActive] = useState(-1);
   const search = value.trim().toLowerCase();
-  const suggestions = search
-    ? payees
-        .filter(
-          (payee) =>
-            payee.toLowerCase().includes(search) &&
-            payee.toLowerCase() !== search,
-        )
-        .sort(
-          (a, b) =>
-            Number(!a.toLowerCase().startsWith(search)) -
-            Number(!b.toLowerCase().startsWith(search)),
-        )
-        .slice(0, 8)
-    : [];
+  const suggestions = (
+    search
+      ? payees
+          .filter(
+            (payee) =>
+              payee.toLowerCase().includes(search) &&
+              payee.toLowerCase() !== search,
+          )
+          .sort(
+            (a, b) =>
+              Number(!a.toLowerCase().startsWith(search)) -
+              Number(!b.toLowerCase().startsWith(search)),
+          )
+      : payees
+  ).slice(0, 8);
   const open = expanded && suggestions.length > 0 && !disabled && !readOnly;
   const pick = (payee: string) => {
     onChange(payee);
     setExpanded(false);
     setActive(-1);
+    onPicked?.(payee);
   };
   return (
     <OptionList
@@ -369,8 +383,10 @@ export function PayeeField({
             aria-describedby={describedBy}
             disabled={disabled}
             readOnly={readOnly}
-            placeholder="Who you paid or who paid you"
+            placeholder={placeholder}
             value={value}
+            onFocus={() => setExpanded(true)}
+            onClick={() => setExpanded(true)}
             onBlur={() => setExpanded(false)}
             onChange={(event) => {
               onChange(event.target.value);
@@ -407,7 +423,6 @@ export function PayeeField({
             key={payee}
             id={`${listId}-${index}`}
             label={payee}
-            selected={false}
             active={index === active}
             onActivate={() => setActive(index)}
             onPick={() => pick(payee)}

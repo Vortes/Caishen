@@ -16,10 +16,6 @@ import type { Command } from "~/domain/engine";
 type Transaction = View["budget"]["transactions"][number];
 export type DraftField = keyof TransactionDraft;
 
-// Where the transaction editor opens: in place of the register row, or in
-// the details panel. The prototype offers both so they can be compared.
-export type TransactionPlacement = "register" | "inspector";
-
 // What the live workspace lends the shell for saving transactions: the
 // budget on screen and the production command path.
 export type TransactionSaver = {
@@ -44,17 +40,23 @@ export type TransactionSession = {
   pristine: TransactionDraft;
   fields: TransactionDraftFields;
   error: string;
-  detailsOpen: boolean;
+  // The date's calendar, open from the start on a new transaction.
+  calendarOpen: boolean;
 };
 
-type FocusTarget = DraftField | "placement" | "error";
+type FocusTarget = DraftField | "calendar" | "error";
 type FocusRequest = { id: number; target: FocusTarget; auto: boolean };
 
 const editableKinds: Transaction["kind"][] = ["purchase", "refund", "income"];
-const detailFields: DraftField[] = [
-  "expenseMonth",
-  "sharedCategoryId",
-  "ownShare",
+// The row's fields as they read on screen, so a failed save focuses the
+// first problem the user sees.
+const screenOrder: DraftField[] = [
+  "accountId",
+  "date",
+  "payee",
+  "categoryId",
+  "outflow",
+  "inflow",
 ];
 
 // Why a recorded transaction isn't edited here, by kind.
@@ -73,25 +75,13 @@ export function editGuidance(transaction: Transaction) {
         "This transaction is changed from its own action.");
 }
 
-function hasDetails(draft: TransactionDraft) {
-  return (
-    Boolean(draft.sharedCategoryId) ||
-    draft.expenseMonth !== draft.date.slice(0, 7)
-  );
-}
-
 export function useTransactionEntryController({
   saver,
-  placement,
-  onPlacementChange,
   reveal,
 }: {
   saver: TransactionSaver;
-  placement: TransactionPlacement;
-  onPlacementChange: (placement: TransactionPlacement) => void;
-  // Shows the editor's placement when it opens or moves, and puts the panels
-  // back when it closes (null).
-  reveal: (placement: TransactionPlacement | null) => void;
+  // Brings the register's editor row into view.
+  reveal: () => void;
 }) {
   const { view, holdOpen } = saver;
   const [session, setSession] = useState<TransactionSession | null>(null);
@@ -161,7 +151,6 @@ export function useTransactionEntryController({
     if (saving.current) return;
     setSession(null);
     attempt.current = null;
-    reveal(null);
     returning.current = restore;
     if (!restore) opener.current = null;
   };
@@ -205,10 +194,16 @@ export function useTransactionEntryController({
       pristine: draft,
       fields: {},
       error: "",
-      detailsOpen: hasDetails(draft),
+      calendarOpen: !transaction && Boolean(accountId),
     });
-    reveal(placement);
-    focus(transaction ? "categoryId" : "payee", true);
+    reveal();
+    // A new transaction starts on its first column. In one account's
+    // register that's the date, whose calendar never opens a touch keyboard;
+    // All accounts starts on the account.
+    focus(
+      transaction ? "categoryId" : accountId ? "calendar" : "accountId",
+      true,
+    );
     return true;
   };
 
@@ -274,15 +269,9 @@ export function useTransactionEntryController({
       command = attempt.current.command;
     } catch (failure) {
       if (failure instanceof TransactionDraftError) {
-        const keys = Object.keys(failure.fields) as DraftField[];
-        patch({
-          fields: failure.fields,
-          error: "",
-          detailsOpen:
-            session.detailsOpen ||
-            keys.some((key) => detailFields.includes(key)),
-        });
-        focus(keys[0] ?? "payee");
+        const first = screenOrder.find((key) => failure.fields[key]);
+        patch({ fields: failure.fields, error: "", calendarOpen: false });
+        focus(first ?? "payee");
       } else {
         patch({
           error:
@@ -324,7 +313,7 @@ export function useTransactionEntryController({
                 pristine: next,
                 fields: {},
                 error: "",
-                detailsOpen: current.detailsOpen && hasDetails(next),
+                calendarOpen: false,
               }
             : current,
         );
@@ -341,22 +330,13 @@ export function useTransactionEntryController({
     }
   };
 
-  const setPlacement = (next: TransactionPlacement) => {
-    if (next === placement) return;
-    onPlacementChange(next);
-    if (session) {
-      reveal(next);
-      focus("placement");
-    }
-  };
-
   // Leaving the register would hide unsaved work, so it waits for Save or
   // Cancel. An untouched editor just closes. Returns whether to stay.
   const holdForDraft = () => {
     if (!session) return false;
     if (dirty || submitting || saving.current) {
       patch({ error: "Save or cancel this transaction first." });
-      reveal(placement);
+      reveal();
       focus("error");
       return true;
     }
@@ -367,8 +347,6 @@ export function useTransactionEntryController({
   return {
     view,
     busy: saver.busy,
-    placement,
-    setPlacement,
     session,
     latest,
     removed,
@@ -376,7 +354,7 @@ export function useTransactionEntryController({
     submitting,
     start,
     change,
-    setDetailsOpen: (detailsOpen: boolean) => patch({ detailsOpen }),
+    setCalendarOpen: (calendarOpen: boolean) => patch({ calendarOpen }),
     submit,
     cancel: () => close(),
     holdForDraft,

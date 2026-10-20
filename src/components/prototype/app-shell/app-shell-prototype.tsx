@@ -31,7 +31,6 @@ import {
   TransactionEntryProvider,
   useTransactionEntryController,
   type TransactionEntry,
-  type TransactionPlacement,
   type TransactionSaver,
 } from "./transaction-entry";
 import { Button } from "~/components/ui/button";
@@ -72,8 +71,6 @@ type Settings = {
   palette: string | null;
   // The plan's focused view; like YNAB, remembered on this device.
   planView: PlanViewId | null;
-  // Where the transaction editor opens, while both are being compared.
-  transactionPlacement: TransactionPlacement;
 };
 
 const defaults: Settings = {
@@ -82,7 +79,6 @@ const defaults: Settings = {
   theme: "dark",
   palette: null,
   planView: null,
-  transactionPlacement: "register",
 };
 
 function isTyping(target: EventTarget | null) {
@@ -215,40 +211,11 @@ export function AppShellPrototype({
         : setSettings((value) => ({ ...value, inspector: next })),
   });
 
-  // Whether the transaction editor opened the details panel, so closing it
-  // puts the panel back.
-  const revealedInspector = useRef(false);
   const entry = useTransactionEntryController({
     saver: transactionSaver,
-    placement: settings.transactionPlacement,
-    onPlacementChange: (transactionPlacement) =>
-      setSettings((value) => ({ ...value, transactionPlacement })),
-    reveal: (placement) => {
-      if (placement === "inspector") {
-        if (narrow) {
-          if (!drawer.inspector) revealedInspector.current = true;
-          setDrawer({ sidebar: false, inspector: true });
-        } else if (settings.inspector.collapsed) {
-          revealedInspector.current = true;
-          setSettings((value) => ({
-            ...value,
-            inspector: { ...value.inspector, collapsed: false },
-          }));
-        }
-        return;
-      }
-      const hide = revealedInspector.current;
-      revealedInspector.current = false;
-      if (narrow)
-        setDrawer((value) => ({
-          sidebar: false,
-          inspector: placement === null && !hide && value.inspector,
-        }));
-      else if (hide)
-        setSettings((value) => ({
-          ...value,
-          inspector: { ...value.inspector, collapsed: true },
-        }));
+    // On a narrow screen the drawers cover the register.
+    reveal: () => {
+      if (narrow) setDrawer({ sidebar: false, inspector: false });
     },
   });
 
@@ -518,7 +485,7 @@ export function AppShellPrototype({
                     </Button>
                   )}
                   {screen.type === "register" && (
-                    <Tooltip label="Add a transaction" shortcut="N">
+                    <AddTransactionTooltip editing={Boolean(entry.session)}>
                       <Button
                         size="sm"
                         aria-label={phone ? "Add transaction" : undefined}
@@ -535,7 +502,7 @@ export function AppShellPrototype({
                         <PlusIcon aria-hidden />
                         {phone ? "Add" : "Add transaction"}
                       </Button>
-                    </Tooltip>
+                    </AddTransactionTooltip>
                   )}
                   <div className={styles.toolbarActions}>
                     {screen.type !== "reflect" && (
@@ -749,6 +716,23 @@ export function AppShellPrototype({
         </div>
       </ActionProviders>
     </ShellDataProvider>
+  );
+}
+
+// While the editor is open Add is disabled, and its tooltip, left open
+// under the pointer that clicked it, would take the editor's Escape.
+function AddTransactionTooltip({
+  editing,
+  children,
+}: {
+  editing: boolean;
+  children: ReactNode;
+}) {
+  if (editing) return children;
+  return (
+    <Tooltip label="Add a transaction" shortcut="N">
+      {children}
+    </Tooltip>
   );
 }
 

@@ -104,6 +104,16 @@ void test("inline outflows retain exact cents in account and envelope balances",
   assert.equal(setup.view().personalSpending, 2_502);
 });
 
+void test("a transaction entered by hand needs no review", () => {
+  const setup = fixture();
+  const entered = setup.save(setup.draft());
+  assert.equal(entered.reviewed, true);
+  assert.equal(
+    setup.view().budget.transactions.filter((item) => !item.reviewed).length,
+    0,
+  );
+});
+
 void test("cash income enters Ready to Assign while a categorized inflow refunds spending", () => {
   const setup = fixture();
   const income = setup.save(
@@ -157,7 +167,7 @@ void test("a shared override conserves the charge and creates the matching partn
   );
 });
 
-void test("editing preserves the original shared ratio and appends one unreviewed revision", () => {
+void test("editing preserves the original shared ratio and approval and appends one revision", () => {
   const setup = fixture(true);
   const original = setup.save(
     setup.draft({ outflow: "100.00", sharedCategoryId: "shared-food" }),
@@ -171,7 +181,7 @@ void test("editing preserves the original shared ratio and appends one unreviewe
   const corrected = setup.save({ ...draft, outflow: "200.00" }, current);
   assert.equal(corrected.id, original.id);
   assert.equal(corrected.revision, 2);
-  assert.equal(corrected.reviewed, false);
+  assert.equal(corrected.reviewed, true);
   assert.equal(corrected.history.length, 2);
   assert.deepEqual(corrected.shares, { alan: 5_000, partner: 15_000 });
   assert.deepEqual(corrected.splitWeights, original.splitWeights);

@@ -1,29 +1,16 @@
 "use client";
 
-import {
-  ChevronDownIcon,
-  ChevronUpIcon,
-  CircleAlertIcon,
-  PencilIcon,
-} from "lucide-react";
+import { CircleAlertIcon, PencilIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
-import { formatMoney } from "~/components/budget/format";
-import {
-  READY_TO_ASSIGN,
-  type TransactionDraft,
-} from "~/components/transactions/transaction-draft";
+import { today } from "~/components/budget/format";
+import { READY_TO_ASSIGN } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
-import {
-  SegmentedControl,
-  SegmentedControlItem,
-} from "~/components/ui/segmented-control";
 import { Tooltip } from "~/components/ui/tooltip";
+import { DateField, type DateFieldHandle } from "./transaction-date";
 import {
   editGuidance,
   useTransactionEntry,
   type DraftField,
-  type TransactionPlacement,
 } from "./transaction-entry";
 import {
   ChoiceField,
@@ -33,24 +20,16 @@ import {
 import shell from "./shell.module.css";
 import styles from "./transaction-entry.module.css";
 
-// The open editor in one placement: a row in the register, or a card in the
-// details panel. Both show the same draft, so switching keeps it.
+// The open editor: a row in the register, under its column headers.
+// accountColumn is whether the register shows accounts.
 export function TransactionEditor({
-  placement,
+  accountColumn = false,
 }: {
-  placement: TransactionPlacement;
+  accountColumn?: boolean;
 }) {
   const { session } = useTransactionEntry();
   if (!session) return null;
-  return placement === "register" ? (
-    <div className={styles.rowEditor}>
-      <TransactionForm key={session.key} placement={placement} />
-    </div>
-  ) : (
-    <Card>
-      <TransactionForm key={session.key} placement={placement} />
-    </Card>
-  );
+  return <TransactionForm key={session.key} accountColumn={accountColumn} />;
 }
 
 // The Edit action on a selected transaction, or why it isn't edited here.
@@ -82,9 +61,9 @@ export function TransactionEditAction({
   );
 }
 
-type Control = DraftField | "placement" | "error";
+type Control = DraftField | "error";
 
-function TransactionForm({ placement }: { placement: TransactionPlacement }) {
+function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const entry = useTransactionEntry();
   const session = entry.session!;
   const { view, submitting, removed } = entry;
@@ -92,21 +71,24 @@ function TransactionForm({ placement }: { placement: TransactionPlacement }) {
   const editing = Boolean(initial);
   const formId = useId();
   const controls = useRef<Partial<Record<Control, HTMLElement | null>>>({});
+  const dateField = useRef<DateFieldHandle>(null);
   const register = (name: Control) => (element: HTMLElement | null) => {
     controls.current[name] = element;
   };
 
   // Takes the controller's pending focus move once this editor is on screen.
-  // Opening focuses the first field only with a mouse or trackpad, so a
-  // touch keyboard doesn't cover the form before it's read.
+  // Opening focuses a text field only with a mouse or trackpad, so a touch
+  // keyboard doesn't cover the form before it's read. The calendar has no
+  // keyboard, so it takes focus everywhere.
   useEffect(() => {
     const request = entry.takeFocus();
     if (!request) return;
+    if (request.target === "calendar") {
+      dateField.current?.focusCalendar();
+      return;
+    }
     if (request.auto && !window.matchMedia("(pointer: fine)").matches) return;
-    let element = controls.current[request.target];
-    if (request.target === "placement")
-      element =
-        element?.querySelector<HTMLElement>('[aria-checked="true"]') ?? element;
+    const element = controls.current[request.target];
     element?.focus({ preventScroll: true });
     element?.scrollIntoView({ block: "nearest" });
   });
@@ -154,131 +136,213 @@ function TransactionForm({ placement }: { placement: TransactionPlacement }) {
       ...new Set(
         view.budget.transactions
           .filter((item) => !item.removed)
+          .sort((a, b) => b.date.localeCompare(a.date))
           .map((item) => item.payee),
       ),
     ],
     [view.budget.transactions],
   );
+  const startDate = `${view.budget.startMonth}-01`;
+  const minDate =
+    account && account.date > startDate ? account.date : startDate;
 
   const id = (field: DraftField) => `${formId}-${field}`;
-  const described = (field: DraftField, hint?: boolean) =>
-    [
-      fields[field] ? `${id(field)}-error` : null,
-      hint ? `${id(field)}-hint` : null,
-    ]
-      .filter(Boolean)
-      .join(" ") || undefined;
-  const field = (
+  // One message about both amounts shows once, across their two columns.
+  const amountError =
+    fields.outflow && fields.outflow === fields.inflow ? fields.outflow : "";
+  const amountErrorId = `${formId}-amount-error`;
+  const shownOnce = (field: DraftField) =>
+    Boolean(amountError) && (field === "outflow" || field === "inflow");
+  const described = (field: DraftField) =>
+    shownOnce(field)
+      ? amountErrorId
+      : fields[field]
+        ? `${id(field)}-error`
+        : undefined;
+  const fieldError = (name: DraftField) =>
+    !shownOnce(name) &&
+    fields[name] && (
+      <p id={`${id(name)}-error`} className={styles.fieldError}>
+        <CircleAlertIcon size={13} aria-hidden />
+        {fields[name]}
+      </p>
+    );
+  // A field in the register row, under its column. The column header names
+  // it on screen; the label stays for screen readers, and shows on a phone
+  // where the row stacks.
+  const cell = (
     name: DraftField,
+    column: string,
     label: string,
     control: ReactNode,
-    hint?: string,
   ) => (
-    <div className={styles.field} data-area={name}>
-      <label htmlFor={id(name)} className={styles.label}>
+    <div className={styles.cell} data-column={column}>
+      <label htmlFor={id(name)} className={styles.cellLabel}>
         {label}
       </label>
       {control}
-      {fields[name] && (
-        <p id={`${id(name)}-error`} className={styles.fieldError}>
-          <CircleAlertIcon size={13} aria-hidden />
-          {fields[name]}
-        </p>
-      )}
-      {hint && (
-        <p id={`${id(name)}-hint`} className={styles.hint}>
-          {hint}
-        </p>
-      )}
+      {fieldError(name)}
     </div>
-  );
-  const textInput = (
-    name: DraftField,
-    props: {
-      type?: string;
-      inputMode?: "decimal";
-      placeholder?: string;
-      min?: string;
-      hint?: boolean;
-    } = {},
-  ) => (
-    <input
-      ref={register(name)}
-      id={id(name)}
-      name={name}
-      className={styles.input}
-      type={props.type ?? "text"}
-      inputMode={props.inputMode}
-      placeholder={props.placeholder}
-      min={props.min}
-      autoComplete="off"
-      spellCheck={false}
-      readOnly={submitting}
-      aria-invalid={Boolean(fields[name]) || undefined}
-      aria-describedby={described(name, props.hint)}
-      value={draft[name]}
-      onChange={(event) => {
-        const value = event.target.value;
-        // Outflow and inflow are one amount: typing in one clears the other.
-        entry.change({
-          [name]: value,
-          ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
-          ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
-        });
-      }}
-    />
   );
   const amount = (name: "outflow" | "inflow") => (
-    <div className={styles.well} data-invalid={fields[name] ? "" : undefined}>
-      <span className={styles.prefix} aria-hidden>
-        $
-      </span>
-      {textInput(name, { inputMode: "decimal", placeholder: "0.00" })}
-    </div>
-  );
-  const select = (
-    name: "status" | "sharedCategoryId",
-    options: { value: string; label: string; disabled?: boolean }[],
-    onChange: (value: string) => void,
-    hint?: boolean,
-  ) => (
     <div
       className={styles.well}
       data-invalid={fields[name] ? "" : undefined}
-      data-select
+      data-amount
     >
-      <select
+      <span className={styles.prefix} aria-hidden>
+        $
+      </span>
+      <input
         ref={register(name)}
         id={id(name)}
         name={name}
         className={styles.input}
-        disabled={submitting}
+        inputMode="decimal"
+        placeholder={name === "outflow" ? "Outflow" : "Inflow"}
+        autoComplete="off"
+        spellCheck={false}
+        readOnly={submitting}
         aria-invalid={Boolean(fields[name]) || undefined}
-        aria-describedby={described(name, hint)}
+        aria-describedby={described(name)}
         value={draft[name]}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          const value = event.target.value;
+          // Outflow and inflow are one amount: typing in one clears the other.
+          entry.change({
+            [name]: value,
+            ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
+            ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
+          });
+        }}
+      />
+    </div>
+  );
+  // Taking a choice moves on to the next field, which opens its own list.
+  // Touch keeps focus where it is, so a keyboard doesn't open over the form.
+  const advance = (to: DraftField) => {
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    controls.current[to]?.focus({ preventScroll: true });
+  };
+  const dateControl = (
+    <DateField
+      handle={dateField}
+      id={id("date")}
+      label="Date"
+      value={draft.date}
+      min={minDate}
+      today={today(view.budget.settings.timezone)}
+      open={session.calendarOpen}
+      inputRef={register("date")}
+      invalid={Boolean(fields.date)}
+      describedBy={described("date")}
+      readOnly={submitting}
+      onOpenChange={entry.setCalendarOpen}
+      onChange={(date) => entry.change({ date })}
+      onPicked={() => advance("payee")}
+      onAdvance={() => controls.current.payee?.focus({ preventScroll: true })}
+    />
+  );
+  const payeeControl = (
+    <PayeeField
+      id={id("payee")}
+      label="Payee"
+      value={draft.payee}
+      payees={payees}
+      placeholder="Payee"
+      inputRef={register("payee")}
+      invalid={Boolean(fields.payee)}
+      describedBy={described("payee")}
+      readOnly={submitting}
+      onChange={(payee) => entry.change({ payee })}
+      onPicked={() => advance("categoryId")}
+    />
+  );
+  const categoryControl = (
+    <ChoiceField
+      id={id("categoryId")}
+      label="Category"
+      value={draft.categoryId}
+      options={categoryOptions}
+      placeholder="Category"
+      inputRef={register("categoryId")}
+      invalid={Boolean(fields.categoryId)}
+      describedBy={described("categoryId")}
+      readOnly={submitting}
+      onChange={(categoryId) => entry.change({ categoryId })}
+      // Ready to Assign only takes an inflow.
+      onPicked={(categoryId) =>
+        advance(categoryId === READY_TO_ASSIGN ? "inflow" : "outflow")
+      }
+    />
+  );
+  const accountControl = (
+    <ChoiceField
+      id={id("accountId")}
+      label="Account"
+      value={draft.accountId}
+      options={accountOptions}
+      placeholder="Account"
+      inputRef={register("accountId")}
+      invalid={Boolean(fields.accountId)}
+      describedBy={described("accountId")}
+      disabled={editing}
+      readOnly={submitting}
+      onChange={(accountId) => entry.change({ accountId })}
+      onPicked={() => {
+        if (!window.matchMedia("(pointer: fine)").matches) return;
+        entry.setCalendarOpen(true);
+        dateField.current?.focusCalendar();
+      }}
+    />
+  );
+  const notice = removed && (
+    <p className={styles.notice} role="alert">
+      This transaction was deleted in another session, so these changes can’t be
+      saved. Cancel to close the editor.
+    </p>
+  );
+  const error = session.error && (
+    <p
+      ref={register("error")}
+      tabIndex={-1}
+      className={styles.formError}
+      role="status"
+    >
+      <CircleAlertIcon size={13} aria-hidden />
+      {session.error}
+    </p>
+  );
+  const actions = (
+    <div className={styles.actions}>
+      <Button size="sm" disabled={submitting} onClick={entry.cancel}>
+        Cancel
+      </Button>
+      {!editing && (
+        <Button
+          size="sm"
+          disabled={removed || submitting}
+          onClick={() => void entry.submit(true)}
+        >
+          Save and add another
+        </Button>
+      )}
+      <Button
+        variant="primary"
+        size="sm"
+        type="submit"
+        disabled={removed || submitting}
       >
-        {options.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-            disabled={option.disabled}
-          >
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDownIcon size={12} className={styles.chevron} aria-hidden />
+        {submitting ? "Saving…" : "Save"}
+      </Button>
     </div>
   );
 
-  const detailsId = `${formId}-details`;
-  const ownShare = initial?.shares?.[view.budget.userId];
+  const title = editing ? "Edit transaction" : "New transaction";
   return (
     <form
       id={formId}
       className={styles.form}
-      data-placement={placement}
       aria-labelledby={`${formId}-title`}
       noValidate
       onSubmit={(event) => {
@@ -297,239 +361,32 @@ function TransactionForm({ placement }: { placement: TransactionPlacement }) {
         entry.cancel();
       }}
     >
-      <div className={styles.header}>
-        <h2 id={`${formId}-title`} className={styles.title}>
-          {editing ? "Edit transaction" : "New transaction"}
-        </h2>
-        <div ref={register("placement")}>
-          <SegmentedControl
-            aria-label="Editor placement"
-            value={placement}
-            onValueChange={(next) =>
-              entry.setPlacement(next as TransactionPlacement)
-            }
-          >
-            <SegmentedControlItem value="register">
-              Register row
-            </SegmentedControlItem>
-            <SegmentedControlItem value="inspector">
-              Inspector
-            </SegmentedControlItem>
-          </SegmentedControl>
-        </div>
-      </div>
-
-      {removed && (
-        <p className={styles.notice} role="alert">
-          This transaction was deleted in another session, so these changes
-          can’t be saved. Cancel to close the editor.
-        </p>
-      )}
-
-      <div className={styles.fields} data-placement={placement}>
-        {field(
-          "date",
-          "Date",
-          <div
-            className={styles.well}
-            data-invalid={fields.date ? "" : undefined}
-          >
-            {textInput("date", {
-              type: "date",
-              min: account?.date ?? `${view.budget.startMonth}-01`,
-            })}
-          </div>,
-        )}
-        {field(
-          "payee",
-          "Payee",
-          <PayeeField
-            id={id("payee")}
-            label="Payee"
-            value={draft.payee}
-            payees={payees}
-            inputRef={register("payee")}
-            invalid={Boolean(fields.payee)}
-            describedBy={described("payee")}
-            readOnly={submitting}
-            onChange={(payee) => entry.change({ payee })}
-          />,
-        )}
-        {field(
-          "categoryId",
-          "Category",
-          <ChoiceField
-            id={id("categoryId")}
-            label="Category"
-            value={draft.categoryId}
-            options={categoryOptions}
-            placeholder="Choose a category"
-            searchPlaceholder="Find a category"
-            inputRef={register("categoryId")}
-            invalid={Boolean(fields.categoryId)}
-            describedBy={described("categoryId")}
-            readOnly={submitting}
-            onChange={(categoryId) => entry.change({ categoryId })}
-          />,
-        )}
-        {field("outflow", "Outflow", amount("outflow"))}
-        {field("inflow", "Inflow", amount("inflow"))}
-        {field(
-          "accountId",
-          "Account",
-          <ChoiceField
-            id={id("accountId")}
-            label="Account"
-            value={draft.accountId}
-            options={accountOptions}
-            placeholder="Choose an account"
-            searchPlaceholder="Find an account"
-            inputRef={register("accountId")}
-            invalid={Boolean(fields.accountId)}
-            describedBy={described("accountId", editing)}
-            disabled={editing}
-            readOnly={submitting}
-            onChange={(accountId) => entry.change({ accountId })}
-          />,
-          editing ? "A saved transaction stays in its account." : undefined,
-        )}
-        {field(
-          "status",
-          "Bank status",
-          select(
-            "status",
-            [
-              { value: "posted", label: "Posted" },
-              { value: "pending", label: "Pending" },
-            ],
-            (status) =>
-              entry.change({ status: status as TransactionDraft["status"] }),
-          ),
+      <h2 id={`${formId}-title`} className="sr-only">
+        {title}
+      </h2>
+      {notice}
+      <div
+        className={`${shell.txColumns} ${styles.entryRow}`}
+        data-accounts={accountColumn || undefined}
+      >
+        {accountColumn &&
+          cell("accountId", "account", "Account", accountControl)}
+        {cell("date", "date", "Date", dateControl)}
+        {cell("payee", "payee", "Payee", payeeControl)}
+        {cell("categoryId", "category", "Category", categoryControl)}
+        {cell("outflow", "outflow", "Outflow", amount("outflow"))}
+        {cell("inflow", "inflow", "Inflow", amount("inflow"))}
+        <span data-column="status" aria-hidden />
+        {amountError && (
+          <p id={amountErrorId} className={styles.amountError}>
+            <CircleAlertIcon size={13} aria-hidden />
+            {amountError}
+          </p>
         )}
       </div>
-
-      <div className={styles.detailsToggle}>
-        <Button
-          variant="quiet"
-          size="sm"
-          aria-expanded={session.detailsOpen}
-          aria-controls={detailsId}
-          onClick={() => entry.setDetailsOpen(!session.detailsOpen)}
-        >
-          {session.detailsOpen ? (
-            <ChevronUpIcon aria-hidden />
-          ) : (
-            <ChevronDownIcon aria-hidden />
-          )}
-          {session.detailsOpen ? "Fewer details" : "More details"}
-        </Button>
-      </div>
-      {session.detailsOpen && (
-        <div id={detailsId} className={styles.details}>
-          {field(
-            "expenseMonth",
-            "Expense belongs to",
-            <div
-              className={styles.well}
-              data-invalid={fields.expenseMonth ? "" : undefined}
-            >
-              {textInput("expenseMonth", { type: "month", hint: true })}
-            </div>,
-            "Use the due month for rent. The payment date stays in your account.",
-          )}
-          {view.sharedCategories.length > 0 &&
-            field(
-              "sharedCategoryId",
-              "Shared category",
-              select(
-                "sharedCategoryId",
-                [
-                  {
-                    value: "",
-                    label: "Personal expense",
-                    disabled: Boolean(initial?.sharedCategoryId),
-                  },
-                  ...view.sharedCategories.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                  })),
-                ],
-                (sharedCategoryId) => {
-                  const next = view.sharedCategories.find(
-                    (item) => item.id === sharedCategoryId,
-                  );
-                  entry.change({
-                    sharedCategoryId,
-                    ownShare: "",
-                    ...(next
-                      ? {
-                          categoryId:
-                            next.categoryIds[view.budget.userId] ?? "",
-                        }
-                      : {}),
-                  });
-                },
-                true,
-              ),
-              "A shared expense uses its paired budget category.",
-            )}
-          {draft.sharedCategoryId &&
-            field(
-              "ownShare",
-              "Your share (optional)",
-              <div
-                className={styles.well}
-                data-invalid={fields.ownShare ? "" : undefined}
-              >
-                <span className={styles.prefix} aria-hidden>
-                  $
-                </span>
-                {textInput("ownShare", {
-                  inputMode: "decimal",
-                  placeholder: "Use the category split",
-                  hint: true,
-                })}
-              </div>,
-              ownShare !== undefined
-                ? `Your original share was ${formatMoney(ownShare)}. Leave blank to keep the original split.`
-                : "The rest belongs to your partner. Leave blank to use the category split.",
-            )}
-        </div>
-      )}
-
-      {session.error && (
-        <p
-          ref={register("error")}
-          tabIndex={-1}
-          className={styles.formError}
-          role="status"
-        >
-          <CircleAlertIcon size={13} aria-hidden />
-          {session.error}
-        </p>
-      )}
-
-      <div className={styles.footer}>
-        <Button size="sm" disabled={submitting} onClick={entry.cancel}>
-          Cancel
-        </Button>
-        {!editing && (
-          <Button
-            size="sm"
-            disabled={removed || submitting}
-            onClick={() => void entry.submit(true)}
-          >
-            Save and add another
-          </Button>
-        )}
-        <Button
-          variant="primary"
-          size="sm"
-          type="submit"
-          disabled={removed || submitting}
-        >
-          {submitting ? "Saving…" : "Save"}
-        </Button>
+      <div className={styles.rowFooter}>
+        {error}
+        {actions}
       </div>
     </form>
   );

@@ -24,8 +24,7 @@ import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import type { Screen } from "./sidebar";
-import { useTransactionEntry } from "./transaction-entry";
-import { TransactionEditAction, TransactionEditor } from "./transaction-form";
+import { TransactionEditAction } from "./transaction-form";
 import { FundingRing } from "./views";
 import styles from "./shell.module.css";
 
@@ -39,7 +38,6 @@ export function Inspector({
   checked: string[];
 }) {
   const { categories, transactions, loans, readyToAssign } = useShellData();
-  const entry = useTransactionEntry();
   if (screen.type === "plan") {
     // The plan's selection is its checked rows: one shows that category,
     // several show their combined details.
@@ -61,8 +59,6 @@ export function Inspector({
     );
   }
   if (screen.type === "register") {
-    if (entry.session && entry.placement === "inspector")
-      return <TransactionEditor placement="inspector" />;
     const transaction = transactions.find((item) => item.id === selectedId);
     return transaction ? (
       <TransactionDetails key={transaction.id} item={transaction} />

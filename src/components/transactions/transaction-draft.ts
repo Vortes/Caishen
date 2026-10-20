@@ -170,9 +170,9 @@ export function buildTransactionDraftCommand({
     else if (account?.kind === "credit")
       fields.categoryId =
         "Use a card payment or statement credit for card inflows.";
-  } else if (!category || category.pairedAccountId || category.pairedLoanId)
-    fields.categoryId =
-      "Choose a spending category or Ready to Assign for a cash inflow.";
+  } else if (!categoryId) fields.categoryId = "Choose a category.";
+  else if (!category || category.pairedAccountId || category.pairedLoanId)
+    fields.categoryId = "Choose a spending category or Ready to Assign.";
   if (
     transaction?.categoryId &&
     (categoryId === READY_TO_ASSIGN || !categoryId)
@@ -236,7 +236,6 @@ export function buildTransactionDraftCommand({
     expenseMonth: expenseMonth || undefined,
     sharedCategoryId: sharedCategoryId || undefined,
     shares,
-    reviewed: false,
     revision: transaction ? transaction.revision + 1 : undefined,
   };
 }
