@@ -9,6 +9,7 @@ import {
   type AccountingState,
   type PersonalLedger,
 } from "./shared-ledger";
+import { personalSpendingEntries } from "./spending";
 
 const identifier = z.string().min(1).max(160);
 const cents = z.number().int().safe();
@@ -1855,43 +1856,19 @@ function projectAccountingState(
       .filter((item) => item.creditorId === userId)
       .map((item) => item.outstanding),
   );
-  let personalSpending = 0;
+  const personalSpending = sum(
+    personalSpendingEntries(book, userId)
+      .filter((entry) => entry.month === month)
+      .map((entry) => entry.amount),
+  );
   let amountPaid = 0;
   let earnings = 0;
-  const sharedPurchases = ledgerSharedPurchases(book);
-  for (const owner of ledgerMembers(book)) {
-    if (owner.userId !== userId) {
-      for (const transaction of sharedPurchases)
-        if (
-          transaction.payerId === owner.userId &&
-          transaction.expenseMonth === month &&
-          transaction.shares[userId]
-        )
-          personalSpending = safe(
-            personalSpending + transaction.shares[userId],
-          );
-      continue;
-    }
-    for (const transaction of budget.transactions.filter(active)) {
-      if (transaction.expenseMonth !== month) continue;
-      if (transaction.kind === "income" && transaction.status === "posted")
-        earnings = safe(earnings + transaction.amount);
-      if (transaction.kind === "purchase" || transaction.kind === "refund") {
-        amountPaid = safe(amountPaid - transaction.amount);
-        personalSpending = safe(
-          personalSpending +
-            (transaction.shares?.[userId] ?? -transaction.amount),
-        );
-      }
-      if (transaction.kind === "loan-payment")
-        personalSpending = safe(
-          personalSpending +
-            (budget.loans
-              .flatMap((loan) => loan.payments)
-              .find((payment) => payment.id === transaction.linkedId)
-              ?.interest ?? 0),
-        );
-    }
+  for (const transaction of budget.transactions.filter(active)) {
+    if (transaction.expenseMonth !== month) continue;
+    if (transaction.kind === "income" && transaction.status === "posted")
+      earnings = safe(earnings + transaction.amount);
+    if (transaction.kind === "purchase" || transaction.kind === "refund")
+      amountPaid = safe(amountPaid - transaction.amount);
   }
   const result = {
     budget: structuredClone(budget),
