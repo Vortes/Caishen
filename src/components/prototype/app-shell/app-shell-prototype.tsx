@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
 import { Inspector } from "./inspector";
+import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
 import type { ShellData } from "./model";
 import { ShellDataProvider } from "./shell-data";
 import { Tip, TooltipLayer } from "./tooltip";
@@ -47,12 +48,16 @@ type Settings = {
   sidebar: PanelState;
   inspector: PanelState;
   theme: Theme;
+  // A Monkeytype palette name, applied over the dark theme; null keeps the
+  // shell's own colors.
+  palette: string | null;
 };
 
 const defaults: Settings = {
   sidebar: { width: SIDEBAR.defaultWidth, collapsed: false },
   inspector: { width: INSPECTOR.defaultWidth, collapsed: false },
   theme: "dark",
+  palette: null,
 };
 
 function isTyping(target: EventTarget | null) {
@@ -236,6 +241,21 @@ export function AppShellPrototype({
     setDrawer({ sidebar: false, inspector: false });
   };
 
+  // Flip colors in one frame instead of letting each control run its own
+  // color transition.
+  const switchColors = (change: Partial<Settings>) => {
+    const root = rootRef.current;
+    if (root) root.dataset.switching = "";
+    setSettings((value) => ({ ...value, ...change }));
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (root) delete root.dataset.switching;
+      }),
+    );
+  };
+  const palette =
+    settings.theme === "dark" ? findPalette(settings.palette) : null;
+
   const account =
     screen.type === "register"
       ? accounts.find((item) => item.id === screen.accountId)
@@ -250,6 +270,8 @@ export function AppShellPrototype({
         ref={attachRoot}
         className={styles.root}
         data-theme={settings.theme}
+        data-palette={palette?.name}
+        style={palette ? paletteVars(palette) : undefined}
         data-ready={ready || undefined}
         data-narrow={narrow || undefined}
         data-dragging={sidebar.dragging || inspector.dragging || undefined}
@@ -548,18 +570,15 @@ export function AppShellPrototype({
                     ["dark", "Dark"],
                     ["light", "Light"],
                   ]}
-                  onChange={(theme) => {
-                    // Flip colors in one frame instead of letting each control
-                    // run its own color transition.
-                    const root = rootRef.current;
-                    if (root) root.dataset.switching = "";
-                    setSettings((value) => ({ ...value, theme }));
-                    requestAnimationFrame(() =>
-                      requestAnimationFrame(() => {
-                        if (root) delete root.dataset.switching;
-                      }),
-                    );
-                  }}
+                  onChange={(theme) => switchColors({ theme })}
+                />
+                <PalettePicker
+                  value={settings.palette}
+                  // Monkeytype's palettes are dark, so picking one leaves
+                  // light mode.
+                  onChange={(name) =>
+                    switchColors({ palette: name, theme: "dark" })
+                  }
                 />
                 <span className={styles.readout} aria-live="polite">
                   Sidebar{" "}

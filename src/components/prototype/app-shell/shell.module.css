@@ -22,6 +22,7 @@
   --card-line: oklch(0.25 var(--tint) var(--hue));
   --edge-lit: oklch(0.56 var(--tint) var(--hue));
   --accent: oklch(0.6 0.17 282);
+  --on-accent: white;
   --green: oklch(0.8 0.13 150);
   --green-bg: oklch(0.4 0.07 150 / 0.38);
   --amber: oklch(0.85 0.12 82);
@@ -119,6 +120,34 @@
     0 8px 24px oklch(0.2 0.01 var(--hue) / 0.12),
     0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
 }
+/* A Monkeytype palette sets five raw colors inline (--mt-*). Its background
+   becomes the panel, and the rest of the surface ladder steps from it by the
+   same lightness offsets as the default dark theme. Status green and amber
+   keep their money meaning, so only red follows the palette. */
+.root[data-palette] {
+  --panel: var(--mt-bg);
+  --bg: oklch(from var(--mt-bg) calc(l - 0.028) c h);
+  --control: oklch(from var(--mt-bg) calc(l + 0.022) c h);
+  --group: oklch(from var(--mt-bg) calc(l + 0.014) c h);
+  --raised: oklch(from var(--mt-bg) calc(l + 0.027) c h);
+  --hover: oklch(from var(--mt-bg) calc(l + 0.044) c h);
+  --control-hover: oklch(from var(--mt-bg) calc(l + 0.054) c h);
+  --line: oklch(from var(--mt-bg) calc(l + 0.062) c h);
+  --selected: oklch(from var(--mt-bg) calc(l + 0.067) c h);
+  --card-line: oklch(from var(--mt-bg) calc(l + 0.072) c h);
+  --control-line: oklch(from var(--mt-bg) calc(l + 0.082) c h);
+  --control-active: oklch(from var(--mt-bg) calc(l + 0.112) c h);
+  --line-strong: oklch(from var(--mt-bg) calc(l + 0.162) c h);
+  --control-active-line: var(--line-strong);
+  --edge-lit: oklch(from var(--mt-bg) calc(l + 0.38) c h);
+  --text: var(--mt-text);
+  --text-2: color-mix(in oklch, var(--mt-text) 55%, var(--mt-sub));
+  --text-3: var(--mt-sub);
+  --accent: var(--mt-main);
+  --on-accent: var(--mt-bg);
+  --red: var(--mt-error);
+  --red-bg: oklch(from var(--mt-error) 0.42 calc(c * 0.7) h / 0.4);
+}
 .root[data-switching] *,
 .root[data-switching] *::after {
   transition: none !important;
@@ -150,7 +179,7 @@
   padding: 6px 10px;
   border-radius: 6px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   transform: translateY(-200%);
 }
 .skipLink:focus-visible {
@@ -296,7 +325,7 @@
   padding: 0 5px;
   border-radius: 999px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   font-size: var(--font-caption);
   font-weight: 600;
   line-height: 18px;
@@ -1169,7 +1198,7 @@ button.actionItem:hover {
   border: 1.5px solid var(--line-strong);
   border-radius: 4px;
   background: var(--panel);
-  color: white;
+  color: var(--on-accent);
 }
 .rowWrap:hover .checkbox,
 .list[data-selecting] .checkbox,
@@ -1546,6 +1575,155 @@ button.actionItem:hover {
 .segmented button[aria-checked="true"] {
   background: oklch(0.34 0.015 82);
   color: white;
+}
+.paletteWrap {
+  position: relative;
+}
+.paletteTrigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px 0 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+.paletteTrigger:hover,
+.paletteTrigger[aria-expanded="true"] {
+  background: oklch(0.28 0.012 82);
+}
+.paletteTrigger .segmentedLabel {
+  margin-right: 0;
+  padding-left: 0;
+}
+.palettePanel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: -6px;
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  height: min(560px, calc(100vh - 120px));
+  border: 1px solid oklch(0.4 0.02 82);
+  border-radius: 10px;
+  background: oklch(0.22 0.012 82);
+  box-shadow:
+    0 2px 6px oklch(0 0 0 / 0.3),
+    0 12px 32px oklch(0 0 0 / 0.35);
+}
+.paletteSearch {
+  flex: none;
+  height: 32px;
+  margin: 6px 6px 0;
+  padding: 0 8px;
+  border: 1px solid oklch(0.4 0.02 82);
+  border-radius: 6px;
+  outline: none;
+  background: oklch(0.18 0.01 82);
+  color: inherit;
+  font: inherit;
+}
+.paletteSearch:focus-visible {
+  border-color: oklch(0.78 0.12 82);
+}
+.paletteList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.paletteList > [role="group"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.paletteList > [role="group"] + [role="group"] {
+  margin-top: 6px;
+}
+.paletteSection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  padding: 0 4px;
+  color: oklch(0.68 0.02 82);
+  font-size: 11px;
+  font-weight: 600;
+}
+.paletteCopy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-weight: 500;
+}
+.paletteCopy:hover {
+  background: oklch(0.28 0.012 82);
+  color: oklch(0.86 0.02 82);
+}
+/* Each row is drawn in its own palette, like Monkeytype's theme list. */
+.paletteRow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.paletteRow:has([aria-selected="true"]) {
+  border-color: oklch(0.78 0.12 82);
+  box-shadow: inset 0 0 0 1px oklch(0.78 0.12 82);
+}
+.paletteOption {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.paletteHeart {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+}
+/* Unsaved hearts appear faintly on the row you point at; saved ones stay. */
+.paletteRow:hover .paletteHeart,
+.paletteHeart:focus-visible {
+  opacity: 0.55;
+}
+.paletteRow .paletteHeart:hover,
+.paletteRow .paletteHeart[aria-pressed="true"] {
+  opacity: 1;
+}
+.paletteDots {
+  display: flex;
+  gap: 4px;
+}
+.paletteDots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.paletteEmpty {
+  padding: 8px;
+  color: oklch(0.68 0.02 82);
 }
 .readout {
   min-width: 190px;
