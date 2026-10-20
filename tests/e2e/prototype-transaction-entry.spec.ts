@@ -931,7 +931,10 @@ test("Add opens the first column at once, and the entry row sits under the regis
     }
     await expect(calendar(page)).toBeVisible();
     await expect(today(page)).toBeFocused();
-    await expect(today(page)).toHaveAttribute("data-selected", "true");
+    await expect(today(page).locator("xpath=..")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
 
     // The calendar opens under the date field.
     const dateBox = (await field(form, "Date").boundingBox())!;
@@ -1029,7 +1032,9 @@ test("the calendar changes months, picks a day, takes a typed date, and closes b
   // move by day and Page Up by month; Enter picks without saving.
   await date.focus();
   await date.press("ArrowDown");
-  const chosen = calendar(page).locator('[data-selected="true"]');
+  const chosen = calendar(page)
+    .getByRole("gridcell", { selected: true })
+    .getByRole("button");
   await expect(chosen).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("PageUp");
@@ -1041,18 +1046,21 @@ test("the calendar changes months, picks a day, takes a typed date, and closes b
   await expect(form).toBeVisible();
 
   // Typing a full date moves the open calendar to it; Arrow Down enters the
-  // calendar, where a day before the account opened stays unpicked.
+  // calendar, where the arrows never reach a day before the account opened.
   await date.click();
   await expect(calendar(page)).toBeVisible();
   await date.fill(display(`${plan.month}-01`));
   await date.press("ArrowDown");
   await expect(dayButton(page, `${plan.month}-01`)).toBeFocused();
   await page.keyboard.press("ArrowLeft");
-  const before = calendar(page).locator(":focus");
-  await expect(before).toHaveAttribute("aria-disabled", "true");
-  await page.keyboard.press("Enter");
-  await expect(calendar(page)).toBeVisible();
-  await expect(date).toHaveValue(display(`${plan.month}-01`));
+  await expect(dayButton(page, `${plan.month}-01`)).toBeFocused();
+  // The previous month's days shown in the first week can't be picked.
+  await expect(
+    calendar(page)
+      .getByRole("row")
+      .first()
+      .locator("[data-outside] button:enabled"),
+  ).toHaveCount(0);
 
   // Escape closes the calendar first and keeps the editor.
   await page.keyboard.press("Escape");

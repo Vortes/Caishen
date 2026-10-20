@@ -1,15 +1,14 @@
 "use client";
 
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { CalendarIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import {
-  useEffect,
   useImperativeHandle,
   useRef,
-  useState,
   type KeyboardEvent,
   type Ref,
 } from "react";
+import { Calendar, type CalendarHandle } from "~/components/ui/calendar";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import styles from "./transaction-entry.module.css";
@@ -19,17 +18,6 @@ export type DateFieldHandle = {
   // Moves focus to the chosen day, now or as soon as the calendar mounts.
   focusCalendar: () => void;
 };
-
-const weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-const weekdayNames = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
 
 const pad = (value: number) => String(value).padStart(2, "0");
 const iso = (year: number, month: number, day: number) =>
@@ -50,29 +38,8 @@ function isDate(value: string) {
   return month >= 1 && month <= 12 && day >= 1 && day <= daysIn(year, month);
 }
 
-// Moves a date by whole days, staying on the calendar.
-function addDays(date: string, by: number) {
-  const { year, month, day } = parts(date);
-  const next = new Date(Date.UTC(year, month - 1, day + by));
-  return iso(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
-}
-
-// The same day in another month, or that month's last day.
-function addMonths(date: string, by: number) {
-  const { year, month, day } = parts(date);
-  const index = year * 12 + month - 1 + by;
-  const nextYear = Math.floor(index / 12);
-  const nextMonth = (index % 12) + 1;
-  return iso(nextYear, nextMonth, Math.min(day, daysIn(nextYear, nextMonth)));
-}
-
-function weekday(date: string) {
-  const { year, month, day } = parts(date);
-  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-}
-
 // Shown as MM/DD/YYYY, like the rest of a US register.
-export function formatDate(date: string) {
+function formatDate(date: string) {
   if (!isDate(date)) return date;
   const { year, month, day } = parts(date);
   return `${pad(month)}/${pad(day)}/${year}`;
@@ -96,30 +63,8 @@ function parseDate(text: string, today: string, finished: boolean) {
   return isDate(date) ? date : null;
 }
 
-function monthLabel(date: string) {
-  const { year, month } = parts(date);
-  return new Date(Date.UTC(year, month - 1, 15)).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-function dayLabel(date: string) {
-  const { year, month, day } = parts(date);
-  return `${weekdayNames[weekday(date)]}, ${new Date(
-    Date.UTC(year, month - 1, day),
-  ).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  })}`;
-}
-
 // The transaction date: typed as text, or picked from a calendar that opens
-// under the field. The calendar is a dialog; arrow keys move the day, Page
-// Up and Page Down the month, and Escape closes only the calendar.
+// under the field. The calendar is a dialog, and Escape closes only it.
 export function DateField({
   id,
   label,
@@ -160,36 +105,19 @@ export function DateField({
   const anchorRef = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const grid = useRef<HTMLDivElement>(null);
+  const calendar = useRef<CalendarHandle>(null);
   // Where focus was when the calendar was asked to take it, until it mounts.
   const pending = useRef<Element | null>(null);
   const calendarId = `${id}-calendar`;
   const chosen = isDate(value) ? value : null;
-  // The day the keyboard is on, which also decides the month shown.
-  const [focused, setFocused] = useState(chosen ?? today);
-  const [moved, setMoved] = useState(0);
   const shown = !readOnly && open;
 
-  // Opening, or typing a full date, shows that date's month.
-  useEffect(() => {
-    if (shown && chosen) setFocused(chosen);
-  }, [shown, chosen]);
-
-  const focusDay = () => {
-    const day = grid.current?.querySelector<HTMLElement>('[tabindex="0"]');
-    if (!day) return false;
-    day.focus({ preventScroll: true });
-    return true;
-  };
+  const focusDay = () => calendar.current?.focusDay() ?? false;
   useImperativeHandle(handle, () => ({
     focusCalendar: () => {
       if (!focusDay()) pending.current = document.activeElement;
     },
   }));
-  // A keyboard move puts focus on the new day once it renders.
-  useEffect(() => {
-    if (moved) focusDay();
-  }, [moved]);
 
   // Focus goes back to the field, or on touch to the calendar button, so a
   // software keyboard doesn't open by itself.
@@ -202,32 +130,10 @@ export function DateField({
     returnFocus();
   };
   const pick = (date: string) => {
-    if (date < min) return;
     onChange(date);
     onOpenChange(false);
     if (window.matchMedia("(pointer: fine)").matches) onPicked();
     else trigger.current?.focus({ preventScroll: true });
-  };
-  const move = (date: string) => {
-    setFocused(date);
-    setMoved((count) => count + 1);
-  };
-
-  const onGridKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const by: Record<string, () => string> = {
-      ArrowLeft: () => addDays(focused, -1),
-      ArrowRight: () => addDays(focused, 1),
-      ArrowUp: () => addDays(focused, -7),
-      ArrowDown: () => addDays(focused, 7),
-      Home: () => addDays(focused, -weekday(focused)),
-      End: () => addDays(focused, 6 - weekday(focused)),
-      PageUp: () => addMonths(focused, event.shiftKey ? -12 : -1),
-      PageDown: () => addMonths(focused, event.shiftKey ? 12 : 1),
-    };
-    const next = by[event.key];
-    if (!next) return;
-    event.preventDefault();
-    move(next());
   };
 
   // The calendar sits in a portal, so Tab out of it goes back to the form:
@@ -256,21 +162,6 @@ export function DateField({
       onAdvance();
     }
   };
-
-  const { year, month } = parts(focused);
-  const first = iso(year, month, 1);
-  const lead = weekday(first);
-  const count = daysIn(year, month);
-  const cells: (string | null)[] = [
-    ...Array<null>(lead).fill(null),
-    ...Array.from({ length: count }, (_, index) => iso(year, month, index + 1)),
-  ];
-  while (cells.length % 7) cells.push(null);
-  const weeks = Array.from({ length: cells.length / 7 }, (_, index) =>
-    cells.slice(index * 7, index * 7 + 7),
-  );
-  const earliest = addDays(first, -1) < min;
-  const headingId = `${calendarId}-heading`;
 
   return (
     <Popover.Root
@@ -393,81 +284,13 @@ export function DateField({
           }}
           onKeyDown={onContentKeyDown}
         >
-          <div className={styles.calendarHeader}>
-            <IconButton
-              size="sm"
-              label="Show previous month"
-              disabled={earliest}
-              onClick={() => setFocused(addMonths(focused, -1))}
-            >
-              <ChevronLeftIcon aria-hidden />
-            </IconButton>
-            <h2
-              id={headingId}
-              className={styles.calendarTitle}
-              aria-live="polite"
-            >
-              {monthLabel(focused)}
-            </h2>
-            <IconButton
-              size="sm"
-              label="Show next month"
-              onClick={() => setFocused(addMonths(focused, 1))}
-            >
-              <ChevronRightIcon aria-hidden />
-            </IconButton>
-          </div>
-          <div
-            ref={grid}
-            role="grid"
-            aria-labelledby={headingId}
-            className={styles.calendarGrid}
-            onKeyDown={onGridKeyDown}
-          >
-            <div role="row" className={styles.calendarWeek}>
-              {weekdays.map((day, index) => (
-                <span
-                  key={day}
-                  role="columnheader"
-                  aria-label={weekdayNames[index]}
-                  className={styles.calendarWeekday}
-                >
-                  {day}
-                </span>
-              ))}
-            </div>
-            {weeks.map((week, index) => (
-              <div key={index} role="row" className={styles.calendarWeek}>
-                {week.map((date, column) =>
-                  date ? (
-                    <span
-                      key={date}
-                      role="gridcell"
-                      aria-selected={date === chosen}
-                    >
-                      <button
-                        type="button"
-                        className={styles.calendarDay}
-                        tabIndex={date === focused ? 0 : -1}
-                        aria-label={dayLabel(date)}
-                        aria-current={date === today ? "date" : undefined}
-                        aria-disabled={date < min ? true : undefined}
-                        data-selected={date === chosen || undefined}
-                        onClick={() => pick(date)}
-                        onFocus={() => {
-                          if (date !== focused) setFocused(date);
-                        }}
-                      >
-                        {parts(date).day}
-                      </button>
-                    </span>
-                  ) : (
-                    <span key={`blank-${column}`} role="gridcell" />
-                  ),
-                )}
-              </div>
-            ))}
-          </div>
+          <Calendar
+            ref={calendar}
+            value={chosen}
+            today={today}
+            min={min}
+            onSelect={pick}
+          />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
