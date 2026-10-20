@@ -17,25 +17,17 @@ export function ShareCategory({
   return (
     <section className="inspector-section">
       <h3>
-        <span>
-          <Icon name="shared" size={15} />
-          Share with your partner
-        </span>
+        Partner
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            open({ type: "shared-category", categoryId: category.id })
+          }
+        >
+          Share category
+        </Button>
       </h3>
-      <p className="inspector-note">
-        Split purchases in {category.name} with your partner. Equal shares by
-        default.
-      </p>
-      <Button
-        variant="secondary"
-        size="sm"
-        className="inspector-wide-action"
-        onClick={() =>
-          open({ type: "shared-category", categoryId: category.id })
-        }
-      >
-        Share this category
-      </Button>
     </section>
   );
 }
@@ -51,21 +43,12 @@ export function PartnerInvite({ open }: { open: (panel: Panel) => void }) {
   const code = invite.data?.code;
   return (
     <section className="inspector-section">
-      <h3>
-        <span>
-          <Icon name="shared" size={15} />
-          Share with your partner
-        </span>
-      </h3>
+      <h3>Partner</h3>
       <p className="inspector-note">
-        Split categories like rent or groceries. You each keep your own budget,
-        and your accounts and other spending stay private.
+        Split categories like rent. Everything else stays private.
       </p>
       {code && (
         <div className="partner-code">
-          <p className="inspector-note">
-            Your partner enters this code from their own budget.
-          </p>
           <p className="inline-code">{code}</p>
           <Button
             variant="ghost"

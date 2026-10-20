@@ -476,6 +476,22 @@ void test("$2,000 rent and $200 utilities produce $900 settlement and release on
       ?.available,
     0,
   );
+  assert.deepEqual(
+    setup
+      .view()
+      .categories.filter((category) => category.id !== "food")
+      .map((category) => ({
+        id: category.id,
+        cash: category.cashActivity,
+        credit: category.creditActivity,
+        settlement: category.settlementActivity,
+      })),
+    [
+      { id: "rent", cash: 0, credit: 0, settlement: -100_000 },
+      { id: "utilities", cash: -20_000, credit: 0, settlement: 0 },
+    ],
+    "The repayment and its offset both show as partner settlement",
+  );
   assert.equal(
     setup.view("partner").cash,
     300_000,
@@ -1417,6 +1433,11 @@ void test("expected card benefits do nothing; posted credits reduce debt and rel
     85_000,
     "Only $50 of the $150 credit was excess funded reserve",
   );
+  assert.equal(
+    setup.view().accounts.find((account) => account.id === "card")
+      ?.creditsReleased,
+    -5000,
+  );
   assert.equal(setup.view().cash, 100_000);
 });
 
@@ -1524,6 +1545,240 @@ void test("monthly contribution and refill targets differ only in carried fundin
     "A future refill month does not assume current leftovers survive",
   );
   assert.equal(setup.view("alan", "2026-11").readyToAssign, before);
+});
+
+void test("monthly targets may name a due day of the month without changing funding", () => {
+  const setup = fixture();
+  setup.run({
+    type: "target.set",
+    categoryId: "food",
+    target: {
+      cadence: "monthly",
+      behavior: "contribution",
+      amount: 30_000,
+      startMonth: month,
+      monthDay: 15,
+    },
+  });
+  assert.equal(setup.view().categories[0]?.targetProgress?.needed, 30_000);
+  assert.throws(
+    () =>
+      setup.run({
+        type: "target.set",
+        categoryId: "food",
+        target: {
+          cadence: "yearly",
+          behavior: "contribution",
+          amount: 30_000,
+          startMonth: month,
+          dueDate: "2026-12-31",
+          monthDay: 15,
+        },
+      }),
+    /day of the month/,
+  );
+});
+
+void test("available breaks down into left over, assigned, cash, credit, and partner settlement", () => {
+  const setup = fixture();
+  setup.run({
+    type: "account.add",
+    accountId: "card",
+    name: "Card",
+    kind: "credit",
+    openingBalance: 0,
+  });
+  setup.run({ type: "category.add", categoryId: "fun", name: "Fun" });
+  setup.run({ type: "assign", categoryId: "food", month, amount: 10_000 });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "october-food",
+    accountId: "checking",
+    date,
+    amount: -4000,
+    payee: "Market",
+    categoryId: "food",
+  });
+  const next = "2026-11";
+  setup.run({ type: "assign", categoryId: "food", month: next, amount: 2000 });
+  for (const [transactionId, accountId, amount, categoryId] of [
+    ["november-cash", "checking", -3000, "food"],
+    ["november-card", "card", -9000, "food"],
+    ["fun-cash", "checking", -2500, "fun"],
+  ] as const)
+    setup.run({
+      type: "transaction.upsert",
+      transactionId,
+      accountId,
+      date: "2026-11-05",
+      amount,
+      payee: "Store",
+      categoryId,
+    });
+  const categories = projectBook(setup.book, "alan", next).categories;
+  const food = categories.find((category) => category.id === "food")!;
+  assert.deepEqual(
+    {
+      opening: food.opening,
+      assigned: food.assigned,
+      cashActivity: food.cashActivity,
+      creditActivity: food.creditActivity,
+      settlementActivity: food.settlementActivity,
+      available: food.available,
+      cashOverspending: food.cashOverspending,
+    },
+    {
+      opening: 6000,
+      assigned: 2000,
+      cashActivity: -3000,
+      creditActivity: -9000,
+      settlementActivity: 0,
+      available: -4000,
+      cashOverspending: 0,
+    },
+    "Card spending beyond the balance is credit overspending",
+  );
+  const fun = categories.find((category) => category.id === "fun")!;
+  assert.equal(fun.available, -2500);
+  assert.equal(fun.cashOverspending, 2500);
+  assert.equal(fun.creditActivity, 0);
+  for (const category of categories.filter((item) => !item.pairedAccountId))
+    assert.equal(
+      category.opening +
+        category.assigned +
+        category.cashActivity +
+        category.creditActivity +
+        category.settlementActivity,
+      category.available,
+    );
+});
+
+void test("cost to be me totals this month's target asks and keeps expected income per month", () => {
+  const setup = fixture();
+  setup.run({ type: "category.add", categoryId: "rent", name: "Rent" });
+  setup.run({ type: "category.add", categoryId: "fun", name: "Fun" });
+  setup.run({
+    type: "target.set",
+    categoryId: "rent",
+    target: {
+      cadence: "monthly",
+      behavior: "contribution",
+      amount: 150_000,
+      startMonth: month,
+    },
+  });
+  setup.run({
+    type: "target.set",
+    categoryId: "food",
+    target: {
+      cadence: "monthly",
+      behavior: "refill",
+      amount: 40_000,
+      startMonth: month,
+    },
+  });
+  setup.run({ type: "assign", categoryId: "rent", month, amount: 100_000 });
+  setup.run({ type: "assign", categoryId: "fun", month, amount: 5000 });
+  assert.equal(
+    setup.view().costToBeMe,
+    190_000,
+    "Assigned money still counts; untargeted categories do not",
+  );
+  assert.equal(setup.view().expectedIncome, null);
+  setup.run({
+    type: "income.expect",
+    month,
+    amount: 600_000,
+  });
+  assert.equal(setup.view().expectedIncome, 600_000);
+  assert.equal(setup.view("alan", "2026-11").expectedIncome, null);
+  assert.equal(setup.view().cash, 500_000, "Expected income is not cash");
+  setup.run({ type: "income.expect", month, amount: null });
+  assert.equal(setup.view().expectedIncome, null);
+  assert.throws(
+    () =>
+      execute(
+        setup.book,
+        "alan",
+        {
+          id: "agent-income",
+          type: "income.expect",
+          month,
+          amount: 1,
+        },
+        "agent",
+      ),
+    /user action/,
+  );
+  assert.throws(
+    () => setup.run({ type: "income.expect", month: "2026-09", amount: 1 }),
+    /budget start/,
+  );
+});
+
+void test("card balance and payment reserve break down into the month's movements", () => {
+  const setup = fixture();
+  setup.run({
+    type: "account.add",
+    accountId: "card",
+    name: "Card",
+    kind: "credit",
+    openingBalance: -10_000,
+  });
+  setup.run({ type: "assign", categoryId: "food", month, amount: 20_000 });
+  setup.run({ type: "assign", categoryId: "card:card", month, amount: 5000 });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "groceries",
+    accountId: "card",
+    date,
+    amount: -12_000,
+    payee: "Market",
+    categoryId: "food",
+  });
+  setup.run({
+    type: "card.payment",
+    cashAccountId: "checking",
+    cardAccountId: "card",
+    date: "2026-10-20",
+    amount: 15_000,
+  });
+  const card = setup.view().accounts.find((account) => account.id === "card")!;
+  assert.deepEqual(
+    {
+      priorBalance: card.priorBalance,
+      outflows: card.outflows,
+      inflows: card.inflows,
+      balance: card.balance,
+      fundedSpending: card.fundedSpending,
+      paymentsMade: card.paymentsMade,
+      creditsReleased: card.creditsReleased,
+      reserve: card.reserve,
+    },
+    {
+      priorBalance: -10_000,
+      outflows: -12_000,
+      inflows: 15_000,
+      balance: -7000,
+      fundedSpending: 12_000,
+      paymentsMade: -15_000,
+      creditsReleased: 0,
+      reserve: 2000,
+    },
+  );
+  const next = projectBook(setup.book, "alan", "2026-11", month);
+  const carried = next.accounts.find((account) => account.id === "card")!;
+  const category = next.categories.find((item) => item.id === "card:card")!;
+  assert.equal(carried.priorBalance, -7000);
+  assert.equal(category.opening, 2000);
+  assert.equal(
+    category.opening +
+      category.assigned +
+      carried.fundedSpending +
+      carried.paymentsMade +
+      carried.creditsReleased,
+    category.available,
+  );
 });
 
 void test("weekly totals count actual selected weekdays and snooze lasts only the current month", () => {

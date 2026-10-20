@@ -6,6 +6,7 @@ import {
   CalendarDaysIcon,
   ChartNoAxesCombinedIcon,
   CheckIcon,
+  CircleAlertIcon,
   CircleCheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -17,6 +18,7 @@ import {
   InfoIcon,
   LandmarkIcon,
   MenuIcon,
+  MoonIcon,
   MoreHorizontalIcon,
   PanelLeftCloseIcon,
   PlusIcon,
@@ -25,11 +27,33 @@ import {
   ShieldCheckIcon,
   SlidersHorizontalIcon,
   TargetIcon,
+  Trash2Icon,
   UsersIcon,
   WalletCardsIcon,
   XIcon,
+  ZapIcon,
+  createLucideIcon,
+  type IconNode,
   type LucideProps,
 } from "lucide-react";
+
+const wallet: IconNode = [
+  [
+    "rect",
+    { x: "3", y: "10", width: "18", height: "11", rx: "2", key: "body" },
+  ],
+  ["path", { d: "M16 15.5h1", key: "clasp" }],
+];
+const WalletOutIcon = createLucideIcon("wallet-out", [
+  ...wallet,
+  ["path", { d: "M12 7V2", key: "stem" }],
+  ["path", { d: "m9 5 3-3 3 3", key: "head" }],
+]);
+const WalletInIcon = createLucideIcon("wallet-in", [
+  ...wallet,
+  ["path", { d: "M12 2v5", key: "stem" }],
+  ["path", { d: "m9 4 3 3 3-3", key: "head" }],
+]);
 
 const icons = {
   budget: WalletCardsIcon,
@@ -62,6 +86,12 @@ const icons = {
   copy: CopyIcon,
   "arrow-down": ArrowDownIcon,
   "arrow-up": ArrowUpIcon,
+  trash: Trash2Icon,
+  "wallet-out": WalletOutIcon,
+  "wallet-in": WalletInIcon,
+  alert: CircleAlertIcon,
+  snoozed: MoonIcon,
+  zap: ZapIcon,
 };
 
 export type IconName = keyof typeof icons;

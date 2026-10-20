@@ -36,6 +36,7 @@ export const targetSchema = z
     startMonth: monthSchema,
     dueDate: daySchema.optional(),
     weekday: z.number().int().min(0).max(6).optional(),
+    monthDay: z.number().int().min(1).max(31).optional(),
     repeatEvery: z.number().int().min(1).max(120).optional(),
     repeatUnit: z.enum(["months", "years"]).optional(),
     snoozedMonths: z.array(monthSchema).default([]),
@@ -70,6 +71,11 @@ export const targetSchema = z
       context.addIssue({
         code: "custom",
         message: "This target requires a due date",
+      });
+    if (target.monthDay !== undefined && target.cadence !== "monthly")
+      context.addIssue({
+        code: "custom",
+        message: "Only monthly targets use a day of the month",
       });
     if (target.cadence === "weekly" && target.weekday === undefined)
       context.addIssue({
@@ -149,6 +155,15 @@ export const commandSchema = z.discriminatedUnion("type", [
     categoryId: identifier,
     month: monthSchema,
     amount: cents,
+  }),
+  z.object({
+    type: z.literal("assign.batch"),
+    id: identifier,
+    month: monthSchema,
+    changes: z
+      .array(z.object({ categoryId: identifier, amount: cents }))
+      .min(1)
+      .max(500),
   }),
   z.object({
     type: z.literal("cover"),
@@ -315,6 +330,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     interest: nonnegativeCents,
   }),
   z.object({
+    type: z.literal("income.expect"),
+    id: identifier,
+    month: monthSchema,
+    amount: nonnegativeCents.nullable(),
+  }),
+  z.object({
     type: z.literal("settings.update"),
     id: identifier,
     name: z.string().min(1).max(120).optional(),
@@ -420,6 +441,7 @@ export type Budget = {
     enabled: boolean;
   }[];
   settings: { timezone: string; emailEnabled: boolean; emailHour: number };
+  expectedIncome: Record<string, number>;
 };
 export type SharedCategory = {
   id: string;
@@ -596,6 +618,7 @@ const budgetSchema = z.object({
     emailEnabled: z.boolean(),
     emailHour: z.number().int().min(0).max(23),
   }),
+  expectedIncome: z.record(monthSchema, nonnegativeCents).default({}),
 });
 export const bookSchema: z.ZodType<Book, z.ZodTypeDef, unknown> = z
   .object({
@@ -786,6 +809,7 @@ export function createBook(userId: string, name: string, month: string): Book {
           emailEnabled: true,
           emailHour: 8,
         },
+        expectedIncome: {},
       },
     },
     sharedCategories: [],
@@ -978,14 +1002,24 @@ type CategoryMonth = {
   available: number;
   opening: number;
   cashOverspending: number;
+  cashActivity: number;
+  settlementActivity: number;
+};
+type AccountMonth = {
+  balance: number;
+  reserve: number;
+  shortfall: number;
+  priorBalance: number;
+  outflows: number;
+  inflows: number;
+  fundedSpending: number;
+  paymentsMade: number;
+  creditsReleased: number;
 };
 type Materialized = {
   cash: number;
   readyToAssign: number;
-  accounts: Map<
-    string,
-    { balance: number; reserve: number; shortfall: number }
-  >;
+  accounts: Map<string, AccountMonth>;
   categories: Map<string, CategoryMonth>;
   snapshots: Map<string, Map<string, CategoryMonth>>;
   startingBalances: Map<string, number>;
@@ -1002,10 +1036,20 @@ function materialize(
   if (month < budget.startMonth) fail("Month precedes the budget start");
   if (monthDistance(budget.startMonth, month) > 1200)
     fail("Budget date is too far in the future");
-  const accounts = new Map(
+  const accounts = new Map<string, AccountMonth>(
     budget.accounts.map((account) => [
       account.id,
-      { balance: 0, reserve: 0, shortfall: 0 },
+      {
+        balance: 0,
+        reserve: 0,
+        shortfall: 0,
+        priorBalance: 0,
+        outflows: 0,
+        inflows: 0,
+        fundedSpending: 0,
+        paymentsMade: 0,
+        creditsReleased: 0,
+      },
     ]),
   );
   const categories = new Map<string, CategoryMonth>(
@@ -1017,6 +1061,8 @@ function materialize(
         available: 0,
         opening: 0,
         cashOverspending: 0,
+        cashActivity: 0,
+        settlementActivity: 0,
       },
     ]),
   );
@@ -1033,13 +1079,22 @@ function materialize(
       state.assigned = 0;
       state.activity = 0;
       state.cashOverspending = 0;
+      state.cashActivity = 0;
+      state.settlementActivity = 0;
     }
     for (const account of budget.accounts.filter(
       (item) => monthOf(item.date) === cursor && item.date <= cutoff,
     ))
       accounts.get(account.id)!.balance = account.openingBalance;
-    for (const [accountId, state] of accounts)
+    for (const [accountId, state] of accounts) {
       startingBalances.set(accountId, state.balance);
+      state.priorBalance = state.balance;
+      state.outflows = 0;
+      state.inflows = 0;
+      state.fundedSpending = 0;
+      state.paymentsMade = 0;
+      state.creditsReleased = 0;
+    }
     const creditByCategory = new Map<string, Map<string, number>>();
     const cashByCategory = new Map<string, number>();
     const credits: Transaction[] = [];
@@ -1066,9 +1121,14 @@ function materialize(
       )) {
       const account = getAccount(budget, transaction.accountId);
       if (transaction.status === "pending" && transaction.amount > 0) continue;
-      accounts.get(account.id)!.balance = safe(
-        accounts.get(account.id)!.balance + transaction.amount,
-      );
+      const accountState = accounts.get(account.id)!;
+      accountState.balance = safe(accountState.balance + transaction.amount);
+      if (transaction.amount < 0)
+        accountState.outflows = safe(
+          accountState.outflows + transaction.amount,
+        );
+      else
+        accountState.inflows = safe(accountState.inflows + transaction.amount);
       if (transaction.kind === "statement-credit") {
         credits.push(transaction);
         continue;
@@ -1084,7 +1144,8 @@ function materialize(
       const state = categories.get(transaction.categoryId)!;
       state.activity = safe(state.activity + transaction.amount);
       state.available = safe(state.available + transaction.amount);
-      if (account.kind === "cash")
+      if (account.kind === "cash") {
+        state.cashActivity = safe(state.cashActivity + transaction.amount);
         cashByCategory.set(
           transaction.categoryId,
           safe(
@@ -1092,7 +1153,7 @@ function materialize(
               transaction.amount,
           ),
         );
-      else {
+      } else {
         const cards =
           creditByCategory.get(transaction.categoryId) ??
           new Map<string, number>();
@@ -1123,6 +1184,7 @@ function materialize(
             : allocation.amount;
         state.activity = safe(state.activity - consumed);
         state.available = safe(state.available - consumed);
+        state.settlementActivity = safe(state.settlementActivity - consumed);
         if (allocation.kind === "payment")
           cashByCategory.set(
             categoryId,
@@ -1185,9 +1247,9 @@ function materialize(
           Math.max(0, liquidity.get(purchase.categoryId) ?? 0),
         );
         if (!amount) continue;
-        accounts.get(purchase.cardId)!.reserve = safe(
-          accounts.get(purchase.cardId)!.reserve + amount,
-        );
+        const card = accounts.get(purchase.cardId)!;
+        card.reserve = safe(card.reserve + amount);
+        card.fundedSpending = safe(card.fundedSpending + amount);
         liquidity.set(
           purchase.categoryId,
           safe(liquidity.get(purchase.categoryId)! - amount),
@@ -1209,7 +1271,9 @@ function materialize(
           ),
         );
         if (!amount) continue;
-        accounts.get(refund.cardId)!.reserve -= amount;
+        const card = accounts.get(refund.cardId)!;
+        card.reserve -= amount;
+        card.fundedSpending = safe(card.fundedSpending - amount);
         liquidity.set(
           refund.categoryId,
           safe(liquidity.get(refund.categoryId)! + amount),
@@ -1224,6 +1288,9 @@ function materialize(
       );
     for (const [categoryId, amount] of liquidity)
       categories.get(categoryId)!.cashOverspending = Math.max(0, -amount);
+    const reserveBeforePayments = new Map(
+      [...accounts].map(([id, state]) => [id, state.reserve]),
+    );
     for (const payment of payments)
       accounts.get(payment.accountId)!.reserve = safe(
         accounts.get(payment.accountId)!.reserve - payment.amount,
@@ -1237,6 +1304,9 @@ function materialize(
         paidCashShortfall = safe(paidCashShortfall - state.reserve);
         state.reserve = 0;
       }
+      state.paymentsMade = safe(
+        state.reserve - reserveBeforePayments.get(account.id)!,
+      );
     }
     for (const [categoryId, state] of categories) {
       if (getCategory(budget, categoryId).pairedAccountId) continue;
@@ -1249,7 +1319,11 @@ function materialize(
     }
     for (const credit of credits) {
       const state = accounts.get(credit.accountId)!;
-      state.reserve = Math.min(state.reserve, Math.max(0, -state.balance));
+      const reserve = Math.min(state.reserve, Math.max(0, -state.balance));
+      state.creditsReleased = safe(
+        state.creditsReleased + reserve - state.reserve,
+      );
+      state.reserve = reserve;
     }
     for (const category of budget.categories)
       if (category.pairedAccountId) {
@@ -1291,8 +1365,30 @@ function materialize(
   };
 }
 
+// Up to 12 budget months before this one, oldest first, for Auto-Assign's last-month
+// and average options. Empty in a budget's first month. Spent counts outflows net of
+// refunds, never below zero.
+function categoryHistory(
+  snapshots: Map<string, Map<string, CategoryMonth>>,
+  categoryId: string,
+  month: string,
+) {
+  const months = [...snapshots]
+    .filter(([key]) => key < month)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .flatMap(([, categories]) => categories.get(categoryId) ?? [])
+    .slice(-12);
+  return {
+    assigned: months.map((state) => state.assigned),
+    spent: months.map((state) => Math.max(0, -state.activity)),
+  };
+}
+
 export type TargetProgress = {
   needed: number;
+  // What the target asks to assign this month, regardless of what's assigned. Auto-Assign
+  // reads overfunding from it.
+  required: number;
   funded: number;
   total: number;
   snoozed: boolean;
@@ -1319,6 +1415,7 @@ function targetProgress(
   if (month < target.startMonth)
     return {
       needed: 0,
+      required: 0,
       funded: 0,
       total,
       snoozed,
@@ -1348,6 +1445,7 @@ function targetProgress(
     if (dueMonth && month > dueMonth)
       return {
         needed: 0,
+        required: 0,
         funded,
         total,
         snoozed,
@@ -1370,15 +1468,17 @@ function targetProgress(
         : 0;
     if (target.behavior === "balance") {
       funded = Math.max(0, state.available);
-      const needed = Math.max(
+      const required = Math.max(
         0,
         Math.ceil(
           (total - Math.max(0, state.available - state.assigned)) /
             monthsRemaining,
-        ) - state.assigned,
+        ),
       );
+      const needed = Math.max(0, required - state.assigned);
       return {
         needed: snoozed ? 0 : needed,
+        required,
         funded,
         total,
         snoozed,
@@ -1387,13 +1487,12 @@ function targetProgress(
       };
     }
     const remainingAtStart = Math.max(0, total - previousAssigned - carried);
-    const needed = Math.max(
-      0,
-      Math.ceil(remainingAtStart / monthsRemaining) - state.assigned,
-    );
+    const required = Math.ceil(remainingAtStart / monthsRemaining);
+    const needed = Math.max(0, required - state.assigned);
     funded = Math.max(0, safe(previousAssigned + state.assigned + carried));
     return {
       needed: snoozed ? 0 : needed,
+      required,
       funded,
       total,
       snoozed,
@@ -1407,13 +1506,12 @@ function targetProgress(
       : 1;
     total = Math.max(0, -balance);
     funded = Math.max(0, state.available);
+    const required = Math.ceil(
+      Math.max(0, -startingBalance - state.opening) / monthsRemaining,
+    );
     return {
-      needed: Math.max(
-        0,
-        Math.ceil(
-          Math.max(0, -startingBalance - state.opening) / monthsRemaining,
-        ) - state.assigned,
-      ),
+      needed: Math.max(0, required - state.assigned),
+      required,
       funded,
       total,
       snoozed: false,
@@ -1430,6 +1528,8 @@ function targetProgress(
     );
   return {
     needed: snoozed ? 0 : Math.max(0, total - funded),
+    // Refill targets count money carried in, so only the rest must be assigned.
+    required: Math.max(0, safe(total - funded + Math.max(0, state.assigned))),
     funded,
     total,
     snoozed,
@@ -1778,8 +1878,20 @@ export function projectBook(
       return {
         ...structuredClone(category),
         ...state,
+        // Card purchases plus any card refunds the payment reserve could not
+        // return, so the breakdown always adds up to Available.
+        creditActivity: category.pairedAccountId
+          ? 0
+          : safe(
+              state.available -
+                state.opening -
+                state.assigned -
+                state.cashActivity -
+                state.settlementActivity,
+            ),
         reserved,
         spendable: safe(state.available - reserved),
+        history: categoryHistory(calculated.snapshots, category.id, month),
         targetProgress: category.target
           ? targetProgress(
               category.target,
@@ -1859,7 +1971,18 @@ export function projectBook(
       book.audit.filter((entry) => entry.actorId === userId),
     ),
   };
-  return result;
+  return {
+    ...result,
+    // Cost to Be Me: what this month's targets ask for in total, assigned or not.
+    costToBeMe: sum(
+      result.categories.map((category) =>
+        category.targetProgress
+          ? Math.max(0, category.assigned) + category.targetProgress.needed
+          : 0,
+      ),
+    ),
+    expectedIncome: budget.expectedIncome[month] ?? null,
+  };
 }
 export type BudgetProjection = ReturnType<typeof projectBook>;
 export type ProjectedBook = BudgetProjection;
@@ -1982,6 +2105,7 @@ export function execute(
   }
   const userOnly = [
     "assign",
+    "assign.batch",
     "rule.set",
     "target.set",
     "target.snooze",
@@ -1995,6 +2119,7 @@ export function execute(
     "category.add",
     "category.import",
     "settings.update",
+    "income.expect",
     "loan.add",
     "loan.rate",
     "transaction.approve",
@@ -2101,6 +2226,48 @@ function applyCommand(
         amount: command.amount,
       });
       if (command.amount > 0)
+        for (const laterMonth of new Set(
+          budget.assignments
+            .filter((assignment) => assignment.month > command.month)
+            .map((assignment) => assignment.month),
+        )) {
+          if (materialize(book, actorId, laterMonth).readyToAssign < 0)
+            fail("This cash is already assigned in a future month");
+        }
+      break;
+    }
+    case "assign.batch": {
+      // Auto-Assign applies every change or none, under the same rules as "assign":
+      // money released by the batch can fund its increases, but Ready to Assign
+      // never goes negative and no category gives back cash it does not hold.
+      const ids = command.changes.map((change) => change.categoryId);
+      if (new Set(ids).size !== ids.length)
+        fail("Each category can appear only once");
+      for (const id of ids) getCategory(budget, id);
+      const state = materialize(book, actorId, command.month);
+      for (const change of command.changes)
+        if (
+          change.amount < 0 &&
+          -change.amount >
+            Math.max(0, state.categories.get(change.categoryId)!.available)
+        )
+          fail("Cannot unassign cash the category does not hold");
+      const increases = command.changes.some((change) => change.amount > 0);
+      if (
+        increases &&
+        state.readyToAssign <
+          sum(command.changes.map((change) => change.amount))
+      )
+        fail("Assignments require existing Ready to Assign cash");
+      command.changes.forEach((change, index) =>
+        budget.assignments.push({
+          id: `${command.id}:${index}`,
+          categoryId: change.categoryId,
+          month: command.month,
+          amount: change.amount,
+        }),
+      );
+      if (increases)
         for (const laterMonth of new Set(
           budget.assignments
             .filter((assignment) => assignment.month > command.month)
@@ -2921,6 +3088,13 @@ function applyCommand(
         budget.settings.emailEnabled = command.emailEnabled;
       if (command.emailHour !== undefined)
         budget.settings.emailHour = command.emailHour;
+      break;
+    }
+    case "income.expect": {
+      if (command.month < budget.startMonth)
+        fail("Month precedes the budget start");
+      if (command.amount === null) delete budget.expectedIncome[command.month];
+      else budget.expectedIncome[command.month] = command.amount;
       break;
     }
   }

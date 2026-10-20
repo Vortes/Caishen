@@ -18,58 +18,45 @@ export function ReimbursementsSection({
       item.kind === "purchase" &&
       !item.sharedCategoryId,
   );
-  if (!reimbursable && !view.reimbursements.length) return null;
+  const expected = view.reimbursements.filter((claim) => claim.outstanding > 0);
+  if (!reimbursable && !expected.length) return null;
   return (
     <section className="inspector-section">
       <h3>
-        <span>
-          <Icon name="transactions" size={15} />
-          Expected reimbursements
-        </span>
+        Expected back
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
+          aria-label="Add expected reimbursement"
           disabled={!reimbursable}
           onClick={() => open({ type: "reimbursement" })}
         >
-          <Icon name="plus" size={14} />
-          Add
+          <Icon name="plus" size={16} />
         </Button>
       </h3>
-      {view.reimbursements.length ? (
+      {expected.length > 0 && (
         <ul className="reimbursement-list">
-          {view.reimbursements.map((claim) => (
+          {expected.map((claim) => (
             <li key={claim.id}>
-              <span>
-                <strong>{claim.name}</strong>
-                <small>
-                  <Amount value={claim.outstanding} /> expected ·{" "}
-                  {claim.kind === "cash" ? "cash" : "statement credit"}
-                </small>
-              </span>
-              {claim.outstanding > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    open({
-                      type:
-                        claim.kind === "cash" ? "receive" : "statement-credit",
-                      id: claim.id,
-                    })
-                  }
-                >
-                  Record received
-                </Button>
-              )}
+              <span>{claim.name}</span>
+              <Amount value={claim.outstanding} />
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Record ${claim.name} received`}
+                onClick={() =>
+                  open({
+                    type:
+                      claim.kind === "cash" ? "receive" : "statement-credit",
+                    id: claim.id,
+                  })
+                }
+              >
+                Received
+              </Button>
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="inspector-note">
-          Expected money isn’t spendable yet. Record it when it actually
-          arrives.
-        </p>
       )}
     </section>
   );

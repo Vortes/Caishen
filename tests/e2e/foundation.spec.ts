@@ -91,7 +91,7 @@ async function assign(page: Page, name: string, amount: string) {
 }
 async function connectPartners(page: Page, partner: Page) {
   await expect(
-    page.getByRole("heading", { name: "Month summary", exact: true }),
+    page.getByRole("complementary", { name: "Budget details", exact: true }),
   ).toBeVisible();
   const createInvite = page.getByRole("button", {
     name: "Create invitation code",
@@ -103,7 +103,7 @@ async function connectPartners(page: Page, partner: Page) {
   const code = await page.locator(".inline-code").innerText();
   await partner.reload();
   await expect(
-    partner.getByRole("heading", { name: "Month summary", exact: true }),
+    partner.getByRole("complementary", { name: "Budget details", exact: true }),
   ).toBeVisible();
   await partner
     .getByRole("button", { name: "Enter partner’s code", exact: true })
@@ -128,7 +128,7 @@ async function shareCategory(page: Page, name: string) {
   await page.getByRole("button", { name, exact: true }).click();
   const inspector = inspectorFor(page, name);
   await inspector
-    .getByRole("button", { name: "Share this category", exact: true })
+    .getByRole("button", { name: "Share category", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await dialog
@@ -136,7 +136,7 @@ async function shareCategory(page: Page, name: string) {
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(
-    inspector.getByText("Shared with your partner", { exact: true }),
+    inspector.getByRole("button", { name: `Edit ${name} split`, exact: true }),
   ).toBeVisible();
 }
 async function purchase(
@@ -361,21 +361,19 @@ test("two users budget, review, record card and loan payments, and share only au
     expect(Math.abs(inspectorBounds!.y - planBounds!.y)).toBeLessThanOrEqual(1);
     await inspector
       .getByRole("button", {
-        name: `Set target for ${names.groceries}`,
+        name: `Create target for ${names.groceries}`,
         exact: true,
       })
       .click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await inspector
-      .getByLabel("Target amount ($)", { exact: true })
-      .fill("400.00");
+    await inspector.getByLabel("I need", { exact: true }).fill("400.00");
     await inspector
       .getByRole("button", { name: "Save target", exact: true })
       .click();
     await expect(
-      inspector.getByLabel("Target amount ($)", { exact: true }),
+      inspector.getByLabel("I need", { exact: true }),
     ).not.toBeVisible();
-    await expect(inspector).toContainText("Keep your target on track");
+    await expect(inspector).toContainText("more to meet your target");
     await expect(inspector).toContainText("$400.00");
 
     const filters = page.getByRole("group", { name: "Filter categories" });
@@ -446,6 +444,45 @@ test("two users budget, review, record card and loan payments, and share only au
     await expect(
       page.getByRole("row").filter({ hasText: names.groceries }),
     ).toContainText("$270.00");
+    await page
+      .getByRole("button", { name: names.groceries, exact: true })
+      .click();
+    const groceriesDetails = inspectorFor(page, names.groceries);
+    const breakdownRow = (label: string) =>
+      groceriesDetails
+        .locator(".inspector-values > div")
+        .filter({ hasText: label });
+    await expect(breakdownRow("Assigned this month")).toContainText("+$300.00");
+    await expect(breakdownRow("Cash spending")).toContainText("-$30.00");
+    await expect(breakdownRow("Credit spending")).toContainText("$0.00");
+    await groceriesDetails
+      .getByRole("button", { name: "Clear category selection", exact: true })
+      .click();
+    const budgetDetails = page.getByRole("complementary", {
+      name: "Budget details",
+      exact: true,
+    });
+    await expect(budgetDetails).toContainText("Cost to be me");
+    const expectedIncome = budgetDetails.getByRole("textbox", {
+      name: "Expected income",
+      exact: true,
+    });
+    await expectedIncome.fill("$350");
+    await expectedIncome.press("Enter");
+    await expect(budgetDetails).toContainText(
+      "Your targets need $50.00 more than you expect to earn.",
+    );
+    await expectedIncome.fill("1,000");
+    await expectedIncome.blur();
+    await expect(budgetDetails).toContainText(
+      "Your income covers your targets with $600.00 to spare.",
+    );
+    await page.reload();
+    await expect(
+      page
+        .getByRole("complementary", { name: "Budget details", exact: true })
+        .getByRole("textbox", { name: "Expected income", exact: true }),
+    ).toHaveValue("1000.00");
 
     await page
       .getByRole("button", { name: "All accounts", exact: true })
@@ -484,7 +521,22 @@ test("two users budget, review, record card and loan payments, and share only au
     await page.getByRole("button", { name: "Plan", exact: true }).click();
     await addAccount(page, `Other card ${suffix}`, "0.00", "credit");
     await addAccount(page, names.card, "200.00", "credit");
-    await assign(page, `${names.card} payment`, "200.00");
+    const cardCategory = `${names.card} payment`;
+    await page.getByRole("button", { name: cardCategory, exact: true }).click();
+    const cardDetails = inspectorFor(page, cardCategory);
+    await expect(cardDetails).toContainText(
+      "Your card balance is $200.00 more than you’ve set aside to pay it.",
+    );
+    await cardDetails
+      .getByRole("button", { name: "Assign $200.00", exact: true })
+      .click();
+    await expect(cardDetails.locator(".inspector-callout")).toHaveCount(0);
+    await expect(
+      page.getByTitle(`Assign money to ${cardCategory}`, { exact: true }),
+    ).toHaveText("$200.00");
+    await cardDetails
+      .getByRole("button", { name: "Clear category selection", exact: true })
+      .click();
     await purchase(
       page,
       `Card purchase ${suffix}`,
@@ -544,6 +596,17 @@ test("two users budget, review, record card and loan payments, and share only au
       .getByRole("button", { name: "Record payment", exact: true })
       .click();
     await expect(dialog).not.toBeVisible();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    await page.getByRole("button", { name: cardCategory, exact: true }).click();
+    const cardRow = (label: string) =>
+      cardDetails.locator(".inspector-values > div").filter({ hasText: label });
+    await expect(cardRow("Funded spending")).toContainText("+$50.00");
+    await expect(cardRow("Payments made")).toContainText("-$250.00");
+    await expect(cardRow("Start of month")).toContainText("-$200.00");
+    await expect(cardRow("Current balance")).toContainText("$0.00");
+    await cardDetails
+      .getByRole("button", { name: "Clear category selection", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "All accounts", exact: true })
       .click();
@@ -744,7 +807,7 @@ test("two users budget, review, record card and loan payments, and share only au
     await expect(mobileDiningCheckbox).not.toBeChecked();
     await detailsToggle.click();
     await expect(detailsDialog).toBeVisible();
-    await expect(detailsDialog).toContainText("Month summary");
+    await expect(detailsDialog).toContainText("Available in categories");
     await expect(
       detailsDialog.getByRole("button", {
         name: "Close budget details",
@@ -895,7 +958,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     await expect(unusedDialog).not.toBeVisible();
     await expect(
       unusedInspector.getByRole("button", {
-        name: "Share this category",
+        name: "Share category",
         exact: true,
       }),
     ).toBeVisible();
@@ -943,10 +1006,9 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     const line = (name: string | RegExp) =>
       statement.getByRole("listitem").filter({ hasText: name });
     await expect(balance.locator(".shared-verdict")).toContainText("$900.00");
-    await expect(line(rent)).toContainText("1 shared purchase");
-    await expect(line(rent)).toContainText("$1,000.00you owe");
-    await expect(line(utilities)).toContainText("$100.00owed to you");
-    await expect(line(/^Balance/)).toContainText("$900.00");
+    await expect(line(rent).locator("small")).toHaveText("1");
+    await expect(line(rent)).toContainText("$1,000.00 you owe");
+    await expect(line(utilities)).toContainText("$100.00 owed to you");
     const shown = (await statementFor(first.id)).sharedStatement;
     expect(shown.balance).toBe(90000);
     expect(
@@ -967,7 +1029,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
       .click();
     await expect(dialog).not.toBeVisible();
     await expect(rentInspector.locator(".shared-rule")).toContainText(
-      "You 75% · partner 25%",
+      "you 75%",
     );
     const editRent = rentInspector.getByRole("button", {
       name: `Edit ${rent} split`,
@@ -989,7 +1051,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     await partner.getByRole("button", { name: rent, exact: true }).click();
     await expect(
       inspectorFor(partner, rent).locator(".shared-rule"),
-    ).toContainText("You 25% · partner 75%");
+    ).toContainText("you 25%");
     await expect(rentInspector.locator(".shared-balance")).toHaveCount(0);
     await page
       .getByRole("button", { name: "Clear category selection", exact: true })
@@ -1026,7 +1088,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     const before = projectBook(beforeBook, first.id, month);
     const partnerBefore = projectBook(beforeBook, second.id, month);
     await summary
-      .getByRole("button", { name: "Record net repayment", exact: true })
+      .getByRole("button", { name: "Settle up", exact: true })
       .click();
     dialog = page.getByRole("dialog");
     await dialog
@@ -1050,13 +1112,12 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     await expect(summary.locator(".shared-verdict")).toContainText(
       "You’re even",
     );
-    const repaymentLine = line("You paid your partner").filter({
-      hasText: "Waiting for your partner to confirm",
+    const repaymentLine = line("You sent partner").filter({
+      hasText: "Pending",
     });
     await expect(repaymentLine).toHaveCount(1);
     await expect(repaymentLine).toContainText("$900.00");
-    await expect(line(rent)).toContainText("$1,000.00you owe");
-    await expect(line(/^Balance/)).toContainText("Even");
+    await expect(line(rent)).toContainText("$1,000.00 you owe");
     expect(after.cash).toBe(before.cash - 90000);
     expect(after.readyToAssign).toBe(before.readyToAssign + 10000);
     expect(partnerAfter.cash).toBe(partnerBefore.cash);
@@ -1069,7 +1130,7 @@ test("shared rent and utilities net to one repayment, preserve original splits, 
     await partner.reload();
     await partner
       .locator(".shared-balance")
-      .getByRole("button", { name: "Record receipt", exact: true })
+      .getByRole("button", { name: "Confirm", exact: true })
       .click();
     const receive = partner.getByRole("dialog");
     await receive

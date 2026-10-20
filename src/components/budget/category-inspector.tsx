@@ -1,11 +1,15 @@
 "use client";
 
-import { cn } from "~/lib/utils";
-import type { ReactNode } from "react";
+import type { Command } from "~/domain/engine";
 import type { Panel, State, View } from "~/components/budget/types";
 import type { Category } from "~/components/budget/category-table";
+import { monthName } from "~/components/budget/format";
 import { Amount, Icon } from "~/components/shared";
 import { Button } from "~/components/ui/button";
+import { AutoAssignSection } from "~/components/budget/auto-assign-section";
+import { AvailableSection } from "~/components/budget/available-section";
+import { CostToBeMe } from "~/components/budget/cost-to-be-me";
+import { TargetSection } from "~/components/budget/target-section";
 import { ReimbursementsSection } from "~/components/reimbursements/reimbursements-section";
 import { SharedBalance } from "~/components/shared-expenses/shared-balance";
 import {
@@ -22,29 +26,27 @@ export function CategoryInspector({
   view,
   selected,
   state,
-  pending,
+  busy,
+  run,
   open,
-  onReview,
   onClear,
-  targetEditor,
   showClose = false,
 }: {
   view: View;
   selected: Category[];
   state: State;
-  pending: number;
+  busy: boolean;
+  run: (command: Command) => void;
   open: (panel: Panel) => void;
-  onReview: () => void;
   onClear: () => void;
-  targetEditor?: ReactNode;
   showClose?: boolean;
 }) {
   const category = selected.length === 1 ? selected[0] : undefined;
-  const values = selected.length ? selected : view.categories;
-  const total = (key: "assigned" | "activity" | "available") =>
-    values.reduce((sum, item) => sum + item[key], 0);
   const partner = partnerOf(view);
   const shared = category && sharedCategoryFor(view, category.id);
+  const card = view.accounts.find(
+    (account) => account.id === category?.pairedAccountId,
+  );
   return (
     <aside
       className="category-inspector"
@@ -55,7 +57,7 @@ export function CategoryInspector({
           {category?.name ??
             (selected.length
               ? `${selected.length} categories selected`
-              : "Month summary")}
+              : monthName(view.month).split(" ")[0])}
         </h2>
         {(selected.length > 0 || showClose) && (
           <Button
@@ -73,247 +75,84 @@ export function CategoryInspector({
         )}
       </div>
       {shared && (
-        <div className="shared-rule">
-          <span className="shared-mark">
-            <Icon name="shared" size={13} />
-            Shared with your partner
-          </span>
-          <span>
-            You {sharePercent(shared.weights, view.budget.userId)}% · partner{" "}
-            {100 - sharePercent(shared.weights, view.budget.userId)}%
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`Edit ${shared.name} split`}
-            onClick={() => open({ type: "shared-category", id: shared.id })}
-          >
-            Edit split
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shared-rule"
+          aria-label={`Edit ${shared.name} split`}
+          onClick={() => open({ type: "shared-category", id: shared.id })}
+        >
+          <Icon name="shared" size={13} />
+          Shared · you {sharePercent(shared.weights, view.budget.userId)}%
+        </Button>
       )}
-      <section className="inspector-section">
-        <h3>
-          {selected.length ? "Available balance" : "Available in categories"}
-          <Amount
-            value={total("available")}
-            className={
-              total("available") < 0
-                ? "negative"
-                : total("available") > 0
-                  ? "positive"
-                  : "muted"
-            }
-          />
-        </h3>
-        <dl className="inspector-values">
-          <div>
-            <dt>Assigned this month</dt>
-            <dd>
-              <Amount value={total("assigned")} />
-            </dd>
-          </div>
-          <div>
-            <dt>Activity this month</dt>
-            <dd>
-              <Amount value={total("activity")} />
-            </dd>
-          </div>
-          {category && category.reserved > 0 && (
-            <>
-              <div>
-                <dt>Set aside for your partner</dt>
+      {!selected.length && <CostToBeMe view={view} run={run} />}
+      <AvailableSection view={view} selected={selected} busy={busy} run={run} />
+      {category && (
+        <TargetSection
+          key={category.id}
+          view={view}
+          month={view.month}
+          category={category}
+          busy={busy}
+          run={run}
+        />
+      )}
+      <AutoAssignSection
+        view={view}
+        selected={selected}
+        busy={busy}
+        run={run}
+      />
+      {card && (
+        <section className="inspector-section">
+          <h3>Card balance</h3>
+          <dl className="inspector-values">
+            {(
+              [
+                ["Start of month", card.priorBalance],
+                ["Spending", card.outflows],
+                ["Payments and credits", card.inflows],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
                 <dd>
-                  <Amount value={category.reserved} />
+                  <Amount value={value} signed />
                 </dd>
-              </div>
-              <div>
-                <dt>Spendable</dt>
-                <dd>
-                  <Amount value={category.spendable} />
-                </dd>
-              </div>
-            </>
-          )}
-        </dl>
-        {category && (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="inspector-wide-action"
-            onClick={() => open({ type: "assign", id: category?.id })}
-          >
-            <Icon name="transactions" size={14} />
-            Move money
-          </Button>
-        )}
-      </section>
-      {category ? (
-        <section className="inspector-section target-section">
-          <h3>
-            <span>
-              <Icon name="target" size={15} />
-              Target
-            </span>
-            {category.target && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => open({ type: "target", id: category.id })}
-              >
-                Edit
-              </Button>
-            )}
-          </h3>
-          {targetEditor ??
-            (category.targetProgress ? (
-              <>
-                <div
-                  className={cn(
-                    "target-status",
-                    category.targetProgress.snoozed && "is-snoozed",
-                    !category.targetProgress.snoozed &&
-                      category.targetProgress.needed === 0 &&
-                      "is-funded",
-                  )}
-                >
-                  <Icon
-                    name={
-                      category.targetProgress.snoozed
-                        ? "clock"
-                        : category.targetProgress.needed === 0
-                          ? "check"
-                          : "target"
-                    }
-                    size={30}
-                  />
-                  <strong>
-                    {category.targetProgress.snoozed
-                      ? "Snoozed this month"
-                      : category.targetProgress.needed === 0
-                        ? "You’ve reached your target"
-                        : "Keep your target on track"}
-                  </strong>
-                </div>
-                <dl className="inspector-values">
-                  <div>
-                    <dt>Target amount</dt>
-                    <dd>
-                      <Amount value={category.targetProgress.total} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Funded</dt>
-                    <dd>
-                      <Amount value={category.targetProgress.funded} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Still needed</dt>
-                    <dd>
-                      <Amount value={category.targetProgress.needed} />
-                    </dd>
-                  </div>
-                </dl>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="inspector-wide-action"
-                  onClick={() => open({ type: "target", id: category.id })}
-                >
-                  Edit target
-                </Button>
-              </>
-            ) : (
-              <div className="target-empty">
-                <Icon name="target" size={30} />
-                <h4>What’s your plan for {category.name}?</h4>
-                <p>
-                  Set a target to see how much to set aside and track your
-                  progress.
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  aria-label={`Set target for ${category.name}`}
-                  onClick={() => open({ type: "target", id: category.id })}
-                >
-                  Create target
-                </Button>
               </div>
             ))}
-        </section>
-      ) : (
-        <>
-          <section className="inspector-section">
-            <h3>Spending this month</h3>
-            <dl className="inspector-values">
-              <div>
-                <dt>Your personal share</dt>
-                <dd>
-                  <Amount value={view.personalSpending} />
-                </dd>
-              </div>
-              <div>
-                <dt>Full amount paid</dt>
-                <dd>
-                  <Amount value={view.amountPaid} />
-                </dd>
-              </div>
-            </dl>
-            <p className="inspector-note">
-              Your personal share includes your part of shared expenses.
-            </p>
-          </section>
-          <section className="inspector-section">
-            <h3>
-              <span>
-                <Icon name="check" size={15} />
-                Review inbox
-              </span>
-              {pending > 0 && <span className="nav-count">{pending}</span>}
-            </h3>
-            <p className="inspector-note">
-              {pending
-                ? `${pending} ${pending === 1 ? "item needs" : "items need"} your review. They’ll stay here until resolved.`
-                : "You’re all caught up. New activity will appear here for your review."}
-            </p>
+            <div className="inspector-values-total">
+              <dt>Current balance</dt>
+              <dd>
+                <Amount
+                  value={card.balance}
+                  className={card.balance < 0 ? "negative" : undefined}
+                />
+              </dd>
+            </div>
+          </dl>
+          <div className="inspector-actions">
             <Button
               variant="secondary"
               size="sm"
-              className="inspector-wide-action"
-              onClick={onReview}
+              onClick={() => open({ type: "card-payment", id: card.id })}
             >
-              Open review inbox
-              <Icon name="arrow" size={14} />
+              Record a card payment
             </Button>
-          </section>
-        </>
-      )}
-      {category?.pairedAccountId && (
-        <section className="inspector-section">
-          <h3>Credit card payment</h3>
-          <p className="inspector-note">
-            Record a payment after you’ve paid your card.
-          </p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              open({ type: "card-payment", id: category.pairedAccountId })
-            }
-          >
-            Record a card payment
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              open({ type: "statement-credit", id: category.pairedAccountId })
-            }
-          >
-            Statement credit
-          </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                open({
+                  type: "statement-credit",
+                  id: card.id,
+                })
+              }
+            >
+              Statement credit
+            </Button>
+          </div>
         </section>
       )}
       {category &&
@@ -330,31 +169,18 @@ export function CategoryInspector({
           <SharedBalance view={view} open={open} />
         ) : (
           <section className="inspector-section">
-            <h3>
-              <span>
-                <Icon name="shared" size={15} />
-                Shared with your partner
-              </span>
-            </h3>
+            <h3>Partner</h3>
             <p className="inspector-note">
-              Select a category like rent or groceries, then choose Share this
-              category to split it.
+              Select a category like rent, then share it to split its purchases.
             </p>
           </section>
         ))}
       {!selected.length && <ReimbursementsSection view={view} open={open} />}
       {state.evidence.length > 0 && !selected.length && (
         <section className="inspector-section">
-          <h3>Latest reconciliation</h3>
+          <h3>Reconciliation</h3>
           {state.evidence.slice(0, 3).map((evidence) => (
             <div className="reconciliation-note" key={evidence.id}>
-              <span
-                className={`badge ${evidence.result.status === "reconciled" ? "" : "warning"}`}
-              >
-                {evidence.result.status === "reconciled"
-                  ? "Matched"
-                  : "Needs review"}
-              </span>
               <span>
                 {
                   view.accounts.find(
@@ -363,14 +189,17 @@ export function CategoryInspector({
                 }{" "}
                 · {evidence.cutoff}
               </span>
+              <span
+                className={`badge ${evidence.result.status === "reconciled" ? "" : "warning"}`}
+              >
+                {evidence.result.status === "reconciled"
+                  ? "Matched"
+                  : "Needs review"}
+              </span>
             </div>
           ))}
         </section>
       )}
-      <div className="inspector-footer">
-        <Icon name="shield" size={14} />
-        You decide where your money goes.
-      </div>
     </aside>
   );
 }

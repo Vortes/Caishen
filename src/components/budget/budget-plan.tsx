@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "~/lib/utils";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Command } from "~/domain/engine";
 import type { Panel, State } from "~/components/budget/types";
 import { newId } from "~/components/budget/format";
@@ -22,25 +22,15 @@ import { sharePercent } from "~/components/shared-expenses/split";
 export function BudgetPlan({
   state,
   busy,
-  pending,
   run,
   open,
   onError,
-  onReview,
-  targetEditor,
-  targetCategoryId,
-  onSelectionChange,
 }: {
   state: State;
   busy: boolean;
-  pending: number;
   run: (command: Command) => void;
   open: (panel: Panel) => void;
   onError: (message: string) => void;
-  onReview: () => void;
-  targetEditor?: ReactNode;
-  targetCategoryId?: string;
-  onSelectionChange: () => void;
 }) {
   const view = state.view!;
   const [filter, setFilter] = useState<BudgetFilter>("all");
@@ -67,19 +57,15 @@ export function BudgetPlan({
     sharedSplits.set(categoryId, splits);
   }
   const selectedCategories = view.categories.filter((category) =>
-    targetCategoryId
-      ? category.id === targetCategoryId
-      : selected.includes(category.id),
+    selected.includes(category.id),
   );
   const onSelect = (ids: string[], showDetails = false) => {
     if (document.activeElement instanceof HTMLElement)
       inspectorOpener.current = document.activeElement;
-    onSelectionChange();
     setSelected(ids);
     if (ids.length && showDetails) setInspectorOpen(true);
   };
   const closeInspector = () => {
-    onSelectionChange();
     setSelected([]);
     setInspectorOpen(false);
   };
@@ -88,21 +74,15 @@ export function BudgetPlan({
       view={view}
       selected={selectedCategories}
       state={state}
-      pending={pending}
+      busy={busy}
+      run={run}
       open={open}
-      onReview={onReview}
       onClear={closeInspector}
-      targetEditor={targetEditor}
       showClose={compact}
     />
   );
   return (
-    <div
-      className={cn(
-        "budget-plan",
-        (inspectorOpen || targetEditor) && "inspector-open",
-      )}
-    >
+    <div className={cn("budget-plan", inspectorOpen && "inspector-open")}>
       <div className="plan-main">
         <div
           className="plan-filters"
@@ -237,7 +217,7 @@ export function BudgetPlan({
       </div>
       {compact ? (
         <Dialog
-          open={inspectorOpen || Boolean(targetEditor)}
+          open={inspectorOpen}
           onOpenChange={(value) => {
             if (!value) closeInspector();
           }}

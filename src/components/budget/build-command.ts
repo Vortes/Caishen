@@ -14,7 +14,6 @@ export function buildCommand(input: CommandInput) {
       return buildAccountCommand(input);
     case "category":
     case "assign":
-    case "target":
       return buildCategoryCommand(input);
     case "loan":
     case "loan-payment":

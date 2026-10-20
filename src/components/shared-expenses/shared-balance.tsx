@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { cn } from "~/lib/utils";
 import type { Panel, View } from "~/components/budget/types";
 import {
   currentMonth,
@@ -11,6 +12,12 @@ import {
 import { Amount, Icon } from "~/components/shared";
 import { Button } from "~/components/ui/button";
 import { useMediaQuery } from "~/components/shared/use-media-query";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import {
   Popover,
   PopoverClose,
@@ -29,15 +36,17 @@ const monthOnly = (month: string) =>
   });
 
 function Direction({ effect }: { effect: number }) {
-  if (effect === 0) return <strong className="muted">Even</strong>;
+  if (effect === 0) return <span className="muted">Even</span>;
+  const youOwe = effect > 0;
   return (
-    <>
-      <Amount
-        value={Math.abs(effect)}
-        className={effect > 0 ? "is-owed-by-you" : "is-owed-to-you"}
-      />
-      <small>{effect > 0 ? "you owe" : "owed to you"}</small>
-    </>
+    <span
+      className={cn("owe-amount", youOwe ? "is-owed-by-you" : "is-owed-to-you")}
+      title={youOwe ? "You owe" : "Owed to you"}
+    >
+      <Icon name={youOwe ? "wallet-out" : "wallet-in"} size={16} />
+      <Amount value={Math.abs(effect)} />
+      <span className="sr-only">{youOwe ? " you owe" : " owed to you"}</span>
+    </span>
   );
 }
 
@@ -50,117 +59,87 @@ export function SharedBalance({
 }) {
   const statement = view.sharedStatement;
   const { net } = view.settlement;
-  const month = monthOnly(view.month);
   const canRecord = view.month >= currentMonth(view.budget.settings.timezone);
+  const awaiting = new Set(
+    statement.awaitingYourConfirmation.map((item) => item.settlementId),
+  );
+  const { carried } = statement;
   return (
     <section className="inspector-section shared-balance">
       <h3>
-        <span>
-          <Icon name="shared" size={15} />
-          Shared with your partner
-        </span>
+        Partner
         {canRecord && (
-          <Button variant="ghost" onClick={() => open({ type: "opening" })}>
-            Add opening amount
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="More partner actions"
+              >
+                <Icon name="more" size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => open({ type: "opening" })}>
+                <Icon name="plus" />
+                Add opening amount
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </h3>
       <div className="shared-verdict">
         <span>
-          End of {monthName(view.month)}
           {net > 0
-            ? " · you owe your partner"
+            ? "You owe your partner"
             : net < 0
-              ? " · your partner owes you"
-              : ""}
+              ? "Your partner owes you"
+              : "Nothing owed"}
         </span>
-        {net !== 0 ? (
-          <Amount
-            value={Math.abs(net)}
-            className={net > 0 ? "is-owed-by-you" : "is-owed-to-you"}
-          />
-        ) : (
-          <strong>You’re even</strong>
-        )}
+        {net !== 0 ? <Direction effect={net} /> : <strong>You’re even</strong>}
       </div>
       <ul
         className="shared-statement"
         aria-label={`${monthName(view.month)} shared statement`}
       >
-        <li>
-          <CarriedLine statement={statement} month={view.month} />
-        </li>
-        {statement.categories.map((category) => (
-          <li key={category.sharedCategoryId}>
-            <CategoryLine view={view} category={category} />
+        {(carried.amount !== 0 || carried.from === "opening") && (
+          <li>
+            <CarriedLine statement={statement} month={view.month} />
           </li>
-        ))}
+        )}
+        {statement.categories
+          .filter((category) => category.purchases.length || category.effect)
+          .map((category) => (
+            <li key={category.sharedCategoryId}>
+              <CategoryLine view={view} category={category} />
+            </li>
+          ))}
         {statement.repayments.map((repayment) => (
           <li key={repayment.settlementId}>
-            <RepaymentLine repayment={repayment} />
+            <RepaymentLine
+              repayment={repayment}
+              onConfirm={
+                canRecord && awaiting.has(repayment.settlementId)
+                  ? () =>
+                      open({
+                        type: "receive",
+                        id: `settlement:${repayment.settlementId}`,
+                      })
+                  : undefined
+              }
+            />
           </li>
         ))}
-        <li className="shared-statement-total">
-          <span className="shared-line">
-            <span className="shared-line-name">
-              <strong>Balance</strong>
-              <small>End of {month}</small>
-            </span>
-            <span className="shared-line-amount">
-              <Direction effect={statement.balance} />
-            </span>
-          </span>
-        </li>
       </ul>
-      {statement.awaitingYourConfirmation.map((settlement) => (
-        <div className="shared-pending" key={settlement.settlementId}>
-          <p className="inspector-note">
-            Your partner recorded a repayment of{" "}
-            <Amount value={settlement.amount} /> on {shortDate(settlement.date)}
-            . Check that it reached your account, then record it.
-          </p>
-          {canRecord && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                open({
-                  type: "receive",
-                  id: `settlement:${settlement.settlementId}`,
-                })
-              }
-            >
-              Record receipt
-            </Button>
-          )}
-        </div>
-      ))}
-      {!canRecord ? (
-        <p className="inspector-note">
-          You’re looking at a past month. Record repayments from the current
-          month.
-        </p>
-      ) : net > 0 ? (
-        <>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="inspector-wide-action"
-            onClick={() => open({ type: "settlement" })}
-          >
-            Record net repayment
-          </Button>
-          <p className="inspector-note">
-            Pay your partner in your banking app first, then record it here.
-          </p>
-        </>
-      ) : (
-        net < 0 && (
-          <p className="inspector-note">
-            Your partner records the repayment from their budget. You confirm it
-            once the money arrives.
-          </p>
-        )
+      {canRecord && net > 0 && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="inspector-wide-action"
+          onClick={() => open({ type: "settlement" })}
+        >
+          Settle up
+        </Button>
       )}
     </section>
   );
@@ -177,18 +156,14 @@ function CarriedLine({
   const content = (
     <>
       <span className="shared-line-name">
-        <strong>Owed from before {monthOnly(month)}</strong>
+        {from === "opening" ? "Opening amounts" : "Carried over"}
         <small>
-          {from === "earlier-months"
-            ? `Balance at the end of ${monthOnly(moveMonth(month, -1))}`
-            : from === "opening"
-              ? `${opening.length} opening ${opening.length === 1 ? "amount" : "amounts"}`
-              : "Nothing carried over"}
+          {from === "opening"
+            ? opening.length
+            : monthOnly(moveMonth(month, -1)).slice(0, 3)}
         </small>
       </span>
-      <span className="shared-line-amount">
-        <Direction effect={amount} />
-      </span>
+      <Direction effect={amount} />
     </>
   );
   if (from !== "opening") return <span className="shared-line">{content}</span>;
@@ -233,16 +208,10 @@ function CategoryLine({
       trigger={
         <>
           <span className="shared-line-name">
-            <strong>{category.name}</strong>
-            <small>
-              {purchases.length
-                ? `${purchases.length} shared ${purchases.length === 1 ? "purchase" : "purchases"}`
-                : `No shared purchases in ${month}`}
-            </small>
+            {category.name}
+            {purchases.length > 0 && <small>{purchases.length}</small>}
           </span>
-          <span className="shared-line-amount">
-            <Direction effect={category.effect} />
-          </span>
+          <Direction effect={category.effect} />
         </>
       }
       title={category.name}
@@ -331,30 +300,34 @@ function PurchaseItem({
   );
 }
 
-function RepaymentLine({ repayment }: { repayment: Repayment }) {
-  const status = repayment.amount
-    ? repayment.receivedOn
-      ? `Received ${shortDate(repayment.receivedOn)}`
-      : repayment.paidByYou
-        ? "Waiting for your partner to confirm"
-        : "Waiting for you to confirm"
-    : "Offset only, no money moved";
+function RepaymentLine({
+  repayment,
+  onConfirm,
+}: {
+  repayment: Repayment;
+  onConfirm?: () => void;
+}) {
   return (
     <span className="shared-line">
       <span className="shared-line-name">
-        <strong>
-          {repayment.paidByYou
-            ? "You paid your partner"
-            : "Your partner paid you"}
-        </strong>
-        <small>
-          {shortDate(repayment.date)} · {status}
-        </small>
+        {repayment.paidByYou ? "You sent partner" : "Partner sent you"}
+        <small>{shortDate(repayment.date)}</small>
+        {!repayment.amount ? (
+          <span className="shared-tag">Offset</span>
+        ) : repayment.receivedOn ? null : onConfirm ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shared-confirm"
+            onClick={onConfirm}
+          >
+            Confirm
+          </Button>
+        ) : (
+          <span className="shared-tag">Pending</span>
+        )}
       </span>
-      <span className="shared-line-amount">
-        <Amount value={repayment.amount} />
-        <small>{repayment.paidByYou ? "you sent" : "sent to you"}</small>
-      </span>
+      <Amount value={repayment.amount} />
     </span>
   );
 }
@@ -377,7 +350,6 @@ function LinePopover({
     <Popover>
       <PopoverTrigger className="shared-line is-interactive">
         {trigger}
-        <Icon name="chevron" size={15} />
       </PopoverTrigger>
       <PopoverContent
         side={compact ? "bottom" : "left"}

@@ -175,10 +175,6 @@ function BudgetWorkspace({
     setMobileOpen(false);
     setFormError("");
   };
-  const onReview = () => {
-    navigate("transactions");
-    setReviewOnly(true);
-  };
   const busy =
     execute.isPending ||
     importCategories.isPending ||
@@ -189,7 +185,6 @@ function BudgetWorkspace({
     view.budget.transactions.filter(
       (transaction) => !transaction.removed && !transaction.reviewed,
     ).length;
-  const targetEmbedded = tab === "budget" && panel?.type === "target";
   const commandDialog = panel && (
     <CommandDialog
       key={`${panel.type}:${panel.id ?? "new"}:${month}`}
@@ -208,7 +203,6 @@ function BudgetWorkspace({
         importCategories.mutate({ text, expectedRevision: state.revision })
       }
       onJoin={(code) => join.mutate({ code })}
-      embedded={targetEmbedded}
     />
   );
   return (
@@ -341,16 +335,9 @@ function BudgetWorkspace({
           <BudgetPlan
             state={state}
             busy={busy}
-            pending={pending}
             run={run}
             open={open}
             onError={setFormError}
-            onReview={onReview}
-            targetCategoryId={targetEmbedded ? panel.id : undefined}
-            targetEditor={targetEmbedded ? commandDialog : undefined}
-            onSelectionChange={() => {
-              if (targetEmbedded) setPanel(null);
-            }}
           />
         )}
         {tab === "transactions" && (
@@ -393,7 +380,7 @@ function BudgetWorkspace({
           {notice}
         </div>
       )}
-      {!targetEmbedded && commandDialog}
+      {commandDialog}
     </div>
   );
 }

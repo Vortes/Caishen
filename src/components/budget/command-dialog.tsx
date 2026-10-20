@@ -12,7 +12,6 @@ import { AssignmentForm } from "~/components/budget/assignment-form";
 import { buildCommand } from "~/components/budget/build-command";
 import { CategoryForm } from "~/components/budget/category-form";
 import { CategoryImportForm } from "~/components/budget/category-import-form";
-import { CategoryTargetForm } from "~/components/budget/category-target-form";
 import { money, newId, text } from "~/components/budget/format";
 import type { Panel, View } from "~/components/budget/types";
 import { LoanForm } from "~/components/loans/loan-form";
@@ -44,7 +43,6 @@ const saveLabels: Partial<Record<Panel["type"], string>> = {
   loan: "Add loan",
   "loan-payment": "Record lender payment",
   rate: "Save confirmed rate",
-  target: "Save target",
   rule: "Create standing rule",
 };
 
@@ -64,7 +62,6 @@ const dialogTitles: Record<Panel["type"], string> = {
   "loan-payment": "Record a lender payment",
   rate: "Update a confirmed loan rate",
   reconcile: "Reconcile a bank statement",
-  target: "Set a category target",
   join: "Connect with your partner",
   rule: "Create a standing rule",
   history: "Transaction history",
@@ -81,7 +78,6 @@ export type CommandDialogProps = {
   onError: (error: string) => void;
   onImport: (text: string) => void;
   onJoin: (code: string) => void;
-  embedded?: boolean;
 };
 
 export function CommandDialog(props: CommandDialogProps) {
@@ -104,7 +100,6 @@ function CommandDialogContent({
   onError,
   onImport,
   onJoin,
-  embedded = false,
 }: CommandDialogProps) {
   const [operationId] = useState(newId);
   const [entityId] = useState(newId);
@@ -125,7 +120,6 @@ function CommandDialogContent({
     panel.type === "history"
       ? view.budget.transactions.find((item) => item.id === panel.id)
       : undefined;
-  const category = view.categories.find((item) => item.id === panel.id);
   const shared = view.sharedCategories.find((item) => item.id === panel.id);
   const loan = view.loans.find((item) => item.id === panel.id);
   const claim = view.reimbursements.find((item) => item.id === panel.id);
@@ -280,15 +274,6 @@ function CommandDialogContent({
         {panel.type === "loan" && <LoanForm view={view} />}
         {panel.type === "loan-payment" && <LoanPaymentForm view={view} />}
         {panel.type === "rate" && <LoanRateForm view={view} loan={loan} />}
-        {panel.type === "target" && (
-          <CategoryTargetForm
-            view={view}
-            month={month}
-            category={category}
-            busy={busy}
-            run={run}
-          />
-        )}
         {panel.type === "reconcile" && (
           <ReconcileForm
             view={view}
@@ -343,7 +328,6 @@ function CommandDialogContent({
     </form>
   );
 
-  if (embedded) return content;
   return (
     <Dialog
       title={

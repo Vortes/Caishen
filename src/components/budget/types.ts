@@ -18,7 +18,6 @@ export type Panel = {
     | "loan-payment"
     | "rate"
     | "reconcile"
-    | "target"
     | "join"
     | "rule"
     | "history";
