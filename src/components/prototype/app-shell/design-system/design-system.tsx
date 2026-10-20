@@ -60,7 +60,7 @@ const groups: { title: string; description: string; rows: Specimen[] }[] = [
   {
     title: "Funded",
     description:
-      "The target is met, it's snoozed, or there's no target and money is available. Unspent money is solid; spent money is striped. Weekly targets get a section per week, and “set aside another” targets that carried money over get a first section for it.",
+      "The target is met, it's snoozed, or there's no target and money is available. Unspent money is solid; spent money is a darker, striped shade of the same color. Weekly targets get a section per week, and “set aside another” targets that carried money over get a first section for it.",
     rows: [
       specimen("Rent", "funded", "Funded", {
         assigned: 152_000,

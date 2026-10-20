@@ -159,6 +159,25 @@
     0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
 }
 
+/* ---------- Semantic: derived ---------- */
+
+/* Spent money in the funding bar: the status color mixed into the panel, so
+   it reads darker than unspent money in the dark theme and paler in the light
+   one. Declared on every themed element so it follows the theme it sits in. */
+:root,
+[data-theme] {
+  --status-funded-spent: color-mix(
+    in oklab,
+    var(--status-funded) 45%,
+    var(--surface-panel)
+  );
+  --status-underfunded-spent: color-mix(
+    in oklab,
+    var(--status-underfunded) 45%,
+    var(--surface-panel)
+  );
+}
+
 /* ---------- Scale ---------- */
 
 :root {
