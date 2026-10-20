@@ -14,10 +14,24 @@ import {
   type Command,
 } from "../../src/domain/engine";
 
+// tRPC batches calls made in the same tick into one request, so a path can
+// name a procedure more than once ("budget.state,budget.state").
+function procedures(route: Route) {
+  const { pathname } = new URL(route.request().url());
+  return pathname.slice(pathname.lastIndexOf("/") + 1).split(",");
+}
+
+// Answers every call in the request with the same value.
 async function respond(route: Route, value: unknown) {
+  const count = procedures(route).length;
   if (route.request().headers()["trpc-accept"] === "application/jsonl") {
     const stream = jsonlStreamProducer({
-      data: { 0: { result: { data: value } } },
+      data: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          index,
+          { result: { data: value } },
+        ]),
+      ),
       serialize: superjson.serialize,
     });
     await route.fulfill({
@@ -29,7 +43,7 @@ async function respond(route: Route, value: unknown) {
   const result = { result: { data: superjson.serialize(value) } };
   await route.fulfill({
     json: new URL(route.request().url()).searchParams.has("batch")
-      ? [result]
+      ? Array.from({ length: count }, () => result)
       : result,
   });
 }
@@ -143,10 +157,11 @@ export async function openPrototype(page: Page) {
   const writes: string[] = [];
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/budget.state")) {
+    if (procedures(route).every((name) => name === "budget.state")) {
       const state: State = {
         view: projectBook(book, user.id, month),
         revision: 0,
+        history: { undo: null, redo: null },
         services: [],
         connections: [],
         evidence: [],

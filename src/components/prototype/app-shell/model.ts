@@ -163,6 +163,8 @@ const historyReason: Record<
   categorized: "Categorized",
   merged: "Merged",
   removed: "Removed",
+  undone: "Undone",
+  redone: "Redone",
 };
 
 // YNAB's progress bar sections (support.ynab.com, "Progress Bars"): weekly
