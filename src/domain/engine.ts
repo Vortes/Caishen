@@ -2433,6 +2433,31 @@ function applyCommand(
       const revision = existing
         ? Math.max(existing.revision + 1, command.revision ?? 0)
         : (command.revision ?? 1);
+      const expenseMonth =
+        command.expenseMonth ?? existing?.expenseMonth ?? monthOf(command.date);
+      const sameAllocation = (
+        before: Record<string, number> | undefined,
+        after: Record<string, number> | undefined,
+      ) =>
+        before === undefined || after === undefined
+          ? before === after
+          : Object.keys(before).length === Object.keys(after).length &&
+            Object.entries(before).every(
+              ([id, amount]) => after[id] === amount,
+            );
+      const reviewedPosting = Boolean(
+        existing?.reviewed &&
+        existing.status === "pending" &&
+        command.status === "posted" &&
+        existing.accountId === account.id &&
+        existing.date === command.date &&
+        existing.amount === command.amount &&
+        existing.categoryId === categoryId &&
+        existing.expenseMonth === expenseMonth &&
+        existing.sharedCategoryId === sharedCategoryId &&
+        sameAllocation(existing.shares, shares) &&
+        sameAllocation(existing.splitWeights, weights),
+      );
       const transaction: Transaction = {
         id: command.transactionId,
         accountId: account.id,
@@ -2441,10 +2466,7 @@ function applyCommand(
         payee: command.payee,
         status: command.status,
         categoryId,
-        expenseMonth:
-          command.expenseMonth ??
-          existing?.expenseMonth ??
-          monthOf(command.date),
+        expenseMonth,
         sharedCategoryId,
         shares,
         splitWeights: weights,
@@ -2453,7 +2475,7 @@ function applyCommand(
         reviewed:
           source === "user"
             ? (command.reviewed ?? existing?.reviewed ?? true)
-            : false,
+            : reviewedPosting,
         kind:
           command.amount < 0 ? "purchase" : categoryId ? "refund" : "income",
         history: [
