@@ -238,19 +238,6 @@ function MonthDetails() {
   return (
     <>
       <Card>
-        <Title
-          icon={
-            <CalendarDaysIcon
-              size={15}
-              className={styles.titleIcon}
-              aria-hidden
-            />
-          }
-          title={month.label}
-          subtitle="Nothing selected. Pick a category to see its details."
-        />
-      </Card>
-      <Card>
         <Property label="Assigned">
           {money(sum(categories, (item) => item.assigned))}
         </Property>
