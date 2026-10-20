@@ -120,9 +120,13 @@ const historySchema = z.object({
 // The fixture plays the server with the real engine and no database:
 // budget.execute runs each command over the book and records it as one undo
 // step, and budget.changeHistory steps through those, each checking the
-// revision like the server does. Every other write is refused and recorded
-// in writes.
-export async function openPrototype(page: Page) {
+// revision like the server does. A command the engine refuses fails with its
+// message, as on the server. Every other write is refused and recorded in
+// writes. Options add commands after the seed and bank imports to the state.
+export async function openPrototype(
+  page: Page,
+  options: { commands?: Command[]; imports?: State["imports"] } = {},
+) {
   await clerkSetup();
   const [user] = z
     .array(z.object({ id: z.string(), email: z.string().email() }))
@@ -220,7 +224,8 @@ export async function openPrototype(page: Page) {
       categoryId: "household",
     },
   ];
-  for (const command of initial) book = execute(book, user.id, command);
+  for (const command of [...initial, ...(options.commands ?? [])])
+    book = execute(book, user.id, command);
   type Step = { before: Book; after: Book; label: string };
   const undo: Step[] = [];
   const redo: Step[] = [];
@@ -242,7 +247,7 @@ export async function openPrototype(page: Page) {
     services: [],
     connections: [],
     evidence: [],
-    imports: [],
+    imports: options.imports ?? [],
   });
   const conflict = (expected: number) =>
     expected === revision
@@ -277,7 +282,16 @@ export async function openPrototype(page: Page) {
       }
       const before = structuredClone(book);
       const budget = book.budgets[user.id]!;
-      book = execute(book, user.id, prepareUserCommand(budget, input.command));
+      try {
+        book = execute(
+          book,
+          user.id,
+          prepareUserCommand(budget, input.command),
+        );
+      } catch (error) {
+        await respond(route, [{ error: (error as Error).message }]);
+        return;
+      }
       commands.push(input.command);
       undo.push({
         before,

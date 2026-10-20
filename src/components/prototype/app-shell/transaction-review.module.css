@@ -1,0 +1,97 @@
+/* The register's selection bar, pinned above its rows like the plan's
+   column header. Its checkbox lines up with the rows' checkboxes and its
+   label lines up with their text. */
+
+.bar {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--size-row-md);
+  padding-right: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+/* The whole label is the hit area, the bar's full height. */
+.selectAll {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  align-self: stretch;
+  padding: 0 4px;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .selectAll:hover {
+    color: var(--text-secondary);
+  }
+}
+.summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.count {
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.hint {
+  color: var(--feedback-attention);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+/* Narrow registers keep the actions beside Select all and give the summary
+   its own row below, so the count and net are never covered. */
+@container (max-width: 560px) {
+  .bar {
+    display: grid;
+    grid-template-areas:
+      "select actions"
+      "summary summary";
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 12px;
+    height: auto;
+    min-height: var(--size-row-md);
+  }
+  .selectAll {
+    grid-area: select;
+    min-height: var(--size-row-md);
+  }
+  .actions {
+    grid-area: actions;
+    justify-self: end;
+  }
+  .summary {
+    grid-area: summary;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding: 0 4px;
+  }
+  .summary:not(:empty) {
+    padding-bottom: 8px;
+  }
+}
+
+/* A register row's checkbox sits left of its review dot, so the dot stays
+   visible while rows are being selected. */
+.checkable > label {
+  left: 0;
+  width: 22px;
+}
+/* Touch has no hover to reveal the checkboxes, so they always show. */
+@media (hover: none) {
+  .checkable > label {
+    opacity: 1;
+  }
+}

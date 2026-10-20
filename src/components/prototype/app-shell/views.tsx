@@ -25,7 +25,9 @@ import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
+import { ReviewBar, useReviewSelection } from "./transaction-review";
 import styles from "./shell.module.css";
+import reviewStyles from "./transaction-review.module.css";
 
 // Arrow keys move the selection through the rows of a list, like Linear's j/k.
 function moveSelection(event: KeyboardEvent<HTMLElement>) {
@@ -363,11 +365,15 @@ export function RegisterView({
   reviewOnly,
   selectedId,
   onSelect,
+  checked,
+  onCheck,
 }: {
   accountId: string | null;
   reviewOnly: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  checked: string[];
+  onCheck: (ids: string[], value: boolean) => void;
 }) {
   const { transactions, accounts, month, today } = useShellData();
   // The register follows the month picker, like the plan. The review inbox
@@ -377,6 +383,7 @@ export function RegisterView({
       (!accountId || item.accountId === accountId) &&
       (reviewOnly ? item.needsReview : item.date.startsWith(month.key)),
   );
+  const selection = useReviewSelection({ rows, checked, onCheck });
   if (!rows.length) {
     return reviewOnly ? (
       <Empty title="Everything here is reviewed." icon={CheckIcon}>
@@ -394,8 +401,22 @@ export function RegisterView({
       className={styles.list}
       role="group"
       aria-label="Transactions"
-      onKeyDown={moveSelection}
+      data-selecting={selection.selected.length > 0 || undefined}
+      onKeyDown={(event) => {
+        // x toggles the focused row's checkbox, like the plan.
+        const id =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement.dataset.id
+            : undefined;
+        if (event.key === "x" && id) {
+          event.preventDefault();
+          onCheck([id], !checked.includes(id));
+          return;
+        }
+        moveSelection(event);
+      }}
     >
+      <ReviewBar selection={selection} onCheck={onCheck} />
       {days.map((day) => {
         const items = rows.filter((item) => item.date === day);
         const label = dayLabel(day, today);
@@ -412,70 +433,87 @@ export function RegisterView({
               const account = accounts.find(
                 (entry) => entry.id === item.accountId,
               );
+              const checkable = item.source === "budget";
+              const isChecked = checkable && checked.includes(item.id);
               return (
-                <button
-                  type="button"
+                <div
                   key={item.id}
-                  data-row
-                  className={`${styles.txColumns} ${styles.row}`}
-                  aria-current={selectedId === item.id ? "true" : undefined}
-                  onClick={() => onSelect(item.id)}
+                  className={`${styles.rowWrap} ${reviewStyles.checkable}`}
+                  data-checked={isChecked || undefined}
                 >
-                  <span className={styles.rowName}>
-                    <span
-                      className={styles.reviewDot}
-                      data-on={item.needsReview ? "" : undefined}
-                    >
-                      {item.needsReview && (
-                        <span className="sr-only">Needs review</span>
+                  {checkable && (
+                    <RowCheckbox
+                      label={`Select ${item.payee}`}
+                      state={isChecked}
+                      onChange={() => onCheck([item.id], !isChecked)}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    data-row
+                    data-id={checkable ? item.id : undefined}
+                    className={`${styles.txColumns} ${styles.row}`}
+                    aria-current={selectedId === item.id ? "true" : undefined}
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span className={styles.rowName}>
+                      <span
+                        className={styles.reviewDot}
+                        data-on={item.needsReview ? "" : undefined}
+                      >
+                        {item.needsReview && (
+                          <span className="sr-only">Needs review</span>
+                        )}
+                      </span>
+                      {item.source === "bank" ? (
+                        <InboxIcon
+                          size={14}
+                          className={styles.statusIcon}
+                          aria-label="Bank import"
+                        />
+                      ) : (
+                        <status.icon
+                          size={14}
+                          className={styles.statusIcon}
+                          data-status={item.status}
+                          aria-label={status.label}
+                        />
+                      )}
+                      <span className={styles.truncate}>{item.payee}</span>
+                      {item.shared && (
+                        <UsersIcon
+                          size={12}
+                          className={styles.inlineIcon}
+                          aria-label="Shared"
+                        />
                       )}
                     </span>
-                    {item.source === "bank" ? (
-                      <InboxIcon
-                        size={14}
-                        className={styles.statusIcon}
-                        aria-label="Bank import"
-                      />
-                    ) : (
-                      <status.icon
-                        size={14}
-                        className={styles.statusIcon}
-                        data-status={item.status}
-                        aria-label={status.label}
-                      />
-                    )}
-                    <span className={styles.truncate}>{item.payee}</span>
-                    {item.shared && (
-                      <UsersIcon
-                        size={12}
-                        className={styles.inlineIcon}
-                        aria-label="Shared"
-                      />
-                    )}
-                  </span>
-                  <span className={styles.truncate}>
-                    {item.needsCategory ? (
-                      <Tag tone="attention">{item.categoryLabel}</Tag>
-                    ) : (
-                      <span className={styles.muted}>{item.categoryLabel}</span>
-                    )}
-                    {item.forMonth && (
-                      <span className={styles.faint}> · {item.forMonth}</span>
-                    )}
-                  </span>
-                  <span
-                    className={`${styles.truncate} ${styles.faint}`}
-                    data-optional
-                  >
-                    {account?.name ?? "Unlinked bank account"}
-                  </span>
-                  <span
-                    className={styles.numeric}
-                    data-inflow={item.amount > 0 || undefined}
-                  >
-                    {money(item.amount, true)}
-                  </span>
-                </button>
+                    <span className={styles.truncate}>
+                      {item.needsCategory ? (
+                        <Tag tone="attention">{item.categoryLabel}</Tag>
+                      ) : (
+                        <span className={styles.muted}>
+                          {item.categoryLabel}
+                        </span>
+                      )}
+                      {item.forMonth && (
+                        <span className={styles.faint}> · {item.forMonth}</span>
+                      )}
+                    </span>
+                    <span
+                      className={`${styles.truncate} ${styles.faint}`}
+                      data-optional
+                    >
+                      {account?.name ?? "Unlinked bank account"}
+                    </span>
+                    <span
+                      className={styles.numeric}
+                      data-inflow={item.amount > 0 || undefined}
+                    >
+                      {money(item.amount, true)}
+                    </span>
+                  </button>
+                </div>
               );
             })}
           </div>

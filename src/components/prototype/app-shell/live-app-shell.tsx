@@ -18,10 +18,16 @@ import { AppShellPrototype } from "./app-shell-prototype";
 import { toShellData } from "./model";
 import type { MoveMoney } from "./move-money";
 import styles from "./shell.module.css";
+import {
+  approveCommand,
+  TransactionReviewProvider,
+  type TransactionReview,
+} from "./transaction-review";
 
-// Reads the signed-in budget through the production query. Moving money is
-// real: it sends the legacy plan's commands through the same optimistic
-// path and shares its undo history. The other actions stay inert.
+// Reads the signed-in budget through the production query. Moving money and
+// marking transactions reviewed are real: they send the legacy app's
+// commands through the same optimistic path and share its undo history. The
+// other actions stay inert.
 export function LiveAppShell() {
   const { isLoaded, userId } = useAuth();
   const [month, setMonth] = useState(currentMonth);
@@ -134,6 +140,19 @@ function LiveWorkspace({
   };
 
   const busy = useIsMutating() > 0 || loadingMonth || Boolean(refreshError);
+  const review: TransactionReview = {
+    approve: (transactionIds) => {
+      if (blocked() || !transactionIds.length) return;
+      const command = approveCommand(transactionIds);
+      const count = transactionIds.length;
+      summaries.current.set(
+        command.id,
+        `Marked ${count} ${count === 1 ? "transaction" : "transactions"} reviewed`,
+      );
+      run(command);
+    },
+    busy,
+  };
   const history = useWorkspaceHistory({
     state,
     disabled: busy || openPopovers > 0,
@@ -152,49 +171,52 @@ function LiveWorkspace({
   const canUndo = offerUndo && state.revision === saved && !history.unavailable;
 
   return (
-    <AppShellPrototype
-      data={data}
-      loadingMonth={loadingMonth}
-      onMonthChange={onMonthChange}
-      moveMoney={moveMoney}
-      notifications={
-        <ToastRegion>
-          {refreshError && (
-            <Toast
-              tone="attention"
-              action={
-                <Button size="sm" onClick={onRetry}>
-                  Try again
-                </Button>
-              }
-            >
-              Your budget couldn’t refresh. Refresh before making more changes.
-            </Toast>
-          )}
-          {notice && (
-            <Toast
-              key={notice.id}
-              tone={notice.tone}
-              duration={saved === undefined ? undefined : 8000}
-              onDismiss={() => setNotice(null)}
-              action={
-                offerUndo && (
-                  <Button
-                    size="sm"
-                    disabled={!canUndo}
-                    onClick={() => history.change("undo")}
-                  >
-                    Undo
+    <TransactionReviewProvider value={review}>
+      <AppShellPrototype
+        data={data}
+        loadingMonth={loadingMonth}
+        onMonthChange={onMonthChange}
+        moveMoney={moveMoney}
+        notifications={
+          <ToastRegion>
+            {refreshError && (
+              <Toast
+                tone="attention"
+                action={
+                  <Button size="sm" onClick={onRetry}>
+                    Try again
                   </Button>
-                )
-              }
-            >
-              {notice.message}
-            </Toast>
-          )}
-        </ToastRegion>
-      }
-    />
+                }
+              >
+                Your budget couldn’t refresh. Refresh before making more
+                changes.
+              </Toast>
+            )}
+            {notice && (
+              <Toast
+                key={notice.id}
+                tone={notice.tone}
+                duration={saved === undefined ? undefined : 8000}
+                onDismiss={() => setNotice(null)}
+                action={
+                  offerUndo && (
+                    <Button
+                      size="sm"
+                      disabled={!canUndo}
+                      onClick={() => history.change("undo")}
+                    >
+                      Undo
+                    </Button>
+                  )
+                }
+              >
+                {notice.message}
+              </Toast>
+            )}
+          </ToastRegion>
+        }
+      />
+    </TransactionReviewProvider>
   );
 }
 

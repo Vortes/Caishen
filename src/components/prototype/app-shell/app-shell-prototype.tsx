@@ -404,7 +404,10 @@ export function AppShellPrototype({
                     <MonthNav
                       month={data.month}
                       onChange={(next) => {
-                        if (screen.type === "register") setSelectedId(null);
+                        if (screen.type === "register") {
+                          setSelectedId(null);
+                          setChecked([]);
+                        }
                         onMonthChange(next);
                       }}
                     />
@@ -443,6 +446,7 @@ export function AppShellPrototype({
                       onClick={() => {
                         setReviewOnly((value) => !value);
                         setSelectedId(null);
+                        setChecked([]);
                       }}
                     >
                       <span className={styles.reviewDot} data-on data-inline />
@@ -513,6 +517,8 @@ export function AppShellPrototype({
                         reviewOnly={reviewOnly}
                         selectedId={selectedId}
                         onSelect={select}
+                        checked={checked}
+                        onCheck={check}
                       />
                     )}
                     {screen.type === "loans" && (
