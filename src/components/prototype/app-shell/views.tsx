@@ -21,6 +21,7 @@ import {
 } from "./model";
 import { FundingBar } from "./funding-bar";
 import { MoveMoneyPopover } from "./move-money";
+import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
@@ -48,20 +49,40 @@ function moveSelection(event: KeyboardEvent<HTMLElement>) {
 }
 
 export function PlanView({
+  view,
   onSelect,
   checked,
   onCheck,
 }: {
+  view: PlanViewId | null;
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
 }) {
-  const { groups } = useShellData();
+  const shell = useShellData();
   const [closed, setClosed] = useState<string[]>([]);
-  if (!groups.length) {
+  if (!shell.groups.length) {
     return (
       <Empty title="No categories yet.">
         Categories you create in Caishen show up here.
+      </Empty>
+    );
+  }
+  // A view keeps only its categories, and only the groups that still have
+  // some; group totals add up what's showing.
+  const focus = view ? viewOf(view) : null;
+  const groups = focus
+    ? shell.groups
+        .map((group) => ({
+          ...group,
+          categories: group.categories.filter(focus.matches),
+        }))
+        .filter((group) => group.categories.length)
+    : shell.groups;
+  if (focus && !groups.length) {
+    return (
+      <Empty title={focus.empty.title} icon={CheckIcon}>
+        {focus.empty.body}
       </Empty>
     );
   }

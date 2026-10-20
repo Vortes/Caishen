@@ -18,6 +18,7 @@ import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
 import { money, type ShellData } from "./model";
 import { MoveMoneyProvider } from "./move-money";
+import { PlanViews, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
 import { READY_TO_ASSIGN, type Move } from "./simulated-moves";
 import { ShellDataProvider } from "./shell-data";
@@ -54,6 +55,8 @@ type Settings = {
   // A Monkeytype palette name, applied over the dark theme; null keeps the
   // shell's own colors.
   palette: string | null;
+  // The plan's focused view; like YNAB, remembered on this device.
+  planView: PlanViewId | null;
 };
 
 const defaults: Settings = {
@@ -61,6 +64,7 @@ const defaults: Settings = {
   inspector: { width: INSPECTOR.defaultWidth, collapsed: false },
   theme: "dark",
   palette: null,
+  planView: null,
 };
 
 function isTyping(target: EventTarget | null) {
@@ -425,6 +429,14 @@ export function AppShellPrototype({
                 </header>
 
                 <div className={styles.toolbar}>
+                  {screen.type === "plan" && (
+                    <PlanViews
+                      value={settings.planView}
+                      onChange={(planView) =>
+                        setSettings((value) => ({ ...value, planView }))
+                      }
+                    />
+                  )}
                   {screen.type === "reflect" && (
                     <ReflectFilters
                       filters={filters}
@@ -488,6 +500,7 @@ export function AppShellPrototype({
                   >
                     {screen.type === "plan" && (
                       <PlanView
+                        view={settings.planView}
                         // Like YNAB, clicking a row selects just that row: its
                         // checkbox ticks and any others clear. Clicking a
                         // selected row deselects it. Checkboxes add to or
