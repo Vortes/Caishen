@@ -43,20 +43,16 @@ const SIDEBAR = { defaultWidth: 320, min: 200, max: 360 };
 const INSPECTOR = { defaultWidth: 520, min: 288, max: 520 };
 
 type Theme = "dark" | "light";
-type TypeScale = "default" | "large";
 type Settings = {
   sidebar: PanelState;
   inspector: PanelState;
   theme: Theme;
-  // Variant: every type step one size bigger, like YNAB.
-  type: TypeScale;
 };
 
 const defaults: Settings = {
   sidebar: { width: SIDEBAR.defaultWidth, collapsed: false },
   inspector: { width: INSPECTOR.defaultWidth, collapsed: false },
   theme: "dark",
-  type: "default",
 };
 
 function isTyping(target: EventTarget | null) {
@@ -252,7 +248,6 @@ export function AppShellPrototype({
         ref={attachRoot}
         className={styles.root}
         data-theme={settings.theme}
-        data-type={settings.type}
         data-ready={ready || undefined}
         data-narrow={narrow || undefined}
         data-dragging={sidebar.dragging || inspector.dragging || undefined}
@@ -558,17 +553,6 @@ export function AppShellPrototype({
                       }),
                     );
                   }}
-                />
-                <Segmented
-                  label="Type"
-                  value={settings.type}
-                  options={[
-                    ["default", "Default"],
-                    ["large", "Large"],
-                  ]}
-                  onChange={(type) =>
-                    setSettings((value) => ({ ...value, type }))
-                  }
                 />
                 <span className={styles.readout} aria-live="polite">
                   Sidebar{" "}

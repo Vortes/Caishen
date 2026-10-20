@@ -33,18 +33,32 @@
   --drawer-shadow:
     0 8px 24px oklch(0 0 0 / 0.35), 0 24px 64px oklch(0 0 0 / 0.3);
 
-  /* Type steps, named by role. The large variant moves each up one step on
-     the same scale (11, 12, 13, 14, 16, 22, 24). */
-  --font-caption: 11px;
-  --font-small: 12px;
-  --font-body: 13px;
-  --font-title: 14px;
-  --font-figure: 22px;
+  /* Type steps, named by role, on the scale 12, 13, 14, 16, 24. */
+  --font-caption: 12px;
+  --font-small: 13px;
+  --font-body: 14px;
+  --font-title: 16px;
+  --font-figure: 24px;
+  /* Sizes that hold text, on a 4px rhythm sized for that type. */
+  --size-badge: 20px;
+  --size-pill: 22px;
+  --size-control-xs: 28px;
+  --size-control-sm: 30px;
+  --size-control: 32px;
+  --size-row-sm: 34px;
+  --size-row-md: 36px;
+  --size-sidebar-header: 40px;
+  --size-header: 48px;
+  --size-toolbar: 52px;
+  --size-popover: 320px;
+  --space-card: 16px;
+  --space-stack: 10px;
+  --space-row-x: 14px;
 
   --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
   --panel-duration: 260ms;
-  --row: 38px;
-  --nav-row: 32px;
+  --row: 44px;
+  --nav-row: var(--size-row-md);
   --gutter: 8px;
 
   position: fixed;
@@ -94,13 +108,6 @@
   --drawer-shadow:
     0 8px 24px oklch(0.2 0.01 var(--hue) / 0.12),
     0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
-}
-.root[data-type="large"] {
-  --font-caption: 12px;
-  --font-small: 13px;
-  --font-body: 14px;
-  --font-title: 16px;
-  --font-figure: 24px;
 }
 .root[data-switching] *,
 .root[data-switching] *::after {
@@ -173,7 +180,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 36px;
+  height: var(--size-sidebar-header);
   margin-bottom: 8px;
 }
 .switcher {
@@ -182,7 +189,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
+  height: var(--size-control);
   padding: 0 6px;
   border: 0;
   border-radius: 6px;
@@ -200,8 +207,8 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: var(--size-badge);
+  height: var(--size-badge);
   border-radius: 5px;
   background: oklch(0.6 0.15 30);
   color: white;
@@ -275,9 +282,9 @@
 .navCount {
   flex: none;
   min-width: 18px;
-  height: 18px;
+  height: var(--size-badge);
   padding: 0 5px;
-  border-radius: 9px;
+  border-radius: 999px;
   background: var(--accent);
   color: white;
   font-size: var(--font-caption);
@@ -301,7 +308,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 24px;
+  height: var(--size-control-xs);
   padding: 0 8px;
   border: 0;
   border-radius: 6px;
@@ -371,7 +378,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
+  height: var(--size-control);
   padding: 0 8px;
   border: 0;
   border-radius: 6px;
@@ -406,7 +413,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 44px;
+  height: var(--size-header);
   padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--line);
 }
@@ -459,7 +466,7 @@
   margin-left: 8px;
 }
 .reportTab {
-  height: 26px;
+  height: var(--size-control-sm);
   padding: 0 10px;
   border: 0;
   border-radius: 6px;
@@ -484,7 +491,7 @@
   margin-left: 4px;
 }
 .monthButton {
-  height: 26px;
+  height: var(--size-control-sm);
   padding: 0 8px;
   border: 0;
   border-radius: 6px;
@@ -501,7 +508,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 48px;
+  height: var(--size-toolbar);
   padding: 0 10px 0 20px;
 }
 .toolbarActions {
@@ -526,7 +533,7 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 24px;
+  height: var(--size-control-xs);
   padding: 0 8px 0 10px;
   border: 1px solid color-mix(in oklab, var(--tone) 35%, transparent);
   border-radius: 999px;
@@ -571,7 +578,7 @@
   font-size: var(--font-small);
 }
 .rtaCard .rtaButton {
-  height: 30px;
+  height: var(--size-row-sm);
   margin-top: 6px;
 }
 
@@ -580,8 +587,8 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--size-control);
+  height: var(--size-control);
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -661,7 +668,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 28px;
+  height: var(--size-control);
   padding: 0 12px;
   border: 1px solid var(--control-line);
   border-radius: 999px;
@@ -689,7 +696,7 @@
   color: var(--text);
 }
 .control.iconButton {
-  width: 28px;
+  width: var(--size-control);
   padding: 0;
   border-radius: 50%;
 }
@@ -770,7 +777,7 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-stack);
   height: 100%;
   padding: 0 10px 10px 12px;
   overflow-y: auto;
@@ -781,7 +788,7 @@
   flex-direction: column;
   flex: none;
   gap: 2px;
-  padding: 12px;
+  padding: var(--space-card);
   border: 1px solid var(--card-line);
   border-radius: 12px;
   background: var(--raised);
@@ -806,7 +813,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 24px;
+  min-height: var(--size-control-xs);
 }
 .cardTitleRow h2 {
   flex: 1;
@@ -854,7 +861,7 @@
   display: grid;
   grid-template-columns: 96px 1fr;
   align-items: center;
-  min-height: 30px;
+  min-height: var(--size-row-sm);
 }
 .propertyLabel {
   padding-left: 2px;
@@ -865,7 +872,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  min-height: 26px;
+  min-height: var(--size-control-sm);
   margin-left: -6px;
   padding: 0 6px;
   border-radius: 6px;
@@ -921,7 +928,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 30px;
+  min-height: var(--size-row-sm);
   padding: 0 6px;
   border: 0;
   border-radius: 6px;
@@ -1019,7 +1026,7 @@ button.actionItem:hover {
   align-items: center;
   column-gap: 16px;
   width: 100%;
-  padding: 0 12px 0 34px;
+  padding: 0 var(--space-row-x) 0 34px;
 }
 .columns {
   grid-template-columns: minmax(0, 1fr) 104px 104px 116px;
@@ -1048,7 +1055,7 @@ button.actionItem:hover {
   position: sticky;
   z-index: 2;
   top: 0;
-  height: 32px;
+  height: var(--size-row-md);
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   color: var(--text-3);
@@ -1077,7 +1084,7 @@ button.actionItem:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px 0 34px;
+  padding: 0 var(--space-row-x) 0 34px;
 }
 .groupName {
   display: flex;
@@ -1201,9 +1208,9 @@ button.actionItem:hover {
 .pill {
   display: inline-flex;
   align-items: center;
-  height: 20px;
+  height: var(--size-pill);
   padding: 0 8px;
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--hover);
   color: var(--text-2);
   font-weight: 500;
@@ -1228,7 +1235,7 @@ button.actionItem:hover {
 .chip {
   display: inline-flex;
   align-items: center;
-  height: 20px;
+  height: var(--size-pill);
   padding: 0 8px;
   border-radius: 999px;
   font-size: var(--font-small);
@@ -1420,7 +1427,7 @@ button.actionItem:hover {
 .peek {
   position: absolute;
   z-index: 40;
-  top: calc(var(--gutter) + 52px);
+  top: calc(var(--gutter) + var(--size-header) + 8px);
   bottom: calc(var(--gutter) + 6px);
   left: calc(var(--gutter) + 4px);
   padding: 8px;
@@ -1443,12 +1450,12 @@ button.actionItem:hover {
     visibility 0s;
 }
 .peek .sidebarHeader {
-  height: 28px;
+  height: var(--size-control);
 }
 .peekScrim {
   position: absolute;
   z-index: 35;
-  top: calc(var(--gutter) + 45px);
+  top: calc(var(--gutter) + var(--size-header) + 1px);
   right: var(--gutter);
   bottom: var(--gutter);
   left: var(--gutter);

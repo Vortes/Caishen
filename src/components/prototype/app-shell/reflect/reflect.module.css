@@ -23,7 +23,7 @@
 .stepper {
   display: flex;
   align-items: center;
-  height: 28px;
+  height: var(--size-control);
   padding: 0 1px;
   border: 1px solid var(--control-line);
   border-radius: 999px;
@@ -31,7 +31,7 @@
 }
 .stepper .filterTrigger,
 .stepper .filterTrigger[data-active] {
-  height: 26px;
+  height: var(--size-control-sm);
   padding: 0 6px;
   border: 0;
   background: transparent;
@@ -40,8 +40,8 @@
 .step {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: var(--size-control-xs);
+  height: var(--size-control-xs);
   border: 0;
   border-radius: 50%;
   background: transparent;
@@ -64,7 +64,7 @@
   z-index: 60;
   display: flex;
   flex-direction: column;
-  width: 288px;
+  width: var(--size-popover);
   max-height: min(440px, var(--radix-popover-content-available-height));
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -114,7 +114,7 @@
   opacity: 0.6;
 }
 .done {
-  height: 26px;
+  height: var(--size-control-sm);
   font-size: var(--font-small);
 }
 
@@ -136,7 +136,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 28px;
+  min-height: var(--size-control);
   padding: 0 8px 0 28px;
   border-radius: 6px;
   cursor: pointer;
@@ -174,7 +174,7 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: 30px;
+  height: var(--size-row-sm);
   padding: 0 8px;
   border: 0;
   border-radius: 6px;
@@ -213,7 +213,7 @@
   font-size: var(--font-small);
 }
 .custom select {
-  height: 28px;
+  height: var(--size-control);
   padding: 0 6px;
   border: 1px solid var(--control-line);
   border-radius: 6px;
@@ -253,7 +253,7 @@
   min-width: 0;
 }
 .crumbs button {
-  height: 24px;
+  height: var(--size-control-xs);
   padding: 0 6px;
   margin: 0 -6px;
   border: 0;
@@ -440,7 +440,7 @@
   align-items: center;
   column-gap: 12px;
   width: 100%;
-  min-height: 32px;
+  min-height: var(--size-row-md);
   padding: 0 8px;
   border: 0;
   border-radius: 6px;
@@ -465,7 +465,7 @@
   position: sticky;
   z-index: 1;
   top: -4px;
-  min-height: 28px;
+  min-height: var(--size-control);
   border-bottom: 1px solid var(--line);
   border-radius: 0;
   background: var(--raised);
@@ -522,7 +522,7 @@ button.sliceColumns:hover {
   background: var(--control);
 }
 .switch button {
-  height: 24px;
+  height: var(--size-control-xs);
   padding: 0 10px;
   border: 0;
   border-radius: 6px;
@@ -674,7 +674,7 @@ button.sliceColumns:hover {
   align-items: center;
   column-gap: 16px;
   width: 100%;
-  padding: 0 12px;
+  padding: 0 var(--space-row-x);
 }
 .itemColumns {
   grid-template-columns: minmax(0, 1fr) 128px 64px 116px;
