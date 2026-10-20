@@ -116,13 +116,18 @@ export function useTransactionEntryController({
     setSession((current) => (current ? { ...current, ...next } : current));
 
   // Once the editor is gone, focus goes back to what opened it, or to the
-  // same action where it now renders.
+  // same action where it now renders. Openers stay disabled until the save
+  // settles, which can be a render after the editor closes, so the return
+  // waits for that.
   const returning = useRef(false);
   useEffect(() => {
-    if (open || !returning.current) return;
+    if (open || !returning.current || saver.busy) return;
     returning.current = false;
     const target = opener.current;
     opener.current = null;
+    // Focus the user moved on their own in the meantime stays where it is.
+    if (document.activeElement && document.activeElement !== document.body)
+      return;
     const key = CSS.escape(target?.key ?? "new");
     const candidates = [
       target?.element,
@@ -145,7 +150,7 @@ export function useTransactionEntryController({
     (next ?? document.getElementById("prototype-content"))?.focus({
       preventScroll: true,
     });
-  }, [open]);
+  }, [open, saver.busy]);
 
   const close = (restore = true) => {
     if (saving.current) return;
