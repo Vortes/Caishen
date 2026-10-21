@@ -1,9 +1,8 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
-import { expect, test, type Page, type Route } from "@playwright/test";
-import { jsonlStreamProducer } from "@trpc/server/unstable-core-do-not-import";
+import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import superjson from "superjson";
 import { z } from "zod";
+import { readTrpcCalls, respondTrpc } from "./trpc-fixture";
 
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
@@ -13,26 +12,6 @@ import {
   execute,
   projectBook,
 } from "../../src/domain/engine";
-
-async function respond(route: Route, value: unknown) {
-  if (route.request().headers()["trpc-accept"] === "application/jsonl") {
-    const stream = jsonlStreamProducer({
-      data: { 0: { result: { data: value } } },
-      serialize: superjson.serialize,
-    });
-    await route.fulfill({
-      contentType: "application/jsonl",
-      body: await new Response(stream).text(),
-    });
-    return;
-  }
-  const result = { result: { data: superjson.serialize(value) } };
-  await route.fulfill({
-    json: new URL(route.request().url()).searchParams.has("batch")
-      ? [result]
-      : result,
-  });
-}
 
 async function openFixture(page: Page, large = false) {
   await clerkSetup();
@@ -168,59 +147,56 @@ async function openFixture(page: Page, large = false) {
     command: commandSchema.optional(),
   });
   await page.route("**/api/trpc/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/budget.state")) {
-      const state: State = {
-        view: projectBook(book, user.id, month),
-        revision,
-        history: { undo: null, redo: null },
-        services: [],
-        connections: [],
-        evidence: [],
-        imports,
-      };
-      await respond(route, state);
-      return;
-    }
-    const payload: unknown = route.request().postDataJSON();
-    const serialized = (
-      url.searchParams.has("batch")
-        ? z.record(z.unknown()).parse(payload)["0"]
-        : payload
-    ) as ReturnType<typeof superjson.serialize>;
-    const input = superjson.deserialize(serialized);
-    if (url.pathname.endsWith("/budget.resolveImport")) {
-      const resolution = resolveSchema.parse(input);
-      expect(resolution.expectedRevision).toBe(revision);
-      if (resolution.command) {
-        book = execute(book, user.id, resolution.command);
-        revision++;
+    const answers: unknown[] = [];
+    for (const { procedure, input } of readTrpcCalls(route.request())) {
+      if (procedure === "budget.state") {
+        const state: State = {
+          view: projectBook(book, user.id, month),
+          revision,
+          history: { undo: null, redo: null },
+          services: [],
+          connections: [],
+          evidence: [],
+          imports,
+        };
+        answers.push(state);
+        continue;
       }
-      imports = imports.filter(
-        (item) => item.logicalId !== resolution.logicalId,
-      );
-      resolutions.push(resolution);
-      await respond(route, { resolved: true });
+      if (procedure === "budget.resolveImport") {
+        const resolution = resolveSchema.parse(input);
+        expect(resolution.expectedRevision).toBe(revision);
+        if (resolution.command) {
+          book = execute(book, user.id, resolution.command);
+          revision++;
+        }
+        imports = imports.filter(
+          (item) => item.logicalId !== resolution.logicalId,
+        );
+        resolutions.push(resolution);
+        answers.push({ resolved: true });
+        continue;
+      }
+      if (procedure === "budget.mapBankAccount") {
+        const mapping = z
+          .object({
+            providerAccountId: z.string(),
+            accountId: z.string(),
+            startDate: z.string(),
+          })
+          .parse(input);
+        imports = imports.map((item) =>
+          item.providerAccountId === mapping.providerAccountId
+            ? { ...item, accountId: mapping.accountId }
+            : item,
+        );
+        answers.push({ mapped: true });
+        continue;
+      }
+      unexpectedRequests.push(procedure);
+      await route.abort("blockedbyclient");
       return;
     }
-    if (url.pathname.endsWith("/budget.mapBankAccount")) {
-      const mapping = z
-        .object({
-          providerAccountId: z.string(),
-          accountId: z.string(),
-          startDate: z.string(),
-        })
-        .parse(input);
-      imports = imports.map((item) =>
-        item.providerAccountId === mapping.providerAccountId
-          ? { ...item, accountId: mapping.accountId }
-          : item,
-      );
-      await respond(route, { mapped: true });
-      return;
-    }
-    unexpectedRequests.push(url.pathname);
-    await route.abort("blockedbyclient");
+    await respondTrpc(route, answers);
   });
   await page.goto("/");
   await clerk.signIn({ page, emailAddress: user.email });

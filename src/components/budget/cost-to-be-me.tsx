@@ -13,9 +13,11 @@ const cents = (value: number | null) =>
 
 export function CostToBeMe({
   view,
+  busy,
   run,
 }: {
   view: View;
+  busy: boolean;
   run: (command: Command) => void;
 }) {
   const income = view.expectedIncome;
@@ -35,6 +37,7 @@ export function CostToBeMe({
   }
   const save = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
+    if (busy) return;
     const data = new FormData();
     data.set("income", draft);
     let amount: number | null = null;
@@ -66,6 +69,7 @@ export function CostToBeMe({
         <label htmlFor={id}>Expected income</label>
         <Input
           id={id}
+          disabled={busy}
           inputMode="decimal"
           placeholder="$0.00"
           autoComplete="off"

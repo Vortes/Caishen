@@ -1,9 +1,8 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
-import { expect, test, type Page, type Route } from "@playwright/test";
-import { jsonlStreamProducer } from "@trpc/server/unstable-core-do-not-import";
+import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import superjson from "superjson";
 import { z } from "zod";
+import { readTrpcCalls, respondTrpc } from "./trpc-fixture";
 
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
@@ -29,26 +28,6 @@ async function sdkCalls(page: Page) {
   return recorded
     ? recorded.split("\n").map((line) => sdkCallSchema.parse(JSON.parse(line)))
     : [];
-}
-
-async function respond(route: Route, value: unknown) {
-  if (route.request().headers()["trpc-accept"] === "application/jsonl") {
-    const stream = jsonlStreamProducer({
-      data: { 0: { result: { data: value } } },
-      serialize: superjson.serialize,
-    });
-    await route.fulfill({
-      contentType: "application/jsonl",
-      body: await new Response(stream).text(),
-    });
-    return;
-  }
-  const result = { result: { data: superjson.serialize(value) } };
-  await route.fulfill({
-    json: new URL(route.request().url()).searchParams.has("batch")
-      ? [result]
-      : result,
-  });
 }
 
 async function openFixture(
@@ -122,57 +101,53 @@ async function openFixture(
   const unexpectedRequests: string[] = [];
   let syncAttempts = 0;
   await page.route("**/api/trpc/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/budget.state")) {
-      const state: State = {
-        view: projectBook(book, user.id, month),
-        revision: 0,
-        history: { undo: null, redo: null },
-        services: [
-          { name: "Plaid", status: "configured", detail: "Test connection" },
-        ],
-        connections: options.reconnect ? [connection] : [],
-        evidence: [],
-        imports: [],
-      };
-      await respond(route, state);
-      return;
-    }
-    const procedure = url.pathname.split("/").at(-1)!;
-    const payload: unknown = route.request().postDataJSON();
-    const serialized = (
-      url.searchParams.has("batch")
-        ? z.record(z.unknown()).parse(payload)["0"]
-        : payload
-    ) as ReturnType<typeof superjson.serialize>;
-    const input = superjson.deserialize(serialized);
-    requests.push({ procedure, input });
-    if (procedure === "budget.plaidLinkToken") {
-      await respond(route, {
-        linkToken,
-        expiration: new Date(Date.now() + 30 * 60_000).toISOString(),
-        redirectUri: options.redirectUri,
-      });
-      return;
-    }
-    if (
-      procedure === "budget.plaidExchange" ||
-      procedure === "budget.plaidReconnect"
-    ) {
-      await respond(route, { id: connectionId });
-      return;
-    }
-    if (procedure === "budget.sync") {
-      syncAttempts++;
-      if (options.failFirstSync && syncAttempts === 1) {
-        await route.abort("failed");
-        return;
+    const answers: unknown[] = [];
+    for (const { procedure, input } of readTrpcCalls(route.request())) {
+      if (procedure === "budget.state") {
+        const state: State = {
+          view: projectBook(book, user.id, month),
+          revision: 0,
+          history: { undo: null, redo: null },
+          services: [
+            { name: "Plaid", status: "configured", detail: "Test connection" },
+          ],
+          connections: options.reconnect ? [connection] : [],
+          evidence: [],
+          imports: [],
+        };
+        answers.push(state);
+        continue;
       }
-      await respond(route, { updated: 1 });
+      requests.push({ procedure, input });
+      if (procedure === "budget.plaidLinkToken") {
+        answers.push({
+          linkToken,
+          expiration: new Date(Date.now() + 30 * 60_000).toISOString(),
+          redirectUri: options.redirectUri,
+        });
+        continue;
+      }
+      if (
+        procedure === "budget.plaidExchange" ||
+        procedure === "budget.plaidReconnect"
+      ) {
+        answers.push({ id: connectionId });
+        continue;
+      }
+      if (procedure === "budget.sync") {
+        syncAttempts++;
+        if (options.failFirstSync && syncAttempts === 1) {
+          await route.abort("failed");
+          return;
+        }
+        answers.push({ updated: 1 });
+        continue;
+      }
+      unexpectedRequests.push(procedure);
+      await route.abort("blockedbyclient");
       return;
     }
-    unexpectedRequests.push(procedure);
-    await route.abort("blockedbyclient");
+    await respondTrpc(route, answers);
   });
   await page.goto("/");
   await clerk.signIn({ page, emailAddress: user.email });

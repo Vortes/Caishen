@@ -467,16 +467,35 @@ test("two users budget, review, record card and loan payments, and share only au
       name: "Expected income",
       exact: true,
     });
-    await expectedIncome.fill("$350");
-    await expectedIncome.press("Enter");
-    await expect(budgetDetails).toContainText(
-      "Your targets need $50.00 more than you expect to earn.",
+    let releaseIncomeSave!: () => void;
+    const incomeSaveGate = new Promise<void>((resolve) => {
+      releaseIncomeSave = resolve;
+    });
+    await page.route(
+      "**/api/trpc/budget.execute?**",
+      async (route) => {
+        await incomeSaveGate;
+        await route.continue();
+      },
+      { times: 1 },
     );
+    try {
+      await expectedIncome.fill("$350");
+      await expectedIncome.press("Enter");
+      await expect(budgetDetails).toContainText(
+        "Your targets need $50.00 more than you expect to earn.",
+      );
+      await expect(expectedIncome).toBeDisabled();
+    } finally {
+      releaseIncomeSave();
+    }
+    await expect(expectedIncome).toBeEnabled();
     await expectedIncome.fill("1,000");
     await expectedIncome.blur();
     await expect(budgetDetails).toContainText(
       "Your income covers your targets with $600.00 to spare.",
     );
+    await expect(expectedIncome).toBeEnabled();
     await page.reload();
     await expect(
       page
@@ -505,11 +524,12 @@ test("two users budget, review, record card and loan payments, and share only au
     await expect(transactionEditor).not.toBeVisible();
     purchaseRow = page.getByRole("row").filter({ hasText: names.payee });
     await expect(purchaseRow).toContainText(names.dining);
-    await purchaseRow.getByRole("checkbox").check();
-    await page
-      .getByRole("button", { name: "Approve (1)", exact: true })
-      .click();
     await expect(purchaseRow).toContainText("Approved");
+    await purchaseRow.getByRole("checkbox").check();
+    await expect(
+      page.getByRole("button", { name: "Approve selected", exact: true }),
+    ).toBeDisabled();
+    await purchaseRow.getByRole("checkbox").uncheck();
     await purchaseRow
       .getByRole("button", { name: names.payee, exact: true })
       .click();
@@ -517,6 +537,71 @@ test("two users budget, review, record card and loan payments, and share only au
     await dialog.getByText(/Transaction history ·/).click();
     await expect(dialog).toContainText("Revision 2");
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
+
+    // Manual entries are already reviewed. Seed a separate item for review.
+    const reviewMember = await db.workspaceMember.findUniqueOrThrow({
+      where: { clerkUserId: first.id },
+      include: { workspace: true },
+    });
+    const reviewBudget = bookSchema.parse(reviewMember.workspace.book).budgets[
+      first.id
+    ]!;
+    const reviewPayee = `Unreviewed purchase ${suffix}`;
+    const reviewTransactionId = randomUUID();
+    const reviewSeed = await page.request.post("/api/trpc/budget.execute", {
+      data: {
+        json: {
+          expectedRevision: reviewMember.workspace.revision,
+          command: {
+            type: "transaction.upsert",
+            id: randomUUID(),
+            transactionId: reviewTransactionId,
+            accountId: reviewBudget.accounts.find(
+              (account) => account.name === names.cash,
+            )!.id,
+            categoryId: reviewBudget.categories.find(
+              (category) => category.name === names.dining,
+            )!.id,
+            payee: reviewPayee,
+            date: new Date().toLocaleDateString("en-CA", {
+              timeZone: "America/Los_Angeles",
+            }),
+            amount: -100,
+            status: "posted",
+            reviewed: false,
+          },
+        },
+      },
+    });
+    expect(reviewSeed.status()).toBe(200);
+    await page.reload();
+    await page
+      .getByRole("button", { name: "All accounts", exact: true })
+      .click();
+    const reviewRow = page.getByRole("row").filter({ hasText: reviewPayee });
+    await expect(reviewRow).toContainText("Needs review");
+    await reviewRow.getByRole("checkbox").check();
+    await page
+      .getByRole("button", { name: "Approve (1)", exact: true })
+      .click();
+    await expect(reviewRow).toContainText("Approved");
+    await expect
+      .poll(async () => {
+        const saved = await db.workspace.findUniqueOrThrow({
+          where: { id: reviewMember.workspaceId },
+        });
+        return bookSchema
+          .parse(saved.book)
+          .budgets[first.id]!.transactions.find(
+            (transaction) => transaction.id === reviewTransactionId,
+          )?.reviewed;
+      })
+      .toBe(true);
+    await page.reload();
+    await page
+      .getByRole("button", { name: "All accounts", exact: true })
+      .click();
+    await expect(reviewRow).toContainText("Approved");
 
     await page.getByRole("button", { name: "Plan", exact: true }).click();
     await addAccount(page, `Other card ${suffix}`, "0.00", "credit");

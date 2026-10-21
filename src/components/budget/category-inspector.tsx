@@ -86,7 +86,7 @@ export function CategoryInspector({
           Shared · you {sharePercent(shared.weights, view.budget.userId)}%
         </Button>
       )}
-      {!selected.length && <CostToBeMe view={view} run={run} />}
+      {!selected.length && <CostToBeMe view={view} busy={busy} run={run} />}
       <AvailableSection view={view} selected={selected} busy={busy} run={run} />
       {category && (
         <TargetSection

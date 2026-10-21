@@ -1,9 +1,8 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import superjson from "superjson";
-import { jsonlStreamProducer } from "@trpc/server/unstable-core-do-not-import";
 import { z } from "zod";
+import { readTrpcCalls, respondTrpc } from "./trpc-fixture";
 import { bookSchema, createBook, projectBook } from "../../src/domain/engine";
 import { currentMonth } from "../../src/components/budget/format";
 import type { State } from "../../src/components/budget/types";
@@ -65,24 +64,13 @@ test("large account registers scroll, search, and select across unmounted rows",
     evidence: [],
     imports: [],
   };
-  await page.route("**/api/trpc/budget.state?**", async (route) => {
-    if (route.request().headers()["trpc-accept"] === "application/jsonl") {
-      const stream = jsonlStreamProducer({
-        data: { 0: { result: { data: state } } },
-        serialize: superjson.serialize,
-      });
-      await route.fulfill({
-        contentType: "application/jsonl",
-        body: await new Response(stream).text(),
-      });
-      return;
-    }
-    const result = { result: { data: superjson.serialize(state) } };
-    await route.fulfill({
-      json: new URL(route.request().url()).searchParams.has("batch")
-        ? [result]
-        : result,
-    });
+  await page.route("**/api/trpc/**", async (route) => {
+    const calls = readTrpcCalls(route.request());
+    for (const { procedure } of calls) expect(procedure).toBe("budget.state");
+    await respondTrpc(
+      route,
+      calls.map(() => state),
+    );
   });
   await page.goto("/");
   await clerk.signIn({ page, emailAddress: user.email });
