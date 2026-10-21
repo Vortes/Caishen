@@ -461,29 +461,11 @@ export function toShellData(state: State): ShellData {
   };
 }
 
-const longDay = (date: string) =>
-  new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
-    weekday: "long",
-  });
-
 export const shortDay = (date: string) =>
   new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
-
-// "Today", "Yesterday", a weekday within the last week, then the date.
-export function dayLabel(date: string, todayKey: string) {
-  const days = Math.round(
-    (new Date(`${todayKey}T12:00:00`).getTime() -
-      new Date(`${date}T12:00:00`).getTime()) /
-      86_400_000,
-  );
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days > 1 && days < 7) return longDay(date);
-  return shortDay(date);
-}
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
