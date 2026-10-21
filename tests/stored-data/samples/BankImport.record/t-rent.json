@@ -1,0 +1,71 @@
+{
+  "id": "plaid:item-sample:t-rent",
+  "namespace": "item-sample",
+  "providerTransactionIds": [
+    "t-rent"
+  ],
+  "current": {
+    "provider": "plaid",
+    "providerTransactionId": "t-rent",
+    "providerAccountId": "plaid-checking",
+    "pendingTransactionId": null,
+    "amountCents": 245000,
+    "currency": "USD",
+    "date": "2026-10-10",
+    "authorizedDate": null,
+    "name": "RENT PAYMENT",
+    "merchantName": null,
+    "pending": false
+  },
+  "categoryId": null,
+  "removed": false,
+  "matchStatus": "confirmed",
+  "history": [
+    {
+      "kind": "added",
+      "before": null,
+      "after": {
+        "provider": "plaid",
+        "providerTransactionId": "t-rent",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 240000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "RENT PAYMENT",
+        "merchantName": null,
+        "pending": false
+      }
+    },
+    {
+      "kind": "modified",
+      "before": {
+        "provider": "plaid",
+        "providerTransactionId": "t-rent",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 240000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "RENT PAYMENT",
+        "merchantName": null,
+        "pending": false
+      },
+      "after": {
+        "provider": "plaid",
+        "providerTransactionId": "t-rent",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 245000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "RENT PAYMENT",
+        "merchantName": null,
+        "pending": false
+      }
+    }
+  ]
+}

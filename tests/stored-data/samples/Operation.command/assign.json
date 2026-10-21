@@ -1,0 +1,7 @@
+{
+  "type": "assign",
+  "id": "operation-sample",
+  "categoryId": "groceries",
+  "month": "2026-10",
+  "amount": 25000
+}

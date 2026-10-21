@@ -2,16 +2,25 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import { z, type ZodTypeAny } from "zod";
-import { bookSchema } from "../../src/domain/engine";
+import {
+  bookSchema,
+  householdSchema,
+  transactionSchema,
+} from "../../src/domain/engine";
 import { openPersonalBudget } from "../../src/domain/stored-book";
 import {
   reconciliationResultSchema,
   savedEvidenceSchema,
 } from "../../src/server/integrations/reconciliation";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
+import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
 import { importStateSchema } from "../../src/server/services/banks";
 import { dailyDeliveryPayloadSchema } from "../../src/server/services/daily-delivery";
 import { workspaceHistorySchema } from "../../src/server/services/workspace-history";
+import {
+  changeSetSchema,
+  operationCommandSchema,
+} from "../../src/server/storage/rows";
 
 // ADR 0006, "Stored data across code versions": data saved by one release
 // must load in every later release, and in the release before it. Stored
@@ -35,6 +44,16 @@ const columns: Record<string, ZodTypeAny> = {
   "ReviewEvidence.evidence": savedEvidenceSchema,
   "ReviewEvidence.result": reconciliationResultSchema,
   "DailyDelivery.payload": dailyDeliveryPayloadSchema,
+  "SharedCategory.weights":
+    householdSchema.shape.sharedCategories.element.shape.weights,
+  "SharedCategory.categoryIds":
+    householdSchema.shape.sharedCategories.element.shape.categoryIds,
+  "PartnerFact.shares": transactionSchema.shape.shares.unwrap(),
+  "BankImport.record": bankImportColumnSchemas.record,
+  "BankImport.resolved": bankImportColumnSchemas.resolved,
+  "BankImport.reviews": bankImportColumnSchemas.reviews,
+  "Operation.command": operationCommandSchema,
+  "Operation.changeSet": changeSetSchema,
 };
 
 const directory = new URL("../stored-data/", import.meta.url);

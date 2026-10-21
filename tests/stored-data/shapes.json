@@ -1345,5 +1345,437 @@
     "$.message.text": {
       "type": "string"
     }
+  },
+  "SharedCategory.weights": {
+    "$": {
+      "type": "record"
+    },
+    "$.*": {
+      "type": "number"
+    }
+  },
+  "SharedCategory.categoryIds": {
+    "$": {
+      "type": "record"
+    },
+    "$.*": {
+      "type": "string"
+    }
+  },
+  "PartnerFact.shares": {
+    "$": {
+      "type": "record"
+    },
+    "$.*": {
+      "type": "number"
+    }
+  },
+  "BankImport.record": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "categoryId": "required",
+        "current": "required",
+        "history": "required",
+        "id": "required",
+        "matchStatus": "required",
+        "namespace": "required",
+        "providerTransactionIds": "required",
+        "removed": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.namespace": {
+      "type": "string"
+    },
+    "$.providerTransactionIds": {
+      "type": "array"
+    },
+    "$.providerTransactionIds[]": {
+      "type": "string"
+    },
+    "$.current": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "authorizedDate": "required",
+        "currency": "required",
+        "date": "required",
+        "merchantName": "required",
+        "name": "required",
+        "pending": "required",
+        "pendingTransactionId": "required",
+        "provider": "required",
+        "providerAccountId": "required",
+        "providerTransactionId": "required"
+      }
+    },
+    "$.current.provider": {
+      "type": "enum",
+      "values": [
+        "plaid"
+      ]
+    },
+    "$.current.providerTransactionId": {
+      "type": "string"
+    },
+    "$.current.providerAccountId": {
+      "type": "string"
+    },
+    "$.current.pendingTransactionId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.current.amountCents": {
+      "type": "number"
+    },
+    "$.current.currency": {
+      "type": "enum",
+      "values": [
+        "USD"
+      ]
+    },
+    "$.current.date": {
+      "type": "string"
+    },
+    "$.current.authorizedDate": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.current.name": {
+      "type": "string"
+    },
+    "$.current.merchantName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.current.pending": {
+      "type": "boolean"
+    },
+    "$.categoryId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.removed": {
+      "type": "boolean"
+    },
+    "$.matchStatus": {
+      "type": "enum",
+      "values": [
+        "confirmed",
+        "needs_review"
+      ]
+    },
+    "$.history": {
+      "type": "array"
+    },
+    "$.history[]": {
+      "type": "object",
+      "fields": {
+        "after": "required",
+        "before": "required",
+        "kind": "required"
+      }
+    },
+    "$.history[].kind": {
+      "type": "enum",
+      "values": [
+        "added",
+        "modified",
+        "pending_posted",
+        "removed",
+        "restored"
+      ]
+    },
+    "$.history[].before": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "authorizedDate": "required",
+        "currency": "required",
+        "date": "required",
+        "merchantName": "required",
+        "name": "required",
+        "pending": "required",
+        "pendingTransactionId": "required",
+        "provider": "required",
+        "providerAccountId": "required",
+        "providerTransactionId": "required"
+      },
+      "nullable": true
+    },
+    "$.history[].before.provider": {
+      "type": "enum",
+      "values": [
+        "plaid"
+      ]
+    },
+    "$.history[].before.providerTransactionId": {
+      "type": "string"
+    },
+    "$.history[].before.providerAccountId": {
+      "type": "string"
+    },
+    "$.history[].before.pendingTransactionId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.history[].before.amountCents": {
+      "type": "number"
+    },
+    "$.history[].before.currency": {
+      "type": "enum",
+      "values": [
+        "USD"
+      ]
+    },
+    "$.history[].before.date": {
+      "type": "string"
+    },
+    "$.history[].before.authorizedDate": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.history[].before.name": {
+      "type": "string"
+    },
+    "$.history[].before.merchantName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.history[].before.pending": {
+      "type": "boolean"
+    },
+    "$.history[].after": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "authorizedDate": "required",
+        "currency": "required",
+        "date": "required",
+        "merchantName": "required",
+        "name": "required",
+        "pending": "required",
+        "pendingTransactionId": "required",
+        "provider": "required",
+        "providerAccountId": "required",
+        "providerTransactionId": "required"
+      },
+      "nullable": true
+    },
+    "$.history[].after.provider": {
+      "type": "enum",
+      "values": [
+        "plaid"
+      ]
+    },
+    "$.history[].after.providerTransactionId": {
+      "type": "string"
+    },
+    "$.history[].after.providerAccountId": {
+      "type": "string"
+    },
+    "$.history[].after.pendingTransactionId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.history[].after.amountCents": {
+      "type": "number"
+    },
+    "$.history[].after.currency": {
+      "type": "enum",
+      "values": [
+        "USD"
+      ]
+    },
+    "$.history[].after.date": {
+      "type": "string"
+    },
+    "$.history[].after.authorizedDate": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.history[].after.name": {
+      "type": "string"
+    },
+    "$.history[].after.merchantName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.history[].after.pending": {
+      "type": "boolean"
+    }
+  },
+  "BankImport.resolved": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "decidedAt": "optional",
+        "fingerprint": "required",
+        "ignored": "optional",
+        "transactionId": "optional"
+      }
+    },
+    "$.fingerprint": {
+      "type": "string"
+    },
+    "$.transactionId": {
+      "type": "string"
+    },
+    "$.ignored": {
+      "type": "boolean"
+    },
+    "$.decidedAt": {
+      "type": "string"
+    }
+  },
+  "BankImport.reviews": {
+    "$": {
+      "type": "array"
+    },
+    "$[]": {
+      "type": "unknown"
+    }
+  },
+  "Operation.command": {
+    "$": {
+      "type": "record"
+    },
+    "$.*": {
+      "type": "unknown"
+    }
+  },
+  "Operation.changeSet": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "after": "required",
+        "before": "required",
+        "operationId": "required",
+        "revision": "required"
+      }
+    },
+    "$.operationId": {
+      "type": "string"
+    },
+    "$.revision": {
+      "type": "number"
+    },
+    "$.after": {
+      "type": "array"
+    },
+    "$.after[]": {
+      "type": "object",
+      "fields": {
+        "data": "required",
+        "deleted": "required",
+        "id": "required",
+        "revision": "required",
+        "table": "required"
+      }
+    },
+    "$.after[].table": {
+      "type": "enum",
+      "values": [
+        "account",
+        "assignment",
+        "bankImport",
+        "budgetSettings",
+        "category",
+        "categoryGroup",
+        "expectedIncome",
+        "loan",
+        "loanPayment",
+        "loanRate",
+        "member",
+        "obligation",
+        "partnerFact",
+        "reimbursement",
+        "reimbursementReceipt",
+        "rule",
+        "settlement",
+        "settlementAllocation",
+        "sharedCategory",
+        "target",
+        "transaction",
+        "transactionHistory",
+        "transactionShare"
+      ]
+    },
+    "$.after[].id": {
+      "type": "string"
+    },
+    "$.after[].revision": {
+      "type": "number"
+    },
+    "$.after[].deleted": {
+      "type": "boolean"
+    },
+    "$.after[].data": {
+      "type": "record",
+      "nullable": true
+    },
+    "$.after[].data.*": {
+      "type": "unknown"
+    },
+    "$.before": {
+      "type": "array"
+    },
+    "$.before[]": {
+      "type": "object",
+      "fields": {
+        "data": "required",
+        "deleted": "required",
+        "id": "required",
+        "revision": "required",
+        "table": "required"
+      }
+    },
+    "$.before[].table": {
+      "type": "enum",
+      "values": [
+        "account",
+        "assignment",
+        "bankImport",
+        "budgetSettings",
+        "category",
+        "categoryGroup",
+        "expectedIncome",
+        "loan",
+        "loanPayment",
+        "loanRate",
+        "member",
+        "obligation",
+        "partnerFact",
+        "reimbursement",
+        "reimbursementReceipt",
+        "rule",
+        "settlement",
+        "settlementAllocation",
+        "sharedCategory",
+        "target",
+        "transaction",
+        "transactionHistory",
+        "transactionShare"
+      ]
+    },
+    "$.before[].id": {
+      "type": "string"
+    },
+    "$.before[].revision": {
+      "type": "number"
+    },
+    "$.before[].deleted": {
+      "type": "boolean"
+    },
+    "$.before[].data": {
+      "type": "record",
+      "nullable": true
+    },
+    "$.before[].data.*": {
+      "type": "unknown"
+    }
   }
 }
