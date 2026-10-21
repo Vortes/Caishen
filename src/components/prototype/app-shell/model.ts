@@ -277,7 +277,13 @@ export function toShellData(state: State): ShellData {
     };
   });
 
-  const groups: CategoryGroup[] = [];
+  // Groups added with group.add lead, newest first; the rest follow in the
+  // order their categories were added.
+  const groups: CategoryGroup[] = (view.budget.groups ?? []).map((name) => ({
+    id: name,
+    name,
+    categories: [],
+  }));
   for (const category of categories) {
     const group = groups.find((entry) => entry.name === category.group);
     if (group) group.categories.push(category);

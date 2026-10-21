@@ -316,7 +316,7 @@ function MoveForm({
   );
 }
 
-function FieldError({ id, message }: { id: string; message: string }) {
+export function FieldError({ id, message }: { id: string; message: string }) {
   return (
     <p className={styles.error} id={id} role="alert">
       <CircleAlertIcon size={13} aria-hidden />

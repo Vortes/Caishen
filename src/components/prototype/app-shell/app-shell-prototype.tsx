@@ -23,6 +23,12 @@ import {
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
 import { AccountSummary, SearchField } from "./account";
+import {
+  AddCategoryProvider,
+  AddGroupButton,
+  type AddCategory,
+  type Added,
+} from "./add-category";
 import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
 import type { ShellData } from "./model";
@@ -77,6 +83,7 @@ export function AppShellPrototype({
   loadingMonth,
   onMonthChange,
   moveMoney,
+  categoryAdder,
   transactionSaver,
   notifications,
 }: {
@@ -84,6 +91,7 @@ export function AppShellPrototype({
   loadingMonth: boolean;
   onMonthChange: (month: string) => void;
   moveMoney: MoveMoney;
+  categoryAdder: CategoryAdder;
   transactionSaver: TransactionSaver;
   // The shell's ToastRegion, rendered inside its themed root.
   notifications: ReactNode;
@@ -145,6 +153,8 @@ export function AppShellPrototype({
   const [reviewOnly, setReviewOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [controlsOpen, setControlsOpen] = useState(true);
+  const [addingGroup, setAddingGroup] = useState(false);
+  const [revealed, setRevealed] = useState<Added | null>(null);
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
   const narrow = useMediaQuery("(max-width: 860px)");
@@ -226,6 +236,8 @@ export function AppShellPrototype({
       if (event.key === "[") sidebar.toggle();
       else if (event.key === "]" && screen.type !== "register")
         inspector.toggle();
+      else if (event.key === "n" && screen.type === "plan")
+        setAddingGroup(true);
       else if (event.key === "n" && screen.type === "register") {
         if (!entry.start({ accountId: screen.accountId })) return;
       } else if (
@@ -292,6 +304,21 @@ export function AppShellPrototype({
     }
   };
 
+  // What was just added shows in every category, so no view hides it. A new
+  // category is selected with its details open, as if its row was clicked.
+  const addCategory: AddCategory = {
+    ...categoryAdder,
+    reveal: (added) => {
+      setSettings((value) => ({ ...value, planView: null }));
+      if (added.type === "category") {
+        if (inspectorState.collapsed) inspector.toggle();
+        setSelectedId(added.id);
+        setChecked([added.id]);
+      }
+      setRevealed(added);
+    },
+  };
+
   const reset = () => {
     if (entry.holdForDraft()) return;
     localStorage.removeItem(STORAGE_KEY);
@@ -336,7 +363,11 @@ export function AppShellPrototype({
 
   return (
     <ShellDataProvider value={data}>
-      <ActionProviders moveMoney={moveMoney} transactionEntry={entry}>
+      <ActionProviders
+        moveMoney={moveMoney}
+        addCategory={addCategory}
+        transactionEntry={entry}
+      >
         <div
           ref={attachRoot}
           className={styles.root}
@@ -544,6 +575,13 @@ export function AppShellPrototype({
                     </Button>
                   )}
                   <div className={styles.toolbarActions}>
+                    {screen.type === "plan" && (
+                      <AddGroupButton
+                        open={addingGroup}
+                        onOpenChange={setAddingGroup}
+                        compact={phone}
+                      />
+                    )}
                     {screen.type === "register" && (
                       <SearchField
                         value={query}
@@ -604,6 +642,7 @@ export function AppShellPrototype({
                         }}
                         checked={checked}
                         onCheck={check}
+                        reveal={revealed}
                       />
                     )}
                     {screen.type === "register" && (
@@ -801,21 +840,29 @@ function AddTransactionTooltip({
   );
 }
 
-// The shell's real actions: moving money and entering transactions.
+// What the shell needs to add a category; it shows the category itself.
+export type CategoryAdder = Omit<AddCategory, "reveal">;
+
+// The shell's real actions: moving money, adding category groups and
+// categories, and entering transactions.
 function ActionProviders({
   moveMoney,
+  addCategory,
   transactionEntry,
   children,
 }: {
   moveMoney: MoveMoney;
+  addCategory: AddCategory;
   transactionEntry: TransactionEntry;
   children: ReactNode;
 }) {
   return (
     <MoveMoneyProvider value={moveMoney}>
-      <TransactionEntryProvider value={transactionEntry}>
-        {children}
-      </TransactionEntryProvider>
+      <AddCategoryProvider value={addCategory}>
+        <TransactionEntryProvider value={transactionEntry}>
+          {children}
+        </TransactionEntryProvider>
+      </AddCategoryProvider>
     </MoveMoneyProvider>
   );
 }
