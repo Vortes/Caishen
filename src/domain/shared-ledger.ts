@@ -96,24 +96,42 @@ export function ledgerSharedPurchases(
     : Object.values(state.budgets).flatMap(budgetSharedPurchases);
 }
 
-export function ledgerReceiptDate(
+// Reads when settlements were received, indexing each recipient's
+// receipts once rather than searching every transaction per settlement.
+export function ledgerReceiptDates(
   state: AccountingState,
-  settlement: Settlement,
-): string | undefined {
-  if (settlement.amount === 0) return settlement.date;
-  if (isPersonalLedger(state) && settlement.recipientId !== state.budget.userId)
-    return Object.hasOwn(state.partnerReceiptDates, settlement.id)
-      ? state.partnerReceiptDates[settlement.id]
-      : undefined;
-  const budget = isPersonalLedger(state)
-    ? state.budget
-    : state.budgets[settlement.recipientId];
-  return budget?.transactions.find(
-    (transaction) =>
-      !transaction.removed &&
-      transaction.kind === "reimbursement" &&
-      transaction.linkedId === settlement.id,
-  )?.date;
+): (settlement: Settlement) => string | undefined {
+  const receipts = new Map<Budget, Map<string, string>>();
+  const receiptDate = (budget: Budget, settlementId: string) => {
+    let dates = receipts.get(budget);
+    if (!dates) {
+      dates = new Map();
+      for (const transaction of budget.transactions)
+        if (
+          !transaction.removed &&
+          transaction.kind === "reimbursement" &&
+          transaction.linkedId !== undefined &&
+          !dates.has(transaction.linkedId)
+        )
+          dates.set(transaction.linkedId, transaction.date);
+      receipts.set(budget, dates);
+    }
+    return dates.get(settlementId);
+  };
+  return (settlement) => {
+    if (settlement.amount === 0) return settlement.date;
+    if (
+      isPersonalLedger(state) &&
+      settlement.recipientId !== state.budget.userId
+    )
+      return Object.hasOwn(state.partnerReceiptDates, settlement.id)
+        ? state.partnerReceiptDates[settlement.id]
+        : undefined;
+    const budget = isPersonalLedger(state)
+      ? state.budget
+      : state.budgets[settlement.recipientId];
+    return budget && receiptDate(budget, settlement.id);
+  };
 }
 
 export function ledgerHasSharedActivity(
@@ -149,6 +167,7 @@ export function projectSharedLedger(
     (settlement) =>
       settlement.payerId === userId || settlement.recipientId === userId,
   );
+  const receiptDate = ledgerReceiptDates(state);
   const partnerActivityCategoryIds = isPersonalLedger(state)
     ? state.partnerActivityCategoryIds
     : Object.values(state.budgets)
@@ -208,7 +227,7 @@ export function projectSharedLedger(
     partnerReceiptDates: Object.fromEntries(
       settlements.flatMap((settlement) => {
         if (settlement.recipientId === userId) return [];
-        const date = ledgerReceiptDate(state, settlement);
+        const date = receiptDate(settlement);
         return date ? [[settlement.id, date]] : [];
       }),
     ),

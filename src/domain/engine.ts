@@ -10,7 +10,7 @@ import {
   isPersonalLedger,
   ledgerHasSharedActivity,
   ledgerMembers,
-  ledgerReceiptDate,
+  ledgerReceiptDates,
   ledgerSharedPurchases,
   projectSharedLedger,
   type AccountingState,
@@ -1045,27 +1045,60 @@ function synchronizeObligations(book: AccountingState): void {
     ...book.obligations.filter((obligation) => obligation.opening),
     ...generated,
   ];
+  const byId = firstById(all);
+  const allocations = settlementAllocations(book);
+  const settled = new Map<string, number>();
   for (const settlement of book.settlements)
     for (const allocation of settlement.allocations) {
       const obligation =
-        all.find((item) => item.id === allocation.obligationId) ??
+        byId.get(allocation.obligationId) ??
         fail(
           "A settled expense cannot be removed; investigate the correction first",
         );
       if (obligation.date && obligation.date > settlement.date)
         fail("A settled expense cannot move after its recorded settlement");
-      if (
-        sum(
-          book.settlements.flatMap((item) =>
-            item.allocations
-              .filter((part) => part.obligationId === obligation.id)
-              .map((part) => part.amount),
-          ),
-        ) > obligation.amount
-      )
+      let total = settled.get(obligation.id);
+      if (total === undefined) {
+        total = sum(
+          (allocations.get(obligation.id) ?? []).map((part) => part.amount),
+        );
+        settled.set(obligation.id, total);
+      }
+      if (total > obligation.amount)
         fail("The corrected expense would invalidate a recorded settlement");
     }
   book.obligations = all;
+}
+
+// Every settlement allocation grouped by obligation, in settlement order.
+function settlementAllocations(
+  book: AccountingState,
+): Map<string, { date: string; amount: number }[]> {
+  const byObligation = new Map<string, { date: string; amount: number }[]>();
+  for (const settlement of book.settlements)
+    for (const allocation of settlement.allocations) {
+      const parts = byObligation.get(allocation.obligationId) ?? [];
+      parts.push({ date: settlement.date, amount: allocation.amount });
+      byObligation.set(allocation.obligationId, parts);
+    }
+  return byObligation;
+}
+
+// Reads what obligations still owe, optionally as of a cutoff date, after one
+// pass over the settlements.
+function outstandingBalances(
+  book: AccountingState,
+): (obligation: Obligation, cutoff?: string) => number {
+  const allocations = settlementAllocations(book);
+  return (obligation, cutoff) =>
+    safe(
+      obligation.amount -
+        sum(
+          (allocations.get(obligation.id) ?? [])
+            .filter((part) => !cutoff || part.date <= cutoff)
+            .map((part) => part.amount),
+        ),
+    );
 }
 
 export function outstanding(
@@ -1073,18 +1106,7 @@ export function outstanding(
   obligation: Obligation,
   cutoff?: string,
 ): number {
-  return safe(
-    obligation.amount -
-      sum(
-        book.settlements
-          .filter((settlement) => !cutoff || settlement.date <= cutoff)
-          .flatMap((settlement) =>
-            settlement.allocations
-              .filter((allocation) => allocation.obligationId === obligation.id)
-              .map((allocation) => allocation.amount),
-          ),
-      ),
-  );
+  return outstandingBalances(book)(obligation, cutoff);
 }
 
 type CategoryMonth = {
@@ -1116,17 +1138,190 @@ type Materialized = {
   startingBalances: Map<string, number>;
 };
 
-function materialize(
+// The rows a replay reads, grouped once by the month they fall in so each
+// month touches only its own rows, with ID lookups that keep the first match
+// as a list search would.
+type MonthRows = {
+  // Active transactions dated in the month, by date and then ID.
+  transactions: Transaction[];
+  assignments: Assignment[];
+  settlements: Settlement[];
+};
+type ReplayIndex = {
+  months: Map<string, MonthRows>;
+  account: (id: string) => Account;
+  category: (id: string) => Category;
+  obligation: (id: string) => Obligation | undefined;
+  transferCounterpart: (transaction: Transaction) => Transaction | undefined;
+};
+
+function firstById<T extends { id: string }>(items: T[]): Map<string, T> {
+  const byId = new Map<string, T>();
+  for (const item of items) if (!byId.has(item.id)) byId.set(item.id, item);
+  return byId;
+}
+
+function indexReplay(book: AccountingState, budget: Budget): ReplayIndex {
+  const months = new Map<string, MonthRows>();
+  const rows = (month: string): MonthRows => {
+    let found = months.get(month);
+    if (!found) {
+      found = { transactions: [], assignments: [], settlements: [] };
+      months.set(month, found);
+    }
+    return found;
+  };
+  for (const transaction of budget.transactions)
+    if (active(transaction))
+      rows(monthOf(transaction.date)).transactions.push(transaction);
+  for (const { transactions } of months.values())
+    transactions.sort(
+      (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
+    );
+  for (const assignment of budget.assignments)
+    rows(assignment.month).assignments.push(assignment);
+  for (const settlement of book.settlements)
+    rows(monthOf(settlement.date)).settlements.push(settlement);
+  const accounts = firstById(budget.accounts);
+  const categories = firstById(budget.categories);
+  let obligations: Map<string, Obligation> | undefined;
+  let transfers: Map<string, Transaction[]> | undefined;
+  return {
+    months,
+    account: (id) => accounts.get(id) ?? fail("Account access denied"),
+    category: (id) => categories.get(id) ?? fail("Category access denied"),
+    obligation: (id) => (obligations ??= firstById(book.obligations)).get(id),
+    // The first other active transaction of the same transfer, as
+    // transferCounterparts would find it.
+    transferCounterpart: (transaction) => {
+      if (!isTransfer(transaction) || !transaction.linkedId) return undefined;
+      if (!transfers) {
+        transfers = new Map();
+        for (const item of budget.transactions)
+          if (!item.removed && isTransfer(item) && item.linkedId) {
+            const linked = transfers.get(item.linkedId) ?? [];
+            linked.push(item);
+            transfers.set(item.linkedId, linked);
+          }
+      }
+      return transfers
+        .get(transaction.linkedId)
+        ?.find((item) => item.id !== transaction.id);
+    },
+  };
+}
+
+// The budget whose months can be replayed through the given month.
+function budgetThrough(
   book: AccountingState,
   userId: string,
   month: string,
-  cutoff = endOf(month),
-): Materialized {
+): Budget {
   monthSchema.parse(month);
   const budget = ownBudget(book, userId);
   if (month < budget.startMonth) fail("Month precedes the budget start");
   if (monthDistance(budget.startMonth, month) > 1200)
     fail("Budget date is too far in the future");
+  return budget;
+}
+
+function cashPosition(
+  budget: Budget,
+  accounts: Map<string, AccountMonth>,
+  categories: Map<string, CategoryMonth>,
+): { cash: number; readyToAssign: number } {
+  const cash = sum(
+    budget.accounts
+      .filter((account) => account.kind === "cash")
+      .map((account) => accounts.get(account.id)!.balance),
+  );
+  const allocated = sum(
+    [...categories.values()].map((state) => Math.max(0, state.available)),
+  );
+  const currentCashOverspending = sum(
+    [...categories.values()].map((state) => state.cashOverspending),
+  );
+  return {
+    cash,
+    readyToAssign: safe(cash - allocated + currentCashOverspending),
+  };
+}
+
+// Fails if any later month with assignments ends with negative Ready to
+// Assign. One replay serves every later month; the months are still checked in
+// the order their assignments were made, so the first failure reported is the
+// one a separate replay per month would report.
+function ensureLaterMonthsFunded(
+  book: AccountingState,
+  userId: string,
+  month: string,
+): void {
+  const budget = ownBudget(book, userId);
+  const laterMonths = [
+    ...new Set(
+      budget.assignments
+        .filter((assignment) => assignment.month > month)
+        .map((assignment) => assignment.month),
+    ),
+  ];
+  // Months a replay cannot reach fail on their own turn below.
+  const replayable = laterMonths.filter((laterMonth) => {
+    try {
+      budgetThrough(book, userId, laterMonth);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  const through = replayable.sort().at(-1);
+  const wanted = new Set(laterMonths);
+  const outcomes = new Map<string, { ready: number } | { error: unknown }>();
+  let replayError: unknown;
+  if (through)
+    try {
+      replay(book, budget, through, endOf(through), (cursor, readyToAssign) => {
+        if (!wanted.has(cursor)) return;
+        try {
+          outcomes.set(cursor, { ready: readyToAssign() });
+        } catch (error) {
+          outcomes.set(cursor, { error });
+        }
+      });
+    } catch (error) {
+      replayError = error;
+    }
+  for (const laterMonth of laterMonths) {
+    budgetThrough(book, userId, laterMonth);
+    const outcome = outcomes.get(laterMonth);
+    if (!outcome) throw replayError;
+    if ("error" in outcome) throw outcome.error;
+    if (outcome.ready < 0)
+      fail("This cash is already assigned in a future month");
+  }
+}
+
+// A budget's month-by-month figures through the given month. Exported for the
+// equivalence tests; interface code reads them through projectBook.
+export function materialize(
+  book: AccountingState,
+  userId: string,
+  month: string,
+  cutoff = endOf(month),
+): Materialized {
+  return replay(book, budgetThrough(book, userId, month), month, cutoff);
+}
+
+// Replays the budget month by month from its start through the given month.
+// After each month, afterMonth can read that month's Ready to Assign.
+function replay(
+  book: AccountingState,
+  budget: Budget,
+  month: string,
+  cutoff: string,
+  afterMonth?: (month: string, readyToAssign: () => number) => void,
+): Materialized {
+  const userId = budget.userId;
+  const index = indexReplay(book, budget);
   const accounts = new Map<string, AccountMonth>(
     budget.accounts.map((account) => [
       account.id,
@@ -1159,11 +1354,17 @@ function materialize(
   );
   const snapshots = new Map<string, Map<string, CategoryMonth>>();
   const startingBalances = new Map<string, number>();
+  const empty: MonthRows = {
+    transactions: [],
+    assignments: [],
+    settlements: [],
+  };
   for (
     let cursor = budget.startMonth;
     cursor <= month;
     cursor = nextMonth(cursor)
   ) {
+    const rows = index.months.get(cursor) ?? empty;
     for (const state of categories.values()) {
       state.opening = Math.max(0, state.available);
       state.available = state.opening;
@@ -1191,27 +1392,19 @@ function materialize(
     const credits: Transaction[] = [];
     const payments: Transaction[] = [];
     const debtTransfers: { from: string; to: string; amount: number }[] = [];
-    for (const assignment of budget.assignments.filter(
-      (item) => item.month === cursor,
-    )) {
+    for (const assignment of rows.assignments) {
       const state = categories.get(assignment.categoryId)!;
       state.assigned = safe(state.assigned + assignment.amount);
       state.available = safe(state.available + assignment.amount);
-      const category = getCategory(budget, assignment.categoryId);
+      const category = index.category(assignment.categoryId);
       if (category.pairedAccountId)
         accounts.get(category.pairedAccountId)!.reserve = safe(
           accounts.get(category.pairedAccountId)!.reserve + assignment.amount,
         );
     }
-    for (const transaction of budget.transactions
-      .filter(
-        (item) =>
-          active(item) && monthOf(item.date) === cursor && item.date <= cutoff,
-      )
-      .sort(
-        (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
-      )) {
-      const account = getAccount(budget, transaction.accountId);
+    for (const transaction of rows.transactions) {
+      if (transaction.date > cutoff) continue;
+      const account = index.account(transaction.accountId);
       if (transaction.status === "pending" && transaction.amount > 0) continue;
       const accountState = accounts.get(account.id)!;
       accountState.balance = safe(accountState.balance + transaction.amount);
@@ -1227,8 +1420,8 @@ function materialize(
         account.kind === "credit" &&
         transaction.amount > 0
       ) {
-        const other = transferCounterparts(budget, transaction)[0];
-        if (other && getAccount(budget, other.accountId).kind === "credit")
+        const other = index.transferCounterpart(transaction);
+        if (other && index.account(other.accountId).kind === "credit")
           debtTransfers.push({
             from: account.id,
             to: other.accountId,
@@ -1270,13 +1463,10 @@ function materialize(
         creditByCategory.set(transaction.categoryId, cards);
       }
     }
-    for (const settlement of book.settlements.filter(
-      (item) => monthOf(item.date) === cursor && item.date <= cutoff,
-    ))
+    for (const settlement of rows.settlements) {
+      if (settlement.date > cutoff) continue;
       for (const allocation of settlement.allocations) {
-        const obligation = book.obligations.find(
-          (item) => item.id === allocation.obligationId,
-        )!;
+        const obligation = index.obligation(allocation.obligationId)!;
         if (obligation.debtorId !== userId) continue;
         const categoryId = sharedAccess(
           book,
@@ -1297,6 +1487,7 @@ function materialize(
             safe((cashByCategory.get(categoryId) ?? 0) - consumed),
           );
       }
+    }
     const paymentNeeds = new Map<string, number>();
     for (const payment of payments)
       paymentNeeds.set(
@@ -1318,7 +1509,7 @@ function materialize(
     const refunds: { categoryId: string; cardId: string; remaining: number }[] =
       [];
     for (const [categoryId, state] of categories) {
-      if (getCategory(budget, categoryId).pairedAccountId) continue;
+      if (index.category(categoryId).pairedAccountId) continue;
       liquidity.set(
         categoryId,
         safe(
@@ -1422,7 +1613,7 @@ function materialize(
       );
     }
     for (const [categoryId, state] of categories) {
-      if (getCategory(budget, categoryId).pairedAccountId) continue;
+      if (index.category(categoryId).pairedAccountId) continue;
       const amount = Math.min(
         paidCashShortfall,
         Math.max(0, -state.available - state.cashOverspending),
@@ -1449,6 +1640,10 @@ function materialize(
       cursor,
       new Map([...categories].map(([id, state]) => [id, { ...state }])),
     );
+    afterMonth?.(
+      cursor,
+      () => cashPosition(budget, accounts, categories).readyToAssign,
+    );
   }
   for (const account of budget.accounts) {
     const state = accounts.get(account.id)!;
@@ -1457,20 +1652,8 @@ function materialize(
         ? Math.max(0, -state.balance - state.reserve)
         : 0;
   }
-  const cash = sum(
-    budget.accounts
-      .filter((account) => account.kind === "cash")
-      .map((account) => accounts.get(account.id)!.balance),
-  );
-  const allocated = sum(
-    [...categories.values()].map((state) => Math.max(0, state.available)),
-  );
-  const currentCashOverspending = sum(
-    [...categories.values()].map((state) => state.cashOverspending),
-  );
   return {
-    cash,
-    readyToAssign: safe(cash - allocated + currentCashOverspending),
+    ...cashPosition(budget, accounts, categories),
     accounts,
     categories,
     snapshots,
@@ -1773,12 +1956,14 @@ export function sharedStatement(
   );
   const signed = (obligation: Obligation, amount: number) =>
     obligation.debtorId === userId ? amount : -amount;
+  const outstandingAt = outstandingBalances(book);
+  const receiptDate = ledgerReceiptDates(book);
   const balanceAt = (day: string) =>
     sum(
       obligations
         .filter((obligation) => !obligation.date || obligation.date <= day)
         .map((obligation) =>
-          signed(obligation, outstanding(book, obligation, day)),
+          signed(obligation, outstandingAt(obligation, day)),
         ),
     );
   const nameOf = (sharedCategoryId: string) =>
@@ -1855,7 +2040,7 @@ export function sharedStatement(
         settlement.date <= cutoff,
     )
     .map((settlement) => {
-      const receivedOn = ledgerReceiptDate(book, settlement);
+      const receivedOn = receiptDate(settlement);
       return {
         settlementId: settlement.id,
         date: settlement.date,
@@ -1919,6 +2104,7 @@ function projectAccountingState(
   const budget = ownBudget(book, userId);
   const calculated = materialize(book, userId, month);
   const cutoff = endOf(month);
+  const outstandingAt = outstandingBalances(book);
   const obligations = book.obligations
     .filter(
       (obligation) =>
@@ -1927,7 +2113,7 @@ function projectAccountingState(
     )
     .map((obligation) => ({
       ...obligation,
-      outstanding: outstanding(book, obligation, cutoff),
+      outstanding: outstandingAt(obligation, cutoff),
     }));
   const sharedCategories = book.sharedCategories.filter((category) =>
     category.participants.includes(userId),
@@ -2751,14 +2937,7 @@ function applyCommand(
         amount: command.amount,
       });
       if (command.amount > 0)
-        for (const laterMonth of new Set(
-          budget.assignments
-            .filter((assignment) => assignment.month > command.month)
-            .map((assignment) => assignment.month),
-        )) {
-          if (materialize(book, actorId, laterMonth).readyToAssign < 0)
-            fail("This cash is already assigned in a future month");
-        }
+        ensureLaterMonthsFunded(book, actorId, command.month);
       break;
     }
     case "assign.batch": {
@@ -2792,15 +2971,7 @@ function applyCommand(
           amount: change.amount,
         }),
       );
-      if (increases)
-        for (const laterMonth of new Set(
-          budget.assignments
-            .filter((assignment) => assignment.month > command.month)
-            .map((assignment) => assignment.month),
-        )) {
-          if (materialize(book, actorId, laterMonth).readyToAssign < 0)
-            fail("This cash is already assigned in a future month");
-        }
+      if (increases) ensureLaterMonthsFunded(book, actorId, command.month);
       break;
     }
     case "cover": {
@@ -3386,14 +3557,15 @@ function applyCommand(
       const ownDebt = eligible.filter(
         (obligation) => obligation.debtorId === actorId,
       );
+      const outstandingNow = outstandingBalances(book);
       const otherDebt = eligible.filter(
         (obligation) => obligation.debtorId !== actorId,
       );
       const ownTotal = sum(
-        ownDebt.map((obligation) => outstanding(book, obligation)),
+        ownDebt.map((obligation) => outstandingNow(obligation)),
       );
       const otherTotal = sum(
-        otherDebt.map((obligation) => outstanding(book, obligation)),
+        otherDebt.map((obligation) => outstandingNow(obligation)),
       );
       if (ownTotal < otherTotal) fail("The other member owes the net payment");
       if (command.amount > ownTotal - otherTotal)
@@ -3408,7 +3580,7 @@ function applyCommand(
       let offset = otherTotal;
       let paymentRemaining = command.amount;
       for (const obligation of ownDebt) {
-        const amount = outstanding(book, obligation);
+        const amount = outstandingNow(obligation);
         const offsetAmount = Math.min(offset, amount);
         offset -= offsetAmount;
         if (offsetAmount)
@@ -3427,7 +3599,7 @@ function applyCommand(
           });
       }
       for (const obligation of otherDebt) {
-        const amount = outstanding(book, obligation);
+        const amount = outstandingNow(obligation);
         if (amount)
           allocations.push({
             obligationId: obligation.id,
