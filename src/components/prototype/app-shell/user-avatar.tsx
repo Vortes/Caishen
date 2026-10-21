@@ -1,6 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
+import { profileImageUrl } from "./profile-image";
 import styles from "./shell.module.css";
 
 // The signed-in person's photo, or the first letter of their name until they
@@ -16,12 +17,25 @@ export function UserAvatar({
   const { user } = useUser();
   const name = user?.fullName ?? user?.primaryEmailAddress?.emailAddress;
   const initial = (name ?? fallback).trim().charAt(0).toUpperCase() || "C";
+  const pixels = size === "large" ? 48 : 20;
   return (
     <span className={styles.avatar} data-size={size} aria-hidden>
       {user?.hasImage ? (
         // Clerk's image host isn't configured for next/image.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={user.imageUrl} alt="" />
+        <img
+          src={profileImageUrl(user.imageUrl, pixels)}
+          srcSet={[1, 2, 3]
+            .map(
+              (density) =>
+                `${profileImageUrl(user.imageUrl, pixels * density)} ${density}x`,
+            )
+            .join(", ")}
+          width={pixels}
+          height={pixels}
+          decoding="async"
+          alt=""
+        />
       ) : (
         initial
       )}
