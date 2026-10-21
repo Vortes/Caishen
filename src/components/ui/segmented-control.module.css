@@ -27,3 +27,16 @@
   background: var(--control-bg-active);
   color: var(--text-primary);
 }
+/* Filling its container, segments share the width by their labels'
+   lengths and give up their padding before their labels. */
+.root[data-fill] {
+  width: 100%;
+}
+.root[data-fill] .item {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

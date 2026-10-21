@@ -13,13 +13,19 @@ type Clean<T> = Omit<T, "className" | "style" | "asChild">;
 //   <SegmentedControlItem value="categories">Categories</SegmentedControlItem>
 //   <SegmentedControlItem value="groups">Groups</SegmentedControlItem>
 // </SegmentedControl>
-export function SegmentedControl(
-  props: Clean<ComponentProps<typeof Primitive.Root>>,
-) {
+export function SegmentedControl({
+  fill = false,
+  ...props
+}: Clean<ComponentProps<typeof Primitive.Root>> & {
+  // Spans its container, its segments sharing the width, for a choice that
+  // leads a form in a narrow panel. Otherwise it takes its natural width.
+  fill?: boolean;
+}) {
   return (
     <Primitive.Root
       className={styles.root}
       orientation="horizontal"
+      data-fill={fill || undefined}
       {...props}
     />
   );

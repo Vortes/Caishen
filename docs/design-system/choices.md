@@ -97,6 +97,19 @@ Always controlled with `value` and `onValueChange`, and always named with
 </Tabs>
 ```
 
+`fill` spans the control across its container, its segments sharing the
+width. Use it
+only where the choice leads a form in a narrow panel, like a target's
+schedule in the inspector, so every option stays visible as the panel
+narrows. Everywhere else it takes its natural width.
+
+```tsx
+<SegmentedControl fill aria-label="Schedule" value={schedule} onValueChange={set}>
+  <SegmentedControlItem value="weekly">Weekly</SegmentedControlItem>
+  <SegmentedControlItem value="monthly">Monthly</SegmentedControlItem>
+</SegmentedControl>
+```
+
 ## Tabs
 
 `src/components/ui/tabs.tsx`, built on Radix Tabs: `Tabs`, `TabsList`,
