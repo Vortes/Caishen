@@ -109,15 +109,18 @@
   flex-direction: column;
   height: 100%;
 }
+/* The budget menu's fill hugs its name, like Linear's; the toggle keeps
+   the far end. */
 .sidebarHeader {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 2px;
   height: var(--size-sidebar-header);
   margin-bottom: 8px;
 }
 .switcher {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -129,7 +132,8 @@
   background: transparent;
   font-weight: 500;
 }
-.switcher:hover {
+.switcher:hover,
+.switcher[data-state="open"] {
   background: var(--surface-hover);
 }
 .switcher > svg {
@@ -142,11 +146,22 @@
   place-items: center;
   width: var(--size-badge);
   height: var(--size-badge);
-  border-radius: 5px;
+  overflow: hidden;
+  border-radius: 50%;
   background: oklch(0.6 0.15 30);
   color: white;
   font-size: var(--type-caption);
   font-weight: 600;
+}
+.avatar[data-size="large"] {
+  width: 48px;
+  height: 48px;
+  font-size: var(--type-title);
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .switcherName {
   overflow: hidden;
@@ -289,26 +304,10 @@
 .sidebarFooter {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 4px;
   padding-top: 8px;
 }
-.footerItem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--size-control);
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-tertiary);
-}
-.footerItem:hover {
-  background: var(--surface-hover);
-  color: var(--text-secondary);
-}
-
 /* ---------- Main panel ---------- */
 
 .main {
@@ -1518,6 +1517,309 @@ button.actionItem:hover {
   background: oklch(0 0 0 / 0.4);
 }
 
+/* ---------- Profile menu ---------- */
+
+/* Grows from the budget name it drops from; the exit is quicker and only
+   fades and shrinks, since attention has already moved on. */
+.menu {
+  z-index: 60;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  will-change: transform, opacity;
+}
+.menu[data-state="open"] {
+  animation: menu-in 180ms var(--ease-panel);
+}
+.menu[data-state="closed"] {
+  animation: menu-out 120ms ease-in forwards;
+}
+.menu[data-instant] {
+  animation: none;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+@keyframes menu-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+/* The highlight follows the pointer and arrow keys instantly. */
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-sm);
+  padding: 0 8px;
+  border-radius: var(--radius-row);
+  outline: none;
+  cursor: default;
+  user-select: none;
+}
+.menuItem > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.menuItem[data-highlighted] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.root .menuItem:focus-visible {
+  outline: none;
+}
+.menuSeparator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--border-subtle);
+}
+
+/* ---------- Settings ---------- */
+
+/* Linear-style: one centered column of sections, each a heading over a card
+   of rows with the label first and the control at the row's end. */
+.settingsPage {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+.settingsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settingsHeadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settingsHeading {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+  letter-spacing: inherit;
+}
+.settingsIntro {
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settingText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settingLabel {
+  font-weight: 500;
+}
+.settingLead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.settingActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.settingDivider {
+  height: 1px;
+  margin: 14px calc(var(--space-card) * -1);
+  background: var(--border-subtle);
+}
+/* A form field isn't in the system yet; this follows the toolbar search. */
+.settingInput {
+  flex: 0 1 240px;
+  min-width: 0;
+  height: var(--size-control);
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  outline: none;
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+  transition: border-color 150ms;
+}
+.settingInput:hover {
+  border-color: var(--border-strong);
+}
+.settingInput[aria-invalid="true"] {
+  border-color: var(--feedback-attention);
+}
+.root .settingInput:focus-visible {
+  outline: none;
+  border-color: var(--focus-ring);
+}
+@media (pointer: coarse) {
+  .settingInput {
+    font-size: 16px;
+  }
+}
+.settingError {
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+}
+.inviteCode {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.inviteCode code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--type-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settingHint {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.navHeading {
+  display: flex;
+  align-items: center;
+  height: var(--size-control-xs);
+  margin: 0;
+  padding: 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.themeGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.themeGroupLabel {
+  margin: 0 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 8px;
+}
+/* A tile is drawn in its own palette. Its border comes from the current
+   theme, so a palette close to the panel's color still has an edge. */
+.themeTile {
+  position: relative;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-row);
+  transition:
+    border-color 150ms,
+    scale 100ms ease-out;
+}
+.themeTile:has(.themeOption:active) {
+  scale: 0.98;
+}
+.themeTile:hover {
+  border-color: var(--border-strong);
+}
+.themeTile[data-selected] {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--text-primary);
+}
+.themeOption {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: 64px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  text-align: left;
+}
+.themeName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 20px;
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.themeDots {
+  display: flex;
+  gap: 4px;
+}
+.themeDots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.themeHeart {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+/* Unsaved hearts appear faintly on the tile you point at; saved ones stay. */
+.themeTile:hover .themeHeart,
+.themeHeart:focus-visible {
+  opacity: 0.55;
+}
+.themeTile .themeHeart:hover,
+.themeHeart[aria-pressed="true"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .themeHeart {
+    opacity: 0.55;
+  }
+}
+/* 44px to a finger without growing the drawn heart. */
+@media (pointer: coarse) {
+  .themeHeart::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
+  }
+}
+
 /* ---------- Prototype controls (not part of the design) ---------- */
 
 .controls {
@@ -1577,175 +1879,6 @@ button.actionItem:hover {
   background: oklch(0.34 0.015 82);
   color: white;
 }
-.paletteWrap {
-  position: relative;
-}
-.paletteTrigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 8px 0 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-}
-.paletteTrigger:hover,
-.paletteTrigger[aria-expanded="true"] {
-  background: oklch(0.28 0.012 82);
-}
-.paletteTrigger .segmentedLabel {
-  margin-right: 0;
-  padding-left: 0;
-}
-.palettePanel {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: -6px;
-  display: flex;
-  flex-direction: column;
-  width: 260px;
-  height: min(560px, calc(100vh - 120px));
-  border: 1px solid oklch(0.4 0.02 82);
-  border-radius: 10px;
-  background: oklch(0.22 0.012 82);
-  box-shadow:
-    0 2px 6px oklch(0 0 0 / 0.3),
-    0 12px 32px oklch(0 0 0 / 0.35);
-}
-.paletteSearch {
-  flex: none;
-  height: 32px;
-  margin: 6px 6px 0;
-  padding: 0 8px;
-  border: 1px solid oklch(0.4 0.02 82);
-  border-radius: 6px;
-  outline: none;
-  background: oklch(0.18 0.01 82);
-  color: inherit;
-  font: inherit;
-}
-.paletteSearch:focus-visible {
-  border-color: oklch(0.78 0.12 82);
-}
-.paletteList {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.paletteList > [role="group"] {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.paletteList > [role="group"] + [role="group"] {
-  margin-top: 6px;
-}
-.paletteSection {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 26px;
-  padding: 0 4px;
-  color: oklch(0.68 0.02 82);
-  font-size: 11px;
-  font-weight: 600;
-}
-.paletteCopy {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  font-weight: 500;
-}
-.paletteCopy:hover {
-  background: oklch(0.28 0.012 82);
-  color: oklch(0.86 0.02 82);
-}
-/* Each row is drawn in its own palette, like Monkeytype's theme list. */
-.paletteRow {
-  flex: none;
-  display: flex;
-  align-items: center;
-  height: 30px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-}
-.paletteRow:has([aria-selected="true"]) {
-  border-color: oklch(0.78 0.12 82);
-  box-shadow: inset 0 0 0 1px oklch(0.78 0.12 82);
-}
-.paletteOption {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-  height: 100%;
-  padding: 0 4px 0 10px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-.paletteHeart {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  opacity: 0;
-}
-/* Unsaved hearts appear faintly on the row you point at; saved ones stay. */
-.paletteRow:hover .paletteHeart,
-.paletteHeart:focus-visible {
-  opacity: 0.55;
-}
-.paletteRow .paletteHeart:hover,
-.paletteRow .paletteHeart[aria-pressed="true"] {
-  opacity: 1;
-}
-.paletteDots {
-  display: flex;
-  gap: 4px;
-}
-.paletteDots i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.paletteEmpty {
-  padding: 8px;
-  color: oklch(0.68 0.02 82);
-}
-.readout {
-  min-width: 190px;
-  color: oklch(0.68 0.02 82);
-  font-variant-numeric: tabular-nums;
-}
-.keys {
-  display: flex;
-  gap: 3px;
-}
-.keys kbd {
-  min-width: 20px;
-  height: 20px;
-  padding: 0 4px;
-  border: 1px solid oklch(0.38 0.015 82);
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 11px;
-  line-height: 18px;
-  text-align: center;
-}
 .resetButton {
   display: flex;
   align-items: center;
@@ -1759,13 +1892,6 @@ button.actionItem:hover {
 .resetButton:hover {
   background: oklch(0.28 0.012 82);
 }
-@media (max-width: 1600px) {
-  .keys,
-  .readout {
-    display: none;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .root {
     --duration-panel: 0ms;
@@ -1775,7 +1901,8 @@ button.actionItem:hover {
     transition-duration: 0ms !important;
   }
   .empty > .spin,
-  .monthLoading::after {
+  .monthLoading::after,
+  .menu[data-state] {
     animation: none;
   }
 }

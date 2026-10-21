@@ -261,6 +261,18 @@ function LiveWorkspace({
           moveMoney={moveMoney}
           categoryAdder={categoryAdder}
           transactionSaver={transactionSaver}
+          renameBudget={(name) => {
+            const reason = blocked();
+            if (reason) return blockMessage[reason];
+            const command = {
+              type: "settings.update" as const,
+              id: newId(),
+              name,
+            };
+            summaries.current.set(command.id, `Renamed your budget to ${name}`);
+            run(command);
+            return null;
+          }}
           notifications={
             <ToastRegion>
               {refreshError && (

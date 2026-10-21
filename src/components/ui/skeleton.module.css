@@ -58,7 +58,7 @@
 .skeleton[data-shape="avatar"] {
   width: var(--size-badge);
   height: var(--size-badge);
-  border-radius: var(--radius-row);
+  border-radius: 50%;
 }
 .skeleton[data-shape="pill"] {
   height: var(--size-pill);

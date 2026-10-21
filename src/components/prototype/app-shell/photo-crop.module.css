@@ -1,0 +1,169 @@
+/* The photo crop dialog, on the same surface as the shell's popovers. It
+   has no anchor, so it grows from the viewport's center; the overlay shares
+   its timing so the two read as one motion. Leaving is quicker and smaller,
+   since attention has already moved on. */
+
+.overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: oklch(0 0 0 / 0.4);
+}
+:global([data-theme="light"]) .overlay {
+  background: oklch(0.2 0.01 var(--hue) / 0.2);
+}
+.overlay[data-state="open"] {
+  animation: overlay-in 200ms ease-out;
+}
+.overlay[data-state="closed"] {
+  animation: overlay-out 150ms ease-in forwards;
+}
+
+.dialog {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(400px, calc(100vw - 24px));
+  padding: var(--space-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  translate: -50% -50%;
+}
+.dialog[data-state="open"] {
+  animation: dialog-in 200ms var(--ease-panel);
+}
+.dialog[data-state="closed"] {
+  animation: dialog-out 150ms ease-in forwards;
+}
+.dialog:focus-visible {
+  outline: none;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes overlay-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.title {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+/* Square, so the round crop fills it edge to edge. The rest of the photo
+   shows dimmed around the circle. */
+.stage {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius-row);
+  background: var(--surface-app);
+  touch-action: none;
+}
+.cropArea {
+  border: 2px solid var(--text-primary) !important;
+  color: oklch(0 0 0 / 0.55) !important;
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+}
+/* A thin track and a round thumb, drawn the same in every browser. */
+.zoom input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+.zoom input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--control-bg-active);
+}
+.zoom input::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--control-bg-active);
+}
+.zoom input::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: var(--shadow-tooltip);
+  appearance: none;
+}
+.zoom input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: var(--shadow-tooltip);
+}
+.zoom input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.error {
+  margin: 0;
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay[data-state],
+  .dialog[data-state] {
+    animation: none;
+  }
+}
