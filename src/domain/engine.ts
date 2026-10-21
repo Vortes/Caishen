@@ -19,7 +19,8 @@ import {
 } from "./shared-ledger";
 import { personalSpendingEntries } from "./spending";
 import { canonicalJson } from "./canonical-json";
-import { foldAssignments } from "./rows";
+import { Changes } from "./changes";
+import { foldAssignments, type ChangeSet } from "./rows";
 
 const identifier = z.string().min(1).max(160);
 const cents = z.number().int().safe();
@@ -1259,29 +1260,19 @@ function cashPosition(
   };
 }
 
-function findAssignment(
-  budget: Budget,
-  categoryId: string,
-  month: string,
-): Assignment | undefined {
-  return budget.assignments.find(
-    (assignment) =>
-      assignment.categoryId === categoryId && assignment.month === month,
-  );
-}
-
 // Adds to the month's assignment for the category, opening it under the
 // given id when the category has none that month.
 function addAssignment(
+  changes: Changes,
   budget: Budget,
   categoryId: string,
   month: string,
   amount: number,
   id: string,
 ): void {
-  const assignment = findAssignment(budget, categoryId, month);
+  const assignment = changes.assignment(budget, categoryId, month);
   if (assignment) assignment.amount = safe(assignment.amount + amount);
-  else budget.assignments.push({ id, categoryId, month, amount });
+  else changes.addAssignment(budget, { id, categoryId, month, amount });
 }
 
 // The checks every change to assigned money passes: money released by the
@@ -2382,13 +2373,13 @@ export function previewBudgetProjection(
     sharedCategories: view.sharedCategories,
     audit: view.audit,
   };
-  const next = executeAccountingState(
+  const next = executeWithChanges(
     ledger,
     view.budget.userId,
     command,
     "user",
     command,
-  );
+  ).book;
   return projectAccountingState(
     next,
     view.budget.userId,
@@ -2429,6 +2420,7 @@ function saveRegisterTransaction(
   budget: Budget,
   command: Extract<ParsedCommand, { type: "transaction.save" }>,
   source: CommandSource,
+  changes: Changes,
 ) {
   requireDate(budget, command.date);
   const account = accountAtDate(budget, command.accountId, command.date);
@@ -2475,6 +2467,7 @@ function saveRegisterTransaction(
       budget,
       { ...command, type: "transaction.upsert" },
       source,
+      changes,
     );
     return;
   }
@@ -2494,14 +2487,15 @@ function saveRegisterTransaction(
     ? structuredClone(counterparts[0])
     : undefined;
   // Exclude the old facts while checking the replacement's cash, reserve and debt.
-  if (existing) existing.removed = true;
-  for (const item of counterparts) item.removed = true;
+  if (existing) changes.transaction(budget, existing).removed = true;
+  for (const item of counterparts)
+    changes.transaction(budget, item).removed = true;
   if (existing?.kind === "loan-payment") {
     const loan =
       budget.loans.find((item) =>
         item.payments.some((payment) => payment.id === existing.linkedId),
       ) ?? fail("The confirmed loan payment could not be found");
-    loan.payments = loan.payments.filter(
+    changes.loan(budget, loan).payments = loan.payments.filter(
       (payment) => payment.id !== existing.linkedId,
     );
   }
@@ -2531,10 +2525,9 @@ function saveRegisterTransaction(
         },
       ],
     };
-    const index = budget.transactions.findIndex((item) => item.id === facts.id);
-    if (index >= 0 && !before) fail("Transaction ID already exists");
-    if (index >= 0) budget.transactions[index] = saved;
-    else budget.transactions.push(saved);
+    if (!before && budget.transactions.some((item) => item.id === facts.id))
+      fail("Transaction ID already exists");
+    changes.putTransaction(budget, saved);
   };
   const base = {
     id: command.transactionId,
@@ -2642,7 +2635,7 @@ function saveRegisterTransaction(
       loan.principal - sum(loan.payments.map((item) => item.principal))
     )
       fail("Confirmed principal exceeds the remaining loan balance");
-    loan.payments.push({
+    changes.loan(budget, loan).payments.push({
       id: linkedId,
       date: command.date,
       principal,
@@ -2671,6 +2664,7 @@ function saveRegisterTransaction(
       budget,
       { ...command, type: "transaction.upsert" },
       source,
+      changes,
     );
   }
   for (const item of counterparts) {
@@ -2688,13 +2682,14 @@ function saveRegisterTransaction(
 }
 
 function appendTransaction(
+  changes: Changes,
   budget: Budget,
   operationId: string,
   input: Omit<Transaction, "revision" | "history" | "reviewed">,
 ): void {
   if (budget.transactions.some((transaction) => transaction.id === input.id))
     fail("Transaction ID already exists");
-  budget.transactions.push({
+  changes.addTransaction(budget, {
     ...input,
     revision: 1,
     reviewed: true,
@@ -2824,7 +2819,53 @@ export function execute<T extends AccountingState>(
   source: CommandSource = "user",
   submitted: unknown = input,
 ): T {
-  return executeAccountingState(original, actorId, input, source, submitted);
+  return executeWithChanges(original, actorId, input, source, submitted).book;
+}
+
+export type ChangeSetObserver = (run: {
+  before: AccountingState;
+  after: AccountingState;
+  actorId: string;
+  command: Command;
+  changeSet: ChangeSet;
+}) => void;
+let changeSetObserver: ChangeSetObserver | undefined;
+
+/**
+ * Lets the tests check every executed command's change set against a full
+ * comparison of the ledger's rows (ADR 0006). Production code never sets it.
+ */
+export function observeChangeSets(observer?: ChangeSetObserver): void {
+  changeSetObserver = observer;
+}
+
+/**
+ * Applies a command like execute and also returns its change set: every row
+ * it added, changed, or removed, with the row's prior content. Revisions are
+ * 0 until the server stamps them. A retried operation changes nothing.
+ */
+export function executeWithChanges<T extends AccountingState>(
+  original: T,
+  actorId: string,
+  input: Command,
+  source: CommandSource = "user",
+  submitted: unknown = input,
+): { book: T; changeSet: ChangeSet } {
+  const result = executeAccountingState(
+    original,
+    actorId,
+    input,
+    source,
+    submitted,
+  );
+  changeSetObserver?.({
+    before: original,
+    after: result.book,
+    actorId,
+    command: input,
+    changeSet: result.changeSet,
+  });
+  return result;
 }
 
 function executeAccountingState<T extends AccountingState>(
@@ -2833,7 +2874,7 @@ function executeAccountingState<T extends AccountingState>(
   input: Command,
   source: CommandSource,
   submitted: unknown,
-): T {
+): { book: T; changeSet: ChangeSet } {
   const command = commandSchema.parse(input);
   ownBudget(original, actorId);
   const fingerprint = canonicalJson(submitted);
@@ -2847,7 +2888,15 @@ function executeAccountingState<T extends AccountingState>(
       previous.fingerprint !== JSON.stringify(command)
     )
       fail("Operation ID was already used with different data");
-    return structuredClone(original);
+    return {
+      book: structuredClone(original),
+      changeSet: {
+        operationId: command.id,
+        revision: 0,
+        after: [],
+        before: [],
+      },
+    };
   }
   const userOnly = [
     "assign",
@@ -2882,7 +2931,8 @@ function executeAccountingState<T extends AccountingState>(
     : Object.values(book.budgets))
     folded.assignments = foldAssignments(folded.assignments);
   const budget = ownBudget(book, actorId);
-  applyCommand(book, budget, command, source);
+  const changes = new Changes(book);
+  applyCommand(book, budget, command, source, changes);
   if (
     [
       "transaction.upsert",
@@ -2904,7 +2954,7 @@ function executeAccountingState<T extends AccountingState>(
     sequence: book.audit.length + 1,
     fingerprint,
   });
-  return book;
+  return { book, changeSet: changes.changeSet(command.id) };
 }
 
 function applyCommand(
@@ -2912,6 +2962,7 @@ function applyCommand(
   budget: Budget,
   command: ParsedCommand,
   source: CommandSource,
+  changes: Changes,
 ): void {
   const actorId = budget.userId;
   switch (command.type) {
@@ -2924,7 +2975,7 @@ function applyCommand(
         fail(
           "Positive credit-card balances require bank evidence and are not supported by manual setup",
         );
-      budget.accounts.push({
+      changes.addAccount(budget, {
         id: command.accountId,
         name: command.name,
         kind: command.kind,
@@ -2932,7 +2983,7 @@ function applyCommand(
         date,
       });
       if (command.kind === "credit")
-        budget.categories.push({
+        changes.addCategory(budget, {
           id: `card:${command.accountId}`,
           name: `${command.name} payment`,
           group: "Credit card payments",
@@ -2953,7 +3004,7 @@ function applyCommand(
       if (!difference && command.adjustmentId)
         fail("The cleared balance already matches the bank's");
       if (command.adjustmentId)
-        appendTransaction(budget, command.id, {
+        appendTransaction(changes, budget, command.id, {
           id: command.adjustmentId,
           accountId: account.id,
           date: command.date,
@@ -2967,10 +3018,14 @@ function applyCommand(
         if (
           active(transaction) &&
           transaction.accountId === account.id &&
-          transaction.status === "posted"
+          transaction.status === "posted" &&
+          !transaction.reconciled
         )
-          transaction.reconciled = true;
-      account.reconciled = { date: command.date, balance: command.balance };
+          changes.transaction(budget, transaction).reconciled = true;
+      changes.account(budget, account).reconciled = {
+        date: command.date,
+        balance: command.balance,
+      };
       break;
     }
     case "group.add": {
@@ -2982,6 +3037,7 @@ function applyCommand(
       );
       if (taken.has(command.name.toLowerCase()))
         fail("Category group already exists");
+      changes.groups(budget);
       budget.groups = [command.name, ...(budget.groups ?? [])];
       break;
     }
@@ -2990,7 +3046,7 @@ function applyCommand(
         budget.categories.some((category) => category.id === command.categoryId)
       )
         fail("Category ID already exists");
-      budget.categories.push({
+      changes.addCategory(budget, {
         id: command.categoryId,
         name: command.name,
         group: command.group,
@@ -3001,7 +3057,7 @@ function applyCommand(
       for (const category of command.categories) {
         if (budget.categories.some((item) => item.id === category.categoryId))
           continue;
-        budget.categories.push({
+        changes.addCategory(budget, {
           id: category.categoryId,
           name: category.name,
           group: category.group,
@@ -3015,6 +3071,7 @@ function applyCommand(
         { categoryId: command.categoryId, amount: command.amount },
       ]);
       addAssignment(
+        changes,
         budget,
         command.categoryId,
         command.month,
@@ -3029,14 +3086,15 @@ function applyCommand(
       getCategory(budget, command.categoryId);
       const amount = safe(
         command.amount -
-          (findAssignment(budget, command.categoryId, command.month)?.amount ??
-            0),
+          (changes.assignment(budget, command.categoryId, command.month)
+            ?.amount ?? 0),
       );
       if (!amount) break;
       checkAssignmentChange(book, budget, command.month, [
         { categoryId: command.categoryId, amount },
       ]);
       addAssignment(
+        changes,
         budget,
         command.categoryId,
         command.month,
@@ -3057,6 +3115,7 @@ function applyCommand(
       checkAssignmentChange(book, budget, command.month, command.changes);
       command.changes.forEach((change, index) =>
         addAssignment(
+          changes,
           budget,
           change.categoryId,
           command.month,
@@ -3096,6 +3155,7 @@ function applyCommand(
       )
         fail("Source category has insufficient funds");
       addAssignment(
+        changes,
         budget,
         command.fromCategoryId,
         command.month,
@@ -3103,6 +3163,7 @@ function applyCommand(
         `${command.id}:from`,
       );
       addAssignment(
+        changes,
         budget,
         command.toCategoryId,
         command.month,
@@ -3114,6 +3175,7 @@ function applyCommand(
     case "rule.set": {
       getCategory(budget, command.fromCategoryId);
       getCategory(budget, command.toCategoryId);
+      changes.rules(budget);
       budget.rules = budget.rules.filter((rule) => rule.id !== command.ruleId);
       budget.rules.push({
         id: command.ruleId,
@@ -3124,7 +3186,10 @@ function applyCommand(
       break;
     }
     case "target.set": {
-      const category = getCategory(budget, command.categoryId);
+      const category = changes.category(
+        budget,
+        getCategory(budget, command.categoryId),
+      );
       if (command.target) {
         const cardTarget = command.target.cadence.startsWith("card-");
         if (Boolean(category.pairedAccountId) !== cardTarget)
@@ -3144,7 +3209,10 @@ function applyCommand(
       break;
     }
     case "target.snooze": {
-      const category = getCategory(budget, command.categoryId);
+      const category = changes.category(
+        budget,
+        getCategory(budget, command.categoryId),
+      );
       const target = category.target ?? fail("This category has no target");
       if (command.month !== command.currentMonth)
         fail("Only the current month can be snoozed");
@@ -3157,7 +3225,7 @@ function applyCommand(
       break;
     }
     case "transaction.save": {
-      saveRegisterTransaction(book, budget, command, source);
+      saveRegisterTransaction(book, budget, command, source, changes);
       break;
     }
     case "transaction.upsert": {
@@ -3293,10 +3361,7 @@ function applyCommand(
         ],
       };
       ensureNoClaimInvalidation(budget, transaction);
-      if (existing)
-        budget.transactions[budget.transactions.indexOf(existing)] =
-          transaction;
-      else budget.transactions.push(transaction);
+      changes.putTransaction(budget, transaction);
       if (
         account.kind === "credit" &&
         materialize(book, actorId, monthOf(command.date)).accounts.get(
@@ -3324,7 +3389,7 @@ function applyCommand(
         )
       )
         fail("Resolve linked reimbursements before removing the expense");
-      transaction.removed = true;
+      changes.transaction(budget, transaction).removed = true;
       transaction.history.push({
         revision: ++transaction.revision,
         amount: transaction.amount,
@@ -3367,6 +3432,7 @@ function applyCommand(
         }
       }
       for (const transaction of rejected.values()) {
+        changes.transaction(budget, transaction);
         if (transaction.kind === "loan-payment") {
           const loan =
             budget.loans.find((item) =>
@@ -3374,7 +3440,7 @@ function applyCommand(
                 (payment) => payment.id === transaction.linkedId,
               ),
             ) ?? fail("The confirmed loan payment could not be found");
-          loan.payments = loan.payments.filter(
+          changes.loan(budget, loan).payments = loan.payments.filter(
             (payment) => payment.id !== transaction.linkedId,
           );
         }
@@ -3401,9 +3467,9 @@ function applyCommand(
           getAccount(budget, transaction.accountId).kind !== "tracking"
         )
           fail("Categorize purchases before approval");
-        transaction.reviewed = true;
+        changes.transaction(budget, transaction).reviewed = true;
         for (const counterpart of transferCounterparts(budget, transaction))
-          counterpart.reviewed = true;
+          changes.transaction(budget, counterpart).reviewed = true;
       }
       break;
     }
@@ -3427,6 +3493,7 @@ function applyCommand(
             categoryId: command.categoryId,
           },
           source,
+          changes,
         );
       }
       break;
@@ -3450,7 +3517,7 @@ function applyCommand(
         if (category.pairedAccountId || category.pairedLoanId)
           fail("Choose a spending category for this transfer");
         for (const item of [transaction, other]) {
-          item.categoryId = category.id;
+          changes.transaction(budget, item).categoryId = category.id;
           item.reviewed = source === "user";
           item.history.push({
             revision: ++item.revision,
@@ -3478,7 +3545,7 @@ function applyCommand(
         ] !== category.id
       )
         fail("Change the shared expense classification explicitly");
-      transaction.categoryId = category.id;
+      changes.transaction(budget, transaction).categoryId = category.id;
       if (transaction.amount > 0) transaction.kind = "refund";
       transaction.reviewed = source === "user";
       transaction.history.push({
@@ -3509,8 +3576,8 @@ function applyCommand(
         )
       )
         fail("Resolve linked claims before combining records");
-      duplicate.removed = true;
-      target.history.push(...duplicate.history, {
+      changes.transaction(budget, duplicate).removed = true;
+      changes.transaction(budget, target).history.push(...duplicate.history, {
         revision: ++target.revision,
         amount: target.amount,
         date: target.date,
@@ -3565,7 +3632,7 @@ function applyCommand(
           id !== actorId &&
           !member.categories.some((category) => category.id === categoryId)
         )
-          member.categories.push({
+          changes.addCategory(member, {
             id: categoryId,
             name: source.name,
             group: "Shared",
@@ -3574,7 +3641,7 @@ function applyCommand(
         if (category.pairedAccountId || category.pairedLoanId)
           fail("Payment categories cannot be shared expenses");
       }
-      book.sharedCategories.push({
+      changes.sharedCategories().push({
         id: command.sharedCategoryId,
         participants: command.participants,
         weights: command.weights,
@@ -3585,6 +3652,7 @@ function applyCommand(
     case "shared.rule": {
       const shared = sharedAccess(book, actorId, command.sharedCategoryId);
       validateWeights(shared.participants, command.weights);
+      changes.sharedCategories();
       shared.weights = command.weights;
       break;
     }
@@ -3599,6 +3667,7 @@ function applyCommand(
         fail(
           "Shared categories with recorded activity cannot be deleted. Their expense and settlement history must be preserved.",
         );
+      changes.sharedCategories();
       book.sharedCategories = book.sharedCategories.filter(
         (category) => category.id !== shared.id,
       );
@@ -3618,7 +3687,7 @@ function applyCommand(
         )
       )
         fail("Opening obligation ID already exists");
-      book.obligations.push({
+      changes.openingObligations().push({
         id: command.obligationId,
         sharedCategoryId: shared.id,
         debtorId: command.debtorId,
@@ -3701,7 +3770,7 @@ function applyCommand(
             kind: "offset",
           });
       }
-      book.settlements.push({
+      changes.addSettlement({
         id: command.settlementId,
         payerId: actorId,
         recipientId: command.otherUserId,
@@ -3711,7 +3780,7 @@ function applyCommand(
         allocations,
       });
       if (command.amount > 0)
-        appendTransaction(budget, command.id, {
+        appendTransaction(changes, budget, command.id, {
           id: `${command.id}:payment`,
           accountId: command.accountId!,
           date: command.date,
@@ -3735,8 +3804,8 @@ function applyCommand(
       if (command.date < settlement.date)
         fail("Receipt predates the recorded settlement payment");
       requireCash(budget, command.accountId, command.date);
-      settlement.received = true;
-      appendTransaction(budget, command.id, {
+      changes.settlement(settlement).received = true;
+      appendTransaction(changes, budget, command.id, {
         id: `${command.id}:receipt`,
         accountId: command.accountId,
         date: command.date,
@@ -3773,7 +3842,7 @@ function applyCommand(
       );
       if (claimed + command.amount > -transaction.amount)
         fail("Claims cannot exceed the linked expense");
-      budget.reimbursements.push({
+      changes.addReimbursement(budget, {
         id: command.reimbursementId,
         transactionId: transaction.id,
         name: command.name,
@@ -3799,12 +3868,12 @@ function applyCommand(
         claim.amount - sum(claim.receipts.map((receipt) => receipt.amount))
       )
         fail("Receipt exceeds the outstanding claim");
-      claim.receipts.push({
+      changes.reimbursement(budget, claim).receipts.push({
         id: command.id,
         date: command.date,
         amount: command.amount,
       });
-      appendTransaction(budget, command.id, {
+      appendTransaction(changes, budget, command.id, {
         id: `${command.id}:receipt`,
         accountId: command.accountId,
         date: command.date,
@@ -3827,7 +3896,7 @@ function applyCommand(
         command.date,
         command.amount,
       );
-      appendTransaction(budget, command.id, {
+      appendTransaction(changes, budget, command.id, {
         id: `${command.id}:cash`,
         accountId: command.cashAccountId,
         date: command.date,
@@ -3838,7 +3907,7 @@ function applyCommand(
         kind: "card-payment",
         linkedId: command.id,
       });
-      appendTransaction(budget, command.id, {
+      appendTransaction(changes, budget, command.id, {
         id: `${command.id}:card`,
         accountId: command.cardAccountId,
         date: command.date,
@@ -3894,12 +3963,12 @@ function applyCommand(
           "Credit exceeds card debt; positive card balances require bank evidence",
         );
       if (claim)
-        claim.receipts.push({
+        changes.reimbursement(budget, claim).receipts.push({
           id: command.id,
           date: command.date,
           amount: command.amount,
         });
-      appendTransaction(budget, command.id, {
+      appendTransaction(changes, budget, command.id, {
         id: `${command.id}:credit`,
         accountId: command.accountId,
         date: command.date,
@@ -3924,11 +3993,11 @@ function applyCommand(
           name: `${command.name} payment`,
           group: "Loans",
         };
-        budget.categories.push(category);
+        changes.addCategory(budget, category);
       }
       if (category.pairedAccountId || category.pairedLoanId)
         fail("Category is already paired");
-      category.pairedLoanId = command.loanId;
+      changes.category(budget, category).pairedLoanId = command.loanId;
       category.target = {
         cadence: "loan",
         behavior: "contribution",
@@ -3936,7 +4005,7 @@ function applyCommand(
         startMonth: budget.startMonth,
         snoozedMonths: [],
       };
-      budget.loans.push({
+      changes.addLoan(budget, {
         id: command.loanId,
         categoryId: category.id,
         name: command.name,
@@ -3962,7 +4031,7 @@ function applyCommand(
         loan.rates.some((rate) => rate.effectiveDate === command.effectiveDate)
       )
         fail("A confirmed rate already exists for this date");
-      loan.rates.push({
+      changes.loan(budget, loan).rates.push({
         effectiveDate: command.effectiveDate,
         annualRateBps: command.annualRateBps,
       });
@@ -3981,13 +4050,13 @@ function applyCommand(
         loan.principal - sum(loan.payments.map((payment) => payment.principal))
       )
         fail("Confirmed principal exceeds the remaining loan balance");
-      loan.payments.push({
+      changes.loan(budget, loan).payments.push({
         id: command.id,
         date: command.date,
         principal: command.principal,
         interest: command.interest,
       });
-      appendTransaction(budget, command.id, {
+      appendTransaction(changes, budget, command.id, {
         id: `${command.id}:payment`,
         accountId: command.accountId,
         date: command.date,
@@ -4002,6 +4071,7 @@ function applyCommand(
       break;
     }
     case "settings.update": {
+      changes.budget(budget);
       if (command.name) budget.name = command.name;
       if (command.timezone) {
         try {
@@ -4020,8 +4090,9 @@ function applyCommand(
     case "income.expect": {
       if (command.month < budget.startMonth)
         fail("Month precedes the budget start");
-      if (command.amount === null) delete budget.expectedIncome[command.month];
-      else budget.expectedIncome[command.month] = command.amount;
+      const income = changes.expectedIncome(budget, command.month);
+      if (command.amount === null) delete income[command.month];
+      else income[command.month] = command.amount;
       break;
     }
   }
