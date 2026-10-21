@@ -1,9 +1,10 @@
 # Caishen design system
 
 A calm, near-neutral shell where color means something. Surfaces are grays
-generated from one hue, and color appears in exactly two places: money states
-(funded, underfunded, overspent) and the one action that commits something.
-If a screen has color anywhere else, something is wrong.
+generated from one hue. Color communicates money states (funded,
+underfunded, overspent), semantic feedback, the committing action, or
+interaction state (checked controls, row selection, keyboard focus).
+Do not use color as decoration.
 
 Read this file before building any UI. Read the topic file for each component
 you use.
@@ -30,6 +31,9 @@ you use.
    They can look alike (both amber); they mean different things.
 6. **Dark is the default theme.** Any element switches its subtree with
    `data-theme="light"`. Check every screen in both.
+7. **Row selection uses the grouped outline in [rows.md](rows.md).** Apply
+   it to every selectable table or list, not just transactions. Selection
+   is distinct from hover, keyboard focus, and the current detail row.
 
 ## Topics
 
@@ -39,6 +43,7 @@ you use.
 | [scale.md](scale.md)       | Type sizes, control and row heights, spacing, radii, motion |
 | [buttons.md](buttons.md)   | `Button`, `IconButton`                                      |
 | [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`            |
+| [rows.md](rows.md)         | Shared row-selection outline, grouping, states, motion      |
 | [labels.md](labels.md)     | `Tag`, the review dot                                       |
 | [surfaces.md](surfaces.md) | `Card`, `Tooltip`, portals                                  |
 | [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                      |
@@ -52,7 +57,8 @@ prototype's pattern, use only semantic tokens, and say in your summary that
 the screen needs the missing primitive. Never invent a new primitive inline.
 
 - **Rows**: plan, register, list, and menu rows (`.row`, `.listRow`,
-  `.preset`, `.actionItem` in the prototype).
+  `.preset`, `.actionItem` in the prototype). No shared row primitive exists;
+  selection styling must follow [rows.md](rows.md).
 - **Navigation**: sidebar items and section headings, breadcrumbs, the
   Spending Breakdown / Trends report tabs.
 - **Form fields**: text inputs, selects, amount fields.

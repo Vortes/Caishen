@@ -1,0 +1,121 @@
+.list {
+  --selection-fill: color-mix(
+    in oklch,
+    var(--accent-solid) 6%,
+    var(--surface-panel)
+  );
+  --selection-fill-hover: color-mix(
+    in oklch,
+    var(--accent-solid) 11%,
+    var(--surface-panel)
+  );
+  --selection-exit: calc(var(--duration-selection) * 0.75);
+}
+table.list {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.row {
+  --selection-top: var(--accent-line);
+  --selection-bottom: var(--accent-line);
+  --selection-radius-top: var(--radius-row);
+  --selection-radius-bottom: var(--radius-row);
+}
+.row:not(tr),
+.row > td {
+  position: relative;
+  isolation: isolate;
+  --selection-left: var(--accent-line);
+  --selection-right: var(--accent-line);
+  --selection-top-left: var(--selection-radius-top);
+  --selection-top-right: var(--selection-radius-top);
+  --selection-bottom-left: var(--selection-radius-bottom);
+  --selection-bottom-right: var(--selection-radius-bottom);
+}
+.row:not(tr) {
+  border-radius: var(--radius-row);
+}
+.row > td:not(:first-child) {
+  --selection-left: transparent;
+  --selection-top-left: 0px;
+  --selection-bottom-left: 0px;
+}
+.row > td:not(:last-child) {
+  --selection-right: transparent;
+  --selection-top-right: 0px;
+  --selection-bottom-right: 0px;
+}
+.row:not(tr)::before,
+.row:not(tr)::after,
+.row > td::before,
+.row > td::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--selection-top-left) var(--selection-top-right)
+    var(--selection-bottom-right) var(--selection-bottom-left);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--selection-exit) ease-in,
+    border-radius 0s var(--selection-exit),
+    box-shadow 0s var(--selection-exit),
+    background-color 150ms ease;
+}
+.row:not(tr)::after,
+.row > td::after {
+  z-index: -1;
+  background: var(--selection-fill);
+}
+.row:not(tr)::before,
+.row > td::before {
+  z-index: 1;
+  box-shadow:
+    inset 1px 0 0 var(--selection-left),
+    inset -1px 0 0 var(--selection-right),
+    inset 0 1px 0 var(--selection-top),
+    inset 0 -1px 0 var(--selection-bottom);
+}
+.row[data-checked] + .row[data-checked] {
+  --selection-top: transparent;
+  --selection-radius-top: 0px;
+}
+.row[data-checked]:has(+ .row[data-checked]) {
+  --selection-bottom: transparent;
+  --selection-radius-bottom: 0px;
+}
+.row[data-checked]:not(tr)::before,
+.row[data-checked]:not(tr)::after,
+.row[data-checked] > td::before,
+.row[data-checked] > td::after {
+  opacity: 1;
+  transition:
+    opacity var(--duration-selection) var(--ease-selection),
+    border-radius var(--duration-selection) var(--ease-selection),
+    box-shadow var(--duration-selection) var(--ease-selection),
+    background-color 150ms ease;
+}
+.row[data-checked]:hover:not(tr)::after,
+.row[data-checked]:hover > td::after {
+  background: var(--selection-fill-hover);
+}
+.row[data-entering]:not(tr)::before,
+.row[data-entering]:not(tr)::after,
+.row[data-entering] > td::before,
+.row[data-entering] > td::after {
+  transition-property: opacity;
+}
+.list[data-instant] .row::before,
+.list[data-instant] .row::after,
+.list[data-instant] .row > td::before,
+.list[data-instant] .row > td::after {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .list .row:not(tr)::before,
+  .list .row:not(tr)::after,
+  .list .row > td::before,
+  .list .row > td::after {
+    transition: none;
+  }
+}

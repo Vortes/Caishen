@@ -15,6 +15,8 @@ import {
 import { MoveMoneyPopover } from "~/components/budget/move-money-popover";
 import { Amount, Icon } from "~/components/shared";
 import { Checkbox } from "~/components/ui-legacy/checkbox";
+import { useRowSelection } from "~/components/ui/use-row-selection";
+import selectionStyles from "~/components/ui/row-selection.module.css";
 
 export type Category = View["categories"][number];
 export type BudgetFilter =
@@ -64,6 +66,7 @@ export function CategoryTable({
 }) {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
+  const selectionStyle = useRowSelection(selected);
   const groups = [...new Set(categories.map((category) => category.group))];
   const selectMany = (ids: string[], checked: boolean) =>
     onSelect(
@@ -73,7 +76,10 @@ export function CategoryTable({
     );
   return (
     <div className="category-table-scroll">
-      <table className="plan-table">
+      <table
+        className={cn("plan-table", selectionStyles.list)}
+        {...selectionStyle.listProps}
+      >
         <colgroup>
           <col className="category-column" />
           <col />
@@ -144,11 +150,10 @@ export function CategoryTable({
                     const split = splits[0];
                     return (
                       <tr
-                        className={cn(
-                          "category-row",
-                          selected.includes(category.id) && "is-selected",
-                        )}
+                        className={cn("category-row", selectionStyles.row)}
                         key={category.id}
+                        {...selectionStyle.rowProps(category.id)}
+                        aria-selected={selected.includes(category.id)}
                         onClick={() => onSelect([category.id], true)}
                       >
                         <td>

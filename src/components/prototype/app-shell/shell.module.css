@@ -1131,25 +1131,19 @@ button.actionItem:hover {
 }
 /* The checkbox overlays the row, so hover is tracked on the wrapper to keep
    the row highlighted while the pointer is on the checkbox. */
-.rowWrap:hover > .row {
+.rowWrap:has(> .row):hover {
   background: var(--surface-hover);
+}
+.rowWrap:has(> .row[aria-current="true"]) {
+  background: var(--surface-selected);
+}
+.rowWrap > .row,
+.rowWrap:hover > .row,
+.rowWrap > .row[aria-current="true"] {
+  background: transparent;
 }
 .rowWrap:hover > .groupRow {
   color: var(--text-primary);
-}
-.rowWrap[data-checked] > .row {
-  background: color-mix(
-    in oklch,
-    var(--accent-solid) 16%,
-    var(--surface-panel)
-  );
-}
-.rowWrap[data-checked]:hover > .row {
-  background: color-mix(
-    in oklch,
-    var(--accent-solid) 22%,
-    var(--surface-panel)
-  );
 }
 .checkboxSlot {
   position: absolute;
