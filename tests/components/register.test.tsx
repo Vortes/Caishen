@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Command } from "~/domain/engine";
 import { deferred, renderShell, stateFixture } from "./shell-harness";
@@ -25,6 +25,54 @@ const row = (payee: string) =>
   );
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
+
+test("only newly checked rows get an entry marker when selecting all", async () => {
+  const state = stateFixture({
+    seedCommands: [purchase(), purchase("coffee")],
+  });
+  const shell = await renderShell({ read: () => state });
+  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  const market = row("Market").parentElement!;
+  const coffee = row("Coffee").parentElement!;
+
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Market" }));
+  expect(market.hasAttribute("data-entering")).toBe(true);
+  expect(coffee.hasAttribute("data-entering")).toBe(false);
+  await waitFor(() => expect(market.hasAttribute("data-entering")).toBe(false));
+
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  expect(market.hasAttribute("data-entering")).toBe(false);
+  expect(coffee.hasAttribute("data-entering")).toBe(true);
+  expect(market.hasAttribute("data-checked")).toBe(true);
+  expect(coffee.hasAttribute("data-checked")).toBe(true);
+  await waitFor(() => expect(coffee.hasAttribute("data-entering")).toBe(false));
+
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+  expect(market.hasAttribute("data-checked")).toBe(false);
+  expect(coffee.hasAttribute("data-checked")).toBe(false);
+  expect(market.hasAttribute("data-entering")).toBe(false);
+  expect(coffee.hasAttribute("data-entering")).toBe(false);
+});
+
+test("keyboard selection skips motion until the next pointer interaction", async () => {
+  const state = stateFixture({ seedCommands: [purchase()] });
+  const shell = await renderShell({ read: () => state });
+  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  const register = screen.getByRole("group", { name: "Transactions" });
+  const market = row("Market");
+  await shell.user.click(market);
+  await shell.user.keyboard("x");
+  expect(register.hasAttribute("data-instant")).toBe(true);
+  expect(market.parentElement!.hasAttribute("data-checked")).toBe(false);
+  await shell.user.keyboard("x");
+  expect(market.parentElement!.hasAttribute("data-checked")).toBe(true);
+
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Market" }),
+  );
+  expect(register.hasAttribute("data-instant")).toBe(false);
+  expect(market.parentElement!.hasAttribute("data-checked")).toBe(false);
+});
 
 test.each(["pending", "posted"] as const)(
   "a first click selects a %s purchase, a second edits its field, and the keyboard action corrects the same transaction",
