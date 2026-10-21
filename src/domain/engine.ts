@@ -412,6 +412,24 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
 ]);
 export type Command = z.input<typeof commandSchema>;
+
+/**
+ * Restores what a stored operation changed (ADR 0006): undo, and redo as
+ * the revert of a revert. The server loads the target's stored change set;
+ * executeRevert in change-sets.ts applies it.
+ */
+export const revertCommandSchema = z.object({
+  type: z.literal("revert"),
+  id: identifier,
+  targetOperationId: identifier,
+});
+export type RevertCommand = z.input<typeof revertCommandSchema>;
+/** Every command the server executes: the engine's commands and revert. */
+export const ledgerCommandSchema = z.discriminatedUnion("type", [
+  ...commandSchema.options,
+  revertCommandSchema,
+]);
+export type LedgerCommand = z.input<typeof ledgerCommandSchema>;
 type ParsedCommand = z.output<typeof commandSchema>;
 
 export type Account = {
@@ -1058,6 +1076,12 @@ function validateWeights(
 
 function synchronizeObligations(book: AccountingState): void {
   const all = deriveObligations(book);
+  checkSettlements(book, all);
+  book.obligations = all;
+}
+
+// Every recorded settlement still matches the expenses it settled.
+function checkSettlements(book: AccountingState, all: Obligation[]): void {
   const byId = firstById(all);
   const allocations = settlementAllocations(book);
   const settled = new Map<string, number>();
@@ -1080,7 +1104,6 @@ function synchronizeObligations(book: AccountingState): void {
       if (total > obligation.amount)
         fail("The corrected expense would invalidate a recorded settlement");
     }
-  book.obligations = all;
 }
 
 // Every settlement allocation grouped by obligation, in settlement order.
@@ -2777,6 +2800,43 @@ function ensureNoClaimInvalidation(
     )
   )
     fail("Expense cannot move after its recorded reimbursement receipt");
+}
+
+/**
+ * The checks a ledger restored by a revert passes before it is saved: every
+ * stored reference holds, recorded settlements still match the expenses
+ * they settled, and no card balance turns positive. Restored rows can be
+ * ones later changes rely on, so the checks cover the whole ledger.
+ */
+export function checkRestoredLedger(state: AccountingState): void {
+  const readable = isPersonalLedger(state)
+    ? budgetSchema.safeParse(state.budget).success &&
+      householdSchema.safeParse(state).success
+    : bookSchema.safeParse(state).success;
+  const budgets = isPersonalLedger(state)
+    ? [state.budget]
+    : Object.values(state.budgets);
+  const shared = new Set(state.sharedCategories.map((category) => category.id));
+  const sharedReferences = [
+    ...budgets.flatMap((budget) =>
+      budget.transactions.flatMap((transaction) =>
+        transaction.sharedCategoryId ? [transaction.sharedCategoryId] : [],
+      ),
+    ),
+    ...state.obligations.map((obligation) => obligation.sharedCategoryId),
+    ...(isPersonalLedger(state)
+      ? [
+          ...state.partnerActivityCategoryIds,
+          ...state.partnerPurchases.map(
+            (purchase) => purchase.sharedCategoryId,
+          ),
+        ]
+      : []),
+  ];
+  if (!readable || sharedReferences.some((id) => !shared.has(id)))
+    fail("This can't be undone because later changes depend on it");
+  checkSettlements(state, deriveObligations(state));
+  for (const budget of budgets) ensureSupportedCardBalances(budget);
 }
 
 function ensureSupportedCardBalances(budget: Budget): void {

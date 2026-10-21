@@ -582,6 +582,32 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
   ];
 }
 
+// Each child table's parent, and the parts of a child's key that name it.
+const parents: Partial<Record<TableName, [TableName, number]>> = {
+  target: ["category", 2],
+  transactionShare: ["transaction", 2],
+  transactionHistory: ["transaction", 2],
+  loanRate: ["loan", 2],
+  loanPayment: ["loan", 2],
+  reimbursementReceipt: ["reimbursement", 2],
+  settlementAllocation: ["settlement", 1],
+};
+
+/** Child rows whose parent row is missing or deleted. */
+export function orphanRows(rows: Iterable<WireRow>): WireRow[] {
+  const all = [...rows].filter((row) => !row.deleted);
+  const present = new Set(all.map((row) => `${row.table} ${row.id}`));
+  return all.filter((row) => {
+    const parent = parents[row.table];
+    return (
+      parent &&
+      !present.has(
+        `${parent[0]} ${rowKey(...rowKeyParts(row.id).slice(0, parent[1]))}`,
+      )
+    );
+  });
+}
+
 /** Whether two JSON values are equal, whatever order their keys are in. */
 export function sameJson(a: unknown, b: unknown): boolean {
   if (a === b) return true;
