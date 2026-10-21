@@ -196,6 +196,48 @@ void test("retries match regardless of key order and still recognize fingerprint
   );
 });
 
+void test("bank-provider commands are audited as provider changes and limited like other automated changes", () => {
+  const setup = fixture();
+  const book = execute(
+    setup.book,
+    "alan",
+    {
+      id: "bank-update",
+      type: "transaction.upsert",
+      transactionId: "bank-coffee",
+      accountId: "checking",
+      date,
+      amount: -450,
+      payee: "Coffee shop",
+      status: "pending",
+    },
+    "provider",
+  );
+  assert.equal(book.audit.at(-1)!.source, "provider");
+  assert.deepEqual(bookSchema.parse(structuredClone(book)), book);
+  assert.equal(
+    book.budgets.alan!.transactions.find((item) => item.id === "bank-coffee")!
+      .reviewed,
+    false,
+  );
+  assert.throws(
+    () =>
+      execute(
+        book,
+        "alan",
+        {
+          id: "bank-assign",
+          type: "assign",
+          categoryId: "food",
+          month,
+          amount: 100,
+        },
+        "provider",
+      ),
+    /requires a user action/,
+  );
+});
+
 void test("cash overspending reduces next month's Ready to Assign; positive envelopes carry", () => {
   const setup = fixture(100_000);
   setup.run({ type: "assign", categoryId: "food", month, amount: 20_000 });

@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import type { CommandSource } from "~/domain/engine";
 import { Prisma, type PrismaClient, type Workspace } from "~/generated/prisma";
 import {
   domainError,
@@ -28,7 +29,7 @@ export async function mutateWorkspace<T extends MutationOperation>(
   actorId: string,
   expectedRevision: number,
   operations: T[],
-  source: "user" | "agent" | "provider",
+  source: CommandSource,
   reduce: (book: Prisma.JsonValue, operations: T[]) => unknown,
   {
     label,
@@ -103,7 +104,7 @@ async function commitWorkspaceOperations<T extends MutationOperation>(
   expectedRevision: number,
   operations: T[],
   submitted: readonly unknown[],
-  source: "user" | "agent" | "provider",
+  source: CommandSource,
   change: (
     workspace: Workspace,
     operations: T[],
