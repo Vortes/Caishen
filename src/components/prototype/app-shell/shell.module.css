@@ -883,9 +883,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-button.actionItem:hover {
+button.actionItem:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+button.actionItem:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.autoAssignError {
+  padding: 6px 6px 2px;
 }
 .actionItem > svg {
   flex: none;
