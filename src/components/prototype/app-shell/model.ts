@@ -9,13 +9,13 @@ import {
   statusLine,
 } from "~/components/budget/category-row-status";
 import { monthName, moveMonth, today } from "~/components/budget/format";
-import { describeTarget } from "~/components/budget/target-section";
 import type { State, View } from "~/components/budget/types";
 import { partnerOf, sharePercent } from "~/components/shared-expenses/split";
 import { transactionCategory } from "~/components/transactions/transaction-row";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import type { Target } from "~/domain/engine";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
+import { describeTarget } from "./target-draft";
 
 // The shell's read-only view of one budget month, built from the same
 // `budget.state` query the production app uses.
@@ -44,6 +44,8 @@ export type Category = {
     // money past the target. See targetSections.
     sections: number[];
   };
+  // The target as the engine stores it, for the target editor.
+  rule?: Target;
   pays?: { type: "card" | "loan"; id: string; name: string };
   reserved: number;
   spendable: number;
@@ -257,6 +259,7 @@ export function toShellData(state: State): ShellData {
               ),
             }
           : undefined,
+      rule: item.target,
       pays: item.pairedAccountId
         ? {
             type: "card",

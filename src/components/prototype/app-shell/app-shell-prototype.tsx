@@ -33,6 +33,7 @@ import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
 import type { ShellData } from "./model";
 import { MoveMoneyProvider, type MoveMoney } from "./move-money";
+import { TargetEditingProvider, type TargetEditing } from "./target-editor";
 import { PlanViews } from "./plan-views";
 import { ShellDataProvider } from "./shell-data";
 import {
@@ -85,6 +86,7 @@ export function AppShellPrototype({
   moveMoney,
   categoryAdder,
   transactionSaver,
+  targetEditing,
   notifications,
 }: {
   data: ShellData;
@@ -93,6 +95,7 @@ export function AppShellPrototype({
   moveMoney: MoveMoney;
   categoryAdder: CategoryAdder;
   transactionSaver: TransactionSaver;
+  targetEditing: TargetEditing;
   // The shell's ToastRegion, rendered inside its themed root.
   notifications: ReactNode;
 }) {
@@ -367,6 +370,7 @@ export function AppShellPrototype({
         moveMoney={moveMoney}
         addCategory={addCategory}
         transactionEntry={entry}
+        targetEditing={targetEditing}
       >
         <div
           ref={attachRoot}
@@ -844,23 +848,27 @@ function AddTransactionTooltip({
 export type CategoryAdder = Omit<AddCategory, "reveal">;
 
 // The shell's real actions: moving money, adding category groups and
-// categories, and entering transactions.
+// categories, entering transactions, and editing targets.
 function ActionProviders({
   moveMoney,
   addCategory,
   transactionEntry,
+  targetEditing,
   children,
 }: {
   moveMoney: MoveMoney;
   addCategory: AddCategory;
   transactionEntry: TransactionEntry;
+  targetEditing: TargetEditing;
   children: ReactNode;
 }) {
   return (
     <MoveMoneyProvider value={moveMoney}>
       <AddCategoryProvider value={addCategory}>
         <TransactionEntryProvider value={transactionEntry}>
-          {children}
+          <TargetEditingProvider value={targetEditing}>
+            {children}
+          </TargetEditingProvider>
         </TransactionEntryProvider>
       </AddCategoryProvider>
     </MoveMoneyProvider>

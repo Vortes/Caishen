@@ -841,6 +841,18 @@
   color: var(--text-tertiary);
   text-wrap: pretty;
 }
+.tabEmptyTitle {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.tabEmpty p {
+  margin: 0 0 4px;
+  max-width: 52ch;
+}
+.tabActions {
+  display: flex;
+  padding-top: 8px;
+}
 .actionList {
   margin: 0;
   padding: 0;

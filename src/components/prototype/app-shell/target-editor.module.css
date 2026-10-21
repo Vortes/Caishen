@@ -1,0 +1,191 @@
+/* The target editor, inline in the inspector's Target tab. Fields sit in the
+   transaction editor's wells; this file lays them out. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 4px 2px 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field > label:not(.check),
+.inline > label,
+.label {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+.prefix {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A native select fills its well, with the chevron drawn over its end. */
+.select {
+  appearance: none;
+  padding-right: 22px;
+  margin-right: -22px;
+  cursor: pointer;
+}
+.chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  min-height: var(--size-control-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.every {
+  width: 64px;
+}
+.unit {
+  width: 120px;
+}
+.grow {
+  flex: 1;
+}
+.year {
+  width: 104px;
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+
+/* The behavior menu's trigger is a field: the chosen behavior, in a well. */
+.trigger {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+  border-color: var(--focus-ring);
+}
+.trigger[data-state="open"] {
+  border-color: var(--focus-ring);
+}
+.triggerValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The menu takes the trigger's width, on the popover surface. */
+.menu {
+  z-index: 60;
+  width: var(--radix-dropdown-menu-trigger-width);
+  min-width: 260px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  font-size: var(--type-body);
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  animation: menu-in 150ms var(--ease-panel);
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.option {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px 9px 4px;
+  border-radius: var(--radius-row);
+  outline: none;
+  cursor: pointer;
+}
+.option + .option {
+  margin-top: 2px;
+}
+.option[data-highlighted] {
+  background: var(--surface-hover);
+}
+.optionCheck {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  color: var(--accent-solid);
+}
+.optionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.optionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.optionUse {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.optionDetail {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+
+/* Delete sits apart from Cancel and Save, at the other end of the row. */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.spacer {
+  flex: 1;
+}
+
+@media (pointer: coarse) {
+  .option,
+  .check {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    animation: none;
+  }
+}
