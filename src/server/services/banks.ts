@@ -12,7 +12,13 @@ import {
   storedImportsSchema,
 } from "~/server/integrations/transactions";
 import { decryptBankToken, encryptBankToken } from "~/server/token-crypto";
-import { commandHash, domainError, jsonValue } from "./safety";
+import {
+  applyQuarantine,
+  quarantinedTransactions,
+  quarantineFingerprint,
+  readQuarantine,
+} from "./bank-quarantine";
+import { commandHash, domainError, jsonValue, operationHash } from "./safety";
 import { readWorkspace, type Database } from "./workspace";
 import {
   bankAccountOpening,
@@ -240,7 +246,7 @@ export async function bankInbox(db: Database, userId: string) {
   return connections.flatMap((connection) => {
     const state = importState(connection.imports);
     const mappings = mappingsSchema.parse(connection.accountMappings);
-    return state.records
+    const imports = state.records
       .filter((record) => {
         const eligibility = bankImportEligibility(
           mappings[record.current.providerAccountId],
@@ -296,8 +302,40 @@ export async function bankInbox(db: Database, userId: string) {
               : (state.errors[record.id] ?? null),
           history: record.history,
           reviewEvidence: state.reviews[record.id] ?? [],
+          quarantined: false,
         };
       });
+    const quarantined = quarantinedTransactions(state.reviews)
+      .filter(
+        (review) =>
+          state.resolved[review.logicalTransactionId]?.fingerprint !==
+          quarantineFingerprint(review.transaction),
+      )
+      .map((review) => {
+        const { transaction } = review;
+        return {
+          categoryName: null,
+          categoryId: null,
+          transactionId: undefined,
+          fingerprint: quarantineFingerprint(transaction),
+          connectionId: connection.id,
+          logicalId: review.logicalTransactionId,
+          providerAccountId: transaction.providerAccountId,
+          accountId: mappings[transaction.providerAccountId]?.accountId ?? null,
+          date: transaction.date ?? review.receivedOn,
+          payee: transaction.name ?? "Unreadable bank transaction",
+          // Budgets hold US dollars only; the bank's amount is in the message.
+          amount: 0,
+          pending: transaction.pending,
+          removed: false,
+          needsMatchReview: false,
+          error: review.message,
+          history: [],
+          reviewEvidence: [review],
+          quarantined: true,
+        };
+      });
+    return [...imports, ...quarantined];
   });
 }
 
@@ -681,9 +719,12 @@ export async function syncBanks(db: Database, userId: string) {
           const old = importState(fresh.imports);
           const plan = applyTransactionSync(old.records, delta, fresh.id);
           const changedAccounts = new Set(
-            [...delta.added, ...delta.modified, ...delta.removed].map(
-              (record) => record.providerAccountId,
-            ),
+            [
+              ...delta.added,
+              ...delta.modified,
+              ...delta.removed,
+              ...delta.skipped.quarantined,
+            ].map((record) => record.providerAccountId),
           );
           const retainedAccounts =
             fresh.cursor === delta.nextCursor
@@ -719,9 +760,10 @@ export async function syncBanks(db: Database, userId: string) {
             state.errors[review.logicalTransactionId] = review.message;
             const existingReviews =
               state.reviews[review.logicalTransactionId] ?? [];
+            // Saved evidence comes back from jsonb with its keys reordered.
             if (
               !existingReviews.some(
-                (item) => commandHash(item) === commandHash(review),
+                (item) => operationHash(item) === operationHash(review),
               )
             )
               state.reviews[review.logicalTransactionId] = [
@@ -729,6 +771,13 @@ export async function syncBanks(db: Database, userId: string) {
                 review,
               ].slice(-100);
           }
+          state.reviews = applyQuarantine(
+            state.reviews,
+            fresh.id,
+            delta,
+            delta.skipped.quarantined,
+            new Date().toISOString().slice(0, 10),
+          );
           const mappings = mappingsSchema.parse(fresh.accountMappings);
           let book = bookSchema.parse(member.workspace.book);
           const operations: Command[] = [];
@@ -856,6 +905,17 @@ export async function syncBanks(db: Database, userId: string) {
       );
       imported += counts.imported;
       updated += counts.updated;
+      if (delta.skipped.quarantined.length || delta.skipped.unidentifiable)
+        console.warn("Bank update left out transactions it could not import", {
+          connectionId: connection.id,
+          quarantined: delta.skipped.quarantined.map((transaction) => ({
+            transactionId: transaction.providerTransactionId,
+            accountId: transaction.providerAccountId,
+            reason: transaction.reason,
+            currency: transaction.currency,
+          })),
+          unidentifiable: delta.skipped.unidentifiable,
+        });
     } catch (error) {
       await db.bankConnection.update({
         where: { id: connection.id },
@@ -899,7 +959,24 @@ export async function resolveImport(
         if (!connection || !member) throw new TRPCError({ code: "NOT_FOUND" });
         const state = importState(connection.imports);
         const record = state.records.find((r) => r.id === input.logicalId);
-        if (!record) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!record) {
+          const quarantined = readQuarantine(state.reviews, input.logicalId);
+          if (!quarantined) throw new TRPCError({ code: "NOT_FOUND" });
+          if (!input.ignore)
+            throw new Error(
+              "This bank transaction wasn't imported. Record it yourself if it affects your budget, then dismiss it.",
+            );
+          state.resolved[input.logicalId] = {
+            fingerprint: quarantineFingerprint(quarantined.transaction),
+            ignored: true,
+            decidedAt: new Date().toISOString(),
+          };
+          await tx.bankConnection.update({
+            where: { id: connection.id },
+            data: { imports: jsonValue(state) },
+          });
+          return { resolved: true };
+        }
         if (input.expectedFingerprint && input.command) {
           const saved = await tx.budgetOperation.findMany({
             where: {

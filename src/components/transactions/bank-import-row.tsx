@@ -29,13 +29,15 @@ export function BankImportRow({
   rowRef?: RefCallback<HTMLTableRowElement>;
   onReview: () => void;
 }) {
-  const reviewReason = !item.accountId
-    ? "Connect account"
-    : item.removed || item.error
-      ? "Check bank update"
-      : item.needsMatchReview
-        ? "Check match"
-        : null;
+  const reviewReason = item.quarantined
+    ? "Not imported"
+    : !item.accountId
+      ? "Connect account"
+      : item.removed || item.error
+        ? "Check bank update"
+        : item.needsMatchReview
+          ? "Check match"
+          : null;
   const category = item.categoryName ?? "Choose category";
   return (
     <tr

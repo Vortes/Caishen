@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import {
-  normalizePlaidTransaction,
-  plaidTransactionSchema,
+  readPlaidTransaction,
+  type QuarantinedTransaction,
   type TransactionSyncDelta,
 } from "./transactions";
 import {
@@ -112,23 +112,44 @@ const accountsResponseSchema = z.object({
   }),
 });
 
+// Transactions are read one at a time, so one unreadable record cannot hold
+// back the page and with it every later update to the connection.
 const syncPageSchema = z.object({
   accounts: rawAccountsSchema.default([]),
-  added: z.array(plaidTransactionSchema).max(500),
-  modified: z.array(plaidTransactionSchema).max(500),
-  removed: z
-    .array(
-      z.object({
-        transaction_id: providerIdSchema,
-        account_id: providerIdSchema,
-      }),
-    )
-    .max(500),
+  added: z.array(z.unknown()).max(500),
+  modified: z.array(z.unknown()).max(500),
+  removed: z.array(z.unknown()).max(500),
   next_cursor: z.string().max(4096),
   has_more: z.boolean(),
   transactions_update_status: z.string().optional(),
   request_id: z.string().optional(),
 });
+
+const removedTransactionSchema = z.object({
+  transaction_id: providerIdSchema,
+  account_id: providerIdSchema,
+});
+
+function readSyncedTransactions(
+  records: readonly unknown[],
+  transactions: TransactionSyncDelta["added"],
+  skipped: SkippedSyncRecords,
+) {
+  for (const record of records) {
+    const result = readPlaidTransaction(record);
+    if ("transaction" in result) transactions.push(result.transaction);
+    else if ("quarantined" in result)
+      skipped.quarantined.push(result.quarantined);
+    else skipped.unidentifiable++;
+  }
+}
+
+/** Sync records left out of the delta, which the update reports instead. */
+export interface SkippedSyncRecords {
+  quarantined: QuarantinedTransaction[];
+  /** Records without a provider identity, which cannot be tracked at all. */
+  unidentifiable: number;
+}
 
 const plaidErrorSchema = z.object({
   error_code: z
@@ -252,6 +273,7 @@ export function createPlaidClient(
       cursor?: string | null,
     ): Promise<
       TransactionSyncDelta & {
+        skipped: SkippedSyncRecords;
         nextCursor: string;
         updateStatus: string | null;
         accounts: BankAccount[];
@@ -264,6 +286,10 @@ export function createPlaidClient(
           added: [],
           modified: [],
           removed: [],
+        };
+        const skipped: SkippedSyncRecords = {
+          quarantined: [],
+          unidentifiable: 0,
         };
         let nextCursor = cursor ?? undefined;
         let updateStatus: string | null = null;
@@ -292,20 +318,22 @@ export function createPlaidClient(
                 );
               accounts.set(account.accountId, account);
             }
-            delta.added.push(...page.added.map(normalizePlaidTransaction));
-            delta.modified.push(
-              ...page.modified.map(normalizePlaidTransaction),
-            );
-            delta.removed.push(
-              ...page.removed.map((entry) => ({
-                providerTransactionId: entry.transaction_id,
-                providerAccountId: entry.account_id,
-              })),
-            );
+            readSyncedTransactions(page.added, delta.added, skipped);
+            readSyncedTransactions(page.modified, delta.modified, skipped);
+            for (const entry of page.removed) {
+              const removed = removedTransactionSchema.safeParse(entry);
+              if (removed.success)
+                delta.removed.push({
+                  providerTransactionId: removed.data.transaction_id,
+                  providerAccountId: removed.data.account_id,
+                });
+              else skipped.unidentifiable++;
+            }
             updateStatus = page.transactions_update_status ?? updateStatus;
             if (!page.has_more)
               return {
                 ...delta,
+                skipped,
                 nextCursor: page.next_cursor,
                 updateStatus,
                 accounts: [...accounts.values()],

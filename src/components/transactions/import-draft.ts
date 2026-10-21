@@ -8,7 +8,9 @@ export function importRowId(item: BankImport) {
 }
 
 export function canEditImport(item: BankImport) {
-  return Boolean(item.accountId && !item.removed && !item.transactionId);
+  return Boolean(
+    item.accountId && !item.removed && !item.transactionId && !item.quarantined,
+  );
 }
 
 export function createImportDraft(view: View, item: BankImport) {

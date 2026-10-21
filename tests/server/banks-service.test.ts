@@ -992,3 +992,189 @@ void test("an account delta without its matching sync balance invalidates the pr
     [],
   );
 });
+
+const plaidTransaction = (overrides: Record<string, unknown> = {}) => ({
+  transaction_id: "usd-coffee",
+  account_id: "provider-checking",
+  pending_transaction_id: null,
+  pending: false,
+  amount: 4.5,
+  iso_currency_code: "USD",
+  unofficial_currency_code: null,
+  date: "2026-10-20",
+  name: "Coffee shop",
+  ...overrides,
+});
+
+function syncPages(pages: Record<string, unknown>[]) {
+  let call = 0;
+  return mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request) => {
+      if (requestUrl(url).pathname !== "/transactions/sync")
+        return Response.json(accountsResponse());
+      const page = pages[Math.min(call++, pages.length - 1)]!;
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        accounts: accountsResponse().accounts,
+        has_more: false,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        ...page,
+      });
+    },
+  );
+}
+
+void test("a non-USD transaction is quarantined for review while the rest of the sync applies", async () => {
+  const h = harness();
+  const warn = mock.method(console, "warn", () => undefined);
+  syncPages([
+    {
+      added: [
+        plaidTransaction(),
+        plaidTransaction({
+          transaction_id: "eur-dinner",
+          amount: 42.1,
+          iso_currency_code: "EUR",
+          name: "Bistro Paris",
+        }),
+      ],
+      next_cursor: "after-eur",
+    },
+  ]);
+  assert.deepEqual(await syncBanks(h.db, "alice"), {
+    imported: 1,
+    updated: 0,
+  });
+  assert.equal(h.connection.cursor, "after-eur");
+  assert.equal(h.connection.error, null);
+  const inbox = await bankInbox(h.db, "alice");
+  assert.deepEqual(
+    inbox.map((item) => [item.payee, item.quarantined]),
+    [
+      ["Coffee shop", false],
+      ["Bistro Paris", true],
+    ],
+  );
+  const quarantined = inbox[1]!;
+  assert.equal(quarantined.amount, 0);
+  assert.equal(quarantined.date, "2026-10-20");
+  assert.match(quarantined.error ?? "", /EUR 42\.10.*US dollars/);
+  assert.ok(
+    warn.mock.calls.some((call) =>
+      JSON.stringify(call.arguments).includes("eur-dinner"),
+    ),
+  );
+  assert.ok(
+    !warn.mock.calls.some((call) =>
+      JSON.stringify(call.arguments).includes("Bistro Paris"),
+    ),
+    "logs leave out merchant details",
+  );
+});
+
+void test("malformed sync records are quarantined or skipped without blocking the cursor", async () => {
+  const h = harness();
+  mock.method(console, "warn", () => undefined);
+  syncPages([
+    {
+      added: [
+        plaidTransaction(),
+        plaidTransaction({
+          transaction_id: "crypto",
+          iso_currency_code: null,
+          unofficial_currency_code: "BTC",
+        }),
+        plaidTransaction({ transaction_id: "fraction", amount: 1.234 }),
+        plaidTransaction({ transaction_id: "bad-date", date: "2026-02-30" }),
+        { account_id: "provider-checking", amount: 3 },
+      ],
+      modified: [plaidTransaction({ transaction_id: "nameless", name: "" })],
+      removed: [{ account_id: "provider-checking" }],
+      next_cursor: "after-malformed",
+    },
+  ]);
+  assert.deepEqual(await syncBanks(h.db, "alice"), {
+    imported: 1,
+    updated: 0,
+  });
+  assert.equal(h.connection.cursor, "after-malformed");
+  const quarantined = (await bankInbox(h.db, "alice")).filter(
+    (item) => item.quarantined,
+  );
+  assert.deepEqual(quarantined.map((item) => item.payee).sort(), [
+    "Coffee shop",
+    "Coffee shop",
+    "Coffee shop",
+    "Unreadable bank transaction",
+  ]);
+  assert.match(
+    quarantined.find((item) => item.logicalId.includes("crypto"))!.error ?? "",
+    /BTC/,
+  );
+  assert.equal(
+    quarantined.find((item) => item.logicalId.includes("bad-date"))!.date,
+    new Date().toISOString().slice(0, 10),
+  );
+});
+
+void test("a quarantined transaction leaves review once the bank fixes, removes, or the user dismisses it", async () => {
+  const h = harness();
+  mock.method(console, "warn", () => undefined);
+  const eur = (id: string) =>
+    plaidTransaction({ transaction_id: id, iso_currency_code: "EUR" });
+  syncPages([
+    {
+      added: [eur("fixed"), eur("removed"), eur("dismissed")],
+      next_cursor: "1",
+    },
+    {
+      modified: [plaidTransaction({ transaction_id: "fixed" })],
+      removed: [{ transaction_id: "removed", account_id: "provider-checking" }],
+      next_cursor: "2",
+    },
+    { modified: [eur("dismissed")], next_cursor: "3" },
+    {
+      modified: [
+        plaidTransaction({
+          transaction_id: "dismissed",
+          amount: 9,
+          iso_currency_code: "GBP",
+        }),
+      ],
+      next_cursor: "4",
+    },
+  ]);
+  await syncBanks(h.db, "alice");
+  const quarantinedIds = async () =>
+    (await bankInbox(h.db, "alice"))
+      .filter((item) => item.quarantined)
+      .map((item) => item.logicalId);
+  assert.equal((await quarantinedIds()).length, 3);
+  await syncBanks(h.db, "alice");
+  assert.equal((await quarantinedIds()).length, 1);
+  assert.ok(
+    (await bankInbox(h.db, "alice")).some(
+      (item) => !item.quarantined && item.logicalId.includes("fixed"),
+    ),
+  );
+  const [dismissed] = await quarantinedIds();
+  await resolveImport(h.db, "alice", {
+    connectionId: h.connection.id,
+    logicalId: dismissed!,
+    expectedRevision: h.workspace.revision,
+    ignore: true,
+  });
+  assert.deepEqual(await quarantinedIds(), []);
+  await syncBanks(h.db, "alice");
+  assert.deepEqual(await quarantinedIds(), [], "the same fact stays dismissed");
+  await syncBanks(h.db, "alice");
+  assert.deepEqual(
+    await quarantinedIds(),
+    [dismissed],
+    "a changed fact needs review again",
+  );
+});

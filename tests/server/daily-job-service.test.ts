@@ -292,6 +292,7 @@ void test("daily review counts posted activity and matching problems without ale
     error: null,
     history: [],
     reviewEvidence: [],
+    quarantined: false,
   };
   const result = await runDailyJob(h.db, now, {
     ...h.dependencies,
