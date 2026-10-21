@@ -16,6 +16,10 @@ import { transactionCategory } from "~/components/transactions/transaction-row";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import type { Target } from "~/domain/engine";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
+import {
+  canEditImport,
+  importRowId,
+} from "~/components/transactions/import-draft";
 
 // The shell's read-only view of one budget month, built from the same
 // `budget.state` query the production app uses.
@@ -88,6 +92,7 @@ export type Transaction = {
   amount: number;
   status: "pending" | "posted";
   source: "budget" | "bank";
+  editableImport?: boolean;
   needsReview: boolean;
   counterpart?: {
     id: string;
@@ -153,10 +158,6 @@ function rateLabel(loan: View["loans"][number], month: string) {
     .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
     .at(-1);
   return current ? `${(current.annualRateBps / 100).toFixed(2)}%` : null;
-}
-
-function importRowId(item: State["imports"][number]) {
-  return `bank:${JSON.stringify([item.connectionId, item.logicalId])}`;
 }
 
 function importReviewReason(item: State["imports"][number]) {
@@ -390,6 +391,7 @@ export function toShellData(state: State): ShellData {
       amount: item.amount,
       status: item.pending ? "pending" : "posted",
       source: "bank",
+      editableImport: canEditImport(item),
       needsReview: bankImportNeedsReview(item),
       reviewReason: importReviewReason(item),
       categoryLabel: item.categoryName ?? "Needs category",

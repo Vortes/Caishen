@@ -67,7 +67,9 @@ export function useReviewSelection({
   onCheck: (ids: string[], value: boolean) => void;
 }) {
   const idle = useIsMutating() === 0;
-  const selectable = rows.filter((item) => item.source === "budget");
+  const selectable = rows.filter(
+    (item) => item.source === "budget" || item.editableImport,
+  );
   const showing = new Set(selectable.map((item) => item.id));
   const stale = checked.filter((id) => !showing.has(id));
   useEffect(() => {
@@ -79,7 +81,7 @@ export function useReviewSelection({
     selected,
     // Approval counts only what still needs review.
     approvable: selected
-      .filter((item) => item.needsReview)
+      .filter((item) => item.source === "budget" && item.needsReview)
       .map((item) => item.id),
   };
 }

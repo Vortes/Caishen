@@ -38,7 +38,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const session = entry.session!;
   const { view, submitting, removed } = entry;
   const { draft, fields, initial } = session;
-  const editing = Boolean(initial);
+  const editing = Boolean(session.rowId);
   const formId = useId();
   const controls = useRef<Partial<Record<Control, HTMLElement | null>>>({});
   const dateField = useRef<DateFieldHandle>(null);

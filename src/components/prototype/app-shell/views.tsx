@@ -507,7 +507,7 @@ export function RegisterView({
   });
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
-  const editingId = session?.initial?.id;
+  const editingId = session?.rowId;
   const inPlace =
     session && rows.some((item) => item.id === editingId)
       ? editingId
@@ -535,7 +535,7 @@ export function RegisterView({
     if (item.id === inPlace)
       return <TransactionEditor key={item.id} accountColumn={accountColumn} />;
     const status = statusIcon[item.status];
-    const checkable = item.source === "budget";
+    const checkable = item.source === "budget" || Boolean(item.editableImport);
     const isChecked = checkable && checked.includes(item.id);
     // Marks the row in its first column.
     const reviewDot = (
@@ -568,7 +568,7 @@ export function RegisterView({
           className={`${styles.txColumns} ${styles.row}`}
           aria-current={selectedId === item.id ? "true" : undefined}
           onClick={(event) => {
-            if (item.source === "budget" && isChecked && checked.length === 1) {
+            if (isChecked && checked.length === 1) {
               const column =
                 event.target instanceof Element
                   ? event.target.closest<HTMLElement>("[data-column]")?.dataset
