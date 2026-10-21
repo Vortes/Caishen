@@ -22,6 +22,7 @@ import { useRef, useState } from "react";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { AccountEntry } from "./account-entry";
+import { BanksPopover } from "./banks";
 import { money } from "./model";
 import { SHELL_PATH, type SettingsPage } from "./settings-pages";
 import { useShellData } from "./shell-data";
@@ -212,6 +213,7 @@ export function Sidebar({
       </div>
 
       <div className={styles.sidebarFooter}>
+        <BanksPopover />
         <AccountEntry />
       </div>
     </nav>
