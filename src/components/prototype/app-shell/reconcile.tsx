@@ -1,0 +1,389 @@
+"use client";
+
+import { CheckIcon, LandmarkIcon, WalletIcon } from "lucide-react";
+import { Popover } from "radix-ui";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { newId } from "~/components/budget/format";
+import { Button } from "~/components/ui/button";
+import { usePortalContainer } from "~/components/ui/tooltip";
+import type { Command } from "~/domain/engine";
+import { money, type Account } from "./model";
+import { parseAmount } from "./move-money";
+import { useShellData } from "./shell-data";
+import moveStyles from "./move-money.module.css";
+import styles from "./reconcile.module.css";
+
+export type Reconciling = {
+  // Sends the reconciliation with a summary for its confirmation. Returns
+  // why it can't be sent right now, or null once it's on its way.
+  reconcile: (command: Command, summary: string) => string | null;
+  // Called with a cleanup while the popover is open, so the shell can hold
+  // its undo shortcut until it closes.
+  holdOpen: () => () => void;
+};
+
+const relative = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
+
+// "Reconciled today", "Reconciled 3 days ago", like YNAB's timestamp under
+// the account name.
+export function reconciledLabel(account: Account, today: string) {
+  if (!account.reconciled) return "Never reconciled";
+  const days = Math.round(
+    (Date.parse(account.reconciled.date) - Date.parse(today)) / 86_400_000,
+  );
+  return `Reconciled ${relative.format(days, "day")}`;
+}
+
+// YNAB's reconcile popover: the bank's cleared balance over Caishen's, joined
+// by whether they match. Confirming locks every cleared transaction; a
+// difference is fixed in the register or by an adjustment the user asks for.
+export function ReconcilePopover({
+  account,
+  reconciling,
+  children,
+}: {
+  account: Account;
+  reconciling: Reconciling;
+  children: ReactNode;
+}) {
+  const container = usePortalContainer();
+  const [open, setOpen] = useState(false);
+  const { holdOpen } = reconciling;
+  useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>{children}</Popover.Trigger>
+      <Popover.Portal container={container}>
+        <Popover.Content
+          className={moveStyles.popover}
+          side="bottom"
+          align="end"
+          sideOffset={6}
+          collisionPadding={12}
+          aria-label={`Reconcile ${account.name}`}
+        >
+          <ReconcileForm
+            account={account}
+            reconcile={reconciling.reconcile}
+            onDone={() => setOpen(false)}
+          />
+          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+type Step = "ask" | "enter" | "result";
+
+// Steps cross-fade: the old one fades out quickly in place while the new one
+// rises 4px into view and the popover's height glides to fit, all within
+// about 200ms. Exits run faster than enters.
+const ENTER_EASE = [0.32, 0.72, 0, 1] as const;
+
+function ReconcileForm({
+  account,
+  reconcile,
+  onDone,
+}: {
+  account: Account;
+  reconcile: Reconciling["reconcile"];
+  onDone: () => void;
+}) {
+  const { transactions, today } = useShellData();
+  const [step, setStep] = useState<Step>("ask");
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const messageId = useId();
+  // A result takes focus on itself, not a button: a second Enter can't commit
+  // an adjustment unseen, no button lights up, and the verdict is read out.
+  const resultRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (step === "result") resultRef.current?.focus({ preventScroll: true });
+  }, [step]);
+  const reduced = useReducedMotion();
+  const [content, setContent] = useState<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState<number | "auto">("auto");
+  useEffect(() => {
+    if (!content) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setHeight(entry!.borderBoxSize[0]!.blockSize),
+    );
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [content]);
+
+  const unlocked = transactions.filter(
+    (item) =>
+      item.accountId === account.id &&
+      item.source === "budget" &&
+      item.status === "posted" &&
+      !item.reconciled,
+  ).length;
+  const locks = `${unlocked} cleared ${unlocked === 1 ? "transaction" : "transactions"}`;
+  const bank = text.trim() ? parseAmount(text) : NaN;
+  const valid = Number.isFinite(bank);
+  const difference = valid ? bank - account.cleared : 0;
+
+  const go = (next: Step) => {
+    setStep(next);
+    setError("");
+  };
+  const finish = (balance: number) => {
+    const adjust = balance !== account.cleared;
+    const command = {
+      type: "account.reconcile" as const,
+      id: newId(),
+      accountId: account.id,
+      date: today,
+      balance,
+      ...(adjust ? { adjustmentId: newId() } : {}),
+    };
+    const reason = reconcile(
+      command,
+      adjust
+        ? `Reconciled ${account.name} with a ${money(balance - account.cleared, true)} adjustment`
+        : `Reconciled ${account.name}`,
+    );
+    if (reason) setError(reason);
+    else onDone();
+  };
+
+  return (
+    <motion.div
+      className={styles.frame}
+      initial={false}
+      animate={{ height }}
+      transition={
+        reduced ? { duration: 0 } : { duration: 0.2, ease: ENTER_EASE }
+      }
+    >
+      <div ref={setContent} className={styles.steps}>
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.form
+            key={step}
+            ref={step === "result" ? resultRef : undefined}
+            tabIndex={step === "result" ? -1 : undefined}
+            aria-label={step === "result" ? "Reconcile result" : undefined}
+            aria-describedby={step === "result" ? messageId : undefined}
+            className={styles.form}
+            initial={reduced ? false : { opacity: 0, y: 4 }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              transition: reduced
+                ? { duration: 0 }
+                : { duration: 0.18, ease: ENTER_EASE },
+            }}
+            exit={
+              reduced
+                ? {
+                    opacity: 0,
+                    pointerEvents: "none",
+                    transition: { duration: 0 },
+                  }
+                : {
+                    opacity: 0,
+                    pointerEvents: "none",
+                    transition: { duration: 0.12, ease: "easeIn" },
+                  }
+            }
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (step === "ask") finish(account.cleared);
+              else if (step === "enter") {
+                if (valid) go("result");
+              } else finish(bank);
+            }}
+          >
+            {step === "enter" ? (
+              <EnterBalance text={text} onChange={setText} valid={valid} />
+            ) : (
+              <Comparison
+                account={account}
+                bank={step === "result" ? bank : undefined}
+                difference={difference}
+                locks={locks}
+                error={error}
+                messageId={messageId}
+              />
+            )}
+            <Actions
+              step={step}
+              valid={valid}
+              adjust={step === "result" && difference !== 0}
+              onBack={() => go(step === "result" ? "enter" : "ask")}
+              onEnter={() => go("enter")}
+            />
+          </motion.form>
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+// The simple form, like YNAB's: one field for the bank's figure.
+function EnterBalance({
+  text,
+  onChange,
+  valid,
+}: {
+  text: string;
+  onChange: (text: string) => void;
+  valid: boolean;
+}) {
+  const inputId = useId();
+  const hintId = useId();
+  const invalid = Boolean(text.trim()) && !valid;
+  return (
+    <div className={styles.entry}>
+      <label htmlFor={inputId}>Current balance at your bank</label>
+      <span
+        className={moveStyles.amountInput}
+        data-invalid={invalid || undefined}
+      >
+        <span aria-hidden>$</span>
+        <input
+          id={inputId}
+          autoFocus
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0.00"
+          aria-describedby={hintId}
+          aria-invalid={invalid || undefined}
+          value={text}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </span>
+      <p
+        id={hintId}
+        className={styles.hint}
+        data-invalid={invalid || undefined}
+      >
+        {invalid
+          ? "Enter an amount like 1234.56, with a minus sign if it’s negative."
+          : "Banks often call it the current balance. It leaves out pending transactions."}
+      </p>
+    </div>
+  );
+}
+
+// The bank's cleared balance over Caishen's, joined by whether they agree.
+function Comparison({
+  account,
+  bank,
+  difference,
+  locks,
+  error,
+  messageId,
+}: {
+  account: Account;
+  bank?: number;
+  difference: number;
+  locks: string;
+  error: string;
+  messageId: string;
+}) {
+  const state = bank === undefined ? "asking" : difference ? "off" : "matched";
+  return (
+    <>
+      <div className={styles.balances} data-state={state}>
+        <div className={styles.balance}>
+          <span className={styles.icon}>
+            <LandmarkIcon size={15} aria-hidden />
+          </span>
+          <div className={styles.figure}>
+            <strong data-unknown={bank === undefined || undefined}>
+              {bank === undefined ? "?" : money(bank)}
+            </strong>
+            <span>Bank’s cleared balance</span>
+          </div>
+        </div>
+        {/* Where the rows meet: whether the two balances agree. */}
+        <span className={styles.join} aria-hidden>
+          {state === "matched" ? (
+            <CheckIcon size={13} strokeWidth={3} />
+          ) : state === "off" ? (
+            "≠"
+          ) : (
+            "="
+          )}
+        </span>
+        <div className={styles.balance}>
+          <span className={styles.icon}>
+            <WalletIcon size={15} aria-hidden />
+          </span>
+          <div className={styles.figure}>
+            <strong>{money(account.cleared)}</strong>
+            <span>Cleared in Caishen</span>
+          </div>
+        </div>
+      </div>
+      <p
+        id={messageId}
+        className={styles.message}
+        role={error ? "alert" : undefined}
+      >
+        {error ||
+          (state === "asking" ? (
+            <>
+              <strong>Does your bank show the same?</strong> Use its current
+              balance, which leaves out pending transactions.
+            </>
+          ) : state === "matched" ? (
+            <>
+              <strong>They match.</strong> Finishing locks {locks}.
+            </>
+          ) : (
+            <>
+              <strong>Off by {money(difference, true)}.</strong> Look for
+              missing, duplicate, or still-pending transactions, or adjust the
+              balance{account.kind === "cash" ? " from Ready to Assign" : ""}.
+            </>
+          ))}
+      </p>
+    </>
+  );
+}
+
+function Actions({
+  step,
+  valid,
+  adjust,
+  onBack,
+  onEnter,
+}: {
+  step: Step;
+  valid: boolean;
+  adjust: boolean;
+  onBack: () => void;
+  onEnter: () => void;
+}) {
+  if (step === "enter")
+    return (
+      <div className={styles.footer}>
+        <Button size="sm" variant="quiet" onClick={onBack}>
+          Back
+        </Button>
+        <Button size="sm" variant="primary" type="submit" disabled={!valid}>
+          Next
+        </Button>
+      </div>
+    );
+  // Asking, Yes is the expected answer.
+  return (
+    <div className={styles.actions}>
+      <Button variant="primary" type="submit" autoFocus={step === "ask"}>
+        {step === "ask"
+          ? "Yes, it matches"
+          : adjust
+            ? "Create adjustment & finish"
+            : "Finish"}
+      </Button>
+      <Button variant="quiet" onClick={step === "ask" ? onEnter : onBack}>
+        {step === "ask" ? "No, enter bank balance" : "Edit bank balance"}
+      </Button>
+    </div>
+  );
+}

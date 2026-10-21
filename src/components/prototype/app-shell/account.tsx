@@ -5,17 +5,27 @@ import { useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { money, type Account } from "./model";
+import {
+  ReconcilePopover,
+  reconciledLabel,
+  type Reconciling,
+} from "./reconcile";
+import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 
 // YNAB's balance equation: what the bank has cleared, plus what is still
-// pending, is the balance the budget works with.
+// pending, is the balance the budget works with. One account's summary also
+// reconciles it.
 export function AccountSummary({
   accounts,
-  single,
+  account,
+  reconciling,
 }: {
   accounts: Account[];
-  single: boolean;
+  account?: Account;
+  reconciling: Reconciling;
 }) {
+  const { today } = useShellData();
   const working = accounts.reduce((sum, item) => sum + item.balance, 0);
   const uncleared = accounts.reduce((sum, item) => sum + item.pending, 0);
   return (
@@ -41,9 +51,14 @@ export function AccountSummary({
         </div>
       </dl>
       {/* Reconciling compares one account with one bank statement. */}
-      {single && (
+      {account && (
         <div className={styles.summaryActions}>
-          <Button size="sm">Reconcile</Button>
+          <span className={styles.reconciledLabel}>
+            {reconciledLabel(account, today)}
+          </span>
+          <ReconcilePopover account={account} reconciling={reconciling}>
+            <Button size="sm">Reconcile</Button>
+          </ReconcilePopover>
         </div>
       )}
     </div>

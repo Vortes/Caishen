@@ -148,6 +148,17 @@ export const commandSchema = z.discriminatedUnion("type", [
     date: daySchema.optional(),
   }),
   z.object({
+    type: z.literal("account.reconcile"),
+    id: identifier,
+    accountId: identifier,
+    date: daySchema,
+    // The bank's cleared balance, without pending activity.
+    balance: cents,
+    // Present only when the user chose to create a balance adjustment for
+    // the difference.
+    adjustmentId: identifier.optional(),
+  }),
+  z.object({
     type: z.literal("group.add"),
     id: identifier,
     name: z.string().trim().min(1).max(120),
@@ -395,6 +406,8 @@ export type Account = {
   kind: "cash" | "credit" | "tracking";
   openingBalance: number;
   date: string;
+  // The last time the cleared balance was confirmed against the bank's.
+  reconciled?: { date: string; balance: number };
 };
 export type Category = {
   id: string;
@@ -445,9 +458,13 @@ export type Transaction = {
     | "loan-payment"
     | "reimbursement"
     | "settlement"
-    | "statement-credit";
+    | "statement-credit"
+    | "adjustment";
   linkedId?: string;
   removed?: boolean;
+  // Cleared and confirmed against the bank by a reconciliation. Its amount
+  // and cleared status are locked from then on.
+  reconciled?: boolean;
   history: TransactionHistory[];
 };
 export type Assignment = {
@@ -590,9 +607,11 @@ const transactionSchema = z.object({
     "reimbursement",
     "settlement",
     "statement-credit",
+    "adjustment",
   ]),
   linkedId: storedIdentifier.optional(),
   removed: z.boolean().optional(),
+  reconciled: z.boolean().optional(),
   history: z.array(historySchema),
 });
 const loanSchema = z.object({
@@ -630,6 +649,7 @@ const budgetSchema = z.object({
       kind: z.enum(["cash", "credit", "tracking"]),
       openingBalance: cents,
       date: daySchema,
+      reconciled: z.object({ date: daySchema, balance: cents }).optional(),
     }),
   ),
   groups: z.array(z.string()).optional(),
@@ -1997,6 +2017,7 @@ function projectAccountingState(
     accounts: budget.accounts.map((account) => ({
       ...account,
       ...calculated.accounts.get(account.id)!,
+      cleared: clearedBalance(budget, account),
     })),
     personalSpending,
     amountPaid,
@@ -2150,6 +2171,7 @@ function saveRegisterTransaction(
       command.revision !== existing.revision + 1)
   )
     fail("This transaction changed. Reopen it before saving");
+  if (existing) ensureReconciledUnchanged(existing, command);
   if (command.transferAccountId && command.loanId)
     fail("Choose one payment or transfer destination");
   if (
@@ -2207,6 +2229,7 @@ function saveRegisterTransaction(
     const revision = (before?.revision ?? 0) + 1;
     const saved: Transaction = {
       ...facts,
+      reconciled: before?.reconciled,
       revision,
       reviewed:
         source === "user"
@@ -2281,6 +2304,11 @@ function saveRegisterTransaction(
       );
     const reusable =
       otherPrevious?.accountId === other.id ? otherPrevious : undefined;
+    if (reusable)
+      ensureReconciledUnchanged(reusable, {
+        amount: -command.amount,
+        status: command.status,
+      });
     retainedCounterpart = reusable?.id ?? `${command.id}:counterpart`;
     write(
       {
@@ -2411,6 +2439,32 @@ function accountAtDate(
     fail("Activity predates the account's confirmed opening balance");
   return account;
 }
+// What the bank has finished processing: the opening balance plus every
+// cleared transaction, whatever its date.
+function clearedBalance(budget: Budget, account: Account): number {
+  return budget.transactions
+    .filter(
+      (item) =>
+        active(item) &&
+        item.accountId === account.id &&
+        item.status === "posted",
+    )
+    .reduce((total, item) => safe(total + item.amount), account.openingBalance);
+}
+// Reconciling confirmed these against the bank, so only what doesn't change
+// the cleared balance can still change.
+function ensureReconciledUnchanged(
+  existing: Transaction,
+  next: { amount: number; status: "pending" | "posted" },
+): void {
+  if (
+    existing.reconciled &&
+    (existing.amount !== next.amount || existing.status !== next.status)
+  )
+    fail(
+      "This transaction is reconciled, so its amount and cleared status can't change",
+    );
+}
 function requireCash(
   budget: Budget,
   accountId: string,
@@ -2514,6 +2568,7 @@ function executeAccountingState<T extends AccountingState>(
     "settlement.record",
     "settlement.receive",
     "account.add",
+    "account.reconcile",
     "group.add",
     "category.add",
     "category.import",
@@ -2584,6 +2639,39 @@ function applyCommand(
           group: "Credit card payments",
           pairedAccountId: command.accountId,
         });
+      break;
+    }
+    case "account.reconcile": {
+      requireDate(budget, command.date);
+      const account = accountAtDate(budget, command.accountId, command.date);
+      const difference = safe(
+        command.balance - clearedBalance(budget, account),
+      );
+      if (difference && !command.adjustmentId)
+        fail(
+          "The bank's cleared balance doesn't match. Fix the difference or create an adjustment",
+        );
+      if (!difference && command.adjustmentId)
+        fail("The cleared balance already matches the bank's");
+      if (command.adjustmentId)
+        appendTransaction(budget, command.id, {
+          id: command.adjustmentId,
+          accountId: account.id,
+          date: command.date,
+          amount: difference,
+          payee: "Reconciliation balance adjustment",
+          status: "posted",
+          expenseMonth: monthOf(command.date),
+          kind: "adjustment",
+        });
+      for (const transaction of budget.transactions)
+        if (
+          active(transaction) &&
+          transaction.accountId === account.id &&
+          transaction.status === "posted"
+        )
+          transaction.reconciled = true;
+      account.reconciled = { date: command.date, balance: command.balance };
       break;
     }
     case "group.add": {
@@ -2794,6 +2882,7 @@ function applyCommand(
         fail("Use the dedicated operation for transfers and repayments");
       if (existing && existing.accountId !== command.accountId)
         fail("A transaction cannot move between accounts");
+      if (existing) ensureReconciledUnchanged(existing, command);
       if (
         command.providerId &&
         budget.transactions.some(
@@ -2901,6 +2990,7 @@ function applyCommand(
             : reviewedPosting,
         kind:
           command.amount < 0 ? "purchase" : categoryId ? "refund" : "income",
+        reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
           {
@@ -2932,7 +3022,11 @@ function applyCommand(
     }
     case "transaction.remove": {
       const transaction = getTransaction(budget, command.transactionId);
-      if (!["purchase", "refund", "income"].includes(transaction.kind))
+      if (
+        !["purchase", "refund", "income", "adjustment"].includes(
+          transaction.kind,
+        )
+      )
         fail(
           "Dedicated payment records cannot be deleted through transaction removal",
         );
