@@ -146,6 +146,13 @@ export type ChartItem = {
   drill?: DrillPath;
 };
 
+// What the report lists, which the drill path and grouping decide before any
+// spending loads.
+export function levelOf(path: DrillPath, grouping: Grouping): Report["level"] {
+  if (path.categoryId) return "transactions";
+  return path.group || grouping === "categories" ? "categories" : "groups";
+}
+
 export type Report = {
   level: "groups" | "categories" | "transactions";
   months: string[];
@@ -234,11 +241,7 @@ export function buildReport({
     .map((item) => ({ ...item, total: -(net.get(item.id) ?? 0) }))
     .sort((a, b) => b.total - a.total);
 
-  const level = path.categoryId
-    ? "transactions"
-    : path.group || grouping === "categories"
-      ? "categories"
-      : "groups";
+  const level = levelOf(path, grouping);
   // Siblings in budget order, so an item keeps its color as amounts change.
   const groupNames = [...new Set(allCategories.map((item) => item.group))];
   const siblings: { id: string; name: string; members: string[] }[] =

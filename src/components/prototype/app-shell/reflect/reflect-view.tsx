@@ -4,23 +4,24 @@ import {
   ChartPieIcon,
   ChevronRightIcon,
   InfoIcon,
-  LoaderCircleIcon,
   type LucideIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
+import { Skeleton } from "~/components/ui/skeleton";
 import { money, shortDay } from "../model";
 import { useShellData } from "../shell-data";
 import shell from "../shell.module.css";
 import type { Highlight } from "./chart-utils";
 import type { SpendingEntry } from "~/domain/spending";
-import { BreakdownChart } from "./breakdown-chart";
+import { BreakdownChart, BreakdownSkeleton } from "./breakdown-chart";
 import { DitherTrends } from "./dither-charts";
 import {
+  levelOf,
   rangeLabel,
   resolveRange,
   type DrillPath,
@@ -29,7 +30,7 @@ import {
   type Report,
   type ReportKind,
 } from "./report";
-import { SpendingList } from "./spending-list";
+import { SpendingList, SpendingListSkeleton } from "./spending-list";
 import type { SpendingReport } from "./use-spending-report";
 import styles from "./reflect.module.css";
 
@@ -61,6 +62,9 @@ export function ReflectView({
   showList: boolean;
 }) {
   const { month } = useShellData();
+  // Whether the skeleton showed and its ring hasn't handed off to the chart.
+  const [ringShown, setRingShown] = useState(!report);
+  const clearRing = useCallback(() => setRingShown(false), []);
 
   if (error)
     return (
@@ -68,17 +72,13 @@ export function ReflectView({
         {error}
       </Notice>
     );
-  if (!report)
-    return (
-      <Notice
-        icon={LoaderCircleIcon}
-        title="Adding up your spending…"
-        role="status"
-        busy
-      />
-    );
 
-  const { from, to } = resolveRange(filters.range, month.current, month.start);
+  const { from, to, months } = resolveRange(
+    filters.range,
+    month.current,
+    month.start,
+  );
+  const level = report?.level ?? levelOf(path, grouping);
   const narrowed = filters.categoryIds !== null || filters.accountIds !== null;
   const showAllDates =
     filters.range.preset !== "all" ? (
@@ -104,22 +104,64 @@ export function ReflectView({
     </Button>
   ) : null;
   const nothing =
-    !report.items.length && !report.inflows.length && !report.entries.length;
+    report &&
+    !report.items.length &&
+    !report.inflows.length &&
+    !report.entries.length;
   const drilled = Boolean(path.group ?? path.categoryId);
 
+  // The crumbs, headline label, and grouping work without the spending, so
+  // they stay up while it loads; only the amounts are bones.
   return (
-    <div className={`${shell.list} ${styles.report}`}>
+    <div
+      className={`${shell.list} ${styles.report}`}
+      aria-busy={!report || undefined}
+    >
+      {!report && (
+        <p className="sr-only" role="status">
+          Adding up your spending…
+        </p>
+      )}
       {drilled && <Crumbs path={path} narrowed={narrowed} onPath={onPath} />}
       <div className={styles.headline}>
         <div className={styles.headlineFigure}>
           <span>Total spending</span>
-          <strong>{money(report.total)}</strong>
+          <strong>
+            {report ? (
+              money(report.total)
+            ) : (
+              <Skeleton shape="figure" width={128} />
+            )}
+          </strong>
         </div>
-        {report.level !== "transactions" && !path.group && (
+        {level !== "transactions" && !path.group && (
           <GroupingSwitch value={grouping} onChange={onGroupingChange} />
         )}
       </div>
-      {!report.months.length ? (
+      {!report ? (
+        <div className={styles.skeleton} aria-hidden inert>
+          {(kind === "trends" || level !== "transactions") && (
+            <div className={styles.chartBand} data-kind={kind}>
+              {kind === "breakdown" ? (
+                <BreakdownSkeleton />
+              ) : (
+                <div className={styles.ditherTrends} />
+              )}
+            </div>
+          )}
+          <Stats level={level} />
+          {kind === "trends" && <MonthList months={months} />}
+          {level === "transactions" ? (
+            <EntryListSkeleton />
+          ) : (
+            showList && (
+              <div className={styles.section}>
+                <SpendingListSkeleton level={level} />
+              </div>
+            )
+          )}
+        </div>
+      ) : !report.months.length ? (
         <Notice icon={ChartPieIcon} title="No months in this range.">
           Your budget starts in {rangeLabel(month.start, month.start)}.
           {showAllDates}
@@ -154,6 +196,8 @@ export function ReflectView({
                     highlight={highlight}
                     itemEntries={report.itemEntries}
                     onOpenEntry={onOpenTransaction}
+                    afterSkeleton={ringShown}
+                    onSkeletonGone={clearRing}
                   />
                 ) : (
                   <DitherTrends
@@ -165,9 +209,9 @@ export function ReflectView({
                 )}
               </section>
             )}
-          <Stats report={report} />
+          <Stats level={report.level} report={report} />
           {kind === "trends" && report.total > 0 && (
-            <MonthList report={report} />
+            <MonthList months={report.months} report={report} />
           )}
           {report.level === "transactions" ? (
             <EntryList report={report} onOpen={onOpenTransaction} />
@@ -214,40 +258,68 @@ function GroupingSwitch({
   );
 }
 
-// YNAB's summary under the chart, for exactly what the chart shows.
-function Stats({ report }: { report: Report }) {
-  const stats: { label: string; value: string; detail?: string }[] = [
-    { label: "Average monthly spending", value: money(report.average) },
-    { label: "Average daily spending", value: money(report.dailyAverage) },
+// YNAB's summary under the chart, for exactly what the chart shows. While
+// the report loads, its labels stay and its values are bones; the last two
+// always have a detail line in a budget with spending, so they keep it.
+function Stats({ level, report }: { level: Report["level"]; report?: Report }) {
+  const stats: {
+    label: string;
+    value?: string;
+    detail?: string;
+    bones: [number, number?];
+  }[] = [
+    {
+      label: "Average monthly spending",
+      value: report && money(report.average),
+      bones: [80],
+    },
+    {
+      label: "Average daily spending",
+      value: report && money(report.dailyAverage),
+      bones: [56],
+    },
     {
       label:
-        report.level === "transactions"
+        level === "transactions"
           ? "Most frequent payee"
           : "Most frequent category",
-      value: report.frequent?.name ?? "None",
-      detail: report.frequent
+      value: report && (report.frequent?.name ?? "None"),
+      detail: report?.frequent
         ? `${report.frequent.count} ${report.frequent.count === 1 ? "transaction" : "transactions"}`
         : undefined,
+      bones: [104, 80],
     },
     {
       label: "Largest outflow",
-      value: report.largest?.payee ?? "None",
-      detail: report.largest
+      value: report && (report.largest?.payee ?? "None"),
+      detail: report?.largest
         ? `${money(report.largest.amount)} · ${shortDay(report.largest.date)}`
         : undefined,
+      bones: [88, 96],
     },
   ];
   return (
     <dl className={styles.stats}>
-      {stats.map((stat) => (
-        <div key={stat.label}>
-          <dt>{stat.label}</dt>
-          <dd>
-            <span className={shell.truncate} title={stat.value}>
-              {stat.value}
-            </span>
-            {stat.detail && <small>{stat.detail}</small>}
-          </dd>
+      {stats.map(({ label, value, detail, bones: [width, detailWidth] }) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          {report ? (
+            <dd>
+              <span className={shell.truncate} title={value}>
+                {value}
+              </span>
+              {detail && <small>{detail}</small>}
+            </dd>
+          ) : (
+            <dd>
+              <Skeleton width={width} />
+              {detailWidth && (
+                <small>
+                  <Skeleton width={detailWidth} />
+                </small>
+              )}
+            </dd>
+          )}
         </div>
       ))}
     </dl>
@@ -316,7 +388,9 @@ const monthLabel = (month: string) =>
   });
 
 // Each month's total, so the columns' values never depend on hovering them.
-function MonthList({ report }: { report: Report }) {
+// The months come from the date filter, so they show while the totals load.
+function MonthList({ months, report }: { months: string[]; report?: Report }) {
+  const totals = new Map(report?.trend.map((month) => [month.month, month]));
   return (
     <div role="group" aria-label="Spending by month" className={styles.section}>
       <div
@@ -330,19 +404,32 @@ function MonthList({ report }: { report: Report }) {
         <span />
         <span className={shell.numeric}>Total</span>
       </div>
-      {report.trend.map((month) => (
-        <div
-          key={month.month}
-          className={`${styles.itemColumns} ${styles.staticRow}`}
-        >
-          <span>{monthLabel(month.month)}</span>
-          <span className={`${shell.numeric} ${shell.muted}`} data-optional>
-            {money(month.total - report.average, true)}
-          </span>
-          <span />
-          <span className={shell.numeric}>{money(month.total)}</span>
-        </div>
-      ))}
+      {months.map((month, index) => {
+        const total = totals.get(month)?.total;
+        return (
+          <div
+            key={month}
+            className={`${styles.itemColumns} ${styles.staticRow}`}
+          >
+            <span>{monthLabel(month)}</span>
+            <span className={`${shell.numeric} ${shell.muted}`} data-optional>
+              {report && total !== undefined ? (
+                money(total - report.average, true)
+              ) : (
+                <Skeleton width={versusWidths[index % versusWidths.length]} />
+              )}
+            </span>
+            <span />
+            <span className={shell.numeric}>
+              {total !== undefined ? (
+                money(total)
+              ) : (
+                <Skeleton width={widths[(index + 2) % widths.length]} />
+              )}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -408,26 +495,66 @@ function EntryList({
   );
 }
 
+// Bone widths for amounts down a column, varied so they read as figures.
+const widths = [64, 52, 72, 56, 68, 48];
+const versusWidths = [56, 44, 64, 48];
+
+// A category's transactions while they load: enough rows to fill the screen.
+const entryRows: [payee: number, account: number][] = [
+  [112, 72],
+  [84, 96],
+  [136, 64],
+  [96, 88],
+  [72, 72],
+  [124, 104],
+  [88, 64],
+  [104, 80],
+  [64, 96],
+  [116, 72],
+];
+
+function EntryListSkeleton() {
+  return (
+    <div>
+      <div className={`${styles.entryColumns} ${shell.columnHeader}`}>
+        <span>Date</span>
+        <span>Payee</span>
+        <span data-optional>Account</span>
+        <span className={shell.numeric}>Your share</span>
+      </div>
+      {entryRows.map(([payee, account], index) => (
+        <div
+          key={index}
+          className={`${styles.entryColumns} ${styles.staticRow}`}
+        >
+          <Skeleton width={44} />
+          <Skeleton width={payee} />
+          <span data-optional>
+            <Skeleton width={account} />
+          </span>
+          <span className={shell.numeric}>
+            <Skeleton width={widths[index % widths.length]} />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Notice({
   icon: Icon,
   title,
   role,
-  busy,
   children,
 }: {
   icon: LucideIcon;
   title: string;
-  role?: "status" | "alert";
-  busy?: boolean;
+  role?: "alert";
   children?: ReactNode;
 }) {
   return (
     <div className={`${shell.empty} ${styles.notice}`} role={role}>
-      <Icon
-        size={18}
-        className={`${styles.noticeIcon} ${busy ? shell.spin : ""}`}
-        aria-hidden
-      />
+      <Icon size={18} className={styles.noticeIcon} aria-hidden />
       <p className={styles.noticeText}>
         <strong>{title}</strong>
         {children}

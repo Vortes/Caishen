@@ -50,11 +50,12 @@ import { SettingsNav, Sidebar, type Screen } from "./sidebar";
 import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Highlight } from "./reflect/chart-utils";
-import { SpendingList } from "./reflect/spending-list";
+import { SpendingList, SpendingListSkeleton } from "./reflect/spending-list";
 import { ReflectFilters } from "./reflect/filters";
 import { ReflectView } from "./reflect/reflect-view";
 import {
   defaultFilters,
+  levelOf,
   type DrillPath,
   type Grouping,
   type ReflectFilters as Filters,
@@ -824,7 +825,7 @@ export function AppShellPrototype({
                               style={{ width: inspector.contentWidth }}
                             >
                               {screen.type === "reflect" ? (
-                                spending.report && (
+                                spending.report ? (
                                   <Card>
                                     <SpendingList
                                       report={spending.report}
@@ -832,6 +833,17 @@ export function AppShellPrototype({
                                       highlight={highlight}
                                     />
                                   </Card>
+                                ) : (
+                                  !spending.error && (
+                                    // Announced by the report's own status.
+                                    <div aria-hidden inert>
+                                      <Card>
+                                        <SpendingListSkeleton
+                                          level={levelOf(path, grouping)}
+                                        />
+                                      </Card>
+                                    </div>
+                                  )
                                 )
                               ) : (
                                 <Inspector
