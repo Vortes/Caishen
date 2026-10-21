@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   addMember,
   bookSchema,
+  commandSchema,
   createBook,
   execute,
   forecastLoan,
@@ -132,6 +133,108 @@ void test("operation retries do not duplicate effects and conflicting reuse is r
   assert.throws(
     () => execute(first, "alan", { ...command, amount: 2000 }),
     /different data/,
+  );
+});
+
+void test("a retry is recognized by the command as submitted, not the form the server prepared from it", () => {
+  const setup = fixture();
+  setup.run({
+    type: "target.set",
+    categoryId: "food",
+    target: {
+      cadence: "monthly",
+      behavior: "contribution",
+      amount: 10_000,
+      startMonth: month,
+    },
+  });
+  const submitted: Command = {
+    id: "snooze",
+    type: "target.snooze",
+    categoryId: "food",
+    month,
+    currentMonth: month,
+    snoozed: true,
+  };
+  const first = execute(setup.book, "alan", submitted, "user", submitted);
+  // Retried after midnight, the server prepares it with the new current month.
+  const retried = { ...submitted, currentMonth: "2026-11" };
+  assert.deepEqual(execute(first, "alan", retried, "user", submitted), first);
+  assert.throws(
+    () =>
+      execute(first, "alan", retried, "user", { ...submitted, snoozed: false }),
+    /different data/,
+  );
+});
+
+void test("retries match regardless of key order and still recognize fingerprints saved before submitted-input fingerprints", () => {
+  const setup = fixture();
+  const command: Command = {
+    id: "legacy",
+    type: "transaction.upsert",
+    transactionId: "groceries",
+    accountId: "checking",
+    date,
+    amount: -1200,
+    payee: "Market",
+    categoryId: "food",
+  };
+  const first = execute(setup.book, "alan", command);
+  const reordered = Object.fromEntries(
+    Object.entries(command).reverse(),
+  ) as Command;
+  assert.deepEqual(execute(first, "alan", reordered), first);
+  // Books saved by earlier releases hold the validated command's JSON.
+  const legacy: Book = structuredClone(first);
+  legacy.audit.at(-1)!.fingerprint = JSON.stringify(
+    commandSchema.parse(command),
+  );
+  assert.deepEqual(execute(legacy, "alan", command), legacy);
+  assert.throws(
+    () => execute(legacy, "alan", { ...command, amount: -1300 }),
+    /different data/,
+  );
+});
+
+void test("bank-provider commands are audited as provider changes and limited like other automated changes", () => {
+  const setup = fixture();
+  const book = execute(
+    setup.book,
+    "alan",
+    {
+      id: "bank-update",
+      type: "transaction.upsert",
+      transactionId: "bank-coffee",
+      accountId: "checking",
+      date,
+      amount: -450,
+      payee: "Coffee shop",
+      status: "pending",
+    },
+    "provider",
+  );
+  assert.equal(book.audit.at(-1)!.source, "provider");
+  assert.deepEqual(bookSchema.parse(structuredClone(book)), book);
+  assert.equal(
+    book.budgets.alan!.transactions.find((item) => item.id === "bank-coffee")!
+      .reviewed,
+    false,
+  );
+  assert.throws(
+    () =>
+      execute(
+        book,
+        "alan",
+        {
+          id: "bank-assign",
+          type: "assign",
+          categoryId: "food",
+          month,
+          amount: 100,
+        },
+        "provider",
+      ),
+    /requires a user action/,
   );
 });
 

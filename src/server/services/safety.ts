@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { canonicalJson } from "~/domain/canonical-json";
 import type { Prisma } from "~/generated/prisma";
 
 const prismaErrorNames = new Set([
@@ -25,6 +26,30 @@ export function isPrismaError(
 
 export function commandHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+/**
+ * Identifies an operation for retries by its input exactly as it was
+ * submitted. Hashing the validated form instead would let a later release that
+ * adds a default reject a retry of the same operation as different details.
+ */
+export function operationHash(submitted: unknown): string {
+  return createHash("sha256").update(canonicalJson(submitted)).digest("hex");
+}
+
+/**
+ * Whether a saved operation hash identifies this retry. Operations saved before
+ * submitted-input hashing hold `commandHash` of the validated operation.
+ */
+export function matchesSavedOperation(
+  savedHash: string,
+  submitted: unknown,
+  validated: unknown,
+): boolean {
+  return (
+    savedHash === operationHash(submitted) ||
+    savedHash === commandHash(validated)
+  );
 }
 
 export function jsonValue(value: unknown): Prisma.InputJsonValue {

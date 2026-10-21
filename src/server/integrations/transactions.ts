@@ -57,6 +57,92 @@ export function normalizePlaidTransaction(input: unknown): ImportedTransaction {
   };
 }
 
+/**
+ * A provider transaction that could not be imported. Its sync page still
+ * applies, so one unreadable record cannot hold back the rest of the account.
+ */
+export interface QuarantinedTransaction {
+  providerTransactionId: string;
+  providerAccountId: string;
+  reason: "unsupported_currency" | "unreadable";
+  pending: boolean;
+  date: string | null;
+  name: string | null;
+  /** As the provider reported it, in `currency`. */
+  amount: number | null;
+  currency: string | null;
+}
+
+export const quarantinedTransactionSchema: z.ZodType<QuarantinedTransaction> = z
+  .object({
+    providerTransactionId: providerIdSchema,
+    providerAccountId: providerIdSchema,
+    reason: z.enum(["unsupported_currency", "unreadable"]),
+    pending: z.boolean(),
+    date: dateSchema.nullable(),
+    name: z.string().min(1).max(500).nullable(),
+    amount: z.number().finite().nullable(),
+    currency: z.string().min(1).max(20).nullable(),
+  })
+  .strict();
+
+const plaidIdentitySchema = z.object({
+  transaction_id: providerIdSchema,
+  account_id: providerIdSchema,
+});
+
+/**
+ * Reads one provider transaction on its own. A record with a provider identity
+ * that cannot be imported is quarantined; one without an identity cannot be
+ * tracked at all and is reported as unidentifiable.
+ */
+export function readPlaidTransaction(
+  input: unknown,
+):
+  | { transaction: ImportedTransaction }
+  | { quarantined: QuarantinedTransaction }
+  | { unidentifiable: true } {
+  const identity = plaidIdentitySchema.safeParse(input);
+  if (!identity.success) return { unidentifiable: true };
+  try {
+    return { transaction: normalizePlaidTransaction(input) };
+  } catch {
+    const fields = z
+      .object({
+        pending: z.boolean().catch(false),
+        date: dateSchema.nullable().catch(null),
+        name: z.string().min(1).max(500).nullable().catch(null),
+        merchant_name: z.string().min(1).max(500).nullable().catch(null),
+        amount: z.number().finite().nullable().catch(null),
+        iso_currency_code: z.string().min(1).max(20).nullable().catch(null),
+        unofficial_currency_code: z
+          .string()
+          .min(1)
+          .max(20)
+          .nullable()
+          .catch(null),
+      })
+      .parse(input);
+    const currency =
+      fields.iso_currency_code ?? fields.unofficial_currency_code;
+    return {
+      quarantined: {
+        providerTransactionId: identity.data.transaction_id,
+        providerAccountId: identity.data.account_id,
+        reason:
+          currency && currency !== "USD"
+            ? "unsupported_currency"
+            : "unreadable",
+        pending: fields.pending,
+        date: fields.date,
+        name: fields.merchant_name ?? fields.name,
+        amount: fields.amount,
+        currency,
+      },
+    };
+  }
+}
+
 export interface ImportHistoryEntry {
   kind: "added" | "modified" | "pending_posted" | "removed" | "restored";
   before: ImportedTransaction | null;

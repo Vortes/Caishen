@@ -14,7 +14,11 @@ import {
   type BudgetOperation,
   type Workspace,
 } from "../../src/generated/prisma";
-import { jsonValue } from "../../src/server/services/safety";
+import {
+  commandHash,
+  jsonValue,
+  operationHash,
+} from "../../src/server/services/safety";
 import {
   changeWorkspaceHistory,
   mutateWorkspace,
@@ -271,7 +275,7 @@ void test("a grouped mutation has one labeled undo entry", async () => {
         (book, operation) => execute(book, "alice", operation),
         parseBook(value),
       ),
-    "Update budget plan",
+    { label: "Update budget plan" },
   );
   assert.equal(h.summary().undo, "Update budget plan");
   await h.history("undo", "undo-group");
@@ -673,5 +677,46 @@ void test("retained transaction records allow cascading undo and redo of their a
   assert.deepEqual(
     budget.transactions[0]!.history.map((entry) => entry.reason),
     ["created", "undone", "redone"],
+  );
+});
+
+void test("a retry is recognized by its submitted input after a release changes how it validates", async () => {
+  const h = harness();
+  const submitted = rename("rename-retry", "Renamed");
+  const save = (validated: Command, sent: unknown = submitted) =>
+    mutateWorkspace(
+      h.db,
+      "alice",
+      0,
+      [validated],
+      "user",
+      (value, fresh) =>
+        fresh.reduce(
+          (book, operation) => execute(book, "alice", operation, "user", sent),
+          parseBook(value),
+        ),
+      { submitted: [sent] },
+    );
+  assert.deepEqual(await save(submitted), { revision: 1 });
+  // A newer release's validation fills in a default the submission left out.
+  const revalidated = { ...submitted, emailEnabled: true } as Command;
+  assert.deepEqual(await save(revalidated), { revision: 1 });
+  assert.equal(h.operations.length, 1);
+  assert.equal(h.operations[0]!.commandHash, operationHash(submitted));
+  await assert.rejects(
+    save(revalidated, { ...submitted, name: "Other" }),
+    errorCode("CONFLICT"),
+  );
+});
+
+void test("operations saved with a hash of their validated form still recognize retries", async () => {
+  const h = harness();
+  const command = rename("legacy-retry", "Renamed");
+  await h.save(command);
+  h.operations[0]!.commandHash = commandHash(command);
+  assert.deepEqual(await h.save(command, "alice", 0), { revision: 1 });
+  await assert.rejects(
+    h.save(rename("legacy-retry", "Other"), "alice", 0),
+    errorCode("CONFLICT"),
   );
 });

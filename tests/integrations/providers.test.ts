@@ -462,3 +462,59 @@ void test("provider response reader enforces streaming byte limits and JSON vali
     { success: true },
   );
 });
+
+void test("Plaid sync reads each transaction on its own and reports the ones it cannot import", async () => {
+  const result = await createPlaidClient(
+    { clientId: "id", secret: "secret", environment: "sandbox" },
+    async () =>
+      Response.json(
+        page({
+          added: [
+            raw("usd"),
+            { ...raw("eur"), iso_currency_code: "EUR", amount: 12.5 },
+            { ...raw("no-id"), transaction_id: undefined },
+          ],
+          modified: [{ ...raw("bad-amount"), amount: 1.005 }],
+          removed: [
+            { transaction_id: "gone", account_id: "checking" },
+            { transaction_id: "no-account" },
+          ],
+        }),
+      ),
+  ).syncTransactions("token", "cursor");
+  assert.deepEqual(
+    result.added.map((record) => record.providerTransactionId),
+    ["usd"],
+  );
+  assert.deepEqual(result.modified, []);
+  assert.deepEqual(
+    result.removed.map((record) => record.providerTransactionId),
+    ["gone"],
+  );
+  assert.deepEqual(result.skipped, {
+    quarantined: [
+      {
+        providerTransactionId: "eur",
+        providerAccountId: "checking",
+        reason: "unsupported_currency",
+        pending: false,
+        date: "2026-10-10",
+        name: "Store",
+        amount: 12.5,
+        currency: "EUR",
+      },
+      {
+        providerTransactionId: "bad-amount",
+        providerAccountId: "checking",
+        reason: "unreadable",
+        pending: false,
+        date: "2026-10-10",
+        name: "Store",
+        amount: 1.005,
+        currency: "USD",
+      },
+    ],
+    unidentifiable: 2,
+  });
+  assert.equal(result.nextCursor, "done");
+});

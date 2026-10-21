@@ -234,7 +234,9 @@ export function SettingsView({
                         <small className="muted" style={{ display: "block" }}>
                           {entry.source === "user"
                             ? "Your action"
-                            : "Agent bookkeeping"}
+                            : entry.source === "provider"
+                              ? "Bank update"
+                              : "Agent bookkeeping"}
                         </small>
                       </span>
                     </li>

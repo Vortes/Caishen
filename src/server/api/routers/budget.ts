@@ -14,7 +14,11 @@ import {
 } from "~/domain/engine";
 import { personalSpendingEntries } from "~/domain/spending";
 import { budgetDay, prepareUserCommand } from "~/domain/user-command";
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  submittedInputProcedure,
+} from "~/server/api/trpc";
 import { parseCategoryImport } from "~/server/categories";
 import { createOpenRouterProvider } from "~/server/integrations/model";
 import { integrationStatus } from "~/server/integrations/status";
@@ -47,6 +51,8 @@ import { setupBankAccountsSchema } from "~/server/services/bank-account-setup";
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const revision = z.number().int().nonnegative();
+// The command as the client sent it, which identifies a retried operation.
+const submittedCommand = z.object({ command: z.unknown() });
 function currentMonth(zone: string) {
   return budgetDay(zone).slice(0, 7);
 }
@@ -184,9 +190,10 @@ export const budgetRouter = createTRPCRouter({
       }
     }),
 
-  execute: protectedProcedure
+  execute: submittedInputProcedure
     .input(z.object({ command: commandSchema, expectedRevision: revision }))
     .mutation(async ({ ctx, input }) => {
+      const { command: submitted } = submittedCommand.parse(ctx.submittedInput);
       const result = await mutateWorkspace(
         ctx.db,
         ctx.userId,
@@ -201,10 +208,13 @@ export const budgetRouter = createTRPCRouter({
               book,
               ctx.userId,
               prepareUserCommand(budget, command),
+              "user",
+              submitted,
             );
           }
           return book;
         },
+        { submitted: [submitted] },
       );
       if (
         input.command.type === "settings.update" &&
@@ -288,7 +298,7 @@ export const budgetRouter = createTRPCRouter({
             (book, command) => execute(book, ctx.userId, command),
             parseBook(value),
           ),
-        "Approve suggested categories",
+        { label: "Approve suggested categories" },
       );
     }),
 
@@ -601,11 +611,13 @@ export const budgetRouter = createTRPCRouter({
       }),
     )
     .mutation(({ ctx, input }) => mapBankAccount(ctx.db, ctx.userId, input)),
-  setupBankAccounts: protectedProcedure
+  setupBankAccounts: submittedInputProcedure
     .input(setupBankAccountsSchema)
-    .mutation(({ ctx, input }) => setupBankAccounts(ctx.db, ctx.userId, input)),
+    .mutation(({ ctx, input }) =>
+      setupBankAccounts(ctx.db, ctx.userId, input, ctx.submittedInput),
+    ),
   sync: protectedProcedure.mutation(({ ctx }) => syncBanks(ctx.db, ctx.userId)),
-  resolveImport: protectedProcedure
+  resolveImport: submittedInputProcedure
     .input(
       z.object({
         connectionId: z.string(),
@@ -620,5 +632,10 @@ export const budgetRouter = createTRPCRouter({
         ignore: z.boolean().default(false),
       }),
     )
-    .mutation(({ ctx, input }) => resolveImport(ctx.db, ctx.userId, input)),
+    .mutation(({ ctx, input }) =>
+      resolveImport(ctx.db, ctx.userId, {
+        ...input,
+        submittedCommand: submittedCommand.parse(ctx.submittedInput).command,
+      }),
+    ),
 });

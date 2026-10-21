@@ -175,6 +175,7 @@ test.each([
         error: null,
         history: [],
         reviewEvidence: [],
+        quarantined: false,
       },
     ];
     const pending = deferred<{ resolved: boolean }>();

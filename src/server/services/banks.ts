@@ -12,7 +12,20 @@ import {
   storedImportsSchema,
 } from "~/server/integrations/transactions";
 import { decryptBankToken, encryptBankToken } from "~/server/token-crypto";
-import { commandHash, domainError, jsonValue } from "./safety";
+import {
+  applyQuarantine,
+  quarantinedTransactions,
+  quarantineFingerprint,
+  quarantineMessage,
+  readQuarantine,
+} from "./bank-quarantine";
+import {
+  commandHash,
+  domainError,
+  jsonValue,
+  matchesSavedOperation,
+  operationHash,
+} from "./safety";
 import { readWorkspace, type Database } from "./workspace";
 import {
   bankAccountOpening,
@@ -240,7 +253,7 @@ export async function bankInbox(db: Database, userId: string) {
   return connections.flatMap((connection) => {
     const state = importState(connection.imports);
     const mappings = mappingsSchema.parse(connection.accountMappings);
-    return state.records
+    const imports = state.records
       .filter((record) => {
         const eligibility = bankImportEligibility(
           mappings[record.current.providerAccountId],
@@ -296,8 +309,40 @@ export async function bankInbox(db: Database, userId: string) {
               : (state.errors[record.id] ?? null),
           history: record.history,
           reviewEvidence: state.reviews[record.id] ?? [],
+          quarantined: false,
         };
       });
+    const quarantined = quarantinedTransactions(state.reviews)
+      .filter(
+        (review) =>
+          state.resolved[review.logicalTransactionId]?.fingerprint !==
+          quarantineFingerprint(review.transaction),
+      )
+      .map((review) => {
+        const { transaction } = review;
+        return {
+          categoryName: null,
+          categoryId: null,
+          transactionId: undefined,
+          fingerprint: quarantineFingerprint(transaction),
+          connectionId: connection.id,
+          logicalId: review.logicalTransactionId,
+          providerAccountId: transaction.providerAccountId,
+          accountId: mappings[transaction.providerAccountId]?.accountId ?? null,
+          date: transaction.date ?? review.receivedOn,
+          payee: transaction.name ?? "Unreadable bank transaction",
+          // Budgets hold US dollars only; the bank's amount is in the message.
+          amount: 0,
+          pending: transaction.pending,
+          removed: false,
+          needsMatchReview: false,
+          error: quarantineMessage(transaction),
+          history: [],
+          reviewEvidence: [review],
+          quarantined: true,
+        };
+      });
+    return [...imports, ...quarantined];
   });
 }
 
@@ -305,20 +350,24 @@ export async function setupBankAccounts(
   db: Database,
   userId: string,
   input: SetupBankAccountsInput,
+  submitted: unknown = input,
 ): Promise<{ revision: number; accountIds: string[] }> {
   try {
     input = setupBankAccountsSchema.parse(input);
+    const operation = (accounts: unknown) => ({
+      type: "bank.accounts.setup",
+      connectionId: input.connectionId,
+      operationId: input.operationId,
+      accounts,
+    });
+    const submittedOperation = operation(
+      z.object({ accounts: z.unknown() }).parse(submitted).accounts,
+    );
     if (
       new Set(input.accounts.map((account) => account.providerAccountId))
         .size !== input.accounts.length
     )
       throw new Error("Choose each bank account only once.");
-    const hash = commandHash({
-      type: "bank.accounts.setup",
-      connectionId: input.connectionId,
-      operationId: input.operationId,
-      accounts: input.accounts,
-    });
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await db.$transaction(
@@ -345,7 +394,14 @@ export async function setupBankAccounts(
               },
             });
             if (previous) {
-              if (previous.actorId !== userId || previous.commandHash !== hash)
+              if (
+                previous.actorId !== userId ||
+                !matchesSavedOperation(
+                  previous.commandHash,
+                  submittedOperation,
+                  operation(input.accounts),
+                )
+              )
                 throw new TRPCError({
                   code: "CONFLICT",
                   message:
@@ -517,7 +573,7 @@ export async function setupBankAccounts(
                 actorId: userId,
                 source: "user",
                 type: "bank.accounts.setup",
-                commandHash: hash,
+                commandHash: operationHash(submittedOperation),
                 revision: input.expectedRevision + 1,
               },
             });
@@ -681,9 +737,12 @@ export async function syncBanks(db: Database, userId: string) {
           const old = importState(fresh.imports);
           const plan = applyTransactionSync(old.records, delta, fresh.id);
           const changedAccounts = new Set(
-            [...delta.added, ...delta.modified, ...delta.removed].map(
-              (record) => record.providerAccountId,
-            ),
+            [
+              ...delta.added,
+              ...delta.modified,
+              ...delta.removed,
+              ...delta.skipped.quarantined,
+            ].map((record) => record.providerAccountId),
           );
           const retainedAccounts =
             fresh.cursor === delta.nextCursor
@@ -719,9 +778,10 @@ export async function syncBanks(db: Database, userId: string) {
             state.errors[review.logicalTransactionId] = review.message;
             const existingReviews =
               state.reviews[review.logicalTransactionId] ?? [];
+            // Saved evidence comes back from jsonb with its keys reordered.
             if (
               !existingReviews.some(
-                (item) => commandHash(item) === commandHash(review),
+                (item) => operationHash(item) === operationHash(review),
               )
             )
               state.reviews[review.logicalTransactionId] = [
@@ -729,6 +789,13 @@ export async function syncBanks(db: Database, userId: string) {
                 review,
               ].slice(-100);
           }
+          state.reviews = applyQuarantine(
+            state.reviews,
+            fresh.id,
+            delta,
+            delta.skipped.quarantined,
+            new Date().toISOString().slice(0, 10),
+          );
           const mappings = mappingsSchema.parse(fresh.accountMappings);
           let book = bookSchema.parse(member.workspace.book);
           const operations: Command[] = [];
@@ -829,7 +896,7 @@ export async function syncBanks(db: Database, userId: string) {
                 actorId: userId,
                 source: "provider",
                 type: op.type,
-                commandHash: commandHash(op),
+                commandHash: operationHash(op),
                 revision: member.workspace.revision + 1,
               })),
             });
@@ -856,6 +923,17 @@ export async function syncBanks(db: Database, userId: string) {
       );
       imported += counts.imported;
       updated += counts.updated;
+      if (delta.skipped.quarantined.length || delta.skipped.unidentifiable)
+        console.warn("Bank update left out transactions it could not import", {
+          connectionId: connection.id,
+          quarantined: delta.skipped.quarantined.map((transaction) => ({
+            transactionId: transaction.providerTransactionId,
+            accountId: transaction.providerAccountId,
+            reason: transaction.reason,
+            currency: transaction.currency,
+          })),
+          unidentifiable: delta.skipped.unidentifiable,
+        });
     } catch (error) {
       await db.bankConnection.update({
         where: { id: connection.id },
@@ -884,8 +962,21 @@ export async function resolveImport(
     expectedRevision: number;
     expectedFingerprint?: string;
     ignore: boolean;
+    /** The command as the client sent it, which identifies a retried save. */
+    submittedCommand?: unknown;
   },
 ) {
+  const submittedCommand =
+    "submittedCommand" in input ? input.submittedCommand : input.command;
+  const saveIdentity = (command: unknown) =>
+    input.expectedFingerprint
+      ? {
+          command,
+          connectionId: input.connectionId,
+          logicalId: input.logicalId,
+          fingerprint: input.expectedFingerprint,
+        }
+      : command;
   try {
     return await db.$transaction(
       async (tx) => {
@@ -899,7 +990,24 @@ export async function resolveImport(
         if (!connection || !member) throw new TRPCError({ code: "NOT_FOUND" });
         const state = importState(connection.imports);
         const record = state.records.find((r) => r.id === input.logicalId);
-        if (!record) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!record) {
+          const quarantined = readQuarantine(state.reviews, input.logicalId);
+          if (!quarantined) throw new TRPCError({ code: "NOT_FOUND" });
+          if (!input.ignore)
+            throw new Error(
+              "This bank transaction wasn't imported. Record it yourself if it affects your budget, then dismiss it.",
+            );
+          state.resolved[input.logicalId] = {
+            fingerprint: quarantineFingerprint(quarantined.transaction),
+            ignored: true,
+            decidedAt: new Date().toISOString(),
+          };
+          await tx.bankConnection.update({
+            where: { id: connection.id },
+            data: { imports: jsonValue(state) },
+          });
+          return { resolved: true };
+        }
         if (input.expectedFingerprint && input.command) {
           const saved = await tx.budgetOperation.findMany({
             where: {
@@ -911,13 +1019,11 @@ export async function resolveImport(
           if (previous) {
             if (
               previous.actorId !== userId ||
-              previous.commandHash !==
-                commandHash({
-                  command: input.command,
-                  connectionId: input.connectionId,
-                  logicalId: input.logicalId,
-                  fingerprint: input.expectedFingerprint,
-                })
+              !matchesSavedOperation(
+                previous.commandHash,
+                saveIdentity(submittedCommand),
+                saveIdentity(input.command),
+              )
             )
               throw new TRPCError({
                 code: "CONFLICT",
@@ -1052,16 +1158,7 @@ export async function resolveImport(
                 actorId: userId,
                 source: "user",
                 type: command.type,
-                commandHash: commandHash(
-                  input.expectedFingerprint
-                    ? {
-                        command,
-                        connectionId: input.connectionId,
-                        logicalId: input.logicalId,
-                        fingerprint: input.expectedFingerprint,
-                      }
-                    : command,
-                ),
+                commandHash: operationHash(saveIdentity(submittedCommand)),
                 revision: input.expectedRevision + 1,
               },
             });

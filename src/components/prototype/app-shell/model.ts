@@ -174,6 +174,7 @@ function rateLabel(loan: View["loans"][number], month: string) {
 }
 
 function importReviewReason(item: State["imports"][number]) {
+  if (item.quarantined) return "Not imported from your bank";
   if (!item.accountId) return "Connect this bank account to a budget account";
   if (item.removed || item.error) return "The bank changed this transaction";
   if (item.needsMatchReview) return "Check that this matches the right entry";

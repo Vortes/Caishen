@@ -17,6 +17,7 @@ import {
   type PersonalLedger,
 } from "./shared-ledger";
 import { personalSpendingEntries } from "./spending";
+import { canonicalJson } from "./canonical-json";
 
 const identifier = z.string().min(1).max(160);
 const cents = z.number().int().safe();
@@ -546,10 +547,15 @@ export type Settlement = {
     kind: "payment" | "offset";
   }[];
 };
+/**
+ * Who issued a command: the user, the agent on their behalf, or a bank
+ * provider update. Only the user may make budgeting decisions.
+ */
+export type CommandSource = "user" | "agent" | "provider";
 export type Audit = {
   id: string;
   actorId: string;
-  source: "user" | "agent";
+  source: CommandSource;
   type: string;
   sequence: number;
   fingerprint: string;
@@ -752,7 +758,7 @@ export const bookSchema: z.ZodType<Book, z.ZodTypeDef, unknown> = z
       z.object({
         id: storedIdentifier,
         actorId: storedIdentifier,
-        source: z.enum(["user", "agent"]),
+        source: z.enum(["user", "agent", "provider"]),
         type: z.string(),
         sequence: z.number().int().positive(),
         fingerprint: z.string(),
@@ -2105,7 +2111,13 @@ export function previewBudgetProjection(
     sharedCategories: view.sharedCategories,
     audit: view.audit,
   };
-  const next = executeAccountingState(ledger, view.budget.userId, command);
+  const next = executeAccountingState(
+    ledger,
+    view.budget.userId,
+    command,
+    "user",
+    command,
+  );
   return projectAccountingState(
     next,
     view.budget.userId,
@@ -2145,7 +2157,7 @@ function saveRegisterTransaction(
   book: AccountingState,
   budget: Budget,
   command: Extract<ParsedCommand, { type: "transaction.save" }>,
-  source: "user" | "agent",
+  source: CommandSource,
 ) {
   requireDate(budget, command.date);
   const account = accountAtDate(budget, command.accountId, command.date);
@@ -2529,29 +2541,40 @@ function ensureSupportedCardBalances(budget: Budget): void {
   }
 }
 
+/**
+ * Applies a command to the actor's budget. `submitted` is the command as its
+ * author sent it, before validation or preparation; it identifies retries, so
+ * a retry is recognized even when a later release validates it differently.
+ */
 export function execute(
   original: Book,
   actorId: string,
   input: Command,
-  source: "user" | "agent" = "user",
+  source: CommandSource = "user",
+  submitted: unknown = input,
 ): Book {
-  return executeAccountingState(original, actorId, input, source);
+  return executeAccountingState(original, actorId, input, source, submitted);
 }
 
 function executeAccountingState<T extends AccountingState>(
   original: T,
   actorId: string,
   input: Command,
-  source: "user" | "agent" = "user",
+  source: CommandSource,
+  submitted: unknown,
 ): T {
   const command = commandSchema.parse(input);
   ownBudget(original, actorId);
-  const fingerprint = JSON.stringify(command);
+  const fingerprint = canonicalJson(submitted);
   const previous = original.audit.find(
     (entry) => entry.id === command.id && entry.actorId === actorId,
   );
   if (previous) {
-    if (previous.fingerprint !== fingerprint)
+    // Books saved by earlier releases hold the validated command's JSON.
+    if (
+      previous.fingerprint !== fingerprint &&
+      previous.fingerprint !== JSON.stringify(command)
+    )
       fail("Operation ID was already used with different data");
     return structuredClone(original);
   }
@@ -2579,7 +2602,7 @@ function executeAccountingState<T extends AccountingState>(
     "transaction.approve",
     "transaction.reject",
   ];
-  if (source === "agent" && userOnly.includes(command.type))
+  if (source !== "user" && userOnly.includes(command.type))
     fail("This decision requires a user action");
   const book = structuredClone(original);
   const budget = ownBudget(book, actorId);
@@ -2612,7 +2635,7 @@ function applyCommand(
   book: AccountingState,
   budget: Budget,
   command: ParsedCommand,
-  source: "user" | "agent",
+  source: CommandSource,
 ): void {
   const actorId = budget.userId;
   switch (command.type) {
@@ -2786,7 +2809,7 @@ function applyCommand(
       getCategory(budget, command.fromCategoryId);
       getCategory(budget, command.toCategoryId);
       if (
-        source === "agent" &&
+        source !== "user" &&
         !budget.rules.some(
           (rule) =>
             rule.id === command.ruleId &&
@@ -2798,7 +2821,7 @@ function applyCommand(
         fail("Agent coverage requires an explicit standing rule");
       const state = materialize(book, actorId, command.month);
       if (
-        source === "agent" &&
+        source !== "user" &&
         command.amount >
           Math.max(0, -state.categories.get(command.toCategoryId)!.available)
       )
@@ -3213,7 +3236,7 @@ function applyCommand(
         fail("Transactions from different accounts cannot be merged");
       if (target.kind !== "purchase" || duplicate.kind !== "purchase")
         fail("Only purchase records can be combined");
-      if (source === "agent")
+      if (source !== "user")
         fail("Uncertain matches require explicit user review");
       if (
         budget.reimbursements.some(
