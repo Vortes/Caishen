@@ -1066,13 +1066,6 @@ button.actionItem:hover {
     opacity: 1;
   }
 }
-/* A group with no categories yet offers the way to add one. */
-.emptyGroup {
-  display: flex;
-  align-items: center;
-  height: var(--size-row-lg);
-  padding: 0 var(--space-row-x) 0 34px;
-}
 .groupCount {
   color: var(--text-tertiary);
   font-weight: 400;
