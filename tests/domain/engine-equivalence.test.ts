@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   execute,
+  foldAssignments,
   materialize,
   outstanding,
   projectBook,
@@ -124,9 +125,18 @@ void test("assignments pass and fail exactly as when each later month was replay
         );
         const readyToAssign =
           "value" in ready ? (ready.value as number) : 10_000;
+        const assigned = (categoryId: string) =>
+          budget.assignments
+            .filter(
+              (assignment) =>
+                assignment.categoryId === categoryId &&
+                assignment.month === month,
+            )
+            .reduce((total, assignment) => total + assignment.amount, 0);
+        const setCategory = categories[(index + 2) % categories.length]!;
         const commands: Extract<
           Command,
-          { type: "assign" | "assign.batch" }
+          { type: "assign" | "assign.batch" | "assign.set" }
         >[] = [
           // Assigning exactly Ready to Assign is what later months most
           // often cannot afford, so every month tries it.
@@ -149,11 +159,38 @@ void test("assignments pass and fail exactly as when each later month was replay
               { categoryId: categories[1]!, amount: -100 },
             ],
           },
+          // Setting a total is assigning the difference from the current one.
+          ...(index % 3
+            ? [assigned(setCategory) + readyToAssign]
+            : [
+                assigned(setCategory) + readyToAssign + 1,
+                assigned(setCategory),
+                assigned(setCategory) - 300,
+                0,
+              ]
+          ).map((amount, offset) => ({
+            type: "assign.set" as const,
+            id: `set-${index}-${offset}`,
+            categoryId: setCategory,
+            month,
+            amount,
+          })),
         ];
         for (const command of commands) {
-          const expected = outcome(() =>
-            referenceAssign(book, userId, command),
-          );
+          const expected = outcome(() => {
+            if (command.type !== "assign.set")
+              return foldAssignments(referenceAssign(book, userId, command));
+            const difference = command.amount - assigned(command.categoryId);
+            return foldAssignments(
+              difference
+                ? referenceAssign(book, userId, {
+                    ...command,
+                    type: "assign",
+                    amount: difference,
+                  })
+                : budget.assignments,
+            );
+          });
           const actual = outcome(
             () => execute(book, userId, command).budgets[userId]!.assignments,
           );
@@ -290,4 +327,156 @@ void test("projections match across the whole development seed", () => {
           calculated.categories.get(category.id),
         );
     }
+});
+
+// Assignments are folded to one per category and month (ADR 0006). The
+// reference replay sums whatever assignments a month holds, so comparing it
+// on the unfolded rows proves folding changes no figure.
+const assignmentKeys = (book: Book, userId: string) =>
+  book.budgets[userId]!.assignments.map(
+    (assignment) => `${assignment.month} ${assignment.categoryId}`,
+  );
+
+function folded(book: Book): Book {
+  const copy = structuredClone(book);
+  for (const budget of Object.values(copy.budgets))
+    budget.assignments = foldAssignments(budget.assignments);
+  return copy;
+}
+
+void test("folding assignments changes no month's figures", () => {
+  let duplicates = 0;
+  for (const [name, book] of books)
+    for (const userId of Object.keys(book.budgets)) {
+      const keys = assignmentKeys(book, userId);
+      duplicates += keys.length - new Set(keys).size;
+      const once = folded(book);
+      assert.equal(
+        new Set(assignmentKeys(once, userId)).size,
+        assignmentKeys(once, userId).length,
+      );
+      for (const month of monthsOf(book, userId))
+        for (const cutoff of [undefined, `${month}-14`])
+          assert.deepStrictEqual(
+            outcome(() => materialize(once, userId, month, cutoff)),
+            outcome(() => referenceMaterialize(book, userId, month, cutoff)),
+            `${name}, ${userId}, ${month}, cutoff ${cutoff ?? "month end"}`,
+          );
+    }
+  assert.ok(duplicates > 20, "the corpus must hold unfolded assignments");
+});
+
+void test("assignment commands keep one row per category and month with unchanged figures", () => {
+  type AssignmentCommand = Extract<
+    Command,
+    { type: "assign" | "assign.batch" | "assign.set" | "cover" }
+  >;
+  let applied = 0;
+  for (const [name, original] of books.slice(0, -1)) {
+    const userId = "alex";
+    let book = original;
+    // The same commands as unfolded rows, the way assignments were stored.
+    const shadow = structuredClone(original);
+    const rows = shadow.budgets[userId]!.assignments;
+    const categories = original.budgets[userId]!.categories.filter(
+      (category) => !category.pairedAccountId,
+    ).map((category) => category.id);
+    const months = monthsOf(original, userId).slice(1, 8);
+    for (const [index, month] of months.entries()) {
+      const [first, second, third] = [0, 1, 2].map(
+        (offset) => categories[(index + offset) % categories.length]!,
+      ) as [string, string, string];
+      const total = (categoryId: string) =>
+        rows
+          .filter((row) => row.categoryId === categoryId && row.month === month)
+          .reduce((sum, row) => sum + row.amount, 0);
+      const commands: AssignmentCommand[] = [
+        {
+          type: "assign",
+          id: `a-${index}`,
+          categoryId: first,
+          month,
+          amount: 1_500,
+        },
+        {
+          type: "assign",
+          id: `b-${index}`,
+          categoryId: first,
+          month,
+          amount: -700,
+        },
+        {
+          type: "assign.batch",
+          id: `c-${index}`,
+          month,
+          changes: [
+            { categoryId: first, amount: 900 },
+            { categoryId: second, amount: 400 },
+          ],
+        },
+        {
+          type: "cover",
+          id: `d-${index}`,
+          fromCategoryId: first,
+          toCategoryId: third,
+          month,
+          amount: 300,
+        },
+        {
+          type: "assign.set",
+          id: `e-${index}`,
+          categoryId: second,
+          month,
+          amount: total(second) + 2_000,
+        },
+        {
+          type: "assign.set",
+          id: `f-${index}`,
+          categoryId: third,
+          month,
+          amount: 0,
+        },
+      ];
+      for (const command of commands) {
+        let next: Book;
+        try {
+          next = execute(book, userId, command);
+        } catch {
+          continue;
+        }
+        book = next;
+        const push = (id: string, categoryId: string, amount: number) =>
+          rows.push({ id, categoryId, month, amount });
+        if (command.type === "assign")
+          push(command.id, command.categoryId, command.amount);
+        if (command.type === "assign.batch")
+          command.changes.forEach((change, offset) =>
+            push(`${command.id}:${offset}`, change.categoryId, change.amount),
+          );
+        if (command.type === "cover") {
+          push(`${command.id}:from`, command.fromCategoryId, -command.amount);
+          push(`${command.id}:to`, command.toCategoryId, command.amount);
+        }
+        if (command.type === "assign.set") {
+          const difference = command.amount - total(command.categoryId);
+          if (difference) push(command.id, command.categoryId, difference);
+        }
+        applied++;
+        const keys = assignmentKeys(book, userId);
+        assert.equal(new Set(keys).size, keys.length, `${name}, ${command.id}`);
+        assert.deepStrictEqual(
+          book.budgets[userId]!.assignments,
+          foldAssignments(rows),
+          `${name}, ${command.id}`,
+        );
+        for (const at of [month, months.at(-1)!])
+          assert.deepStrictEqual(
+            outcome(() => materialize(book, userId, at)),
+            outcome(() => referenceMaterialize(shadow, userId, at)),
+            `${name}, ${command.id}, ${at}`,
+          );
+      }
+    }
+  }
+  assert.ok(applied > 100);
 });

@@ -103,6 +103,36 @@ export function budgetSharedPurchases(
   );
 }
 
+/**
+ * What the partners owe each other: the opening shared balances, which are
+ * stored, followed by an obligation for each other participant's share of
+ * every shared purchase, which is derived from the purchases and never
+ * stored (ADR 0006).
+ */
+export function deriveObligations(state: AccountingState): Obligation[] {
+  const generated: Obligation[] = [];
+  for (const purchase of ledgerSharedPurchases(state))
+    for (const [debtorId, amount] of Object.entries(purchase.shares))
+      if (debtorId !== purchase.payerId && amount > 0)
+        generated.push({
+          id: `shared:${purchase.payerId}:${purchase.id}:${debtorId}`,
+          sharedCategoryId: purchase.sharedCategoryId,
+          debtorId,
+          creditorId: purchase.payerId,
+          amount,
+          expenseMonth: purchase.expenseMonth,
+          transactionId: purchase.id,
+          payerId: purchase.payerId,
+          payee: purchase.payee,
+          date: purchase.date,
+          opening: false,
+        });
+  return [
+    ...state.obligations.filter((obligation) => obligation.opening),
+    ...generated,
+  ];
+}
+
 export function ledgerSharedPurchases(
   state: AccountingState,
 ): SharedPurchaseFact[] {

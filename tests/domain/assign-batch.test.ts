@@ -36,6 +36,7 @@ function fixture(cash: number, start = "2026-10") {
     run({ type: "category.add", categoryId, name: categoryId });
   return {
     run,
+    book: () => book,
     view: (month = start) => projectBook(book, "alan", month),
   };
 }
@@ -146,4 +147,117 @@ void test("categories carry earlier months' assigned and spent amounts", () => {
     assigned: [0, 40_000],
     spent: [0, 25_000],
   });
+});
+
+void test("setting a month's total assigns the difference and keeps one assignment per category and month", () => {
+  const setup = fixture(100_000);
+  const assigned = (id: string) =>
+    setup.view().categories.find((category) => category.id === id)!.assigned;
+  setup.run({
+    type: "assign",
+    categoryId: "rent",
+    month: "2026-10",
+    amount: 30_000,
+  });
+  setup.run({
+    type: "assign.set",
+    categoryId: "rent",
+    month: "2026-10",
+    amount: 70_000,
+  });
+  assert.equal(assigned("rent"), 70_000);
+  assert.equal(setup.view().readyToAssign, 30_000);
+  // Setting the same total again, as a retried or rebased edit would, changes nothing.
+  setup.run({
+    type: "assign.set",
+    categoryId: "rent",
+    month: "2026-10",
+    amount: 70_000,
+  });
+  setup.run({
+    type: "assign.set",
+    categoryId: "rent",
+    month: "2026-10",
+    amount: 20_000,
+  });
+  setup.run({
+    type: "cover",
+    fromCategoryId: "rent",
+    toCategoryId: "food",
+    month: "2026-10",
+    amount: 5_000,
+  });
+  setup.run({
+    type: "assign.set",
+    categoryId: "gifts",
+    month: "2026-10",
+    amount: 0,
+  });
+  assert.deepEqual(
+    [assigned("rent"), assigned("food"), assigned("gifts")],
+    [15_000, 5_000, 0],
+  );
+  assert.deepEqual(setup.book().budgets.alan!.assignments, [
+    { id: "operation-5", categoryId: "rent", month: "2026-10", amount: 15_000 },
+    {
+      id: "operation-9:to",
+      categoryId: "food",
+      month: "2026-10",
+      amount: 5_000,
+    },
+  ]);
+});
+
+void test("setting a total checks the difference like any assignment", () => {
+  const setup = fixture(100_000);
+  setup.run({
+    type: "assign",
+    categoryId: "rent",
+    month: "2026-10",
+    amount: 40_000,
+  });
+  assert.throws(
+    () =>
+      setup.run({
+        type: "assign.set",
+        categoryId: "food",
+        month: "2026-10",
+        amount: 60_001,
+      }),
+    /Assignments require existing Ready to Assign cash/,
+  );
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "rent-paid",
+    accountId: "checking",
+    date: "2026-10-02",
+    amount: -30_000,
+    payee: "Landlord",
+    categoryId: "rent",
+  });
+  assert.throws(
+    () =>
+      setup.run({
+        type: "assign.set",
+        categoryId: "rent",
+        month: "2026-10",
+        amount: 29_999,
+      }),
+    /Cannot unassign cash the category does not hold/,
+  );
+  assert.throws(
+    () =>
+      setup.run(
+        { type: "assign.set", categoryId: "food", month: "2026-10", amount: 1 },
+        "agent",
+      ),
+    /This decision requires a user action/,
+  );
+  setup.run({
+    type: "assign.set",
+    categoryId: "rent",
+    month: "2026-10",
+    amount: 30_000,
+  });
+  assert.equal(setup.view().readyToAssign, 70_000);
 });
