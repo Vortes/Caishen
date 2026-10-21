@@ -1,10 +1,14 @@
 "use client";
 
 import { ChevronRightIcon } from "lucide-react";
+import { Skeleton } from "~/components/ui/skeleton";
 import { money } from "../model";
 import shell from "../shell.module.css";
 import { seriesColor, type Highlight } from "./chart-utils";
 import { OTHER, type DrillPath, type Report } from "./report";
+
+const nounOf = (level: Report["level"]) =>
+  level === "groups" ? "Category groups" : "Categories";
 import styles from "./reflect.module.css";
 
 // YNAB's ranked sidebar: every item at this level, largest first, each with
@@ -20,7 +24,7 @@ export function SpendingList({
   path: DrillPath;
   highlight: Highlight;
 }) {
-  const noun = report.level === "groups" ? "Category groups" : "Categories";
+  const noun = nounOf(report.level);
   return (
     <div className={styles.spendingList}>
       <div role="group" aria-label={`${noun} by spending`}>
@@ -100,11 +104,59 @@ export function SpendingList({
           ))}
         </div>
       )}
-      <p className={styles.listNote}>
-        Spending is your share. Shared expenses count only your part; card
-        payments, transfers, and income don’t count.
-      </p>
+      <Note />
     </div>
+  );
+}
+
+// Ranked largest first, so the share bars shrink down the list.
+const rows: [name: number, amount: number, share: number][] = [
+  [96, 64, 180],
+  [120, 60, 132],
+  [72, 56, 104],
+  [104, 56, 84],
+  [64, 52, 64],
+  [112, 48, 52],
+  [84, 48, 40],
+  [56, 44, 28],
+  [92, 40, 20],
+  [76, 40, 12],
+];
+
+// The ranked list while spending loads: its headers and note show as
+// themselves, and every row's name, total, and share is a bone.
+export function SpendingListSkeleton({ level }: { level: Report["level"] }) {
+  return (
+    <div className={styles.spendingList}>
+      <div>
+        <div className={styles.listHeader}>
+          <span>{nounOf(level)}</span>
+          <span>Total spending</span>
+        </div>
+        {rows.map(([name, amount, share], index) => (
+          <div key={index} className={styles.listRow}>
+            <Skeleton width={name} />
+            <Skeleton width={amount} />
+            <span className={styles.shareLine}>
+              <Skeleton shape="funding-bar" width={share} />
+              <span className={styles.sharePercent}>
+                <Skeleton width={24} />
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <Note />
+    </div>
+  );
+}
+
+function Note() {
+  return (
+    <p className={styles.listNote}>
+      Spending is your share. Shared expenses count only your part; card
+      payments, transfers, and income don’t count.
+    </p>
   );
 }
 

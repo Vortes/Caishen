@@ -207,6 +207,12 @@
   color: var(--text-tertiary);
 }
 
+/* The report's body while spending loads. It adds no box, so its sections
+   take the same places as the loaded report's. */
+.skeleton {
+  display: contents;
+}
+
 .chartBand {
   flex: none;
   display: flex;
@@ -238,6 +244,15 @@
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.02em;
+}
+/* The skeleton's ring, under the chart while its slices sweep in. */
+.ringUnder {
+  position: absolute;
+  inset: 0;
+}
+/* While loading, the total's line stays, empty, so the label doesn't move. */
+.donutCenter strong:empty {
+  height: 1lh;
 }
 .donutCenter span {
   max-width: 100%;

@@ -9,6 +9,7 @@ import { money } from "../model";
 import type { Highlight } from "./chart-utils";
 import { ChartBridge, configOf } from "./dither-charts";
 import type { ChartItem, DrillPath } from "./report";
+import { RingSkeleton } from "./ring-skeleton";
 import { SlicePopover } from "./slice-popover";
 import styles from "./reflect.module.css";
 
@@ -16,6 +17,8 @@ import styles from "./reflect.module.css";
 // the column offers, minus room for the slice labels on either side.
 const RING = { min: 320, max: 640 };
 const LABEL = { gap: 22, height: 36, room: 180 };
+// The ring's clockwise sweep-in, in ms.
+const SWEEP = 900;
 
 type Label = { item: ChartItem; x: number; y: number; side: "left" | "right" };
 
@@ -60,12 +63,27 @@ function placeLabels(
   return labels;
 }
 
-function useWidth() {
+// The ring's diameter and the stage around it, for a column this wide.
+export function stageSize(width: number) {
+  const labelled = width >= RING.min + LABEL.room * 2;
+  const ring = Math.round(
+    labelled
+      ? Math.min(RING.max, width - LABEL.room * 2)
+      : Math.min(RING.min, width),
+  );
+  return { labelled, ring, height: ring + (labelled ? LABEL.height * 2 : 0) };
+}
+
+export function useWidth() {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
+    // Measured before the first paint: the observer's first report comes
+    // after it, and a stage drawn at zero height for a frame jumps the
+    // stats below it up and back.
+    setWidth(element.getBoundingClientRect().width);
     const observer = new ResizeObserver(([entry]) =>
       setWidth(entry?.contentRect.width ?? 0),
     );
@@ -83,21 +101,21 @@ export function BreakdownChart({
   highlight,
   itemEntries,
   onOpenEntry,
+  afterSkeleton,
+  onSkeletonGone,
 }: {
   items: ChartItem[];
   total: number;
   highlight: Highlight;
   itemEntries: Record<string, SpendingEntry[]>;
   onOpenEntry: (entry: SpendingEntry) => void;
+  // The skeleton's ring was just on screen: it stays under the chart's
+  // sweep-in, clearing as the slices reach it.
+  afterSkeleton: boolean;
+  onSkeletonGone: () => void;
 }) {
   const [frame, width] = useWidth();
-  const labelled = width >= RING.min + LABEL.room * 2;
-  const ring = Math.round(
-    labelled
-      ? Math.min(RING.max, width - LABEL.room * 2)
-      : Math.min(RING.min, width),
-  );
-  const height = ring + (labelled ? LABEL.height * 2 : 0);
+  const { labelled, ring, height } = stageSize(width);
 
   // Dither Kit replays its entrance whenever `data` changes identity, so the
   // rows are built once per report rather than on every hover.
@@ -159,8 +177,18 @@ export function BreakdownChart({
                 });
               }}
             >
+              {afterSkeleton && (
+                <div className={styles.ringUnder}>
+                  <RingSkeleton
+                    size={ring}
+                    sweep={SWEEP}
+                    onSwept={onSkeletonGone}
+                  />
+                </div>
+              )}
               <PieChart
                 data={data}
+                animationDuration={SWEEP}
                 config={config}
                 dataKey="value"
                 nameKey="name"
@@ -222,6 +250,32 @@ export function BreakdownChart({
             />
           )}
         </Popover.Root>
+      )}
+    </div>
+  );
+}
+
+// The stage while spending loads, at the size the ring will take, so the
+// stats below don't move when it arrives. The ring is a dithered bone; the
+// center keeps its label and holds the total's line empty.
+export function BreakdownSkeleton() {
+  const [frame, width] = useWidth();
+  const { ring, height } = stageSize(width);
+  return (
+    <div ref={frame} className={styles.stageFrame}>
+      {width > 0 && (
+        <div className={styles.stage} style={{ height }}>
+          <div
+            className={styles.ditherDonut}
+            style={{ width: ring, height: ring }}
+          >
+            <RingSkeleton size={ring} />
+            <div className={styles.donutCenter}>
+              <span>Total spending</span>
+              <strong />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
