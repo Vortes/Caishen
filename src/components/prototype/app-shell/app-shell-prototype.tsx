@@ -1,18 +1,16 @@
 "use client";
 
 import {
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ChevronUpIcon,
   FileUpIcon,
   ListFilterIcon,
   PanelLeftIcon,
   PanelRightIcon,
   PlusIcon,
-  RotateCcwIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
+import { usePathname } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -23,8 +21,11 @@ import {
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
 import { AccountSummary, SearchField } from "./account";
+import { AppearanceSettings } from "./appearance";
+import { PartnerSettings } from "./partner";
+import { ProfileSettings } from "./profile";
 import { Inspector } from "./inspector";
-import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
+import { findPalette, paletteVars } from "./palettes";
 import type { ShellData } from "./model";
 import { MoveMoneyProvider, type MoveMoney } from "./move-money";
 import { PlanViews } from "./plan-views";
@@ -39,7 +40,7 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
-import { Sidebar, type Screen } from "./sidebar";
+import { SettingsNav, Sidebar, type Screen } from "./sidebar";
 import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Highlight } from "./reflect/chart-utils";
@@ -62,7 +63,19 @@ import {
   STORAGE_KEY,
   type Settings,
 } from "./settings";
+import {
+  settingsPageAt,
+  settingsPages,
+  SHELL_PATH,
+  type SettingsPage,
+} from "./settings-pages";
 import styles from "./shell.module.css";
+
+const settingsTitles: Record<SettingsPage, string> = {
+  profile: "Profile",
+  appearance: "Appearance",
+  partner: "Partner",
+};
 
 function isTyping(target: EventTarget | null) {
   return (
@@ -78,6 +91,7 @@ export function AppShellPrototype({
   onMonthChange,
   moveMoney,
   transactionSaver,
+  renameBudget,
   notifications,
 }: {
   data: ShellData;
@@ -85,6 +99,8 @@ export function AppShellPrototype({
   onMonthChange: (month: string) => void;
   moveMoney: MoveMoney;
   transactionSaver: TransactionSaver;
+  // Returns why the rename can't run yet, or null once it's sent.
+  renameBudget: (name: string) => string | null;
   // The shell's ToastRegion, rendered inside its themed root.
   notifications: ReactNode;
 }) {
@@ -132,7 +148,10 @@ export function AppShellPrototype({
     );
   const [reviewOnly, setReviewOnly] = useState(false);
   const [query, setQuery] = useState("");
-  const [controlsOpen, setControlsOpen] = useState(true);
+  // Settings cover the shell while the address is theirs; the screen behind
+  // them stays as it was, so Back to app returns to it.
+  const settingsPage = settingsPageAt(usePathname());
+  const settingsOpen = settingsPage !== null;
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
   const narrow = useMediaQuery("(max-width: 860px)");
@@ -202,6 +221,11 @@ export function AppShellPrototype({
     },
   });
 
+  const closeSettings = useCallback(
+    () => window.history.pushState(null, "", SHELL_PATH),
+    [],
+  );
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTyping(event.target) || event.metaKey || event.ctrlKey) return;
@@ -211,6 +235,13 @@ export function AppShellPrototype({
         event.target.closest('[role="dialog"]')
       )
         return;
+      if (settingsOpen) {
+        if (event.key === "[") sidebar.toggle();
+        else if (event.key === "Escape") closeSettings();
+        else return;
+        event.preventDefault();
+        return;
+      }
       if (event.key === "[") sidebar.toggle();
       else if (event.key === "]" && screen.type !== "register")
         inspector.toggle();
@@ -249,6 +280,8 @@ export function AppShellPrototype({
     path,
     entry,
     selectedId,
+    settingsOpen,
+    closeSettings,
   ]);
 
   const navigate = (next: Screen, id?: string) => {
@@ -259,6 +292,13 @@ export function AppShellPrototype({
     setReviewOnly(false);
     setQuery("");
     if (narrow) setDrawer({ sidebar: false, inspector: Boolean(id) });
+    closePeek(0);
+  };
+
+  const openSettings = (page: SettingsPage) => {
+    if (entry.holdForDraft()) return;
+    window.history.pushState(null, "", settingsPages[page]);
+    if (narrow) setDrawer({ sidebar: false, inspector: false });
     closePeek(0);
   };
 
@@ -276,10 +316,10 @@ export function AppShellPrototype({
     }
   };
 
+  // Run from settings, so they stay open over the restored shell.
   const reset = () => {
-    if (entry.holdForDraft()) return;
     localStorage.removeItem(STORAGE_KEY);
-    setSettings(defaults);
+    switchColors(defaults);
     setScreen({ type: "plan" });
     setSelectedId(null);
     setChecked([]);
@@ -306,6 +346,30 @@ export function AppShellPrototype({
   };
   const palette =
     settings.theme === "dark" ? findPalette(settings.palette) : null;
+
+  // The sidebar's contents, pinned or peeking.
+  const navigation = (toggleLabel: string, onToggle: () => void) =>
+    settingsPage ? (
+      <SettingsNav
+        toggleLabel={toggleLabel}
+        onToggle={onToggle}
+        page={settingsPage}
+        onBack={closeSettings}
+        onSelect={(page) => {
+          window.history.pushState(null, "", settingsPages[page]);
+          if (narrow) setDrawer({ sidebar: false, inspector: false });
+        }}
+      />
+    ) : (
+      <Sidebar
+        screen={screen}
+        selectedId={selectedId}
+        onNavigate={navigate}
+        toggleLabel={toggleLabel}
+        onToggle={onToggle}
+        onOpenSettings={openSettings}
+      />
+    );
 
   const account =
     screen.type === "register"
@@ -349,13 +413,7 @@ export function AppShellPrototype({
                 className={styles.sidebarInner}
                 style={{ width: sidebar.contentWidth }}
               >
-                <Sidebar
-                  screen={screen}
-                  selectedId={selectedId}
-                  onNavigate={navigate}
-                  toggleLabel="Hide sidebar"
-                  onToggle={sidebar.toggle}
-                />
+                {navigation("Hide sidebar", sidebar.toggle)}
               </div>
             </aside>
 
@@ -376,18 +434,12 @@ export function AppShellPrototype({
                   onPointerEnter={openPeek}
                   onPointerLeave={() => closePeek()}
                 >
-                  <Sidebar
-                    screen={screen}
-                    selectedId={selectedId}
-                    onNavigate={navigate}
-                    // The peek floats a collapsed sidebar; its toggle pins
-                    // it open.
-                    toggleLabel="Show sidebar"
-                    onToggle={() => {
-                      closePeek(0);
-                      sidebar.toggle();
-                    }}
-                  />
+                  {/* The peek floats a collapsed sidebar; its toggle pins
+                      it open. */}
+                  {navigation("Show sidebar", () => {
+                    closePeek(0);
+                    sidebar.toggle();
+                  })}
                 </div>
               </>
             )}
@@ -432,8 +484,22 @@ export function AppShellPrototype({
                       </IconButton>
                     </div>
                   </div>
-                  <HeaderTitle screen={screen} accountName={account?.name} />
-                  {screen.type === "reflect" ? (
+                  {settingsOpen ? (
+                    <div className={styles.titleGroup}>
+                      <span className={styles.crumb}>Settings</span>
+                      <ChevronRightIcon
+                        size={12}
+                        className={styles.crumbSeparator}
+                        aria-hidden
+                      />
+                      <h1 className={styles.headerTitle}>
+                        {settingsTitles[settingsPage]}
+                      </h1>
+                    </div>
+                  ) : (
+                    <HeaderTitle screen={screen} accountName={account?.name} />
+                  )}
+                  {settingsOpen ? null : screen.type === "reflect" ? (
                     <ReportTabs value={reportKind} onChange={setReportKind} />
                   ) : (
                     <MonthNav
@@ -447,7 +513,7 @@ export function AppShellPrototype({
                       }}
                     />
                   )}
-                  {loadingMonth && (
+                  {loadingMonth && !settingsOpen && (
                     <div className={styles.monthLoading} role="status">
                       <span className="sr-only">
                         Loading {data.month.label}
@@ -456,295 +522,264 @@ export function AppShellPrototype({
                   )}
                 </header>
 
-                {screen.type === "register" && (
-                  <AccountSummary
-                    accounts={account ? [account] : accounts}
-                    single={Boolean(account)}
-                  />
-                )}
-
-                <div
-                  className={styles.toolbar}
-                  data-wrap={register || undefined}
-                >
-                  {screen.type === "plan" && (
-                    <PlanViews
-                      value={settings.planView}
-                      onChange={(planView) =>
-                        setSettings((value) => ({ ...value, planView }))
-                      }
-                    />
-                  )}
-                  {screen.type === "reflect" && (
-                    <ReflectFilters
-                      filters={filters}
-                      onChange={(next) => {
-                        setFilters(next);
-                        setPath({});
-                      }}
-                    />
-                  )}
-                  {screen.type === "register" && (
-                    <Button
-                      size="sm"
-                      aria-pressed={reviewOnly}
-                      onClick={() => {
-                        setReviewOnly((value) => !value);
-                        setSelectedId(null);
-                        setChecked([]);
-                      }}
+                {settingsOpen ? (
+                  <div className={styles.body}>
+                    <main
+                      id="prototype-content"
+                      className={styles.content}
+                      tabIndex={-1}
                     >
-                      <span className={styles.reviewDot} data-on data-inline />
-                      To review
-                      <span className={styles.numeric}>{reviewCount}</span>
-                    </Button>
-                  )}
-                  {screen.type === "register" && (
-                    <AddTransactionTooltip editing={Boolean(entry.session)}>
-                      <Button
-                        size="sm"
-                        aria-label={phone ? "Add transaction" : undefined}
-                        data-transaction-opener="new"
-                        disabled={
-                          Boolean(entry.session) ||
-                          entry.busy ||
-                          !accounts.length
-                        }
-                        onClick={() =>
-                          entry.start({ accountId: screen.accountId })
-                        }
-                      >
-                        <PlusIcon aria-hidden />
-                        {phone ? "Add" : "Add transaction"}
-                      </Button>
-                    </AddTransactionTooltip>
-                  )}
-                  {screen.type === "register" && account && (
-                    <Button size="sm">
-                      <FileUpIcon aria-hidden />
-                      File import
-                    </Button>
-                  )}
-                  <div className={styles.toolbarActions}>
-                    {screen.type === "register" && (
-                      <SearchField
-                        value={query}
-                        onChange={(next) => {
-                          setQuery(next);
-                          setSelectedId(null);
-                          setChecked([]);
-                        }}
-                        placeholder={`Search ${account?.name ?? "all accounts"}`}
-                      />
-                    )}
-                    {screen.type !== "reflect" && (
-                      <>
-                        <IconButton
-                          label="Filter"
-                          shortcut="F"
-                          variant="secondary"
-                        >
-                          <ListFilterIcon aria-hidden />
-                        </IconButton>
-                        <IconButton label="Display options" variant="secondary">
-                          <SlidersHorizontalIcon aria-hidden />
-                        </IconButton>
-                      </>
-                    )}
-                    {!register && (
-                      <IconButton
-                        label={
-                          inspectorState.collapsed
-                            ? "Show details"
-                            : "Hide details"
-                        }
-                        shortcut="]"
-                        variant="secondary"
-                        pressed={!inspectorState.collapsed}
-                        onClick={inspector.toggle}
-                      >
-                        <PanelRightIcon aria-hidden />
-                      </IconButton>
-                    )}
-                  </div>
-                </div>
-
-                <div className={styles.body}>
-                  <main
-                    id="prototype-content"
-                    className={styles.content}
-                    tabIndex={-1}
-                  >
-                    {screen.type === "plan" && (
-                      <PlanView
-                        view={settings.planView}
-                        // Opens the details panel, then selects just that row,
-                        // like the register.
-                        onSelect={(id) => {
-                          if (inspectorState.collapsed) inspector.toggle();
-                          selectOnly(id);
-                        }}
-                        checked={checked}
-                        onCheck={check}
-                      />
-                    )}
-                    {screen.type === "register" && (
-                      <>
-                        <RegisterView
-                          accountId={screen.accountId}
-                          reviewOnly={reviewOnly}
-                          query={query}
-                          selectedId={selectedId}
-                          onSelect={selectOnly}
-                          checked={checked}
-                          onCheck={check}
+                      {settingsPage === "partner" ? (
+                        <PartnerSettings />
+                      ) : settingsPage === "profile" ? (
+                        <ProfileSettings onRename={renameBudget} />
+                      ) : (
+                        <AppearanceSettings
+                          settings={settings}
+                          onChange={switchColors}
+                          onReset={reset}
                         />
-                      </>
-                    )}
-                    {screen.type === "loans" && (
-                      <LoansView selectedId={selectedId} onSelect={select} />
-                    )}
-                    {screen.type === "reflect" && (
-                      <ReflectView
-                        spending={spending}
-                        highlight={highlight}
-                        grouping={grouping}
-                        onGroupingChange={(next) => {
-                          setGrouping(next);
-                          setPath({});
-                        }}
-                        showList={inspectorState.collapsed}
-                        kind={reportKind}
-                        filters={filters}
-                        path={path}
-                        onPath={setPath}
-                        onFiltersChange={setFilters}
-                        onOpenTransaction={(entry) => {
-                          // Like YNAB: the transaction, selected, in its own
-                          // account's register for the month it happened.
-                          onMonthChange(entry.date.slice(0, 7));
-                          navigate(
-                            {
-                              type: "register",
-                              accountId: entry.accountId ?? null,
-                            },
-                            entry.transactionId,
-                          );
-                        }}
+                      )}
+                    </main>
+                  </div>
+                ) : (
+                  <>
+                    {screen.type === "register" && (
+                      <AccountSummary
+                        accounts={account ? [account] : accounts}
+                        single={Boolean(account)}
                       />
                     )}
-                  </main>
 
-                  {!register && (
-                    <div className={styles.inspectorSlot}>
-                      <div
-                        {...inspector.handleProps}
-                        className={styles.handle}
-                        data-side="right"
-                        aria-label="Resize details panel"
-                        data-active={inspector.dragging || undefined}
-                      />
-                      <aside
-                        className={styles.inspector}
-                        style={{ width: inspector.width }}
-                        aria-label="Details"
-                        aria-hidden={inspector.width === 0 || undefined}
-                        inert={inspector.width === 0}
-                      >
-                        <div
-                          className={styles.inspectorInner}
-                          style={{ width: inspector.contentWidth }}
+                    <div
+                      className={styles.toolbar}
+                      data-wrap={register || undefined}
+                    >
+                      {screen.type === "plan" && (
+                        <PlanViews
+                          value={settings.planView}
+                          onChange={(planView) =>
+                            setSettings((value) => ({ ...value, planView }))
+                          }
+                        />
+                      )}
+                      {screen.type === "reflect" && (
+                        <ReflectFilters
+                          filters={filters}
+                          onChange={(next) => {
+                            setFilters(next);
+                            setPath({});
+                          }}
+                        />
+                      )}
+                      {screen.type === "register" && (
+                        <Button
+                          size="sm"
+                          aria-pressed={reviewOnly}
+                          onClick={() => {
+                            setReviewOnly((value) => !value);
+                            setSelectedId(null);
+                            setChecked([]);
+                          }}
                         >
-                          {screen.type === "reflect" ? (
-                            spending.report && (
-                              <Card>
-                                <SpendingList
-                                  report={spending.report}
-                                  path={path}
-                                  highlight={highlight}
-                                />
-                              </Card>
-                            )
-                          ) : (
-                            <Inspector
-                              screen={screen}
-                              selectedId={selectedId}
-                              checked={checked}
-                            />
-                          )}
-                        </div>
-                      </aside>
+                          <span
+                            className={styles.reviewDot}
+                            data-on
+                            data-inline
+                          />
+                          To review
+                          <span className={styles.numeric}>{reviewCount}</span>
+                        </Button>
+                      )}
+                      {screen.type === "register" && (
+                        <AddTransactionTooltip editing={Boolean(entry.session)}>
+                          <Button
+                            size="sm"
+                            aria-label={phone ? "Add transaction" : undefined}
+                            data-transaction-opener="new"
+                            disabled={
+                              Boolean(entry.session) ||
+                              entry.busy ||
+                              !accounts.length
+                            }
+                            onClick={() =>
+                              entry.start({ accountId: screen.accountId })
+                            }
+                          >
+                            <PlusIcon aria-hidden />
+                            {phone ? "Add" : "Add transaction"}
+                          </Button>
+                        </AddTransactionTooltip>
+                      )}
+                      {screen.type === "register" && account && (
+                        <Button size="sm">
+                          <FileUpIcon aria-hidden />
+                          File import
+                        </Button>
+                      )}
+                      <div className={styles.toolbarActions}>
+                        {screen.type === "register" && (
+                          <SearchField
+                            value={query}
+                            onChange={(next) => {
+                              setQuery(next);
+                              setSelectedId(null);
+                              setChecked([]);
+                            }}
+                            placeholder={`Search ${account?.name ?? "all accounts"}`}
+                          />
+                        )}
+                        {screen.type !== "reflect" && (
+                          <>
+                            <IconButton
+                              label="Filter"
+                              shortcut="F"
+                              variant="secondary"
+                            >
+                              <ListFilterIcon aria-hidden />
+                            </IconButton>
+                            <IconButton
+                              label="Display options"
+                              variant="secondary"
+                            >
+                              <SlidersHorizontalIcon aria-hidden />
+                            </IconButton>
+                          </>
+                        )}
+                        {!register && (
+                          <IconButton
+                            label={
+                              inspectorState.collapsed
+                                ? "Show details"
+                                : "Hide details"
+                            }
+                            shortcut="]"
+                            variant="secondary"
+                            pressed={!inspectorState.collapsed}
+                            onClick={inspector.toggle}
+                          >
+                            <PanelRightIcon aria-hidden />
+                          </IconButton>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    <div className={styles.body}>
+                      <main
+                        id="prototype-content"
+                        className={styles.content}
+                        tabIndex={-1}
+                      >
+                        {screen.type === "plan" && (
+                          <PlanView
+                            view={settings.planView}
+                            // Opens the details panel, then selects just that row,
+                            // like the register.
+                            onSelect={(id) => {
+                              if (inspectorState.collapsed) inspector.toggle();
+                              selectOnly(id);
+                            }}
+                            checked={checked}
+                            onCheck={check}
+                          />
+                        )}
+                        {screen.type === "register" && (
+                          <>
+                            <RegisterView
+                              accountId={screen.accountId}
+                              reviewOnly={reviewOnly}
+                              query={query}
+                              selectedId={selectedId}
+                              onSelect={selectOnly}
+                              checked={checked}
+                              onCheck={check}
+                            />
+                          </>
+                        )}
+                        {screen.type === "loans" && (
+                          <LoansView
+                            selectedId={selectedId}
+                            onSelect={select}
+                          />
+                        )}
+                        {screen.type === "reflect" && (
+                          <ReflectView
+                            spending={spending}
+                            highlight={highlight}
+                            grouping={grouping}
+                            onGroupingChange={(next) => {
+                              setGrouping(next);
+                              setPath({});
+                            }}
+                            showList={inspectorState.collapsed}
+                            kind={reportKind}
+                            filters={filters}
+                            path={path}
+                            onPath={setPath}
+                            onFiltersChange={setFilters}
+                            onOpenTransaction={(entry) => {
+                              // Like YNAB: the transaction, selected, in its own
+                              // account's register for the month it happened.
+                              onMonthChange(entry.date.slice(0, 7));
+                              navigate(
+                                {
+                                  type: "register",
+                                  accountId: entry.accountId ?? null,
+                                },
+                                entry.transactionId,
+                              );
+                            }}
+                          />
+                        )}
+                      </main>
+
+                      {!register && (
+                        <div className={styles.inspectorSlot}>
+                          <div
+                            {...inspector.handleProps}
+                            className={styles.handle}
+                            data-side="right"
+                            aria-label="Resize details panel"
+                            data-active={inspector.dragging || undefined}
+                          />
+                          <aside
+                            className={styles.inspector}
+                            style={{ width: inspector.width }}
+                            aria-label="Details"
+                            aria-hidden={inspector.width === 0 || undefined}
+                            inert={inspector.width === 0}
+                          >
+                            <div
+                              className={styles.inspectorInner}
+                              style={{ width: inspector.contentWidth }}
+                            >
+                              {screen.type === "reflect" ? (
+                                spending.report && (
+                                  <Card>
+                                    <SpendingList
+                                      report={spending.report}
+                                      path={path}
+                                      highlight={highlight}
+                                    />
+                                  </Card>
+                                )
+                              ) : (
+                                <Inspector
+                                  screen={screen}
+                                  selectedId={selectedId}
+                                  checked={checked}
+                                />
+                              )}
+                            </div>
+                          </aside>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            <div
-              className={styles.controls}
-              data-open={controlsOpen || undefined}
-            >
-              <button
-                type="button"
-                className={styles.controlsTag}
-                aria-expanded={controlsOpen}
-                onClick={() => setControlsOpen((value) => !value)}
-              >
-                Prototype
-                {controlsOpen ? (
-                  <ChevronDownIcon size={12} aria-hidden />
-                ) : (
-                  <ChevronUpIcon size={12} aria-hidden />
-                )}
-              </button>
-              {controlsOpen && (
-                <>
-                  <Segmented
-                    label="Theme"
-                    value={settings.theme}
-                    options={[
-                      ["dark", "Dark"],
-                      ["light", "Light"],
-                    ]}
-                    onChange={(theme) => switchColors({ theme })}
-                  />
-                  <PalettePicker
-                    value={settings.palette}
-                    // Monkeytype's palettes are dark, so picking one leaves
-                    // light mode.
-                    onChange={(name) =>
-                      switchColors({ palette: name, theme: "dark" })
-                    }
-                  />
-                  <span className={styles.readout} aria-live="polite">
-                    Sidebar{" "}
-                    {sidebarState.collapsed
-                      ? "closed"
-                      : `${Math.round(sidebar.width)}px`}
-                    {" · "}
-                    Details{" "}
-                    {register || inspectorState.collapsed
-                      ? "closed"
-                      : `${Math.round(inspector.width)}px`}
-                  </span>
-                  <span className={styles.keys}>
-                    <kbd>[</kbd>
-                    <kbd>]</kbd>
-                    <kbd>↑</kbd>
-                    <kbd>↓</kbd>
-                    <kbd>Esc</kbd>
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.resetButton}
-                    onClick={reset}
-                  >
-                    <RotateCcwIcon size={12} aria-hidden />
-                    Reset
-                  </button>
-                </>
-              )}
-            </div>
             {notifications}
           </TooltipProvider>
         </div>
@@ -893,35 +928,6 @@ function MonthNav({
       >
         <ChevronRightIcon aria-hidden />
       </IconButton>
-    </div>
-  );
-}
-
-function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: [T, string][];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className={styles.segmented} role="radiogroup" aria-label={label}>
-      <span className={styles.segmentedLabel}>{label}</span>
-      {options.map(([option, text]) => (
-        <button
-          type="button"
-          role="radio"
-          key={option}
-          aria-checked={value === option}
-          onClick={() => onChange(option)}
-        >
-          {text}
-        </button>
-      ))}
     </div>
   );
 }

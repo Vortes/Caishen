@@ -10,7 +10,6 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
   PlusIcon,
-  SettingsIcon,
   SlidersHorizontalIcon,
   WalletCardsIcon,
   ZapIcon,
@@ -24,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { Property } from "./cards";
 import { autoAssignOptions } from "./inspector";
-import { findPalette, paletteVars } from "./palette-picker";
+import { findPalette, paletteVars } from "./palettes";
 import type { Settings } from "./settings";
 import { Caret } from "./sidebar";
 import styles from "./shell.module.css";
@@ -137,10 +136,6 @@ export function ShellSkeleton({
                 ))}
               </div>
               <div className={styles.sidebarFooter}>
-                <span className={styles.footerItem}>
-                  <SettingsIcon size={14} aria-hidden />
-                  Settings
-                </span>
                 <IconButton label="Add account">
                   <PlusIcon aria-hidden />
                 </IconButton>

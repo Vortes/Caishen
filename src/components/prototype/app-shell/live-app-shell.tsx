@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useIsMutating } from "@tanstack/react-query";
 import { InfoIcon, LogInIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import { currentMonth, monthName } from "~/components/budget/format";
+import { currentMonth, monthName, newId } from "~/components/budget/format";
 import type { State } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { Toast, ToastRegion } from "~/components/ui/toast";
@@ -225,6 +225,18 @@ function LiveWorkspace({
           onMonthChange={onMonthChange}
           moveMoney={moveMoney}
           transactionSaver={transactionSaver}
+          renameBudget={(name) => {
+            const reason = blocked();
+            if (reason) return blockMessage[reason];
+            const command = {
+              type: "settings.update" as const,
+              id: newId(),
+              name,
+            };
+            summaries.current.set(command.id, `Renamed your budget to ${name}`);
+            run(command);
+            return null;
+          }}
           notifications={
             <ToastRegion>
               {refreshError && (
