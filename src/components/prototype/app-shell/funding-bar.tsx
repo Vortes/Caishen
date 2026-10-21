@@ -8,7 +8,7 @@ import styles from "./funding-bar.module.css";
 export type FundingBarCategory = Pick<
   Category,
   "funding" | "activity" | "available" | "status"
-> & { target?: { sections: number[] } };
+> & { target?: { sections: number[] }; pays?: Category["pays"] };
 
 // The bar has three colors, per YNAB: red for overspending, yellow while a
 // target is unmet, and green otherwise (met, snoozed, or no target).
@@ -93,33 +93,38 @@ export function FundingBar({
     <span className={styles.stack}>
       <span className={styles.line}>
         <span className={styles.name}>{children}</span>
-        {category.status && (
-          <span className={styles.status}>{category.status}</span>
-        )}
+        {category.status &&
+          !(
+            category.pays?.type === "card" &&
+            !category.target &&
+            category.funding === "underfunded"
+          ) && <span className={styles.status}>{category.status}</span>}
       </span>
-      <span
-        className={styles.bar}
-        role="img"
-        aria-label={
-          category.status && category.status !== label[category.funding]
-            ? `${label[category.funding]}. ${category.status}`
-            : label[category.funding]
-        }
-      >
-        {pieces.length ? (
-          pieces.map((piece, index) => (
-            <span
-              key={index}
-              className={styles.segment}
-              data-kind={piece.kind}
-              data-tone={piece.tone}
-              style={{ flexGrow: piece.size }}
-            />
-          ))
-        ) : (
-          <span className={styles.segment} data-kind="needed" />
-        )}
-      </span>
+      {category.pays?.type !== "card" && (
+        <span
+          className={styles.bar}
+          role="img"
+          aria-label={
+            category.status && category.status !== label[category.funding]
+              ? `${label[category.funding]}. ${category.status}`
+              : label[category.funding]
+          }
+        >
+          {pieces.length ? (
+            pieces.map((piece, index) => (
+              <span
+                key={index}
+                className={styles.segment}
+                data-kind={piece.kind}
+                data-tone={piece.tone}
+                style={{ flexGrow: piece.size }}
+              />
+            ))
+          ) : (
+            <span className={styles.segment} data-kind="needed" />
+          )}
+        </span>
+      )}
     </span>
   );
 }
