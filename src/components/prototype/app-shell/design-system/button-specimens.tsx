@@ -28,6 +28,11 @@ const variants: { variant: ButtonVariant; label: string; rule: string }[] = [
     rule: "Inline actions inside rows and inspector sections.",
   },
   {
+    variant: "quiet-primary",
+    label: "Reconnect",
+    rule: "The surface's one main action when it sits inline in a row. Counts as its primary.",
+  },
+  {
     variant: "danger",
     label: "Delete category",
     rule: "Only the confirm button of a destructive dialog, never the button that opens it.",
@@ -55,9 +60,10 @@ export function ButtonSpecimens() {
         </div>
       </div>
       <p className={styles.lead}>
-        Four variants, two sizes. Primary and danger are the secondary pill with
-        the role&rsquo;s color in its border and label, so color only appears on
-        the action that commits something.
+        Five variants, two sizes. Primary and danger are the secondary pill with
+        the role&rsquo;s color in its border and label, and quiet-primary is
+        that color on a quiet label, so color only appears on the action that
+        commits something.
       </p>
 
       <div className={styles.variantTable}>
@@ -164,6 +170,28 @@ export function ButtonSpecimens() {
             )}
           </div>
           <figcaption>Destructive dialog: danger confirms.</figcaption>
+        </figure>
+
+        <figure className={styles.context}>
+          <div className={styles.surface}>
+            <div className={styles.actions}>
+              <strong>American Express</strong>
+              <span className={styles.spacer} />
+              <Button variant="quiet-primary" size="sm">
+                Reconnect
+              </Button>
+            </div>
+            <div className={styles.actions}>
+              <span>3 accounts not added</span>
+              <span className={styles.spacer} />
+              <Button variant="quiet" size="sm">
+                Add accounts
+              </Button>
+            </div>
+          </div>
+          <figcaption>
+            Rows in a popover: quiet-primary on the one fix, quiet beside it.
+          </figcaption>
         </figure>
 
         <figure className={styles.context}>

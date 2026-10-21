@@ -63,7 +63,8 @@
   color: var(--text-primary);
 }
 
-.button[data-variant="quiet"][data-size] {
+.button[data-variant="quiet"][data-size],
+.button[data-variant="quiet-primary"][data-size] {
   padding: 0;
   border: 0;
   background: none;
@@ -72,8 +73,24 @@
 .button[data-variant="quiet"]:hover:not(:disabled) {
   color: var(--text-primary);
 }
-.button[data-variant="quiet"]:active:not(:disabled) {
+.button[data-variant="quiet"]:active:not(:disabled),
+.button[data-variant="quiet-primary"]:active:not(:disabled) {
   transform: none;
+}
+/* Primary's label color without its pill. Already colored at rest, so hover
+   confirms with an underline instead of a color change. */
+.button[data-variant="quiet-primary"][data-size] {
+  color: var(--accent-text);
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition:
+    text-decoration-color 150ms,
+    color 150ms;
+}
+.button[data-variant="quiet-primary"]:hover:not(:disabled) {
+  text-decoration-color: var(--accent-line);
 }
 
 .button[data-variant="primary"],
@@ -107,7 +124,8 @@
   .button[data-variant][data-size="sm"]::before {
     inset: -8px 0;
   }
-  .button[data-variant="quiet"]::before {
+  .button[data-variant="quiet"]::before,
+  .button[data-variant="quiet-primary"]::before {
     inset: -8px;
   }
 }
