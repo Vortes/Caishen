@@ -5,6 +5,7 @@ import type {
   Obligation,
   Settlement,
   SharedCategory,
+  Transaction,
 } from "./engine";
 
 export type SharedPurchaseFact = {
@@ -59,7 +60,27 @@ export function ledgerMembers(state: AccountingState) {
       }));
 }
 
-function budgetSharedPurchases(budget: Budget): SharedPurchaseFact[] {
+// The parts of a budget its partner's numbers depend on.
+export type PartnerFacts = Pick<Budget, "userId" | "name"> & {
+  categories: Pick<Budget["categories"][number], "id">[];
+  transactions: (Pick<
+    Transaction,
+    | "id"
+    | "amount"
+    | "date"
+    | "expenseMonth"
+    | "payee"
+    | "status"
+    | "sharedCategoryId"
+    | "shares"
+    | "linkedId"
+    | "removed"
+  > & { kind: string })[];
+};
+
+export function budgetSharedPurchases(
+  budget: PartnerFacts,
+): SharedPurchaseFact[] {
   return budget.transactions.flatMap((transaction) =>
     !transaction.removed &&
     transaction.sharedCategoryId &&
@@ -132,6 +153,19 @@ export function ledgerReceiptDates(
       : state.budgets[settlement.recipientId];
     return budget && receiptDate(budget, settlement.id);
   };
+}
+
+// When the recipient recorded receiving a settlement, if they have.
+export function settlementReceiptDate(
+  recipient: PartnerFacts,
+  settlementId: string,
+): string | undefined {
+  return recipient.transactions.find(
+    (transaction) =>
+      !transaction.removed &&
+      transaction.kind === "reimbursement" &&
+      transaction.linkedId === settlementId,
+  )?.date;
 }
 
 export function ledgerHasSharedActivity(

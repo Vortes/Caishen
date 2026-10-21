@@ -211,6 +211,7 @@ void test("import conversion preserves bank identity and approval propagates opt
   assert.equal(sent.reviewed, false);
   assert.equal(received.reviewed, false);
   const state: State = {
+    status: "ready",
     view: f.view(),
     revision: 0,
     history: { undo: null, redo: null },

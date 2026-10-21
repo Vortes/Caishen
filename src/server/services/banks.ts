@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { Prisma } from "~/generated/prisma";
-import { bookSchema, execute, type Command } from "~/domain/engine";
+import { execute, ownBudget, type Budget, type Command } from "~/domain/engine";
 import { prepareUserCommand } from "~/domain/user-command";
 import {
   bankAccountSchema,
@@ -26,6 +26,15 @@ import {
   matchesSavedOperation,
   operationHash,
 } from "./safety";
+import {
+  budgetMaintenance,
+  CONNECTION_MAINTENANCE_MESSAGE,
+  connectionMaintenance,
+  openBudget,
+  readBudget,
+  reportUnreadable,
+  zodIssues,
+} from "./stored-data";
 import { readWorkspace, type Database } from "./workspace";
 import {
   bankAccountOpening,
@@ -38,7 +47,7 @@ import {
   setupBankAccountsSchema,
   type SetupBankAccountsInput,
 } from "./bank-account-setup";
-const importStateSchema = z
+export const importStateSchema = z
   .object({
     records: storedImportsSchema,
     resolved: z.record(
@@ -64,8 +73,100 @@ const importStateSchema = z
   })
   .strict();
 type ImportState = z.infer<typeof importStateSchema>;
-function importState(value: unknown): ImportState {
-  return importStateSchema.parse(value);
+type Mappings = z.infer<typeof mappingsSchema>;
+type StoredConnection = {
+  id: string;
+  clerkUserId: string;
+  imports: unknown;
+  accountMappings: unknown;
+};
+export type ReadConnection<C extends StoredConnection = StoredConnection> =
+  | { status: "ready"; connection: C; state: ImportState; mappings: Mappings }
+  | { status: "maintenance"; connection: C };
+
+function readColumn<T>(
+  connection: Pick<StoredConnection, "id" | "clerkUserId">,
+  record: "BankConnection.imports" | "BankConnection.accountMappings",
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  value: unknown,
+): T | undefined {
+  const result = schema.safeParse(value);
+  if (result.success) return result.data;
+  reportUnreadable(
+    { record, connectionId: connection.id, userId: connection.clerkUserId },
+    [{ issues: zodIssues(result.error) }],
+  );
+}
+
+// A connection whose saved import state can't be read is left alone and
+// shown as under maintenance; the budget and other connections still work.
+export function readBankConnection<C extends StoredConnection>(
+  connection: C,
+): ReadConnection<C> {
+  const state = readColumn(
+    connection,
+    "BankConnection.imports",
+    importStateSchema,
+    connection.imports,
+  );
+  const mappings = readColumn(
+    connection,
+    "BankConnection.accountMappings",
+    mappingsSchema,
+    connection.accountMappings,
+  );
+  return state && mappings
+    ? { status: "ready", connection, state, mappings }
+    : { status: "maintenance", connection };
+}
+
+// A connection as the app shows it. One under maintenance shows its
+// maintenance message and no accounts.
+export function bankConnectionView(
+  read: ReadConnection<
+    StoredConnection & {
+      itemId: string;
+      lastSyncedAt: Date | null;
+      lastAttemptAt: Date | null;
+      error: string | null;
+    }
+  >,
+) {
+  const { id, itemId, lastSyncedAt, lastAttemptAt, error, accountMappings } =
+    read.connection;
+  const connection = { id, itemId, lastSyncedAt, lastAttemptAt };
+  return read.status === "ready"
+    ? {
+        ...connection,
+        error,
+        accountMappings,
+        ...bankAccountDetails(read.state),
+      }
+    : {
+        ...connection,
+        error: CONNECTION_MAINTENANCE_MESSAGE,
+        accountMappings: {},
+        ...bankAccountDetails({ records: [], resolved: {}, errors: {} }),
+      };
+}
+
+function readyConnection<C extends StoredConnection>(connection: C) {
+  const read = readBankConnection(connection);
+  if (read.status === "maintenance") throw connectionMaintenance();
+  return read;
+}
+
+function connectionMappings(connections: Omit<StoredConnection, "imports">[]) {
+  return connections.map((saved) => {
+    const mappings = readColumn(
+      saved,
+      "BankConnection.accountMappings",
+      mappingsSchema,
+      saved.accountMappings,
+    );
+    if (!mappings) throw connectionMaintenance();
+    return mappings;
+  });
 }
 
 export function bankAccountDetails(value: unknown) {
@@ -75,7 +176,7 @@ export function bankAccountDetails(value: unknown) {
     institutionName,
     transactionStatus,
     synchronizedAccountIds,
-  } = importState(value);
+  } = importStateSchema.parse(value);
   return {
     accounts,
     institutionId,
@@ -200,7 +301,7 @@ async function refreshBankAccounts(
         where: { id: fresh.id },
         data: {
           imports: jsonValue({
-            ...importState(fresh.imports),
+            ...readyConnection(fresh).state,
             ...accounts,
             transactionStatus: null,
             synchronizedAccountIds: [],
@@ -241,18 +342,29 @@ export async function bankInbox(db: Database, userId: string) {
     db.bankConnection.findMany({ where: { clerkUserId: userId } }),
     readWorkspace(db, userId),
   ]);
-  const budget = member
-    ? bookSchema.parse(member.workspace.book).budgets[userId]
-    : undefined;
+  let budget: Budget | undefined;
+  if (member) {
+    const read = readBudget(member.workspace, userId);
+    if (read.status === "maintenance") throw budgetMaintenance();
+    budget = ownBudget(read.state, userId);
+  }
+  return bankInboxItems(connections.map(readBankConnection), budget);
+}
+
+// Bank activity waiting for review, from connections that could be read.
+export function bankInboxItems(
+  connections: ReadConnection[],
+  budget: Budget | undefined,
+) {
   const transactions = new Map(
     budget?.transactions.map((transaction) => [transaction.id, transaction]),
   );
   const categories = new Map(
     budget?.categories.map((category) => [category.id, category.name]),
   );
-  return connections.flatMap((connection) => {
-    const state = importState(connection.imports);
-    const mappings = mappingsSchema.parse(connection.accountMappings);
+  return connections.flatMap((read) => {
+    if (read.status === "maintenance") return [];
+    const { connection, state, mappings } = read;
     const imports = state.records
       .filter((record) => {
         const eligibility = bankImportEligibility(
@@ -384,7 +496,7 @@ export async function setupBankAccounts(
             ]);
             if (!connection || !member)
               throw new TRPCError({ code: "NOT_FOUND" });
-            const mappings = mappingsSchema.parse(connection.accountMappings);
+            const { state, mappings } = readyConnection(connection);
             const previous = await tx.budgetOperation.findUnique({
               where: {
                 workspaceId_operationId: {
@@ -427,7 +539,6 @@ export async function setupBankAccounts(
                 code: "CONFLICT",
                 message: "Your budget changed. Refresh before adding accounts.",
               });
-            const state = importState(connection.imports);
             if (
               !connection.lastSyncedAt ||
               ![
@@ -440,9 +551,9 @@ export async function setupBankAccounts(
                 message:
                   "Your bank is still preparing account activity. Update accounts and try setup again once the first update finishes.",
               });
-            let book = bookSchema.parse(member.workspace.book);
-            const budget = book.budgets[userId];
-            if (!budget) throw new TRPCError({ code: "NOT_FOUND" });
+            const opened = openBudget(member.workspace, userId);
+            let book = opened.state;
+            const budget = opened.budget;
             const today = bankSetupDate(budget.settings.timezone);
             if (
               input.accounts.some((account) => !account.existingAccountId) &&
@@ -456,9 +567,7 @@ export async function setupBankAccounts(
                 message:
                   "Update your bank accounts before setup so today's opening balances include the latest activity.",
               });
-            const allMappings = connections.map((saved) =>
-              mappingsSchema.parse(saved.accountMappings),
-            );
+            const allMappings = connectionMappings(connections);
             const usedAccountIds = new Set(
               allMappings.flatMap((saved) =>
                 Object.values(saved).map((mapping) => mapping.accountId),
@@ -556,7 +665,7 @@ export async function setupBankAccounts(
                 revision: input.expectedRevision,
               },
               data: {
-                book: jsonValue(book),
+                book: jsonValue(opened.store(book)),
                 history: {},
                 revision: { increment: 1 },
               },
@@ -623,7 +732,7 @@ export async function mapBankAccount(
           }),
         ]);
         if (!connection || !member) throw new TRPCError({ code: "NOT_FOUND" });
-        const state = importState(connection.imports);
+        const { state, mappings } = readyConnection(connection);
         if (
           !state.accounts.some(
             (account) => account.accountId === input.providerAccountId,
@@ -636,10 +745,10 @@ export async function mapBankAccount(
           throw new Error(
             "This bank account is unavailable. Update accounts first.",
           );
-        const book = bookSchema.parse(member.workspace.book);
-        const account = book.budgets[userId]!.accounts.find(
-          (a) => a.id === input.accountId,
-        );
+        const account = openBudget(
+          member.workspace,
+          userId,
+        ).budget.accounts.find((a) => a.id === input.accountId);
         if (!account)
           throw new TRPCError({
             code: "NOT_FOUND",
@@ -649,14 +758,11 @@ export async function mapBankAccount(
           throw new Error(
             "Choose an import start date after the account's confirmed opening balance date to avoid importing the opening balance twice.",
           );
-        const mappings = mappingsSchema.parse(connection.accountMappings);
         const connections = await tx.bankConnection.findMany({
           where: { clerkUserId: userId },
-          select: { accountMappings: true },
+          select: { id: true, clerkUserId: true, accountMappings: true },
         });
-        const allMappings = connections.map((saved) =>
-          mappingsSchema.parse(saved.accountMappings),
-        );
+        const allMappings = connectionMappings(connections);
         if (allMappings.some((saved) => saved[input.providerAccountId]))
           throw new Error(
             "This bank account is already mapped. Review its existing imports first.",
@@ -709,9 +815,14 @@ export async function syncBanks(db: Database, userId: string) {
       code: "PRECONDITION_FAILED",
       message: "Connect a bank through Plaid before requesting updates.",
     });
+  // Updates change the budget, so none run while it's under maintenance.
+  const member = await readWorkspace(db, userId);
+  if (member && readBudget(member.workspace, userId).status === "maintenance")
+    throw budgetMaintenance();
   let imported = 0,
     updated = 0;
   for (const connection of connections) {
+    if (readBankConnection(connection).status === "maintenance") continue;
     try {
       const plaid = client();
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
@@ -734,7 +845,7 @@ export async function syncBanks(db: Database, userId: string) {
             where: { clerkUserId: userId },
             include: { workspace: true },
           });
-          const old = importState(fresh.imports);
+          const { state: old, mappings } = readyConnection(fresh);
           const plan = applyTransactionSync(old.records, delta, fresh.id);
           const changedAccounts = new Set(
             [
@@ -796,8 +907,8 @@ export async function syncBanks(db: Database, userId: string) {
             delta.skipped.quarantined,
             new Date().toISOString().slice(0, 10),
           );
-          const mappings = mappingsSchema.parse(fresh.accountMappings);
-          let book = bookSchema.parse(member.workspace.book);
+          const opened = openBudget(member.workspace, userId);
+          let book = opened.state;
           const operations: Command[] = [];
           for (const change of plan.changes) {
             const record = change.after;
@@ -813,7 +924,7 @@ export async function syncBanks(db: Database, userId: string) {
               !resolution?.transactionId
             )
               continue;
-            const transaction = book.budgets[userId]!.transactions.find(
+            const transaction = ownBudget(book, userId).transactions.find(
               (t) => t.id === resolution.transactionId,
             );
             const restoresPending = Boolean(
@@ -886,7 +997,10 @@ export async function syncBanks(db: Database, userId: string) {
                 id: member.workspaceId,
                 revision: member.workspace.revision,
               },
-              data: { book: jsonValue(book), revision: { increment: 1 } },
+              data: {
+                book: jsonValue(opened.store(book)),
+                revision: { increment: 1 },
+              },
             });
             if (saved.count !== 1) throw new TRPCError({ code: "CONFLICT" });
             await tx.budgetOperation.createMany({
@@ -988,7 +1102,7 @@ export async function resolveImport(
           include: { workspace: true },
         });
         if (!connection || !member) throw new TRPCError({ code: "NOT_FOUND" });
-        const state = importState(connection.imports);
+        const { state, mappings } = readyConnection(connection);
         const record = state.records.find((r) => r.id === input.logicalId);
         if (!record) {
           const quarantined = readQuarantine(state.reviews, input.logicalId);
@@ -1038,9 +1152,7 @@ export async function resolveImport(
                 "Your bank updated this transaction. Reopen it before saving.",
             });
         }
-        const mapping = mappingsSchema.parse(connection.accountMappings)[
-          record.current.providerAccountId
-        ];
+        const mapping = mappings[record.current.providerAccountId];
         if (input.ignore)
           state.resolved[record.id] = {
             fingerprint: fingerprint(record),
@@ -1065,10 +1177,11 @@ export async function resolveImport(
               message:
                 "Your budget changed. Refresh before confirming this import.",
             });
-          let book = bookSchema.parse(member.workspace.book);
+          const opened = openBudget(member.workspace, userId);
+          let book = opened.state;
           let transactionId: string;
           if (input.existingTransactionId) {
-            const transaction = book.budgets[userId]!.transactions.find(
+            const transaction = opened.budget.transactions.find(
               (t) => t.id === input.existingTransactionId && !t.removed,
             );
             if (
@@ -1101,7 +1214,7 @@ export async function resolveImport(
                 "This provider record was removed; do not create a new purchase from it.",
               );
             if (
-              book.budgets[userId]!.transactions.some(
+              opened.budget.transactions.some(
                 (item) => item.id === command.transactionId,
               )
             )
@@ -1117,9 +1230,7 @@ export async function resolveImport(
               throw new Error(
                 "Imported account, amount, and date must match the bank fact.",
               );
-            const possibleDuplicates = book.budgets[
-              userId
-            ]!.transactions.filter(
+            const possibleDuplicates = opened.budget.transactions.filter(
               (t) =>
                 !t.removed &&
                 t.accountId === mapping.accountId &&
@@ -1137,7 +1248,7 @@ export async function resolveImport(
                 "A matching ledger record already exists. Link it explicitly to avoid counting it twice.",
               );
             if (input.expectedFingerprint)
-              prepareUserCommand(book.budgets[userId]!, command);
+              prepareUserCommand(opened.budget, command);
             book = execute(book, userId, {
               ...command,
               status: record.current.pending ? "pending" : "posted",
@@ -1169,7 +1280,7 @@ export async function resolveImport(
               revision: input.expectedRevision,
             },
             data: {
-              book: jsonValue(book),
+              book: jsonValue(opened.store(book)),
               history: {},
               revision: { increment: 1 },
             },

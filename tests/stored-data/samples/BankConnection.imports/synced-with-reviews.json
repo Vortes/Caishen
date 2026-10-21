@@ -1,0 +1,378 @@
+{
+  "records": [
+    {
+      "id": "plaid:item-sample:p-coffee",
+      "namespace": "item-sample",
+      "providerTransactionIds": [
+        "p-coffee",
+        "t-coffee"
+      ],
+      "current": {
+        "provider": "plaid",
+        "providerTransactionId": "t-coffee",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": "p-coffee",
+        "amountCents": 550,
+        "currency": "USD",
+        "date": "2026-10-11",
+        "authorizedDate": null,
+        "name": "BLUE BOTTLE",
+        "merchantName": "Blue Bottle",
+        "pending": false
+      },
+      "categoryId": null,
+      "removed": false,
+      "matchStatus": "confirmed",
+      "history": [
+        {
+          "kind": "added",
+          "before": null,
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "p-coffee",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": null,
+            "amountCents": 450,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "BLUE BOTTLE",
+            "merchantName": "Blue Bottle",
+            "pending": true
+          }
+        },
+        {
+          "kind": "pending_posted",
+          "before": {
+            "provider": "plaid",
+            "providerTransactionId": "p-coffee",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": null,
+            "amountCents": 450,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "BLUE BOTTLE",
+            "merchantName": "Blue Bottle",
+            "pending": true
+          },
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "t-coffee",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": "p-coffee",
+            "amountCents": 550,
+            "currency": "USD",
+            "date": "2026-10-11",
+            "authorizedDate": null,
+            "name": "BLUE BOTTLE",
+            "merchantName": "Blue Bottle",
+            "pending": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "plaid:item-sample:p-bakery",
+      "namespace": "item-sample",
+      "providerTransactionIds": [
+        "p-bakery"
+      ],
+      "current": {
+        "provider": "plaid",
+        "providerTransactionId": "p-bakery",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 1225,
+        "currency": "USD",
+        "date": "2026-10-11",
+        "authorizedDate": null,
+        "name": "TARTINE",
+        "merchantName": "Tartine",
+        "pending": true
+      },
+      "categoryId": null,
+      "removed": false,
+      "matchStatus": "confirmed",
+      "history": [
+        {
+          "kind": "added",
+          "before": null,
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "p-bakery",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": null,
+            "amountCents": 1225,
+            "currency": "USD",
+            "date": "2026-10-11",
+            "authorizedDate": null,
+            "name": "TARTINE",
+            "merchantName": "Tartine",
+            "pending": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "plaid:item-sample:t-rent",
+      "namespace": "item-sample",
+      "providerTransactionIds": [
+        "t-rent"
+      ],
+      "current": {
+        "provider": "plaid",
+        "providerTransactionId": "t-rent",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 245000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "RENT PAYMENT",
+        "merchantName": null,
+        "pending": false
+      },
+      "categoryId": null,
+      "removed": false,
+      "matchStatus": "confirmed",
+      "history": [
+        {
+          "kind": "added",
+          "before": null,
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "t-rent",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": null,
+            "amountCents": 240000,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "RENT PAYMENT",
+            "merchantName": null,
+            "pending": false
+          }
+        },
+        {
+          "kind": "modified",
+          "before": {
+            "provider": "plaid",
+            "providerTransactionId": "t-rent",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": null,
+            "amountCents": 240000,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "RENT PAYMENT",
+            "merchantName": null,
+            "pending": false
+          },
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "t-rent",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": null,
+            "amountCents": 245000,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "RENT PAYMENT",
+            "merchantName": null,
+            "pending": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "plaid:item-sample:t-gym",
+      "namespace": "item-sample",
+      "providerTransactionIds": [
+        "t-gym"
+      ],
+      "current": {
+        "provider": "plaid",
+        "providerTransactionId": "t-gym",
+        "providerAccountId": "plaid-card",
+        "pendingTransactionId": null,
+        "amountCents": 6000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "GYM",
+        "merchantName": null,
+        "pending": false
+      },
+      "categoryId": null,
+      "removed": false,
+      "matchStatus": "confirmed",
+      "history": [
+        {
+          "kind": "added",
+          "before": null,
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "t-gym",
+            "providerAccountId": "plaid-card",
+            "pendingTransactionId": null,
+            "amountCents": 6000,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "GYM",
+            "merchantName": null,
+            "pending": false
+          }
+        },
+        {
+          "kind": "removed",
+          "before": {
+            "provider": "plaid",
+            "providerTransactionId": "t-gym",
+            "providerAccountId": "plaid-card",
+            "pendingTransactionId": null,
+            "amountCents": 6000,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "GYM",
+            "merchantName": null,
+            "pending": false
+          },
+          "after": null
+        },
+        {
+          "kind": "restored",
+          "before": {
+            "provider": "plaid",
+            "providerTransactionId": "t-gym",
+            "providerAccountId": "plaid-card",
+            "pendingTransactionId": null,
+            "amountCents": 6000,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "GYM",
+            "merchantName": null,
+            "pending": false
+          },
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "t-gym",
+            "providerAccountId": "plaid-card",
+            "pendingTransactionId": null,
+            "amountCents": 6000,
+            "currency": "USD",
+            "date": "2026-10-10",
+            "authorizedDate": null,
+            "name": "GYM",
+            "merchantName": null,
+            "pending": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "plaid:item-sample:t-bakery",
+      "namespace": "item-sample",
+      "providerTransactionIds": [
+        "t-bakery"
+      ],
+      "current": {
+        "provider": "plaid",
+        "providerTransactionId": "t-bakery",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 1225,
+        "currency": "USD",
+        "date": "2026-10-12",
+        "authorizedDate": null,
+        "name": "TARTINE",
+        "merchantName": "Tartine",
+        "pending": false
+      },
+      "categoryId": null,
+      "removed": false,
+      "matchStatus": "needs_review",
+      "history": [
+        {
+          "kind": "added",
+          "before": null,
+          "after": {
+            "provider": "plaid",
+            "providerTransactionId": "t-bakery",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": null,
+            "amountCents": 1225,
+            "currency": "USD",
+            "date": "2026-10-12",
+            "authorizedDate": null,
+            "name": "TARTINE",
+            "merchantName": "Tartine",
+            "pending": false
+          }
+        }
+      ]
+    }
+  ],
+  "resolved": {
+    "plaid:item-sample:t-rent": {
+      "fingerprint": "0b3af9c6dc04aba687517b995d3c930378dcfeaeb70736f885858d30ce7348f3",
+      "transactionId": "bank-rent",
+      "decidedAt": "2026-10-12T16:00:00.000Z"
+    },
+    "plaid:item-sample:t-gym": {
+      "fingerprint": "d77c7ed8857b4be4fa8bf11d19bdbb8ea9cf64ddf12defe5eeeae9da05c1da5a",
+      "ignored": true,
+      "decidedAt": "2026-10-13T16:00:00.000Z"
+    }
+  },
+  "errors": {
+    "plaid:item-sample:t-bakery": "Similar merchant and dates may indicate a pending purchase posting. Provider identity evidence is missing; confirm the match."
+  },
+  "reviews": {
+    "plaid:item-sample:t-bakery": [
+      {
+        "key": "pending-match:item-sample:t-bakery",
+        "kind": "possible_pending_match",
+        "logicalTransactionId": "plaid:item-sample:t-bakery",
+        "candidateIds": [
+          "plaid:item-sample:p-bakery"
+        ],
+        "message": "Similar merchant and dates may indicate a pending purchase posting. Provider identity evidence is missing; confirm the match."
+      }
+    ]
+  },
+  "accounts": [
+    {
+      "accountId": "plaid-checking",
+      "name": "Total Checking",
+      "officialName": "Chase Total Checking",
+      "mask": "0042",
+      "type": "depository",
+      "subtype": "checking",
+      "currentBalance": 412345,
+      "availableBalance": 409900,
+      "currency": "USD"
+    },
+    {
+      "accountId": "plaid-card",
+      "name": "Sapphire",
+      "officialName": null,
+      "mask": "9911",
+      "type": "credit",
+      "subtype": "credit card",
+      "currentBalance": 18044,
+      "availableBalance": null,
+      "currency": "USD"
+    }
+  ],
+  "institutionId": "ins_3",
+  "institutionName": "Chase",
+  "transactionStatus": "HISTORICAL_UPDATE_COMPLETE",
+  "synchronizedAccountIds": [
+    "plaid-checking",
+    "plaid-card"
+  ]
+}

@@ -1,5 +1,4 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import { bookSchema } from "~/domain/engine";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import {
   buildDailyReviewMessage,
@@ -16,6 +15,7 @@ import {
   type DailyDeliveryTarget,
 } from "./daily-delivery";
 import { jsonValue } from "./safety";
+import { openBudget, reportUnreadable, zodIssues } from "./stored-data";
 import { readWorkspace, type Database } from "./workspace";
 
 interface DailyJobDependencies {
@@ -79,7 +79,7 @@ async function preparePayload(
     dependencies.readWorkspace(db, userId),
   ]);
   if (!member) throw new Error("The personal budget is no longer available.");
-  const budget = bookSchema.parse(member.workspace.book).budgets[userId]!;
+  const { budget } = openBudget(member.workspace, userId);
   if (!budget.settings.emailEnabled)
     throw new Error("Daily email has been disabled.");
   const latest = new Map<
@@ -94,6 +94,11 @@ async function preparePayload(
           item.result,
           item.evidence,
           member.workspace.revision,
+          (error) =>
+            reportUnreadable(
+              { record: "ReviewEvidence.result", evidenceId: item.id, userId },
+              [{ issues: zodIssues(error) }],
+            ),
         ),
       );
   const discrepancies = [...latest.values()].filter(
@@ -131,6 +136,24 @@ async function preparePayload(
   });
 }
 
+function savedPayload(delivery: {
+  id: string;
+  clerkUserId: string;
+  payload: unknown;
+}) {
+  const saved = dailyDeliveryPayloadSchema.safeParse(delivery.payload);
+  if (saved.success) return saved.data;
+  reportUnreadable(
+    {
+      record: "DailyDelivery.payload",
+      deliveryId: delivery.id,
+      userId: delivery.clerkUserId,
+    },
+    [{ issues: zodIssues(saved.error) }],
+  );
+  throw saved.error;
+}
+
 async function dailyEmailEnabled(
   db: Database,
   userId: string,
@@ -143,9 +166,7 @@ async function dailyEmailEnabled(
     }),
     dependencies.readWorkspace(db, userId),
   ]);
-  const budget = member
-    ? bookSchema.parse(member.workspace.book).budgets[userId]
-    : null;
+  const budget = member ? openBudget(member.workspace, userId).budget : null;
   return !!(user?.active && budget?.settings.emailEnabled);
 }
 
@@ -244,7 +265,7 @@ export async function runDailyJob(
     for (const member of members) {
       const userId = member.clerkUserId;
       try {
-        const budget = bookSchema.parse(member.workspace.book).budgets[userId]!;
+        const { budget } = openBudget(member.workspace, userId);
         const connections = await db.bankConnection.findMany({
           where: { clerkUserId: userId },
           select: { lastSyncedAt: true },
@@ -285,7 +306,7 @@ export async function runDailyJob(
           let attempted = false;
           try {
             const payload = delivery.payload
-              ? dailyDeliveryPayloadSchema.parse(delivery.payload)
+              ? savedPayload(delivery)
               : await preparePayload(db, userId, target, now, dependencies);
             await db.dailyDelivery.update({
               where: { id: delivery.id, leaseUntil: delivery.leaseUntil },

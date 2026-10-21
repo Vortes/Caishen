@@ -1,0 +1,30 @@
+{
+  "plaid-checking": {
+    "accountId": "checking",
+    "startDate": "2026-10-01",
+    "openingSnapshot": {
+      "postedImportIds": [
+        "plaid:item-sample:p-coffee",
+        "plaid:item-sample:t-rent",
+        "plaid:item-sample:t-bakery"
+      ],
+      "fingerprints": {
+        "plaid:item-sample:p-coffee": "930bb76d2d85edde91a48f67a509740047d39a156cbb7c9eb53bee08124fdda4",
+        "plaid:item-sample:t-rent": "0b3af9c6dc04aba687517b995d3c930378dcfeaeb70736f885858d30ce7348f3",
+        "plaid:item-sample:t-bakery": "89d46367ca3e6f7624a4ef133ce14f97451d874a686530b62d774c72a2ea9578"
+      },
+      "financialFingerprints": {
+        "plaid:item-sample:p-coffee": "0615cf0532ef1b1c0b592c108bfe86ce5bfcdd1f9c7f9c7b4ccea7b3590044b8",
+        "plaid:item-sample:t-rent": "5ad305c0852d256d79678db142414860d444b06d4130687c9c76d35c39e20ecc",
+        "plaid:item-sample:t-bakery": "2362f000bde1b6f873bc7b8a5ff7fd251d92df952b60cae266a1abc794713902"
+      },
+      "reviewImportIds": [
+        "plaid:item-sample:p-bakery"
+      ]
+    }
+  },
+  "plaid-card": {
+    "accountId": "amex",
+    "startDate": "2026-10-05"
+  }
+}
