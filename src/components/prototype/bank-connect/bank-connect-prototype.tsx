@@ -225,7 +225,7 @@ export function BankConnectPrototype() {
     setUp: (connectionId: string) =>
       setNotice({
         id: Date.now(),
-        text: `Account setup for ${connections.find((item) => item.id === connectionId)?.institutionName} opens here`,
+        text: `In the live app, this opens account setup for ${connections.find((item) => item.id === connectionId)?.institutionName}`,
       }),
     retrySync: () => undefined,
     close: () => undefined,

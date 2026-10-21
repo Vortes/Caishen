@@ -81,7 +81,12 @@ export function AccountReconnectPrototype() {
         connections.find((item) => item.id === connectionId)?.institutionName ??
           "",
       ),
-    setUp: () => undefined,
+    // The real setup form needs the server; the stand-in says where it goes.
+    setUp: (connectionId: string) =>
+      setNotice({
+        id: Date.now(),
+        text: `In the live app, this opens account setup for ${connections.find((item) => item.id === connectionId)?.institutionName}`,
+      }),
     retrySync: () => undefined,
     close: () => undefined,
   } satisfies BankConnections;
