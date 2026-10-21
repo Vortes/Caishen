@@ -7,18 +7,23 @@ action with only an icon is an `IconButton`. Something that moves to another
 place is a link; when a link must look like a button, use
 `<Button asChild><a href="…">…</a></Button>`.
 
-Variants: `primary`, `secondary`, `quiet`, `danger`. Sizes: `md`, `sm`.
-Nothing else exists.
+Variants: `primary`, `secondary`, `quiet`, `quiet-primary`, `danger`.
+Sizes: `md`, `sm`. Nothing else exists.
 
 - `secondary` is the default and covers almost every button.
 - `primary` is the surface's main action: one that commits something (Save,
   Assign, Apply, Mark reviewed) or starts the flow that fixes what the
-  surface is about (Reconnect on a bank that signed out). At most one per
-  card, popover, or dialog. Two primaries means the surface has no
-  hierarchy.
+  surface is about. At most one per card, popover, or dialog. Two primaries
+  means the surface has no hierarchy.
 - `quiet` is for inline actions inside rows, sections, and popover headers,
   where a pill would be heavier than the content around it: Select all,
   Show all dates, Create target.
+- `quiet-primary` is `primary` where it sits inline in a row: the label in
+  the accent color with no pill, so it lines up with the row's text and
+  keeps the row's height. Reconnect on the one bank that signed out, in the
+  Banks popover. It is the surface's primary, so it counts toward the one per
+  surface; when several rows need the same fix, none is the main action and
+  each is `quiet`.
 - `danger` is only the confirm button inside a destructive dialog, such as
   Delete category. The button that opens that dialog is `secondary`, so a
   red button always means "this happens now".
@@ -27,7 +32,9 @@ Nothing else exists.
 Is the button the surface's main action?
  ├── Yes → Is that action destructive or hard to undo?
  │    ├── Yes → variant="danger", inside a confirm dialog
- │    └── No → variant="primary"
+ │    └── No → Does it sit inline with text or rows?
+ │         ├── Yes → variant="quiet-primary"
+ │         └── No → variant="primary"
  └── No → Does it sit inline with text or rows?
       ├── Yes → variant="quiet"
       └── No → variant="secondary" (default)

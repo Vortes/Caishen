@@ -155,7 +155,7 @@ export type ShellData = {
 
 const relative = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
 
-function syncedLabel(date: Date | null, error: string | null) {
+export function syncedLabel(date: Date | null, error: string | null) {
   if (error) return "Needs attention";
   if (!date) return "Not synced yet";
   const minutes = Math.round((date.getTime() - Date.now()) / 60_000);

@@ -21,6 +21,11 @@ import {
   useAssignAttempts,
   type AssignMoney,
 } from "./assigned";
+import {
+  BankConnectionsProvider,
+  BankDialog,
+  useBankConnections,
+} from "./banks";
 import { toShellData } from "./model";
 import type { MoveMoney } from "./move-money";
 import { useSavedSettings } from "./settings";
@@ -36,7 +41,8 @@ import {
 
 // Reads the signed-in budget through the production query. Moving money,
 // editing Assigned, adding category groups and categories, editing targets,
-// marking transactions reviewed, reconciling accounts, and adding or editing transactions are real: they send the legacy app's commands through the
+// marking transactions reviewed, reconciling accounts, adding or editing
+// transactions, and connecting banks are real: they send the legacy app's commands through the
 // same optimistic path and share its undo history. The other actions stay
 // inert.
 export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
@@ -153,6 +159,7 @@ function LiveWorkspace({
     setOpenPopovers((count) => count + 1);
     return () => setOpenPopovers((count) => count - 1);
   }, []);
+  const banks = useBankConnections({ state, notify, holdOpen });
   const moveMoney: MoveMoney = {
     move: (command, summary) => {
       const reason = blocked();
@@ -286,66 +293,74 @@ function LiveWorkspace({
   return (
     <TransactionReviewProvider value={review}>
       <AssignMoneyProvider value={assignMoney}>
-        <AppShellPrototype
-          data={data}
-          loadingMonth={loadingMonth}
-          onMonthChange={onMonthChange}
-          moveMoney={moveMoney}
-          categoryAdder={categoryAdder}
-          transactionSaver={transactionSaver}
-          targetEditing={targetEditing}
-          reconciling={{ reconcile: moveMoney.move, holdOpen }}
-          renameBudget={(name) => {
-            const reason = blocked();
-            if (reason) return blockMessage[reason];
-            const command = {
-              type: "settings.update" as const,
-              id: newId(),
-              name,
-            };
-            summaries.current.set(command.id, `Renamed your budget to ${name}`);
-            run(command);
-            return null;
-          }}
-          notifications={
-            <ToastRegion>
-              {refreshError && (
-                <Toast
-                  tone="attention"
-                  action={
-                    <Button size="sm" onClick={onRetry}>
-                      Try again
-                    </Button>
-                  }
-                >
-                  Your budget couldn’t refresh. Refresh before making more
-                  changes.
-                </Toast>
-              )}
-              {notice && (
-                <Toast
-                  key={notice.id}
-                  tone={notice.tone}
-                  duration={saved === undefined ? undefined : 8000}
-                  onDismiss={() => setNotice(null)}
-                  action={
-                    offerUndo && (
-                      <Button
-                        size="sm"
-                        disabled={!canUndo}
-                        onClick={() => history.change("undo")}
-                      >
-                        Undo
-                      </Button>
-                    )
-                  }
-                >
-                  {notice.message}
-                </Toast>
-              )}
-            </ToastRegion>
-          }
-        />
+        <BankConnectionsProvider value={banks}>
+          <AppShellPrototype
+            data={data}
+            loadingMonth={loadingMonth}
+            onMonthChange={onMonthChange}
+            moveMoney={moveMoney}
+            categoryAdder={categoryAdder}
+            transactionSaver={transactionSaver}
+            targetEditing={targetEditing}
+            reconciling={{ reconcile: moveMoney.move, holdOpen }}
+            renameBudget={(name) => {
+              const reason = blocked();
+              if (reason) return blockMessage[reason];
+              const command = {
+                type: "settings.update" as const,
+                id: newId(),
+                name,
+              };
+              summaries.current.set(
+                command.id,
+                `Renamed your budget to ${name}`,
+              );
+              run(command);
+              return null;
+            }}
+            overlays={
+              <>
+                <BankDialog />
+                <ToastRegion>
+                  {refreshError && (
+                    <Toast
+                      tone="attention"
+                      action={
+                        <Button size="sm" onClick={onRetry}>
+                          Try again
+                        </Button>
+                      }
+                    >
+                      Your budget couldn’t refresh. Refresh before making more
+                      changes.
+                    </Toast>
+                  )}
+                  {notice && (
+                    <Toast
+                      key={notice.id}
+                      tone={notice.tone}
+                      duration={saved === undefined ? undefined : 8000}
+                      onDismiss={() => setNotice(null)}
+                      action={
+                        offerUndo && (
+                          <Button
+                            size="sm"
+                            disabled={!canUndo}
+                            onClick={() => history.change("undo")}
+                          >
+                            Undo
+                          </Button>
+                        )
+                      }
+                    >
+                      {notice.message}
+                    </Toast>
+                  )}
+                </ToastRegion>
+              </>
+            }
+          />
+        </BankConnectionsProvider>
       </AssignMoneyProvider>
     </TransactionReviewProvider>
   );

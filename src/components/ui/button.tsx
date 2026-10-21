@@ -4,8 +4,11 @@ import styles from "./button.module.css";
 
 // primary: the one committing action in a form or dialog. secondary: every
 // other button, and the default. quiet: inline actions inside rows and
-// sections. danger: only the confirm button of a destructive dialog.
-export type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
+// sections. quiet-primary: the surface's one main action when it sits inline
+// in a row, so quiet's shape with primary's color. danger: only the confirm
+// button of a destructive dialog.
+export type ButtonVariant =
+  "primary" | "secondary" | "quiet" | "quiet-primary" | "danger";
 
 export type ButtonProps = Omit<
   ComponentProps<"button">,

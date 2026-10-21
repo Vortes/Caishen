@@ -104,7 +104,7 @@ export function AppShellPrototype({
   targetEditing,
   renameBudget,
   reconciling,
-  notifications,
+  overlays,
 }: {
   data: ShellData;
   loadingMonth: boolean;
@@ -116,8 +116,8 @@ export function AppShellPrototype({
   // Returns why the rename can't run yet, or null once it's sent.
   renameBudget: (name: string) => string | null;
   reconciling: Reconciling;
-  // The shell's ToastRegion, rendered inside its themed root.
-  notifications: ReactNode;
+  // Dialogs and the ToastRegion, rendered inside the themed root.
+  overlays: ReactNode;
 }) {
   const { accounts, transactions } = data;
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -871,7 +871,7 @@ export function AppShellPrototype({
               </div>
             </div>
 
-            {notifications}
+            {overlays}
           </TooltipProvider>
         </div>
       </ActionProviders>
