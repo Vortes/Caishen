@@ -21,6 +21,7 @@ import {
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
 import { AccountSummary, SearchField } from "./account";
+import type { Reconciling } from "./reconcile";
 import {
   AddCategoryProvider,
   AddGroupButton,
@@ -102,6 +103,7 @@ export function AppShellPrototype({
   transactionSaver,
   targetEditing,
   renameBudget,
+  reconciling,
   notifications,
 }: {
   data: ShellData;
@@ -113,6 +115,7 @@ export function AppShellPrototype({
   targetEditing: TargetEditing;
   // Returns why the rename can't run yet, or null once it's sent.
   renameBudget: (name: string) => string | null;
+  reconciling: Reconciling;
   // The shell's ToastRegion, rendered inside its themed root.
   notifications: ReactNode;
 }) {
@@ -600,8 +603,10 @@ export function AppShellPrototype({
                   <>
                     {screen.type === "register" && (
                       <AccountSummary
+                        key={account?.id ?? "all"}
                         accounts={account ? [account] : accounts}
-                        single={Boolean(account)}
+                        account={account}
+                        reconciling={reconciling}
                       />
                     )}
 

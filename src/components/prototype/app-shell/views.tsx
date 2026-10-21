@@ -7,6 +7,7 @@ import {
   CircleCheckIcon,
   Clock3Icon,
   LandmarkIcon,
+  LockIcon,
   SearchIcon,
   UsersIcon,
   type LucideIcon,
@@ -427,9 +428,11 @@ export function AvailablePill({
   );
 }
 
+// Reconciled rows recede, so the cleared ones still to check stand out.
 const statusIcon = {
   pending: { icon: Clock3Icon, label: "Pending" },
   posted: { icon: CircleCheckIcon, label: "Cleared" },
+  reconciled: { icon: LockIcon, label: "Reconciled" },
 };
 
 function matches(item: Transaction, query: string, accountName?: string) {
@@ -534,7 +537,8 @@ export function RegisterView({
   const row = (item: Transaction) => {
     if (item.id === inPlace)
       return <TransactionEditor key={item.id} accountColumn={accountColumn} />;
-    const status = statusIcon[item.status];
+    const statusKey = item.reconciled ? "reconciled" : item.status;
+    const status = statusIcon[statusKey];
     const checkable = item.source === "budget" || Boolean(item.editableImport);
     const isChecked = checkable && checked.includes(item.id);
     // Marks the row in its first column.
@@ -645,7 +649,7 @@ export function RegisterView({
             <status.icon
               size={14}
               className={styles.statusIcon}
-              data-status={item.status}
+              data-status={statusKey}
               aria-label={status.label}
             />
           </span>

@@ -496,8 +496,14 @@
 }
 .summaryActions {
   display: flex;
+  align-items: center;
   gap: 6px;
   margin-left: auto;
+}
+.reconciledLabel {
+  margin-right: 6px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 /* A filled well like the move-money search, at the toolbar's button height. */
 .toolbarSearch {

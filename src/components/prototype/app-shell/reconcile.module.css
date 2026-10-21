@@ -1,0 +1,148 @@
+/* The reconcile popover, on the move-money popover's surface. Two balances
+   share a rail; where they meet, one mark says whether they agree. Only that
+   mark carries color. */
+
+/* Clips the step content while its height glides between steps. */
+.frame {
+  overflow: hidden;
+}
+/* The leaving step is lifted out of flow over the arriving one. */
+.steps {
+  position: relative;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+/* A result focuses itself so Enter can't commit unseen. It isn't a control,
+   so it shows no ring; Tab moves on to its buttons. */
+.form:focus-visible {
+  outline: none;
+}
+
+.balances {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  /* Concentric with the popover: its radius less the 12px padding. */
+  border-radius: var(--radius-row);
+  overflow: hidden;
+}
+.balance {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  min-height: 72px;
+}
+.join + .balance {
+  border-top: 1px solid var(--border-subtle);
+}
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-group);
+  color: var(--text-tertiary);
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 12px;
+  text-align: center;
+}
+.figure strong {
+  color: var(--text-primary);
+  font-size: var(--type-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.figure strong[data-unknown] {
+  color: var(--text-tertiary);
+}
+.figure > span:last-child,
+.figure label {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* Sits on the rail, centered on the line between the two rows. */
+.join {
+  position: absolute;
+  top: 50%;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 600;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  transition:
+    color 150ms,
+    border-color 150ms;
+}
+.balances[data-state="matched"] .join {
+  border-color: var(--feedback-success);
+  color: var(--feedback-success);
+}
+.balances[data-state="off"] .join {
+  border-color: var(--feedback-attention);
+  color: var(--feedback-attention);
+}
+
+.message {
+  margin: 0;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.message strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.message[role="alert"] {
+  color: var(--danger-text);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* The enter step: one labelled field, like YNAB's. */
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.entry label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.hint[data-invalid] {
+  color: var(--danger-text);
+}
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}

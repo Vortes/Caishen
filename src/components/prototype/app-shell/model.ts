@@ -65,6 +65,11 @@ export type Account = {
   kind: "cash" | "credit" | "tracking";
   balance: number;
   pending: number;
+  // Today's cleared balance, whatever month is showing: what reconciling
+  // compares with the bank's.
+  cleared: number;
+  // The last time it matched the bank's.
+  reconciled?: { date: string; balance: number };
   connection?: {
     institution: string;
     synced: string;
@@ -93,6 +98,7 @@ export type Transaction = {
   accountId: string | null;
   amount: number;
   status: "pending" | "posted";
+  reconciled: boolean;
   source: "budget" | "bank";
   editableImport?: boolean;
   needsReview: boolean;
@@ -322,6 +328,8 @@ export function toShellData(state: State): ShellData {
             entry.date <= `${month}-31`,
         )
         .reduce((sum, entry) => sum + entry.amount, 0),
+      cleared: item.cleared,
+      reconciled: item.reconciled,
       connection: connection && {
         institution: connection.institutionName ?? "Connected bank",
         synced: syncedLabel(connection.lastSyncedAt, connection.error),
@@ -340,8 +348,13 @@ export function toShellData(state: State): ShellData {
         (account) => account.id === counterpart?.accountId,
       );
       const boundary = other && transferNeedsCategory(account, other);
+      // Only a cash account's adjustment reaches Ready to Assign; on a card
+      // or tracking account it just corrects the balance.
       const categoryNotNeeded =
-        (isTransfer(item) || account.kind === "tracking") && !boundary;
+        (isTransfer(item) ||
+          account.kind === "tracking" ||
+          (item.kind === "adjustment" && account.kind !== "cash")) &&
+        !boundary;
       const needsCategory =
         item.kind === "purchase" &&
         !item.categoryId &&
@@ -353,6 +366,7 @@ export function toShellData(state: State): ShellData {
         accountId: item.accountId,
         amount: item.amount,
         status: item.status,
+        reconciled: Boolean(item.reconciled),
         source: "budget",
         counterpart:
           counterpart && other
@@ -393,6 +407,7 @@ export function toShellData(state: State): ShellData {
       accountId: item.accountId,
       amount: item.amount,
       status: item.pending ? "pending" : "posted",
+      reconciled: false,
       source: "bank",
       editableImport: canEditImport(item),
       needsReview: bankImportNeedsReview(item),
