@@ -40,7 +40,7 @@ const amountFormat = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 8,
 });
 
-function quarantineMessage(transaction: QuarantinedTransaction): string {
+export function quarantineMessage(transaction: QuarantinedTransaction): string {
   if (transaction.reason === "unsupported_currency") {
     const amount =
       transaction.amount === null

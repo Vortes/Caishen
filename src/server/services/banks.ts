@@ -16,6 +16,7 @@ import {
   applyQuarantine,
   quarantinedTransactions,
   quarantineFingerprint,
+  quarantineMessage,
   readQuarantine,
 } from "./bank-quarantine";
 import {
@@ -335,7 +336,7 @@ export async function bankInbox(db: Database, userId: string) {
           pending: transaction.pending,
           removed: false,
           needsMatchReview: false,
-          error: review.message,
+          error: quarantineMessage(transaction),
           history: [],
           reviewEvidence: [review],
           quarantined: true,
