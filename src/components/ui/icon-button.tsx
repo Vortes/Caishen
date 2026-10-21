@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { Slot } from "radix-ui";
 import styles from "./icon-button.module.css";
 import { Tooltip } from "./tooltip";
 
@@ -14,6 +15,7 @@ export function IconButton({
   pressed,
   children,
   type = "button",
+  asChild = false,
   ...props
 }: Omit<
   ComponentProps<"button">,
@@ -24,13 +26,15 @@ export function IconButton({
   variant?: "secondary" | "quiet";
   size?: "md" | "sm";
   pressed?: boolean;
+  asChild?: boolean;
   // The icon. Its size comes from the button.
   children: ReactNode;
 }) {
+  const Comp = asChild ? Slot.Root : "button";
   return (
     <Tooltip label={label} shortcut={shortcut}>
-      <button
-        type={type}
+      <Comp
+        {...(asChild ? {} : { type })}
         className={styles.iconButton}
         data-variant={variant}
         data-size={size}
@@ -40,7 +44,7 @@ export function IconButton({
         {...props}
       >
         {children}
-      </button>
+      </Comp>
     </Tooltip>
   );
 }

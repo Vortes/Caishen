@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRightLeftIcon,
   CheckIcon,
   ChevronDownIcon,
   CircleCheckIcon,
@@ -10,8 +11,15 @@ import {
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { Checkbox } from "~/components/ui/checkbox";
+import { IconButton } from "~/components/ui/icon-button";
 import { Tag } from "~/components/ui/tag";
 import {
   dayLabel,
@@ -22,7 +30,7 @@ import {
 } from "./model";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
-import { useTransactionEntry } from "./transaction-entry";
+import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
@@ -381,6 +389,14 @@ function matches(item: Transaction, query: string, accountName?: string) {
   ].some((value) => value?.toLowerCase().includes(text));
 }
 
+const registerEditFields: Record<string, DraftField> = {
+  date: "date",
+  payee: "payee",
+  category: "categoryId",
+  outflow: "outflow",
+  inflow: "inflow",
+};
+
 export function RegisterView({
   accountId,
   reviewOnly,
@@ -389,6 +405,7 @@ export function RegisterView({
   onSelect,
   checked,
   onCheck,
+  onJump,
 }: {
   accountId: string | null;
   reviewOnly: boolean;
@@ -397,9 +414,20 @@ export function RegisterView({
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
+  onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
 }) {
   const { transactions, accounts, month, today } = useShellData();
-  const { session } = useTransactionEntry();
+  const entry = useTransactionEntry();
+  const { session } = entry;
+  const register = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!selectedId) return;
+    const row = register.current?.querySelector<HTMLButtonElement>(
+      `[data-transaction-row="${CSS.escape(selectedId)}"]`,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+    row?.focus({ preventScroll: true });
+  }, [selectedId, accountId]);
   const accountName = (id: string | null) =>
     accounts.find((entry) => entry.id === id)?.name;
   const search = query.trim();
@@ -486,7 +514,22 @@ export function RegisterView({
           data-pending={item.status === "pending" || undefined}
           className={`${styles.txColumns} ${styles.row}`}
           aria-current={selectedId === item.id ? "true" : undefined}
-          onClick={() => onSelect(item.id)}
+          onClick={(event) => {
+            if (item.source === "budget" && isChecked && checked.length === 1) {
+              const column =
+                event.target instanceof Element
+                  ? event.target.closest<HTMLElement>("[data-column]")?.dataset
+                      .column
+                  : undefined;
+              const field = column ? registerEditFields[column] : undefined;
+              if (field) {
+                if (field !== "categoryId" || !item.categoryNotNeeded)
+                  entry.start({ transactionId: item.id, field });
+                return;
+              }
+            }
+            onSelect(item.id);
+          }}
         >
           {accountColumn && (
             <span
@@ -506,7 +549,11 @@ export function RegisterView({
               {dayLabel(item.date, today)}
             </span>
           </span>
-          <span className={styles.rowName} data-column="payee">
+          <span
+            className={styles.rowName}
+            data-column="payee"
+            data-jump={Boolean(item.counterpart) || undefined}
+          >
             <span className={styles.truncate}>{item.payee}</span>
             {item.shared && (
               <UsersIcon
@@ -550,12 +597,51 @@ export function RegisterView({
             />
           </span>
         </button>
+        {item.counterpart && (
+          <div className={`${styles.txColumns} ${styles.rowActions}`}>
+            <span className={styles.counterpartAction}>
+              <IconButton
+                asChild
+                label={`View in ${item.counterpart.accountName}`}
+                size="sm"
+              >
+                <a
+                  href={`/prototype/app-shell?${new URLSearchParams({
+                    account: item.counterpart.accountId,
+                    transaction: item.counterpart.id,
+                    month: item.counterpart.date.slice(0, 7),
+                  }).toString()}`}
+                  onClick={(event) => {
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    )
+                      return;
+                    event.preventDefault();
+                    onJump(item.counterpart!);
+                  }}
+                >
+                  <ArrowRightLeftIcon aria-hidden />
+                </a>
+              </IconButton>
+            </span>
+            <span
+              aria-hidden
+              className={`${styles.numeric} ${styles.actionAmountSizer}`}
+            >
+              {money(Math.abs(item.amount))}
+            </span>
+          </div>
+        )}
       </div>
     );
   };
   return (
     <div
       className={`${styles.list} ${styles.register} ${reviewStyles.register}`}
+      ref={register}
       data-accounts={accountColumn || undefined}
       role="group"
       aria-label="Transactions"

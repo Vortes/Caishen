@@ -18,6 +18,7 @@ export function AccountForm({ view, month }: { view: View; month: string }) {
         <SelectField label="Account type" name="kind">
           <option value="cash">Cash / checking / savings</option>
           <option value="credit">Credit card</option>
+          <option value="tracking">Tracking / brokerage</option>
         </SelectField>
         <FormField
           label="Opening balance ($)"
@@ -38,7 +39,7 @@ export function AccountForm({ view, month }: { view: View; month: string }) {
       />
       <p className="field-hint">
         This is a manual account. It does not connect to your bank. Cash is
-        Ready to Assign; card debt creates no cash.
+        Ready to Assign; card debt and tracking balances create no budget cash.
       </p>
     </>
   );

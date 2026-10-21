@@ -133,10 +133,12 @@ export async function openPrototype(
     commands: extra = [],
     imports = [],
     shared = false,
+    payments = false,
   }: {
     commands?: Command[];
     imports?: State["imports"];
     shared?: boolean;
+    payments?: boolean;
   } = {},
 ) {
   await clerkSetup();
@@ -257,7 +259,11 @@ export async function openPrototype(
         ]
       : []),
   ];
-  for (const command of [...initial, ...extra])
+  for (const command of [
+    ...initial,
+    ...(payments ? paymentFixtureCommands(month) : []),
+    ...extra,
+  ])
     book = execute(book, user.id, command);
   type Step = { before: Book; after: Book; label: string };
   const undo: Step[] = [];
@@ -460,3 +466,118 @@ export const money = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     cents / 100,
   );
+
+export function paymentFixtureCommands(month: string): Command[] {
+  const date = `${month}-10`;
+  return [
+    {
+      type: "account.add",
+      id: "seed-savings",
+      accountId: "savings",
+      name: "Savings",
+      kind: "cash",
+      openingBalance: 200_000,
+      date: `${month}-01`,
+    },
+    {
+      type: "account.add",
+      id: "seed-amex",
+      accountId: "amex",
+      name: "Amex",
+      kind: "credit",
+      openingBalance: -20_000,
+      date: `${month}-01`,
+    },
+    {
+      type: "account.add",
+      id: "seed-brokerage",
+      accountId: "brokerage",
+      name: "Brokerage",
+      kind: "tracking",
+      openingBalance: 1_250_000,
+      date: `${month}-01`,
+    },
+    {
+      type: "category.add",
+      id: "seed-investing",
+      categoryId: "investing",
+      name: "Investing",
+      group: "Savings",
+    },
+    {
+      type: "assign",
+      id: "seed-investing-funds",
+      categoryId: "investing",
+      month,
+      amount: 20_000,
+    },
+    {
+      type: "assign",
+      id: "seed-amex-reserve",
+      categoryId: "card:amex",
+      month,
+      amount: 20_000,
+    },
+    {
+      type: "card.payment",
+      id: "seed-card-payment",
+      cashAccountId: "checking",
+      cardAccountId: "card",
+      date,
+      amount: 5_000,
+    },
+    {
+      type: "transaction.save",
+      id: "seed-transfer",
+      transactionId: "savings-transfer",
+      accountId: "checking",
+      transferAccountId: "savings",
+      date,
+      amount: -10_000,
+      payee: "Transfer",
+    },
+    {
+      type: "transaction.save",
+      id: "seed-investment",
+      transactionId: "brokerage-transfer",
+      accountId: "checking",
+      transferAccountId: "brokerage",
+      categoryId: "investing",
+      date,
+      amount: -5_000,
+      payee: "Transfer",
+    },
+    {
+      type: "transaction.upsert",
+      id: "seed-import-transfer",
+      transactionId: "imported-transfer",
+      accountId: "checking",
+      date: `${month}-12`,
+      amount: -7_500,
+      payee: "ONLINE TRANSFER TO SAVINGS",
+      providerId: "bank-import-transfer",
+      reviewed: false,
+    },
+    {
+      type: "loan.add",
+      id: "seed-student-loan",
+      loanId: "student-loan",
+      categoryId: "student-loan-category",
+      name: "Student loan",
+      principal: 250_000,
+      annualRateBps: 550,
+      minimumPayment: 5_000,
+      variable: false,
+      effectiveDate: `${month}-01`,
+    },
+    {
+      type: "loan.payment",
+      id: "seed-loan-payment",
+      loanId: "student-loan",
+      accountId: "checking",
+      date,
+      principal: 4_000,
+      interest: 1_000,
+    },
+  ];
+}

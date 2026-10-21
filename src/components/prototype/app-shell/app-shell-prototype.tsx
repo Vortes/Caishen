@@ -99,7 +99,14 @@ export function AppShellPrototype({
   // from the saved layout the loading skeleton already showed.
   const [settings, setSettings] = useState<Settings>(readSettings);
   const [ready, setReady] = useState(false);
-  const [screen, setScreen] = useState<Screen>({ type: "plan" });
+  const [screen, setScreen] = useState<Screen>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const accountId = params.get("account");
+    return accountId &&
+      (accountId === "all" || accounts.some((item) => item.id === accountId))
+      ? { type: "register", accountId: accountId === "all" ? null : accountId }
+      : { type: "plan" };
+  });
   const [reportKind, setReportKind] = useState<ReportKind>("breakdown");
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [path, setPath] = useState<DrillPath>({});
@@ -122,8 +129,13 @@ export function AppShellPrototype({
       setPath(next);
     },
   };
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [checked, setChecked] = useState<string[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const id = new URLSearchParams(window.location.search).get("transaction");
+    return transactions.some((item) => item.id === id) ? id : null;
+  });
+  const [checked, setChecked] = useState<string[]>(() =>
+    selectedId ? [selectedId] : [],
+  );
   const check = (ids: string[], value: boolean) =>
     setChecked((current) =>
       value
@@ -258,7 +270,11 @@ export function AppShellPrototype({
     setChecked([]);
     setReviewOnly(false);
     setQuery("");
-    if (narrow) setDrawer({ sidebar: false, inspector: Boolean(id) });
+    if (narrow)
+      setDrawer({
+        sidebar: false,
+        inspector: next.type !== "register" && Boolean(id),
+      });
     closePeek(0);
   };
 
@@ -329,6 +345,7 @@ export function AppShellPrototype({
           style={palette ? paletteVars(palette) : undefined}
           data-ready={ready || undefined}
           data-narrow={narrow || undefined}
+          data-has-selection={(register && checked.length > 0) || undefined}
           data-dragging={sidebar.dragging || inspector.dragging || undefined}
           data-peekable={peekable || undefined}
         >
@@ -392,9 +409,10 @@ export function AppShellPrototype({
               </>
             )}
 
-            {narrow && (drawer.sidebar || drawer.inspector) && (
+            {narrow && (drawer.sidebar || (!register && drawer.inspector)) && (
               <div
                 className={styles.scrim}
+                data-testid="drawer-backdrop"
                 aria-hidden
                 onClick={() => setDrawer({ sidebar: false, inspector: false })}
               />
@@ -591,6 +609,7 @@ export function AppShellPrototype({
                     {screen.type === "register" && (
                       <>
                         <RegisterView
+                          key={screen.accountId ?? "all"}
                           accountId={screen.accountId}
                           reviewOnly={reviewOnly}
                           query={query}
@@ -598,6 +617,18 @@ export function AppShellPrototype({
                           onSelect={selectOnly}
                           checked={checked}
                           onCheck={check}
+                          onJump={(transaction) => {
+                            if (entry.holdForDraft()) return;
+                            navigate(
+                              {
+                                type: "register",
+                                accountId: transaction.accountId,
+                              },
+                              transaction.id,
+                            );
+                            onMonthChange(transaction.date.slice(0, 7));
+                            setChecked([transaction.id]);
+                          }}
                         />
                       </>
                     )}

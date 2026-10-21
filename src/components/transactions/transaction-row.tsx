@@ -152,8 +152,9 @@ export function TransactionRow({
 
 export function transactionCategory(kind: Transaction["kind"], amount: number) {
   switch (kind) {
+    case "transfer":
     case "card-payment":
-      return "Credit card payment";
+      return "Category not needed";
     case "loan-payment":
       return "Loan payment";
     case "statement-credit":
