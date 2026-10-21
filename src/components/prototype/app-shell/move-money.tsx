@@ -316,7 +316,7 @@ function MoveForm({
   );
 }
 
-function FieldError({ id, message }: { id: string; message: string }) {
+export function FieldError({ id, message }: { id: string; message: string }) {
   return (
     <p className={styles.error} id={id} role="alert">
       <CircleAlertIcon size={13} aria-hidden />
@@ -525,7 +525,7 @@ function Destination({
 }
 
 // Whether the latest input was a pointer rather than the keyboard.
-function usePointerModality() {
+export function usePointerModality() {
   const pointer = useRef(false);
   useEffect(() => {
     const onPointer = () => (pointer.current = true);

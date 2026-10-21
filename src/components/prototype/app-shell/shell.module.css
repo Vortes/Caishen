@@ -1310,6 +1310,11 @@ button.actionItem:hover {
   margin-top: 2px;
   color: var(--feedback-success);
 }
+.emptyBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .empty strong {
   display: block;
   color: var(--text-primary);

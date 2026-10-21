@@ -28,6 +28,7 @@ import {
   type Funding,
   type Transaction,
 } from "./model";
+import { FirstCategoryButton } from "./add-category";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -71,18 +72,41 @@ export function PlanView({
   onSelect,
   checked,
   onCheck,
+  revealId,
 }: {
   view: PlanViewId | null;
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
+  // A category to bring into view and focus, like one just added.
+  revealId: string | null;
 }) {
   const shell = useShellData();
   const [closed, setClosed] = useState<string[]>([]);
+  const revealGroup = shell.categories.find(
+    (item) => item.id === revealId,
+  )?.group;
+  // Opens a closed group for it first, then focuses its row once it renders,
+  // once: closing the group again afterwards keeps it closed.
+  const revealed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!revealGroup || revealed.current === revealId) return;
+    if (closed.includes(revealGroup)) {
+      setClosed((values) => values.filter((value) => value !== revealGroup));
+      return;
+    }
+    const row = document.querySelector<HTMLElement>(
+      `[data-row][data-id="${CSS.escape(revealId!)}"]`,
+    );
+    if (!row) return;
+    revealed.current = revealId;
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "center" });
+  }, [revealId, revealGroup, closed]);
   if (!shell.groups.length) {
     return (
-      <Empty title="No categories yet.">
-        Categories you create in Caishen show up here.
+      <Empty title="Give every dollar a job." action={<FirstCategoryButton />}>
+        Add a category for each thing your money is for, like rent or groceries.
       </Empty>
     );
   }
@@ -736,19 +760,25 @@ export function RegisterView({
 function Empty({
   title,
   icon: Icon = LandmarkIcon,
+  action,
   children,
 }: {
   title: string;
   icon?: LucideIcon;
+  // The one thing to do next, under the explanation.
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className={styles.empty}>
       <Icon size={18} aria-hidden />
-      <p>
-        <strong>{title}</strong>
-        {children}
-      </p>
+      <div className={styles.emptyBody}>
+        <p>
+          <strong>{title}</strong>
+          {children}
+        </p>
+        {action && <div>{action}</div>}
+      </div>
     </div>
   );
 }
