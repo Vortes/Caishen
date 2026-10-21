@@ -1,7 +1,14 @@
 "use client";
 
 import { CircleAlertIcon } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { isTransfer, transferNeedsCategory } from "~/domain/transfers";
 import { today } from "~/components/budget/format";
 import {
@@ -9,6 +16,7 @@ import {
   paymentPayees,
 } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
+import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import {
@@ -45,6 +53,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const register = (name: Control) => (element: HTMLElement | null) => {
     controls.current[name] = element;
   };
+  // The name typed in Category while its Add form is open.
+  const [creating, setCreating] = useState<string | null>(null);
+  // A category added from here, shown as the choice until the plan has it,
+  // and the one whose add failed, which the draft lets go of.
+  const [added, setAdded] = useState<NewCategory | null>(null);
+  const [lost, setLost] = useState<string | null>(null);
+  useEffect(() => {
+    if (lost && draft.categoryId === lost) entry.change({ categoryId: "" });
+  }, [lost, draft.categoryId, entry]);
 
   // Takes the controller's pending focus move once this editor is on screen.
   // Opening focuses a text field only with a mouse or trackpad, so a touch
@@ -129,6 +146,21 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         amount: category.available,
       })),
   ];
+  if (
+    added &&
+    added.id !== lost &&
+    !view.categories.some((item) => item.id === added.id)
+  ) {
+    // Under its group's other categories, so the group heads it once.
+    const last = categoryOptions
+      .map((option) => option.group)
+      .lastIndexOf(added.group);
+    categoryOptions.splice(last < 0 ? categoryOptions.length : last + 1, 0, {
+      value: added.id,
+      label: added.name,
+      group: added.group,
+    });
+  }
   const payees = useMemo(
     () => [
       ...new Set(
@@ -306,6 +338,17 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       }}
     />
   );
+  // Ready to Assign only takes an inflow.
+  const afterCategory = (categoryId: string) =>
+    advance(
+      categoryId === READY_TO_ASSIGN
+        ? account?.kind === "tracking" && boundary
+          ? "outflow"
+          : "inflow"
+        : account?.kind === "tracking" && boundary && draft.inflow
+          ? "inflow"
+          : "outflow",
+    );
   const categoryControl = categoryNotNeeded ? (
     <div className={styles.well} data-disabled>
       <input
@@ -317,30 +360,51 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       />
     </div>
   ) : (
-    <ChoiceField
-      id={id("categoryId")}
-      label="Category"
-      value={draft.categoryId}
-      options={categoryOptions}
-      placeholder="Category"
-      inputRef={register("categoryId")}
-      invalid={Boolean(fields.categoryId)}
-      describedBy={described("categoryId")}
-      readOnly={submitting}
-      onChange={(categoryId) => entry.change({ categoryId })}
-      // Ready to Assign only takes an inflow.
-      onPicked={(categoryId) =>
-        advance(
-          categoryId === READY_TO_ASSIGN
-            ? account?.kind === "tracking" && boundary
-              ? "outflow"
-              : "inflow"
-            : account?.kind === "tracking" && boundary && draft.inflow
-              ? "inflow"
-              : "outflow",
-        )
+    <NewCategoryPopover
+      open={creating !== null}
+      name={creating ?? ""}
+      group={
+        view.categories.find((item) => item.id === draft.categoryId)?.group
       }
-    />
+      onOpenChange={(open) => {
+        if (!open) setCreating(null);
+      }}
+      onAdded={(category) => {
+        setAdded(category);
+        setLost(null);
+        entry.change({ categoryId: category.id });
+      }}
+      onSettled={(category, saved) => {
+        if (!saved) setLost(category.id);
+      }}
+      onClosed={(category) => {
+        if (category) afterCategory(category.id);
+        else controls.current.categoryId?.focus({ preventScroll: true });
+      }}
+    >
+      <div>
+        <ChoiceField
+          id={id("categoryId")}
+          label="Category"
+          value={draft.categoryId}
+          options={categoryOptions}
+          placeholder="Category"
+          inputRef={register("categoryId")}
+          invalid={Boolean(fields.categoryId)}
+          describedBy={described("categoryId")}
+          readOnly={submitting}
+          onChange={(categoryId) => entry.change({ categoryId })}
+          onPicked={afterCategory}
+          // A loan's payment or a shared expense takes a category that
+          // already exists.
+          onCreate={
+            loan || shared
+              ? undefined
+              : { noun: "category", create: setCreating }
+          }
+        />
+      </div>
+    </NewCategoryPopover>
   );
   const accountControl = (
     <ChoiceField

@@ -247,6 +247,14 @@
 .optionLabel {
   flex: 1;
 }
+/* Adding isn't a commit yet, so its plus stays neutral instead of taking
+   the check's accent. */
+.option[data-create] .check {
+  color: var(--text-tertiary);
+}
+.option[data-create][data-active] .check {
+  color: var(--text-secondary);
+}
 .option[data-active] {
   background: var(--surface-hover);
   color: var(--text-primary);
