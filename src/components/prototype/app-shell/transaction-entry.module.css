@@ -1,12 +1,17 @@
 /* The transaction editor, in a register row. Fields copy the move-money
    popover's filled wells; there is no field primitive yet. */
 
+/* The row rises into a card where it stood, so opening it moves no text:
+   the card starts at the row's top and its fields fill the row's band. */
 .form {
   display: flex;
   flex-direction: column;
-  margin: 2px 0 4px;
-  border-radius: var(--radius-row);
-  background: var(--surface-selected);
+  margin-bottom: 8px;
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-card);
   /* Inputs draw their autofill and scrollbars in the theme's scheme. */
   color-scheme: dark;
 }
@@ -17,8 +22,26 @@
 /* The editor is one row on the register's own grid, each field under its
    column header. */
 .entryRow {
+  grid-template-rows: minmax(var(--size-row-lg), auto);
   align-items: start;
-  padding-block: 6px;
+}
+/* Centers each well in the row's band, and keeps it there when an error
+   opens under one. */
+.entryRow > .cell {
+  padding-top: calc((var(--size-row-lg) - var(--size-control)) / 2);
+}
+/* A well grows past its column on its text side, by its border and
+   padding, so what's typed starts where the row's text did. Amounts are
+   right-aligned, so theirs grows to the right. */
+.entryRow .well {
+  margin-left: -8px;
+  padding-left: 7px;
+}
+.entryRow .well[data-amount] {
+  margin-right: -8px;
+  margin-left: 0;
+  padding-right: 7px;
+  padding-left: 10px;
 }
 .cell {
   display: flex;
@@ -38,28 +61,39 @@
 .well[data-amount] .input {
   text-align: right;
 }
+/* The actions end where the inflow well does: past the status column and
+   its gap, less the well's reach. They stay clear of the calendar that
+   opens under the date. */
 .rowFooter {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  padding: 2px var(--space-row-x) 8px 34px;
+  padding: 0 calc(var(--space-row-x) + 16px + 16px - 8px) 8px var(--row-gutter);
 }
-/* The actions sit at the row's end, clear of the calendar that opens under
-   the date. */
 .actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  margin-left: auto;
 }
 
 /* Stack before payment names and category guidance become unreadable. */
 @container (max-width: 760px) {
   .entryRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
     row-gap: 8px;
     padding: 10px var(--space-row-x);
+  }
+  .entryRow > .cell {
+    padding-top: 0;
+  }
+  .entryRow .well,
+  .entryRow .well[data-amount] {
+    margin-inline: 0;
+    padding-inline: 10px;
   }
   .entryRow > [data-column="date"],
   .entryRow > [data-column="payee"],
@@ -83,7 +117,7 @@
     font-size: var(--type-small);
   }
   .rowFooter {
-    padding-left: var(--space-row-x);
+    padding-inline: var(--space-row-x);
   }
 }
 
@@ -333,6 +367,10 @@
   .well {
     height: 44px;
   }
+  /* The well fills the row's band on its own. */
+  .entryRow > .cell {
+    padding-top: 0;
+  }
   .input {
     font-size: var(--type-title);
   }
@@ -351,7 +389,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-card);
-  padding: var(--space-inset) var(--space-row-x) var(--space-inset) 34px;
+  padding: var(--space-inset) var(--space-row-x) var(--space-inset)
+    var(--row-gutter);
   color: var(--text-secondary);
   font-size: var(--type-small);
 }
