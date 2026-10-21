@@ -288,16 +288,3 @@ export function AddToGroupButton({ group }: { group: string }) {
     </AddPopover>
   );
 }
-
-// The row under a group with no categories yet.
-export function EmptyGroupButton({ group }: { group: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <AddPopover group={group} open={open} onOpenChange={setOpen} align="start">
-      <Button variant="quiet" size="sm" data-add-category={group}>
-        <PlusIcon aria-hidden />
-        Add category
-      </Button>
-    </AddPopover>
-  );
-}
