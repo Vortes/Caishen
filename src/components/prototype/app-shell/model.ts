@@ -288,6 +288,10 @@ export function toShellData(state: State): ShellData {
         categories: [category],
       });
   }
+  // Groups with no categories yet follow, in the order they were added.
+  for (const name of view.budget.groups ?? [])
+    if (!groups.some((group) => group.name === name))
+      groups.push({ id: name, name, categories: [] });
 
   const active = view.budget.transactions.filter((item) => !item.removed);
   const accounts = view.accounts.map((item): Account => {

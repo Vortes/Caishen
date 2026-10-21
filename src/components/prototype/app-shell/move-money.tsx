@@ -525,7 +525,7 @@ function Destination({
 }
 
 // Whether the latest input was a pointer rather than the keyboard.
-export function usePointerModality() {
+function usePointerModality() {
   const pointer = useRef(false);
   useEffect(() => {
     const onPointer = () => (pointer.current = true);

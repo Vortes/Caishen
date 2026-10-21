@@ -28,7 +28,13 @@ import {
   type Funding,
   type Transaction,
 } from "./model";
-import { FirstCategoryButton } from "./add-category";
+import {
+  AddToGroupButton,
+  EmptyGroupButton,
+  FirstGroupButton,
+  isPaymentGroup,
+  type Added,
+} from "./add-category";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -72,41 +78,52 @@ export function PlanView({
   onSelect,
   checked,
   onCheck,
-  revealId,
+  reveal,
 }: {
   view: PlanViewId | null;
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
-  // A category to bring into view and focus, like one just added.
-  revealId: string | null;
+  // A group or category to bring into view and focus, like one just added.
+  reveal: Added | null;
 }) {
   const shell = useShellData();
   const [closed, setClosed] = useState<string[]>([]);
-  const revealGroup = shell.categories.find(
-    (item) => item.id === revealId,
-  )?.group;
-  // Opens a closed group for it first, then focuses its row once it renders,
+  const toggle = (id: string) =>
+    setClosed((values) =>
+      values.includes(id)
+        ? values.filter((value) => value !== id)
+        : [...values, id],
+    );
+  // A new category's row, or a new group's Add category button.
+  const revealGroup =
+    reveal?.type === "group"
+      ? reveal.name
+      : shell.categories.find((item) => item.id === reveal?.id)?.group;
+  // Opens a closed group first, then focuses the target once it renders,
   // once: closing the group again afterwards keeps it closed.
-  const revealed = useRef<string | null>(null);
+  const revealed = useRef<Added | null>(null);
   useEffect(() => {
-    if (!revealGroup || revealed.current === revealId) return;
+    if (!reveal || !revealGroup || revealed.current === reveal) return;
     if (closed.includes(revealGroup)) {
       setClosed((values) => values.filter((value) => value !== revealGroup));
       return;
     }
-    const row = document.querySelector<HTMLElement>(
-      `[data-row][data-id="${CSS.escape(revealId!)}"]`,
+    const target = document.querySelector<HTMLElement>(
+      reveal.type === "group"
+        ? `[data-add-category="${CSS.escape(reveal.name)}"]`
+        : `[data-row][data-id="${CSS.escape(reveal.id)}"]`,
     );
-    if (!row) return;
-    revealed.current = revealId;
-    row.focus({ preventScroll: true });
-    row.scrollIntoView({ block: "center" });
-  }, [revealId, revealGroup, closed]);
+    if (!target) return;
+    revealed.current = reveal;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "center" });
+  }, [reveal, revealGroup, closed]);
   if (!shell.groups.length) {
     return (
-      <Empty title="Give every dollar a job." action={<FirstCategoryButton />}>
-        Add a category for each thing your money is for, like rent or groceries.
+      <Empty title="Give every dollar a job." action={<FirstGroupButton />}>
+        Start with a category group, like Bills, then add the categories that go
+        in it.
       </Empty>
     );
   }
@@ -167,36 +184,47 @@ export function PlanView({
         return (
           <div key={group.id}>
             <div className={styles.rowWrap}>
-              <RowCheckbox
-                label={`Select ${group.name}`}
-                state={
-                  count === 0 ? false : count === ids.length ? true : "mixed"
-                }
-                onChange={() => onCheck(ids, count < ids.length)}
-              />
-              <button
-                type="button"
+              {ids.length > 0 && (
+                <RowCheckbox
+                  label={`Select ${group.name}`}
+                  state={
+                    count === 0 ? false : count === ids.length ? true : "mixed"
+                  }
+                  onChange={() => onCheck(ids, count < ids.length)}
+                />
+              )}
+              {/* The whole header toggles the group for the pointer; the
+                  name is the button, so the + beside it can be one too. */}
+              <div
                 className={`${styles.columns} ${styles.groupRow}`}
-                aria-expanded={open}
-                onClick={() =>
-                  setClosed((values) =>
-                    open
-                      ? [...values, group.id]
-                      : values.filter((value) => value !== group.id),
-                  )
-                }
+                onClick={(event) => {
+                  if (!(event.target as Element).closest("button"))
+                    toggle(group.id);
+                }}
               >
                 <span className={styles.groupName}>
-                  <ChevronDownIcon
-                    size={12}
-                    strokeWidth={2.5}
-                    className={styles.groupCaret}
-                    aria-hidden
-                  />
-                  {group.name}
-                  <span className={styles.groupCount}>
-                    {group.categories.length}
-                  </span>
+                  <button
+                    type="button"
+                    className={styles.groupToggle}
+                    aria-expanded={open}
+                    onClick={() => toggle(group.id)}
+                  >
+                    <ChevronDownIcon
+                      size={12}
+                      strokeWidth={2.5}
+                      className={styles.groupCaret}
+                      aria-hidden
+                    />
+                    <span className={styles.truncate}>{group.name}</span>
+                    <span className={styles.groupCount}>
+                      {group.categories.length}
+                    </span>
+                  </button>
+                  {!isPaymentGroup(group) && (
+                    <span className={styles.groupAdd}>
+                      <AddToGroupButton group={group.name} />
+                    </span>
+                  )}
                 </span>
                 <span className={styles.numeric} data-optional>
                   {money(sum((item) => item.assigned))}
@@ -207,8 +235,14 @@ export function PlanView({
                 <span className={styles.numeric}>
                   {money(sum((item) => item.available))}
                 </span>
-              </button>
+              </div>
             </div>
+            {open && !ids.length && (
+              <div className={styles.emptyGroup}>
+                No categories yet.
+                <EmptyGroupButton group={group.name} />
+              </div>
+            )}
             {open &&
               group.categories.map((category) => {
                 const isChecked = checked.includes(category.id);

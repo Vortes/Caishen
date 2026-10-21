@@ -24,10 +24,10 @@ import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
 import { AccountSummary, SearchField } from "./account";
 import {
-  AddCategoryPopover,
   AddCategoryProvider,
-  isPaymentGroup,
+  AddGroupButton,
   type AddCategory,
+  type Added,
 } from "./add-category";
 import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
@@ -153,8 +153,8 @@ export function AppShellPrototype({
   const [reviewOnly, setReviewOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [controlsOpen, setControlsOpen] = useState(true);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [revealId, setRevealId] = useState<string | null>(null);
+  const [addingGroup, setAddingGroup] = useState(false);
+  const [revealed, setRevealed] = useState<Added | null>(null);
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
   const narrow = useMediaQuery("(max-width: 860px)");
@@ -237,7 +237,7 @@ export function AppShellPrototype({
       else if (event.key === "]" && screen.type !== "register")
         inspector.toggle();
       else if (event.key === "n" && screen.type === "plan")
-        setAddingCategory(true);
+        setAddingGroup(true);
       else if (event.key === "n" && screen.type === "register") {
         if (!entry.start({ accountId: screen.accountId })) return;
       } else if (
@@ -304,16 +304,18 @@ export function AppShellPrototype({
     }
   };
 
-  // A category just added: every category shows, so no view hides it, and
-  // it's selected with its details open, as if its row was clicked.
+  // What was just added shows in every category, so no view hides it. A new
+  // category is selected with its details open, as if its row was clicked.
   const addCategory: AddCategory = {
     ...categoryAdder,
-    reveal: (id) => {
+    reveal: (added) => {
       setSettings((value) => ({ ...value, planView: null }));
-      if (inspectorState.collapsed) inspector.toggle();
-      setSelectedId(id);
-      setChecked([id]);
-      setRevealId(id);
+      if (added.type === "category") {
+        if (inspectorState.collapsed) inspector.toggle();
+        setSelectedId(added.id);
+        setChecked([added.id]);
+      }
+      setRevealed(added);
     },
   };
 
@@ -574,21 +576,11 @@ export function AppShellPrototype({
                   )}
                   <div className={styles.toolbarActions}>
                     {screen.type === "plan" && (
-                      <AddCategoryPopover
-                        open={addingCategory}
-                        onOpenChange={setAddingCategory}
-                        defaultGroup={defaultGroup(data, selectedId)}
-                        align="end"
-                        shortcut="N"
-                      >
-                        <Button
-                          size="sm"
-                          aria-label={phone ? "Add category" : undefined}
-                        >
-                          <PlusIcon aria-hidden />
-                          {phone ? "Add" : "Add category"}
-                        </Button>
-                      </AddCategoryPopover>
+                      <AddGroupButton
+                        open={addingGroup}
+                        onOpenChange={setAddingGroup}
+                        compact={phone}
+                      />
                     )}
                     {screen.type === "register" && (
                       <SearchField
@@ -650,7 +642,7 @@ export function AppShellPrototype({
                         }}
                         checked={checked}
                         onCheck={check}
-                        revealId={revealId}
+                        reveal={revealed}
                       />
                     )}
                     {screen.type === "register" && (
@@ -851,20 +843,8 @@ function AddTransactionTooltip({
 // What the shell needs to add a category; it shows the category itself.
 export type CategoryAdder = Omit<AddCategory, "reveal">;
 
-// A new category starts in the selected category's group, or the first one
-// it can go in.
-function defaultGroup(data: ShellData, selectedId: string | null) {
-  const groups = data.groups.filter((group) => !isPaymentGroup(group));
-  const selected = data.categories.find((item) => item.id === selectedId);
-  return (
-    groups.find((group) => group.name === selected?.group)?.name ??
-    groups[0]?.name ??
-    ""
-  );
-}
-
-// The shell's real actions: moving money, adding categories, and entering
-// transactions.
+// The shell's real actions: moving money, adding category groups and
+// categories, and entering transactions.
 function ActionProviders({
   moveMoney,
   addCategory,

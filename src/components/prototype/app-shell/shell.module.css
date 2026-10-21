@@ -1021,13 +1021,58 @@ button.actionItem:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .groupCaret {
   color: var(--text-tertiary);
   transition: transform 150ms var(--ease-panel);
 }
-.groupRow[aria-expanded="false"] .groupCaret {
+.groupRow[aria-expanded="false"] .groupCaret,
+.groupToggle[aria-expanded="false"] .groupCaret {
   transform: rotate(-90deg);
+}
+/* The group's name toggles it; the + to add a category sits beside it. */
+.groupRow:has(.groupToggle) {
+  cursor: pointer;
+}
+.groupToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.groupAdd {
+  display: flex;
+  flex: none;
+  margin-left: -4px;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.rowWrap:hover .groupAdd,
+.groupAdd:focus-within,
+.groupAdd:has([data-state="open"]) {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .groupAdd {
+    opacity: 1;
+  }
+}
+/* A group with no categories yet says so, with the way to add one. */
+.emptyGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-lg);
+  padding: 0 var(--space-row-x) 0 34px;
+  color: var(--text-tertiary);
 }
 .groupCount {
   color: var(--text-tertiary);
@@ -1064,7 +1109,8 @@ button.actionItem:hover {
   border-bottom: 3px solid var(--border-subtle);
 }
 .root .row:focus-visible,
-.root .groupRow:focus-visible {
+.root .groupRow:focus-visible,
+.root .groupToggle:focus-visible {
   outline-offset: -2px;
   border-radius: 6px;
 }

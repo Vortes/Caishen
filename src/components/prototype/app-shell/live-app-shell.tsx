@@ -33,7 +33,7 @@ import {
 } from "./transaction-review";
 
 // Reads the signed-in budget through the production query. Moving money,
-// editing Assigned, adding categories, marking transactions reviewed, and
+// editing Assigned, adding category groups and categories, marking transactions reviewed, and
 // adding or editing transactions are real: they send the legacy app's commands through the
 // same optimistic path and share its undo history. The other actions stay
 // inert.

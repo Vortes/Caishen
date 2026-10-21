@@ -135,11 +135,6 @@
   color: var(--text-tertiary);
 }
 
-.hint {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-
 .error {
   display: flex;
   align-items: center;

@@ -148,6 +148,11 @@ export const commandSchema = z.discriminatedUnion("type", [
     date: daySchema.optional(),
   }),
   z.object({
+    type: z.literal("group.add"),
+    id: identifier,
+    name: z.string().trim().min(1).max(120),
+  }),
+  z.object({
     type: z.literal("category.add"),
     id: identifier,
     categoryId: identifier,
@@ -474,6 +479,10 @@ export type Budget = {
   name: string;
   startMonth: string;
   accounts: Account[];
+  // Category groups in the order they were added, including ones with no
+  // categories yet. A category names its group; budgets from before groups
+  // were stored have only the groups their categories name.
+  groups?: string[];
   categories: Category[];
   transactions: Transaction[];
   assignments: Assignment[];
@@ -623,6 +632,7 @@ const budgetSchema = z.object({
       date: daySchema,
     }),
   ),
+  groups: z.array(z.string()).optional(),
   categories: z.array(
     z.object({
       id: storedIdentifier,
@@ -2501,6 +2511,7 @@ function executeAccountingState<T extends AccountingState>(
     "settlement.record",
     "settlement.receive",
     "account.add",
+    "group.add",
     "category.add",
     "category.import",
     "settings.update",
@@ -2570,6 +2581,18 @@ function applyCommand(
           group: "Credit card payments",
           pairedAccountId: command.accountId,
         });
+      break;
+    }
+    case "group.add": {
+      const taken = new Set(
+        [
+          ...(budget.groups ?? []),
+          ...budget.categories.map((c) => c.group),
+        ].map((group) => group.toLowerCase()),
+      );
+      if (taken.has(command.name.toLowerCase()))
+        fail("Category group already exists");
+      budget.groups = [...(budget.groups ?? []), command.name];
       break;
     }
     case "category.add": {

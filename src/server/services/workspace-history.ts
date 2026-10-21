@@ -151,6 +151,7 @@ function restoreTransactions(
 
 const commandLabels = {
   "account.add": "Add account",
+  "group.add": "Add category group",
   "category.add": "Add category",
   "category.import": "Import categories",
   assign: "Assign money",

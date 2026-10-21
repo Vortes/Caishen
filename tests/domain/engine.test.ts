@@ -3172,3 +3172,42 @@ void test("earlier card corrections cannot invalidate a confirmed payment in a l
   assert.equal(nextMonth.cash, 90_000);
   assert.equal(nextMonth.readyToAssign, 90_000);
 });
+
+void test("a category group exists before its first category and keeps its name unique", () => {
+  const setup = fixture();
+  setup.run({ type: "group.add", name: "  Bills " });
+  assert.deepEqual(setup.view().budget.groups, ["Bills"]);
+  assert.equal(
+    setup.view().categories.some((category) => category.group === "Bills"),
+    false,
+  );
+  // Names compare without case, against stored groups and the groups that
+  // older budgets know only through their categories.
+  assert.throws(
+    () => setup.run({ type: "group.add", name: "bills" }),
+    /Category group already exists/,
+  );
+  assert.throws(
+    () => setup.run({ type: "group.add", name: "EVERYDAY" }),
+    /Category group already exists/,
+  );
+  setup.run({
+    type: "category.add",
+    categoryId: "power",
+    name: "Power",
+    group: "Bills",
+  });
+  assert.equal(
+    setup.view().categories.find((category) => category.id === "power")?.group,
+    "Bills",
+  );
+  assert.equal(bookSchema.parse(setup.book).budgets.alan?.groups?.length, 1);
+});
+
+void test("an agent cannot add a category group", () => {
+  const setup = fixture();
+  assert.throws(
+    () => setup.run({ type: "group.add", name: "Bills" }, "alan", "agent"),
+    /requires a user action/,
+  );
+});
