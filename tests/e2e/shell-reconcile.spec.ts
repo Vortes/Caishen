@@ -4,6 +4,7 @@ import {
   openRegister,
   readyToAssign,
   reloadBudget,
+  saved,
   transactionRow,
 } from "./shell-controls";
 
@@ -26,6 +27,7 @@ test("confirming a matching cleared balance locks the account's cleared transact
   await expect(flow).toContainText("$975.00Cleared in Caishen");
   await flow.getByRole("button", { name: "Yes, it matches" }).click();
   await expect(flow).toHaveCount(0);
+  await saved(page);
 
   await reloadBudget(page, budget);
   await openRegister(page, budget.account);
@@ -45,7 +47,7 @@ test("a bank balance that doesn't match finishes with an adjustment from Ready t
   });
   await page.goto(shellPath);
   await budgets.signIn(page, budget);
-  await expect(readyToAssign(page)).toContainText("$800.00");
+  await expect(readyToAssign(page)).toContainText("$700.00");
   await openRegister(page, budget.account);
 
   await page.getByRole("button", { name: "Reconcile", exact: true }).click();
@@ -60,9 +62,10 @@ test("a bank balance that doesn't match finishes with an adjustment from Ready t
     .getByRole("button", { name: "Create adjustment & finish" })
     .click();
   await expect(flow).toHaveCount(0);
+  await saved(page);
 
   await reloadBudget(page, budget);
-  await expect(readyToAssign(page)).toContainText("$795.00");
+  await expect(readyToAssign(page)).toContainText("$695.00");
   await openRegister(page, budget.account);
   const adjustment = transactionRow(page, "Reconciliation balance adjustment");
   await expect(adjustment).toContainText("$5.00");

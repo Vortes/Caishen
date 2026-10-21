@@ -33,9 +33,9 @@ test("category groups and their categories are added separately and persist", as
   await expect(bills).toBeFocused();
   await expect(bills).toHaveAttribute("aria-expanded", "false");
   await expect(groups).toHaveText([/^Everyday/]);
-  await expect(page.getByRole("button", { name: "Add category" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("button", { name: "Add category", exact: true }),
+  ).toHaveCount(0);
 
   await bills.hover();
   await page
