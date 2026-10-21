@@ -1,17 +1,12 @@
 "use client";
 
-import { CircleAlertIcon, PencilIcon } from "lucide-react";
+import { CircleAlertIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 import { today } from "~/components/budget/format";
 import { READY_TO_ASSIGN } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
-import { Tooltip } from "~/components/ui/tooltip";
 import { DateField, type DateFieldHandle } from "./transaction-date";
-import {
-  editGuidance,
-  useTransactionEntry,
-  type DraftField,
-} from "./transaction-entry";
+import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import {
   ChoiceField,
   PayeeField,
@@ -30,35 +25,6 @@ export function TransactionEditor({
   const { session } = useTransactionEntry();
   if (!session) return null;
   return <TransactionForm key={session.key} accountColumn={accountColumn} />;
-}
-
-// The Edit action on a selected transaction, or why it isn't edited here.
-export function TransactionEditAction({
-  transactionId,
-}: {
-  transactionId: string;
-}) {
-  const entry = useTransactionEntry();
-  const transaction = entry.view.budget.transactions.find(
-    (item) => item.id === transactionId && !item.removed,
-  );
-  if (!transaction) return null;
-  const guidance = editGuidance(transaction);
-  if (guidance) return <p className={styles.guidance}>{guidance}</p>;
-  return (
-    <div className={shell.cardActions}>
-      <Tooltip label="Edit this transaction" shortcut="E">
-        <Button
-          data-transaction-opener={transaction.id}
-          disabled={Boolean(entry.session) || entry.busy}
-          onClick={() => entry.start({ transactionId: transaction.id })}
-        >
-          <PencilIcon aria-hidden />
-          Edit
-        </Button>
-      </Tooltip>
-    </div>
-  );
 }
 
 type Control = DraftField | "error";

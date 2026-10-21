@@ -288,11 +288,14 @@ export function toShellData(state: State): ShellData {
       name: item.name,
       kind: item.kind,
       balance: item.balance,
+      // The engine leaves pending inflows out of the balance until they
+      // post, so only pending outflows are uncleared money in it.
       pending: active
         .filter(
           (entry) =>
             entry.accountId === item.id &&
             entry.status === "pending" &&
+            entry.amount < 0 &&
             entry.date <= `${month}-31`,
         )
         .reduce((sum, entry) => sum + entry.amount, 0),

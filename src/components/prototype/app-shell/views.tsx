@@ -5,15 +5,21 @@ import {
   ChevronDownIcon,
   CircleCheckIcon,
   Clock3Icon,
-  InboxIcon,
   LandmarkIcon,
+  SearchIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Tag } from "~/components/ui/tag";
-import { dayLabel, money, type Category, type Funding } from "./model";
+import {
+  dayLabel,
+  money,
+  type Category,
+  type Funding,
+  type Transaction,
+} from "./model";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry } from "./transaction-entry";
@@ -22,7 +28,11 @@ import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
-import { ReviewBar, useReviewSelection } from "./transaction-review";
+import {
+  SelectAll,
+  SelectionIsland,
+  useReviewSelection,
+} from "./transaction-review";
 import styles from "./shell.module.css";
 import reviewStyles from "./transaction-review.module.css";
 
@@ -358,12 +368,23 @@ export function AvailablePill({
 
 const statusIcon = {
   pending: { icon: Clock3Icon, label: "Pending" },
-  posted: { icon: CircleCheckIcon, label: "Posted" },
+  posted: { icon: CircleCheckIcon, label: "Cleared" },
 };
+
+function matches(item: Transaction, query: string, accountName?: string) {
+  const text = query.toLowerCase();
+  return [
+    item.payee,
+    item.categoryLabel,
+    accountName,
+    money(Math.abs(item.amount)),
+  ].some((value) => value?.toLowerCase().includes(text));
+}
 
 export function RegisterView({
   accountId,
   reviewOnly,
+  query,
   selectedId,
   onSelect,
   checked,
@@ -371,6 +392,7 @@ export function RegisterView({
 }: {
   accountId: string | null;
   reviewOnly: boolean;
+  query: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
   checked: string[];
@@ -378,14 +400,30 @@ export function RegisterView({
 }) {
   const { transactions, accounts, month, today } = useShellData();
   const { session } = useTransactionEntry();
-  // The register follows the month picker, like the plan. The review inbox
-  // spans every month, so nothing waiting is hidden by the picker.
+  const accountName = (id: string | null) =>
+    accounts.find((entry) => entry.id === id)?.name;
+  const search = query.trim();
+  // The register follows the month picker, like the plan. Search and the
+  // review inbox span every month, so nothing is hidden by the picker.
   const rows = transactions.filter(
     (item) =>
       (!accountId || item.accountId === accountId) &&
-      (reviewOnly ? item.needsReview : item.date.startsWith(month.key)),
+      (!reviewOnly || item.needsReview) &&
+      (search
+        ? matches(item, search, accountName(item.accountId))
+        : reviewOnly || item.date.startsWith(month.key)),
   );
-  const selection = useReviewSelection({ rows, checked, onCheck });
+  // YNAB's pattern: pending transactions lead under one heading that
+  // collapses, set apart from the cleared ones below.
+  const [pendingOpen, setPendingOpen] = useState(true);
+  const pending = rows.filter((item) => item.status === "pending");
+  const cleared = rows.filter((item) => item.status !== "pending");
+  // A collapsed heading's rows can't be selected.
+  const selection = useReviewSelection({
+    rows: pendingOpen ? rows : cleared,
+    checked,
+    onCheck,
+  });
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
   const editingId = session?.initial?.id;
@@ -394,7 +432,11 @@ export function RegisterView({
       ? editingId
       : undefined;
   if (!rows.length && !session) {
-    return reviewOnly ? (
+    return search ? (
+      <Empty title={`No transactions match “${search}”.`} icon={SearchIcon}>
+        Search looks at payees, categories, and amounts in every month.
+      </Empty>
+    ) : reviewOnly ? (
       <Empty title="Everything here is reviewed." icon={CheckIcon}>
         New bank imports will show up as they arrive.
       </Empty>
@@ -408,14 +450,116 @@ export function RegisterView({
   // sits under the column it fills. All accounts leads with an Account
   // column, since that's what a new entry picks first.
   const accountColumn = !accountId;
+  const row = (item: Transaction) => {
+    if (item.id === inPlace)
+      return <TransactionEditor key={item.id} accountColumn={accountColumn} />;
+    const status = statusIcon[item.status];
+    const checkable = item.source === "budget";
+    const isChecked = checkable && checked.includes(item.id);
+    // Marks the row in its first column.
+    const reviewDot = (
+      <span
+        className={styles.reviewDot}
+        data-on={item.needsReview ? "" : undefined}
+      >
+        {item.needsReview && <span className="sr-only">Needs review</span>}
+      </span>
+    );
+    return (
+      <div
+        key={item.id}
+        className={`${styles.rowWrap} ${reviewStyles.checkable}`}
+        data-checked={isChecked || undefined}
+      >
+        {checkable && (
+          <RowCheckbox
+            label={`Select ${item.payee}`}
+            state={isChecked}
+            onChange={() => onCheck([item.id], !isChecked)}
+          />
+        )}
+        <button
+          type="button"
+          data-row
+          data-id={checkable ? item.id : undefined}
+          data-transaction-row={item.id}
+          data-pending={item.status === "pending" || undefined}
+          className={`${styles.txColumns} ${styles.row}`}
+          aria-current={selectedId === item.id ? "true" : undefined}
+          onClick={() => onSelect(item.id)}
+        >
+          {accountColumn && (
+            <span
+              className={styles.rowName}
+              data-column="account"
+              data-optional
+            >
+              {reviewDot}
+              <span className={`${styles.truncate} ${styles.faint}`}>
+                {accountName(item.accountId) ?? "Unlinked bank account"}
+              </span>
+            </span>
+          )}
+          <span className={styles.rowName} data-column="date" data-optional>
+            {!accountColumn && reviewDot}
+            <span className={`${styles.truncate} ${styles.muted}`}>
+              {dayLabel(item.date, today)}
+            </span>
+          </span>
+          <span className={styles.rowName} data-column="payee">
+            <span className={styles.truncate}>{item.payee}</span>
+            {item.shared && (
+              <UsersIcon
+                size={12}
+                className={styles.inlineIcon}
+                aria-label="Shared"
+              />
+            )}
+          </span>
+          <span className={styles.truncate} data-column="category">
+            {item.needsCategory ? (
+              <Tag tone="attention">{item.categoryLabel}</Tag>
+            ) : (
+              <span className={styles.muted}>{item.categoryLabel}</span>
+            )}
+            {item.forMonth && (
+              <span className={styles.faint}> · {item.forMonth}</span>
+            )}
+          </span>
+          <span
+            className={styles.numeric}
+            data-column="outflow"
+            data-empty={item.amount < 0 ? undefined : true}
+          >
+            {item.amount < 0 && money(-item.amount)}
+          </span>
+          <span
+            className={styles.numeric}
+            data-column="inflow"
+            data-empty={item.amount > 0 ? undefined : true}
+            data-inflow={item.amount > 0 || undefined}
+          >
+            {item.amount > 0 && money(item.amount)}
+          </span>
+          <span className={styles.statusCell} data-column="status">
+            <status.icon
+              size={14}
+              className={styles.statusIcon}
+              data-status={item.status}
+              aria-label={status.label}
+            />
+          </span>
+        </button>
+      </div>
+    );
+  };
   return (
     <div
-      className={`${styles.list} ${styles.register}`}
+      className={`${styles.list} ${styles.register} ${reviewStyles.register}`}
       data-accounts={accountColumn || undefined}
       role="group"
       aria-label="Transactions"
       data-selecting={selection.selected.length > 0 || undefined}
-      data-review-bar={selection.selectable.length > 0 || undefined}
       onKeyDown={(event) => {
         // x toggles the focused row's checkbox, like the plan.
         const id =
@@ -430,25 +574,39 @@ export function RegisterView({
         moveSelection(event);
       }}
     >
-      <ReviewBar selection={selection} onCheck={onCheck} />
-      <div className={`${styles.txColumns} ${styles.columnHeader}`} aria-hidden>
+      <div className={`${styles.txColumns} ${styles.columnHeader}`}>
+        <SelectAll selection={selection} onCheck={onCheck} />
         {accountColumn && (
-          <span data-column="account" data-optional>
+          <span data-column="account" data-optional aria-hidden>
             Account
           </span>
         )}
-        <span data-column="date" data-optional>
+        <span data-column="date" data-optional aria-hidden>
           Date
         </span>
-        <span data-column="payee">Payee</span>
-        <span data-column="category">Category</span>
-        <span className={styles.numeric} data-column="outflow" data-wide>
+        <span data-column="payee" aria-hidden>
+          Payee
+        </span>
+        <span data-column="category" aria-hidden>
+          Category
+        </span>
+        <span
+          className={styles.numeric}
+          data-column="outflow"
+          data-wide
+          aria-hidden
+        >
           Outflow
         </span>
-        <span className={styles.numeric} data-column="inflow" data-wide>
+        <span
+          className={styles.numeric}
+          data-column="inflow"
+          data-wide
+          aria-hidden
+        >
           Inflow
         </span>
-        <span className={styles.numeric} data-narrow>
+        <span className={styles.numeric} data-narrow aria-hidden>
           Amount
         </span>
         <span data-column="status" />
@@ -456,119 +614,35 @@ export function RegisterView({
       {session && !inPlace && (
         <TransactionEditor accountColumn={accountColumn} />
       )}
-      {rows.map((item) => {
-        const status = statusIcon[item.status];
-        const account = accounts.find((entry) => entry.id === item.accountId);
-        // Marks the row in its first column.
-        const reviewDot = (
-          <span
-            className={styles.reviewDot}
-            data-on={item.needsReview ? "" : undefined}
+      {pending.length > 0 && (
+        <div
+          role="group"
+          aria-label="Pending transactions"
+          className={styles.pendingGroup}
+        >
+          <button
+            type="button"
+            className={`${styles.dayRow} ${styles.groupRow} ${styles.pendingHeader}`}
+            aria-expanded={pendingOpen}
+            onClick={() => setPendingOpen(!pendingOpen)}
           >
-            {item.needsReview && <span className="sr-only">Needs review</span>}
-          </span>
-        );
-        if (item.id === inPlace)
-          return (
-            <TransactionEditor key={item.id} accountColumn={accountColumn} />
-          );
-        const checkable = item.source === "budget";
-        const isChecked = checkable && checked.includes(item.id);
-        return (
-          <div
-            key={item.id}
-            className={`${styles.rowWrap} ${reviewStyles.checkable}`}
-            data-checked={isChecked || undefined}
-          >
-            {checkable && (
-              <RowCheckbox
-                label={`Select ${item.payee}`}
-                state={isChecked}
-                onChange={() => onCheck([item.id], !isChecked)}
-              />
-            )}
-            <button
-              type="button"
-              data-row
-              data-id={checkable ? item.id : undefined}
-              data-transaction-row={item.id}
-              className={`${styles.txColumns} ${styles.row}`}
-              aria-current={selectedId === item.id ? "true" : undefined}
-              onClick={() => onSelect(item.id)}
-            >
-              {accountColumn && (
-                <span
-                  className={styles.rowName}
-                  data-column="account"
-                  data-optional
-                >
-                  {reviewDot}
-                  <span className={`${styles.truncate} ${styles.faint}`}>
-                    {account?.name ?? "Unlinked bank account"}
-                  </span>
-                </span>
-              )}
-              <span className={styles.rowName} data-column="date" data-optional>
-                {!accountColumn && reviewDot}
-                <span className={`${styles.truncate} ${styles.muted}`}>
-                  {dayLabel(item.date, today)}
-                </span>
-              </span>
-              <span className={styles.rowName} data-column="payee">
-                <span className={styles.truncate}>{item.payee}</span>
-                {item.shared && (
-                  <UsersIcon
-                    size={12}
-                    className={styles.inlineIcon}
-                    aria-label="Shared"
-                  />
-                )}
-              </span>
-              <span className={styles.truncate} data-column="category">
-                {item.needsCategory ? (
-                  <Tag tone="attention">{item.categoryLabel}</Tag>
-                ) : (
-                  <span className={styles.muted}>{item.categoryLabel}</span>
-                )}
-                {item.forMonth && (
-                  <span className={styles.faint}> · {item.forMonth}</span>
-                )}
-              </span>
-              <span
-                className={styles.numeric}
-                data-column="outflow"
-                data-empty={item.amount < 0 ? undefined : true}
-              >
-                {item.amount < 0 && money(-item.amount)}
-              </span>
-              <span
-                className={styles.numeric}
-                data-column="inflow"
-                data-empty={item.amount > 0 ? undefined : true}
-                data-inflow={item.amount > 0 || undefined}
-              >
-                {item.amount > 0 && money(item.amount)}
-              </span>
-              <span className={styles.statusCell} data-column="status">
-                {item.source === "bank" ? (
-                  <InboxIcon
-                    size={14}
-                    className={styles.statusIcon}
-                    aria-label="Bank import"
-                  />
-                ) : (
-                  <status.icon
-                    size={14}
-                    className={styles.statusIcon}
-                    data-status={item.status}
-                    aria-label={status.label}
-                  />
-                )}
-              </span>
-            </button>
-          </div>
-        );
-      })}
+            <ChevronDownIcon
+              size={12}
+              strokeWidth={2.5}
+              className={styles.groupCaret}
+              aria-hidden
+            />
+            <span>Pending</span>
+            <span className={styles.groupCount}>{pending.length}</span>
+          </button>
+          {/* Collapsing keeps a transaction that's being edited open. */}
+          {pending
+            .filter((item) => pendingOpen || item.id === inPlace)
+            .map(row)}
+        </div>
+      )}
+      {cleared.map(row)}
+      <SelectionIsland selection={selection} onCheck={onCheck} />
     </div>
   );
 }

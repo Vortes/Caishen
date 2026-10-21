@@ -436,6 +436,131 @@
   gap: 6px;
   margin-left: auto;
 }
+/* An account's toolbar holds more than one row's worth on a phone, so its
+   search and filters wrap to a line of their own. */
+.toolbar[data-wrap] {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  height: auto;
+  min-height: var(--size-toolbar);
+  padding-block: 12px;
+}
+.toolbar[data-wrap] .toolbarActions {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* ---------- Account ---------- */
+
+/* The balance equation sits above the toolbar, aligned with its left edge. */
+.accountSummary {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 10px 4px 20px;
+}
+.balances {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 16px;
+  margin: 0;
+}
+.balances > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.balances dt {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.balances dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.balances > [data-total] dd {
+  color: var(--text-primary);
+}
+/* Sits on the figures' line, not the captions'. */
+.balanceOperator {
+  padding-bottom: 20px;
+  color: var(--text-tertiary);
+  font-size: var(--type-title);
+}
+.summaryActions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+/* A filled well like the move-money search, at the toolbar's button height. */
+.toolbarSearch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 240px;
+  min-width: 0;
+  height: var(--size-control-xs);
+  padding: 0 2px 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font-size: var(--type-small);
+  cursor: text;
+  transition: border-color 150ms;
+}
+.toolbarSearch:focus-within {
+  border-color: var(--focus-ring);
+}
+.toolbarSearch input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.toolbarSearch input::-webkit-search-cancel-button {
+  display: none;
+}
+.toolbarSearch input::placeholder {
+  color: var(--text-tertiary);
+}
+.root .toolbarSearch input:focus-visible {
+  outline: none;
+}
+.searchIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.searchKey {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--type-caption);
+}
+@media (pointer: coarse) {
+  .toolbarSearch input {
+    font-size: 16px;
+  }
+}
 /* ---------- Ready to Assign ---------- */
 
 .rtaCard {
@@ -749,18 +874,6 @@ button.actionItem:hover {
   flex: none;
   color: var(--text-tertiary);
 }
-.note {
-  display: flex;
-  gap: 8px;
-  padding: 6px 2px;
-  color: var(--text-secondary);
-  text-wrap: pretty;
-}
-.note > svg {
-  flex: none;
-  margin-top: 2px;
-  color: var(--text-tertiary);
-}
 .meter {
   display: flex;
   flex-direction: column;
@@ -796,14 +909,6 @@ button.actionItem:hover {
 }
 .meter[data-state="snoozed"] .meterTrack > span {
   background: var(--text-tertiary);
-}
-.reviewNote {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 2px 2px 8px;
-  color: var(--text-secondary);
-  text-wrap: pretty;
 }
 
 /* ---------- Lists ---------- */
@@ -842,10 +947,6 @@ button.actionItem:hover {
 }
 .register .txColumns > [data-narrow] {
   display: none;
-}
-/* Under the review bar, the column headers pin just below it. */
-.register[data-review-bar] .columnHeader {
-  top: var(--size-row-md);
 }
 .statusCell {
   display: flex;
@@ -940,6 +1041,23 @@ button.actionItem:hover {
 .row[aria-current="true"] {
   background: var(--surface-selected);
 }
+/* Pending rows sit one text step back from cleared ones, in a single tone:
+   the bank hasn't settled them, so their amounts may still change. A
+   pending inflow isn't in the balance yet, so it isn't green either. */
+.row[data-pending],
+.row[data-pending] .numeric[data-inflow] {
+  color: var(--text-secondary);
+}
+/* The register's pending heading, and the thick break that sets its rows
+   apart from the cleared ones below. */
+.pendingHeader {
+  width: 100%;
+}
+.pendingGroup {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 3px solid var(--border-subtle);
+}
 .root .row:focus-visible,
 .root .groupRow:focus-visible {
   outline-offset: -2px;
@@ -983,6 +1101,7 @@ button.actionItem:hover {
   opacity: 0;
 }
 .rowWrap:hover .checkboxSlot,
+.columnHeader:hover .checkboxSlot,
 .list[data-selecting] .checkboxSlot,
 .checkboxSlot:focus-within,
 .checkboxSlot:has([data-state="checked"]),
@@ -1085,7 +1204,7 @@ button.actionItem:hover {
   flex: none;
   color: var(--text-tertiary);
 }
-.statusIcon[data-status="cleared"] {
+.statusIcon[data-status="posted"] {
   color: var(--feedback-success);
 }
 .reviewDot {

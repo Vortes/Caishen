@@ -58,8 +58,8 @@ const imports: State["imports"] = [
 
 const register = (page: Page) =>
   page.getByRole("group", { name: "Transactions" });
-const details = (page: Page) =>
-  page.getByRole("complementary", { name: "Details" });
+const island = (page: Page) =>
+  page.getByRole("toolbar", { name: "Selected transactions" });
 const row = (page: Page, payee: string) =>
   register(page).getByRole("button", { name: new RegExp(payee) });
 const rowCheck = (page: Page, payee: string) =>
@@ -70,9 +70,7 @@ const rowCheck = (page: Page, payee: string) =>
 const selectAll = (page: Page) =>
   register(page).getByRole("checkbox", { name: "Select all", exact: true });
 const approve = (page: Page) =>
-  register(page).getByRole("button", { name: /^Approve \(/ });
-const markReviewed = (page: Page) =>
-  details(page).getByRole("button", { name: "Mark reviewed" });
+  island(page).getByRole("button", { name: /^Approve \(/ });
 const reviewFilter = (page: Page) =>
   page.getByRole("button", { name: /^To review/ });
 const allAccounts = (page: Page) =>
@@ -110,23 +108,26 @@ async function changeHistory(
   }).toPass();
 }
 
-test("Mark reviewed approves one transaction on screen first and shares undo with move money", async ({
+test("approving one clicked transaction saves on screen first and shares undo with move money", async ({
   page,
 }) => {
   const plan = await openPrototype(page, { commands, imports });
   await allAccounts(page).click();
   await reviewCount(page, 4);
 
-  // A bank import keeps its own review, which isn't built here.
+  // A bank import keeps its own review, which isn't built here, so it
+  // can't be selected.
   await row(page, "Imported market").click();
-  await details(page).getByRole("button", { name: "Review import" }).click();
+  await expect(island(page)).toHaveCount(0);
   expect(plan.writes).toEqual([]);
 
+  // Clicking a row selects just that row, and the island acts on it.
   await row(page, "Corner coffee").click();
+  await expect(island(page)).toContainText("1 selected · -$4.50");
   const release = plan.holdExecute();
   try {
-    await markReviewed(page).click();
-    await expect(markReviewed(page)).toHaveCount(0);
+    await approve(page).click();
+    await expect(approve(page)).toHaveText("Approve (0)");
     await reviewCount(page, 3);
     await expect(row(page, "Corner coffee")).not.toContainText("Needs review");
     expect(plan.writes).toEqual(["budget.execute"]);
@@ -178,17 +179,17 @@ test("a batch approves only what still needs review, never a bank import", async
   const plan = await openPrototype(page, { commands, imports });
   await allAccounts(page).click();
 
-  // Keyboard: x checks the focused row, arrows still move the details.
+  // Keyboard: arrows select the next row alone, x toggles the focused row.
   await row(page, "Corner coffee").click();
-  await page.keyboard.press("x");
   await page.keyboard.press("ArrowUp");
-  await expect(
-    details(page).getByRole("heading", { name: "Bistro" }),
-  ).toBeVisible();
-  await page.keyboard.press("x");
-  await expect(rowCheck(page, "Corner coffee")).toBeChecked();
   await expect(rowCheck(page, "Bistro")).toBeChecked();
-  await expect(register(page)).toContainText("2 selected · -$284.65");
+  await expect(rowCheck(page, "Corner coffee")).not.toBeChecked();
+  await page.keyboard.press("x");
+  await expect(island(page)).toHaveCount(0);
+  await page.keyboard.press("x");
+  await rowCheck(page, "Corner coffee").click();
+  await expect(rowCheck(page, "Bistro")).toBeChecked();
+  await expect(island(page)).toContainText("2 selected · -$284.65");
   await expect(approve(page)).toHaveText("Approve (1)");
   await expect(selectAll(page)).toHaveAttribute("aria-checked", "mixed");
 
@@ -206,12 +207,12 @@ test("a batch approves only what still needs review, never a bank import", async
 
   // A new filter starts a new selection. Import rows have no checkbox.
   await reviewFilter(page).click();
-  await expect(register(page)).not.toContainText("selected");
+  await expect(island(page)).toHaveCount(0);
   await expect(register(page).getByRole("checkbox")).toHaveCount(4);
   await selectAll(page).click();
   await expect(approve(page)).toHaveText("Approve (3)");
   await rowCheck(page, "Hardware store").click();
-  await expect(register(page)).toContainText("2 selected · +$2,495.50");
+  await expect(island(page)).toContainText("2 selected · +$2,495.50");
 
   const release = plan.holdExecute();
   try {
@@ -221,7 +222,7 @@ test("a batch approves only what still needs review, never a bank import", async
     await expect(row(page, "Hardware store")).toBeVisible();
     await expect(row(page, "Imported market")).toBeVisible();
     await reviewCount(page, 2);
-    await expect(register(page)).not.toContainText("selected");
+    await expect(island(page)).toHaveCount(0);
   } finally {
     release();
   }
@@ -251,36 +252,35 @@ const overlaps = (a: Box, b: Box) =>
   a.y < b.y + b.height &&
   b.y < a.y + a.height;
 
-// The bar's parts, laid out without covering one another.
-async function barLayout(page: Page, summary: string, width: number) {
+// The island's parts and the Select all checkbox, inside the window and
+// clear of one another.
+async function islandLayout(page: Page, summary: string, width: number) {
   const parts = [
-    register(page).getByText("Select all", { exact: true }),
-    register(page).getByText(summary, { exact: true }),
-    register(page).getByRole("button", { name: "Clear", exact: true }),
+    selectAll(page),
+    island(page).getByRole("button", { name: "Clear selection" }),
+    island(page).getByText(summary, { exact: true }),
+    island(page).getByRole("button", { name: "Categorize" }),
     approve(page),
   ];
-  let boxes: Box[] = [];
+  // The island animates in, so measure until it settles.
   await expect(async () => {
-    const measured: Box[] = [];
+    const boxes: Box[] = [];
     for (const part of parts) {
       await expect(part).toBeVisible();
       const box = await part.boundingBox();
       expect(box).not.toBeNull();
-      measured.push(box!);
+      boxes.push(box!);
     }
-    for (const [index, box] of measured.entries()) {
+    for (const [index, box] of boxes.entries()) {
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(width);
-      for (const other of measured.slice(index + 1))
+      for (const other of boxes.slice(index + 1))
         expect(overlaps(box, other)).toBe(false);
     }
-    boxes = measured;
   }).toPass();
-  const [label, count, clear] = boxes as [Box, Box, Box, Box];
-  return { label, count, clear };
 }
 
-test("the selection bar stays readable on a phone and one row on desktop", async ({
+test("the selection island stays readable on a phone and floats at the foot of the register", async ({
   page,
 }) => {
   await openPrototype(page, { commands, imports });
@@ -289,17 +289,15 @@ test("the selection bar stays readable on a phone and one row on desktop", async
   // Reviewed and unreviewed rows together; the import has no checkbox.
   const summary = "5 selected · +$2,033.35";
   await expect(approve(page)).toHaveText("Approve (3)");
-
-  const desktop = await barLayout(page, summary, 1600);
-  expect(desktop.count.y).toBeLessThan(desktop.clear.y + desktop.clear.height);
-  expect(desktop.clear.y).toBeLessThan(desktop.count.y + desktop.count.height);
+  await islandLayout(page, summary, 1600);
+  // A short register still puts the island near the panel's foot.
+  const content = (await page.locator("#prototype-content").boundingBox())!;
+  const bar = (await island(page).boundingBox())!;
+  expect(content.y + content.height - (bar.y + bar.height)).toBeLessThan(40);
 
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(rowCheck(page, "Bistro")).toBeChecked();
-  const phone = await barLayout(page, summary, 375);
-  expect(phone.count.y).toBeGreaterThanOrEqual(
-    phone.label.y + phone.label.height,
-  );
+  await islandLayout(page, summary, 375);
   await page.screenshot({ path: ".next/cache/transaction-review-mobile.png" });
 });
 
@@ -350,16 +348,16 @@ test("an uncategorized purchase is refused without leaving review", async ({
   await row(page, "Hardware store").click();
   let release = plan.holdExecute();
   try {
-    await markReviewed(page).click();
+    await approve(page).click();
     // The preview refuses it too, so nothing claims it was reviewed.
-    await expect(markReviewed(page)).toBeVisible();
+    await expect(approve(page)).toHaveText("Approve (1)");
     await reviewCount(page, 4);
   } finally {
     release();
   }
   const refused = notifications(page).getByRole("alert");
   await expect(refused).toContainText("Categorize purchases before approval");
-  await expect(markReviewed(page)).toBeEnabled();
+  await expect(approve(page)).toBeEnabled();
   await refused.getByRole("button", { name: "Dismiss" }).click();
   await expect(refused).toHaveCount(0);
 
@@ -393,12 +391,14 @@ test("approval stops at 500 transactions and says why", async ({ page }) => {
   await selectAll(page).click();
   await expect(approve(page)).toHaveText("Approve (501)");
   await expect(approve(page)).toBeDisabled();
-  await expect(register(page)).toContainText("Approve up to 500 at a time.");
+  await expect(island(page)).toContainText("Approve up to 500 at a time.");
 
+  // Bulk 0 is the last row; fold the prototype's controls off of it.
+  await page.getByRole("button", { name: "Prototype", exact: true }).click();
   await rowCheck(page, "Bulk 0").click();
   await expect(approve(page)).toHaveText("Approve (500)");
   await expect(approve(page)).toBeEnabled();
-  await expect(register(page)).not.toContainText("Approve up to 500");
+  await expect(island(page)).not.toContainText("Approve up to 500");
 });
 
 test("review waits while a change saves, a month loads, or the budget is stale", async ({
@@ -413,17 +413,16 @@ test("review waits while a change saves, a month loads, or the budget is stale",
     .getByRole("navigation", { name: "Budget navigation" })
     .getByRole("button", { name: /^Checking/ })
     .click();
-  await expect(register(page)).not.toContainText("selected");
+  await expect(island(page)).toHaveCount(0);
   await allAccounts(page).click();
 
   // Saving.
   await row(page, "Corner coffee").click();
   const release = plan.holdExecute();
   try {
-    await markReviewed(page).click();
+    await approve(page).click();
     await row(page, "Paycheck").click();
-    await expect(markReviewed(page)).toBeDisabled();
-    await rowCheck(page, "Paycheck").click();
+    await expect(approve(page)).toHaveText("Approve (1)");
     await expect(approve(page)).toBeDisabled();
   } finally {
     release();
@@ -443,7 +442,7 @@ test("review waits while a change saves, a month loads, or the budget is stale",
     await route.fallback();
   });
   await page.getByRole("button", { name: "Next month" }).click();
-  await expect(register(page)).not.toContainText("selected");
+  await expect(island(page)).toHaveCount(0);
   await rowCheck(page, "Paycheck").click();
   await expect(approve(page)).toBeDisabled();
   releaseState();
@@ -453,15 +452,15 @@ test("review waits while a change saves, a month loads, or the budget is stale",
   // Stale: once the budget fails to refresh, nothing more is sent.
   failState = true;
   await row(page, "Paycheck").click();
-  await markReviewed(page).click();
+  await approve(page).click();
   await expect(notifications(page)).toContainText(
     "Your budget couldn’t refresh",
     { timeout: 20_000 },
   );
   await row(page, "Hardware store").click();
-  await expect(markReviewed(page)).toBeDisabled();
+  await expect(approve(page)).toBeDisabled();
   failState = false;
   await notifications(page).getByRole("button", { name: "Try again" }).click();
-  await expect(markReviewed(page)).toBeEnabled();
+  await expect(approve(page)).toBeEnabled();
   expect(plan.commands).toHaveLength(2);
 });
