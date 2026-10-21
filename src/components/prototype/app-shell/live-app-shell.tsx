@@ -25,6 +25,7 @@ import { toShellData } from "./model";
 import type { MoveMoney } from "./move-money";
 import { useSavedSettings } from "./settings";
 import { ShellSkeleton } from "./shell-skeleton";
+import type { TargetEditing } from "./target-editor";
 import type { TransactionSaver } from "./transaction-entry";
 import styles from "./shell.module.css";
 import {
@@ -34,8 +35,8 @@ import {
 } from "./transaction-review";
 
 // Reads the signed-in budget through the production query. Moving money,
-// editing Assigned, adding category groups and categories, marking transactions reviewed, and
-// adding or editing transactions are real: they send the legacy app's commands through the
+// editing Assigned, adding category groups and categories, editing targets,
+// marking transactions reviewed, and adding or editing transactions are real: they send the legacy app's commands through the
 // same optimistic path and share its undo history. The other actions stay
 // inert.
 export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
@@ -167,6 +168,10 @@ function LiveWorkspace({
     add: moveMoney.move,
     holdOpen,
   };
+  const targetEditing: TargetEditing = {
+    save: moveMoney.move,
+    holdOpen,
+  };
 
   const busy = useIsMutating() > 0 || loadingMonth || Boolean(refreshError);
   const attemptId = useAssignAttempts(state.revision);
@@ -281,6 +286,7 @@ function LiveWorkspace({
           moveMoney={moveMoney}
           categoryAdder={categoryAdder}
           transactionSaver={transactionSaver}
+          targetEditing={targetEditing}
           renameBudget={(name) => {
             const reason = blocked();
             if (reason) return blockMessage[reason];

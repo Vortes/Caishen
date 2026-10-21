@@ -226,6 +226,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     if (!window.matchMedia("(pointer: fine)").matches) return;
     controls.current[to]?.focus({ preventScroll: true });
   };
+  const todayKey = today(view.budget.settings.timezone);
   const dateControl = (
     <DateField
       handle={dateField}
@@ -233,7 +234,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       label="Date"
       value={draft.date}
       min={minDate}
-      today={today(view.budget.settings.timezone)}
+      // Activity is recorded once it happened, so no later day can be picked.
+      max={todayKey}
+      today={todayKey}
       open={session.calendarOpen}
       inputRef={register("date")}
       invalid={Boolean(fields.date)}

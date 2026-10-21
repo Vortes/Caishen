@@ -10,6 +10,7 @@ import {
   UsersIcon,
   ZapIcon,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
@@ -19,6 +20,7 @@ import { money, type Category } from "./model";
 import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
+import { TargetEditor } from "./target-editor";
 import type { Screen } from "./sidebar";
 import { FundingRing } from "./views";
 import styles from "./shell.module.css";
@@ -317,7 +319,6 @@ function CheckedDetails({ ids }: { ids: string[] }) {
 }
 
 function CategoryDetails({ category }: { category: Category }) {
-  const target = category.target;
   const fallback =
     category.available > 0 ? "Money available" : "No money assigned yet";
   return (
@@ -383,34 +384,7 @@ function CategoryDetails({ category }: { category: Category }) {
             <TabsTrigger value="auto-assign">Auto-Assign</TabsTrigger>
           </TabsList>
           <TabsContent value="target">
-            {target ? (
-              <div className={styles.tabBody}>
-                <Property label="Goal" icon={TargetIcon}>
-                  {target.action}
-                </Property>
-                <Property label="Due">{target.when}</Property>
-                <Property label="Funded">
-                  {money(target.funded)} of {money(target.total)}
-                </Property>
-                <Meter
-                  ratio={category.fundedRatio}
-                  tone={category.funding}
-                  label={
-                    category.funding === "snoozed"
-                      ? "Snoozed this month"
-                      : target.needed > 0
-                        ? `${money(target.needed)} more needed`
-                        : `${Math.round(category.fundedRatio * 100)}% funded`
-                  }
-                />
-              </div>
-            ) : (
-              <p className={styles.tabEmpty}>
-                No target yet. Set one to see what this category needs each
-                month.
-                <Button variant="quiet">Create target</Button>
-              </p>
-            )}
+            <TargetTab category={category} />
           </TabsContent>
           <TabsContent value="auto-assign">
             <AutoAssign scope={[category]} />
@@ -418,6 +392,80 @@ function CategoryDetails({ category }: { category: Category }) {
         </Tabs>
       </Card>
     </>
+  );
+}
+
+const focusable = "button, input, select, textarea, a[href], [tabindex='0']";
+
+// The category's target: what it asks for and how far along it is, or the
+// way to set one. Editing happens in place, as in YNAB.
+function TargetTab({ category }: { category: Category }) {
+  const [editing, setEditing] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const returning = useRef(false);
+  const hasTarget = Boolean(category.rule);
+  // Focus goes back to Create target or Edit target once the editor closes,
+  // and follows when the saved change swaps one for the other, until it's
+  // moved somewhere else.
+  useEffect(() => {
+    if (editing) {
+      returning.current = true;
+      return;
+    }
+    if (!returning.current) return;
+    const active = document.activeElement;
+    if (active && active !== opener.current && active.closest(focusable))
+      returning.current = false;
+    else opener.current?.focus({ preventScroll: true });
+  }, [editing, hasTarget]);
+  const target = category.target;
+  if (editing)
+    return (
+      <TargetEditor category={category} onClose={() => setEditing(false)} />
+    );
+  if (!category.rule || !target)
+    return (
+      <div className={styles.tabEmpty}>
+        <strong className={styles.tabEmptyTitle}>
+          {category.pays
+            ? `How much do you want to pay toward ${category.pays.name}?`
+            : `How much do you need for ${category.name}?`}
+        </strong>
+        <p>
+          Set a target and Caishen works out how much to set aside each month to
+          stay on track.
+        </p>
+        <Button ref={opener} variant="quiet" onClick={() => setEditing(true)}>
+          Create target
+        </Button>
+      </div>
+    );
+  return (
+    <div className={styles.tabBody}>
+      <Property label="Goal" icon={TargetIcon}>
+        {target.action}
+      </Property>
+      <Property label="Due">{target.when}</Property>
+      <Property label="Funded">
+        {money(target.funded)} of {money(target.total)}
+      </Property>
+      <Meter
+        ratio={category.fundedRatio}
+        tone={category.funding}
+        label={
+          category.funding === "snoozed"
+            ? "Snoozed this month"
+            : target.needed > 0
+              ? `${money(target.needed)} more needed`
+              : `${Math.round(category.fundedRatio * 100)}% funded`
+        }
+      />
+      <div className={styles.tabActions}>
+        <Button ref={opener} variant="quiet" onClick={() => setEditing(true)}>
+          Edit target
+        </Button>
+      </div>
+    </div>
   );
 }
 

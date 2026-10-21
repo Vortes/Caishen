@@ -63,15 +63,14 @@ function parseDate(text: string, today: string, finished: boolean) {
   return isDate(date) ? date : null;
 }
 
-// The transaction date: typed as text, or picked from a calendar that opens
-// under the field. The calendar is a dialog, and Escape closes only it.
-// Activity is recorded once it happened, so no day after today can be
-// picked.
+// A date typed as text, or picked from a calendar that opens under the
+// field. The calendar is a dialog, and Escape closes only it.
 export function DateField({
   id,
   label,
   value,
   min,
+  max,
   today,
   open,
   describedBy,
@@ -89,6 +88,8 @@ export function DateField({
   value: string;
   // The first day the account can hold a transaction.
   min: string;
+  // The last day that can be picked, if any.
+  max?: string;
   today: string;
   open: boolean;
   describedBy?: string;
@@ -291,7 +292,7 @@ export function DateField({
             value={chosen}
             today={today}
             min={min}
-            max={today}
+            max={max}
             onSelect={pick}
           />
         </Popover.Content>
