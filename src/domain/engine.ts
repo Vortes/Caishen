@@ -2208,7 +2208,10 @@ function saveRegisterTransaction(
     const saved: Transaction = {
       ...facts,
       revision,
-      reviewed: source === "user" ? (previous?.reviewed ?? true) : false,
+      reviewed:
+        source === "user"
+          ? (previous?.reviewed ?? command.reviewed ?? true)
+          : false,
       history: [
         ...(before?.history ?? []),
         {

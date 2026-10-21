@@ -7,7 +7,10 @@ import {
   applyTransactionSync,
   normalizePlaidTransaction,
 } from "../../src/server/integrations/transactions";
-import { openingSnapshot } from "../../src/server/services/bank-account-setup";
+import {
+  bankImportFingerprint,
+  openingSnapshot,
+} from "../../src/server/services/bank-account-setup";
 import {
   bankAccountDetails,
   bankInbox,
@@ -73,6 +76,11 @@ function harness() {
   process.env.BANK_TOKEN_ENCRYPTION_KEY = "a".repeat(64);
   const book = createBook("alice", "Alice", "2026-10");
   const workspace = { id: "workspace", book, revision: 0 };
+  const operations: {
+    operationId: string;
+    actorId: string;
+    commandHash: string;
+  }[] = [];
   const connection = {
     id: "connection-alice",
     clerkUserId: "alice",
@@ -126,6 +134,17 @@ function harness() {
       }),
     },
     budgetOperation: {
+      findMany: mock.fn(async ({ where }: { where: { operationId: string } }) =>
+        operations.filter(
+          (operation) => operation.operationId === where.operationId,
+        ),
+      ),
+      create: mock.fn(
+        async ({ data }: { data: (typeof operations)[number] }) => {
+          operations.push(data);
+          return data;
+        },
+      ),
       createMany: mock.fn(async ({ data }: { data: unknown[] }) => ({
         count: data.length,
       })),
@@ -133,7 +152,7 @@ function harness() {
     $transaction: async (operation: (db: Database) => Promise<unknown>) =>
       operation(raw as unknown as Database),
   };
-  return { db: raw as unknown as Database, raw, connection, book };
+  return { db: raw as unknown as Database, raw, connection, book, workspace };
 }
 
 void test("bank update Link tokens and completion enforce connection ownership before accessing Plaid", async () => {
@@ -161,6 +180,214 @@ const importFact = (id: string, pending = false) =>
     date: "2026-10-20",
     name: "Coffee shop",
   });
+
+function pendingImport() {
+  const h = harness();
+  let book = execute(h.book, "alice", {
+    type: "account.add",
+    id: "cash",
+    accountId: "cash",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 10000,
+    date: "2026-10-01",
+  });
+  book = execute(book, "alice", {
+    type: "category.add",
+    id: "category",
+    categoryId: "dining",
+    name: "Dining",
+  });
+  Object.assign(h.book, book);
+  const records = applyTransactionSync(
+    [],
+    { added: [importFact("pending-edit", true)], modified: [], removed: [] },
+    h.connection.id,
+  ).records;
+  const record = records[0]!;
+  h.connection.accountMappings = {
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  };
+  h.connection.imports = { records, resolved: {}, errors: {}, reviews: {} };
+  const input = {
+    connectionId: h.connection.id,
+    logicalId: record.id,
+    expectedFingerprint: bankImportFingerprint(record),
+    expectedRevision: 0,
+    ignore: false,
+    command: {
+      type: "transaction.upsert" as const,
+      id: "edit-pending",
+      transactionId: "purchase",
+      accountId: "cash",
+      date: "2026-10-19",
+      amount: -2375,
+      payee: "Neighborhood cafe",
+      categoryId: "dining",
+      status: "pending" as const,
+    },
+  };
+  return { ...h, input, record };
+}
+
+void test("the register can edit pending bank activity without clearing it or changing the bank fact", async () => {
+  const h = pendingImport();
+  await resolveImport(h.db, "alice", h.input);
+  const transactions = h.book.budgets.alice!.transactions;
+  assert.equal(transactions.length, 1);
+  const saved = transactions[0]!;
+  assert.equal(saved.payee, "Neighborhood cafe");
+  assert.equal(saved.amount, -2375);
+  assert.equal(saved.date, "2026-10-19");
+  assert.equal(saved.categoryId, "dining");
+  assert.equal(saved.status, "pending");
+  assert.equal(saved.providerId, "pending-edit");
+  assert.equal(h.record.current.amountCents, 2000);
+  assert.equal(h.record.current.name, "Coffee shop");
+  assert.deepEqual(await bankInbox(h.db, "alice"), []);
+});
+
+void test("retrying a pending import save does not record it twice", async () => {
+  const h = pendingImport();
+  await resolveImport(h.db, "alice", h.input);
+  await resolveImport(h.db, "alice", h.input);
+  assert.equal(h.book.budgets.alice!.transactions.length, 1);
+  assert.equal(h.workspace.revision, 1);
+  assert.equal(h.raw.budgetOperation.create.mock.callCount(), 1);
+  await assert.rejects(
+    resolveImport(h.db, "alice", {
+      ...h.input,
+      command: { ...h.input.command, payee: "Different edit" },
+    }),
+    /different details/,
+  );
+});
+
+void test("an edited pending import posts to the same transaction and keeps the user's payee and category", async () => {
+  const h = pendingImport();
+  await resolveImport(h.db, "alice", h.input);
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [
+          {
+            transaction_id: "posted-edit",
+            account_id: "provider-checking",
+            pending_transaction_id: "pending-edit",
+            pending: false,
+            amount: 24,
+            iso_currency_code: "USD",
+            date: "2026-10-20",
+            name: "Coffee shop final",
+          },
+        ],
+        modified: [],
+        removed: [
+          { transaction_id: "pending-edit", account_id: "provider-checking" },
+        ],
+        accounts: accountsResponse().accounts,
+        next_cursor: "posted",
+        has_more: false,
+      });
+    return Response.json(accountsResponse());
+  });
+  await syncBanks(h.db, "alice");
+  const transactions = h.book.budgets.alice!.transactions;
+  assert.equal(transactions.length, 1);
+  assert.equal(transactions[0]!.id, "purchase");
+  assert.equal(transactions[0]!.status, "posted");
+  assert.equal(transactions[0]!.amount, -2400);
+  assert.equal(transactions[0]!.payee, "Neighborhood cafe");
+  assert.equal(transactions[0]!.categoryId, "dining");
+  assert.deepEqual(await bankInbox(h.db, "alice"), []);
+});
+
+void test("a pending bank import can become a paired transfer without becoming approved or cleared", async () => {
+  const h = pendingImport();
+  Object.assign(
+    h.book,
+    execute(h.book, "alice", {
+      type: "account.add",
+      id: "savings",
+      accountId: "savings",
+      name: "Savings",
+      kind: "cash",
+      openingBalance: 0,
+    }),
+  );
+  await resolveImport(h.db, "alice", {
+    ...h.input,
+    command: {
+      ...h.input.command,
+      type: "transaction.save",
+      transferAccountId: "savings",
+      categoryId: undefined,
+    },
+  });
+  const pair = h.book.budgets.alice!.transactions;
+  assert.equal(pair.length, 2);
+  assert.equal(pair[0]!.amount + pair[1]!.amount, 0);
+  assert.equal(
+    pair.every((item) => item.status === "pending" && !item.reviewed),
+    true,
+  );
+});
+
+void test("a pending import edit refuses stale bank facts, stale budgets, and other users", async () => {
+  const h = pendingImport();
+  await assert.rejects(
+    resolveImport(h.db, "alice", {
+      ...h.input,
+      expectedFingerprint: "a".repeat(64),
+    }),
+    /bank updated/,
+  );
+  await assert.rejects(
+    resolveImport(h.db, "alice", {
+      ...h.input,
+      expectedRevision: 99,
+    }),
+    /budget changed/,
+  );
+  await assert.rejects(resolveImport(h.db, "bob", h.input), {
+    code: "NOT_FOUND",
+  });
+  assert.equal(h.raw.budgetOperation.create.mock.callCount(), 0);
+  assert.equal(h.raw.workspace.updateMany.mock.callCount(), 0);
+});
+
+void test("pending edits retain bank status and reject account changes or duplicate ledger records", async () => {
+  const h = pendingImport();
+  await assert.rejects(
+    resolveImport(h.db, "alice", {
+      ...h.input,
+      command: { ...h.input.command, accountId: "another-account" },
+    }),
+    /must match the bank fact/,
+  );
+  Object.assign(
+    h.book,
+    execute(h.book, "alice", {
+      ...h.input.command,
+      id: "existing",
+      transactionId: "existing",
+      amount: -2000,
+      date: "2026-10-20",
+      payee: "Coffee shop",
+    }),
+  );
+  await assert.rejects(
+    resolveImport(h.db, "alice", h.input),
+    /matching ledger record/,
+  );
+  assert.equal(h.raw.workspace.updateMany.mock.callCount(), 0);
+  const fresh = pendingImport();
+  await resolveImport(fresh.db, "alice", {
+    ...fresh.input,
+    command: { ...fresh.input.command, status: "posted" },
+  });
+  assert.equal(fresh.book.budgets.alice!.transactions[0]!.status, "pending");
+});
 
 void test("first-connect inbox excludes unrecorded tombstones while preserving opening-balance discrepancies", async () => {
   const h = harness();

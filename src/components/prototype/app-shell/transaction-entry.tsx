@@ -12,6 +12,12 @@ import {
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
 import type { Command } from "~/domain/engine";
+import {
+  canEditImport,
+  createImportDraft,
+  importRowId,
+  type BankImport,
+} from "~/components/transactions/import-draft";
 
 type Transaction = View["budget"]["transactions"][number];
 export type DraftField = keyof TransactionDraft;
@@ -20,12 +26,18 @@ export type DraftField = keyof TransactionDraft;
 // budget on screen and the production command path.
 export type TransactionSaver = {
   view: View;
+  imports: BankImport[];
   // A save, a month load, or a failed refresh is in the way.
   busy: boolean;
   // Why a save can't be sent right now, or null.
   blocked: () => string | null;
   // Sends the command against the revision on screen; settles with the save.
   save: (command: Command, summary: string) => Promise<void>;
+  saveImport: (
+    item: BankImport,
+    command: Command,
+    summary: string,
+  ) => Promise<void>;
   // Holds the undo shortcut while the editor is open.
   holdOpen: () => () => void;
 };
@@ -34,6 +46,8 @@ export type TransactionSession = {
   key: string;
   // The transaction as it was when editing began; absent for a new one.
   initial?: Transaction;
+  imported?: BankImport;
+  rowId?: string;
   // The id a new transaction saves under, kept across retries.
   entityId: string;
   draft: TransactionDraft;
@@ -101,7 +115,18 @@ export function useTransactionEntryController({
   const latest = session?.initial
     ? view.budget.transactions.find((item) => item.id === session.initial!.id)
     : undefined;
-  const removed = Boolean(session?.initial && (!latest || latest.removed));
+  const latestImport = session?.imported
+    ? saver.imports.find((item) => importRowId(item) === session.rowId)
+    : undefined;
+  const removed = Boolean(
+    session?.initial
+      ? !latest || latest.removed
+      : session?.imported &&
+          !latestImport &&
+          !view.budget.transactions.some(
+            (item) => item.id === session.entityId && !item.removed,
+          ),
+  );
   const dirty =
     session !== null &&
     JSON.stringify(session.draft) !== JSON.stringify(session.pristine);
@@ -173,14 +198,25 @@ export function useTransactionEntryController({
           (item) => item.id === transactionId && !item.removed,
         )
       : undefined;
-    if (transactionId && (!transaction || !canEditTransaction(transaction)))
+    const imported = transactionId
+      ? saver.imports.find(
+          (item) => importRowId(item) === transactionId && canEditImport(item),
+        )
+      : undefined;
+    if (
+      transactionId &&
+      !imported &&
+      (!transaction || !canEditTransaction(transaction))
+    )
       return false;
-    const draft = createTransactionDraft(
-      view,
-      view.month,
-      transaction,
-      accountId ?? undefined,
-    );
+    const draft = imported
+      ? createImportDraft(view, imported)
+      : createTransactionDraft(
+          view,
+          view.month,
+          transaction,
+          accountId ?? undefined,
+        );
     const editField =
       draft.transferAccountId ||
       draft.loanId ||
@@ -199,19 +235,22 @@ export function useTransactionEntryController({
     setSession({
       key: newId(),
       initial: transaction,
+      imported,
+      rowId: transactionId,
       entityId: newId(),
       draft,
       pristine: draft,
       fields: {},
       error: "",
-      calendarOpen: field === "date" || (!transaction && Boolean(accountId)),
+      calendarOpen: field === "date" || (!transactionId && Boolean(accountId)),
     });
     reveal();
     // A new transaction starts on its first column. In one account's
     // register that's the date, whose calendar never opens a touch keyboard;
     // All accounts starts on the account.
     focus(
-      field ?? (transaction ? editField : accountId ? "calendar" : "accountId"),
+      field ??
+        (transactionId ? editField : accountId ? "calendar" : "accountId"),
       !field,
     );
     return true;
@@ -247,6 +286,14 @@ export function useTransactionEntryController({
     const { draft, initial, entityId } = session;
     let command: Command;
     try {
+      if (
+        session.imported &&
+        latestImport &&
+        session.imported.fingerprint !== latestImport.fingerprint
+      )
+        throw new Error(
+          "Your bank updated this transaction. Reopen it before saving.",
+        );
       const fingerprint = JSON.stringify(
         buildTransactionDraftCommand({
           draft,
@@ -299,10 +346,13 @@ export function useTransactionEntryController({
     patch({ fields: {}, error: "" });
     const payee = draft.payee.trim();
     try {
-      await saver.save(command, initial ? `Saved ${payee}` : `Added ${payee}`);
+      const summary = session.rowId ? `Saved ${payee}` : `Added ${payee}`;
+      if (session.imported)
+        await saver.saveImport(session.imported, command, summary);
+      else await saver.save(command, summary);
       attempt.current = null;
       saving.current = false;
-      if (another && !initial) {
+      if (another && !session.rowId) {
         const next = {
           ...createTransactionDraft(
             view,
