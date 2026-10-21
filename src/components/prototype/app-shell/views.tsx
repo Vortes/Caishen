@@ -505,6 +505,8 @@ export function RegisterView({
     checked,
     onCheck,
   });
+  const entering = useJustChecked(checked);
+  const keyboard = useKeyboardInput();
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
   const editingId = session?.rowId;
@@ -551,6 +553,7 @@ export function RegisterView({
         key={item.id}
         className={`${styles.rowWrap} ${reviewStyles.checkable}`}
         data-checked={isChecked || undefined}
+        data-entering={(isChecked && entering.includes(item.id)) || undefined}
       >
         {checkable && (
           <RowCheckbox
@@ -699,6 +702,7 @@ export function RegisterView({
       role="group"
       aria-label="Transactions"
       data-selecting={selection.selected.length > 0 || undefined}
+      data-instant={keyboard || undefined}
       onKeyDown={(event) => {
         // x toggles the focused row's checkbox, like the plan.
         const id =
@@ -784,6 +788,38 @@ export function RegisterView({
       <SelectionIsland selection={selection} onCheck={onCheck} />
     </div>
   );
+}
+
+function useJustChecked(checked: string[]) {
+  const [previous, setPrevious] = useState(checked);
+  const [entering, setEntering] = useState<string[]>([]);
+  if (previous !== checked) {
+    setPrevious(checked);
+    setEntering(checked.filter((id) => !previous.includes(id)));
+  }
+  useEffect(() => {
+    if (!entering.length) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setEntering([]));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [entering]);
+  return entering;
+}
+
+function useKeyboardInput() {
+  const [keyboard, setKeyboard] = useState(false);
+  useEffect(() => {
+    const onKeyDown = () => setKeyboard(true);
+    const onPointerDown = () => setKeyboard(false);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, []);
+  return keyboard;
 }
 
 function Empty({

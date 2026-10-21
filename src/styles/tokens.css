@@ -230,6 +230,8 @@
 
   --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
   --duration-panel: 260ms;
+  --ease-selection: cubic-bezier(0.165, 0.84, 0.44, 1);
+  --duration-selection: 160ms;
   /* One pass of a skeleton's shine across the window. */
   --duration-shimmer: 1600ms;
 }
