@@ -3,6 +3,7 @@
 import { ChevronDownIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { AssignMoneyPopover } from "./assign-money";
 import { money } from "./model";
 import styles from "./shell.module.css";
 
@@ -27,10 +28,12 @@ export function RtaCard({ amount }: { amount: number }) {
         <strong>{money(amount)}</strong>
         {action ? (
           <div className={styles.rtaAction}>
-            <Button variant="primary">
-              {action}
-              <ChevronDownIcon aria-hidden />
-            </Button>
+            <AssignMoneyPopover>
+              <Button variant="primary">
+                {action}
+                <ChevronDownIcon aria-hidden />
+              </Button>
+            </AssignMoneyPopover>
           </div>
         ) : (
           <p>Every dollar has a job this month.</p>
