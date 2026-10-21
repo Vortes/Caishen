@@ -92,3 +92,22 @@
   border-color: var(--danger-line);
   color: var(--danger-text);
 }
+
+/* A touch target at least 44px tall, and for a quiet button with no padding
+   of its own, 8px wider on each side, without changing the layout. */
+@media (pointer: coarse) {
+  .button[data-variant] {
+    position: relative;
+  }
+  .button[data-variant]::before {
+    content: "";
+    position: absolute;
+    inset: -6px 0;
+  }
+  .button[data-variant][data-size="sm"]::before {
+    inset: -8px 0;
+  }
+  .button[data-variant="quiet"]::before {
+    inset: -8px;
+  }
+}

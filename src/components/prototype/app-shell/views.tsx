@@ -140,7 +140,7 @@ export function PlanView({
     : shell.groups;
   if (focus && !groups.length) {
     return (
-      <Empty title={focus.empty.title} icon={CheckIcon}>
+      <Empty title={focus.empty.title} icon={CheckIcon} done>
         {focus.empty.body}
       </Empty>
     );
@@ -239,7 +239,6 @@ export function PlanView({
             </div>
             {open && !ids.length && (
               <div className={styles.emptyGroup}>
-                No categories yet.
                 <EmptyGroupButton group={group.name} />
               </div>
             )}
@@ -523,7 +522,7 @@ export function RegisterView({
         Search looks at payees, categories, and amounts in every month.
       </Empty>
     ) : reviewOnly ? (
-      <Empty title="Everything here is reviewed." icon={CheckIcon}>
+      <Empty title="Everything here is reviewed." icon={CheckIcon} done>
         New bank imports will show up as they arrive.
       </Empty>
     ) : (
@@ -794,17 +793,20 @@ export function RegisterView({
 function Empty({
   title,
   icon: Icon = LandmarkIcon,
+  done = false,
   action,
   children,
 }: {
   title: string;
   icon?: LucideIcon;
+  // Nothing is left to do, like every category being funded.
+  done?: boolean;
   // The one thing to do next, under the explanation.
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className={styles.empty}>
+    <div className={styles.empty} data-tone={done ? "done" : undefined}>
       <Icon size={18} aria-hidden />
       <div className={styles.emptyBody}>
         <p>

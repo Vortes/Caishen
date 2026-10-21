@@ -3201,7 +3201,10 @@ void test("a category group exists before its first category and keeps its name 
     setup.view().categories.find((category) => category.id === "power")?.group,
     "Bills",
   );
-  assert.equal(bookSchema.parse(setup.book).budgets.alan?.groups?.length, 1);
+  // Newest first.
+  setup.run({ type: "group.add", name: "Pets" });
+  assert.deepEqual(setup.view().budget.groups, ["Pets", "Bills"]);
+  assert.equal(bookSchema.parse(setup.book).budgets.alan?.groups?.length, 2);
 });
 
 void test("an agent cannot add a category group", () => {

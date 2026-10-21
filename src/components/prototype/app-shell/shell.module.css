@@ -1041,7 +1041,9 @@ button.actionItem:hover {
   gap: 8px;
   min-width: 0;
   height: 30px;
-  padding: 0;
+  /* Room for the focus ring, without moving the name off the column. */
+  margin-left: -6px;
+  padding: 0 6px;
   border: 0;
   background: none;
   color: inherit;
@@ -1065,14 +1067,12 @@ button.actionItem:hover {
     opacity: 1;
   }
 }
-/* A group with no categories yet says so, with the way to add one. */
+/* A group with no categories yet offers the way to add one. */
 .emptyGroup {
   display: flex;
   align-items: center;
-  gap: 8px;
   height: var(--size-row-lg);
   padding: 0 var(--space-row-x) 0 34px;
-  color: var(--text-tertiary);
 }
 .groupCount {
   color: var(--text-tertiary);
@@ -1354,6 +1354,10 @@ button.actionItem:hover {
 .empty > svg {
   flex: none;
   margin-top: 2px;
+  color: var(--text-tertiary);
+}
+/* Green only when the empty state means something is finished. */
+.empty[data-tone="done"] > svg {
   color: var(--feedback-success);
 }
 .emptyBody {

@@ -277,7 +277,13 @@ export function toShellData(state: State): ShellData {
     };
   });
 
-  const groups: CategoryGroup[] = [];
+  // Groups added with group.add lead, newest first; the rest follow in the
+  // order their categories were added.
+  const groups: CategoryGroup[] = (view.budget.groups ?? []).map((name) => ({
+    id: name,
+    name,
+    categories: [],
+  }));
   for (const category of categories) {
     const group = groups.find((entry) => entry.name === category.group);
     if (group) group.categories.push(category);
@@ -288,10 +294,6 @@ export function toShellData(state: State): ShellData {
         categories: [category],
       });
   }
-  // Groups with no categories yet follow, in the order they were added.
-  for (const name of view.budget.groups ?? [])
-    if (!groups.some((group) => group.name === name))
-      groups.push({ id: name, name, categories: [] });
 
   const active = view.budget.transactions.filter((item) => !item.removed);
   const accounts = view.accounts.map((item): Account => {

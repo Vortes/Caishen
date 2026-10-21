@@ -42,7 +42,6 @@ test("a group header's + adds a category to that group, and it undoes", async ({
     .getByRole("button", { name: "Add a category to Everyday" })
     .click();
   const form = categoryForm(page, "Everyday");
-  await expect(form).toContainText("New category in Everyday");
   await expect(form.getByLabel("Category name")).toBeFocused();
 
   // Mistakes are caught next to the field, unsent.
@@ -116,7 +115,12 @@ test("Add category group makes an empty group ready for its first category", asy
     "true",
   );
   await expect(groupToggle(page, "Pets")).toHaveText(/Pets\s*0/);
-  await expect(page.getByText("No categories yet.")).toBeVisible();
+  // New groups lead the plan.
+  await expect(
+    page.getByRole("group", { name: "Categories" }).getByRole("button", {
+      expanded: true,
+    }),
+  ).toHaveText([/^Pets/, /^Credit card payments/, /^Bills/, /^Everyday/]);
 
   // Focus waits on the empty group's Add category, the next step.
   const next = page.locator('[data-add-category="Pets"]');
@@ -125,7 +129,7 @@ test("Add category group makes an empty group ready for its first category", asy
   await categoryForm(page, "Pets").getByLabel("Category name").fill("Vet");
   await categoryForm(page, "Pets").getByLabel("Category name").press("Enter");
   await expect(categoryRow(page, "Vet")).toBeFocused();
-  await expect(page.getByText("No categories yet.")).toHaveCount(0);
+  await expect(page.locator('[data-add-category="Pets"]')).toHaveCount(0);
   expect(plan.commands.at(-1)).toEqual(
     expect.objectContaining({ name: "Vet", group: "Pets" }),
   );

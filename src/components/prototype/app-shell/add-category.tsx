@@ -18,7 +18,6 @@ import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, usePortalContainer } from "~/components/ui/tooltip";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
-import shell from "./shell.module.css";
 // The move-money popover's form surface and fields.
 import styles from "./move-money.module.css";
 
@@ -194,12 +193,6 @@ function NameForm({
         submit();
       }}
     >
-      {group && (
-        <div className={styles.header}>
-          <span className={styles.headerLabel}>New category in</span>
-          <strong className={shell.truncate}>{group}</strong>
-        </div>
-      )}
       <div className={styles.field}>
         <label htmlFor={id}>{group ? "Category name" : "Group name"}</label>
         <div
@@ -236,7 +229,7 @@ function NameForm({
           <Button size="sm">Cancel</Button>
         </Popover.Close>
         <Button variant="primary" size="sm" type="submit">
-          {group ? "Add category" : "Add group"}
+          {group ? "Add category" : "Add category group"}
         </Button>
       </div>
     </form>

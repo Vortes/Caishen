@@ -479,9 +479,9 @@ export type Budget = {
   name: string;
   startMonth: string;
   accounts: Account[];
-  // Category groups in the order they were added, including ones with no
-  // categories yet. A category names its group; budgets from before groups
-  // were stored have only the groups their categories name.
+  // Category groups added with group.add, newest first, including ones with
+  // no categories yet. They lead the plan; a category names its group, and
+  // groups known only through their categories follow in category order.
   groups?: string[];
   categories: Category[];
   transactions: Transaction[];
@@ -2592,7 +2592,7 @@ function applyCommand(
       );
       if (taken.has(command.name.toLowerCase()))
         fail("Category group already exists");
-      budget.groups = [...(budget.groups ?? []), command.name];
+      budget.groups = [command.name, ...(budget.groups ?? [])];
       break;
     }
     case "category.add": {
