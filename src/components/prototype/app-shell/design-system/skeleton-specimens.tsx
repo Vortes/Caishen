@@ -7,7 +7,7 @@ import { Skeleton, type SkeletonShape } from "~/components/ui/skeleton";
 import { Tag } from "~/components/ui/tag";
 import { Figure } from "../cards";
 import { FundingBar } from "../funding-bar";
-import { RtaCard } from "../ready-to-assign";
+import { RtaCardLayout } from "../ready-to-assign";
 import shell from "../shell.module.css";
 import styles from "./design-system.module.css";
 
@@ -127,7 +127,7 @@ export function SkeletonSpecimens() {
           </figcaption>
         </figure>
         <figure className={styles.context}>
-          <RtaCard amount={6_299} />
+          <RtaCardLayout amount={6_299} />
           <figcaption>Loaded: every line lands where its bone was.</figcaption>
         </figure>
       </div>
