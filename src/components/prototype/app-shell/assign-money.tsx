@@ -13,7 +13,7 @@ import {
   type AutoAssignOption,
 } from "~/domain/auto-assign";
 import type { Command } from "~/domain/engine";
-import { money } from "./model";
+import { money, type Category } from "./model";
 import {
   Destination,
   FieldError,
@@ -289,22 +289,28 @@ const autoGroups: [AutoAssignOption, string][][] = [
   ],
 ];
 
-// Runs an option over every category this month at once, like YNAB. The
-// toast that follows offers Undo.
-function AutoAssign({ onDone }: { onDone: () => void }) {
-  const { categories, readyToAssign, month } = useShellData();
+// Plans and runs Auto-Assign options over the given categories as one
+// assign.batch move. The toast that follows offers Undo. run returns why the
+// move can't be sent right now, or null once it's on its way.
+export function useAutoAssign(categories: Category[]) {
+  const { readyToAssign, month } = useShellData();
   const { move } = useMoveMoney();
-  const [error, setError] = useState<string | null>(null);
   const scope = categories.map((item) => item.autoAssign);
-  const need = optionAmount("underfunded", scope);
   const plan = (option: AutoAssignOption) =>
     planAutoAssign({ option, scope, readyToAssign, month: month.key });
 
   const run = (option: AutoAssignOption) => {
     const { changes } = plan(option);
     const net = changes.reduce((total, change) => total + change.amount, 0);
-    const count = `${changes.length} ${changes.length === 1 ? "category" : "categories"}`;
-    const blocked = move(
+    // One category is named; more are counted.
+    const named =
+      changes.length === 1
+        ? categories.find((item) => item.id === changes[0]!.categoryId)?.name
+        : undefined;
+    const count =
+      named ??
+      `${changes.length} ${changes.length === 1 ? "category" : "categories"}`;
+    return move(
       { type: "assign.batch", id: newId(), month: month.key, changes },
       changes.every((change) => change.amount > 0)
         ? `Assigned ${money(net)} to ${count}`
@@ -312,6 +318,19 @@ function AutoAssign({ onDone }: { onDone: () => void }) {
           ? `Moved ${money(-net)} from ${count} to Ready to Assign`
           : `Updated ${count}`,
     );
+  };
+  return { scope, plan, run };
+}
+
+// Runs an option over every category this month at once, like YNAB.
+function AutoAssign({ onDone }: { onDone: () => void }) {
+  const { categories, readyToAssign, month } = useShellData();
+  const [error, setError] = useState<string | null>(null);
+  const { scope, plan, run: runOption } = useAutoAssign(categories);
+  const need = optionAmount("underfunded", scope);
+
+  const run = (option: AutoAssignOption) => {
+    const blocked = runOption(option);
     if (blocked) setError(blocked);
     else onDone();
   };

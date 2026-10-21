@@ -16,8 +16,9 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Figure, Property, Title } from "./cards";
+import { useAutoAssign } from "./assign-money";
 import { money, type Category } from "./model";
-import { MoveMoneyPopover } from "./move-money";
+import { FieldError, MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import { TargetEditor } from "./target-editor";
@@ -137,15 +138,41 @@ export const autoAssignOptions: [AutoAssignOption, string][] = [
   ["reduce-overfunding", "Reduce overfunding"],
 ];
 
+// Runs an option over the inspected categories: the whole month, a
+// selection, or one category.
 function AutoAssign({ scope }: { scope: Category[] }) {
-  const categories = scope.map((item) => item.autoAssign);
+  const { month } = useShellData();
+  const [error, setError] = useState<string | null>(null);
+  const { scope: categories, plan, run } = useAutoAssign(scope);
   return (
-    <AutoAssignList
-      items={autoAssignOptions.map(([option, label]) => [
-        label,
-        optionAmount(option, categories),
-      ])}
-    />
+    <>
+      <ul className={styles.actionList}>
+        {autoAssignOptions.map(([option, label]) => (
+          <li key={option}>
+            <button
+              type="button"
+              className={styles.actionItem}
+              disabled={plan(option).changes.length === 0}
+              onClick={() => setError(run(option))}
+            >
+              <ZapIcon size={13} aria-hidden />
+              <span>{label}</span>
+              <span className={styles.numeric}>
+                {money(optionAmount(option, categories))}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <div className={styles.autoAssignError}>
+          <FieldError
+            id={`${month.key}-inspector-auto-error`}
+            message={error}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -387,7 +414,7 @@ function CategoryDetails({ category }: { category: Category }) {
             <TargetTab category={category} />
           </TabsContent>
           <TabsContent value="auto-assign">
-            <AutoAssign scope={[category]} />
+            <AutoAssign key={category.id} scope={[category]} />
           </TabsContent>
         </Tabs>
       </Card>
@@ -466,22 +493,6 @@ function TargetTab({ category }: { category: Category }) {
         </Button>
       </div>
     </div>
-  );
-}
-
-function AutoAssignList({ items }: { items: [string, number][] }) {
-  return (
-    <ul className={styles.actionList}>
-      {items.map(([label, amount]) => (
-        <li key={label}>
-          <button type="button" className={styles.actionItem}>
-            <ZapIcon size={13} aria-hidden />
-            <span>{label}</span>
-            <span className={styles.numeric}>{money(amount)}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
   );
 }
 
