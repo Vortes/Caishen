@@ -53,8 +53,7 @@ function monthTitle(month: string) {
   });
 }
 
-// Clicking a selected row deselects it, like YNAB, so a row already
-// selected is only focused.
+// Keep an existing selection without activating one of its editable cells.
 async function selectRow(row: Locator) {
   if ((await row.getAttribute("aria-current")) === "true") await row.focus();
   else await row.click();
@@ -295,8 +294,10 @@ test("clicking the payee lists recent payees, and the category keeps its name wh
   const latest = [...plan.saved().transactions]
     .filter((item) => !item.removed)
     .sort((a, b) => b.date.localeCompare(a.date))[0]!.payee;
-  await expect(suggestions.getByRole("option").first()).toHaveText(latest);
-  await suggestions.getByRole("option").first().click();
+  await expect(suggestions.getByRole("option").first()).toHaveText(
+    "Payment to Visa",
+  );
+  await suggestions.getByRole("option", { name: latest, exact: true }).click();
   await expect(payee).toHaveValue(latest);
   await expect(suggestions).toHaveCount(0);
 
@@ -335,7 +336,9 @@ test("each pick opens the next field: date, payee, category, then the amount", a
   await today(page).click();
   await expect(field(form, "Payee")).toBeFocused();
   await expect(suggestions).toBeVisible();
-  await suggestions.getByRole("option").first().click();
+  await suggestions
+    .getByRole("option", { name: "Bistro", exact: true })
+    .click();
   await expect(category).toBeFocused();
   await expect(categories).toBeVisible();
   await categories.getByRole("option", { name: /^Dining/ }).click();
@@ -354,7 +357,44 @@ test("each pick opens the next field: date, payee, category, then the amount", a
   await expect(categories).toBeVisible();
 });
 
-test("a selected transaction stays read-only until Edit, keeps its account, and undoes through history", async ({
+test("a first click selects a row and a second click edits the chosen field", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page);
+  await openRegister(page, "Checking");
+  const row = content(page).getByRole("button", { name: /Bistro/ });
+  await row.locator('[data-column="payee"]').click();
+  await expect(island(page)).toContainText("1 transaction");
+  await expect(editor(page)).toHaveCount(0);
+
+  for (const [column, label] of [
+    ["payee", "Payee"],
+    ["date", "Date"],
+    ["category", "Category"],
+    ["outflow", "Outflow"],
+    ["inflow", "Inflow"],
+  ]) {
+    await row.locator(`[data-column="${column}"]`).click();
+    await expect(field(editor(page), label!)).toBeFocused();
+    await expect(island(page)).toContainText("1 transaction");
+    await editor(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(row).toHaveAttribute("aria-current", "true");
+  }
+  expect(plan.executions).toHaveLength(0);
+
+  await content(page)
+    .getByRole("checkbox", { name: "Select Bistro", exact: true })
+    .click();
+  await expect(island(page)).toHaveCount(0);
+  await row.locator('[data-column="outflow"]').click();
+  await expect(editor(page)).toHaveCount(0);
+  await row.locator('[data-column="outflow"]').click();
+  await field(editor(page), "Outflow").fill("30");
+  await editor(page).getByRole("button", { name: "Save", exact: true }).click();
+  expect(plan.saved().transaction("dinner")!.amount).toBe(-3000);
+});
+
+test("editing a selected transaction keeps its account and undoes through history", async ({
   page,
 }) => {
   const plan = await openPrototype(page);
@@ -363,11 +403,11 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await content(page)
     .getByRole("button", { name: /Bistro/ })
     .click();
-  await expect(island(page)).toContainText("1 selected");
+  await expect(island(page)).toContainText("1 transaction");
   await expect(editor(page)).toHaveCount(0);
   await expect(content(page).getByRole("textbox")).toHaveCount(0);
 
-  await island(page).getByRole("button", { name: "Edit", exact: true }).click();
+  await page.keyboard.press("e");
   const form = content(page).getByRole("form", { name: "Edit transaction" });
   await expect(
     form.getByRole("combobox", { name: "Category", exact: true }),
@@ -388,7 +428,7 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form).toHaveCount(0);
   await expect(
-    island(page).getByRole("button", { name: "Edit", exact: true }),
+    content(page).getByRole("button", { name: /Bistro lunch/ }),
   ).toBeFocused();
   expect(plan.executions).toEqual([
     {
@@ -433,7 +473,7 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await inline.getByRole("button", { name: "Cancel" }).click();
   await expect(inline).toHaveCount(0);
   await expect(
-    island(page).getByRole("button", { name: "Edit", exact: true }),
+    content(page).getByRole("button", { name: /Bistro/ }),
   ).toBeFocused();
   expect(plan.executions).toHaveLength(1);
 
@@ -451,23 +491,22 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await expect(account).toHaveValue("Checking");
 });
 
-test("special transactions offer no Edit", async ({ page }) => {
+test("statement credits still offer no Edit", async ({ page }) => {
   const plan = await openPrototype(page);
   plan.changeElsewhere({
-    type: "card.payment",
+    type: "card.credit",
     id: "pay-card",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    accountId: "card",
     date: `${plan.month}-01`,
     amount: 5_000,
   });
   await page.reload();
   await openRegister(page, "Visa");
   await content(page)
-    .getByRole("button", { name: /payment/i })
+    .getByRole("button", { name: /statement credit/i })
     .first()
     .click();
-  await expect(island(page)).toContainText("1 selected");
+  await expect(island(page)).toContainText("1 transaction");
   await expect(
     island(page).getByRole("button", { name: "Edit", exact: true }),
   ).toHaveCount(0);
@@ -884,4 +923,187 @@ async function fits(locator: Locator) {
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
   }).toPass();
+}
+
+test("payment payees lead the list and editing the receiving side updates both registers", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page, { payments: true });
+  await openRegister(page, "Checking");
+  await addButton(page).click();
+  await today(page).click();
+  const options = page.getByRole("listbox", { name: "Payee suggestions" });
+  await expect(options).toContainText("Payments and Transfers");
+  await expect(
+    options.getByRole("option", { name: "Payment to Visa", exact: true }),
+  ).toBeVisible();
+  await expect(
+    options.getByRole("option", { name: "Payment to Amex", exact: true }),
+  ).toBeVisible();
+  await expect(
+    options.getByRole("option", { name: "Transfer to Checking", exact: true }),
+  ).toHaveCount(0);
+  await editor(page)
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  await openRegister(page, "Visa");
+  await content(page)
+    .getByRole("button", { name: /Payment from Checking/ })
+    .click();
+  await page.keyboard.press("e");
+  await expect(field(editor(page), "Payee")).toHaveValue(
+    "Payment from Checking",
+  );
+  await expect(field(editor(page), "Payee")).toBeFocused();
+  await expect(field(editor(page), "Category")).toHaveValue(
+    "Category not needed",
+  );
+  await field(editor(page), "Inflow").fill("60.01");
+  await editor(page).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(plan.saved().transaction("seed-card-payment:cash")!.amount).toBe(
+    -6001,
+  );
+  expect(plan.saved().transaction("seed-card-payment:card")!.amount).toBe(6001);
+  await openRegister(page, "Checking");
+  await expect(
+    content(page).getByRole("button", { name: /Payment to Visa.*60.01/ }),
+  ).toBeVisible();
+});
+
+test("an imported plain transaction converts through Payee and approval follows both sides", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page, { payments: true });
+  await openRegister(page, "Checking");
+  await content(page)
+    .getByRole("button", { name: /ONLINE TRANSFER TO SAVINGS/ })
+    .click();
+  await page.keyboard.press("e");
+  await field(editor(page), "Payee").click();
+  await page
+    .getByRole("option", { name: "Transfer to Savings", exact: true })
+    .click();
+  await expect(field(editor(page), "Category")).toHaveValue(
+    "Category not needed",
+  );
+  await editor(page).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor(page)).toHaveCount(0);
+  const saved = plan.saved().transaction("imported-transfer")!;
+  expect(saved.providerId).toBe("bank-import-transfer");
+  expect(saved.kind).toBe("transfer");
+  await island(page).getByRole("button", { name: "Approve (1)" }).click();
+  await expect(
+    island(page).getByRole("button", { name: /^Approve/ }),
+  ).toHaveCount(0);
+  expect(
+    plan
+      .saved()
+      .transactions.filter((item) => item.linkedId === saved.linkedId)
+      .every((item) => item.reviewed),
+  ).toBe(true);
+  await page.keyboard.press("e");
+  await field(editor(page), "Payee").fill("Merchant purchase");
+  await choose(editor(page), "Category", "Dining");
+  await editor(page).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(plan.saved().transaction("imported-transfer")!.kind).toBe("purchase");
+  expect(
+    plan
+      .saved()
+      .transactions.filter(
+        (item) => item.linkedId === saved.linkedId && !item.removed,
+      ),
+  ).toHaveLength(0);
+});
+
+test("brokerage transfers keep their required category when edited from the tracking register", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page, { payments: true });
+  await openRegister(page, "Brokerage");
+  await content(page)
+    .getByRole("button", { name: /Transfer from Checking/ })
+    .click();
+  await page.keyboard.press("e");
+  await expect(field(editor(page), "Category")).toHaveValue("Investing");
+  await field(editor(page), "Inflow").fill("75");
+  await editor(page).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(plan.saved().transaction("brokerage-transfer")!.amount).toBe(-7500);
+  expect(plan.saved().category("investing").available).toBe(12500);
+});
+
+test("loan payment edits preserve lender-confirmed interest and update principal", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page, { payments: true });
+  await openRegister(page, "Checking");
+  await content(page)
+    .getByRole("button", { name: /Payment to Student loan/ })
+    .click();
+  await page.keyboard.press("e");
+  await expect(field(editor(page), "Lender-confirmed interest")).toHaveValue(
+    "10.00",
+  );
+  await field(editor(page), "Outflow").fill("70");
+  await field(editor(page), "Lender-confirmed interest").fill("12");
+  await editor(page).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(plan.saved().transaction("seed-loan-payment:payment")!.amount).toBe(
+    -7000,
+  );
+});
+
+test("a brokerage account can be added without increasing Ready to Assign", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page);
+  const ready = plan.saved().readyToAssign;
+  await sidebar(page)
+    .getByRole("button", { name: "Add account", exact: true })
+    .click();
+  const form = page.getByRole("form", { name: "Add account", exact: true });
+  await form.getByLabel("Account name").fill("Fidelity brokerage");
+  await form.getByLabel("Account type").selectOption("tracking");
+  await form.getByLabel("Opening balance ($)").fill("25000");
+  await form.getByRole("button", { name: "Add account", exact: true }).click();
+  await expect(form).toHaveCount(0);
+  await expect(
+    sidebar(page).getByRole("button", { name: /Fidelity brokerage/ }),
+  ).toBeVisible();
+  expect(plan.saved().readyToAssign).toBe(ready);
+});
+
+for (const width of [1600, 838]) {
+  test(`inline payment links select the opposite register without a backdrop at ${width}px`, async ({
+    page,
+  }) => {
+    const plan = await openPrototype(page, { payments: true });
+    await openRegister(page, "Checking");
+    await page.setViewportSize({ width, height: 1000 });
+    await page.getByRole("link", { name: "View in Visa", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Visa", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("checkbox", {
+        name: "Select Payment from Checking",
+        exact: true,
+      }),
+    ).toBeChecked();
+    await expect(editor(page)).toHaveCount(0);
+    await expect(page.getByTestId("drawer-backdrop")).toHaveCount(0);
+    await page
+      .getByRole("link", { name: "View in Checking", exact: true })
+      .click();
+    await expect(
+      page.getByRole("checkbox", {
+        name: "Select Payment to Visa",
+        exact: true,
+      }),
+    ).toBeChecked();
+    await expect(page.getByTestId("drawer-backdrop")).toHaveCount(0);
+    expect(plan.commands).toEqual([]);
+  });
 }

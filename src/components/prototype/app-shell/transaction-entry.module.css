@@ -54,8 +54,8 @@
   gap: 8px;
 }
 
-/* On a phone the row stacks: each field takes its label back. */
-@container (max-width: 560px) {
+/* Stack before payment names and category guidance become unreadable. */
+@container (max-width: 760px) {
   .entryRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 8px;
@@ -336,5 +336,28 @@
 @media (prefers-reduced-motion: reduce) {
   .well {
     transition: none;
+  }
+}
+.loanDetails {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-card);
+  padding: var(--space-inset) var(--space-row-x) var(--space-inset) 34px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+.loanDetails label {
+  display: block;
+  margin-bottom: var(--space-inset);
+}
+
+.loanDetails p {
+  max-width: 48ch;
+}
+@container (max-width: 760px) {
+  .loanDetails {
+    padding-left: var(--space-row-x);
   }
 }

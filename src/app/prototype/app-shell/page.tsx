@@ -6,6 +6,15 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-export default function AppShellPrototypePage() {
-  return <LiveAppShell />;
+export default async function AppShellPrototypePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
+  const { month } = await searchParams;
+  const initialMonth =
+    typeof month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+      ? month
+      : undefined;
+  return <LiveAppShell initialMonth={initialMonth} />;
 }

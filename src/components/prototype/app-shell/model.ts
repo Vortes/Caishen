@@ -1,4 +1,10 @@
 import {
+  registerPayee,
+  isTransfer,
+  transferCounterparts,
+  transferNeedsCategory,
+} from "~/domain/transfers";
+import {
   categoryStatus,
   statusLine,
 } from "~/components/budget/category-row-status";
@@ -50,7 +56,7 @@ type CategoryGroup = { id: string; name: string; categories: Category[] };
 export type Account = {
   id: string;
   name: string;
-  kind: "cash" | "credit";
+  kind: "cash" | "credit" | "tracking";
   balance: number;
   pending: number;
   connection?: {
@@ -83,11 +89,18 @@ export type Transaction = {
   status: "pending" | "posted";
   source: "budget" | "bank";
   needsReview: boolean;
+  counterpart?: {
+    id: string;
+    accountId: string;
+    accountName: string;
+    date: string;
+  };
   // Why a bank import is waiting, when it is.
   reviewReason?: string;
   categoryId?: string;
   categoryLabel: string;
   needsCategory: boolean;
+  categoryNotNeeded: boolean;
   forMonth?: string;
   shared: boolean;
   history: { reason: string; amount: number }[];
@@ -309,22 +322,49 @@ export function toShellData(state: State): ShellData {
 
   const transactions: Transaction[] = [
     ...active.map((item): Transaction => {
-      const needsCategory = item.kind === "purchase" && !item.categoryId;
+      const account = view.budget.accounts.find(
+        (account) => account.id === item.accountId,
+      )!;
+      const counterpart = transferCounterparts(view.budget, item)[0];
+      const other = view.budget.accounts.find(
+        (account) => account.id === counterpart?.accountId,
+      );
+      const boundary = other && transferNeedsCategory(account, other);
+      const categoryNotNeeded =
+        (isTransfer(item) || account.kind === "tracking") && !boundary;
+      const needsCategory =
+        item.kind === "purchase" &&
+        !item.categoryId &&
+        account.kind !== "tracking";
       return {
         id: item.id,
         date: item.date,
-        payee: item.payee,
+        payee: registerPayee(view.budget, item),
         accountId: item.accountId,
         amount: item.amount,
         status: item.status,
         source: "budget",
+        counterpart:
+          counterpart && other
+            ? {
+                id: counterpart.id,
+                accountId: other.id,
+                accountName: other.name,
+                date: counterpart.date,
+              }
+            : undefined,
         needsReview: !item.reviewed,
         categoryId: item.categoryId,
-        categoryLabel: needsCategory
-          ? "Needs category"
-          : ((item.categoryId && categoryName.get(item.categoryId)) ??
-            transactionCategory(item.kind, item.amount)),
+        categoryLabel: categoryNotNeeded
+          ? "Category not needed"
+          : needsCategory
+            ? "Needs category"
+            : ((item.categoryId && categoryName.get(item.categoryId)) ??
+              (boundary
+                ? "Inflow: Ready to Assign"
+                : transactionCategory(item.kind, item.amount))),
         needsCategory,
+        categoryNotNeeded,
         forMonth:
           item.expenseMonth !== item.date.slice(0, 7)
             ? monthName(item.expenseMonth)
@@ -348,6 +388,7 @@ export function toShellData(state: State): ShellData {
       reviewReason: importReviewReason(item),
       categoryLabel: item.categoryName ?? "Needs category",
       needsCategory: !item.categoryName,
+      categoryNotNeeded: false,
       shared: false,
       history: [],
     })),

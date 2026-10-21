@@ -1,3 +1,4 @@
+import { transferCounterparts } from "~/domain/transfers";
 import { previewBudgetProjection, type Command } from "~/domain/engine";
 import { budgetDay, prepareUserCommand } from "~/domain/user-command";
 import type { State, View } from "~/components/budget/types";
@@ -16,10 +17,15 @@ function metadataView(view: View, command: Command): View {
           (transaction) =>
             transaction.kind === "purchase" &&
             transaction.amount < 0 &&
-            !transaction.categoryId,
+            !transaction.categoryId &&
+            budget.accounts.find((item) => item.id === transaction.accountId)
+              ?.kind !== "tracking",
         )
       )
         return view;
+      for (const transaction of transactions)
+        for (const other of transferCounterparts(budget, transaction))
+          ids.add(other.id);
       return {
         ...view,
         budget: {

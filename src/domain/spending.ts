@@ -39,9 +39,18 @@ export function personalSpendingEntries(
   const payments = budget?.loans.flatMap((loan) => loan.payments) ?? [];
   const entries: SpendingEntry[] = [];
   for (const transaction of budget?.transactions ?? []) {
-    if (transaction.removed) continue;
+    if (
+      transaction.removed ||
+      budget?.accounts.find((item) => item.id === transaction.accountId)
+        ?.kind === "tracking"
+    )
+      continue;
     let amount = 0;
-    if (transaction.kind === "purchase" || transaction.kind === "refund")
+    if (
+      transaction.kind === "purchase" ||
+      transaction.kind === "refund" ||
+      (transaction.kind === "transfer" && transaction.categoryId)
+    )
       amount = transaction.shares?.[userId] ?? -transaction.amount;
     else if (transaction.kind === "loan-payment")
       amount =

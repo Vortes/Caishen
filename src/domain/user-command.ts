@@ -26,6 +26,7 @@ export function prepareUserCommand(
   const today = budgetDay(budget.settings.timezone, now);
   const datedActivity = [
     "transaction.upsert",
+    "transaction.save",
     "card.payment",
     "card.credit",
     "reimbursement.receive",

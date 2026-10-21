@@ -78,6 +78,99 @@ const allAccounts = (page: Page) =>
     .getByRole("navigation", { name: "Budget navigation" })
     .getByRole("button", { name: /^All accounts/ });
 
+test("the island shows only available actions and categorizes a selection with undo", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page, { commands });
+  await allAccounts(page).click();
+  await row(page, "Bistro").click();
+  await expect(approve(page)).toHaveCount(0);
+  await expect(
+    island(page).getByRole("button", { name: "Reject", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    island(page).getByRole("button", { name: "Edit", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    island(page).getByRole("button", { name: "Categorize", exact: true }),
+  ).toBeEnabled();
+  await rowCheck(page, "Corner coffee").click();
+  await expect(approve(page)).toBeEnabled();
+  await expect(
+    island(page).getByRole("button", { name: "Reject", exact: true }),
+  ).toBeEnabled();
+  await island(page)
+    .getByRole("button", { name: "Categorize", exact: true })
+    .click();
+  const form = page.getByRole("form", {
+    name: "Categorize transactions",
+    exact: true,
+  });
+  await form
+    .getByRole("combobox", { name: "Category", exact: true })
+    .fill("Gifts");
+  await form
+    .getByRole("combobox", { name: "Category", exact: true })
+    .press("Enter");
+  const release = plan.holdExecute();
+  try {
+    await form.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(form).toBeVisible();
+    await expect(form.getByRole("button", { name: "Saving…" })).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(notifications(page)).toContainText("Categorized 2 transactions");
+  expect(plan.saved().transaction("dinner")!.categoryId).toBe("gifts");
+  expect(plan.saved().transaction("coffee")!.categoryId).toBe("gifts");
+  await expect(approve(page)).toHaveCount(0);
+  await expect(
+    island(page).getByRole("button", { name: "Reject", exact: true }),
+  ).toHaveCount(0);
+  await toastUndo(page).click();
+  await expect(row(page, "Corner coffee")).toContainText("Dining");
+  expect(plan.saved().transaction("coffee")!.reviewed).toBe(false);
+});
+
+test("Reject removes only unapproved transactions in a mixed selection and Undo restores them", async ({
+  page,
+}) => {
+  const plan = await openPrototype(page, { commands });
+  await allAccounts(page).click();
+  await row(page, "Bistro").click();
+  await rowCheck(page, "Corner coffee").click();
+  await island(page)
+    .getByRole("button", { name: "Reject", exact: true })
+    .click();
+  await expect(notifications(page)).toContainText("Rejected 1 transaction");
+  await expect(row(page, "Corner coffee")).toHaveCount(0);
+  await expect(row(page, "Bistro")).toBeVisible();
+  expect(plan.saved().transaction("coffee")!.removed).toBe(true);
+  expect(plan.saved().transaction("dinner")!.removed).not.toBe(true);
+  await toastUndo(page).click();
+  await expect(row(page, "Corner coffee")).toBeVisible();
+  expect(plan.saved().transaction("coffee")!.reviewed).toBe(false);
+});
+
+test("Categorize is absent for transfers that do not use budget categories", async ({
+  page,
+}) => {
+  await openPrototype(page, { payments: true });
+  await page
+    .getByRole("navigation", { name: "Budget navigation" })
+    .getByRole("button", { name: /^Checking/ })
+    .click();
+  await row(page, "Transfer to Savings").click();
+  await expect(
+    island(page).getByRole("button", { name: "Categorize", exact: true }),
+  ).toHaveCount(0);
+  await expect(approve(page)).toHaveCount(0);
+  await expect(
+    island(page).getByRole("button", { name: "Reject", exact: true }),
+  ).toHaveCount(0);
+  await expect(island(page).getByRole("link")).toHaveCount(0);
+});
+
 // The sidebar marks All accounts with a dot, without a number, while
 // anything waits for review.
 const sidebarDot = (page: Page, count: number) =>
@@ -123,11 +216,11 @@ test("approving one clicked transaction saves on screen first and shares undo wi
 
   // Clicking a row selects just that row, and the island acts on it.
   await row(page, "Corner coffee").click();
-  await expect(island(page)).toContainText("1 selected · -$4.50");
+  await expect(island(page)).toContainText("1 transaction");
   const release = plan.holdExecute();
   try {
     await approve(page).click();
-    await expect(approve(page)).toHaveText("Approve (0)");
+    await expect(approve(page)).toHaveCount(0);
     await reviewCount(page, 3);
     await expect(row(page, "Corner coffee")).not.toContainText("Needs review");
     expect(plan.writes).toEqual(["budget.execute"]);
@@ -189,7 +282,7 @@ test("a batch approves only what still needs review, never a bank import", async
   await page.keyboard.press("x");
   await rowCheck(page, "Corner coffee").click();
   await expect(rowCheck(page, "Bistro")).toBeChecked();
-  await expect(island(page)).toContainText("2 selected · -$284.65");
+  await expect(island(page)).toContainText("2 transactions");
   await expect(approve(page)).toHaveText("Approve (1)");
   await expect(selectAll(page)).toHaveAttribute("aria-checked", "mixed");
 
@@ -200,7 +293,7 @@ test("a batch approves only what still needs review, never a bank import", async
   await selectAll(page).click();
   await expect(approve(page)).toHaveText("Approve (3)");
   await rowCheck(page, "Hardware store").click();
-  await expect(island(page)).toContainText("2 selected · +$2,495.50");
+  await expect(island(page)).toContainText("2 transactions");
 
   const release = plan.holdExecute();
   try {
