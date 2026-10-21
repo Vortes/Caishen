@@ -1,0 +1,69 @@
+import { expect, test } from "./shell-fixture";
+import { notifications, reloadBudget, saved } from "./shell-controls";
+
+test("category groups and their categories are added separately and persist", async ({
+  page,
+  budget,
+}) => {
+  const groups = page
+    .getByRole("group", { name: "Categories", exact: true })
+    .getByRole("button", { expanded: true });
+  const row = (name: string) =>
+    page
+      .getByRole("group", { name: "Categories", exact: true })
+      .locator("[data-row]")
+      .filter({ hasText: name });
+
+  // A new category group starts empty, at the top, ready for a category.
+  await page
+    .getByRole("button", { name: "Add category group", exact: true })
+    .click();
+  const groupForm = page.getByRole("dialog", { name: "Add a category group" });
+  await groupForm.getByLabel("Group name").fill("everyday");
+  await groupForm.getByLabel("Group name").press("Enter");
+  await expect(groupForm.getByRole("alert")).toHaveText(
+    "You already have a group called Everyday.",
+  );
+  await groupForm.getByLabel("Group name").fill("Bills");
+  await groupForm.getByLabel("Group name").press("Enter");
+  await saved(page);
+  await expect(notifications(page)).toContainText("Added the Bills group");
+  await expect(groups).toHaveText([/^Bills\s*0$/, /^Everyday/]);
+  const addFirst = page.locator('[data-add-category="Bills"]');
+  await expect(addFirst).toBeFocused();
+
+  await addFirst.click();
+  const billsForm = page.getByRole("dialog", {
+    name: "Add a category to Bills",
+  });
+  await billsForm.getByLabel("Category name").fill("Rent");
+  await billsForm.getByLabel("Category name").press("Enter");
+  await saved(page);
+  await expect(row("Rent")).toBeFocused();
+  await expect(addFirst).toHaveCount(0);
+
+  // An existing group's header + adds to that group, refusing duplicates.
+  await page.getByRole("button", { name: /^Everyday \d+$/ }).hover();
+  await page
+    .getByRole("button", { name: "Add a category to Everyday", exact: true })
+    .click();
+  const everydayForm = page.getByRole("dialog", {
+    name: "Add a category to Everyday",
+  });
+  await everydayForm
+    .getByLabel("Category name")
+    .fill(budget.category.toUpperCase());
+  await everydayForm.getByLabel("Category name").press("Enter");
+  await expect(everydayForm.getByRole("alert")).toHaveText(
+    `Everyday already has ${budget.category}.`,
+  );
+  await everydayForm.getByLabel("Category name").fill("Coffee");
+  await everydayForm.getByLabel("Category name").press("Enter");
+  await saved(page);
+  await expect(row("Coffee")).toBeFocused();
+
+  await reloadBudget(page, budget);
+  await expect(groups).toHaveText([/^Bills\s*1$/, /^Everyday\s*3$/]);
+  await expect(row("Rent")).toBeVisible();
+  await expect(row("Coffee")).toBeVisible();
+});
