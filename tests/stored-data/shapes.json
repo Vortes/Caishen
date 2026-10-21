@@ -1,0 +1,1349 @@
+{
+  "Workspace.book": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "audit": "required",
+        "budgets": "required",
+        "obligations": "required",
+        "settlements": "required",
+        "sharedCategories": "required",
+        "version": "required"
+      }
+    },
+    "$.version": {
+      "type": "enum",
+      "values": [
+        1
+      ]
+    },
+    "$.budgets": {
+      "type": "record"
+    },
+    "$.budgets.*": {
+      "type": "object",
+      "fields": {
+        "accounts": "required",
+        "assignments": "required",
+        "categories": "required",
+        "expectedIncome": "optional",
+        "groups": "optional",
+        "loans": "required",
+        "name": "required",
+        "reimbursements": "required",
+        "rules": "required",
+        "settings": "required",
+        "startMonth": "required",
+        "transactions": "required",
+        "userId": "required"
+      }
+    },
+    "$.budgets.*.userId": {
+      "type": "string"
+    },
+    "$.budgets.*.name": {
+      "type": "string"
+    },
+    "$.budgets.*.startMonth": {
+      "type": "string"
+    },
+    "$.budgets.*.accounts": {
+      "type": "array"
+    },
+    "$.budgets.*.accounts[]": {
+      "type": "object",
+      "fields": {
+        "date": "required",
+        "id": "required",
+        "kind": "required",
+        "name": "required",
+        "openingBalance": "required",
+        "reconciled": "optional"
+      }
+    },
+    "$.budgets.*.accounts[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.accounts[].name": {
+      "type": "string"
+    },
+    "$.budgets.*.accounts[].kind": {
+      "type": "enum",
+      "values": [
+        "cash",
+        "credit",
+        "tracking"
+      ]
+    },
+    "$.budgets.*.accounts[].openingBalance": {
+      "type": "number"
+    },
+    "$.budgets.*.accounts[].date": {
+      "type": "string"
+    },
+    "$.budgets.*.accounts[].reconciled": {
+      "type": "object",
+      "fields": {
+        "balance": "required",
+        "date": "required"
+      }
+    },
+    "$.budgets.*.accounts[].reconciled.date": {
+      "type": "string"
+    },
+    "$.budgets.*.accounts[].reconciled.balance": {
+      "type": "number"
+    },
+    "$.budgets.*.groups": {
+      "type": "array"
+    },
+    "$.budgets.*.groups[]": {
+      "type": "string"
+    },
+    "$.budgets.*.categories": {
+      "type": "array"
+    },
+    "$.budgets.*.categories[]": {
+      "type": "object",
+      "fields": {
+        "group": "required",
+        "id": "required",
+        "name": "required",
+        "pairedAccountId": "optional",
+        "pairedLoanId": "optional",
+        "target": "optional"
+      }
+    },
+    "$.budgets.*.categories[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.categories[].name": {
+      "type": "string"
+    },
+    "$.budgets.*.categories[].group": {
+      "type": "string"
+    },
+    "$.budgets.*.categories[].target": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "behavior": "required",
+        "cadence": "required",
+        "dueDate": "optional",
+        "monthDay": "optional",
+        "repeatEvery": "optional",
+        "repeatUnit": "optional",
+        "snoozedMonths": "optional",
+        "startMonth": "required",
+        "weekday": "optional"
+      }
+    },
+    "$.budgets.*.categories[].target.cadence": {
+      "type": "enum",
+      "values": [
+        "card-monthly",
+        "card-payoff",
+        "custom",
+        "loan",
+        "monthly",
+        "weekly",
+        "yearly"
+      ]
+    },
+    "$.budgets.*.categories[].target.behavior": {
+      "type": "enum",
+      "values": [
+        "balance",
+        "contribution",
+        "refill"
+      ]
+    },
+    "$.budgets.*.categories[].target.amount": {
+      "type": "number"
+    },
+    "$.budgets.*.categories[].target.startMonth": {
+      "type": "string"
+    },
+    "$.budgets.*.categories[].target.dueDate": {
+      "type": "string"
+    },
+    "$.budgets.*.categories[].target.weekday": {
+      "type": "number"
+    },
+    "$.budgets.*.categories[].target.monthDay": {
+      "type": "number"
+    },
+    "$.budgets.*.categories[].target.repeatEvery": {
+      "type": "number"
+    },
+    "$.budgets.*.categories[].target.repeatUnit": {
+      "type": "enum",
+      "values": [
+        "months",
+        "years"
+      ]
+    },
+    "$.budgets.*.categories[].target.snoozedMonths": {
+      "type": "array"
+    },
+    "$.budgets.*.categories[].target.snoozedMonths[]": {
+      "type": "string"
+    },
+    "$.budgets.*.categories[].pairedAccountId": {
+      "type": "string"
+    },
+    "$.budgets.*.categories[].pairedLoanId": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions": {
+      "type": "array"
+    },
+    "$.budgets.*.transactions[]": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "categoryId": "optional",
+        "date": "required",
+        "expenseMonth": "required",
+        "history": "required",
+        "id": "required",
+        "kind": "required",
+        "linkedId": "optional",
+        "payee": "required",
+        "providerId": "optional",
+        "reconciled": "optional",
+        "removed": "optional",
+        "reviewed": "required",
+        "revision": "required",
+        "sharedCategoryId": "optional",
+        "shares": "optional",
+        "splitWeights": "optional",
+        "status": "required"
+      }
+    },
+    "$.budgets.*.transactions[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].accountId": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].date": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].amount": {
+      "type": "number"
+    },
+    "$.budgets.*.transactions[].payee": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].status": {
+      "type": "enum",
+      "values": [
+        "pending",
+        "posted"
+      ]
+    },
+    "$.budgets.*.transactions[].categoryId": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].expenseMonth": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].sharedCategoryId": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].shares": {
+      "type": "record"
+    },
+    "$.budgets.*.transactions[].shares.*": {
+      "type": "number"
+    },
+    "$.budgets.*.transactions[].splitWeights": {
+      "type": "record"
+    },
+    "$.budgets.*.transactions[].splitWeights.*": {
+      "type": "number"
+    },
+    "$.budgets.*.transactions[].providerId": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].revision": {
+      "type": "number"
+    },
+    "$.budgets.*.transactions[].reviewed": {
+      "type": "boolean"
+    },
+    "$.budgets.*.transactions[].kind": {
+      "type": "enum",
+      "values": [
+        "adjustment",
+        "card-payment",
+        "income",
+        "loan-payment",
+        "purchase",
+        "refund",
+        "reimbursement",
+        "settlement",
+        "statement-credit",
+        "transfer"
+      ]
+    },
+    "$.budgets.*.transactions[].linkedId": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].removed": {
+      "type": "boolean"
+    },
+    "$.budgets.*.transactions[].reconciled": {
+      "type": "boolean"
+    },
+    "$.budgets.*.transactions[].history": {
+      "type": "array"
+    },
+    "$.budgets.*.transactions[].history[]": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "combinedId": "optional",
+        "date": "required",
+        "operationId": "required",
+        "payee": "required",
+        "reason": "required",
+        "revision": "required",
+        "status": "required"
+      }
+    },
+    "$.budgets.*.transactions[].history[].revision": {
+      "type": "number"
+    },
+    "$.budgets.*.transactions[].history[].amount": {
+      "type": "number"
+    },
+    "$.budgets.*.transactions[].history[].status": {
+      "type": "enum",
+      "values": [
+        "pending",
+        "posted"
+      ]
+    },
+    "$.budgets.*.transactions[].history[].date": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].history[].payee": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].history[].operationId": {
+      "type": "string"
+    },
+    "$.budgets.*.transactions[].history[].reason": {
+      "type": "enum",
+      "values": [
+        "categorized",
+        "created",
+        "merged",
+        "redone",
+        "removed",
+        "undone",
+        "updated"
+      ]
+    },
+    "$.budgets.*.transactions[].history[].combinedId": {
+      "type": "string"
+    },
+    "$.budgets.*.assignments": {
+      "type": "array"
+    },
+    "$.budgets.*.assignments[]": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "categoryId": "required",
+        "id": "required",
+        "month": "required"
+      }
+    },
+    "$.budgets.*.assignments[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.assignments[].categoryId": {
+      "type": "string"
+    },
+    "$.budgets.*.assignments[].month": {
+      "type": "string"
+    },
+    "$.budgets.*.assignments[].amount": {
+      "type": "number"
+    },
+    "$.budgets.*.loans": {
+      "type": "array"
+    },
+    "$.budgets.*.loans[]": {
+      "type": "object",
+      "fields": {
+        "categoryId": "required",
+        "id": "required",
+        "minimumPayment": "required",
+        "name": "required",
+        "payments": "required",
+        "principal": "required",
+        "rates": "required",
+        "variable": "required"
+      }
+    },
+    "$.budgets.*.loans[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.loans[].name": {
+      "type": "string"
+    },
+    "$.budgets.*.loans[].categoryId": {
+      "type": "string"
+    },
+    "$.budgets.*.loans[].principal": {
+      "type": "number"
+    },
+    "$.budgets.*.loans[].minimumPayment": {
+      "type": "number"
+    },
+    "$.budgets.*.loans[].variable": {
+      "type": "boolean"
+    },
+    "$.budgets.*.loans[].rates": {
+      "type": "array"
+    },
+    "$.budgets.*.loans[].rates[]": {
+      "type": "object",
+      "fields": {
+        "annualRateBps": "required",
+        "effectiveDate": "required"
+      }
+    },
+    "$.budgets.*.loans[].rates[].effectiveDate": {
+      "type": "string"
+    },
+    "$.budgets.*.loans[].rates[].annualRateBps": {
+      "type": "number"
+    },
+    "$.budgets.*.loans[].payments": {
+      "type": "array"
+    },
+    "$.budgets.*.loans[].payments[]": {
+      "type": "object",
+      "fields": {
+        "date": "required",
+        "id": "required",
+        "interest": "required",
+        "principal": "required"
+      }
+    },
+    "$.budgets.*.loans[].payments[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.loans[].payments[].date": {
+      "type": "string"
+    },
+    "$.budgets.*.loans[].payments[].principal": {
+      "type": "number"
+    },
+    "$.budgets.*.loans[].payments[].interest": {
+      "type": "number"
+    },
+    "$.budgets.*.reimbursements": {
+      "type": "array"
+    },
+    "$.budgets.*.reimbursements[]": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "id": "required",
+        "kind": "required",
+        "name": "required",
+        "receipts": "required",
+        "transactionId": "required"
+      }
+    },
+    "$.budgets.*.reimbursements[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.reimbursements[].transactionId": {
+      "type": "string"
+    },
+    "$.budgets.*.reimbursements[].name": {
+      "type": "string"
+    },
+    "$.budgets.*.reimbursements[].amount": {
+      "type": "number"
+    },
+    "$.budgets.*.reimbursements[].kind": {
+      "type": "enum",
+      "values": [
+        "cash",
+        "statement-credit"
+      ]
+    },
+    "$.budgets.*.reimbursements[].receipts": {
+      "type": "array"
+    },
+    "$.budgets.*.reimbursements[].receipts[]": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "date": "required",
+        "id": "required"
+      }
+    },
+    "$.budgets.*.reimbursements[].receipts[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.reimbursements[].receipts[].date": {
+      "type": "string"
+    },
+    "$.budgets.*.reimbursements[].receipts[].amount": {
+      "type": "number"
+    },
+    "$.budgets.*.rules": {
+      "type": "array"
+    },
+    "$.budgets.*.rules[]": {
+      "type": "object",
+      "fields": {
+        "enabled": "required",
+        "fromCategoryId": "required",
+        "id": "required",
+        "toCategoryId": "required"
+      }
+    },
+    "$.budgets.*.rules[].id": {
+      "type": "string"
+    },
+    "$.budgets.*.rules[].fromCategoryId": {
+      "type": "string"
+    },
+    "$.budgets.*.rules[].toCategoryId": {
+      "type": "string"
+    },
+    "$.budgets.*.rules[].enabled": {
+      "type": "boolean"
+    },
+    "$.budgets.*.settings": {
+      "type": "object",
+      "fields": {
+        "emailEnabled": "required",
+        "emailHour": "required",
+        "timezone": "required"
+      }
+    },
+    "$.budgets.*.settings.timezone": {
+      "type": "string"
+    },
+    "$.budgets.*.settings.emailEnabled": {
+      "type": "boolean"
+    },
+    "$.budgets.*.settings.emailHour": {
+      "type": "number"
+    },
+    "$.budgets.*.expectedIncome": {
+      "type": "record"
+    },
+    "$.budgets.*.expectedIncome.*": {
+      "type": "number"
+    },
+    "$.sharedCategories": {
+      "type": "array"
+    },
+    "$.sharedCategories[]": {
+      "type": "object",
+      "fields": {
+        "categoryIds": "required",
+        "id": "required",
+        "participants": "required",
+        "weights": "required"
+      }
+    },
+    "$.sharedCategories[].id": {
+      "type": "string"
+    },
+    "$.sharedCategories[].participants": {
+      "type": "array"
+    },
+    "$.sharedCategories[].participants[]": {
+      "type": "string"
+    },
+    "$.sharedCategories[].weights": {
+      "type": "record"
+    },
+    "$.sharedCategories[].weights.*": {
+      "type": "number"
+    },
+    "$.sharedCategories[].categoryIds": {
+      "type": "record"
+    },
+    "$.sharedCategories[].categoryIds.*": {
+      "type": "string"
+    },
+    "$.obligations": {
+      "type": "array"
+    },
+    "$.obligations[]": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "creditorId": "required",
+        "date": "optional",
+        "debtorId": "required",
+        "expenseMonth": "optional",
+        "id": "required",
+        "opening": "required",
+        "payee": "optional",
+        "payerId": "optional",
+        "sharedCategoryId": "required",
+        "transactionId": "optional"
+      }
+    },
+    "$.obligations[].id": {
+      "type": "string"
+    },
+    "$.obligations[].sharedCategoryId": {
+      "type": "string"
+    },
+    "$.obligations[].debtorId": {
+      "type": "string"
+    },
+    "$.obligations[].creditorId": {
+      "type": "string"
+    },
+    "$.obligations[].amount": {
+      "type": "number"
+    },
+    "$.obligations[].expenseMonth": {
+      "type": "string"
+    },
+    "$.obligations[].transactionId": {
+      "type": "string"
+    },
+    "$.obligations[].payerId": {
+      "type": "string"
+    },
+    "$.obligations[].payee": {
+      "type": "string"
+    },
+    "$.obligations[].date": {
+      "type": "string"
+    },
+    "$.obligations[].opening": {
+      "type": "boolean"
+    },
+    "$.settlements": {
+      "type": "array"
+    },
+    "$.settlements[]": {
+      "type": "object",
+      "fields": {
+        "allocations": "required",
+        "amount": "required",
+        "date": "required",
+        "id": "required",
+        "payerId": "required",
+        "received": "required",
+        "recipientId": "required"
+      }
+    },
+    "$.settlements[].id": {
+      "type": "string"
+    },
+    "$.settlements[].payerId": {
+      "type": "string"
+    },
+    "$.settlements[].recipientId": {
+      "type": "string"
+    },
+    "$.settlements[].date": {
+      "type": "string"
+    },
+    "$.settlements[].amount": {
+      "type": "number"
+    },
+    "$.settlements[].received": {
+      "type": "boolean"
+    },
+    "$.settlements[].allocations": {
+      "type": "array"
+    },
+    "$.settlements[].allocations[]": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "kind": "required",
+        "obligationId": "required"
+      }
+    },
+    "$.settlements[].allocations[].obligationId": {
+      "type": "string"
+    },
+    "$.settlements[].allocations[].amount": {
+      "type": "number"
+    },
+    "$.settlements[].allocations[].kind": {
+      "type": "enum",
+      "values": [
+        "offset",
+        "payment"
+      ]
+    },
+    "$.audit": {
+      "type": "array"
+    },
+    "$.audit[]": {
+      "type": "object",
+      "fields": {
+        "actorId": "required",
+        "fingerprint": "required",
+        "id": "required",
+        "sequence": "required",
+        "source": "required",
+        "type": "required"
+      }
+    },
+    "$.audit[].id": {
+      "type": "string"
+    },
+    "$.audit[].actorId": {
+      "type": "string"
+    },
+    "$.audit[].source": {
+      "type": "enum",
+      "values": [
+        "agent",
+        "provider",
+        "user"
+      ]
+    },
+    "$.audit[].type": {
+      "type": "string"
+    },
+    "$.audit[].sequence": {
+      "type": "number"
+    },
+    "$.audit[].fingerprint": {
+      "type": "string"
+    }
+  },
+  "Workspace.history": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "actorId": "required",
+        "future": "required",
+        "past": "required",
+        "revision": "required"
+      }
+    },
+    "$.actorId": {
+      "type": "string"
+    },
+    "$.revision": {
+      "type": "number"
+    },
+    "$.past": {
+      "type": "array"
+    },
+    "$.past[]": {
+      "type": "object",
+      "fields": {
+        "label": "required",
+        "redo": "required",
+        "undo": "required"
+      }
+    },
+    "$.past[].label": {
+      "type": "string"
+    },
+    "$.past[].undo": {
+      "type": "array"
+    },
+    "$.past[].undo[]": {
+      "type": "any"
+    },
+    "$.past[].redo": {
+      "type": "array"
+    },
+    "$.past[].redo[]": {
+      "type": "any"
+    },
+    "$.future": {
+      "type": "array"
+    },
+    "$.future[]": {
+      "type": "object",
+      "fields": {
+        "label": "required",
+        "redo": "required",
+        "undo": "required"
+      }
+    },
+    "$.future[].label": {
+      "type": "string"
+    },
+    "$.future[].undo": {
+      "type": "array"
+    },
+    "$.future[].undo[]": {
+      "type": "any"
+    },
+    "$.future[].redo": {
+      "type": "array"
+    },
+    "$.future[].redo[]": {
+      "type": "any"
+    }
+  },
+  "BankConnection.imports": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "accounts": "optional",
+        "errors": "required",
+        "institutionId": "optional",
+        "institutionName": "optional",
+        "records": "required",
+        "resolved": "required",
+        "reviews": "optional",
+        "synchronizedAccountIds": "optional",
+        "transactionStatus": "optional"
+      }
+    },
+    "$.records": {
+      "type": "array"
+    },
+    "$.records[]": {
+      "type": "object",
+      "fields": {
+        "categoryId": "required",
+        "current": "required",
+        "history": "required",
+        "id": "required",
+        "matchStatus": "required",
+        "namespace": "required",
+        "providerTransactionIds": "required",
+        "removed": "required"
+      }
+    },
+    "$.records[].id": {
+      "type": "string"
+    },
+    "$.records[].namespace": {
+      "type": "string"
+    },
+    "$.records[].providerTransactionIds": {
+      "type": "array"
+    },
+    "$.records[].providerTransactionIds[]": {
+      "type": "string"
+    },
+    "$.records[].current": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "authorizedDate": "required",
+        "currency": "required",
+        "date": "required",
+        "merchantName": "required",
+        "name": "required",
+        "pending": "required",
+        "pendingTransactionId": "required",
+        "provider": "required",
+        "providerAccountId": "required",
+        "providerTransactionId": "required"
+      }
+    },
+    "$.records[].current.provider": {
+      "type": "enum",
+      "values": [
+        "plaid"
+      ]
+    },
+    "$.records[].current.providerTransactionId": {
+      "type": "string"
+    },
+    "$.records[].current.providerAccountId": {
+      "type": "string"
+    },
+    "$.records[].current.pendingTransactionId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].current.amountCents": {
+      "type": "number"
+    },
+    "$.records[].current.currency": {
+      "type": "enum",
+      "values": [
+        "USD"
+      ]
+    },
+    "$.records[].current.date": {
+      "type": "string"
+    },
+    "$.records[].current.authorizedDate": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].current.name": {
+      "type": "string"
+    },
+    "$.records[].current.merchantName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].current.pending": {
+      "type": "boolean"
+    },
+    "$.records[].categoryId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].removed": {
+      "type": "boolean"
+    },
+    "$.records[].matchStatus": {
+      "type": "enum",
+      "values": [
+        "confirmed",
+        "needs_review"
+      ]
+    },
+    "$.records[].history": {
+      "type": "array"
+    },
+    "$.records[].history[]": {
+      "type": "object",
+      "fields": {
+        "after": "required",
+        "before": "required",
+        "kind": "required"
+      }
+    },
+    "$.records[].history[].kind": {
+      "type": "enum",
+      "values": [
+        "added",
+        "modified",
+        "pending_posted",
+        "removed",
+        "restored"
+      ]
+    },
+    "$.records[].history[].before": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "authorizedDate": "required",
+        "currency": "required",
+        "date": "required",
+        "merchantName": "required",
+        "name": "required",
+        "pending": "required",
+        "pendingTransactionId": "required",
+        "provider": "required",
+        "providerAccountId": "required",
+        "providerTransactionId": "required"
+      },
+      "nullable": true
+    },
+    "$.records[].history[].before.provider": {
+      "type": "enum",
+      "values": [
+        "plaid"
+      ]
+    },
+    "$.records[].history[].before.providerTransactionId": {
+      "type": "string"
+    },
+    "$.records[].history[].before.providerAccountId": {
+      "type": "string"
+    },
+    "$.records[].history[].before.pendingTransactionId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].history[].before.amountCents": {
+      "type": "number"
+    },
+    "$.records[].history[].before.currency": {
+      "type": "enum",
+      "values": [
+        "USD"
+      ]
+    },
+    "$.records[].history[].before.date": {
+      "type": "string"
+    },
+    "$.records[].history[].before.authorizedDate": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].history[].before.name": {
+      "type": "string"
+    },
+    "$.records[].history[].before.merchantName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].history[].before.pending": {
+      "type": "boolean"
+    },
+    "$.records[].history[].after": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "authorizedDate": "required",
+        "currency": "required",
+        "date": "required",
+        "merchantName": "required",
+        "name": "required",
+        "pending": "required",
+        "pendingTransactionId": "required",
+        "provider": "required",
+        "providerAccountId": "required",
+        "providerTransactionId": "required"
+      },
+      "nullable": true
+    },
+    "$.records[].history[].after.provider": {
+      "type": "enum",
+      "values": [
+        "plaid"
+      ]
+    },
+    "$.records[].history[].after.providerTransactionId": {
+      "type": "string"
+    },
+    "$.records[].history[].after.providerAccountId": {
+      "type": "string"
+    },
+    "$.records[].history[].after.pendingTransactionId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].history[].after.amountCents": {
+      "type": "number"
+    },
+    "$.records[].history[].after.currency": {
+      "type": "enum",
+      "values": [
+        "USD"
+      ]
+    },
+    "$.records[].history[].after.date": {
+      "type": "string"
+    },
+    "$.records[].history[].after.authorizedDate": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].history[].after.name": {
+      "type": "string"
+    },
+    "$.records[].history[].after.merchantName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.records[].history[].after.pending": {
+      "type": "boolean"
+    },
+    "$.resolved": {
+      "type": "record"
+    },
+    "$.resolved.*": {
+      "type": "object",
+      "fields": {
+        "decidedAt": "optional",
+        "fingerprint": "required",
+        "ignored": "optional",
+        "transactionId": "optional"
+      }
+    },
+    "$.resolved.*.fingerprint": {
+      "type": "string"
+    },
+    "$.resolved.*.transactionId": {
+      "type": "string"
+    },
+    "$.resolved.*.ignored": {
+      "type": "boolean"
+    },
+    "$.resolved.*.decidedAt": {
+      "type": "string"
+    },
+    "$.errors": {
+      "type": "record"
+    },
+    "$.errors.*": {
+      "type": "string"
+    },
+    "$.reviews": {
+      "type": "record"
+    },
+    "$.reviews.*": {
+      "type": "array"
+    },
+    "$.reviews.*[]": {
+      "type": "unknown"
+    },
+    "$.accounts": {
+      "type": "array"
+    },
+    "$.accounts[]": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "availableBalance": "required",
+        "currency": "required",
+        "currentBalance": "required",
+        "mask": "required",
+        "name": "required",
+        "officialName": "required",
+        "subtype": "required",
+        "type": "required"
+      }
+    },
+    "$.accounts[].accountId": {
+      "type": "string"
+    },
+    "$.accounts[].name": {
+      "type": "string"
+    },
+    "$.accounts[].officialName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.accounts[].mask": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.accounts[].type": {
+      "type": "string"
+    },
+    "$.accounts[].subtype": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.accounts[].currentBalance": {
+      "type": "number",
+      "nullable": true
+    },
+    "$.accounts[].availableBalance": {
+      "type": "number",
+      "nullable": true
+    },
+    "$.accounts[].currency": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.institutionId": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.institutionName": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.transactionStatus": {
+      "type": "string",
+      "nullable": true
+    },
+    "$.synchronizedAccountIds": {
+      "type": "array"
+    },
+    "$.synchronizedAccountIds[]": {
+      "type": "string"
+    }
+  },
+  "BankConnection.accountMappings": {
+    "$": {
+      "type": "record"
+    },
+    "$.*": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "openingSnapshot": "optional",
+        "startDate": "required"
+      }
+    },
+    "$.*.accountId": {
+      "type": "string"
+    },
+    "$.*.startDate": {
+      "type": "string"
+    },
+    "$.*.openingSnapshot": {
+      "type": "object",
+      "fields": {
+        "financialFingerprints": "optional",
+        "fingerprints": "required",
+        "postedImportIds": "required",
+        "reviewImportIds": "optional"
+      }
+    },
+    "$.*.openingSnapshot.postedImportIds": {
+      "type": "array"
+    },
+    "$.*.openingSnapshot.postedImportIds[]": {
+      "type": "string"
+    },
+    "$.*.openingSnapshot.fingerprints": {
+      "type": "record"
+    },
+    "$.*.openingSnapshot.fingerprints.*": {
+      "type": "string"
+    },
+    "$.*.openingSnapshot.financialFingerprints": {
+      "type": "record"
+    },
+    "$.*.openingSnapshot.financialFingerprints.*": {
+      "type": "string"
+    },
+    "$.*.openingSnapshot.reviewImportIds": {
+      "type": "array"
+    },
+    "$.*.openingSnapshot.reviewImportIds[]": {
+      "type": "string"
+    }
+  },
+  "ReviewEvidence.evidence": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "revision": "required"
+      }
+    },
+    "$.revision": {
+      "type": "number"
+    }
+  },
+  "ReviewEvidence.result": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "differenceCents": "required",
+        "missingFromLedger": "required",
+        "missingFromStatement": "required",
+        "reasons": "required",
+        "status": "required"
+      }
+    },
+    "$.status": {
+      "type": "enum",
+      "values": [
+        "discrepancy",
+        "insufficient_evidence",
+        "reconciled"
+      ]
+    },
+    "$.differenceCents": {
+      "type": "number",
+      "nullable": true
+    },
+    "$.reasons": {
+      "type": "array"
+    },
+    "$.reasons[]": {
+      "type": "string"
+    },
+    "$.missingFromLedger": {
+      "type": "array"
+    },
+    "$.missingFromLedger[]": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "date": "required",
+        "description": "required",
+        "pending": "optional",
+        "reference": "optional"
+      }
+    },
+    "$.missingFromLedger[].date": {
+      "type": "string"
+    },
+    "$.missingFromLedger[].description": {
+      "type": "string"
+    },
+    "$.missingFromLedger[].amountCents": {
+      "type": "number"
+    },
+    "$.missingFromLedger[].reference": {
+      "type": "string"
+    },
+    "$.missingFromLedger[].pending": {
+      "type": "boolean"
+    },
+    "$.missingFromStatement": {
+      "type": "array"
+    },
+    "$.missingFromStatement[]": {
+      "type": "object",
+      "fields": {
+        "amountCents": "required",
+        "date": "required",
+        "description": "required",
+        "pending": "optional",
+        "reference": "optional"
+      }
+    },
+    "$.missingFromStatement[].date": {
+      "type": "string"
+    },
+    "$.missingFromStatement[].description": {
+      "type": "string"
+    },
+    "$.missingFromStatement[].amountCents": {
+      "type": "number"
+    },
+    "$.missingFromStatement[].reference": {
+      "type": "string"
+    },
+    "$.missingFromStatement[].pending": {
+      "type": "boolean"
+    }
+  },
+  "DailyDelivery.payload": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "dedupeKey": "required",
+        "from": "required",
+        "message": "required",
+        "scheduledAt": "optional",
+        "to": "required"
+      }
+    },
+    "$.from": {
+      "type": "string"
+    },
+    "$.to": {
+      "type": "string"
+    },
+    "$.dedupeKey": {
+      "type": "string"
+    },
+    "$.scheduledAt": {
+      "type": "string"
+    },
+    "$.message": {
+      "type": "object",
+      "fields": {
+        "subject": "required",
+        "text": "required"
+      }
+    },
+    "$.message.subject": {
+      "type": "string"
+    },
+    "$.message.text": {
+      "type": "string"
+    }
+  }
+}

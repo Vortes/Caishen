@@ -1,0 +1,9 @@
+{
+  "status": "insufficient_evidence",
+  "differenceCents": null,
+  "reasons": [
+    "A verified statement or institution record with complete cleared activity is required. Cached balances cannot establish reconciliation."
+  ],
+  "missingFromLedger": [],
+  "missingFromStatement": []
+}

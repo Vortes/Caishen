@@ -569,7 +569,7 @@ export type Book = {
   audit: Audit[];
 };
 
-const storedIdentifier = z.string().min(1).max(1024);
+export const storedIdentifier = z.string().min(1).max(1024);
 const historySchema = z.object({
   revision: z.number().int().nonnegative(),
   amount: cents,
@@ -588,7 +588,7 @@ const historySchema = z.object({
   ]),
   combinedId: storedIdentifier.optional(),
 });
-const transactionSchema = z.object({
+export const transactionSchema = z.object({
   id: storedIdentifier,
   accountId: storedIdentifier,
   date: daySchema,
@@ -644,7 +644,7 @@ const loanSchema = z.object({
     }),
   ),
 });
-const budgetSchema = z.object({
+const budgetShape = z.object({
   userId: storedIdentifier,
   name: z.string(),
   startMonth: monthSchema,
@@ -710,60 +710,125 @@ const budgetSchema = z.object({
   }),
   expectedIncome: z.record(monthSchema, nonnegativeCents).default({}),
 });
+// One partner's stored personal budget, with the checks that need only that
+// budget, so one partner's budget can be read without the other's.
+export const budgetSchema: z.ZodType<Budget, z.ZodTypeDef, unknown> =
+  budgetShape.superRefine((budget, context) => {
+    for (const collection of [
+      budget.accounts,
+      budget.categories,
+      budget.transactions,
+      budget.loans,
+      budget.reimbursements,
+    ])
+      if (new Set(collection.map((item) => item.id)).size !== collection.length)
+        context.addIssue({
+          code: "custom",
+          message: "Duplicate ledger storedIdentifier",
+        });
+    if (
+      budget.transactions.some(
+        (transaction) =>
+          !transaction.removed &&
+          (!budget.accounts.some(
+            (account) => account.id === transaction.accountId,
+          ) ||
+            (transaction.categoryId &&
+              !budget.categories.some(
+                (category) => category.id === transaction.categoryId,
+              ))),
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Invalid transaction reference",
+      });
+    if (
+      budget.assignments.some(
+        (assignment) =>
+          !budget.categories.some(
+            (category) => category.id === assignment.categoryId,
+          ),
+      )
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Invalid assignment reference",
+      });
+  });
+// The stored data both partners share: shared categories, what they owe each
+// other, their settlements, and the command audit.
+export const householdSchema = z.object({
+  sharedCategories: z.array(
+    z.object({
+      id: storedIdentifier,
+      participants: z.array(storedIdentifier).length(2),
+      weights: z.record(nonnegativeCents),
+      categoryIds: z.record(storedIdentifier),
+    }),
+  ),
+  obligations: z.array(
+    z.object({
+      id: storedIdentifier,
+      sharedCategoryId: storedIdentifier,
+      debtorId: storedIdentifier,
+      creditorId: storedIdentifier,
+      amount: positiveCents,
+      expenseMonth: monthSchema.optional(),
+      transactionId: storedIdentifier.optional(),
+      payerId: storedIdentifier.optional(),
+      payee: z.string().optional(),
+      date: daySchema.optional(),
+      opening: z.boolean(),
+    }),
+  ),
+  settlements: z.array(
+    z.object({
+      id: storedIdentifier,
+      payerId: storedIdentifier,
+      recipientId: storedIdentifier,
+      date: daySchema,
+      amount: nonnegativeCents,
+      received: z.boolean(),
+      allocations: z.array(
+        z.object({
+          obligationId: storedIdentifier,
+          amount: positiveCents,
+          kind: z.enum(["payment", "offset"]),
+        }),
+      ),
+    }),
+  ),
+  audit: z.array(
+    z.object({
+      id: storedIdentifier,
+      actorId: storedIdentifier,
+      source: z.enum(["user", "agent", "provider"]),
+      type: z.string(),
+      sequence: z.number().int().positive(),
+      fingerprint: z.string(),
+    }),
+  ),
+});
+export type Household = z.infer<typeof householdSchema>;
+// Each shared category's participants must have its paired category.
+export function sharedCategoryReferencesValid(
+  sharedCategories: SharedCategory[],
+  categoryIdsOf: (userId: string) => string[] | undefined,
+): boolean {
+  return sharedCategories.every((shared) =>
+    shared.participants.every(
+      (id) =>
+        shared.categoryIds[id] !== undefined &&
+        (categoryIdsOf(id)?.includes(shared.categoryIds[id]) ?? false),
+    ),
+  );
+}
 export const bookSchema: z.ZodType<Book, z.ZodTypeDef, unknown> = z
   .object({
     version: z.literal(1),
     budgets: z.record(budgetSchema),
-    sharedCategories: z.array(
-      z.object({
-        id: storedIdentifier,
-        participants: z.array(storedIdentifier).length(2),
-        weights: z.record(nonnegativeCents),
-        categoryIds: z.record(storedIdentifier),
-      }),
-    ),
-    obligations: z.array(
-      z.object({
-        id: storedIdentifier,
-        sharedCategoryId: storedIdentifier,
-        debtorId: storedIdentifier,
-        creditorId: storedIdentifier,
-        amount: positiveCents,
-        expenseMonth: monthSchema.optional(),
-        transactionId: storedIdentifier.optional(),
-        payerId: storedIdentifier.optional(),
-        payee: z.string().optional(),
-        date: daySchema.optional(),
-        opening: z.boolean(),
-      }),
-    ),
-    settlements: z.array(
-      z.object({
-        id: storedIdentifier,
-        payerId: storedIdentifier,
-        recipientId: storedIdentifier,
-        date: daySchema,
-        amount: nonnegativeCents,
-        received: z.boolean(),
-        allocations: z.array(
-          z.object({
-            obligationId: storedIdentifier,
-            amount: positiveCents,
-            kind: z.enum(["payment", "offset"]),
-          }),
-        ),
-      }),
-    ),
-    audit: z.array(
-      z.object({
-        id: storedIdentifier,
-        actorId: storedIdentifier,
-        source: z.enum(["user", "agent", "provider"]),
-        type: z.string(),
-        sequence: z.number().int().positive(),
-        fingerprint: z.string(),
-      }),
-    ),
+    ...householdSchema.shape,
   })
   .superRefine((book, context) => {
     const members = Object.entries(book.budgets);
@@ -776,59 +841,11 @@ export const bookSchema: z.ZodType<Book, z.ZodTypeDef, unknown> = z
         code: "custom",
         message: "Invalid household membership",
       });
-    for (const [, budget] of members) {
-      for (const collection of [
-        budget.accounts,
-        budget.categories,
-        budget.transactions,
-        budget.loans,
-        budget.reimbursements,
-      ])
-        if (
-          new Set(collection.map((item) => item.id)).size !== collection.length
-        )
-          context.addIssue({
-            code: "custom",
-            message: "Duplicate ledger storedIdentifier",
-          });
-      if (
-        budget.transactions.some(
-          (transaction) =>
-            !transaction.removed &&
-            (!budget.accounts.some(
-              (account) => account.id === transaction.accountId,
-            ) ||
-              (transaction.categoryId &&
-                !budget.categories.some(
-                  (category) => category.id === transaction.categoryId,
-                ))),
-        )
-      )
-        context.addIssue({
-          code: "custom",
-          message: "Invalid transaction reference",
-        });
-      if (
-        budget.assignments.some(
-          (assignment) =>
-            !budget.categories.some(
-              (category) => category.id === assignment.categoryId,
-            ),
-        )
-      )
-        context.addIssue({
-          code: "custom",
-          message: "Invalid assignment reference",
-        });
-    }
     if (
-      book.sharedCategories.some((shared) =>
-        shared.participants.some(
-          (id) =>
-            !book.budgets[id]?.categories.some(
-              (category) => category.id === shared.categoryIds[id],
-            ),
-        ),
+      !sharedCategoryReferencesValid(book.sharedCategories, (id) =>
+        Object.hasOwn(book.budgets, id)
+          ? book.budgets[id]!.categories.map((category) => category.id)
+          : undefined,
       )
     )
       context.addIssue({
@@ -864,7 +881,7 @@ const monthDistance = (start: string, end: string): number => {
   const b = end.split("-").map(Number);
   return (b[0]! - a[0]!) * 12 + b[1]! - a[1]!;
 };
-const ownBudget = (book: AccountingState, userId: string): Budget =>
+export const ownBudget = (book: AccountingState, userId: string): Budget =>
   (isPersonalLedger(book)
     ? book.budget.userId === userId
       ? book.budget
@@ -2086,8 +2103,10 @@ export function sharedStatement(
 }
 export type SharedStatement = ReturnType<typeof sharedStatement>;
 
+// A Book, or one partner's personal ledger when the other partner's budget
+// can't be read.
 export function projectBook(
-  book: Book,
+  book: AccountingState,
   userId: string,
   month: string,
   currentMonth = month,
@@ -2732,13 +2751,13 @@ function ensureSupportedCardBalances(budget: Budget): void {
  * author sent it, before validation or preparation; it identifies retries, so
  * a retry is recognized even when a later release validates it differently.
  */
-export function execute(
-  original: Book,
+export function execute<T extends AccountingState>(
+  original: T,
   actorId: string,
   input: Command,
   source: CommandSource = "user",
   submitted: unknown = input,
-): Book {
+): T {
   return executeAccountingState(original, actorId, input, source, submitted);
 }
 

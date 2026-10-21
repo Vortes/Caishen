@@ -1,12 +1,20 @@
 import { TRPCError } from "@trpc/server";
 import type { CommandSource } from "~/domain/engine";
 import { Prisma, type PrismaClient, type Workspace } from "~/generated/prisma";
+import type { ZodError } from "zod";
+import type { AccountingState } from "~/domain/shared-ledger";
 import {
   domainError,
   jsonValue,
   matchesSavedOperation,
   operationHash,
 } from "./safety";
+import {
+  openBudget,
+  reportUnreadable,
+  zodIssues,
+  type OpenBudget,
+} from "./stored-data";
 import {
   recordWorkspaceHistory,
   restoreWorkspaceHistory,
@@ -30,7 +38,7 @@ export async function mutateWorkspace<T extends MutationOperation>(
   expectedRevision: number,
   operations: T[],
   source: CommandSource,
-  reduce: (book: Prisma.JsonValue, operations: T[]) => unknown,
+  reduce: (state: AccountingState, operations: T[]) => AccountingState,
   {
     label,
     submitted = operations,
@@ -50,19 +58,20 @@ export async function mutateWorkspace<T extends MutationOperation>(
     operations,
     submitted,
     source,
-    (workspace, fresh) => {
-      const book = reduce(workspace.book, fresh);
+    (workspace, opened, fresh) => {
+      const next = reduce(opened.state, fresh);
       return {
-        book,
+        book: opened.store(next),
         history:
           source === "user"
             ? recordWorkspaceHistory(
                 workspace.history,
                 actorId,
                 workspace.revision,
-                workspace.book,
-                book,
+                opened.state,
+                next,
                 label ?? workspaceChangeLabel(fresh),
+                historyAlert(workspace, actorId),
               )
             : {},
       };
@@ -86,16 +95,27 @@ export async function changeWorkspaceHistory(
     [{ id: input.operationId, type: `history.${input.direction}` }],
     [{ id: input.operationId, type: `history.${input.direction}` }],
     "user",
-    (workspace) =>
-      restoreWorkspaceHistory(
+    (workspace, opened) => {
+      const { book, history } = restoreWorkspaceHistory(
         workspace.history,
         actorId,
         workspace.revision,
-        workspace.book,
+        opened.state,
         input.direction,
         input.operationId,
-      ),
+        historyAlert(workspace, actorId),
+      );
+      return { book: opened.store(book), history };
+    },
   );
+}
+
+export function historyAlert(workspace: Pick<Workspace, "id">, userId: string) {
+  return (error: ZodError) =>
+    reportUnreadable(
+      { record: "Workspace.history", workspaceId: workspace.id, userId },
+      [{ issues: zodIssues(error) }],
+    );
 }
 
 async function commitWorkspaceOperations<T extends MutationOperation>(
@@ -107,6 +127,7 @@ async function commitWorkspaceOperations<T extends MutationOperation>(
   source: CommandSource,
   change: (
     workspace: Workspace,
+    opened: OpenBudget,
     operations: T[],
   ) => { book: unknown; history: unknown },
 ) {
@@ -155,7 +176,11 @@ async function commitWorkspaceOperations<T extends MutationOperation>(
               message:
                 "Your budget changed in another session. Refresh before saving.",
             });
-          const { book, history } = change(workspace, fresh);
+          const { book, history } = change(
+            workspace,
+            openBudget(workspace, actorId),
+            fresh,
+          );
           const updated = await tx.workspace.updateMany({
             where: { id: workspace.id, revision: expectedRevision },
             data: {

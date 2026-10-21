@@ -1,0 +1,122 @@
+{
+  "accountId": "checking",
+  "currency": "USD",
+  "periodStart": "2026-10-01",
+  "cutoff": "2026-10-17",
+  "balanceKind": "cleared",
+  "openingBalanceCents": 1640127,
+  "closingBalanceCents": 2102015,
+  "activity": [
+    {
+      "date": "2026-10-01",
+      "description": "Cedar Labs · payroll",
+      "amountCents": 325000
+    },
+    {
+      "date": "2026-10-15",
+      "description": "Cedar Labs · payroll",
+      "amountCents": 325000
+    },
+    {
+      "date": "2026-10-07",
+      "description": "Target",
+      "amountCents": -6500
+    },
+    {
+      "date": "2026-10-08",
+      "description": "CVS Pharmacy",
+      "amountCents": -2486
+    },
+    {
+      "date": "2026-10-11",
+      "description": "SFMTA · Clipper",
+      "amountCents": -3074
+    },
+    {
+      "date": "2026-10-14",
+      "description": "PG&E autopay",
+      "amountCents": -7619
+    },
+    {
+      "date": "2026-10-12",
+      "description": "Nelnet student loan",
+      "amountCents": -32000
+    },
+    {
+      "date": "2026-10-13",
+      "description": "SoFi personal loan",
+      "amountCents": -24500
+    },
+    {
+      "date": "2026-10-01",
+      "description": "Costco · household stock-up",
+      "amountCents": -28000
+    },
+    {
+      "date": "2026-10-03",
+      "description": "Sonic · internet & utilities",
+      "amountCents": -18942
+    },
+    {
+      "date": "2026-10-10",
+      "description": "Cedar Labs · conference hotel",
+      "amountCents": 20000
+    },
+    {
+      "date": "2026-10-07",
+      "description": "Amtrak · client visit",
+      "amountCents": -8500
+    },
+    {
+      "date": "2026-10-11",
+      "description": "Cedar Labs · client travel",
+      "amountCents": 8500
+    },
+    {
+      "date": "2026-10-11",
+      "description": "Target · returned household item",
+      "amountCents": 1500
+    },
+    {
+      "date": "2026-10-14",
+      "description": "One Medical · urgent care",
+      "amountCents": -14300
+    },
+    {
+      "date": "2026-10-10",
+      "description": "Costco · household supplies",
+      "amountCents": -7500
+    },
+    {
+      "date": "2026-10-13",
+      "description": "BART · Clipper",
+      "amountCents": -2450
+    },
+    {
+      "date": "2026-10-14",
+      "description": "SQ *NEIGHBORHOOD MARKET",
+      "amountCents": -3742
+    },
+    {
+      "date": "2026-10-16",
+      "description": "Settlement with Demo · Jordan’s budget",
+      "amountCents": -25000
+    },
+    {
+      "date": "2026-10-17",
+      "description": "Credit card payment",
+      "amountCents": -30000
+    },
+    {
+      "date": "2026-10-17",
+      "description": "Unrecognized bank service charge",
+      "amountCents": -3499
+    }
+  ],
+  "source": "statement",
+  "verified": true,
+  "activityComplete": true,
+  "csvHash": "5a6190c7d6be169a59403d96be3f7b4f82a11d9e08843bb56da01d741c71fc67",
+  "attestedBy": "alex",
+  "revision": 57
+}

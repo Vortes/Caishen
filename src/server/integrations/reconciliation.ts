@@ -48,7 +48,7 @@ export interface ReconciliationResult {
   missingFromStatement: StatementActivity[];
 }
 
-const reconciliationResultSchema = z
+export const reconciliationResultSchema = z
   .object({
     status: z.enum(["reconciled", "discrepancy", "insufficient_evidence"]),
     differenceCents: centsSchema.nullable(),
@@ -58,15 +58,19 @@ const reconciliationResultSchema = z
   })
   .strict();
 
+// What reading saved evidence needs: the revision it was compared against.
+export const savedEvidenceSchema = z.object({
+  revision: z.number().int().nonnegative(),
+});
+
 export function savedReconciliationResult(
   result: unknown,
   evidence: unknown,
   currentRevision: number,
+  alert?: (error: z.ZodError) => void,
 ): ReconciliationResult {
   const revision = z.number().int().nonnegative().parse(currentRevision);
-  const saved = z
-    .object({ revision: z.number().int().nonnegative() })
-    .safeParse(evidence);
+  const saved = savedEvidenceSchema.safeParse(evidence);
   if (!saved.success || saved.data.revision !== revision) {
     return {
       status: "insufficient_evidence",
@@ -79,6 +83,7 @@ export function savedReconciliationResult(
     };
   }
   const parsed = reconciliationResultSchema.safeParse(result);
+  if (!parsed.success) alert?.(parsed.error);
   return parsed.success
     ? parsed.data
     : {

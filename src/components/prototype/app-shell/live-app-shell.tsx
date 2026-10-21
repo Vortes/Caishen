@@ -2,7 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useIsMutating } from "@tanstack/react-query";
-import { InfoIcon, LogInIcon } from "lucide-react";
+import { InfoIcon, LogInIcon, WrenchIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { currentMonth, monthName, newId } from "~/components/budget/format";
 import type { State } from "~/components/budget/types";
@@ -12,7 +12,11 @@ import {
   useRunBudgetCommand,
   type CommandBlock,
 } from "~/components/workspace/use-budget-command";
-import { useBudgetState } from "~/components/workspace/use-budget-state";
+import {
+  MAINTENANCE_DETAIL,
+  MAINTENANCE_TITLE,
+  useBudgetState,
+} from "~/components/workspace/use-budget-state";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
 import { api } from "~/trpc/react";
 import { AppShellPrototype, type CategoryAdder } from "./app-shell-prototype";
@@ -65,6 +69,13 @@ export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
       <Status icon={<InfoIcon size={18} />}>
         <strong>Your budget couldn’t load.</strong>
         {state.error.message}
+      </Status>
+    );
+  if (state.data?.status === "maintenance")
+    return (
+      <Status icon={<WrenchIcon size={18} />}>
+        <strong>{MAINTENANCE_TITLE}</strong>
+        {MAINTENANCE_DETAIL}
       </Status>
     );
   if (!state.data?.view)

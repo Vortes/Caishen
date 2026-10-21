@@ -50,6 +50,7 @@ function fixture() {
 
 function stateFor(book: Book, selectedMonth = month): State {
   return {
+    status: "ready",
     view: projectBook(book, "alan", selectedMonth, month),
     revision: 17,
     history: { undo: "Previous real change", redo: null },
@@ -180,6 +181,7 @@ void test("rejected commands leave the original cache untouched", () => {
   for (const command of rejected)
     assert.equal(optimisticState(before, command, now), before, command.id);
   const onboarding: State = {
+    status: "new",
     view: null,
     revision: 0,
     history: { undo: null, redo: null },

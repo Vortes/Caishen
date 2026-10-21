@@ -21,7 +21,11 @@ import { MonthPicker } from "~/components/workspace/month-picker";
 import { WorkspaceSidebar } from "~/components/workspace/workspace-sidebar";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
 import { useRunBudgetCommand } from "~/components/workspace/use-budget-command";
-import { useBudgetState } from "~/components/workspace/use-budget-state";
+import {
+  MAINTENANCE_DETAIL,
+  MAINTENANCE_TITLE,
+  useBudgetState,
+} from "~/components/workspace/use-budget-state";
 
 export function BudgetApp() {
   const { userId } = useAuth();
@@ -52,6 +56,14 @@ export function BudgetApp() {
           {state.error.message}
         </p>
         <Button onClick={() => void state.refetch()}>Try again</Button>
+      </main>
+    );
+  if (state.data?.status === "maintenance")
+    return (
+      <main className="onboarding">
+        <Brand />
+        <h1>{MAINTENANCE_TITLE}</h1>
+        <p role="status">{MAINTENANCE_DETAIL}</p>
       </main>
     );
   if (!state.data?.view)

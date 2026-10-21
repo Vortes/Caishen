@@ -3,11 +3,14 @@ import { applyPatch } from "fast-json-patch/commonjs/core.js";
 import { compare } from "fast-json-patch/commonjs/duplex.js";
 import { z } from "zod";
 import {
+  AccountingError,
   bookSchema,
-  type Book,
+  budgetSchema,
   type Command,
   type Transaction,
 } from "~/domain/engine";
+import { isPersonalLedger, type AccountingState } from "~/domain/shared-ledger";
+import { PARTNER_MAINTENANCE_MESSAGE } from "~/domain/stored-book";
 
 export const WORKSPACE_HISTORY_LIMIT = 50;
 const HISTORY_BYTE_LIMIT = 2 * 1024 * 1024;
@@ -28,27 +31,38 @@ const entrySchema = z.object({
   undo: z.array(patchSchema).min(1),
   redo: z.array(patchSchema).min(1),
 });
-const historySchema = z.object({
+export const workspaceHistorySchema = z.object({
   actorId: z.string().min(1),
   revision: z.number().int().nonnegative(),
   past: z.array(entrySchema).max(WORKSPACE_HISTORY_LIMIT),
   future: z.array(entrySchema).max(WORKSPACE_HISTORY_LIMIT),
 });
-type WorkspaceHistory = z.infer<typeof historySchema>;
+type WorkspaceHistory = z.infer<typeof workspaceHistorySchema>;
 export type HistoryDirection = "undo" | "redo";
+
+type HistoryAlert = (error: z.ZodError) => void;
 
 function currentHistory(
   value: unknown,
   actorId: string,
   revision: number,
+  alert?: HistoryAlert,
 ): WorkspaceHistory {
-  const result = historySchema.safeParse(value);
+  const result = workspaceHistorySchema.safeParse(value);
   if (
     result.success &&
     result.data.actorId === actorId &&
     result.data.revision === revision
   )
     return result.data;
+  // Bank changes reset history to {}; anything else that won't read is an
+  // alert. Unreadable history only costs undo, so it is replaced.
+  if (
+    !result.success &&
+    value !== null &&
+    !(typeof value === "object" && !Object.keys(value).length)
+  )
+    alert?.(result.error);
   return { actorId, revision, past: [], future: [] };
 }
 
@@ -56,20 +70,28 @@ export function historySummary(
   value: unknown,
   actorId: string,
   revision: number,
+  alert?: HistoryAlert,
 ) {
-  const history = currentHistory(value, actorId, revision);
+  const history = currentHistory(value, actorId, revision, alert);
   return {
     undo: history.past.at(-1)?.label ?? null,
     redo: history.future.at(-1)?.label ?? null,
   };
 }
 
-function historyBook(value: unknown) {
-  const book = bookSchema.parse(JSON.parse(JSON.stringify(value)));
+// What undo restores: the actor's readable budgets and the household's
+// shared records, without the audit or transaction bookkeeping. A personal
+// ledger, read while the partner's budget is under maintenance, holds only
+// the actor's budget.
+function historyBook(state: AccountingState) {
+  const book = JSON.parse(JSON.stringify(state)) as AccountingState;
+  const budgets = isPersonalLedger(book)
+    ? { [book.budget.userId]: book.budget }
+    : book.budgets;
   return {
-    version: book.version,
+    version: 1,
     budgets: Object.fromEntries(
-      Object.entries(book.budgets).map(([userId, budget]) => [
+      Object.entries(budgets).map(([userId, budget]) => [
         userId,
         {
           ...budget,
@@ -200,11 +222,12 @@ export function recordWorkspaceHistory(
   value: unknown,
   actorId: string,
   revision: number,
-  before: unknown,
-  after: unknown,
+  before: AccountingState,
+  after: AccountingState,
   label: string,
+  alert?: HistoryAlert,
 ): WorkspaceHistory {
-  const history = currentHistory(value, actorId, revision);
+  const history = currentHistory(value, actorId, revision, alert);
   const previous = historyBook(before);
   const next = historyBook(after);
   const redo = compare(previous, next, true);
@@ -224,15 +247,16 @@ export function recordWorkspaceHistory(
   return updated;
 }
 
-export function restoreWorkspaceHistory(
+export function restoreWorkspaceHistory<T extends AccountingState>(
   value: unknown,
   actorId: string,
   revision: number,
-  book: unknown,
+  current: T,
   direction: HistoryDirection,
   operationId: string,
-): { book: Book; history: WorkspaceHistory } {
-  const history = currentHistory(value, actorId, revision);
+  alert?: HistoryAlert,
+): { book: T; history: WorkspaceHistory } {
+  const history = currentHistory(value, actorId, revision, alert);
   const source = direction === "undo" ? history.past : history.future;
   const entry = source.at(-1);
   if (!entry)
@@ -241,14 +265,21 @@ export function restoreWorkspaceHistory(
         ? "There is nothing to undo."
         : "There is nothing to redo.",
     );
-  const current = bookSchema.parse(book);
-  const restored = applyPatch(
-    historyBook(current),
-    structuredClone(entry[direction]),
-    true,
-    false,
-    true,
-  ).newDocument;
+  const personal = isPersonalLedger(current);
+  let restored: ReturnType<typeof historyBook>;
+  try {
+    restored = applyPatch(
+      historyBook(current),
+      structuredClone(entry[direction]),
+      true,
+      false,
+      true,
+    ).newDocument;
+  } catch (error) {
+    // The change also touched the partner's budget, which can't be read now.
+    if (personal) throw new AccountingError(PARTNER_MAINTENANCE_MESSAGE);
+    throw error;
+  }
   const budgets = Object.fromEntries(
     Object.entries(restored.budgets).map(([userId, budget]) => [
       userId,
@@ -256,32 +287,53 @@ export function restoreWorkspaceHistory(
         ...budget,
         transactions: restoreTransactions(
           budget.transactions,
-          current.budgets[userId]?.transactions ?? [],
+          (personal
+            ? current.budget.userId === userId
+              ? current.budget
+              : undefined
+            : current.budgets[userId]
+          )?.transactions ?? [],
           direction,
           operationId,
         ),
       },
     ]),
   );
-  return {
-    book: bookSchema.parse({
+  const audit = [
+    ...current.audit,
+    {
+      id: operationId,
+      actorId,
+      source: "user" as const,
+      type: `history.${direction}`,
+      sequence: current.audit.length + 1,
+      fingerprint: JSON.stringify({
+        id: operationId,
+        type: `history.${direction}`,
+      }),
+    },
+  ];
+  let book: AccountingState;
+  if (personal) {
+    if (Object.keys(budgets).join() !== current.budget.userId)
+      throw new AccountingError(PARTNER_MAINTENANCE_MESSAGE);
+    book = {
+      ...current,
+      budget: budgetSchema.parse(budgets[current.budget.userId]),
+      sharedCategories: restored.sharedCategories,
+      obligations: restored.obligations,
+      settlements: restored.settlements,
+      audit,
+    };
+  } else
+    book = bookSchema.parse({
       ...restored,
+      version: 1,
       budgets,
-      audit: [
-        ...current.audit,
-        {
-          id: operationId,
-          actorId,
-          source: "user",
-          type: `history.${direction}`,
-          sequence: current.audit.length + 1,
-          fingerprint: JSON.stringify({
-            id: operationId,
-            type: `history.${direction}`,
-          }),
-        },
-      ],
-    }),
+      audit,
+    });
+  return {
+    book: book as T,
     history: {
       ...history,
       revision: revision + 1,

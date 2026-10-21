@@ -44,6 +44,7 @@ function fixture(month = "2026-10", revision = 3): State {
     name: "Groceries",
   });
   return {
+    status: "ready",
     view: projectBook(book, "owner", month),
     revision,
     history: { undo: "Add category", redo: null },

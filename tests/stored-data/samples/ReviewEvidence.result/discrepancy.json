@@ -1,0 +1,16 @@
+{
+  "status": "discrepancy",
+  "differenceCents": -3499,
+  "reasons": [
+    "Closing cleared balances differ. No balancing adjustment was created.",
+    "Cleared activity differs, even if the balances happen to match."
+  ],
+  "missingFromLedger": [
+    {
+      "date": "2026-10-17",
+      "description": "Unrecognized bank service charge",
+      "amountCents": -3499
+    }
+  ],
+  "missingFromStatement": []
+}

@@ -1,0 +1,22 @@
+{
+  "accountId": "savings",
+  "currency": "USD",
+  "periodStart": "2026-10-01",
+  "cutoff": "2026-10-17",
+  "balanceKind": "cleared",
+  "openingBalanceCents": 1254974,
+  "closingBalanceCents": 1257461,
+  "activity": [
+    {
+      "date": "2026-10-01",
+      "description": "Discover · savings interest",
+      "amountCents": 2487
+    }
+  ],
+  "source": "statement",
+  "verified": false,
+  "activityComplete": false,
+  "csvHash": "69f8d5dba92141631452d8df3d1c986061b9936cd0c1a0f4c41cb45ba5a15ff4",
+  "attestedBy": "alex",
+  "revision": 57
+}

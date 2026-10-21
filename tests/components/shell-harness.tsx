@@ -65,6 +65,7 @@ export function stateFixture({
   ];
   for (const command of commands) book = execute(book, "owner", command);
   return {
+    status: "ready",
     view: projectBook(book, "owner", month, "2026-10"),
     revision,
     history: { undo: "Assign money", redo: null },
@@ -92,6 +93,8 @@ export async function renderShell(
     resolveImport?: (
       input: ImportInput,
     ) => { resolved: boolean } | Promise<{ resolved: boolean }>;
+    // Whether to wait for the plan; off for screens shown in its place.
+    plan?: boolean;
   } = {},
 ) {
   const read = vi.fn(options.read ?? (() => stateFixture()));
@@ -165,7 +168,8 @@ export async function renderShell(
       </api.Provider>
     </QueryClientProvider>,
   );
-  await screen.findByRole("heading", { name: "Plan" });
+  if (options.plan !== false)
+    await screen.findByRole("heading", { name: "Plan" });
   return { user: userEvent.setup(), read, execute, resolveImport, queryClient };
 }
 

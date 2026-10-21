@@ -167,10 +167,10 @@ function harness() {
         revision,
         [command],
         "user",
-        (value, fresh) =>
+        (state, fresh) =>
           fresh.reduce(
             (book, operation) => execute(book, actorId, operation),
-            parseBook(value),
+            state,
           ),
       );
     },
@@ -270,10 +270,10 @@ void test("a grouped mutation has one labeled undo entry", async () => {
     0,
     commands,
     "user",
-    (value, fresh) =>
+    (state, fresh) =>
       fresh.reduce(
         (book, operation) => execute(book, "alice", operation),
-        parseBook(value),
+        state,
       ),
     { label: "Update budget plan" },
   );

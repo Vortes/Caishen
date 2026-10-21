@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Prisma, type DailyDelivery } from "~/generated/prisma";
 import { createResendClient } from "~/server/integrations/daily-review";
 import { providerIdSchema } from "~/server/integrations/validation";
+import { reportUnreadable, zodIssues } from "./stored-data";
 import { type Database } from "./workspace";
 
 export const dailyDeliveryPayloadSchema = z
@@ -158,6 +159,15 @@ async function recoverAttemptedDelivery(
       data: { status: "canceled", error: null },
     });
   const saved = dailyDeliveryPayloadSchema.safeParse(claim.delivery.payload);
+  if (!saved.success && claim.delivery.payload !== null)
+    reportUnreadable(
+      {
+        record: "DailyDelivery.payload",
+        deliveryId: delivery.id,
+        userId: delivery.clerkUserId,
+      },
+      [{ issues: zodIssues(saved.error) }],
+    );
   if (!saved.success) {
     const message =
       "The queued email outcome needs verification because its saved request is missing or invalid.";

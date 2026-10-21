@@ -1,0 +1,10 @@
+{
+  "from": "Caishen <daily@example.com>",
+  "to": "alex@example.com",
+  "dedupeKey": "daily-review:alex:2026-10-17",
+  "scheduledAt": "2026-10-17T15:00:00.000Z",
+  "message": {
+    "subject": "4 items to review in Caishen",
+    "text": "4 unresolved items are in your private review inbox.\n\nLatest successful account update: Oct 16, 2026, 11:00 PM. Bank data may arrive later than the transaction.\n\nOpen your inbox: https://caishen.example.com/?view=review\n\nYour inbox keeps unresolved items together, including after missed days."
+  }
+}

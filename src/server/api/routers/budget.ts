@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { randomBytes, randomUUID } from "node:crypto";
-import { z } from "zod";
+import { z, type ZodError } from "zod";
 import { Prisma } from "~/generated/prisma";
 import {
   bookSchema,
@@ -8,10 +8,11 @@ import {
   createBook,
   execute,
   mergeBooks,
+  ownBudget,
   projectBook,
-  type Book,
   type Command,
 } from "~/domain/engine";
+import { isPersonalLedger } from "~/domain/shared-ledger";
 import { personalSpendingEntries } from "~/domain/spending";
 import { budgetDay, prepareUserCommand } from "~/domain/user-command";
 import {
@@ -32,13 +33,22 @@ import { commandHash, domainError, jsonValue } from "~/server/services/safety";
 import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import {
   changeWorkspaceHistory,
+  historyAlert,
   mutateWorkspace,
   readWorkspace,
 } from "~/server/services/workspace";
+import {
+  budgetMaintenance,
+  openBudget,
+  readBudget,
+  reportUnreadable,
+  zodIssues,
+} from "~/server/services/stored-data";
 import { historySummary } from "~/server/services/workspace-history";
 import {
-  bankInbox,
-  bankAccountDetails,
+  bankInboxItems,
+  bankConnectionView,
+  readBankConnection,
   exchangeBankToken,
   linkBankToken,
   syncBanks,
@@ -56,20 +66,30 @@ const submittedCommand = z.object({ command: z.unknown() });
 function currentMonth(zone: string) {
   return budgetDay(zone).slice(0, 7);
 }
-function parseBook(value: unknown): Book {
-  return bookSchema.parse(value);
+// Joining merges both whole households, so every part of each must read.
+function wholeBook(workspace: { id: string; book: unknown }, userId: string) {
+  const read = readBudget(workspace, userId);
+  if (read.status === "maintenance" || isPersonalLedger(read.state))
+    throw budgetMaintenance();
+  return read.state;
 }
+const evidenceAlert =
+  (evidenceId: string, userId: string) => (error: ZodError) =>
+    reportUnreadable({ record: "ReviewEvidence.result", evidenceId, userId }, [
+      { issues: zodIssues(error) },
+    ]);
 
 export const budgetRouter = createTRPCRouter({
   state: protectedProcedure
     .input(z.object({ month }))
     .query(async ({ ctx, input }) => {
-      const [member, savedConnections, evidence, imports] = await Promise.all([
+      const [member, savedConnections, evidence] = await Promise.all([
         readWorkspace(ctx.db, ctx.userId),
         ctx.db.bankConnection.findMany({
           where: { clerkUserId: ctx.userId },
           select: {
             id: true,
+            clerkUserId: true,
             itemId: true,
             lastSyncedAt: true,
             lastAttemptAt: true,
@@ -91,26 +111,25 @@ export const budgetRouter = createTRPCRouter({
             createdAt: true,
           },
         }),
-        bankInbox(ctx.db, ctx.userId),
       ]);
-      const connections = savedConnections.map(
-        ({ imports, ...connection }) => ({
-          ...connection,
-          ...bankAccountDetails(imports),
-        }),
-      );
-      if (!member)
+      const services = integrationStatus(process.env);
+      const read = member && readBudget(member.workspace, ctx.userId);
+      if (!member || read?.status !== "ready")
         return {
+          // A budget that can't be read shows a maintenance message in place
+          // of the plan, never partial numbers.
+          status: member ? ("maintenance" as const) : ("new" as const),
           view: null,
-          revision: 0,
+          revision: member?.workspace.revision ?? 0,
           history: { undo: null, redo: null },
-          services: integrationStatus(process.env),
-          connections,
+          services,
+          connections: [],
           evidence: [],
-          imports,
+          imports: [],
         };
-      const book = parseBook(member.workspace.book);
-      const budget = book.budgets[ctx.userId]!;
+      const budget = ownBudget(read.state, ctx.userId);
+      const banks = savedConnections.map(readBankConnection);
+      const connections = banks.map(bankConnectionView);
       try {
         const currentEvidence = evidence.map(
           ({ evidence: savedEvidence, result, ...item }) => ({
@@ -119,12 +138,14 @@ export const budgetRouter = createTRPCRouter({
               result,
               savedEvidence,
               member.workspace.revision,
+              evidenceAlert(item.id, ctx.userId),
             ),
           }),
         );
         return {
+          status: "ready" as const,
           view: projectBook(
-            book,
+            read.state,
             ctx.userId,
             input.month,
             currentMonth(budget.settings.timezone),
@@ -134,11 +155,12 @@ export const budgetRouter = createTRPCRouter({
             member.workspace.history,
             ctx.userId,
             member.workspace.revision,
+            historyAlert(member.workspace, ctx.userId),
           ),
-          services: integrationStatus(process.env),
+          services,
           connections,
           evidence: currentEvidence,
-          imports,
+          imports: bankInboxItems(banks, budget),
         };
       } catch (error) {
         domainError(error);
@@ -150,13 +172,9 @@ export const budgetRouter = createTRPCRouter({
   spending: protectedProcedure.query(async ({ ctx }) => {
     const member = await readWorkspace(ctx.db, ctx.userId);
     if (!member) return { entries: [] };
+    const { state } = openBudget(member.workspace, ctx.userId);
     try {
-      return {
-        entries: personalSpendingEntries(
-          parseBook(member.workspace.book),
-          ctx.userId,
-        ),
-      };
+      return { entries: personalSpendingEntries(state, ctx.userId) };
     } catch (error) {
       domainError(error);
     }
@@ -200,20 +218,18 @@ export const budgetRouter = createTRPCRouter({
         input.expectedRevision,
         [input.command],
         "user",
-        (value, commands) => {
-          let book = parseBook(value);
-          for (const command of commands) {
-            const budget = book.budgets[ctx.userId]!;
-            book = execute(
-              book,
-              ctx.userId,
-              prepareUserCommand(budget, command),
-              "user",
-              submitted,
-            );
-          }
-          return book;
-        },
+        (state, commands) =>
+          commands.reduce(
+            (book, command) =>
+              execute(
+                book,
+                ctx.userId,
+                prepareUserCommand(ownBudget(book, ctx.userId), command),
+                "user",
+                submitted,
+              ),
+            state,
+          ),
         { submitted: [submitted] },
       );
       if (
@@ -247,7 +263,7 @@ export const budgetRouter = createTRPCRouter({
       try {
         const member = await readWorkspace(ctx.db, ctx.userId);
         const budget =
-          member && parseBook(member.workspace.book).budgets[ctx.userId];
+          member && openBudget(member.workspace, ctx.userId).budget;
         if (budget && !budget.settings.emailEnabled)
           await cancelScheduledDailyReviews(ctx.db, ctx.userId);
       } catch {
@@ -293,10 +309,10 @@ export const budgetRouter = createTRPCRouter({
         input.expectedRevision,
         commands,
         "user",
-        (value, fresh) =>
+        (state, fresh) =>
           fresh.reduce(
             (book, command) => execute(book, ctx.userId, command),
-            parseBook(value),
+            state,
           ),
         { label: "Approve suggested categories" },
       );
@@ -323,10 +339,10 @@ export const budgetRouter = createTRPCRouter({
           input.expectedRevision,
           [command],
           "user",
-          (value, commands) =>
+          (state, commands) =>
             commands.reduce(
               (book, cmd) => execute(book, ctx.userId, cmd),
-              parseBook(value),
+              state,
             ),
         );
       } catch (error) {
@@ -394,10 +410,12 @@ export const budgetRouter = createTRPCRouter({
                   code: "PRECONDITION_FAILED",
                   message: "Create your own personal budget first.",
                 });
-              const book = mergeBooks(
-                parseBook(invite.workspace.book),
-                parseBook(member.workspace.book),
-                ctx.userId,
+              const book = bookSchema.parse(
+                mergeBooks(
+                  wholeBook(invite.workspace, invite.createdBy),
+                  wholeBook(member.workspace, ctx.userId),
+                  ctx.userId,
+                ),
               );
               const changed = await tx.workspace.updateMany({
                 where: {
@@ -454,7 +472,7 @@ export const budgetRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const member = await readWorkspace(ctx.db, ctx.userId);
       if (!member) throw new TRPCError({ code: "NOT_FOUND" });
-      const budget = parseBook(member.workspace.book).budgets[ctx.userId]!;
+      const { budget } = openBudget(member.workspace, ctx.userId);
       const transactions = budget.transactions.filter(
         (t) =>
           !t.removed &&
@@ -502,7 +520,7 @@ export const budgetRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const member = await readWorkspace(ctx.db, ctx.userId);
       if (!member) throw new TRPCError({ code: "NOT_FOUND" });
-      const budget = parseBook(member.workspace.book).budgets[ctx.userId]!;
+      const { budget } = openBudget(member.workspace, ctx.userId);
       const account = budget.accounts.find((a) => a.id === input.accountId);
       if (!account)
         throw new TRPCError({
