@@ -130,12 +130,6 @@
   }
 }
 
-/* A register row's checkbox sits left of its review dot, so the dot stays
-   visible while rows are being selected. */
-.checkable > label {
-  left: 0;
-  width: 22px;
-}
 /* Touch has no hover to reveal the checkboxes, so they always show. */
 @media (hover: none) {
   .checkable > label {

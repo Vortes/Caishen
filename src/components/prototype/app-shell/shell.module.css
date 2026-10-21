@@ -928,6 +928,9 @@ button.actionItem:hover {
    the checkbox, keeping row controls clear of the strip at the window edge
    that opens the collapsed sidebar. */
 .list {
+  /* The left padding that holds a row's checkbox, 10px in from the row's
+     edge like the column header's. */
+  --row-gutter: 34px;
   padding: 0 8px 72px;
 }
 .columns,
@@ -937,19 +940,24 @@ button.actionItem:hover {
   align-items: center;
   column-gap: 16px;
   width: 100%;
-  padding: 0 var(--space-row-x) 0 34px;
+  padding: 0 var(--space-row-x) 0 var(--row-gutter);
 }
 .columns {
   grid-template-columns: minmax(0, 1fr) 104px 104px 116px;
 }
 .txColumns {
   grid-template-columns: var(--tx-columns);
-  column-gap: 12px;
+  /* Wide enough for the editor's wells to reach past their columns and
+     still sit 8px apart. */
+  column-gap: 16px;
 }
 /* The register's columns, shared by its headers, rows, and entry row so a
    new transaction's fields sit under the columns they fill. The last column
    holds the bank status. */
 .register {
+  /* A register row's review dot follows the checkbox: 6px past it, and 6px
+     before the row's text. */
+  --row-gutter: 42px;
   --tx-columns: 8.25rem minmax(0, 1.3fr) minmax(0, 1fr) 6.5rem 6.5rem 16px;
 }
 .register[data-accounts] {
@@ -1026,7 +1034,7 @@ button.actionItem:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 var(--space-row-x) 0 34px;
+  padding: 0 var(--space-row-x) 0 var(--row-gutter);
 }
 .groupName {
   display: flex;
