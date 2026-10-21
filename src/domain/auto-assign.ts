@@ -104,8 +104,14 @@ export function optionAmount(
       return total((category) => pastAmounts(category).averageSpent);
     case "reduce-overfunding":
       return total(overfunded);
-    default:
-      return 0;
+    // Resets show what they return to Ready to Assign: only money the
+    // category still holds can go back.
+    case "reset-available":
+      return total((category) => Math.max(0, category.available));
+    case "reset-assigned":
+      return total((category) =>
+        Math.max(0, Math.min(category.assigned, category.available)),
+      );
   }
 }
 

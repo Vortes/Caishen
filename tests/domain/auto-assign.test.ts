@@ -272,3 +272,22 @@ void test("history options skip categories with no earlier month", () => {
   });
   assert.deepEqual(plan.changes, []);
 });
+
+void test("resets show the money they return to Ready to Assign", () => {
+  const scope = [
+    category("dining", { assigned: 25427, available: 10000 }),
+    category("gifts", { assigned: 3000, available: 8000 }),
+    category("groceries", { assigned: 5000, available: -2000 }),
+  ];
+  assert.equal(optionAmount("reset-available", scope), 18000);
+  assert.equal(optionAmount("reset-assigned", scope), 13000);
+  for (const option of ["reset-available", "reset-assigned"] as const) {
+    const freed = -planAutoAssign({
+      option,
+      scope,
+      readyToAssign: 0,
+      month,
+    }).changes.reduce((total, change) => total + change.amount, 0);
+    assert.equal(optionAmount(option, scope), freed);
+  }
+});

@@ -76,6 +76,7 @@ export function stateFixture({
 }
 
 type ExecuteInput = RouterInputs["budget"]["execute"];
+type ImportInput = RouterInputs["budget"]["resolveImport"];
 const clients = new Set<QueryClient>();
 afterEach(() => {
   for (const client of clients) client.clear();
@@ -88,10 +89,16 @@ export async function renderShell(
     execute?: (
       input: ExecuteInput,
     ) => { revision: number } | Promise<{ revision: number }>;
+    resolveImport?: (
+      input: ImportInput,
+    ) => { resolved: boolean } | Promise<{ resolved: boolean }>;
   } = {},
 ) {
   const read = vi.fn(options.read ?? (() => stateFixture()));
   const execute = vi.fn(options.execute ?? (() => ({ revision: 6 })));
+  const resolveImport = vi.fn(
+    options.resolveImport ?? (() => ({ resolved: true })),
+  );
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -112,7 +119,9 @@ export async function renderShell(
                 ? address.href
                 : address.url,
           );
-          const input = superjson.parse<ExecuteInput & { month: string }>(
+          const input = superjson.parse<
+            ExecuteInput & ImportInput & { month: string }
+          >(
             typeof options?.body === "string"
               ? options.body
               : url.searchParams.get("input")!,
@@ -122,11 +131,13 @@ export async function renderShell(
               ? await read(input.month)
               : url.pathname.endsWith("/budget.execute")
                 ? await execute(input)
-                : (() => {
-                    throw new Error(
-                      `Unexpected component request: ${url.pathname}`,
-                    );
-                  })();
+                : url.pathname.endsWith("/budget.resolveImport")
+                  ? await resolveImport(input)
+                  : (() => {
+                      throw new Error(
+                        `Unexpected component request: ${url.pathname}`,
+                      );
+                    })();
             return Response.json({
               result: { data: superjson.serialize(result) },
             });
@@ -155,7 +166,7 @@ export async function renderShell(
     </QueryClientProvider>,
   );
   await screen.findByRole("heading", { name: "Plan" });
-  return { user: userEvent.setup(), read, execute, queryClient };
+  return { user: userEvent.setup(), read, execute, resolveImport, queryClient };
 }
 
 export async function openPurchase(user: ReturnType<typeof userEvent.setup>) {

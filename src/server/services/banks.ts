@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { Prisma } from "~/generated/prisma";
 import { bookSchema, execute, type Command } from "~/domain/engine";
+import { prepareUserCommand } from "~/domain/user-command";
 import {
   bankAccountSchema,
   createPlaidClient,
@@ -272,6 +273,9 @@ export async function bankInbox(db: Database, userId: string) {
         };
         return {
           ...category,
+          categoryId,
+          transactionId,
+          fingerprint: fingerprint(record),
           connectionId: connection.id,
           logicalId: record.id,
           providerAccountId: record.current.providerAccountId,
@@ -778,9 +782,16 @@ export async function syncBanks(db: Database, userId: string) {
                   accountId: mapped.accountId,
                   date: record.current.date,
                   amount: -record.current.amountCents,
-                  payee: (
-                    record.current.merchantName ?? record.current.name
-                  ).slice(0, 240),
+                  payee:
+                    transaction.payee ===
+                    (
+                      change.before?.current.merchantName ??
+                      change.before?.current.name
+                    )?.slice(0, 240)
+                      ? (
+                          record.current.merchantName ?? record.current.name
+                        ).slice(0, 240)
+                      : transaction.payee,
                   status: record.current.pending ? "pending" : "posted",
                   categoryId: transaction.categoryId,
                   expenseMonth: transaction.expenseMonth,
@@ -871,6 +882,7 @@ export async function resolveImport(
     command?: Command;
     existingTransactionId?: string;
     expectedRevision: number;
+    expectedFingerprint?: string;
     ignore: boolean;
   },
 ) {
@@ -888,6 +900,38 @@ export async function resolveImport(
         const state = importState(connection.imports);
         const record = state.records.find((r) => r.id === input.logicalId);
         if (!record) throw new TRPCError({ code: "NOT_FOUND" });
+        if (input.expectedFingerprint && input.command) {
+          const saved = await tx.budgetOperation.findMany({
+            where: {
+              workspaceId: member.workspaceId,
+              operationId: input.command.id,
+            },
+          });
+          const previous = saved[0];
+          if (previous) {
+            if (
+              previous.actorId !== userId ||
+              previous.commandHash !==
+                commandHash({
+                  command: input.command,
+                  connectionId: input.connectionId,
+                  logicalId: input.logicalId,
+                  fingerprint: input.expectedFingerprint,
+                })
+            )
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "This save was already used with different details.",
+              });
+            return { resolved: true };
+          }
+          if (input.expectedFingerprint !== fingerprint(record))
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "Your bank updated this transaction. Reopen it before saving.",
+            });
+        }
         const mapping = mappingsSchema.parse(connection.accountMappings)[
           record.current.providerAccountId
         ];
@@ -936,7 +980,13 @@ export async function resolveImport(
               throw new Error(
                 "This bank activity is already linked to a budget transaction. Review the existing transaction rather than creating it again.",
               );
-            if (command?.type !== "transaction.upsert")
+            if (
+              command?.type !== "transaction.upsert" &&
+              !(
+                input.expectedFingerprint &&
+                command?.type === "transaction.save"
+              )
+            )
               throw new Error(
                 "Record specialized payments or credits using their dedicated operation, then link the existing ledger record.",
               );
@@ -945,9 +995,18 @@ export async function resolveImport(
                 "This provider record was removed; do not create a new purchase from it.",
               );
             if (
+              book.budgets[userId]!.transactions.some(
+                (item) => item.id === command.transactionId,
+              )
+            )
+              throw new Error(
+                "This transaction ID already exists. Reopen the import before saving.",
+              );
+            if (
               command.accountId !== mapping.accountId ||
-              command.amount !== -record.current.amountCents ||
-              command.date !== record.current.date
+              (!input.expectedFingerprint &&
+                (command.amount !== -record.current.amountCents ||
+                  command.date !== record.current.date))
             )
               throw new Error(
                 "Imported account, amount, and date must match the bank fact.",
@@ -958,24 +1017,31 @@ export async function resolveImport(
               (t) =>
                 !t.removed &&
                 t.accountId === mapping.accountId &&
-                t.amount === command.amount &&
-                t.date === command.date &&
-                t.payee.toLowerCase() ===
-                  (
-                    record.current.merchantName ?? record.current.name
-                  ).toLowerCase(),
+                (t.id === command.transactionId ||
+                  t.providerId === record.current.providerTransactionId ||
+                  (t.amount === -record.current.amountCents &&
+                    t.date === record.current.date &&
+                    t.payee.toLowerCase() ===
+                      (
+                        record.current.merchantName ?? record.current.name
+                      ).toLowerCase())),
             );
             if (possibleDuplicates.length)
               throw new Error(
                 "A matching ledger record already exists. Link it explicitly to avoid counting it twice.",
               );
+            if (input.expectedFingerprint)
+              prepareUserCommand(book.budgets[userId]!, command);
             book = execute(book, userId, {
               ...command,
               status: record.current.pending ? "pending" : "posted",
-              payee: (record.current.merchantName ?? record.current.name).slice(
-                0,
-                240,
-              ),
+              payee: input.expectedFingerprint
+                ? command.payee
+                : (record.current.merchantName ?? record.current.name).slice(
+                    0,
+                    240,
+                  ),
+              reviewed: false,
               providerId: record.current.providerTransactionId,
             });
             transactionId = command.transactionId;
@@ -986,7 +1052,16 @@ export async function resolveImport(
                 actorId: userId,
                 source: "user",
                 type: command.type,
-                commandHash: commandHash(command),
+                commandHash: commandHash(
+                  input.expectedFingerprint
+                    ? {
+                        command,
+                        connectionId: input.connectionId,
+                        logicalId: input.logicalId,
+                        fingerprint: input.expectedFingerprint,
+                      }
+                    : command,
+                ),
                 revision: input.expectedRevision + 1,
               },
             });

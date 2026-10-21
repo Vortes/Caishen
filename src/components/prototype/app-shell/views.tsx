@@ -30,7 +30,6 @@ import {
 } from "./model";
 import {
   AddToGroupButton,
-  EmptyGroupButton,
   FirstGroupButton,
   isPaymentGroup,
   type Added,
@@ -95,7 +94,7 @@ export function PlanView({
         ? values.filter((value) => value !== id)
         : [...values, id],
     );
-  // A new category's row, or a new group's Add category button.
+  // A new category's row, or a new group's header.
   const revealGroup =
     reveal?.type === "group"
       ? reveal.name
@@ -111,7 +110,7 @@ export function PlanView({
     }
     const target = document.querySelector<HTMLElement>(
       reveal.type === "group"
-        ? `[data-add-category="${CSS.escape(reveal.name)}"]`
+        ? `[data-group-toggle="${CSS.escape(reveal.name)}"]`
         : `[data-row][data-id="${CSS.escape(reveal.id)}"]`,
     );
     if (!target) return;
@@ -176,10 +175,11 @@ export function PlanView({
         <span className={styles.numeric}>Available</span>
       </div>
       {groups.map((group) => {
-        const open = !closed.includes(group.id);
+        const ids = group.categories.map((item) => item.id);
+        // A group with no categories stays folded; its header's + adds one.
+        const open = ids.length > 0 && !closed.includes(group.id);
         const sum = (pick: (category: Category) => number) =>
           group.categories.reduce((total, item) => total + pick(item), 0);
-        const ids = group.categories.map((item) => item.id);
         const count = ids.filter((id) => checked.includes(id)).length;
         return (
           <div key={group.id}>
@@ -207,6 +207,7 @@ export function PlanView({
                     type="button"
                     className={styles.groupToggle}
                     aria-expanded={open}
+                    data-group-toggle={group.name}
                     onClick={() => toggle(group.id)}
                   >
                     <ChevronDownIcon
@@ -237,11 +238,6 @@ export function PlanView({
                 </span>
               </div>
             </div>
-            {open && !ids.length && (
-              <div className={styles.emptyGroup}>
-                <EmptyGroupButton group={group.name} />
-              </div>
-            )}
             {open &&
               group.categories.map((category) => {
                 const isChecked = checked.includes(category.id);
@@ -511,7 +507,7 @@ export function RegisterView({
   });
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
-  const editingId = session?.initial?.id;
+  const editingId = session?.rowId;
   const inPlace =
     session && rows.some((item) => item.id === editingId)
       ? editingId
@@ -539,7 +535,7 @@ export function RegisterView({
     if (item.id === inPlace)
       return <TransactionEditor key={item.id} accountColumn={accountColumn} />;
     const status = statusIcon[item.status];
-    const checkable = item.source === "budget";
+    const checkable = item.source === "budget" || Boolean(item.editableImport);
     const isChecked = checkable && checked.includes(item.id);
     // Marks the row in its first column.
     const reviewDot = (
@@ -572,7 +568,7 @@ export function RegisterView({
           className={`${styles.txColumns} ${styles.row}`}
           aria-current={selectedId === item.id ? "true" : undefined}
           onClick={(event) => {
-            if (item.source === "budget" && isChecked && checked.length === 1) {
+            if (isChecked && checked.length === 1) {
               const column =
                 event.target instanceof Element
                   ? event.target.closest<HTMLElement>("[data-column]")?.dataset

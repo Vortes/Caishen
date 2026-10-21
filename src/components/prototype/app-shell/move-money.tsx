@@ -20,7 +20,7 @@ import { useShellData } from "./shell-data";
 import shell from "./shell.module.css";
 import styles from "./move-money.module.css";
 
-const READY_TO_ASSIGN = "ready-to-assign";
+export const READY_TO_ASSIGN = "ready-to-assign";
 
 export type MoveMoney = {
   // Sends the move's command with a summary for its confirmation. Returns
@@ -35,7 +35,7 @@ const MoveMoneyContext = createContext<MoveMoney | null>(null);
 
 export const MoveMoneyProvider = MoveMoneyContext.Provider;
 
-function useMoveMoney() {
+export function useMoveMoney() {
   const value = useContext(MoveMoneyContext);
   if (!value) throw new Error("useMoveMoney needs a MoveMoneyProvider.");
   return value;
@@ -114,7 +114,7 @@ export function MoveMoneyPopover({
   );
 }
 
-type Option = {
+export type Option = {
   id: string;
   name: string;
   group: string;
@@ -122,7 +122,7 @@ type Option = {
 };
 
 // "$1,234.50", "1234.5", and "12" all read as dollars; returns cents.
-function parseAmount(text: string) {
+export function parseAmount(text: string) {
   const value = Number(text.replace(/[$,\s]/g, ""));
   return Number.isFinite(value) ? Math.round(value * 100) : NaN;
 }
@@ -327,7 +327,7 @@ export function FieldError({ id, message }: { id: string; message: string }) {
 
 // The destination (or, when covering, the source): a searchable list of Ready
 // to Assign and the plan's categories under their groups.
-function Destination({
+export function Destination({
   label,
   options,
   value,
@@ -396,7 +396,22 @@ function Destination({
   let lastGroup = "";
   return (
     <div className={styles.field}>
-      <label htmlFor={id}>{label}</label>
+      {/* While the list is open, the label closes it like any click outside
+          the list. Left alone, the press would blur the field and close the
+          list, then the label's click would focus the field and reopen it. */}
+      <label
+        htmlFor={id}
+        onMouseDown={(event) => {
+          if (expanded) event.preventDefault();
+        }}
+        onClick={(event) => {
+          if (!expanded) return;
+          event.preventDefault();
+          hide();
+        }}
+      >
+        {label}
+      </label>
       <div
         className={styles.search}
         data-invalid={error ? "" : undefined}

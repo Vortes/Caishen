@@ -278,6 +278,9 @@ void test("daily review counts posted activity and matching problems without ale
   const item = {
     connectionId: "bank",
     logicalId: "pending",
+    categoryId: undefined,
+    transactionId: undefined,
+    fingerprint: "a".repeat(64),
     providerAccountId: "provider-checking",
     accountId: "checking",
     date: "2026-10-17",

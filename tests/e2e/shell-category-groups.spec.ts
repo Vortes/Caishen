@@ -14,7 +14,8 @@ test("category groups and their categories are added separately and persist", as
       .locator("[data-row]")
       .filter({ hasText: name });
 
-  // A new category group starts empty, at the top, ready for a category.
+  // A new category group starts empty and folded, at the top; its header's
+  // + adds the first category.
   await page
     .getByRole("button", { name: "Add category group", exact: true })
     .click();
@@ -28,11 +29,18 @@ test("category groups and their categories are added separately and persist", as
   await groupForm.getByLabel("Group name").press("Enter");
   await saved(page);
   await expect(notifications(page)).toContainText("Added the Bills group");
-  await expect(groups).toHaveText([/^Bills\s*0$/, /^Everyday/]);
-  const addFirst = page.locator('[data-add-category="Bills"]');
-  await expect(addFirst).toBeFocused();
+  const bills = page.getByRole("button", { name: /^Bills\s*0$/ });
+  await expect(bills).toBeFocused();
+  await expect(bills).toHaveAttribute("aria-expanded", "false");
+  await expect(groups).toHaveText([/^Everyday/]);
+  await expect(page.getByRole("button", { name: "Add category" })).toHaveCount(
+    0,
+  );
 
-  await addFirst.click();
+  await bills.hover();
+  await page
+    .getByRole("button", { name: "Add a category to Bills", exact: true })
+    .click();
   const billsForm = page.getByRole("dialog", {
     name: "Add a category to Bills",
   });
@@ -40,7 +48,7 @@ test("category groups and their categories are added separately and persist", as
   await billsForm.getByLabel("Category name").press("Enter");
   await saved(page);
   await expect(row("Rent")).toBeFocused();
-  await expect(addFirst).toHaveCount(0);
+  await expect(groups).toHaveText([/^Bills\s*1$/, /^Everyday/]);
 
   // An existing group's header + adds to that group, refusing duplicates.
   await page.getByRole("button", { name: /^Everyday \d+$/ }).hover();

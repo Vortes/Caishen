@@ -5,6 +5,9 @@ import { afterEach, beforeEach, vi } from "vitest";
 // No browser process, application server, or database is started here.
 vi.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ isLoaded: true, userId: "owner" }),
+  // A signed-in user with no profile photo; the sidebar shows an initial.
+  useUser: () => ({ isLoaded: true, user: null }),
+  useClerk: () => ({ signOut: () => Promise.resolve() }),
 }));
 
 beforeEach(() => {

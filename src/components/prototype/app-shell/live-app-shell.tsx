@@ -14,6 +14,7 @@ import {
 } from "~/components/workspace/use-budget-command";
 import { useBudgetState } from "~/components/workspace/use-budget-state";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
+import { api } from "~/trpc/react";
 import { AppShellPrototype, type CategoryAdder } from "./app-shell-prototype";
 import {
   AssignMoneyProvider,
@@ -107,6 +108,14 @@ function LiveWorkspace({
   onMonthChange: (month: string) => void;
 }) {
   const data = useMemo(() => toShellData(state), [state]);
+  const utils = api.useUtils();
+  const resolveImport = api.budget.resolveImport.useMutation({
+    retry: false,
+    onSuccess: async () => {
+      await utils.budget.state.invalidate();
+    },
+    onError: (error) => notify(error.message, "attention"),
+  });
   const [notice, setNotice] = useState<Notice | null>(null);
   const notify = (
     message: string,
@@ -226,6 +235,7 @@ function LiveWorkspace({
   };
   const transactionSaver: TransactionSaver = {
     view: state.view!,
+    imports: state.imports,
     busy,
     blocked: () => {
       const reason = blocked();
@@ -236,6 +246,16 @@ function LiveWorkspace({
     save: async (command, summary) => {
       summaries.current.set(command.id, summary);
       await execute.mutateAsync({ command, expectedRevision: state.revision });
+    },
+    saveImport: async (item, command, summary) => {
+      await resolveImport.mutateAsync({
+        connectionId: item.connectionId,
+        logicalId: item.logicalId,
+        expectedFingerprint: item.fingerprint,
+        expectedRevision: state.revision,
+        command,
+      });
+      notify(summary);
     },
     holdOpen,
   };
@@ -267,6 +287,18 @@ function LiveWorkspace({
           categoryAdder={categoryAdder}
           transactionSaver={transactionSaver}
           targetEditing={targetEditing}
+          renameBudget={(name) => {
+            const reason = blocked();
+            if (reason) return blockMessage[reason];
+            const command = {
+              type: "settings.update" as const,
+              id: newId(),
+              name,
+            };
+            summaries.current.set(command.id, `Renamed your budget to ${name}`);
+            run(command);
+            return null;
+          }}
           notifications={
             <ToastRegion>
               {refreshError && (

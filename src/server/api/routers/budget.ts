@@ -610,6 +610,10 @@ export const budgetRouter = createTRPCRouter({
       z.object({
         connectionId: z.string(),
         logicalId: z.string(),
+        expectedFingerprint: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
         command: commandSchema.optional(),
         existingTransactionId: z.string().optional(),
         expectedRevision: revision,

@@ -1,20 +1,31 @@
 "use client";
 
+import { useClerk } from "@clerk/nextjs";
 import {
   ArrowLeftRightIcon,
   ChartNoAxesCombinedIcon,
   ChartPieIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  HeartHandshakeIcon,
+  LogOutIcon,
+  PaletteIcon,
+  CircleUserRoundIcon,
   PanelLeftIcon,
   SettingsIcon,
+  UserPlusIcon,
   WalletCardsIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { DropdownMenu } from "radix-ui";
+import { useRef, useState } from "react";
 import { IconButton } from "~/components/ui/icon-button";
+import { usePortalContainer } from "~/components/ui/tooltip";
 import { AccountEntry } from "./account-entry";
 import { money } from "./model";
+import { SHELL_PATH, type SettingsPage } from "./settings-pages";
 import { useShellData } from "./shell-data";
+import { UserAvatar } from "./user-avatar";
 import styles from "./shell.module.css";
 
 export type Screen =
@@ -29,14 +40,16 @@ export function Sidebar({
   onNavigate,
   toggleLabel,
   onToggle,
+  onOpenSettings,
 }: {
   screen: Screen;
   selectedId: string | null;
   onNavigate: (screen: Screen, selectedId?: string) => void;
   toggleLabel: string;
   onToggle: () => void;
+  onOpenSettings: (page: SettingsPage) => void;
 }) {
-  const { accounts, loans, transactions, budgetName } = useShellData();
+  const { accounts, loans, transactions } = useShellData();
   const reviewCount = transactions.filter((item) => item.needsReview).length;
   const [closed, setClosed] = useState<string[]>([]);
   const toggle = (id: string) =>
@@ -113,13 +126,7 @@ export function Sidebar({
   return (
     <nav className={styles.sidebarNav} aria-label="Budget navigation">
       <div className={styles.sidebarHeader}>
-        <button type="button" className={styles.switcher}>
-          <span className={styles.avatar} aria-hidden>
-            {budgetName.trim().charAt(0).toUpperCase() || "C"}
-          </span>
-          <span className={styles.switcherName}>{budgetName}</span>
-          <ChevronDownIcon size={12} aria-hidden />
-        </button>
+        <ProfileMenu onOpenSettings={onOpenSettings} />
         <IconButton label={toggleLabel} shortcut="[" onClick={onToggle}>
           <PanelLeftIcon aria-hidden />
         </IconButton>
@@ -205,13 +212,129 @@ export function Sidebar({
       </div>
 
       <div className={styles.sidebarFooter}>
-        <button type="button" className={styles.footerItem}>
-          <SettingsIcon size={14} aria-hidden />
-          Settings
-        </button>
         <AccountEntry />
       </div>
     </nav>
+  );
+}
+
+// Settings take over the sidebar, like Linear's, until Back to app.
+export function SettingsNav({
+  toggleLabel,
+  onToggle,
+  page,
+  onBack,
+  onSelect,
+}: {
+  toggleLabel: string;
+  onToggle: () => void;
+  page: SettingsPage;
+  onBack: () => void;
+  onSelect: (page: SettingsPage) => void;
+}) {
+  return (
+    <nav className={styles.sidebarNav} aria-label="Settings navigation">
+      <div className={styles.sidebarHeader}>
+        <button type="button" className={styles.switcher} onClick={onBack}>
+          <ChevronLeftIcon size={14} aria-hidden />
+          <span className={styles.switcherName}>Back to app</span>
+        </button>
+        <IconButton label={toggleLabel} shortcut="[" onClick={onToggle}>
+          <PanelLeftIcon aria-hidden />
+        </IconButton>
+      </div>
+      <div className={styles.sidebarScroll}>
+        <h2 className={styles.navHeading}>Settings</h2>
+        <ul className={styles.navList}>
+          <NavItem
+            icon={CircleUserRoundIcon}
+            label="Profile"
+            current={page === "profile"}
+            onClick={() => onSelect("profile")}
+          />
+          <NavItem
+            icon={PaletteIcon}
+            label="Appearance"
+            current={page === "appearance"}
+            onClick={() => onSelect("appearance")}
+          />
+          <NavItem
+            icon={HeartHandshakeIcon}
+            label="Partner"
+            current={page === "partner"}
+            onClick={() => onSelect("partner")}
+          />
+        </ul>
+      </div>
+    </nav>
+  );
+}
+
+// Linear's workspace menu: the budget's name opens settings, the partner
+// invitation, and sign out.
+function ProfileMenu({
+  onOpenSettings,
+}: {
+  onOpenSettings: (page: SettingsPage) => void;
+}) {
+  const { budgetName, partner } = useShellData();
+  const { signOut } = useClerk();
+  const container = usePortalContainer();
+  // A menu opened from the keyboard appears at once; only a click animates.
+  const [byKeyboard, setByKeyboard] = useState(false);
+  const pointer = useRef(false);
+  return (
+    <DropdownMenu.Root
+      modal={false}
+      onOpenChange={(open) => {
+        if (open) setByKeyboard(!pointer.current);
+        pointer.current = false;
+      }}
+    >
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          className={styles.switcher}
+          onPointerDown={() => (pointer.current = true)}
+        >
+          <UserAvatar fallback={budgetName} />
+          <span className={styles.switcherName}>{budgetName}</span>
+          <ChevronDownIcon size={12} aria-hidden />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal container={container}>
+        <DropdownMenu.Content
+          className={styles.menu}
+          data-instant={byKeyboard || undefined}
+          align="start"
+          sideOffset={4}
+          collisionPadding={12}
+        >
+          <DropdownMenu.Item
+            className={styles.menuItem}
+            onSelect={() => onOpenSettings("profile")}
+          >
+            <SettingsIcon size={14} aria-hidden />
+            Settings
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            className={styles.menuItem}
+            onSelect={() => onOpenSettings("partner")}
+          >
+            <UserPlusIcon size={14} aria-hidden />
+            {partner ? "Partner" : "Invite partner"}
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator className={styles.menuSeparator} />
+          <DropdownMenu.Item
+            className={styles.menuItem}
+            onSelect={() => void signOut({ redirectUrl: SHELL_PATH })}
+          >
+            <LogOutIcon size={14} aria-hidden />
+            Log out
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 

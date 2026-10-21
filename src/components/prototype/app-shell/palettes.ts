@@ -1,5 +1,7 @@
-// Monkeytype's dark themes, as raw color tokens for trying palettes in the
-// prototype. Source: monkeytypegame/monkeytype, frontend/src/ts/constants/
+import type { CSSProperties } from "react";
+
+// Monkeytype's dark themes, as raw color tokens for the Appearance
+// settings. Source: monkeytypegame/monkeytype, frontend/src/ts/constants/
 // themes.ts. "Dark" means the background's relative luminance is under 0.1;
 // alpha channels are dropped. shell.module.css maps these onto the shell's
 // surface, text, and accent tokens.
@@ -11,6 +13,31 @@ export type Palette = {
   text: string;
   error: string;
 };
+
+// The shell's own dark theme. It is never applied as a palette; choosing it
+// clears the saved palette.
+export const DEFAULT_PALETTE: Palette = {
+  name: "Caishen",
+  bg: "oklch(0.178 0.004 282)",
+  main: "oklch(0.6 0.17 282)",
+  sub: "oklch(0.64 0.004 282)",
+  text: "oklch(0.95 0.002 282)",
+  error: "oklch(0.74 0.15 22)",
+};
+
+export function findPalette(name: string | null) {
+  return PALETTES.find((palette) => palette.name === name) ?? null;
+}
+
+export function paletteVars(palette: Palette) {
+  return {
+    "--mt-bg": palette.bg,
+    "--mt-main": palette.main,
+    "--mt-sub": palette.sub,
+    "--mt-text": palette.text,
+    "--mt-error": palette.error,
+  } as CSSProperties;
+}
 
 export const PALETTES: Palette[] = [
   {
