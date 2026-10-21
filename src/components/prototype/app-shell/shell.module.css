@@ -496,8 +496,14 @@
 }
 .summaryActions {
   display: flex;
+  align-items: center;
   gap: 6px;
   margin-left: auto;
+}
+.reconciledLabel {
+  margin-right: 6px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 /* A filled well like the move-money search, at the toolbar's button height. */
 .toolbarSearch {
@@ -1046,9 +1052,12 @@ button.actionItem:hover {
   color: var(--text-tertiary);
   transition: transform 150ms var(--ease-panel);
 }
+/* Rotated, the chevron keeps its box's center, but a > carries its weight
+   on the open side and reads as sitting left, away from the name. A pixel
+   toward the point centers it. */
 .groupRow[aria-expanded="false"] .groupCaret,
 .groupToggle[aria-expanded="false"] .groupCaret {
-  transform: rotate(-90deg);
+  transform: translateX(1px) rotate(-90deg);
 }
 /* The group's name toggles it; the + to add a category sits beside it. */
 .groupRow:has(.groupToggle) {
@@ -1110,15 +1119,37 @@ button.actionItem:hover {
 .row[data-pending] .numeric[data-inflow] {
   color: var(--text-secondary);
 }
-/* The register's pending heading, and the thick break that sets its rows
-   apart from the cleared ones below. */
+/* The register's rules, under its column header and its pending rows, run
+   past the list's inset to the panel's edges, like the panel header's. The
+   border stays, transparent, so the rows keep their place. */
+.register .columnHeader {
+  border-bottom-color: transparent;
+}
+.register .columnHeader::after,
+.pendingGroup::after {
+  content: "";
+  position: absolute;
+  right: -8px;
+  bottom: -1px;
+  left: -8px;
+  height: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+}
+/* The pending heading and rows, set apart from the cleared ones below. Each
+   rule has the same 8px on both sides. */
 .pendingHeader {
   width: 100%;
+  margin: 0;
+}
+.pendingHeader:not(:last-child) {
+  margin-bottom: var(--space-inset);
 }
 .pendingGroup {
-  margin-bottom: 4px;
-  padding-bottom: 4px;
-  border-bottom: 3px solid var(--border-subtle);
+  position: relative;
+  margin-bottom: var(--space-inset);
+  padding-block: var(--space-inset);
+  border-bottom: 1px solid transparent;
 }
 .root .row:focus-visible,
 .root .groupRow:focus-visible,

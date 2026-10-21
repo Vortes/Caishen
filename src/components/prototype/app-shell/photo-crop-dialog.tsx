@@ -6,42 +6,10 @@ import { useState } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { compressProfileImage } from "./profile-image";
 import styles from "./photo-crop.module.css";
 
-// Large enough to stay sharp on a high-density screen at any size the app
-// shows an avatar; small enough to upload quickly.
-const OUTPUT_SIZE = 512;
 const MAX_ZOOM = 4;
-
-async function crop(src: string, area: Area) {
-  const image = new Image();
-  image.src = src;
-  await image.decode();
-  const size = Math.min(OUTPUT_SIZE, area.width);
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  canvas
-    .getContext("2d")!
-    .drawImage(
-      image,
-      area.x,
-      area.y,
-      area.width,
-      area.height,
-      0,
-      0,
-      size,
-      size,
-    );
-  return new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob(
-      (blob) =>
-        blob ? resolve(blob) : reject(new Error("The crop couldn’t be made.")),
-      "image/png",
-    ),
-  );
-}
 
 // Frames a newly picked photo before it uploads. Nothing is saved until
 // Save; Cancel, Escape, or clicking outside drops the photo.
@@ -75,7 +43,7 @@ export function PhotoCropDialog({
     setSaving(true);
     setError(null);
     try {
-      await onSave(await crop(src, area));
+      await onSave(await compressProfileImage(src, area));
       reset();
     } catch (caught) {
       setError(

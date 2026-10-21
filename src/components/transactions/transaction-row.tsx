@@ -8,6 +8,7 @@ import { Amount, Icon } from "~/components/shared";
 import { Checkbox } from "~/components/ui-legacy/checkbox";
 import { cn } from "~/lib/utils";
 import selectionStyles from "~/components/ui/row-selection.module.css";
+import { transactionCategory } from "./transaction-category";
 
 type Transaction = View["budget"]["transactions"][number];
 
@@ -154,22 +155,4 @@ export function TransactionRow({
       </td>
     </tr>
   );
-}
-
-export function transactionCategory(kind: Transaction["kind"], amount: number) {
-  switch (kind) {
-    case "transfer":
-    case "card-payment":
-      return "Category not needed";
-    case "loan-payment":
-      return "Loan payment";
-    case "statement-credit":
-      return "Statement credit";
-    case "reimbursement":
-      return "Reimbursement";
-    case "settlement":
-      return "Partner repayment";
-    default:
-      return amount > 0 ? "Inflow: Ready to Assign" : "Choose category";
-  }
 }
