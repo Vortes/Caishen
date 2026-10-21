@@ -22,7 +22,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tag } from "~/components/ui/tag";
 import {
-  dayLabel,
+  shortDay,
   money,
   type Category,
   type Funding,
@@ -469,7 +469,7 @@ export function RegisterView({
   onCheck: (ids: string[], value: boolean) => void;
   onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
 }) {
-  const { transactions, accounts, month, today } = useShellData();
+  const { transactions, accounts, month } = useShellData();
   const entry = useTransactionEntry();
   const { session } = entry;
   const register = useRef<HTMLDivElement>(null);
@@ -599,7 +599,7 @@ export function RegisterView({
           <span className={styles.rowName} data-column="date" data-optional>
             {!accountColumn && reviewDot}
             <span className={`${styles.truncate} ${styles.muted}`}>
-              {dayLabel(item.date, today)}
+              {shortDay(item.date)}
             </span>
           </span>
           <span
