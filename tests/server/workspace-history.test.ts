@@ -24,7 +24,6 @@ import {
   historySummary,
   recordWorkspaceHistory,
   restoreWorkspaceHistory,
-  WORKSPACE_HISTORY_LIMIT,
 } from "../../src/server/services/workspace-history";
 
 const now = new Date("2026-10-19T12:00:00Z");
@@ -377,7 +376,7 @@ void test("serialization failures retry at most three times", async () => {
 void test("history retains the latest 50 entries and excludes audit records and unchanged book data", () => {
   let book = fixture();
   let history: unknown = {};
-  for (let revision = 0; revision < WORKSPACE_HISTORY_LIMIT + 5; revision++) {
+  for (let revision = 0; revision < 55; revision++) {
     const next = execute(
       book,
       "alice",
@@ -393,11 +392,11 @@ void test("history retains the latest 50 entries and excludes audit records and 
     );
     book = next;
   }
-  for (let index = 0; index < WORKSPACE_HISTORY_LIMIT; index++) {
+  for (let index = 0; index < 50; index++) {
     const restored = restoreWorkspaceHistory(
       history,
       "alice",
-      WORKSPACE_HISTORY_LIMIT + 5 + index,
+      55 + index,
       book,
       "undo",
       `undo-${index}`,
@@ -406,10 +405,7 @@ void test("history retains the latest 50 entries and excludes audit records and 
     book = restored.book;
   }
   assert.equal(book.budgets.alice!.name, "Name 4");
-  assert.equal(
-    historySummary(history, "alice", WORKSPACE_HISTORY_LIMIT * 2 + 5).undo,
-    null,
-  );
+  assert.equal(historySummary(history, "alice", 105).undo, null);
   const serialized = JSON.stringify(history);
   assert.ok(!serialized.includes("/audit"));
   assert.ok(!serialized.includes("/accounts"));

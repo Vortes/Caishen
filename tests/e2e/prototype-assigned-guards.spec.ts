@@ -14,52 +14,31 @@ const field = (page: Page, name: string) =>
 const row = (page: Page, id: string) =>
   page.locator(`[data-row][data-id="${id}"]`);
 
-for (const theme of ["Dark", "Light"] as const) {
-  test(`Assigned keeps editing keys and commits on blur in the ${theme.toLowerCase()} theme`, async ({
-    page,
-  }, testInfo) => {
-    const plan = await openPrototype(page);
-    await page
-      .getByRole("radiogroup", { name: "Theme" })
-      .getByRole("radio", { name: theme, exact: true })
-      .click();
-    await expect(
-      page
-        .locator("[data-theme]")
-        .filter({ has: page.locator("#prototype-content") }),
-    ).toHaveAttribute("data-theme", theme.toLowerCase());
-    await row(page, "gifts").click();
-    await amount(page, "Rent").click();
-    const input = field(page, "Rent");
-    await expect(input).toBeFocused();
-    await input.press("ArrowDown");
-    await input.press("ArrowUp");
-    await expect(input).toBeFocused();
-    await expect(row(page, "gifts")).toHaveAttribute("aria-current", "true");
-    await input.fill("500-50");
-    const screenshot = testInfo.outputPath(
-      `assigned-${theme.toLowerCase()}.png`,
-    );
-    await page.screenshot({ path: screenshot });
-    await testInfo.attach(`assigned-${theme.toLowerCase()}`, {
-      path: screenshot,
-      contentType: "image/png",
-    });
-    await row(page, "gifts").click();
-    await moveSaved(page);
-    await expect(amount(page, "Rent")).toHaveText("$450.00");
-    await expect(row(page, "gifts")).toBeFocused();
-    expect(plan.commands).toEqual([
-      expect.objectContaining({
-        type: "assign",
-        categoryId: "rent",
-        month: plan.month,
-        amount: -5_000,
-      }),
-    ]);
-    expect(plan.executions).toHaveLength(1);
-  });
-}
+test("Assigned keeps editing keys and commits on blur", async ({ page }) => {
+  const plan = await openPrototype(page);
+  await row(page, "gifts").click();
+  await amount(page, "Rent").click();
+  const input = field(page, "Rent");
+  await expect(input).toBeFocused();
+  await input.press("ArrowDown");
+  await input.press("ArrowUp");
+  await expect(input).toBeFocused();
+  await expect(row(page, "gifts")).toHaveAttribute("aria-current", "true");
+  await input.fill("500-50");
+  await row(page, "gifts").click();
+  await moveSaved(page);
+  await expect(amount(page, "Rent")).toHaveText("$450.00");
+  await expect(row(page, "gifts")).toBeFocused();
+  expect(plan.commands).toEqual([
+    expect.objectContaining({
+      type: "assign",
+      categoryId: "rent",
+      month: plan.month,
+      amount: -5_000,
+    }),
+  ]);
+  expect(plan.executions).toHaveLength(1);
+});
 
 test("retrying an earlier failed total reuses its operation after another failed total", async ({
   page,

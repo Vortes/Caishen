@@ -374,7 +374,7 @@ export async function openPrototype(
     await route.abort("blockedbyclient");
   });
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.goto("/");
+  await page.goto("/prototype/app-shell");
   await clerk.signIn({ page, emailAddress: user.email });
   await page.clock.setFixedTime(now);
   await page.goto("/prototype/app-shell");

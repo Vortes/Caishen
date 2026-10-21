@@ -413,19 +413,21 @@ void test("malformed stored payload never reaches the provider", async () => {
   assert.equal(h.send.mock.callCount(), 1);
 });
 
-void test("daily work paginates deterministically beyond the first 100 members", async () => {
-  const h = harness(
-    Array.from({ length: 101 }, (_, index) =>
-      makeMember(`user_${String(index).padStart(3, "0")}`, false),
-    ),
+void test("daily work schedules one review per member across multiple pages", async () => {
+  const members = Array.from({ length: 101 }, (_, index) =>
+    makeMember(`user_${String(index).padStart(3, "0")}`),
+  );
+  const h = harness(members);
+  h.verifiedEmail.mock.mockImplementation(
+    async (userId) => `${userId}@example.com`,
   );
   const result = await runDailyJob(h.db, now, h.dependencies);
   assert.equal(result.processed, 101);
-  assert.equal(h.raw.workspaceMember.findMany.mock.callCount(), 2);
-  assert.equal(
-    h.raw.workspaceMember.findMany.mock.calls[1]!.arguments[0].cursor
-      ?.clerkUserId,
-    "user_099",
+  assert.equal(result.scheduled, 101);
+  assert.equal(result.failed, 0);
+  assert.deepEqual(
+    h.send.mock.calls.map((call) => call.arguments[0].to).sort(),
+    members.map((member) => `${member.clerkUserId}@example.com`).sort(),
   );
 });
 

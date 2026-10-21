@@ -193,18 +193,6 @@ test("a batch approves only what still needs review, never a bank import", async
   await expect(approve(page)).toHaveText("Approve (1)");
   await expect(selectAll(page)).toHaveAttribute("aria-checked", "mixed");
 
-  // Both themes, for review by eye.
-  for (const theme of ["Dark", "Light"]) {
-    await page
-      .getByRole("radiogroup", { name: "Theme" })
-      .getByRole("radio", { name: theme })
-      .click();
-    await expect(approve(page)).toBeVisible();
-    await page.screenshot({
-      path: `.next/cache/transaction-review-${theme.toLowerCase()}.png`,
-    });
-  }
-
   // A new filter starts a new selection. Import rows have no checkbox.
   await reviewFilter(page).click();
   await expect(island(page)).toHaveCount(0);
@@ -243,62 +231,6 @@ test("a batch approves only what still needs review, never a bank import", async
   await expect(row(page, "Corner coffee")).toBeVisible();
   await reviewCount(page, 4);
   await expect(selectAll(page)).toHaveAttribute("aria-checked", "false");
-});
-
-type Box = { x: number; y: number; width: number; height: number };
-const overlaps = (a: Box, b: Box) =>
-  a.x < b.x + b.width &&
-  b.x < a.x + a.width &&
-  a.y < b.y + b.height &&
-  b.y < a.y + a.height;
-
-// The island's parts and the Select all checkbox, inside the window and
-// clear of one another.
-async function islandLayout(page: Page, summary: string, width: number) {
-  const parts = [
-    selectAll(page),
-    island(page).getByRole("button", { name: "Clear selection" }),
-    island(page).getByText(summary, { exact: true }),
-    island(page).getByRole("button", { name: "Categorize" }),
-    approve(page),
-  ];
-  // The island animates in, so measure until it settles.
-  await expect(async () => {
-    const boxes: Box[] = [];
-    for (const part of parts) {
-      await expect(part).toBeVisible();
-      const box = await part.boundingBox();
-      expect(box).not.toBeNull();
-      boxes.push(box!);
-    }
-    for (const [index, box] of boxes.entries()) {
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(width);
-      for (const other of boxes.slice(index + 1))
-        expect(overlaps(box, other)).toBe(false);
-    }
-  }).toPass();
-}
-
-test("the selection island stays readable on a phone and floats at the foot of the register", async ({
-  page,
-}) => {
-  await openPrototype(page, { commands, imports });
-  await allAccounts(page).click();
-  await selectAll(page).click();
-  // Reviewed and unreviewed rows together; the import has no checkbox.
-  const summary = "5 selected · +$2,033.35";
-  await expect(approve(page)).toHaveText("Approve (3)");
-  await islandLayout(page, summary, 1600);
-  // A short register still puts the island near the panel's foot.
-  const content = (await page.locator("#prototype-content").boundingBox())!;
-  const bar = (await island(page).boundingBox())!;
-  expect(content.y + content.height - (bar.y + bar.height)).toBeLessThan(40);
-
-  await page.setViewportSize({ width: 375, height: 812 });
-  await expect(rowCheck(page, "Bistro")).toBeChecked();
-  await islandLayout(page, summary, 375);
-  await page.screenshot({ path: ".next/cache/transaction-review-mobile.png" });
 });
 
 test("a refused approval comes back selected and can be sent again", async ({

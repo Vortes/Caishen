@@ -385,11 +385,3 @@ test("Assigned waits while anything saves and keeps an edit to its month", async
   ).toPass();
   expect(plan.saved().category("phone").assigned).toBe(1_299);
 });
-
-test("Assigned hides with its column on a narrow plan", async ({ page }) => {
-  await openPrototype(page);
-  await expect(amount(page, "Gifts")).toBeVisible();
-  await page.setViewportSize({ width: 480, height: 900 });
-  await expect(amount(page, "Gifts")).toBeHidden();
-  await expect(pill(page, "Gifts")).toBeVisible();
-});

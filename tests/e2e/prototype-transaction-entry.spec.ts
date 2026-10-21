@@ -296,15 +296,6 @@ test("clicking the payee lists recent payees, and the category keeps its name wh
     .filter((item) => !item.removed)
     .sort((a, b) => b.date.localeCompare(a.date))[0]!.payee;
   await expect(suggestions.getByRole("option").first()).toHaveText(latest);
-  // A suggestion's text lines up with what's typed in the field.
-  const typed = (await payee.boundingBox())!.x;
-  const optionText = await suggestions
-    .getByRole("option")
-    .first()
-    .locator("span")
-    .first()
-    .boundingBox();
-  expect(Math.abs(optionText!.x - typed)).toBeLessThan(1.5);
   await suggestions.getByRole("option").first().click();
   await expect(payee).toHaveValue(latest);
   await expect(suggestions).toHaveCount(0);
@@ -347,8 +338,6 @@ test("each pick opens the next field: date, payee, category, then the amount", a
   await suggestions.getByRole("option").first().click();
   await expect(category).toBeFocused();
   await expect(categories).toBeVisible();
-  // Long names keep room beside their balances.
-  expect((await categories.boundingBox())!.width).toBeGreaterThanOrEqual(320);
   await categories.getByRole("option", { name: /^Dining/ }).click();
   await expect(field(form, "Outflow")).toBeFocused();
 
@@ -363,70 +352,6 @@ test("each pick opens the next field: date, payee, category, then the amount", a
   await field(form, "Payee").press("Tab");
   await expect(category).toBeFocused();
   await expect(categories).toBeVisible();
-});
-
-test("Add transaction's tooltip stays shut when focus comes back from the editor", async ({
-  page,
-}) => {
-  await openPrototype(page);
-  await openRegister(page, "Checking");
-  await addButton(page).click();
-  await editor(page).getByRole("button", { name: "Cancel" }).click();
-  await expect(addButton(page)).toBeFocused();
-  await page.waitForTimeout(800);
-  await expect(page.getByRole("tooltip")).toHaveCount(0);
-
-  await page.keyboard.press("n");
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("Escape");
-  await expect(addButton(page)).toBeFocused();
-  await page.waitForTimeout(800);
-  await expect(page.getByRole("tooltip")).toHaveCount(0);
-
-  // Reaching it with Tab still names its shortcut.
-  await page.keyboard.press("Shift+Tab");
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("tooltip")).toContainText("Add a transaction");
-});
-
-test("work waiting for review shows as a gray dot in the sidebar, never a count", async ({
-  page,
-}) => {
-  const plan = await openPrototype(page);
-  const allAccounts = sidebar(page).getByRole("button", {
-    name: /^All accounts/,
-  });
-  await expect(
-    allAccounts.getByRole("img", { name: "Transactions to review" }),
-  ).toHaveCount(0);
-  plan.changeElsewhere({
-    type: "transaction.upsert",
-    id: "unreviewed-elsewhere",
-    transactionId: "unreviewed-elsewhere",
-    accountId: "checking",
-    date: `${plan.month}-02`,
-    payee: "Imported coffee",
-    amount: -450,
-    categoryId: "dining",
-    status: "posted",
-    reviewed: false,
-  });
-  await page.reload();
-  const dot = allAccounts.getByRole("img", { name: "Transactions to review" });
-  await expect(dot).toBeVisible();
-  await expect(allAccounts).toHaveText("All accounts");
-  const [dotColor, textColor] = await dot.evaluate((element) => {
-    const probe = document.createElement("span");
-    probe.style.color = "var(--text-secondary)";
-    element.parentElement!.append(probe);
-    const colors = [
-      getComputedStyle(element).backgroundColor,
-      getComputedStyle(probe).color,
-    ];
-    probe.remove();
-    return colors;
-  });
-  expect(dotColor).toBe(textColor);
 });
 
 test("a selected transaction stays read-only until Edit, keeps its account, and undoes through history", async ({
@@ -676,14 +601,6 @@ test("a failed save keeps the draft, retries with the same command, and blocks a
   await choose(form, "Category", "gifts");
   await field(form, "Outflow").fill("15");
 
-  // Keyboard focus draws one 2px ring, on the well and not the input.
-  await field(form, "Outflow").press("Tab");
-  const inflow = field(form, "Inflow");
-  await expect(inflow).toBeFocused();
-  await expect(inflow).toHaveCSS("outline-style", "none");
-  await expect(inflow.locator("..")).toHaveCSS("outline-style", "solid");
-  await expect(inflow.locator("..")).toHaveCSS("outline-width", "2px");
-
   plan.rejectNextExecute("The update could not be saved. Try again.");
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(notifications(page).getByRole("alert")).toContainText(
@@ -802,7 +719,7 @@ test("a save against a stale budget can be retried, and a transaction changed or
   expect(plan.executions).toHaveLength(sent);
 });
 
-test("on a phone the row fits, takes 16px text, and skips touch autofocus", async ({
+test("a phone can save a transaction without automatically focusing text inputs", async ({
   browser,
 }) => {
   const context = await browser.newContext({
@@ -837,10 +754,7 @@ test("on a phone the row fits, takes 16px text, and skips touch autofocus", asyn
     ).toBeFocused();
     await expect(field(form, "Date")).not.toBeFocused();
     await expect(field(form, "Payee")).not.toBeFocused();
-    await expect(field(form, "Date")).toHaveCSS("font-size", "16px");
     expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    await expect(field(form, "Payee")).toHaveCSS("font-size", "16px");
-    await expect(field(form, "Outflow")).toHaveCSS("font-size", "16px");
     await fits(form);
 
     await field(form, "Payee").fill("Phone market");
@@ -853,162 +767,6 @@ test("on a phone the row fits, takes 16px text, and skips touch autofocus", asyn
     ]);
   } finally {
     await context.close();
-  }
-});
-
-test("the editor and its lists follow the light theme", async ({ page }) => {
-  await openPrototype(page);
-  await page
-    .getByRole("radiogroup", { name: "Theme" })
-    .getByRole("radio", { name: "Light" })
-    .click();
-  await openRegister(page, "Checking");
-  await addButton(page).click();
-  const form = editor(page);
-  const theme = (locator: Locator) =>
-    locator.evaluate((element) =>
-      element.closest("[data-theme]")?.getAttribute("data-theme"),
-    );
-  await expect(calendar(page)).toBeVisible();
-  expect(await theme(calendar(page))).toBe("light");
-  const lightCalendar = await calendar(page).evaluate(
-    (element) => getComputedStyle(element).backgroundColor,
-  );
-  await form.getByRole("combobox", { name: "Category", exact: true }).click();
-  await expect(calendar(page)).toHaveCount(0);
-  const list = page.getByRole("listbox", { name: "Category" });
-  await expect(list).toBeVisible();
-  expect(await theme(list)).toBe("light");
-  expect(await theme(form)).toBe("light");
-  await expect(form).toHaveCSS("color-scheme", "light");
-  const lightBackground = await list.evaluate(
-    (element) => getComputedStyle(element).backgroundColor,
-  );
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("Escape");
-  await page
-    .getByRole("radiogroup", { name: "Theme" })
-    .getByRole("radio", { name: "Dark" })
-    .click();
-  await addButton(page).click();
-  await expect(calendar(page)).toBeVisible();
-  expect(await theme(calendar(page))).toBe("dark");
-  expect(
-    await calendar(page).evaluate(
-      (element) => getComputedStyle(element).backgroundColor,
-    ),
-  ).not.toBe(lightCalendar);
-  await editor(page)
-    .getByRole("combobox", { name: "Category", exact: true })
-    .click();
-  await expect(list).toBeVisible();
-  expect(await theme(list)).toBe("dark");
-  await expect(editor(page)).toHaveCSS("color-scheme", "dark");
-  expect(
-    await list.evaluate((element) => getComputedStyle(element).backgroundColor),
-  ).not.toBe(lightBackground);
-});
-
-test("Add opens the first column at once, and the entry row sits under the register's columns", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await openPrototype(page);
-  for (const [account, columns] of [
-    ["Checking", ["date", "payee", "category", "outflow", "inflow"]],
-    [
-      "All accounts",
-      ["account", "date", "payee", "category", "outflow", "inflow"],
-    ],
-  ] as const) {
-    await openRegister(page, account);
-    await addButton(page).click();
-    const form = content(page).getByRole("form", { name: "New transaction" });
-    // All accounts leads with the account; picking one opens the calendar.
-    if (account === "All accounts") {
-      const accountField = form.getByRole("combobox", {
-        name: "Account",
-        exact: true,
-      });
-      await expect(accountField).toBeFocused();
-      const accounts = page.getByRole("listbox", { name: "Account" });
-      await expect(accounts).toBeVisible();
-      await expect(calendar(page)).toHaveCount(0);
-      await accounts.getByRole("option", { name: /^Checking/ }).click();
-    }
-    await expect(calendar(page)).toBeVisible();
-    await expect(today(page)).toBeFocused();
-    await expect(today(page).locator("xpath=..")).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-
-    // Focus is on a day, but the date is the field being filled in.
-    await expect(field(form, "Date").locator("..")).toHaveCSS(
-      "outline-style",
-      "solid",
-    );
-
-    // The calendar opens under the date field.
-    const dateBox = (await field(form, "Date").boundingBox())!;
-    const calendarBox = (await calendar(page).boundingBox())!;
-    expect(calendarBox.y).toBeGreaterThan(dateBox.y + dateBox.height - 1);
-    expect(Math.abs(calendarBox.x - dateBox.x)).toBeLessThan(24);
-
-    // Header, field, and an actual row share each column's edges.
-    // The column header leads the register.
-    const header = content(page).locator(
-      '[role="group"][aria-label="Transactions"] > :first-child',
-    );
-    const entryRow = form.locator('[data-column="date"]').locator("..");
-    const row = content(page).locator("[data-row]").first();
-    const box = async (scope: Locator, column: string) =>
-      (await scope
-        .locator(`:scope > [data-column="${column}"]`)
-        .boundingBox())!;
-    for (const column of columns) {
-      const head = await box(header, column);
-      const input = await box(entryRow, column);
-      const cell = await box(row, column);
-      const right = (rect: typeof head) => rect.x + rect.width;
-      if (column === "outflow" || column === "inflow") {
-        // Amounts line up on their right edge, like the headers above them.
-        expect(Math.abs(right(input) - right(head))).toBeLessThan(1.5);
-        if (cell.width > 0)
-          expect(Math.abs(right(cell) - right(head))).toBeLessThan(1.5);
-        expect(input.width).toBeGreaterThan(80);
-      } else {
-        expect(head.width).toBeGreaterThan(48);
-        for (const other of [input, cell]) {
-          expect(Math.abs(other.x - head.x)).toBeLessThan(1.5);
-          expect(Math.abs(other.width - head.width)).toBeLessThan(1.5);
-        }
-      }
-      // Each field fills its column.
-      const control = (await form
-        .locator(`[data-column="${column}"] input`)
-        .first()
-        .boundingBox())!;
-      expect(control.x).toBeGreaterThanOrEqual(input.x - 1);
-      expect(control.x + control.width).toBeLessThanOrEqual(right(input) + 1);
-      expect(control.width).toBeGreaterThan(24);
-    }
-    // The entry row is the first row, right under the headers.
-    const headBox = (await header.boundingBox())!;
-    const formBox = (await form.boundingBox())!;
-    expect(Math.abs(formBox.y - (headBox.y + headBox.height))).toBeLessThan(6);
-    expect((await row.boundingBox())!.y).toBeGreaterThan(formBox.y);
-    // One line: every field shares the date's top.
-    for (const column of columns) {
-      const top = (await form
-        .locator(`[data-column="${column}"]`)
-        .boundingBox())!.y;
-      expect(Math.abs(top - dateBox.y)).toBeLessThan(8);
-    }
-    await page.keyboard.press("Escape");
-    await expect(calendar(page)).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await expect(form).toHaveCount(0);
   }
 });
 

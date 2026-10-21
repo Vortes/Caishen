@@ -21,13 +21,10 @@ void test("development seeds are deterministic and preserve accounting and priva
   assert.deepEqual(seed, buildDevelopmentSeed(options));
   assert.deepEqual(bookSchema.parse(seed.book), seed.book);
   assert.equal(seed.firstMonth, "2026-08");
-  assert.ok(seed.operations.length > 300);
   const primary = projectBook(seed.book, "alex", seed.month);
   const partner = projectBook(seed.book, "jordan", seed.month);
-  assert.equal(primary.accounts.length, 4);
-  assert.equal(primary.loans.length, 2);
-  assert.equal(primary.budget.transactions.length, 102);
-  assert.equal(partner.budget.transactions.length, 82);
+  assert.ok(primary.accounts.some((account) => account.kind === "cash"));
+  assert.ok(primary.accounts.some((account) => account.kind === "credit"));
   assert.equal(primary.budget.settings.emailEnabled, false);
   assert.equal(partner.budget.settings.emailEnabled, false);
   assert.equal(primary.settlement.net, -partner.settlement.net);

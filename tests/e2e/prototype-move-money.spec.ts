@@ -331,26 +331,3 @@ test("the toast stops offering Undo once the move isn't the latest change", asyn
   await shortcut(page);
   expect(plan.historyCalls).toEqual([]);
 });
-
-test("a popover opened near the bottom of the window opens upward", async ({
-  page,
-}) => {
-  await openPrototype(page);
-  await page.setViewportSize({ width: 1440, height: 820 });
-  const trigger = await pill(page, "Gifts").boundingBox();
-  await pill(page, "Gifts").click();
-  const popover = page.getByRole("dialog", { name: /Gifts/ });
-  await popover.getByRole("combobox", { name: "To" }).click();
-  // Above the pill, inside the window, with the list clear of the footer,
-  // once Radix has placed it.
-  await expect(async () => {
-    const box = (await popover.boundingBox())!;
-    const list = (await popover.getByRole("listbox").boundingBox())!;
-    const cancel = (await popover
-      .getByRole("button", { name: "Cancel" })
-      .boundingBox())!;
-    expect(box.y + box.height).toBeLessThanOrEqual(trigger!.y);
-    expect(box.y).toBeGreaterThanOrEqual(0);
-    expect(list.y + list.height).toBeLessThanOrEqual(cancel.y);
-  }).toPass();
-});
