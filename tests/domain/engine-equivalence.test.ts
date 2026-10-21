@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   execute,
-  foldAssignments,
   materialize,
   outstanding,
   projectBook,
   type Book,
   type Command,
 } from "../../src/domain/engine";
+import { foldAssignments } from "../../src/domain/rows";
 import { projectSharedLedger } from "../../src/domain/shared-ledger";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 import { monthAfter, syntheticBook } from "./fixtures/synthetic-book";

@@ -19,6 +19,7 @@ import {
 } from "./shared-ledger";
 import { personalSpendingEntries } from "./spending";
 import { canonicalJson } from "./canonical-json";
+import { foldAssignments } from "./rows";
 
 const identifier = z.string().min(1).max(160);
 const cents = z.number().int().safe();
@@ -1258,28 +1259,6 @@ function cashPosition(
   };
 }
 
-const assignmentKey = (categoryId: string, month: string) =>
-  `${month}:${categoryId}`;
-
-/**
- * Folds assignments to one per budget category and month, holding their
- * total, at the position and with the id of the first. Month figures only
- * ever sum a month's assignments, so folding changes none of them. Budgets
- * saved before assignments were folded can hold several.
- */
-export function foldAssignments(assignments: Assignment[]): Assignment[] {
-  const folded = new Map<string, Assignment>();
-  for (const assignment of assignments) {
-    const key = assignmentKey(assignment.categoryId, assignment.month);
-    const found = folded.get(key);
-    if (found) found.amount = safe(found.amount + assignment.amount);
-    else folded.set(key, { ...assignment });
-  }
-  return folded.size === assignments.length
-    ? assignments
-    : [...folded.values()];
-}
-
 function findAssignment(
   budget: Budget,
   categoryId: string,
@@ -2362,6 +2341,28 @@ function projectAccountingState(
 }
 export type BudgetProjection = ReturnType<typeof projectBook>;
 export type ProjectedBook = BudgetProjection;
+
+/**
+ * One partner's personal ledger from the whole household, as the browser
+ * builds it from the budget view: their own budget and the household facts
+ * their numbers use.
+ */
+export function personalLedger(book: Book, userId: string): PersonalLedger {
+  return {
+    ...projectSharedLedger(book, userId),
+    kind: "personal",
+    budget: structuredClone(ownBudget(book, userId)),
+    members: ledgerMembers(book),
+    sharedCategories: structuredClone(
+      book.sharedCategories.filter((category) =>
+        category.participants.includes(userId),
+      ),
+    ),
+    audit: structuredClone(
+      book.audit.filter((entry) => entry.actorId === userId),
+    ),
+  };
+}
 
 export function previewBudgetProjection(
   view: BudgetProjection,
