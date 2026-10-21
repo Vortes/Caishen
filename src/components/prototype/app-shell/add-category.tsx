@@ -1,6 +1,6 @@
 "use client";
 
-import { PlusIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import {
   createContext,
@@ -28,8 +28,12 @@ export type Added =
 export type AddCategory = {
   // Sends the new group's or category's command with a summary for its
   // confirmation. Returns why it can't be sent right now, or null once it's
-  // on its way.
-  add: (command: Command, summary: string) => string | null;
+  // on its way, then settles with whether it saved.
+  add: (
+    command: Command,
+    summary: string,
+    settled?: (saved: boolean) => void,
+  ) => string | null;
   // Shows what was added once it's on the plan.
   reveal: (added: Added) => void;
   // Called with a cleanup while a form is open, so the shell can hold its
@@ -125,22 +129,37 @@ function AddPopover({
   );
 }
 
+// A category made from somewhere other than the plan, like a transaction's
+// Category field, with the name and group it was given.
+export type NewCategory = { id: string; name: string; group: string };
+
+// Names a new category group, or a category in one. With a group the
+// category goes there; with a choice, the form asks which group, starting
+// from the one given.
 function NameForm({
   group,
+  choice,
   onAdded,
+  onSettled,
 }: {
   group?: string;
-  onAdded: (added: Added) => void;
+  choice?: { name: string; group: string };
+  onAdded: (added: Added, category?: NewCategory) => void;
+  // Whether the new category saved, once the server answers.
+  onSettled?: (category: NewCategory, saved: boolean) => void;
 }) {
   const { groups } = useShellData();
   const { add } = useAddCategory();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(choice?.name ?? "");
+  const [chosen, setChosen] = useState(choice?.group ?? "");
   const [error, setError] = useState<{
     field: "name" | "form";
     message: string;
   } | null>(null);
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const target = choice ? chosen : group;
+  const choices = groups.filter((item) => !isPaymentGroup(item));
 
   const fail = (message: string) => {
     setError({ field: "name", message });
@@ -154,22 +173,24 @@ function NameForm({
     let command: Command;
     let summary: string;
     let added: Added;
-    if (group) {
+    let category: NewCategory | undefined;
+    if (target) {
       if (!trimmed) return fail("Enter a name for the category.");
       const duplicate = groups
-        .find((item) => item.name === group)
+        .find((item) => item.name === target)
         ?.categories.find((item) => same(item.name));
-      if (duplicate) return fail(`${group} already has ${duplicate.name}.`);
+      if (duplicate) return fail(`${target} already has ${duplicate.name}.`);
       const categoryId = newId();
       command = {
         type: "category.add",
         id: newId(),
         categoryId,
         name: trimmed,
-        group,
+        group: target,
       };
-      summary = `Added ${trimmed} to ${group}`;
+      summary = `Added ${trimmed} to ${target}`;
       added = { type: "category", id: categoryId };
+      category = { id: categoryId, name: trimmed, group: target };
     } else {
       if (!trimmed) return fail("Enter a name for the group.");
       const duplicate = groups.find((item) => same(item.name));
@@ -179,9 +200,13 @@ function NameForm({
       summary = `Added the ${trimmed} group`;
       added = { type: "group", name: trimmed };
     }
-    const blocked = add(command, summary);
+    const blocked = add(
+      command,
+      summary,
+      category && onSettled && ((saved) => onSettled(category, saved)),
+    );
     if (blocked) setError({ field: "form", message: blocked });
-    else onAdded(added);
+    else onAdded(added, category);
   };
 
   return (
@@ -190,11 +215,14 @@ function NameForm({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
+        // A portal's events still reach the forms around its trigger, like
+        // the transaction editor's.
+        event.stopPropagation();
         submit();
       }}
     >
       <div className={styles.field}>
-        <label htmlFor={id}>{group ? "Category name" : "Group name"}</label>
+        <label htmlFor={id}>{target ? "Category name" : "Group name"}</label>
         <div
           className={styles.search}
           data-expanded
@@ -205,7 +233,7 @@ function NameForm({
             id={id}
             autoComplete="off"
             maxLength={MAX_LENGTH}
-            placeholder={group ? "Groceries" : "Bills"}
+            placeholder={target ? "Groceries" : "Bills"}
             value={name}
             aria-invalid={error?.field === "name" || undefined}
             aria-describedby={error ? `${id}-error` : undefined}
@@ -219,6 +247,28 @@ function NameForm({
           <FieldError id={`${id}-error`} message={error.message} />
         )}
       </div>
+      {choice && (
+        <div className={styles.field}>
+          <label htmlFor={`${id}-group`}>Category group</label>
+          <div className={styles.select}>
+            <select
+              id={`${id}-group`}
+              value={chosen}
+              onChange={(event) => {
+                setChosen(event.target.value);
+                setError(null);
+              }}
+            >
+              {choices.map((item) => (
+                <option key={item.name} value={item.name}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon size={12} aria-hidden />
+          </div>
+        </div>
+      )}
       {error?.field === "form" && (
         <div className={styles.formError}>
           <FieldError id={`${id}-error`} message={error.message} />
@@ -229,10 +279,82 @@ function NameForm({
           <Button size="sm">Cancel</Button>
         </Popover.Close>
         <Button variant="primary" size="sm" type="submit">
-          {group ? "Add category" : "Add category group"}
+          {target ? "Add category" : "Add category group"}
         </Button>
       </div>
     </form>
+  );
+}
+
+// Adds a category from a transaction's Category field, anchored under it,
+// with what was typed there as its name. The group starts as the one the
+// field's current category is in, so a related category lands beside it.
+export function NewCategoryPopover({
+  open,
+  name,
+  group,
+  onOpenChange,
+  onAdded,
+  onSettled,
+  onClosed,
+  children,
+}: {
+  open: boolean;
+  name: string;
+  group?: string;
+  onOpenChange: (open: boolean) => void;
+  onAdded: (category: NewCategory) => void;
+  onSettled: (category: NewCategory, saved: boolean) => void;
+  // Takes focus once the form closes, with what it added, if anything.
+  onClosed: (category: NewCategory | null) => void;
+  children: ReactNode;
+}) {
+  const container = usePortalContainer();
+  const added = useRef<NewCategory | null>(null);
+  const { groups } = useShellData();
+  const choices = groups.filter((item) => !isPaymentGroup(item));
+  const start =
+    choices.find((item) => item.name === group)?.name ?? choices[0]?.name;
+  return (
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
+      <Popover.Anchor asChild>{children}</Popover.Anchor>
+      <Popover.Portal container={container}>
+        <Popover.Content
+          className={styles.popover}
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          collisionPadding={12}
+          aria-label="Add a category"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            onClosed(added.current);
+            added.current = null;
+          }}
+          onKeyDown={(event) => {
+            // Escape closes this, not the editor around the field.
+            if (event.key === "Escape") event.stopPropagation();
+          }}
+        >
+          {start ? (
+            <NameForm
+              choice={{ name, group: start }}
+              onAdded={(_, category) => {
+                if (!category) return;
+                added.current = category;
+                onAdded(category);
+                onOpenChange(false);
+              }}
+              onSettled={onSettled}
+            />
+          ) : (
+            <p className={styles.empty}>
+              Add a category group on the plan first.
+            </p>
+          )}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

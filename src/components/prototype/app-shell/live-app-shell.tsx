@@ -165,7 +165,14 @@ function LiveWorkspace({
   };
 
   const categoryAdder: CategoryAdder = {
-    add: moveMoney.move,
+    add: (command, summary, settled) => {
+      const reason = blocked();
+      if (reason) return blockMessage[reason];
+      summaries.current.set(command.id, summary);
+      if (settled) settles.current.set(command.id, settled);
+      run(command);
+      return null;
+    },
     holdOpen,
   };
   const targetEditing: TargetEditing = {

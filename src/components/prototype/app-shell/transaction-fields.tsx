@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, PlusIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import {
   useRef,
@@ -145,9 +145,14 @@ function Option({
   );
 }
 
+// Stands for the Add row in a field's list, never for an option.
+const CREATE = "\u0000create";
+
 // Picks one option by typing to filter, like the move-money destination.
 // Arriving in the field opens its list, so typing filters it; Enter or Tab
-// takes the highlighted match, and Escape closes only the list.
+// takes the highlighted match, and Escape closes only the list. With
+// onCreate, a name that matches no option exactly can be added: its row
+// leads the list, and Enter takes it once nothing else matches.
 export function ChoiceField({
   id,
   label,
@@ -161,12 +166,15 @@ export function ChoiceField({
   inputRef,
   onChange,
   onPicked,
+  onCreate,
   wide = true,
 }: FieldProps & {
   value: string;
   options: ChoiceOption[];
   placeholder: string;
   onChange: (value: string) => void;
+  // Adds an option named for the typed text, like YNAB's Create Category.
+  onCreate?: { noun: string; create: (name: string) => void };
   wide?: boolean;
 }) {
   const listId = `${id}-list`;
@@ -179,11 +187,25 @@ export function ChoiceField({
   const visible = options.filter((option) =>
     `${option.group ?? ""} ${option.label}`.toLowerCase().includes(search),
   );
-  const pickable = visible.filter((option) => !option.disabled);
+  const creatable =
+    onCreate &&
+    search &&
+    !options.some((option) => option.label.toLowerCase() === search)
+      ? { value: CREATE, label: query.trim() }
+      : undefined;
+  const pickable = [
+    ...(creatable ? [creatable] : []),
+    ...visible.filter((option) => !option.disabled),
+  ];
   const current =
     pickable.find((option) => option.value === active) ??
     (search ? undefined : pickable.find((option) => option.value === value)) ??
-    pickable[0];
+    pickable.find((option) => option !== creatable) ??
+    creatable;
+  const optionId = (option: ChoiceOption) =>
+    option === creatable
+      ? `${listId}-create`
+      : `${listId}-${visible.indexOf(option)}`;
   const open = expanded && !disabled && !readOnly;
 
   const show = (text = "") => {
@@ -193,6 +215,12 @@ export function ChoiceField({
   };
   const pick = (option: ChoiceOption, advance = true) => {
     if (option.disabled) return;
+    if (option === creatable) {
+      setExpanded(false);
+      setQuery("");
+      onCreate?.create(option.label);
+      return;
+    }
     onChange(option.value);
     setExpanded(false);
     setQuery("");
@@ -205,7 +233,7 @@ export function ChoiceField({
     if (!next) return;
     setActive(next.value);
     listRef.current
-      ?.querySelector(`[id="${listId}-${visible.indexOf(next)}"]`)
+      ?.querySelector(`[id="${optionId(next)}"]`)
       ?.scrollIntoView({ block: "nearest" });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -220,7 +248,13 @@ export function ChoiceField({
       event.preventDefault();
       event.stopPropagation();
       setExpanded(false);
-    } else if (event.key === "Tab" && open && search && current) {
+    } else if (
+      event.key === "Tab" &&
+      open &&
+      search &&
+      current &&
+      current !== creatable
+    ) {
       pick(current, false);
     }
   };
@@ -250,9 +284,7 @@ export function ChoiceField({
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             aria-activedescendant={
-              open && current
-                ? `${listId}-${visible.indexOf(current)}`
-                : undefined
+              open && current ? optionId(current) : undefined
             }
             aria-invalid={invalid ? true : undefined}
             aria-describedby={describedBy}
@@ -275,6 +307,25 @@ export function ChoiceField({
       }
     >
       <div ref={listRef} className={styles.listScroll}>
+        {creatable && onCreate && (
+          <div
+            id={optionId(creatable)}
+            role="option"
+            aria-selected={false}
+            data-active={creatable === current || undefined}
+            className={styles.option}
+            data-create
+            onMouseMove={() => setActive(CREATE)}
+            onClick={() => pick(creatable)}
+          >
+            <span className={styles.check} aria-hidden>
+              <PlusIcon size={13} strokeWidth={2.5} />
+            </span>
+            <span className={`${shell.truncate} ${styles.optionLabel}`}>
+              Add {onCreate.noun} “{creatable.label}”
+            </span>
+          </div>
+        )}
         {visible.length === 0 && (
           <p className={styles.empty}>No matches for “{query.trim()}”</p>
         )}
