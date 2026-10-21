@@ -8,7 +8,12 @@ import {
   categoryStatus,
   statusLine,
 } from "~/components/budget/category-row-status";
-import { monthName, moveMonth, today } from "~/components/budget/format";
+import {
+  currentMonth,
+  monthName,
+  moveMonth,
+  today,
+} from "~/components/budget/format";
 import type { State, View } from "~/components/budget/types";
 import { partnerOf, sharePercent } from "~/components/shared-expenses/split";
 import { transactionCategory } from "~/components/transactions/transaction-row";
@@ -204,7 +209,10 @@ function targetSections(
   return [total];
 }
 
-export function toShellData(state: State): ShellData {
+export function toShellData(
+  state: State,
+  activeMonth = currentMonth(),
+): ShellData {
   const view = state.view!;
   const month = view.month;
   const userId = view.budget.userId;
@@ -226,7 +234,19 @@ export function toShellData(state: State): ShellData {
   }
 
   const categories = view.categories.map((item): Category => {
-    const funding = categoryStatus(item);
+    const card = item.pairedAccountId
+      ? view.accounts.find((account) => account.id === item.pairedAccountId)
+      : undefined;
+    const paymentNeeded =
+      card && !item.target && month === activeMonth
+        ? Math.max(0, -card.balance - item.available)
+        : 0;
+    const funding =
+      card && item.available < 0
+        ? "overspent"
+        : paymentNeeded > 0
+          ? "underfunded"
+          : categoryStatus(item);
     const progress = item.targetProgress;
     return {
       id: item.id,
@@ -244,7 +264,10 @@ export function toShellData(state: State): ShellData {
         : item.available > 0
           ? 1
           : 0,
-      status: statusLine(item, funding),
+      status:
+        paymentNeeded > 0 && item.available >= 0
+          ? `${money(paymentNeeded)} more needed to pay in full`
+          : statusLine(item, funding),
       target:
         item.target && progress
           ? {

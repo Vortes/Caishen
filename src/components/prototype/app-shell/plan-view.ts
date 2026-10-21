@@ -33,7 +33,9 @@ export const views: {
   {
     id: "underfunded",
     label: "Underfunded",
-    matches: (category) => underfunded(category.autoAssign) > 0,
+    matches: (category) =>
+      category.funding === "underfunded" ||
+      underfunded(category.autoAssign) > 0,
     empty: {
       title: "Nothing is underfunded.",
       body: "Every target is funded and nothing is overspent.",
