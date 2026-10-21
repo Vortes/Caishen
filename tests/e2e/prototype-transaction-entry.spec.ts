@@ -5,8 +5,10 @@ import { notifications, openPrototype, toastUndo } from "./prototype-fixture";
 const content = (page: Page) => page.locator("#prototype-content");
 const sidebar = (page: Page) =>
   page.getByRole("navigation", { name: "Budget navigation" });
-const details = (page: Page) =>
-  page.getByRole("complementary", { name: "Details", exact: true });
+// The register has no details panel; a selection's actions float in the
+// island at its foot.
+const island = (page: Page) =>
+  page.getByRole("toolbar", { name: "Selected transactions" });
 const editor = (page: Page) =>
   page.getByRole("form", { name: /^(New|Edit) transaction$/ });
 const addButton = (page: Page) =>
@@ -49,6 +51,14 @@ function monthTitle(month: string) {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+// Clicking a selected row deselects it, like YNAB, so a row already
+// selected is only focused.
+async function selectRow(row: Locator) {
+  if ((await row.getAttribute("aria-current")) === "true") await row.focus();
+  else await row.click();
+  await expect(row).toHaveAttribute("aria-current", "true");
 }
 
 async function openRegister(page: Page, account: string) {
@@ -237,8 +247,10 @@ test("All accounts picks the account in its column and keeps it for the next ent
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(editor(page)).toHaveCount(0);
   await expect(addButton(page)).toBeFocused();
-  // The details panel never takes the editor.
-  await expect(details(page).getByRole("form")).toHaveCount(0);
+  // The register has no details panel to take the editor.
+  await expect(
+    page.getByRole("complementary", { name: "Details", exact: true }),
+  ).toHaveCount(0);
 
   expect(
     plan.executions.map(({ expectedRevision, command }) => ({
@@ -426,15 +438,11 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await content(page)
     .getByRole("button", { name: /Bistro/ })
     .click();
-  await expect(
-    details(page).getByRole("heading", { name: "Bistro" }),
-  ).toBeVisible();
+  await expect(island(page)).toContainText("1 selected");
   await expect(editor(page)).toHaveCount(0);
-  await expect(details(page).getByRole("textbox")).toHaveCount(0);
+  await expect(content(page).getByRole("textbox")).toHaveCount(0);
 
-  await details(page)
-    .getByRole("button", { name: "Edit", exact: true })
-    .click();
+  await island(page).getByRole("button", { name: "Edit", exact: true }).click();
   const form = content(page).getByRole("form", { name: "Edit transaction" });
   await expect(
     form.getByRole("combobox", { name: "Category", exact: true }),
@@ -455,7 +463,7 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form).toHaveCount(0);
   await expect(
-    details(page).getByRole("button", { name: "Edit", exact: true }),
+    island(page).getByRole("button", { name: "Edit", exact: true }),
   ).toBeFocused();
   expect(plan.executions).toEqual([
     {
@@ -489,9 +497,7 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   ]);
 
   // E edits the selected row in place.
-  await content(page)
-    .getByRole("button", { name: /Bistro/ })
-    .click();
+  await selectRow(content(page).getByRole("button", { name: /Bistro/ }));
   await page.keyboard.press("e");
   const inline = content(page).getByRole("form", { name: "Edit transaction" });
   await expect(field(inline, "Payee")).toHaveValue("Bistro");
@@ -502,7 +508,7 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await inline.getByRole("button", { name: "Cancel" }).click();
   await expect(inline).toHaveCount(0);
   await expect(
-    details(page).getByRole("button", { name: "Edit", exact: true }),
+    island(page).getByRole("button", { name: "Edit", exact: true }),
   ).toBeFocused();
   expect(plan.executions).toHaveLength(1);
 
@@ -520,9 +526,7 @@ test("a selected transaction stays read-only until Edit, keeps its account, and 
   await expect(account).toHaveValue("Checking");
 });
 
-test("special transactions explain where they're changed instead of offering Edit", async ({
-  page,
-}) => {
+test("special transactions offer no Edit", async ({ page }) => {
   const plan = await openPrototype(page);
   plan.changeElsewhere({
     type: "card.payment",
@@ -538,11 +542,9 @@ test("special transactions explain where they're changed instead of offering Edi
     .getByRole("button", { name: /payment/i })
     .first()
     .click();
-  await expect(details(page)).toContainText(
-    "Card payments are changed from the card payment action.",
-  );
+  await expect(island(page)).toContainText("1 selected");
   await expect(
-    details(page).getByRole("button", { name: "Edit", exact: true }),
+    island(page).getByRole("button", { name: "Edit", exact: true }),
   ).toHaveCount(0);
   await page.keyboard.press("e");
   await expect(editor(page)).toHaveCount(0);
@@ -747,7 +749,7 @@ test("a save against a stale budget can be retried, and a transaction changed or
 
   // The same transaction edited in another tab: the editor says so and keeps
   // the draft instead of overwriting it.
-  await bistro().click();
+  await selectRow(bistro());
   await page.keyboard.press("e");
   form = editor(page);
   await field(form, "Payee").fill("Mine");
@@ -776,9 +778,7 @@ test("a save against a stale budget can be retried, and a transaction changed or
   await form.getByRole("button", { name: "Cancel" }).click();
 
   // Deleted elsewhere while open: no save, and Cancel still closes it.
-  await content(page)
-    .getByRole("button", { name: /Theirs/ })
-    .click();
+  await selectRow(content(page).getByRole("button", { name: /Theirs/ }));
   await page.keyboard.press("e");
   form = editor(page);
   await field(form, "Payee").fill("Gone");
@@ -956,8 +956,9 @@ test("Add opens the first column at once, and the entry row sits under the regis
     expect(Math.abs(calendarBox.x - dateBox.x)).toBeLessThan(24);
 
     // Header, field, and an actual row share each column's edges.
+    // The column header leads the register.
     const header = content(page).locator(
-      '[role="group"][aria-label="Transactions"] > [aria-hidden="true"]',
+      '[role="group"][aria-label="Transactions"] > :first-child',
     );
     const entryRow = form.locator('[data-column="date"]').locator("..");
     const row = content(page).locator("[data-row]").first();

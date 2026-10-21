@@ -1,13 +1,17 @@
 "use client";
 
 import { useIsMutating } from "@tanstack/react-query";
+import { XIcon } from "lucide-react";
 import { createContext, useContext, useEffect } from "react";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { IconButton } from "~/components/ui/icon-button";
+import { Tooltip } from "~/components/ui/tooltip";
 import { money, type Transaction } from "./model";
 import shell from "./shell.module.css";
+import { editGuidance, useTransactionEntry } from "./transaction-entry";
 import styles from "./transaction-review.module.css";
 
 // transaction.approve takes at most this many transactions at once.
@@ -37,9 +41,9 @@ function useTransactionReview() {
   return value;
 }
 
-// Only recorded transactions can be selected; bank imports are reviewed one
-// at a time. The selection on screen is what's checked among the rows
-// showing. Once nothing is saving, checked rows that are no longer showing
+// Only recorded transactions can be selected; bank imports keep their own
+// review, which isn't built yet. The selection on screen is what's checked
+// among the rows showing. Once nothing is saving, checked rows that are no longer showing
 // are dropped, so a row that comes back later doesn't return selected.
 // While an approval saves they're kept: if it fails, the rows it hid come
 // back still selected for another try.
@@ -71,62 +75,103 @@ export function useReviewSelection({
   };
 }
 
-export function ReviewBar({
-  selection: { selectable, selected, approvable, net },
+// Sits in the column header's checkbox gutter, over the rows' checkboxes.
+export function SelectAll({
+  selection: { selectable, selected },
+  onCheck,
+}: {
+  selection: ReturnType<typeof useReviewSelection>;
+  onCheck: (ids: string[], value: boolean) => void;
+}) {
+  if (!selectable.length) return null;
+  const all = selectable.map((item) => item.id);
+  return (
+    <label className={shell.checkboxSlot}>
+      <Checkbox
+        aria-label="Select all"
+        checked={
+          selected.length === 0
+            ? false
+            : selected.length === all.length
+              ? true
+              : "indeterminate"
+        }
+        onCheckedChange={(value) => onCheck(all, value === true)}
+      />
+    </label>
+  );
+}
+
+// Floats over the bottom of the register while rows are selected, in place
+// of a details panel: what's selected, and what can be done to it. Edit
+// shows for one transaction the register can edit. Categorize isn't built
+// yet.
+export function SelectionIsland({
+  selection: { selected, approvable, net },
   onCheck,
 }: {
   selection: ReturnType<typeof useReviewSelection>;
   onCheck: (ids: string[], value: boolean) => void;
 }) {
   const review = useTransactionReview();
-  if (!selectable.length) return null;
-  const all = selectable.map((item) => item.id);
+  const entry = useTransactionEntry();
+  if (!selected.length) return null;
+  const only = selected.length === 1 ? selected[0]!.id : null;
+  const transaction = entry.view.budget.transactions.find(
+    (item) => item.id === only && !item.removed,
+  );
+  // Transfers, card payments, and the like aren't edited here yet, so
+  // they offer no Edit.
+  const editable =
+    transaction && !editGuidance(transaction) ? transaction : undefined;
   const overLimit = approvable.length > APPROVE_LIMIT;
   return (
-    <div className={styles.bar}>
-      <label className={styles.selectAll}>
-        <Checkbox
-          checked={
-            selected.length === 0
-              ? false
-              : selected.length === all.length
-                ? true
-                : "indeterminate"
+    <div className={styles.islandSlot}>
+      <div
+        className={styles.island}
+        role="toolbar"
+        aria-label="Selected transactions"
+      >
+        <IconButton
+          size="sm"
+          label="Clear selection"
+          shortcut="Esc"
+          onClick={() =>
+            onCheck(
+              selected.map((item) => item.id),
+              false,
+            )
           }
-          onCheckedChange={(value) => onCheck(all, value === true)}
-        />
-        <span>Select all</span>
-      </label>
-      <span className={styles.summary} aria-live="polite">
-        {selected.length > 0 && (
-          <>
-            <span className={styles.count}>
-              {selected.length} selected
-              <span aria-hidden> · </span>
-              <span className={shell.numeric}>{money(net, true)}</span>
+        >
+          <XIcon aria-hidden />
+        </IconButton>
+        <span className={styles.summary} aria-live="polite">
+          <span className={styles.count}>
+            {selected.length} selected
+            <span aria-hidden> · </span>
+            <span className={shell.numeric}>{money(net, true)}</span>
+          </span>
+          {overLimit && (
+            <span className={styles.hint}>
+              Approve up to {APPROVE_LIMIT} at a time.
             </span>
-            {overLimit && (
-              <span className={styles.hint}>
-                Approve up to {APPROVE_LIMIT} at a time.
-              </span>
-            )}
-          </>
-        )}
-      </span>
-      {selected.length > 0 && (
+          )}
+        </span>
+        <span className={styles.divider} aria-hidden />
         <div className={styles.actions}>
-          <Button
-            variant="quiet"
-            size="sm"
-            onClick={() =>
-              onCheck(
-                selected.map((item) => item.id),
-                false,
-              )
-            }
-          >
-            Clear
-          </Button>
+          {editable && (
+            <Tooltip label="Edit this transaction" shortcut="E">
+              <Button
+                size="sm"
+                data-transaction-opener={editable.id}
+                disabled={Boolean(entry.session) || entry.busy}
+                onClick={() => entry.start({ transactionId: editable.id })}
+              >
+                Edit
+              </Button>
+            </Tooltip>
+          )}
+          <Button size="sm">Categorize</Button>
           <Button
             variant="primary"
             size="sm"
@@ -136,25 +181,7 @@ export function ReviewBar({
             Approve ({approvable.length})
           </Button>
         </div>
-      )}
+      </div>
     </div>
-  );
-}
-
-// The details card's action for a transaction waiting on review. A recorded
-// transaction is marked reviewed with the same approval as the register; a
-// bank import is resolved through its own review, which isn't built yet.
-export function ReviewAction({ item }: { item: Transaction }) {
-  const review = useTransactionReview();
-  if (item.source === "bank")
-    return <Button variant="primary">Review import</Button>;
-  return (
-    <Button
-      variant="primary"
-      disabled={review.busy}
-      onClick={() => review.approve([item.id])}
-    >
-      Mark reviewed
-    </Button>
   );
 }

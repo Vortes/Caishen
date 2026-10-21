@@ -4,10 +4,7 @@ import {
   CalendarDaysIcon,
   CreditCardIcon,
   FolderIcon,
-  HistoryIcon,
-  InboxIcon,
   LandmarkIcon,
-  RefreshCwIcon,
   TargetIcon,
   ChartNoAxesCombinedIcon,
   UsersIcon,
@@ -17,15 +14,12 @@ import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { Tag } from "~/components/ui/tag";
 import { Figure, Property, Title } from "./cards";
-import { money, shortDay, type Category, type Transaction } from "./model";
+import { money, type Category } from "./model";
 import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import type { Screen } from "./sidebar";
-import { TransactionEditAction } from "./transaction-form";
-import { ReviewAction } from "./transaction-review";
 import { FundingRing } from "./views";
 import styles from "./shell.module.css";
 
@@ -38,7 +32,7 @@ export function Inspector({
   selectedId: string | null;
   checked: string[];
 }) {
-  const { categories, transactions, loans, readyToAssign } = useShellData();
+  const { categories, loans, readyToAssign } = useShellData();
   if (screen.type === "plan") {
     // The plan's selection is its checked rows: one shows that category,
     // several show their combined details.
@@ -59,14 +53,9 @@ export function Inspector({
       </>
     );
   }
-  if (screen.type === "register") {
-    const transaction = transactions.find((item) => item.id === selectedId);
-    return transaction ? (
-      <TransactionDetails key={transaction.id} item={transaction} />
-    ) : (
-      <AccountDetails accountId={screen.accountId} />
-    );
-  }
+  // An account's register has no details panel; its island and balance
+  // strip take its place.
+  if (screen.type === "register") return null;
   const loan = loans.find((item) => item.id === selectedId);
   if (!loan) {
     return (
@@ -428,217 +417,6 @@ function CategoryDetails({ category }: { category: Category }) {
           </TabsContent>
         </Tabs>
       </Card>
-    </>
-  );
-}
-
-function AccountDetails({ accountId }: { accountId: string | null }) {
-  const { accounts, transactions } = useShellData();
-  const account = accounts.find((item) => item.id === accountId);
-  const scope = account ? [account] : accounts;
-  const balance = scope.reduce((total, item) => total + item.balance, 0);
-  const pending = scope.reduce((total, item) => total + item.pending, 0);
-  const review = transactions.filter(
-    (item) => item.needsReview && (!account || item.accountId === account.id),
-  );
-  const connection = account?.connection;
-  return (
-    <>
-      <Card>
-        <Title
-          icon={
-            account?.kind === "credit" ? (
-              <CreditCardIcon
-                size={15}
-                className={styles.titleIcon}
-                aria-hidden
-              />
-            ) : (
-              <LandmarkIcon
-                size={15}
-                className={styles.titleIcon}
-                aria-hidden
-              />
-            )
-          }
-          title={account?.name ?? "All accounts"}
-          subtitle={
-            account
-              ? connection
-                ? `${connection.institution} · ${connection.needsAttention ? "Connection needs attention" : `Synced ${connection.synced}`}`
-                : "Manual account"
-              : `${accounts.length} ${accounts.length === 1 ? "account" : "accounts"} on budget`
-          }
-          menu={Boolean(account)}
-        />
-        <Figure value={money(balance)} caption="Working balance" />
-      </Card>
-      <Card>
-        <Property label="Posted">{money(balance - pending)}</Property>
-        <Property label="Pending">{money(pending)}</Property>
-        {account && (
-          <Property label="Sync" icon={RefreshCwIcon}>
-            {!connection ? (
-              <span className={styles.faint}>Not connected to a bank</span>
-            ) : connection.needsAttention ? (
-              <Tag tone="attention">Reconnect</Tag>
-            ) : (
-              connection.synced
-            )}
-          </Property>
-        )}
-      </Card>
-      <Card>
-        <Tabs defaultValue="review">
-          <TabsList aria-label="Account details">
-            <TabsTrigger value="review">To review {review.length}</TabsTrigger>
-            <TabsTrigger value="balances">Balances</TabsTrigger>
-          </TabsList>
-          <TabsContent value="review">
-            {review.length ? (
-              <ul className={styles.actionList}>
-                {review.map((item) => (
-                  <li key={item.id}>
-                    <div className={styles.actionItem}>
-                      <span className={styles.reviewDot} data-on />
-                      <span>{item.payee}</span>
-                      <span className={styles.numeric}>
-                        {money(item.amount, true)}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className={styles.tabEmpty}>Nothing to review.</p>
-            )}
-          </TabsContent>
-          <TabsContent value="balances">
-            {scope.length ? (
-              <ul className={styles.actionList}>
-                {scope.map((item) => (
-                  <li key={item.id}>
-                    <div className={styles.actionItem}>
-                      <span>{item.name}</span>
-                      <span className={styles.numeric}>
-                        {money(item.balance)}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className={styles.tabEmpty}>No accounts yet.</p>
-            )}
-          </TabsContent>
-        </Tabs>
-      </Card>
-    </>
-  );
-}
-
-const longDate = (date: string) =>
-  new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-
-function TransactionDetails({ item }: { item: Transaction }) {
-  const account = useShellData().accounts.find(
-    (entry) => entry.id === item.accountId,
-  );
-  const fromBank = item.source === "bank";
-  return (
-    <>
-      <Card>
-        <Title
-          title={item.payee}
-          subtitle={`${shortDay(item.date)} · ${account?.name ?? "Unlinked bank account"}`}
-          menu
-        />
-        <Figure
-          value={money(item.amount, true)}
-          caption={
-            fromBank
-              ? "Waiting in your bank inbox"
-              : item.status === "pending"
-                ? "Pending at the bank"
-                : "Posted"
-          }
-          tone={item.amount > 0 ? "funded" : undefined}
-        />
-        {!fromBank && <TransactionEditAction transactionId={item.id} />}
-      </Card>
-      <Card>
-        <Property label="Category" icon={FolderIcon}>
-          {item.needsCategory ? (
-            <Tag tone="attention">{item.categoryLabel}</Tag>
-          ) : (
-            <span className={styles.truncate}>{item.categoryLabel}</span>
-          )}
-        </Property>
-        <Property
-          label="Account"
-          icon={account?.kind === "credit" ? CreditCardIcon : LandmarkIcon}
-        >
-          {account?.name ?? <Tag tone="attention">Not linked</Tag>}
-        </Property>
-        <Property label="Date" icon={CalendarDaysIcon}>
-          {longDate(item.date)}
-        </Property>
-        {item.forMonth && (
-          <Property label="Counts for">{item.forMonth}</Property>
-        )}
-        {item.shared && (
-          <Property label="Shared" icon={UsersIcon}>
-            Split with your partner
-          </Property>
-        )}
-      </Card>
-      {item.needsReview && (
-        <Card>
-          <p className={styles.reviewNote}>
-            {fromBank ? (
-              <>
-                <InboxIcon size={13} aria-hidden />
-                {item.reviewReason ?? "Imported from your bank."}
-              </>
-            ) : (
-              "Check the category, then mark it reviewed."
-            )}
-          </p>
-          <div>
-            <ReviewAction item={item} />
-          </div>
-        </Card>
-      )}
-      {item.history.length > 1 && (
-        <Card>
-          <Tabs defaultValue="history">
-            <TabsList aria-label="Transaction details">
-              <TabsTrigger value="history">
-                History {item.history.length}
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="history">
-              <ul className={styles.actionList}>
-                {[...item.history].reverse().map((entry, index) => (
-                  <li key={index}>
-                    <div className={styles.actionItem}>
-                      <HistoryIcon size={13} aria-hidden />
-                      <span>{entry.reason}</span>
-                      <span className={styles.numeric}>
-                        {money(entry.amount, true)}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </TabsContent>
-          </Tabs>
-        </Card>
-      )}
     </>
   );
 }

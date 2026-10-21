@@ -1,34 +1,48 @@
-/* The register's selection bar, pinned above its rows with the column
-   headers. Its checkbox lines up with the rows' checkboxes and its label
-   lines up with their text. */
+/* ---------- Selection island ---------- */
 
-.bar {
+/* The register fills the panel, so the island's slot can sit at its foot
+   even when there are only a few rows. */
+.register {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+/* Sticks to the bottom of the scrolling register, centered, so it floats
+   over the rows without leaving the list. The negative margin puts it 16px
+   from the panel's foot whether or not the list scrolls; the list's bottom
+   padding keeps the last row reachable above it. */
+.islandSlot {
   position: sticky;
-  z-index: 2;
-  top: 0;
+  z-index: 3;
+  bottom: 16px;
+  display: flex;
+  margin: auto 0 -56px;
+  align-items: flex-end;
+  justify-content: center;
+  height: 0;
+  pointer-events: none;
+}
+/* A popover surface. Its corners are a pill, concentric with the pill
+   buttons inside. */
+.island {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: var(--size-row-md);
-  padding-right: 6px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-panel);
-  color: var(--text-tertiary);
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  padding: 5px 5px 5px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
   font-size: var(--type-small);
+  pointer-events: auto;
+  animation: island-in 200ms var(--ease-panel);
 }
-/* The whole label is the hit area, the bar's full height. */
-.selectAll {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  align-self: stretch;
-  padding: 0 4px;
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .selectAll:hover {
-    color: var(--text-secondary);
+@keyframes island-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
 .summary {
@@ -38,48 +52,44 @@
   min-width: 0;
 }
 .count {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-weight: 500;
   white-space: nowrap;
 }
 .hint {
   color: var(--feedback-attention);
 }
+.divider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--border-subtle);
+}
 .actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
 }
-/* Narrow registers keep the actions beside Select all and give the summary
-   its own row below, so the count and net are never covered. */
+/* A narrow register gives the hint its own line instead of squeezing the
+   count. */
 @container (max-width: 560px) {
-  .bar {
-    display: grid;
-    grid-template-areas:
-      "select actions"
-      "summary summary";
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 0 12px;
-    height: auto;
-    min-height: var(--size-row-md);
-  }
-  .selectAll {
-    grid-area: select;
-    min-height: var(--size-row-md);
-  }
-  .actions {
-    grid-area: actions;
-    justify-self: end;
+  .island {
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: var(--radius-menu);
   }
   .summary {
-    grid-area: summary;
     flex-wrap: wrap;
     row-gap: 4px;
-    padding: 0 4px;
   }
-  .summary:not(:empty) {
-    padding-bottom: 8px;
+  .divider {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .island {
+    animation: none;
   }
 }
 

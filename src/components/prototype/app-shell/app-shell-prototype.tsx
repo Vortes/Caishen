@@ -5,6 +5,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
+  FileUpIcon,
   ListFilterIcon,
   PanelLeftIcon,
   PanelRightIcon,
@@ -21,6 +22,7 @@ import {
 } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { moveMonth } from "~/components/budget/format";
+import { AccountSummary, SearchField } from "./account";
 import { Inspector } from "./inspector";
 import { findPalette, PalettePicker, paletteVars } from "./palette-picker";
 import type { ShellData } from "./model";
@@ -129,6 +131,7 @@ export function AppShellPrototype({
         : current.filter((id) => !ids.includes(id)),
     );
   const [reviewOnly, setReviewOnly] = useState(false);
+  const [query, setQuery] = useState("");
   const [controlsOpen, setControlsOpen] = useState(true);
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
@@ -209,7 +212,8 @@ export function AppShellPrototype({
       )
         return;
       if (event.key === "[") sidebar.toggle();
-      else if (event.key === "]") inspector.toggle();
+      else if (event.key === "]" && screen.type !== "register")
+        inspector.toggle();
       else if (event.key === "n" && screen.type === "register") {
         if (!entry.start({ accountId: screen.accountId })) return;
       } else if (
@@ -253,11 +257,24 @@ export function AppShellPrototype({
     setSelectedId(id ?? null);
     setChecked([]);
     setReviewOnly(false);
+    setQuery("");
     if (narrow) setDrawer({ sidebar: false, inspector: Boolean(id) });
     closePeek(0);
   };
 
   const select = (id: string) => setSelectedId(id);
+  // Like YNAB, clicking a row selects just that row: its checkbox ticks and
+  // any others clear. Clicking a selected row deselects it. Checkboxes add
+  // to or remove from the selection.
+  const selectOnly = (id: string) => {
+    if (checked.includes(id)) {
+      setChecked(checked.filter((item) => item !== id));
+      setSelectedId(null);
+    } else {
+      setSelectedId(id);
+      setChecked([id]);
+    }
+  };
 
   const reset = () => {
     if (entry.holdForDraft()) return;
@@ -267,6 +284,7 @@ export function AppShellPrototype({
     setSelectedId(null);
     setChecked([]);
     setReviewOnly(false);
+    setQuery("");
     setReportKind("breakdown");
     setFilters(defaultFilters);
     setPath({});
@@ -296,6 +314,9 @@ export function AppShellPrototype({
   const reviewCount = transactions.filter(
     (item) => item.needsReview && (!account || item.accountId === account.id),
   ).length;
+  // An account's register is the whole screen: its balances, actions, and
+  // review notice replace the details panel.
+  const register = screen.type === "register";
 
   return (
     <ShellDataProvider value={data}>
@@ -435,7 +456,17 @@ export function AppShellPrototype({
                   )}
                 </header>
 
-                <div className={styles.toolbar}>
+                {screen.type === "register" && (
+                  <AccountSummary
+                    accounts={account ? [account] : accounts}
+                    single={Boolean(account)}
+                  />
+                )}
+
+                <div
+                  className={styles.toolbar}
+                  data-wrap={register || undefined}
+                >
                   {screen.type === "plan" && (
                     <PlanViews
                       value={settings.planView}
@@ -488,7 +519,24 @@ export function AppShellPrototype({
                       </Button>
                     </AddTransactionTooltip>
                   )}
+                  {screen.type === "register" && account && (
+                    <Button size="sm">
+                      <FileUpIcon aria-hidden />
+                      File import
+                    </Button>
+                  )}
                   <div className={styles.toolbarActions}>
+                    {screen.type === "register" && (
+                      <SearchField
+                        value={query}
+                        onChange={(next) => {
+                          setQuery(next);
+                          setSelectedId(null);
+                          setChecked([]);
+                        }}
+                        placeholder={`Search ${account?.name ?? "all accounts"}`}
+                      />
+                    )}
                     {screen.type !== "reflect" && (
                       <>
                         <IconButton
@@ -503,19 +551,21 @@ export function AppShellPrototype({
                         </IconButton>
                       </>
                     )}
-                    <IconButton
-                      label={
-                        inspectorState.collapsed
-                          ? "Show details"
-                          : "Hide details"
-                      }
-                      shortcut="]"
-                      variant="secondary"
-                      pressed={!inspectorState.collapsed}
-                      onClick={inspector.toggle}
-                    >
-                      <PanelRightIcon aria-hidden />
-                    </IconButton>
+                    {!register && (
+                      <IconButton
+                        label={
+                          inspectorState.collapsed
+                            ? "Show details"
+                            : "Hide details"
+                        }
+                        shortcut="]"
+                        variant="secondary"
+                        pressed={!inspectorState.collapsed}
+                        onClick={inspector.toggle}
+                      >
+                        <PanelRightIcon aria-hidden />
+                      </IconButton>
+                    )}
                   </div>
                 </div>
 
@@ -528,33 +578,28 @@ export function AppShellPrototype({
                     {screen.type === "plan" && (
                       <PlanView
                         view={settings.planView}
-                        // Like YNAB, clicking a row selects just that row: its
-                        // checkbox ticks and any others clear. Clicking a
-                        // selected row deselects it. Checkboxes add to or
-                        // remove from the selection.
+                        // Opens the details panel, then selects just that row,
+                        // like the register.
                         onSelect={(id) => {
                           if (inspectorState.collapsed) inspector.toggle();
-                          if (checked.includes(id)) {
-                            setChecked(checked.filter((item) => item !== id));
-                            setSelectedId(null);
-                          } else {
-                            setSelectedId(id);
-                            setChecked([id]);
-                          }
+                          selectOnly(id);
                         }}
                         checked={checked}
                         onCheck={check}
                       />
                     )}
                     {screen.type === "register" && (
-                      <RegisterView
-                        accountId={screen.accountId}
-                        reviewOnly={reviewOnly}
-                        selectedId={selectedId}
-                        onSelect={select}
-                        checked={checked}
-                        onCheck={check}
-                      />
+                      <>
+                        <RegisterView
+                          accountId={screen.accountId}
+                          reviewOnly={reviewOnly}
+                          query={query}
+                          selectedId={selectedId}
+                          onSelect={selectOnly}
+                          checked={checked}
+                          onCheck={check}
+                        />
+                      </>
                     )}
                     {screen.type === "loans" && (
                       <LoansView selectedId={selectedId} onSelect={select} />
@@ -590,45 +635,47 @@ export function AppShellPrototype({
                     )}
                   </main>
 
-                  <div className={styles.inspectorSlot}>
-                    <div
-                      {...inspector.handleProps}
-                      className={styles.handle}
-                      data-side="right"
-                      aria-label="Resize details panel"
-                      data-active={inspector.dragging || undefined}
-                    />
-                    <aside
-                      className={styles.inspector}
-                      style={{ width: inspector.width }}
-                      aria-label="Details"
-                      aria-hidden={inspector.width === 0 || undefined}
-                      inert={inspector.width === 0}
-                    >
+                  {!register && (
+                    <div className={styles.inspectorSlot}>
                       <div
-                        className={styles.inspectorInner}
-                        style={{ width: inspector.contentWidth }}
+                        {...inspector.handleProps}
+                        className={styles.handle}
+                        data-side="right"
+                        aria-label="Resize details panel"
+                        data-active={inspector.dragging || undefined}
+                      />
+                      <aside
+                        className={styles.inspector}
+                        style={{ width: inspector.width }}
+                        aria-label="Details"
+                        aria-hidden={inspector.width === 0 || undefined}
+                        inert={inspector.width === 0}
                       >
-                        {screen.type === "reflect" ? (
-                          spending.report && (
-                            <Card>
-                              <SpendingList
-                                report={spending.report}
-                                path={path}
-                                highlight={highlight}
-                              />
-                            </Card>
-                          )
-                        ) : (
-                          <Inspector
-                            screen={screen}
-                            selectedId={selectedId}
-                            checked={checked}
-                          />
-                        )}
-                      </div>
-                    </aside>
-                  </div>
+                        <div
+                          className={styles.inspectorInner}
+                          style={{ width: inspector.contentWidth }}
+                        >
+                          {screen.type === "reflect" ? (
+                            spending.report && (
+                              <Card>
+                                <SpendingList
+                                  report={spending.report}
+                                  path={path}
+                                  highlight={highlight}
+                                />
+                              </Card>
+                            )
+                          ) : (
+                            <Inspector
+                              screen={screen}
+                              selectedId={selectedId}
+                              checked={checked}
+                            />
+                          )}
+                        </div>
+                      </aside>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -676,7 +723,7 @@ export function AppShellPrototype({
                       : `${Math.round(sidebar.width)}px`}
                     {" · "}
                     Details{" "}
-                    {inspectorState.collapsed
+                    {register || inspectorState.collapsed
                       ? "closed"
                       : `${Math.round(inspector.width)}px`}
                   </span>
