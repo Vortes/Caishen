@@ -1,9 +1,11 @@
 import type { Command } from "~/domain/engine";
 import { BudgetStore, type RunOptions, type RunResult } from "./budget-store";
 import { Outbox } from "./outbox";
+import { openPersistence } from "./indexed-db";
 import { MemoryPersistence, type Persistence } from "./persistence";
-import { RevisionSignal } from "./revision-signal";
+import { RevisionSignal, watchFocusAndOnline } from "./revision-signal";
 import { SyncController } from "./sync-controller";
+import { connectTabs, tabChannelName } from "./tabs";
 import type { ExecuteResult, SyncTransport } from "./transport";
 
 // One tab's budget sync: the store, the outbox that sends its commands, the
@@ -14,7 +16,7 @@ export type BudgetClientOptions = {
   transport: SyncTransport;
   /** The running app's build, which the server checks on every pull. */
   clientBuild: string;
-  persistence?: Persistence;
+  persistence?: Persistence | Promise<Persistence>;
   signal?: RevisionSignal;
   clientId?: string;
   now?: () => Date;
@@ -46,7 +48,9 @@ export type BudgetClient = {
 export function createBudgetClient(options: BudgetClientOptions): BudgetClient {
   const store = new BudgetStore(options);
   const signal = options.signal ?? new RevisionSignal();
-  const persistence = options.persistence ?? new MemoryPersistence();
+  const persistence = Promise.resolve(
+    options.persistence ?? new MemoryPersistence(),
+  );
   const clientId = options.clientId ?? crypto.randomUUID();
   const controller: SyncController = new SyncController(
     store,
@@ -65,7 +69,7 @@ export function createBudgetClient(options: BudgetClientOptions): BudgetClient {
   const unsubscribeCommits = store.onCommit((commit) => {
     if (commit.source === "storage") return;
     writes = writes
-      .then(() => persistence.write(commit))
+      .then(async () => (await persistence).write(commit))
       .catch((error: unknown) => {
         // Storage only saves a download; the rows stay correct in memory.
         console.error("Couldn't store budget rows", error);
@@ -78,7 +82,9 @@ export function createBudgetClient(options: BudgetClientOptions): BudgetClient {
   });
 
   const ready = (async () => {
-    const stored = await persistence.load().catch(() => null);
+    const stored = await persistence
+      .then((storage) => storage.load())
+      .catch(() => null);
     if (stored) store.hydrate(stored.revision, stored.rows);
     await controller.request();
     void sender.flush();
@@ -121,7 +127,40 @@ export function createBudgetClient(options: BudgetClientOptions): BudgetClient {
       unsubscribeHints();
       sender.stop();
       controller.stop();
-      persistence.close();
+      void persistence.then((storage) => storage.close());
+    },
+  };
+}
+
+/**
+ * The client the app uses: rows kept in IndexedDB between visits, other
+ * tabs of the same user told what the server confirmed, and a pull
+ * whenever the page regains focus or the network.
+ */
+export function openBudgetClient(
+  options: Omit<BudgetClientOptions, "persistence" | "signal">,
+): BudgetClient {
+  const signal = new RevisionSignal();
+  const client = createBudgetClient({
+    ...options,
+    signal,
+    persistence: openPersistence(options.userId, options.clientBuild),
+  });
+  const disconnect = [
+    watchFocusAndOnline(signal),
+    typeof BroadcastChannel === "undefined"
+      ? () => undefined
+      : connectTabs(
+          client.store,
+          signal,
+          new BroadcastChannel(tabChannelName(options.userId)),
+        ),
+  ];
+  return {
+    ...client,
+    dispose: () => {
+      for (const stop of disconnect) stop();
+      client.dispose();
     },
   };
 }
