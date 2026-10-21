@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { Prisma, PrismaClient } from "../../src/generated/prisma";
+import { canonicalJson } from "../../src/domain/canonical-json";
+import { parseBook } from "../../src/domain/engine";
 import { createCaller } from "../../src/server/api/root";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
+import { operationHash } from "../../src/server/services/safety";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
@@ -50,15 +53,36 @@ void test("server operations persist, enforce privacy, protect concurrent writes
         date: "2026-10-01",
       },
     });
+    // Validation adds the category's default group; the operation is still
+    // identified by what was submitted, so a release that changes that
+    // default cannot turn a retry into a conflict.
+    const submittedCategory = {
+      type: "category.add" as const,
+      id: cmdId(),
+      categoryId: "alice-private",
+      name: "Alice secret category",
+    };
     await alice.budget.execute({
       expectedRevision: 1,
-      command: {
-        type: "category.add",
-        id: cmdId(),
-        categoryId: "alice-private",
-        name: "Alice secret category",
-      },
+      command: submittedCategory,
     });
+    const savedCategory = await db.budgetOperation.findFirstOrThrow({
+      where: { actorId: aliceId, operationId: submittedCategory.id },
+    });
+    assert.equal(savedCategory.commandHash, operationHash(submittedCategory));
+    const savedBook = parseBook(
+      (
+        await db.workspaceMember.findUniqueOrThrow({
+          where: { clerkUserId: aliceId },
+          include: { workspace: true },
+        })
+      ).workspace.book,
+    );
+    assert.equal(
+      savedBook.audit.find((entry) => entry.id === submittedCategory.id)
+        ?.fingerprint,
+      canonicalJson(submittedCategory),
+    );
     const repeated = {
       type: "assign" as const,
       id: cmdId(),

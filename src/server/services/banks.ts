@@ -18,7 +18,13 @@ import {
   quarantineFingerprint,
   readQuarantine,
 } from "./bank-quarantine";
-import { commandHash, domainError, jsonValue, operationHash } from "./safety";
+import {
+  commandHash,
+  domainError,
+  jsonValue,
+  matchesSavedOperation,
+  operationHash,
+} from "./safety";
 import { readWorkspace, type Database } from "./workspace";
 import {
   bankAccountOpening,
@@ -343,20 +349,24 @@ export async function setupBankAccounts(
   db: Database,
   userId: string,
   input: SetupBankAccountsInput,
+  submitted: unknown = input,
 ): Promise<{ revision: number; accountIds: string[] }> {
   try {
     input = setupBankAccountsSchema.parse(input);
+    const operation = (accounts: unknown) => ({
+      type: "bank.accounts.setup",
+      connectionId: input.connectionId,
+      operationId: input.operationId,
+      accounts,
+    });
+    const submittedOperation = operation(
+      z.object({ accounts: z.unknown() }).parse(submitted).accounts,
+    );
     if (
       new Set(input.accounts.map((account) => account.providerAccountId))
         .size !== input.accounts.length
     )
       throw new Error("Choose each bank account only once.");
-    const hash = commandHash({
-      type: "bank.accounts.setup",
-      connectionId: input.connectionId,
-      operationId: input.operationId,
-      accounts: input.accounts,
-    });
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await db.$transaction(
@@ -383,7 +393,14 @@ export async function setupBankAccounts(
               },
             });
             if (previous) {
-              if (previous.actorId !== userId || previous.commandHash !== hash)
+              if (
+                previous.actorId !== userId ||
+                !matchesSavedOperation(
+                  previous.commandHash,
+                  submittedOperation,
+                  operation(input.accounts),
+                )
+              )
                 throw new TRPCError({
                   code: "CONFLICT",
                   message:
@@ -555,7 +572,7 @@ export async function setupBankAccounts(
                 actorId: userId,
                 source: "user",
                 type: "bank.accounts.setup",
-                commandHash: hash,
+                commandHash: operationHash(submittedOperation),
                 revision: input.expectedRevision + 1,
               },
             });
@@ -878,7 +895,7 @@ export async function syncBanks(db: Database, userId: string) {
                 actorId: userId,
                 source: "provider",
                 type: op.type,
-                commandHash: commandHash(op),
+                commandHash: operationHash(op),
                 revision: member.workspace.revision + 1,
               })),
             });
@@ -944,8 +961,21 @@ export async function resolveImport(
     expectedRevision: number;
     expectedFingerprint?: string;
     ignore: boolean;
+    /** The command as the client sent it, which identifies a retried save. */
+    submittedCommand?: unknown;
   },
 ) {
+  const submittedCommand =
+    "submittedCommand" in input ? input.submittedCommand : input.command;
+  const saveIdentity = (command: unknown) =>
+    input.expectedFingerprint
+      ? {
+          command,
+          connectionId: input.connectionId,
+          logicalId: input.logicalId,
+          fingerprint: input.expectedFingerprint,
+        }
+      : command;
   try {
     return await db.$transaction(
       async (tx) => {
@@ -988,13 +1018,11 @@ export async function resolveImport(
           if (previous) {
             if (
               previous.actorId !== userId ||
-              previous.commandHash !==
-                commandHash({
-                  command: input.command,
-                  connectionId: input.connectionId,
-                  logicalId: input.logicalId,
-                  fingerprint: input.expectedFingerprint,
-                })
+              !matchesSavedOperation(
+                previous.commandHash,
+                saveIdentity(submittedCommand),
+                saveIdentity(input.command),
+              )
             )
               throw new TRPCError({
                 code: "CONFLICT",
@@ -1129,16 +1157,7 @@ export async function resolveImport(
                 actorId: userId,
                 source: "user",
                 type: command.type,
-                commandHash: commandHash(
-                  input.expectedFingerprint
-                    ? {
-                        command,
-                        connectionId: input.connectionId,
-                        logicalId: input.logicalId,
-                        fingerprint: input.expectedFingerprint,
-                      }
-                    : command,
-                ),
+                commandHash: operationHash(saveIdentity(submittedCommand)),
                 revision: input.expectedRevision + 1,
               },
             });

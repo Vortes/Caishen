@@ -17,6 +17,7 @@ import {
   type PersonalLedger,
 } from "./shared-ledger";
 import { personalSpendingEntries } from "./spending";
+import { canonicalJson } from "./canonical-json";
 
 const identifier = z.string().min(1).max(160);
 const cents = z.number().int().safe();
@@ -2105,7 +2106,13 @@ export function previewBudgetProjection(
     sharedCategories: view.sharedCategories,
     audit: view.audit,
   };
-  const next = executeAccountingState(ledger, view.budget.userId, command);
+  const next = executeAccountingState(
+    ledger,
+    view.budget.userId,
+    command,
+    "user",
+    command,
+  );
   return projectAccountingState(
     next,
     view.budget.userId,
@@ -2529,29 +2536,40 @@ function ensureSupportedCardBalances(budget: Budget): void {
   }
 }
 
+/**
+ * Applies a command to the actor's budget. `submitted` is the command as its
+ * author sent it, before validation or preparation; it identifies retries, so
+ * a retry is recognized even when a later release validates it differently.
+ */
 export function execute(
   original: Book,
   actorId: string,
   input: Command,
   source: "user" | "agent" = "user",
+  submitted: unknown = input,
 ): Book {
-  return executeAccountingState(original, actorId, input, source);
+  return executeAccountingState(original, actorId, input, source, submitted);
 }
 
 function executeAccountingState<T extends AccountingState>(
   original: T,
   actorId: string,
   input: Command,
-  source: "user" | "agent" = "user",
+  source: "user" | "agent",
+  submitted: unknown,
 ): T {
   const command = commandSchema.parse(input);
   ownBudget(original, actorId);
-  const fingerprint = JSON.stringify(command);
+  const fingerprint = canonicalJson(submitted);
   const previous = original.audit.find(
     (entry) => entry.id === command.id && entry.actorId === actorId,
   );
   if (previous) {
-    if (previous.fingerprint !== fingerprint)
+    // Books saved by earlier releases hold the validated command's JSON.
+    if (
+      previous.fingerprint !== fingerprint &&
+      previous.fingerprint !== JSON.stringify(command)
+    )
       fail("Operation ID was already used with different data");
     return structuredClone(original);
   }

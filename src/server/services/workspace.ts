@@ -1,6 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import { Prisma, type PrismaClient, type Workspace } from "~/generated/prisma";
-import { commandHash, domainError, jsonValue } from "./safety";
+import {
+  domainError,
+  jsonValue,
+  matchesSavedOperation,
+  operationHash,
+} from "./safety";
 import {
   recordWorkspaceHistory,
   restoreWorkspaceHistory,
@@ -25,13 +30,24 @@ export async function mutateWorkspace<T extends MutationOperation>(
   operations: T[],
   source: "user" | "agent" | "provider",
   reduce: (book: Prisma.JsonValue, operations: T[]) => unknown,
-  label?: string,
+  {
+    label,
+    submitted = operations,
+  }: {
+    label?: string;
+    /**
+     * Each operation as its author submitted it, before validation, when it
+     * differs from the operation itself. It identifies retries.
+     */
+    submitted?: readonly unknown[];
+  } = {},
 ) {
   return commitWorkspaceOperations(
     db,
     actorId,
     expectedRevision,
     operations,
+    submitted,
     source,
     (workspace, fresh) => {
       const book = reduce(workspace.book, fresh);
@@ -67,6 +83,7 @@ export async function changeWorkspaceHistory(
     actorId,
     input.expectedRevision,
     [{ id: input.operationId, type: `history.${input.direction}` }],
+    [{ id: input.operationId, type: `history.${input.direction}` }],
     "user",
     (workspace) =>
       restoreWorkspaceHistory(
@@ -85,6 +102,7 @@ async function commitWorkspaceOperations<T extends MutationOperation>(
   actorId: string,
   expectedRevision: number,
   operations: T[],
+  submitted: readonly unknown[],
   source: "user" | "agent" | "provider",
   change: (
     workspace: Workspace,
@@ -111,12 +129,14 @@ async function commitWorkspaceOperations<T extends MutationOperation>(
               operationId: { in: operations.map((op) => op.id) },
             },
           });
-          for (const op of operations) {
+          if (submitted.length !== operations.length)
+            throw new Error("Each operation needs its submitted input.");
+          for (const [index, op] of operations.entries()) {
             const saved = previous.find((item) => item.operationId === op.id);
             if (
               saved &&
               (saved.actorId !== actorId ||
-                saved.commandHash !== commandHash(op))
+                !matchesSavedOperation(saved.commandHash, submitted[index], op))
             )
               throw new TRPCError({
                 code: "CONFLICT",
@@ -154,7 +174,7 @@ async function commitWorkspaceOperations<T extends MutationOperation>(
               actorId,
               operationId: op.id,
               type: op.type,
-              commandHash: commandHash(op),
+              commandHash: operationHash(submitted[operations.indexOf(op)]),
               source,
               revision: expectedRevision + 1,
             })),

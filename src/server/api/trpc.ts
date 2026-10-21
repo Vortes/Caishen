@@ -31,3 +31,13 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
     });
   return next({ ctx: { ...ctx, userId: ctx.userId, localUser } });
 });
+
+/**
+ * Keeps the input exactly as the client sent it, before validation fills in
+ * defaults, for procedures that identify retried operations by what was
+ * submitted.
+ */
+export const submittedInputProcedure = protectedProcedure.use(
+  async ({ getRawInput, next }) =>
+    next({ ctx: { submittedInput: await getRawInput() } }),
+);
