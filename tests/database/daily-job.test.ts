@@ -7,15 +7,9 @@ import { runDailyJob } from "../../src/server/services/daily-job";
 import { cancelScheduledDailyReviews } from "../../src/server/services/daily-delivery";
 import { jsonValue } from "../../src/server/services/safety";
 import { type Database } from "../../src/server/services/workspace";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
-const connection = process.env.DATABASE_URL;
-if (
-  !connection ||
-  !new URL(connection).hostname.startsWith("ep-odd-voice-b4sie2v1")
-)
-  throw new Error(
-    "Daily job database tests require the isolated dev-caishen branch.",
-  );
+assertDevelopmentDatabase(process.env);
 const base = new PrismaClient();
 const batchTime = new Date("2026-10-17T00:20:00Z");
 const keys = ["RESEND_API_KEY", "EMAIL_FROM", "APP_BASE_URL"] as const;

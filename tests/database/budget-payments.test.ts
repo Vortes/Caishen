@@ -5,14 +5,9 @@ import test from "node:test";
 import { bookSchema, type Command } from "../../src/domain/engine";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
-const connectionUrl = process.env.DATABASE_URL;
-if (
-  !connectionUrl ||
-  !new URL(connectionUrl).hostname.startsWith("ep-odd-voice-b4sie2v1")
-)
-  throw new Error("Use the isolated dev-caishen database only.");
-
+assertDevelopmentDatabase(process.env);
 void test("expected income, transaction approval, card payments, and loan payments persist through the budget API", async () => {
   const db = new PrismaClient();
   const userId = `test-payments-${randomUUID()}`;

@@ -10,15 +10,9 @@ import {
   ensureLocalUser,
   syncClerkUserEvent,
 } from "../../src/server/users";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
-const connectionUrl = process.env.DATABASE_URL;
-if (
-  !connectionUrl ||
-  !new URL(connectionUrl).hostname.startsWith("ep-odd-voice-b4sie2v1")
-)
-  throw new Error(
-    "User lifecycle database tests require the isolated dev-caishen branch.",
-  );
+assertDevelopmentDatabase(process.env);
 const db = new PrismaClient();
 const profileEvent = (
   clerkUserId: string,

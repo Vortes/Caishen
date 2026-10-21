@@ -14,14 +14,9 @@ import {
   bankSetupDate,
 } from "../../src/server/services/bank-account-setup";
 import { jsonValue } from "../../src/server/services/safety";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
-const connectionUrl = process.env.DATABASE_URL;
-if (
-  !connectionUrl ||
-  !new URL(connectionUrl).hostname.startsWith("ep-odd-voice-b4sie2v1")
-)
-  throw new Error("Bank setup tests require the isolated dev-caishen branch.");
-
+assertDevelopmentDatabase(process.env);
 void test(
   "bank setup atomically creates named cash and credit accounts, protects ownership and retries, and excludes opening history",
   { timeout: 90_000 },
