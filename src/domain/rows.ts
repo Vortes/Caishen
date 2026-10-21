@@ -582,6 +582,71 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
   ];
 }
 
+/** Whether two JSON values are equal, whatever order their keys are in. */
+export function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (
+    a === null ||
+    b === null ||
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    Array.isArray(a) !== Array.isArray(b)
+  )
+    return false;
+  if (Array.isArray(a))
+    return (
+      a.length === (b as unknown[]).length &&
+      a.every((item, index) => sameJson(item, (b as unknown[])[index]))
+    );
+  const left = Object.entries(a).filter(([, value]) => value !== undefined);
+  const right = b as Record<string, unknown>;
+  return (
+    left.length ===
+      Object.values(right).filter((value) => value !== undefined).length &&
+    left.every(([key, value]) => sameJson(value, right[key]))
+  );
+}
+
+/** A row that does not exist: before its creation or after its removal. */
+export function tombstone(row: Pick<WireRow, "table" | "id">): WireRow {
+  return {
+    table: row.table,
+    id: row.id,
+    revision: 0,
+    deleted: true,
+    data: null,
+  };
+}
+
+/**
+ * The change from one set of rows to another, as pairs of the same row
+ * before and after. Rows whose content is equal are left out.
+ */
+export function diffRows(
+  before: Iterable<WireRow>,
+  after: Iterable<WireRow>,
+): { before: WireRow[]; after: WireRow[] } {
+  const key = (row: WireRow) => `${row.table} ${row.id}`;
+  const previous = new Map<string, WireRow>();
+  for (const row of before) if (!row.deleted) previous.set(key(row), row);
+  const changes = { before: [] as WireRow[], after: [] as WireRow[] };
+  const seen = new Set<string>();
+  for (const row of after) {
+    if (row.deleted) continue;
+    seen.add(key(row));
+    const old = previous.get(key(row));
+    if (old && sameJson(old.data, row.data)) continue;
+    changes.before.push(old ?? tombstone(row));
+    changes.after.push(row);
+  }
+  for (const [id, row] of previous)
+    if (!seen.has(id)) {
+      changes.before.push(row);
+      changes.after.push(tombstone(row));
+    }
+  return changes;
+}
+
 function unique(rows: WireRow[]): WireRow[] {
   const seen = new Set<string>();
   for (const item of rows) {

@@ -1,12 +1,13 @@
 import {
   addMember,
   createBook,
-  execute,
+  executeWithChanges,
   projectBook,
   type Book,
   type Command,
   type CommandSource,
 } from "../../../src/domain/engine";
+import type { ChangeSet } from "../../../src/domain/rows";
 
 // A two-partner household driven through every command type, including the
 // changes that reach far from the command: reconciling marks every cleared
@@ -21,6 +22,7 @@ export type CorpusStep = {
   source: CommandSource;
   before: Book;
   after: Book;
+  changeSet: ChangeSet;
 };
 
 const start = "2026-01";
@@ -43,8 +45,20 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
       ...(typeof command === "function" ? command(book) : command),
       id: `corpus-${++sequence}`,
     };
-    const after = execute(book, actorId, input, source);
-    steps.push({ actorId, command: input, source, before: book, after });
+    const { book: after, changeSet } = executeWithChanges(
+      book,
+      actorId,
+      input,
+      source,
+    );
+    steps.push({
+      actorId,
+      command: input,
+      source,
+      before: book,
+      after,
+      changeSet,
+    });
     book = after;
     return input.id;
   };

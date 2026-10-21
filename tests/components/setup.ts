@@ -1,5 +1,6 @@
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, expect, vi } from "vitest";
+import { takeOracleFailures } from "../change-set-oracle";
 
 // The component boundary excludes Clerk and the browser layout engine.
 // No browser process, application server, or database is started here.
@@ -38,6 +39,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Interface code can catch a failed command, so the change-set oracle's
+  // failures are checked after each test.
+  expect(takeOracleFailures()).toEqual([]);
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
