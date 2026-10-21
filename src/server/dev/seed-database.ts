@@ -3,22 +3,21 @@ import { Prisma, type PrismaClient } from "~/generated/prisma";
 import { bookSchema } from "~/domain/engine";
 import { commandHash, jsonValue } from "~/server/services/safety";
 import { buildDevelopmentSeed, developmentToday } from "./seed-scenarios";
+import {
+  assertDevelopmentDatabase,
+  type EndpointLookup,
+} from "./development-database";
 
 export function assertDevelopmentSeedEnvironment(
   env: Record<string, string | undefined>,
+  lookup?: EndpointLookup,
 ) {
   if (env.NODE_ENV === "production" || env.VERCEL_ENV === "production")
     throw new Error("Development seeding is disabled in production.");
   if (!env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
   const host = new URL(env.DATABASE_URL).hostname;
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(host);
-  const developmentBranch =
-    host.endsWith(".neon.tech") &&
-    host.split(".")[0]?.replace(/-pooler$/, "") === "ep-odd-voice-b4sie2v1";
-  if (!local && !developmentBranch)
-    throw new Error(
-      "Seeding is restricted to the dev-caishen database endpoint or localhost.",
-    );
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(host))
+    assertDevelopmentDatabase(env, lookup);
   if (
     env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
     !env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.startsWith("pk_test_")

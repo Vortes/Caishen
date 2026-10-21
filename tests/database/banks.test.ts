@@ -18,16 +18,9 @@ import {
 } from "../../src/server/integrations/transactions";
 import { commandHash, jsonValue } from "../../src/server/services/safety";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
-const connectionUrl = process.env.DATABASE_URL;
-if (
-  !connectionUrl ||
-  !new URL(connectionUrl).hostname.startsWith("ep-odd-voice-b4sie2v1")
-) {
-  throw new Error(
-    "Bank service database tests require the isolated dev-caishen branch.",
-  );
-}
+assertDevelopmentDatabase(process.env);
 
 const fixtureFingerprint = (record: StoredImport) =>
   commandHash({

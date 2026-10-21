@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {
+  developmentBranch,
+  neonProjectId,
+  productionBranchId,
+} from "../../src/server/dev/development-database";
 import { e2eEnvironment } from "../e2e/environment";
 
 const isolated = {
@@ -58,4 +63,38 @@ void test("E2E setup refuses live or missing Clerk keys and production environme
     { VERCEL_ENV: "production" },
   ])
     assert.throws(() => e2eEnvironment({ ...isolated, ...patch }));
+});
+
+void test("E2E setup accepts a worktree branch only when Neon confirms its dev-caishen parent", () => {
+  const host = "ep-quiet-lake-a1b2c3d4.c-6.us-east-2.aws.neon.tech";
+  const pooledHost = host.replace(".c-6", "-pooler.c-6");
+  const worktree = {
+    ...isolated,
+    DATABASE_URL: `postgresql://user:pass@${pooledHost}/neondb`,
+    DATABASE_URL_UNPOOLED: `postgresql://user:pass@${host}/neondb`,
+    NEON_BRANCH: "dev-worktree-db",
+  };
+  const branch = {
+    projectId: neonProjectId,
+    hosts: [host, pooledHost],
+    branchId: "br-child-a1b2c3d4",
+    branchName: "dev-worktree-db",
+    parentId: developmentBranch.id,
+  };
+  assert.equal(e2eEnvironment(worktree, () => branch).port, "3100");
+  assert.throws(() =>
+    e2eEnvironment(worktree, () => ({
+      ...branch,
+      parentId: productionBranchId,
+    })),
+  );
+  assert.throws(() =>
+    e2eEnvironment({ ...worktree, NEON_BRANCH: "production" }, () => branch),
+  );
+  assert.throws(() =>
+    e2eEnvironment(
+      { ...worktree, DATABASE_URL_UNPOOLED: undefined },
+      () => branch,
+    ),
+  );
 });

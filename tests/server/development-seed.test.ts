@@ -6,6 +6,10 @@ import {
   developmentSeedIdentity,
 } from "../../src/server/dev/seed-database";
 import {
+  developmentBranch,
+  neonProjectId,
+} from "../../src/server/dev/development-database";
+import {
   buildDevelopmentSeed,
   buildSeedStatements,
   developmentToday,
@@ -204,6 +208,27 @@ void test("seeding rejects production, lookalike endpoints, and live auth keys",
     assertDevelopmentSeedEnvironment({
       DATABASE_URL: "postgresql://user:pass@localhost/db",
     }),
+  );
+  const worktree = {
+    DATABASE_URL:
+      "postgresql://user:pass@ep-quiet-lake-a1b2c3d4-pooler.us-east-1.aws.neon.tech/db",
+    NEON_BRANCH: "dev-worktree-db",
+  };
+  const child = {
+    projectId: neonProjectId,
+    hosts: ["ep-quiet-lake-a1b2c3d4-pooler.us-east-1.aws.neon.tech"],
+    branchId: "br-child-a1b2c3d4",
+    branchName: "dev-worktree-db",
+    parentId: developmentBranch.id,
+  };
+  assert.doesNotThrow(() =>
+    assertDevelopmentSeedEnvironment(worktree, () => child),
+  );
+  assert.throws(() =>
+    assertDevelopmentSeedEnvironment(worktree, () => ({
+      ...child,
+      parentId: null,
+    })),
   );
   for (const env of [
     { ...development, NODE_ENV: "production" },

@@ -10,6 +10,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
+    "db:worktree": "node --import tsx scripts/worktree-database.ts create",
+    "db:worktree:delete": "node --import tsx scripts/worktree-database.ts delete",
     "db:seed": "node --env-file=.env.local --import tsx scripts/seed-dev.ts",
     "dev": "next dev --turbo",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --ignore-path .gitignore --cache",

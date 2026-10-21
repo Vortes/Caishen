@@ -4,17 +4,10 @@ import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
-if (
-  !new URL(process.env.DATABASE_URL!).hostname.startsWith(
-    "ep-odd-voice-b4sie2v1",
-  )
-)
-  throw new Error(
-    "Database tests only run against the isolated dev-caishen branch.",
-  );
-
+assertDevelopmentDatabase(process.env);
 void test("undo persists, remains idempotent, and stops at partner and provider changes", async () => {
   const db = new PrismaClient();
   const aliceId = `test-undo-alice-${randomUUID()}`;

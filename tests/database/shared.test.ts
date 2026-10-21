@@ -4,13 +4,9 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
 import { type Command } from "../../src/domain/engine";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
-if (
-  !new URL(process.env.DATABASE_URL!).hostname.startsWith(
-    "ep-odd-voice-b4sie2v1",
-  )
-)
-  throw new Error("Use the isolated dev-caishen database only.");
+assertDevelopmentDatabase(process.env);
 void test("two private server budgets record the exact rent/utilities settlement without fictional cash", async () => {
   const db = new PrismaClient();
   const a = `test-shared-a-${randomUUID()}`,
