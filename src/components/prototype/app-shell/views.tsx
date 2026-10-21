@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRightLeftIcon,
   CheckIcon,
   ChevronDownIcon,
   CircleCheckIcon,
@@ -10,8 +11,15 @@ import {
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { Checkbox } from "~/components/ui/checkbox";
+import { IconButton } from "~/components/ui/icon-button";
 import { Tag } from "~/components/ui/tag";
 import {
   dayLabel,
@@ -20,9 +28,16 @@ import {
   type Funding,
   type Transaction,
 } from "./model";
+import {
+  AddToGroupButton,
+  EmptyGroupButton,
+  FirstGroupButton,
+  isPaymentGroup,
+  type Added,
+} from "./add-category";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
-import { useTransactionEntry } from "./transaction-entry";
+import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
@@ -63,18 +78,52 @@ export function PlanView({
   onSelect,
   checked,
   onCheck,
+  reveal,
 }: {
   view: PlanViewId | null;
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
+  // A group or category to bring into view and focus, like one just added.
+  reveal: Added | null;
 }) {
   const shell = useShellData();
   const [closed, setClosed] = useState<string[]>([]);
+  const toggle = (id: string) =>
+    setClosed((values) =>
+      values.includes(id)
+        ? values.filter((value) => value !== id)
+        : [...values, id],
+    );
+  // A new category's row, or a new group's Add category button.
+  const revealGroup =
+    reveal?.type === "group"
+      ? reveal.name
+      : shell.categories.find((item) => item.id === reveal?.id)?.group;
+  // Opens a closed group first, then focuses the target once it renders,
+  // once: closing the group again afterwards keeps it closed.
+  const revealed = useRef<Added | null>(null);
+  useEffect(() => {
+    if (!reveal || !revealGroup || revealed.current === reveal) return;
+    if (closed.includes(revealGroup)) {
+      setClosed((values) => values.filter((value) => value !== revealGroup));
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(
+      reveal.type === "group"
+        ? `[data-add-category="${CSS.escape(reveal.name)}"]`
+        : `[data-row][data-id="${CSS.escape(reveal.id)}"]`,
+    );
+    if (!target) return;
+    revealed.current = reveal;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "center" });
+  }, [reveal, revealGroup, closed]);
   if (!shell.groups.length) {
     return (
-      <Empty title="No categories yet.">
-        Categories you create in Caishen show up here.
+      <Empty title="Give every dollar a job." action={<FirstGroupButton />}>
+        Start with a category group, like Bills, then add the categories that go
+        in it.
       </Empty>
     );
   }
@@ -91,7 +140,7 @@ export function PlanView({
     : shell.groups;
   if (focus && !groups.length) {
     return (
-      <Empty title={focus.empty.title} icon={CheckIcon}>
+      <Empty title={focus.empty.title} icon={CheckIcon} done>
         {focus.empty.body}
       </Empty>
     );
@@ -135,36 +184,47 @@ export function PlanView({
         return (
           <div key={group.id}>
             <div className={styles.rowWrap}>
-              <RowCheckbox
-                label={`Select ${group.name}`}
-                state={
-                  count === 0 ? false : count === ids.length ? true : "mixed"
-                }
-                onChange={() => onCheck(ids, count < ids.length)}
-              />
-              <button
-                type="button"
+              {ids.length > 0 && (
+                <RowCheckbox
+                  label={`Select ${group.name}`}
+                  state={
+                    count === 0 ? false : count === ids.length ? true : "mixed"
+                  }
+                  onChange={() => onCheck(ids, count < ids.length)}
+                />
+              )}
+              {/* The whole header toggles the group for the pointer; the
+                  name is the button, so the + beside it can be one too. */}
+              <div
                 className={`${styles.columns} ${styles.groupRow}`}
-                aria-expanded={open}
-                onClick={() =>
-                  setClosed((values) =>
-                    open
-                      ? [...values, group.id]
-                      : values.filter((value) => value !== group.id),
-                  )
-                }
+                onClick={(event) => {
+                  if (!(event.target as Element).closest("button"))
+                    toggle(group.id);
+                }}
               >
                 <span className={styles.groupName}>
-                  <ChevronDownIcon
-                    size={12}
-                    strokeWidth={2.5}
-                    className={styles.groupCaret}
-                    aria-hidden
-                  />
-                  {group.name}
-                  <span className={styles.groupCount}>
-                    {group.categories.length}
-                  </span>
+                  <button
+                    type="button"
+                    className={styles.groupToggle}
+                    aria-expanded={open}
+                    onClick={() => toggle(group.id)}
+                  >
+                    <ChevronDownIcon
+                      size={12}
+                      strokeWidth={2.5}
+                      className={styles.groupCaret}
+                      aria-hidden
+                    />
+                    <span className={styles.truncate}>{group.name}</span>
+                    <span className={styles.groupCount}>
+                      {group.categories.length}
+                    </span>
+                  </button>
+                  {!isPaymentGroup(group) && (
+                    <span className={styles.groupAdd}>
+                      <AddToGroupButton group={group.name} />
+                    </span>
+                  )}
                 </span>
                 <span className={styles.numeric} data-optional>
                   {money(sum((item) => item.assigned))}
@@ -175,8 +235,13 @@ export function PlanView({
                 <span className={styles.numeric}>
                   {money(sum((item) => item.available))}
                 </span>
-              </button>
+              </div>
             </div>
+            {open && !ids.length && (
+              <div className={styles.emptyGroup}>
+                <EmptyGroupButton group={group.name} />
+              </div>
+            )}
             {open &&
               group.categories.map((category) => {
                 const isChecked = checked.includes(category.id);
@@ -381,6 +446,14 @@ function matches(item: Transaction, query: string, accountName?: string) {
   ].some((value) => value?.toLowerCase().includes(text));
 }
 
+const registerEditFields: Record<string, DraftField> = {
+  date: "date",
+  payee: "payee",
+  category: "categoryId",
+  outflow: "outflow",
+  inflow: "inflow",
+};
+
 export function RegisterView({
   accountId,
   reviewOnly,
@@ -389,6 +462,7 @@ export function RegisterView({
   onSelect,
   checked,
   onCheck,
+  onJump,
 }: {
   accountId: string | null;
   reviewOnly: boolean;
@@ -397,9 +471,20 @@ export function RegisterView({
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
+  onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
 }) {
   const { transactions, accounts, month, today } = useShellData();
-  const { session } = useTransactionEntry();
+  const entry = useTransactionEntry();
+  const { session } = entry;
+  const register = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!selectedId) return;
+    const row = register.current?.querySelector<HTMLButtonElement>(
+      `[data-transaction-row="${CSS.escape(selectedId)}"]`,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+    row?.focus({ preventScroll: true });
+  }, [selectedId, accountId]);
   const accountName = (id: string | null) =>
     accounts.find((entry) => entry.id === id)?.name;
   const search = query.trim();
@@ -437,7 +522,7 @@ export function RegisterView({
         Search looks at payees, categories, and amounts in every month.
       </Empty>
     ) : reviewOnly ? (
-      <Empty title="Everything here is reviewed." icon={CheckIcon}>
+      <Empty title="Everything here is reviewed." icon={CheckIcon} done>
         New bank imports will show up as they arrive.
       </Empty>
     ) : (
@@ -486,7 +571,22 @@ export function RegisterView({
           data-pending={item.status === "pending" || undefined}
           className={`${styles.txColumns} ${styles.row}`}
           aria-current={selectedId === item.id ? "true" : undefined}
-          onClick={() => onSelect(item.id)}
+          onClick={(event) => {
+            if (item.source === "budget" && isChecked && checked.length === 1) {
+              const column =
+                event.target instanceof Element
+                  ? event.target.closest<HTMLElement>("[data-column]")?.dataset
+                      .column
+                  : undefined;
+              const field = column ? registerEditFields[column] : undefined;
+              if (field) {
+                if (field !== "categoryId" || !item.categoryNotNeeded)
+                  entry.start({ transactionId: item.id, field });
+                return;
+              }
+            }
+            onSelect(item.id);
+          }}
         >
           {accountColumn && (
             <span
@@ -506,7 +606,11 @@ export function RegisterView({
               {dayLabel(item.date, today)}
             </span>
           </span>
-          <span className={styles.rowName} data-column="payee">
+          <span
+            className={styles.rowName}
+            data-column="payee"
+            data-jump={Boolean(item.counterpart) || undefined}
+          >
             <span className={styles.truncate}>{item.payee}</span>
             {item.shared && (
               <UsersIcon
@@ -550,12 +654,51 @@ export function RegisterView({
             />
           </span>
         </button>
+        {item.counterpart && (
+          <div className={`${styles.txColumns} ${styles.rowActions}`}>
+            <span className={styles.counterpartAction}>
+              <IconButton
+                asChild
+                label={`View in ${item.counterpart.accountName}`}
+                size="sm"
+              >
+                <a
+                  href={`/prototype/app-shell?${new URLSearchParams({
+                    account: item.counterpart.accountId,
+                    transaction: item.counterpart.id,
+                    month: item.counterpart.date.slice(0, 7),
+                  }).toString()}`}
+                  onClick={(event) => {
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    )
+                      return;
+                    event.preventDefault();
+                    onJump(item.counterpart!);
+                  }}
+                >
+                  <ArrowRightLeftIcon aria-hidden />
+                </a>
+              </IconButton>
+            </span>
+            <span
+              aria-hidden
+              className={`${styles.numeric} ${styles.actionAmountSizer}`}
+            >
+              {money(Math.abs(item.amount))}
+            </span>
+          </div>
+        )}
       </div>
     );
   };
   return (
     <div
       className={`${styles.list} ${styles.register} ${reviewStyles.register}`}
+      ref={register}
       data-accounts={accountColumn || undefined}
       role="group"
       aria-label="Transactions"
@@ -650,19 +793,28 @@ export function RegisterView({
 function Empty({
   title,
   icon: Icon = LandmarkIcon,
+  done = false,
+  action,
   children,
 }: {
   title: string;
   icon?: LucideIcon;
+  // Nothing is left to do, like every category being funded.
+  done?: boolean;
+  // The one thing to do next, under the explanation.
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className={styles.empty}>
+    <div className={styles.empty} data-tone={done ? "done" : undefined}>
       <Icon size={18} aria-hidden />
-      <p>
-        <strong>{title}</strong>
-        {children}
-      </p>
+      <div className={styles.emptyBody}>
+        <p>
+          <strong>{title}</strong>
+          {children}
+        </p>
+        {action && <div>{action}</div>}
+      </div>
     </div>
   );
 }

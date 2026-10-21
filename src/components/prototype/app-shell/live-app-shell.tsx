@@ -14,7 +14,7 @@ import {
 } from "~/components/workspace/use-budget-command";
 import { useBudgetState } from "~/components/workspace/use-budget-state";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
-import { AppShellPrototype } from "./app-shell-prototype";
+import { AppShellPrototype, type CategoryAdder } from "./app-shell-prototype";
 import {
   AssignMoneyProvider,
   useAssignAttempts,
@@ -33,13 +33,13 @@ import {
 } from "./transaction-review";
 
 // Reads the signed-in budget through the production query. Moving money,
-// editing Assigned, marking transactions reviewed, and adding or editing
-// transactions are real: they send the legacy app's commands through the
+// editing Assigned, adding category groups and categories, marking transactions reviewed, and
+// adding or editing transactions are real: they send the legacy app's commands through the
 // same optimistic path and share its undo history. The other actions stay
 // inert.
-export function LiveAppShell() {
+export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
   const { isLoaded, userId } = useAuth();
-  const [month, setMonth] = useState(currentMonth);
+  const [month, setMonth] = useState(() => initialMonth ?? currentMonth());
   const state = useBudgetState(month, Boolean(userId));
   const settings = useSavedSettings();
 
@@ -154,6 +154,11 @@ function LiveWorkspace({
     holdOpen,
   };
 
+  const categoryAdder: CategoryAdder = {
+    add: moveMoney.move,
+    holdOpen,
+  };
+
   const busy = useIsMutating() > 0 || loadingMonth || Boolean(refreshError);
   const attemptId = useAssignAttempts(state.revision);
   const assignMoney: AssignMoney = {
@@ -181,6 +186,36 @@ function LiveWorkspace({
         `Marked ${count} ${count === 1 ? "transaction" : "transactions"} reviewed`,
       );
       run(command);
+    },
+    reject: (transactionIds) => {
+      if (blocked() || !transactionIds.length) return;
+      const command = {
+        type: "transaction.reject" as const,
+        id: newId(),
+        transactionIds,
+      };
+      const count = transactionIds.length;
+      summaries.current.set(
+        command.id,
+        `Rejected ${count} ${count === 1 ? "transaction" : "transactions"}`,
+      );
+      run(command);
+    },
+    categorize: async (transactionIds, categoryId) => {
+      const reason = blocked();
+      if (reason) throw new Error(blockMessage[reason]);
+      const command = {
+        type: "transaction.categorize.batch" as const,
+        id: newId(),
+        transactionIds,
+        categoryId,
+      };
+      const count = transactionIds.length;
+      summaries.current.set(
+        command.id,
+        `Categorized ${count} ${count === 1 ? "transaction" : "transactions"}`,
+      );
+      await execute.mutateAsync({ command, expectedRevision: state.revision });
     },
     busy,
   };
@@ -224,6 +259,7 @@ function LiveWorkspace({
           loadingMonth={loadingMonth}
           onMonthChange={onMonthChange}
           moveMoney={moveMoney}
+          categoryAdder={categoryAdder}
           transactionSaver={transactionSaver}
           renameBudget={(name) => {
             const reason = blocked();

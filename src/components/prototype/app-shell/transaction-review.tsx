@@ -1,17 +1,26 @@
 "use client";
 
 import { useIsMutating } from "@tanstack/react-query";
-import { XIcon } from "lucide-react";
-import { createContext, useContext, useEffect } from "react";
+import {
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleXIcon,
+  TagsIcon,
+  XIcon,
+} from "lucide-react";
+import { Popover } from "radix-ui";
+import { createContext, useContext, useEffect, useId, useState } from "react";
 import { newId } from "~/components/budget/format";
+import { isTransfer } from "~/domain/transfers";
 import type { Command } from "~/domain/engine";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
-import { Tooltip } from "~/components/ui/tooltip";
-import { money, type Transaction } from "./model";
+import { usePortalContainer } from "~/components/ui/tooltip";
+import type { Transaction } from "./model";
 import shell from "./shell.module.css";
-import { editGuidance, useTransactionEntry } from "./transaction-entry";
+import { useTransactionEntry } from "./transaction-entry";
+import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import styles from "./transaction-review.module.css";
 
 // transaction.approve takes at most this many transactions at once.
@@ -26,6 +35,8 @@ export type TransactionReview = {
   // command path. Ignored while another change saves, a month loads, or the
   // budget couldn't refresh.
   approve: (transactionIds: string[]) => void;
+  reject: (transactionIds: string[]) => void;
+  categorize: (transactionIds: string[], categoryId: string) => Promise<void>;
   // True while one of those applies, so review controls stay disabled.
   busy: boolean;
 };
@@ -41,9 +52,8 @@ function useTransactionReview() {
   return value;
 }
 
-// Only recorded transactions can be selected; bank imports keep their own
-// review, which isn't built yet. The selection on screen is what's checked
-// among the rows showing. Once nothing is saving, checked rows that are no longer showing
+// The selection on screen is what's checked among the rows showing.
+// Once nothing is saving, checked rows that are no longer showing
 // are dropped, so a row that comes back later doesn't return selected.
 // While an approval saves they're kept: if it fails, the rows it hid come
 // back still selected for another try.
@@ -71,7 +81,6 @@ export function useReviewSelection({
     approvable: selected
       .filter((item) => item.needsReview)
       .map((item) => item.id),
-    net: selected.reduce((total, item) => total + item.amount, 0),
   };
 }
 
@@ -103,11 +112,9 @@ export function SelectAll({
 }
 
 // Floats over the bottom of the register while rows are selected, in place
-// of a details panel: what's selected, and what can be done to it. Edit
-// shows for one transaction the register can edit. Categorize isn't built
-// yet.
+// of a details panel. Review actions disappear once the selection is approved.
 export function SelectionIsland({
-  selection: { selected, approvable, net },
+  selection: { selected, approvable },
   onCheck,
 }: {
   selection: ReturnType<typeof useReviewSelection>;
@@ -116,15 +123,8 @@ export function SelectionIsland({
   const review = useTransactionReview();
   const entry = useTransactionEntry();
   if (!selected.length) return null;
-  const only = selected.length === 1 ? selected[0]!.id : null;
-  const transaction = entry.view.budget.transactions.find(
-    (item) => item.id === only && !item.removed,
-  );
-  // Transfers, card payments, and the like aren't edited here yet, so
-  // they offer no Edit.
-  const editable =
-    transaction && !editGuidance(transaction) ? transaction : undefined;
   const overLimit = approvable.length > APPROVE_LIMIT;
+  const busy = review.busy || Boolean(entry.session);
   return (
     <div className={styles.islandSlot}>
       <div
@@ -147,9 +147,8 @@ export function SelectionIsland({
         </IconButton>
         <span className={styles.summary} aria-live="polite">
           <span className={styles.count}>
-            {selected.length} selected
-            <span aria-hidden> · </span>
-            <span className={shell.numeric}>{money(net, true)}</span>
+            {selected.length}{" "}
+            {selected.length === 1 ? "transaction" : "transactions"}
           </span>
           {overLimit && (
             <span className={styles.hint}>
@@ -159,29 +158,166 @@ export function SelectionIsland({
         </span>
         <span className={styles.divider} aria-hidden />
         <div className={styles.actions}>
-          {editable && (
-            <Tooltip label="Edit this transaction" shortcut="E">
+          {approvable.length > 0 && (
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={busy || overLimit}
+                onClick={() => review.approve(approvable)}
+              >
+                <CircleCheckIcon aria-hidden />
+                Approve ({approvable.length})
+              </Button>
               <Button
                 size="sm"
-                data-transaction-opener={editable.id}
-                disabled={Boolean(entry.session) || entry.busy}
-                onClick={() => entry.start({ transactionId: editable.id })}
+                disabled={busy || overLimit}
+                onClick={() => review.reject(approvable)}
               >
-                Edit
+                <CircleXIcon aria-hidden />
+                Reject
               </Button>
-            </Tooltip>
+            </>
           )}
-          <Button size="sm">Categorize</Button>
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={review.busy || !approvable.length || overLimit}
-            onClick={() => review.approve(approvable)}
-          >
-            Approve ({approvable.length})
-          </Button>
+          <CategorizeAction selected={selected} disabled={busy} />
         </div>
       </div>
     </div>
+  );
+}
+
+function CategorizeAction({
+  selected,
+  disabled,
+}: {
+  selected: Transaction[];
+  disabled: boolean;
+}) {
+  const review = useTransactionReview();
+  const { view, holdOpen } = useTransactionEntry();
+  const container = usePortalContainer();
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [categoryId, setCategoryId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
+  const transactions = view.budget.transactions.filter(
+    (item) => !item.removed && selected.some((row) => row.id === item.id),
+  );
+  const options: ChoiceOption[] = view.categories
+    .filter(
+      (category) =>
+        !category.pairedAccountId &&
+        !category.pairedLoanId &&
+        transactions.every(
+          (item) => !item.sharedCategoryId || item.categoryId === category.id,
+        ),
+    )
+    .map((category) => ({ value: category.id, label: category.name }));
+  const available =
+    selected.length <= APPROVE_LIMIT &&
+    selected.every((item) => !item.categoryNotNeeded) &&
+    transactions.length === selected.length &&
+    transactions.every(
+      (item) =>
+        isTransfer(item) ||
+        ["purchase", "income", "refund"].includes(item.kind),
+    );
+  const submit = async () => {
+    if (!categoryId || saving || disabled) return;
+    setSaving(true);
+    setError("");
+    try {
+      await review.categorize(
+        selected.map((item) => item.id),
+        categoryId,
+      );
+      setOpen(false);
+    } catch {
+      setError("Couldn’t save the category. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (!open && (disabled || !available || !options.length)) return null;
+  return (
+    <Popover.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (saving) return;
+        if (next) {
+          setCategoryId("");
+          setError("");
+        }
+        setOpen(next);
+      }}
+    >
+      <Popover.Trigger asChild>
+        <Button size="sm" disabled={disabled || saving}>
+          <TagsIcon aria-hidden />
+          Categorize
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal container={container}>
+        <Popover.Content
+          className={styles.categoryPopover}
+          side="top"
+          align="end"
+          sideOffset={8}
+          collisionPadding={12}
+          onInteractOutside={(event) => {
+            if (saving) event.preventDefault();
+          }}
+          onEscapeKeyDown={(event) => {
+            if (saving) event.preventDefault();
+          }}
+        >
+          <form
+            className={styles.categoryForm}
+            aria-label="Categorize transactions"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <label htmlFor={id}>Category</label>
+            <ChoiceField
+              id={id}
+              label="Category"
+              value={categoryId}
+              options={options}
+              wide={false}
+              placeholder="Choose a category"
+              readOnly={saving}
+              onChange={setCategoryId}
+            />
+            {error && (
+              <p className={styles.error} role="alert">
+                <CircleAlertIcon aria-hidden size={14} />
+                {error}
+              </p>
+            )}
+            <div className={styles.actions}>
+              <Button
+                size="sm"
+                disabled={saving}
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                type="submit"
+                disabled={saving || !categoryId || disabled}
+              >
+                {saving ? "Saving…" : "Apply"}
+              </Button>
+            </div>
+          </form>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

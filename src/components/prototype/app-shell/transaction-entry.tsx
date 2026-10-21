@@ -47,7 +47,14 @@ export type TransactionSession = {
 type FocusTarget = DraftField | "calendar" | "error";
 type FocusRequest = { id: number; target: FocusTarget; auto: boolean };
 
-const editableKinds: Transaction["kind"][] = ["purchase", "refund", "income"];
+const editableKinds: Transaction["kind"][] = [
+  "purchase",
+  "refund",
+  "income",
+  "transfer",
+  "card-payment",
+  "loan-payment",
+];
 // The row's fields as they read on screen, so a failed save focuses the
 // first problem the user sees.
 const screenOrder: DraftField[] = [
@@ -57,22 +64,11 @@ const screenOrder: DraftField[] = [
   "categoryId",
   "outflow",
   "inflow",
+  "interest",
 ];
 
-// Why a recorded transaction isn't edited here, by kind.
-const otherAction: Partial<Record<Transaction["kind"], string>> = {
-  "card-payment": "Card payments are changed from the card payment action.",
-  "loan-payment": "Loan payments are changed from the loan's payment action.",
-  reimbursement: "Reimbursements are changed from the reimbursement they pay.",
-  settlement: "Settlements are changed from the shared balance.",
-  "statement-credit": "Statement credits are changed from the card's credits.",
-};
-
-export function editGuidance(transaction: Transaction) {
-  return editableKinds.includes(transaction.kind)
-    ? null
-    : (otherAction[transaction.kind] ??
-        "This transaction is changed from its own action.");
+export function canEditTransaction(transaction: Transaction) {
+  return editableKinds.includes(transaction.kind);
 }
 
 export function useTransactionEntryController({
@@ -165,9 +161,11 @@ export function useTransactionEntryController({
   const start = ({
     transactionId,
     accountId,
+    field,
   }: {
     transactionId?: string;
     accountId?: string | null;
+    field?: DraftField;
   }) => {
     if (session || saver.busy || !view.accounts.length) return false;
     const transaction = transactionId
@@ -175,7 +173,7 @@ export function useTransactionEntryController({
           (item) => item.id === transactionId && !item.removed,
         )
       : undefined;
-    if (transactionId && (!transaction || editGuidance(transaction)))
+    if (transactionId && (!transaction || !canEditTransaction(transaction)))
       return false;
     const draft = createTransactionDraft(
       view,
@@ -183,6 +181,13 @@ export function useTransactionEntryController({
       transaction,
       accountId ?? undefined,
     );
+    const editField =
+      draft.transferAccountId ||
+      draft.loanId ||
+      view.accounts.find((item) => item.id === draft.accountId)?.kind ===
+        "tracking"
+        ? "payee"
+        : "categoryId";
     opener.current = {
       element:
         document.activeElement instanceof HTMLElement
@@ -199,15 +204,15 @@ export function useTransactionEntryController({
       pristine: draft,
       fields: {},
       error: "",
-      calendarOpen: !transaction && Boolean(accountId),
+      calendarOpen: field === "date" || (!transaction && Boolean(accountId)),
     });
     reveal();
     // A new transaction starts on its first column. In one account's
     // register that's the date, whose calendar never opens a touch keyboard;
     // All accounts starts on the account.
     focus(
-      transaction ? "categoryId" : accountId ? "calendar" : "accountId",
-      true,
+      field ?? (transaction ? editField : accountId ? "calendar" : "accountId"),
+      !field,
     );
     return true;
   };
@@ -351,6 +356,12 @@ export function useTransactionEntryController({
 
   return {
     view,
+    holdOpen,
+    addAccount: async (command: Extract<Command, { type: "account.add" }>) => {
+      const reason = saver.blocked();
+      if (reason) throw new Error(reason);
+      await saver.save(command, `Added ${command.name}`);
+    },
     busy: saver.busy,
     session,
     latest,

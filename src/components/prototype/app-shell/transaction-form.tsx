@@ -2,8 +2,12 @@
 
 import { CircleAlertIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
+import { isTransfer, transferNeedsCategory } from "~/domain/transfers";
 import { today } from "~/components/budget/format";
-import { READY_TO_ASSIGN } from "~/components/transactions/transaction-draft";
+import {
+  READY_TO_ASSIGN,
+  paymentPayees,
+} from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
 import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -60,6 +64,25 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   });
 
   const account = view.accounts.find((item) => item.id === draft.accountId);
+  const destinations = paymentPayees(view, draft);
+  const destination = destinations.find((item) =>
+    item.accountId
+      ? item.accountId === draft.transferAccountId
+      : item.loanId === draft.loanId,
+  );
+  const loan = view.budget.loans.find((item) => item.id === draft.loanId);
+  const other = view.accounts.find(
+    (item) => item.id === draft.transferAccountId,
+  );
+  const boundary = Boolean(
+    account && other && transferNeedsCategory(account, other),
+  );
+  const categoryNotNeeded =
+    Boolean(other && !boundary) || (account?.kind === "tracking" && !other);
+  const budgetInflow =
+    account?.kind === "tracking"
+      ? Boolean(draft.outflow)
+      : Boolean(draft.inflow);
   const shared = view.sharedCategories.find(
     (item) => item.id === draft.sharedCategoryId,
   );
@@ -68,7 +91,12 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       view.accounts.map((item) => ({
         value: item.id,
         label: item.name,
-        group: item.kind === "credit" ? "Credit" : "Cash",
+        group:
+          item.kind === "credit"
+            ? "Credit"
+            : item.kind === "tracking"
+              ? "Tracking"
+              : "Cash",
       })),
     [view.accounts],
   );
@@ -79,15 +107,19 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       group: "Inflow",
       amount: view.readyToAssign,
       disabled:
-        account?.kind === "credit" ||
-        Boolean(initial?.categoryId) ||
+        (boundary ? !budgetInflow : account?.kind === "credit") ||
+        (Boolean(initial?.categoryId) &&
+          !boundary &&
+          initial !== undefined &&
+          !isTransfer(initial) &&
+          initial?.kind !== "loan-payment") ||
         Boolean(shared),
     },
     ...view.categories
       .filter(
         (category) =>
           !category.pairedAccountId &&
-          !category.pairedLoanId &&
+          (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId) &&
           (!shared || shared.categoryIds[view.budget.userId] === category.id),
       )
       .map((category) => ({
@@ -101,7 +133,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     () => [
       ...new Set(
         view.budget.transactions
-          .filter((item) => !item.removed)
+          .filter(
+            (item) =>
+              !item.removed &&
+              ["purchase", "refund", "income"].includes(item.kind),
+          )
           .sort((a, b) => b.date.localeCompare(a.date))
           .map((item) => item.payee),
       ),
@@ -213,18 +249,71 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     <PayeeField
       id={id("payee")}
       label="Payee"
-      value={draft.payee}
+      value={destination?.label ?? draft.payee}
       payees={payees}
+      destinations={destinations}
+      selectedDestination={destination?.value}
+      onDestination={(value) => {
+        const selected = destinations.find((item) => item.value === value);
+        if (!selected) return;
+        entry.change({
+          payee: selected.label,
+          transferAccountId: selected.accountId,
+          loanId: selected.loanId,
+          ...(selected.loanId !== draft.loanId ? { interest: "" } : {}),
+          categoryId: selected.loanId
+            ? view.budget.loans.find((item) => item.id === selected.loanId)!
+                .categoryId
+            : account &&
+                selected.accountId &&
+                transferNeedsCategory(
+                  account,
+                  view.accounts.find((item) => item.id === selected.accountId)!,
+                )
+              ? draft.categoryId || (budgetInflow ? READY_TO_ASSIGN : "")
+              : "",
+        });
+      }}
       placeholder="Payee"
       inputRef={register("payee")}
       invalid={Boolean(fields.payee)}
       describedBy={described("payee")}
       readOnly={submitting}
-      onChange={(payee) => entry.change({ payee })}
-      onPicked={() => advance("categoryId")}
+      onChange={(payee) =>
+        entry.change({
+          payee,
+          transferAccountId: "",
+          loanId: "",
+          ...(draft.loanId ? { categoryId: "" } : {}),
+        })
+      }
+      onPicked={(value) => {
+        const selected = destinations.find((item) => item.value === value);
+        if (
+          selected?.accountId &&
+          account &&
+          !transferNeedsCategory(
+            account,
+            view.accounts.find((item) => item.id === selected.accountId)!,
+          )
+        )
+          advance(selected.label.includes(" from ") ? "inflow" : "outflow");
+        else if (!selected && categoryNotNeeded) advance("outflow");
+        else advance("categoryId");
+      }}
     />
   );
-  const categoryControl = (
+  const categoryControl = categoryNotNeeded ? (
+    <div className={styles.well} data-disabled>
+      <input
+        id={id("categoryId")}
+        className={styles.input}
+        aria-label="Category"
+        value="Category not needed"
+        disabled
+      />
+    </div>
+  ) : (
     <ChoiceField
       id={id("categoryId")}
       label="Category"
@@ -238,7 +327,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       onChange={(categoryId) => entry.change({ categoryId })}
       // Ready to Assign only takes an inflow.
       onPicked={(categoryId) =>
-        advance(categoryId === READY_TO_ASSIGN ? "inflow" : "outflow")
+        advance(
+          categoryId === READY_TO_ASSIGN
+            ? account?.kind === "tracking" && boundary
+              ? "outflow"
+              : "inflow"
+            : account?.kind === "tracking" && boundary && draft.inflow
+              ? "inflow"
+              : "outflow",
+        )
       }
     />
   );
@@ -254,7 +351,14 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       describedBy={described("accountId")}
       disabled={editing}
       readOnly={submitting}
-      onChange={(accountId) => entry.change({ accountId })}
+      onChange={(accountId) =>
+        entry.change({
+          accountId,
+          transferAccountId: "",
+          loanId: "",
+          payee: destination ? "" : draft.payee,
+        })
+      }
       onPicked={() => {
         if (!window.matchMedia("(pointer: fine)").matches) return;
         entry.setCalendarOpen(true);
@@ -350,6 +454,38 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           </p>
         )}
       </div>
+      {loan && (
+        <div className={styles.loanDetails}>
+          <div>
+            <label htmlFor={id("interest")}>Lender-confirmed interest</label>
+            <div
+              className={styles.well}
+              data-invalid={Boolean(fields.interest) || undefined}
+            >
+              <span aria-hidden>$</span>
+              <input
+                ref={register("interest")}
+                id={id("interest")}
+                className={styles.input}
+                inputMode="decimal"
+                value={draft.interest}
+                placeholder="0.00"
+                readOnly={submitting}
+                aria-invalid={Boolean(fields.interest) || undefined}
+                aria-describedby={described("interest")}
+                onChange={(event) =>
+                  entry.change({ interest: event.target.value })
+                }
+              />
+            </div>
+            {fieldError("interest")}
+          </div>
+          <p>
+            The outflow includes principal and interest. Only principal reduces
+            the loan balance.
+          </p>
+        </div>
+      )}
       <div className={styles.rowFooter}>
         {error}
         {actions}

@@ -12,7 +12,6 @@ import {
   PaletteIcon,
   CircleUserRoundIcon,
   PanelLeftIcon,
-  PlusIcon,
   SettingsIcon,
   UserPlusIcon,
   WalletCardsIcon,
@@ -22,6 +21,7 @@ import { DropdownMenu } from "radix-ui";
 import { useRef, useState } from "react";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { AccountEntry } from "./account-entry";
 import { money } from "./model";
 import { SHELL_PATH, type SettingsPage } from "./settings-pages";
 import { useShellData } from "./shell-data";
@@ -87,6 +87,22 @@ export function Sidebar({
           label: account.name,
           value: account.balance,
           warning: Boolean(account.connection?.needsAttention),
+          current:
+            screen.type === "register" && screen.accountId === account.id,
+          go: () => onNavigate({ type: "register", accountId: account.id }),
+        })),
+    },
+    {
+      id: "tracking",
+      label: "Tracking",
+      empty: undefined,
+      items: accounts
+        .filter((account) => account.kind === "tracking")
+        .map((account) => ({
+          id: account.id,
+          label: account.name,
+          value: account.balance,
+          warning: false,
           current:
             screen.type === "register" && screen.accountId === account.id,
           go: () => onNavigate({ type: "register", accountId: account.id }),
@@ -196,9 +212,7 @@ export function Sidebar({
       </div>
 
       <div className={styles.sidebarFooter}>
-        <IconButton label="Add account">
-          <PlusIcon aria-hidden />
-        </IconButton>
+        <AccountEntry />
       </div>
     </nav>
   );

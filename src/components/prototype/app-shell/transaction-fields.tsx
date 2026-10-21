@@ -161,11 +161,13 @@ export function ChoiceField({
   inputRef,
   onChange,
   onPicked,
+  wide = true,
 }: FieldProps & {
   value: string;
   options: ChoiceOption[];
   placeholder: string;
   onChange: (value: string) => void;
+  wide?: boolean;
 }) {
   const listId = `${id}-list`;
   const listRef = useRef<HTMLDivElement>(null);
@@ -230,7 +232,7 @@ export function ChoiceField({
       onClose={() => setExpanded(false)}
       listId={listId}
       label={label}
-      wide
+      wide={wide}
       anchor={
         <div
           className={styles.well}
@@ -317,6 +319,8 @@ export function PayeeField({
   label,
   value,
   payees,
+  destinations = [],
+  selectedDestination,
   placeholder = "Who you paid or who paid you",
   describedBy,
   invalid,
@@ -325,37 +329,51 @@ export function PayeeField({
   inputRef,
   onChange,
   onPicked,
+  onDestination,
 }: FieldProps & {
   value: string;
   payees: string[];
+  destinations?: ChoiceOption[];
+  selectedDestination?: string;
   placeholder?: string;
   onChange: (value: string) => void;
+  onDestination?: (value: string) => void;
 }) {
   const listId = `${id}-list`;
+  const listRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
+  const [query, setQuery] = useState("");
   const [active, setActive] = useState(-1);
-  const search = value.trim().toLowerCase();
-  const suggestions = (
-    search
-      ? payees
-          .filter(
-            (payee) =>
-              payee.toLowerCase().includes(search) &&
-              payee.toLowerCase() !== search,
-          )
-          .sort(
-            (a, b) =>
-              Number(!a.toLowerCase().startsWith(search)) -
-              Number(!b.toLowerCase().startsWith(search)),
-          )
-      : payees
-  ).slice(0, 8);
-  const open = expanded && suggestions.length > 0 && !disabled && !readOnly;
-  const pick = (payee: string) => {
-    onChange(payee);
+  const search = query.trim().toLowerCase();
+  const transfers = destinations.filter((item) =>
+    item.label.toLowerCase().includes(search),
+  );
+  const suggestions = payees
+    .filter((payee) => payee.toLowerCase().includes(search))
+    .slice(0, 8);
+  const options = [
+    ...transfers.map((item) => ({ ...item, group: "Payments and Transfers" })),
+    ...suggestions.map((payee) => ({
+      value: `payee:${payee}`,
+      label: payee,
+      group: "Payees",
+    })),
+  ];
+  const open = expanded && options.length > 0 && !disabled && !readOnly;
+  const current = options[active];
+  const pick = (index: number) => {
+    const option = options[index];
+    if (!option) return;
+    if (index < transfers.length) onDestination?.(option.value);
+    else onChange(option.label);
     setExpanded(false);
     setActive(-1);
-    onPicked?.(payee);
+    onPicked?.(option.value);
+  };
+  const show = () => {
+    setQuery("");
+    setActive(-1);
+    setExpanded(true);
   };
   return (
     <OptionList
@@ -363,6 +381,7 @@ export function PayeeField({
       onClose={() => setExpanded(false)}
       listId={listId}
       label={`${label} suggestions`}
+      wide
       anchor={
         <div className={styles.well} data-invalid={invalid ? true : undefined}>
           <input
@@ -377,7 +396,7 @@ export function PayeeField({
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             aria-activedescendant={
-              open && active >= 0 ? `${listId}-${active}` : undefined
+              open && current ? `${listId}-${active}` : undefined
             }
             aria-invalid={invalid ? true : undefined}
             aria-describedby={describedBy}
@@ -385,28 +404,41 @@ export function PayeeField({
             readOnly={readOnly}
             placeholder={placeholder}
             value={value}
-            onFocus={() => setExpanded(true)}
-            onClick={() => setExpanded(true)}
+            onFocus={(event) => {
+              show();
+              event.currentTarget.select();
+            }}
+            onClick={() => {
+              if (!expanded) show();
+            }}
             onBlur={() => setExpanded(false)}
             onChange={(event) => {
               onChange(event.target.value);
+              setQuery(event.target.value);
               setExpanded(true);
               setActive(-1);
             }}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                if (!suggestions.length) return;
+                if (!options.length) return;
                 event.preventDefault();
                 setExpanded(true);
-                const by = event.key === "ArrowDown" ? 1 : -1;
-                setActive((index) =>
-                  open
-                    ? Math.min(suggestions.length - 1, Math.max(0, index + by))
-                    : 0,
-                );
-              } else if (event.key === "Enter" && open && active >= 0) {
+                const next = open
+                  ? Math.min(
+                      options.length - 1,
+                      Math.max(
+                        0,
+                        active + (event.key === "ArrowDown" ? 1 : -1),
+                      ),
+                    )
+                  : 0;
+                setActive(next);
+                listRef.current
+                  ?.querySelector(`[id="${listId}-${next}"]`)
+                  ?.scrollIntoView({ block: "nearest" });
+              } else if (event.key === "Enter" && open && current) {
                 event.preventDefault();
-                pick(suggestions[active]!);
+                pick(active);
               } else if (event.key === "Escape" && open) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -414,19 +446,28 @@ export function PayeeField({
               }
             }}
           />
+          <ChevronDownIcon size={12} className={styles.chevron} aria-hidden />
         </div>
       }
     >
-      <div className={styles.listScroll}>
-        {suggestions.map((payee, index) => (
-          <Option
-            key={payee}
-            id={`${listId}-${index}`}
-            label={payee}
-            active={index === active}
-            onActivate={() => setActive(index)}
-            onPick={() => pick(payee)}
-          />
+      <div ref={listRef} className={styles.listScroll}>
+        {options.map((option, index) => (
+          <div key={option.value}>
+            {option.group !== options[index - 1]?.group && (
+              <p className={styles.group}>{option.group}</p>
+            )}
+            <Option
+              id={`${listId}-${index}`}
+              label={option.label}
+              selected={
+                option.value === selectedDestination ||
+                (index >= transfers.length && option.label === value)
+              }
+              active={index === active}
+              onActivate={() => setActive(index)}
+              onPick={() => pick(index)}
+            />
+          </div>
         ))}
       </div>
     </OptionList>

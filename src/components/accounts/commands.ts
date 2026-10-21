@@ -14,7 +14,7 @@ export function buildAccountCommand({
   const claim = view.reimbursements.find((item) => item.id === panel.id);
   switch (panel.type) {
     case "account": {
-      const kind = text(data, "kind") as "cash" | "credit";
+      const kind = text(data, "kind") as "cash" | "credit" | "tracking";
       command = {
         type: "account.add",
         id,

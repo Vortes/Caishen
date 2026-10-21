@@ -151,6 +151,7 @@ function restoreTransactions(
 
 const commandLabels = {
   "account.add": "Add account",
+  "group.add": "Add category group",
   "category.add": "Add category",
   "category.import": "Import categories",
   assign: "Assign money",
@@ -160,9 +161,12 @@ const commandLabels = {
   "target.set": "Update category target",
   "target.snooze": "Snooze category target",
   "transaction.upsert": "Save transaction",
+  "transaction.save": "Save transaction",
   "transaction.remove": "Delete transaction",
   "transaction.approve": "Approve transactions",
+  "transaction.reject": "Reject transactions",
   "transaction.categorize": "Categorize transaction",
+  "transaction.categorize.batch": "Categorize transactions",
   "transaction.merge": "Merge transactions",
   "shared.create": "Share category",
   "shared.rule": "Update shared category",

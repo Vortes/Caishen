@@ -108,7 +108,7 @@ export function WorkspaceSidebar({
         ))}
       </nav>
       <div className="sidebar-accounts">
-        {(["cash", "credit"] as const).map((kind) => {
+        {(["cash", "credit", "tracking"] as const).map((kind) => {
           const accounts = view.accounts.filter(
             (account) => account.kind === kind,
           );
@@ -129,7 +129,13 @@ export function WorkspaceSidebar({
                   }
                   size={12}
                 />
-                <span>{kind === "cash" ? "Cash" : "Credit"}</span>
+                <span>
+                  {kind === "cash"
+                    ? "Cash"
+                    : kind === "credit"
+                      ? "Credit"
+                      : "Tracking"}
+                </span>
                 <Amount
                   value={balance}
                   className={balance < 0 ? "negative" : ""}
@@ -157,7 +163,13 @@ export function WorkspaceSidebar({
                   ))
                 ) : (
                   <p className="sidebar-empty">
-                    No {kind === "cash" ? "cash accounts" : "credit cards"} yet
+                    No{" "}
+                    {kind === "cash"
+                      ? "cash accounts"
+                      : kind === "credit"
+                        ? "credit cards"
+                        : "tracking accounts"}{" "}
+                    yet
                   </p>
                 ))}
             </section>

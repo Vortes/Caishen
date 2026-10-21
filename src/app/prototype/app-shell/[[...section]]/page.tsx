@@ -15,11 +15,18 @@ export const metadata: Metadata = {
 // shell's panels in place, so the budget and layout stay loaded.
 export default async function AppShellPrototypePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ section?: string[] }>;
+  searchParams: Promise<{ month?: string }>;
 }) {
   const { section } = await params;
   if (section && !settingsPageAt(`${SHELL_PATH}/${section.join("/")}`))
     notFound();
-  return <LiveAppShell />;
+  const { month } = await searchParams;
+  const initialMonth =
+    typeof month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+      ? month
+      : undefined;
+  return <LiveAppShell initialMonth={initialMonth} />;
 }

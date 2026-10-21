@@ -1,16 +1,27 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import type { Command } from "~/domain/engine";
+import {
+  isTransfer,
+  registerPayee,
+  transferCounterparts,
+  transferPayee,
+  transferNeedsCategory,
+  READY_TO_ASSIGN,
+} from "~/domain/transfers";
 import { budgetDay } from "~/domain/user-command";
 
 type Transaction = View["budget"]["transactions"][number];
 
-export const READY_TO_ASSIGN = "__ready_to_assign__";
+export { READY_TO_ASSIGN } from "~/domain/transfers";
 
 export type TransactionDraft = {
   accountId: string;
   date: string;
   payee: string;
+  transferAccountId: string;
+  loanId: string;
+  interest: string;
   categoryId: string;
   outflow: string;
   inflow: string;
@@ -70,15 +81,37 @@ export function createTransactionDraft(
   transaction?: Transaction,
   defaultAccountId?: string,
 ): TransactionDraft {
-  const account = view.accounts.find((item) => item.id === defaultAccountId);
+  const account = view.accounts.find(
+    (item) => item.id === (transaction?.accountId ?? defaultAccountId),
+  );
+  const counterpart = transaction
+    ? transferCounterparts(view.budget, transaction)[0]
+    : undefined;
+  const loan =
+    transaction?.kind === "loan-payment"
+      ? view.budget.loans.find((item) =>
+          item.payments.some((payment) => payment.id === transaction.linkedId),
+        )
+      : undefined;
+  const payment = loan?.payments.find(
+    (item) => item.id === transaction?.linkedId,
+  );
   return {
+    transferAccountId: counterpart?.accountId ?? "",
+    loanId: loan?.id ?? "",
+    interest: payment ? (payment.interest / 100).toFixed(2) : "",
     accountId:
       transaction?.accountId ?? account?.id ?? view.accounts[0]?.id ?? "",
     date: transaction?.date ?? today(view.budget.settings.timezone),
-    payee: transaction?.payee ?? "",
+    payee: transaction ? registerPayee(view.budget, transaction) : "",
     categoryId:
       transaction?.categoryId ??
-      (transaction && transaction.amount > 0 ? READY_TO_ASSIGN : ""),
+      (transaction &&
+      (account?.kind === "tracking" && counterpart
+        ? counterpart.amount
+        : transaction.amount) > 0
+        ? READY_TO_ASSIGN
+        : ""),
     outflow:
       transaction && transaction.amount < 0
         ? (-transaction.amount / 100).toFixed(2)
@@ -106,7 +139,7 @@ export function buildTransactionDraftCommand({
   transaction?: Transaction;
   operationId: string;
   entityId: string;
-}): Extract<Command, { type: "transaction.upsert" }> {
+}): Extract<Command, { type: "transaction.upsert" | "transaction.save" }> {
   const fields: TransactionDraftFields = {};
   const account = view.accounts.find((item) => item.id === draft.accountId);
   const date = draft.date.trim();
@@ -117,15 +150,36 @@ export function buildTransactionDraftCommand({
   const outflowText = draft.outflow.trim();
   const inflowText = draft.inflow.trim();
   const ownShareText = draft.ownShare.trim();
+  const transfer = Boolean(draft.transferAccountId || draft.loanId);
+  const loan = view.budget.loans.find((item) => item.id === draft.loanId);
+  const other = view.accounts.find(
+    (item) => item.id === draft.transferAccountId,
+  );
+  const boundary = Boolean(
+    account && other && transferNeedsCategory(account, other),
+  );
+  if (draft.transferAccountId && (!other || other.id === account?.id))
+    fields.payee = "Choose a different account.";
+  if (draft.loanId && (!loan || account?.kind !== "cash"))
+    fields.payee = "Choose a loan payment from a cash account.";
+  if (draft.loanId && draft.transferAccountId)
+    fields.payee = "Choose one destination.";
 
   if (!account) fields.accountId = "Choose an account.";
   else if (transaction && account.id !== transaction.accountId)
     fields.accountId = "An existing transaction cannot move between accounts.";
   if (
     transaction &&
-    !["purchase", "refund", "income"].includes(transaction.kind)
+    ![
+      "purchase",
+      "refund",
+      "income",
+      "transfer",
+      "card-payment",
+      "loan-payment",
+    ].includes(transaction.kind)
   )
-    fields.accountId = "Use the dedicated action for payments and repayments.";
+    fields.accountId = "This transaction cannot be edited in the register.";
   if (!payee) fields.payee = "Enter a payee.";
   else if (payee.length > 240)
     fields.payee = "Use no more than 240 characters for the payee.";
@@ -166,22 +220,54 @@ export function buildTransactionDraftCommand({
     else inflow = parsed;
   }
 
-  const category = view.categories.find((item) => item.id === categoryId);
-  if (categoryId === READY_TO_ASSIGN) {
-    if (outflowText)
-      fields.categoryId = "Choose a spending category for an outflow.";
-    else if (account?.kind === "credit")
+  if (other && date < other.date)
+    fields.date = "The date must be on or after both accounts opened.";
+  let interest: number | undefined;
+  if (loan) {
+    interest = parseAmount(draft.interest.trim());
+    if (interest === undefined || interest > outflow)
+      fields.interest =
+        "Enter confirmed interest between zero and the payment total.";
+    if (!outflowText) fields.outflow = "Enter the loan payment as an outflow.";
+    if (draft.status !== "posted")
+      fields.payee = "Loan payments require confirmed posted activity.";
+    if (categoryId !== loan.categoryId)
+      fields.categoryId = "Choose the loan's payment category.";
+  }
+  if (boundary) {
+    const budgetAmount =
+      account?.kind === "tracking" ? outflow - inflow : inflow - outflow;
+    const category = view.categories.find((item) => item.id === categoryId);
+    if (categoryId === READY_TO_ASSIGN) {
+      if (budgetAmount < 0)
+        fields.categoryId = "Choose a category for money leaving your budget.";
+    } else if (!category || category.pairedAccountId || category.pairedLoanId)
       fields.categoryId =
-        "Use a card payment or statement credit for card inflows.";
-  } else if (!categoryId) fields.categoryId = "Choose a category.";
-  else if (!category || category.pairedAccountId || category.pairedLoanId)
-    fields.categoryId = "Choose a spending category or Ready to Assign.";
-  if (
-    transaction?.categoryId &&
-    (categoryId === READY_TO_ASSIGN || !categoryId)
-  )
-    fields.categoryId =
-      "An existing category cannot be cleared. Choose a category.";
+        "Choose a category for money entering or leaving your budget.";
+  }
+  if (!transfer && account?.kind !== "tracking") {
+    const category = view.categories.find((item) => item.id === categoryId);
+    if (categoryId === READY_TO_ASSIGN) {
+      if (outflowText)
+        fields.categoryId = "Choose a spending category for an outflow.";
+      else if (account?.kind === "credit")
+        fields.categoryId =
+          "Use a card payment or statement credit for card inflows.";
+    } else if (!categoryId) fields.categoryId = "Choose a category.";
+    else if (!category || category.pairedAccountId || category.pairedLoanId)
+      fields.categoryId = "Choose a spending category or Ready to Assign.";
+    if (
+      transaction?.categoryId &&
+      !isTransfer(transaction) &&
+      transaction.kind !== "loan-payment" &&
+      (categoryId === READY_TO_ASSIGN || !categoryId)
+    )
+      fields.categoryId =
+        "An existing category cannot be cleared. Choose a category.";
+  }
+  if (transfer && (sharedCategoryId || transaction?.sharedCategoryId))
+    fields.payee =
+      "Resolve the shared expense before converting it to a transfer.";
   if (transaction?.sharedCategoryId && !sharedCategoryId)
     fields.sharedCategoryId =
       "An existing shared expense cannot be made personal here.";
@@ -227,14 +313,32 @@ export function buildTransactionDraftCommand({
 
   if (Object.keys(fields).length) throw new TransactionDraftError(fields);
   return {
-    type: "transaction.upsert",
+    type:
+      transfer ||
+      (transaction &&
+        (isTransfer(transaction) || transaction.kind === "loan-payment"))
+        ? "transaction.save"
+        : "transaction.upsert",
+    ...(transfer
+      ? {
+          transferAccountId: draft.transferAccountId || undefined,
+          loanId: draft.loanId || undefined,
+          interest,
+        }
+      : {}),
     id: operationId,
     transactionId: transaction?.id ?? entityId,
     accountId: account!.id,
     date,
     payee,
     amount: inflow || -outflow,
-    categoryId: categoryId === READY_TO_ASSIGN ? undefined : categoryId,
+    categoryId: boundary
+      ? categoryId
+      : draft.transferAccountId ||
+          account?.kind === "tracking" ||
+          categoryId === READY_TO_ASSIGN
+        ? undefined
+        : categoryId,
     status: draft.status,
     expenseMonth: expenseMonth || undefined,
     sharedCategoryId: sharedCategoryId || undefined,
@@ -257,4 +361,36 @@ function parseAmount(value: string) {
   const [whole = "0", fraction = ""] = value.split(".");
   const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
   return Number.isSafeInteger(cents) ? cents : undefined;
+}
+
+export function paymentPayees(view: View, draft: TransactionDraft) {
+  const account = view.accounts.find((item) => item.id === draft.accountId);
+  if (!account) return [];
+  return [
+    ...view.accounts
+      .filter((item) => item.id !== account.id)
+      .map((other) => {
+        const amount = draft.inflow
+          ? 1
+          : draft.outflow
+            ? -1
+            : account.kind === "credit" && other.kind === "cash"
+              ? 1
+              : -1;
+        return {
+          value: `account:${other.id}`,
+          label: transferPayee(account, other, amount),
+          accountId: other.id,
+          loanId: "",
+        };
+      }),
+    ...(account.kind === "cash"
+      ? view.budget.loans.map((loan) => ({
+          value: `loan:${loan.id}`,
+          label: `Payment to ${loan.name}`,
+          accountId: "",
+          loanId: loan.id,
+        }))
+      : []),
+  ];
 }
