@@ -7,6 +7,7 @@ import {
   READY_TO_ASSIGN,
 } from "./transfers";
 import {
+  deriveObligations,
   isPersonalLedger,
   ledgerHasSharedActivity,
   ledgerMembers,
@@ -199,6 +200,16 @@ export const commandSchema = z.discriminatedUnion("type", [
       .array(z.object({ categoryId: identifier, amount: cents }))
       .min(1)
       .max(500),
+  }),
+  // Sets the month's assigned total for the category, where "assign" adds to
+  // it. A retried or rebased command keeps the last total instead of adding
+  // its amount again.
+  z.object({
+    type: z.literal("assign.set"),
+    id: identifier,
+    categoryId: identifier,
+    month: monthSchema,
+    amount: cents,
   }),
   z.object({
     type: z.literal("cover"),
@@ -468,6 +479,9 @@ export type Transaction = {
   reconciled?: boolean;
   history: TransactionHistory[];
 };
+// The money assigned to one budget category in one month. A budget holds at
+// most one per category and month: every assignment command adds to or sets
+// its total. Its id is the operation that first assigned to it.
 export type Assignment = {
   id: string;
   categoryId: string;
@@ -1041,27 +1055,7 @@ function validateWeights(
 }
 
 function synchronizeObligations(book: AccountingState): void {
-  const generated: Obligation[] = [];
-  for (const transaction of ledgerSharedPurchases(book))
-    for (const [debtorId, amount] of Object.entries(transaction.shares))
-      if (debtorId !== transaction.payerId && amount > 0)
-        generated.push({
-          id: `shared:${transaction.payerId}:${transaction.id}:${debtorId}`,
-          sharedCategoryId: transaction.sharedCategoryId,
-          debtorId,
-          creditorId: transaction.payerId,
-          amount,
-          expenseMonth: transaction.expenseMonth,
-          transactionId: transaction.id,
-          payerId: transaction.payerId,
-          payee: transaction.payee,
-          date: transaction.date,
-          opening: false,
-        });
-  const all = [
-    ...book.obligations.filter((obligation) => obligation.opening),
-    ...generated,
-  ];
+  const all = deriveObligations(book);
   const byId = firstById(all);
   const allocations = settlementAllocations(book);
   const settled = new Map<string, number>();
@@ -1262,6 +1256,77 @@ function cashPosition(
     cash,
     readyToAssign: safe(cash - allocated + currentCashOverspending),
   };
+}
+
+const assignmentKey = (categoryId: string, month: string) =>
+  `${month}:${categoryId}`;
+
+/**
+ * Folds assignments to one per budget category and month, holding their
+ * total, at the position and with the id of the first. Month figures only
+ * ever sum a month's assignments, so folding changes none of them. Budgets
+ * saved before assignments were folded can hold several.
+ */
+export function foldAssignments(assignments: Assignment[]): Assignment[] {
+  const folded = new Map<string, Assignment>();
+  for (const assignment of assignments) {
+    const key = assignmentKey(assignment.categoryId, assignment.month);
+    const found = folded.get(key);
+    if (found) found.amount = safe(found.amount + assignment.amount);
+    else folded.set(key, { ...assignment });
+  }
+  return folded.size === assignments.length
+    ? assignments
+    : [...folded.values()];
+}
+
+function findAssignment(
+  budget: Budget,
+  categoryId: string,
+  month: string,
+): Assignment | undefined {
+  return budget.assignments.find(
+    (assignment) =>
+      assignment.categoryId === categoryId && assignment.month === month,
+  );
+}
+
+// Adds to the month's assignment for the category, opening it under the
+// given id when the category has none that month.
+function addAssignment(
+  budget: Budget,
+  categoryId: string,
+  month: string,
+  amount: number,
+  id: string,
+): void {
+  const assignment = findAssignment(budget, categoryId, month);
+  if (assignment) assignment.amount = safe(assignment.amount + amount);
+  else budget.assignments.push({ id, categoryId, month, amount });
+}
+
+// The checks every change to assigned money passes: money released by the
+// changes can fund their increases, but Ready to Assign never goes negative
+// and no category gives back cash it does not hold.
+function checkAssignmentChange(
+  book: AccountingState,
+  budget: Budget,
+  month: string,
+  changes: { categoryId: string; amount: number }[],
+): void {
+  const state = materialize(book, budget.userId, month);
+  for (const change of changes)
+    if (
+      change.amount < 0 &&
+      -change.amount >
+        Math.max(0, state.categories.get(change.categoryId)!.available)
+    )
+      fail("Cannot unassign cash the category does not hold");
+  if (
+    changes.some((change) => change.amount > 0) &&
+    state.readyToAssign < sum(changes.map((change) => change.amount))
+  )
+    fail("Assignments require existing Ready to Assign cash");
 }
 
 // Fails if any later month with assignments ends with negative Ready to
@@ -2785,6 +2850,7 @@ function executeAccountingState<T extends AccountingState>(
   }
   const userOnly = [
     "assign",
+    "assign.set",
     "assign.batch",
     "rule.set",
     "target.set",
@@ -2810,6 +2876,10 @@ function executeAccountingState<T extends AccountingState>(
   if (source !== "user" && userOnly.includes(command.type))
     fail("This decision requires a user action");
   const book = structuredClone(original);
+  for (const folded of isPersonalLedger(book)
+    ? [book.budget]
+    : Object.values(book.budgets))
+    folded.assignments = foldAssignments(folded.assignments);
   const budget = ownBudget(book, actorId);
   applyCommand(book, budget, command, source);
   if (
@@ -2940,23 +3010,39 @@ function applyCommand(
     }
     case "assign": {
       getCategory(budget, command.categoryId);
-      const state = materialize(book, actorId, command.month);
-      if (command.amount > 0 && command.amount > state.readyToAssign)
-        fail("Assignments require existing Ready to Assign cash");
-      if (
-        command.amount < 0 &&
-        -command.amount >
-          Math.max(0, state.categories.get(command.categoryId)!.available)
-      )
-        fail("Cannot unassign cash the category does not hold");
-      budget.assignments.push({
-        id: command.id,
-        categoryId: command.categoryId,
-        month: command.month,
-        amount: command.amount,
-      });
+      checkAssignmentChange(book, budget, command.month, [
+        { categoryId: command.categoryId, amount: command.amount },
+      ]);
+      addAssignment(
+        budget,
+        command.categoryId,
+        command.month,
+        command.amount,
+        command.id,
+      );
       if (command.amount > 0)
         ensureLaterMonthsFunded(book, actorId, command.month);
+      break;
+    }
+    case "assign.set": {
+      getCategory(budget, command.categoryId);
+      const amount = safe(
+        command.amount -
+          (findAssignment(budget, command.categoryId, command.month)?.amount ??
+            0),
+      );
+      if (!amount) break;
+      checkAssignmentChange(book, budget, command.month, [
+        { categoryId: command.categoryId, amount },
+      ]);
+      addAssignment(
+        budget,
+        command.categoryId,
+        command.month,
+        amount,
+        command.id,
+      );
+      if (amount > 0) ensureLaterMonthsFunded(book, actorId, command.month);
       break;
     }
     case "assign.batch": {
@@ -2967,30 +3053,18 @@ function applyCommand(
       if (new Set(ids).size !== ids.length)
         fail("Each category can appear only once");
       for (const id of ids) getCategory(budget, id);
-      const state = materialize(book, actorId, command.month);
-      for (const change of command.changes)
-        if (
-          change.amount < 0 &&
-          -change.amount >
-            Math.max(0, state.categories.get(change.categoryId)!.available)
-        )
-          fail("Cannot unassign cash the category does not hold");
-      const increases = command.changes.some((change) => change.amount > 0);
-      if (
-        increases &&
-        state.readyToAssign <
-          sum(command.changes.map((change) => change.amount))
-      )
-        fail("Assignments require existing Ready to Assign cash");
+      checkAssignmentChange(book, budget, command.month, command.changes);
       command.changes.forEach((change, index) =>
-        budget.assignments.push({
-          id: `${command.id}:${index}`,
-          categoryId: change.categoryId,
-          month: command.month,
-          amount: change.amount,
-        }),
+        addAssignment(
+          budget,
+          change.categoryId,
+          command.month,
+          change.amount,
+          `${command.id}:${index}`,
+        ),
       );
-      if (increases) ensureLaterMonthsFunded(book, actorId, command.month);
+      if (command.changes.some((change) => change.amount > 0))
+        ensureLaterMonthsFunded(book, actorId, command.month);
       break;
     }
     case "cover": {
@@ -3020,19 +3094,19 @@ function applyCommand(
         state.categories.get(command.fromCategoryId)!.available < command.amount
       )
         fail("Source category has insufficient funds");
-      budget.assignments.push(
-        {
-          id: `${command.id}:from`,
-          categoryId: command.fromCategoryId,
-          month: command.month,
-          amount: -command.amount,
-        },
-        {
-          id: `${command.id}:to`,
-          categoryId: command.toCategoryId,
-          month: command.month,
-          amount: command.amount,
-        },
+      addAssignment(
+        budget,
+        command.fromCategoryId,
+        command.month,
+        -command.amount,
+        `${command.id}:from`,
+      );
+      addAssignment(
+        budget,
+        command.toCategoryId,
+        command.month,
+        command.amount,
+        `${command.id}:to`,
       );
       break;
     }

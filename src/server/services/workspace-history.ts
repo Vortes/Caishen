@@ -178,6 +178,7 @@ const commandLabels = {
   "category.add": "Add category",
   "category.import": "Import categories",
   assign: "Assign money",
+  "assign.set": "Assign money",
   "assign.batch": "Assign money",
   cover: "Cover overspending",
   "rule.set": "Update standing rule",
