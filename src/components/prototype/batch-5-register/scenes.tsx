@@ -1,9 +1,16 @@
+"use client";
+
+import { XIcon } from "lucide-react";
+import { useRef, useState } from "react";
+import { useMediaQuery } from "~/components/shared/use-media-query";
 import shell from "~/components/prototype/app-shell/shell.module.css";
 import styles from "./scenes.module.css";
 
 const APP = "/prototype/batch-5-register/app";
 
-type Scene = { title: string; note: string; query: string };
+type Legacy = { src: string; caption: string } | { none: string };
+
+type Scene = { title: string; note: string; query: string; legacy: Legacy };
 
 const sections: { title: string; intro: string; scenes: Scene[] }[] = [
   {
@@ -15,16 +22,29 @@ const sections: { title: string; intro: string; scenes: Scene[] }[] = [
         title: "A renamed, re-priced import",
         note: "Tartine: renamed and categorized automatically, then the tip posted and the date moved.",
         query: "edit=i-tartine&panel=history",
+        legacy: {
+          src: "legacy-transaction-history",
+          caption:
+            "The Transaction history dialog, opened from a payee: a list of revisions.",
+        },
       },
       {
         title: "An automatic match, with Unmatch",
         note: "Blue Bottle: entered by hand, matched with the next day’s import.",
         query: "edit=t-bluebottle&panel=history",
+        legacy: {
+          none: "No legacy equivalent: legacy never matched on its own and had no Unmatch.",
+        },
       },
       {
         title: "History variant: row popover",
         note: "Hover any row in American Express and open History beside the payee.",
         query: "history=popover&account=amex",
+        legacy: {
+          src: "legacy-transaction-history",
+          caption:
+            "The same history dialog, which this variant replaces with a popover.",
+        },
       },
     ],
   },
@@ -37,21 +57,32 @@ const sections: { title: string; intro: string; scenes: Scene[] }[] = [
         title: "Suggested: already entered",
         note: "PG&E arrived; PG&E autopay was entered on the same day.",
         query: "review=1&select=i-pge",
+        legacy: {
+          src: "legacy-bank-import-match",
+          caption: "Review dialog with an “Already recorded?” picker.",
+        },
       },
       {
         title: "Suggested: a day apart",
         note: "BART posted Oct 14; you entered it Oct 13.",
         query: "review=1&select=i-bart",
+        legacy: {
+          none: "No legacy equivalent: legacy only offered matches on the same date.",
+        },
       },
       {
         title: "Select both: amounts differ",
         note: "Safeway imported at $61.07, you entered $58.23. Only manual pairing reaches it.",
         query: "match=select&account=amex&select=i-safeway,t-safeway",
+        legacy: {
+          none: "No legacy equivalent: legacy only offered matches for the same amount.",
+        },
       },
       {
         title: "Unmatch",
         note: "The import goes back to To review and your amount comes back.",
         query: "select=t-bluebottle",
+        legacy: { none: "No legacy equivalent: a match couldn’t be undone." },
       },
     ],
   },
@@ -64,11 +95,20 @@ const sections: { title: string; intro: string; scenes: Scene[] }[] = [
         title: "Reject",
         note: "Safeway with no suggested match.",
         query: "review=1&select=i-safeway",
+        legacy: {
+          src: "legacy-bank-import-review",
+          caption: "Review dialog with “Ignore this bank transaction”.",
+        },
       },
       {
         title: "Dismiss one the bank removed",
         note: "A pending Uber trip that disappeared before it posted.",
         query: "review=1&select=i-uber",
+        legacy: {
+          src: "legacy-bank-import-review",
+          caption:
+            "The same review dialog; a removed import showed a note above it.",
+        },
       },
     ],
   },
@@ -81,16 +121,29 @@ const sections: { title: string; intro: string; scenes: Scene[] }[] = [
         title: "In the editor",
         note: "Chevron, nothing expected yet.",
         query: "edit=t-chevron&panel=expect",
+        legacy: {
+          src: "legacy-reimbursement-expect",
+          caption: "Expect a reimbursement dialog from the Plan inspector.",
+        },
       },
       {
         title: "From the selection bar",
         note: "The same, as a popover over the bar.",
         query: "expect=island&select=t-chevron",
+        legacy: {
+          src: "legacy-reimbursement-expect",
+          caption: "The same dialog.",
+        },
       },
       {
         title: "Partly paid back",
         note: "Nopalito: Sam sent $20.00 of $43.20.",
         query: "edit=t-nopalito&panel=expect&account=amex",
+        legacy: {
+          src: "legacy-reimbursements-section",
+          caption:
+            "Expected back list in the Plan inspector; no partial amounts shown.",
+        },
       },
     ],
   },
@@ -103,31 +156,55 @@ const sections: { title: string; intro: string; scenes: Scene[] }[] = [
         title: "Card credit, two possible claims",
         note: "Amex Offer credit $15.00 could pay back REI or part of Nopalito.",
         query: "review=1&select=i-amexcredit",
+        legacy: {
+          src: "legacy-reimbursement-statement-credit",
+          caption: "A separate statement-credit dialog, entered by hand.",
+        },
       },
       {
         title: "Deposit from an employer",
         note: "Cedar Labs reimburses the conference hotel.",
         query: "review=1&select=i-cedar",
+        legacy: {
+          src: "legacy-reimbursement-receive",
+          caption: "Record money received dialog, entered by hand.",
+        },
       },
       {
         title: "By hand, in Plan",
         note: "Cash that never imports, like Venmo moved to checking.",
         query: "screen=plan&claim=r-sam",
+        legacy: {
+          src: "legacy-reimbursement-receive",
+          caption: "The same dialog.",
+        },
       },
     ],
   },
 ];
 
+// Follows the system theme, like the shell's own pages.
 export function Batch5Index() {
+  const light = useMediaQuery("(prefers-color-scheme: light)");
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [enlarged, setEnlarged] = useState<{
+    src: string;
+    caption: string;
+    title: string;
+  } | null>(null);
   return (
-    <div className={`${shell.root} ${styles.page}`} data-theme="dark">
+    <div
+      className={`${shell.root} ${styles.page}`}
+      data-theme={light ? "light" : "dark"}
+    >
       <main className={styles.main}>
         <header className={styles.header}>
           <h1>Register, bank imports, and reimbursements</h1>
           <p>
             Batch 5 prototype on hardcoded data. Nothing here saves. Each link
             opens the shell in one state; the Reset control in the corner
-            returns to it, and the variant toggles sit beside it.
+            returns to it, and the variant toggles sit beside it. Beside each
+            one is what the legacy app did.
           </p>
           <a className={styles.open} href={APP}>
             Open the register
@@ -139,10 +216,44 @@ export function Batch5Index() {
             <p className={styles.intro}>{section.intro}</p>
             <ul>
               {section.scenes.map((scene) => (
-                <li key={scene.title}>
+                <li key={scene.title} className={styles.scene}>
+                  {"src" in scene.legacy ? (
+                    <button
+                      type="button"
+                      className={styles.thumb}
+                      aria-label={`Enlarge the legacy screen for ${scene.title}`}
+                      onClick={() => {
+                        if (!("src" in scene.legacy)) return;
+                        setEnlarged({ ...scene.legacy, title: scene.title });
+                        dialog.current?.showModal();
+                      }}
+                    >
+                      {/* A prototype-only asset; next/image adds nothing here. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/prototype/legacy/${scene.legacy.src}.webp`}
+                        alt=""
+                        width={1440}
+                        height={900}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <span className={styles.legacyLabel}>Legacy</span>
+                    </button>
+                  ) : (
+                    <div className={styles.noLegacy}>
+                      <span className={styles.legacyLabel}>Legacy</span>
+                      <span>None</span>
+                    </div>
+                  )}
                   <a href={`${APP}?${scene.query}`}>
                     <span>{scene.title}</span>
                     <span>{scene.note}</span>
+                    <span className={styles.legacyNote}>
+                      {"src" in scene.legacy
+                        ? `Legacy: ${scene.legacy.caption}`
+                        : scene.legacy.none}
+                    </span>
                   </a>
                 </li>
               ))}
@@ -150,6 +261,40 @@ export function Batch5Index() {
           </section>
         ))}
       </main>
+      <dialog
+        ref={dialog}
+        className={styles.lightbox}
+        aria-label={enlarged ? `Legacy: ${enlarged.title}` : "Legacy screen"}
+        onClose={() => setEnlarged(null)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) dialog.current?.close();
+        }}
+      >
+        {enlarged && (
+          <figure>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/prototype/legacy/${enlarged.src}.webp`}
+              alt={`Legacy app: ${enlarged.caption}`}
+              width={1440}
+              height={900}
+            />
+            <figcaption>
+              <span>
+                <strong>Legacy</strong> · {enlarged.caption}
+              </span>
+              <button
+                type="button"
+                className={styles.close}
+                aria-label="Close"
+                onClick={() => dialog.current?.close()}
+              >
+                <XIcon size={16} aria-hidden />
+              </button>
+            </figcaption>
+          </figure>
+        )}
+      </dialog>
     </div>
   );
 }

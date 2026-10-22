@@ -59,37 +59,162 @@
   padding: 0;
   list-style: none;
 }
-.section a {
+/* Each scene: the legacy screen on the left, the new design's link on the
+   right. */
+.scene {
   display: grid;
-  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
-  gap: 16px;
-  padding: 10px 8px;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 8px 0;
+}
+.scene + .scene {
+  border-top: 1px solid var(--border-subtle);
+}
+.thumb,
+.noLegacy {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+}
+.thumb {
+  cursor: zoom-in;
+  transition: border-color 150ms;
+}
+.thumb:hover {
+  border-color: var(--border-strong);
+}
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Legacy dialogs sit mid-screen, so the crop keeps the middle. */
+  object-position: 55% 35%;
+}
+.legacyLabel {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: var(--type-caption);
+  font-weight: 500;
+}
+.noLegacy {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.scene a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
   border-radius: var(--radius-row);
   color: inherit;
   text-decoration: none;
   transition: background-color 150ms;
 }
-.section a:hover {
+.scene a:hover {
   background: var(--surface-hover);
 }
-.section a > span:first-child {
+.scene a > span:first-child {
   color: var(--text-primary);
   font-weight: 500;
 }
-.section a > span:last-child {
-  color: var(--text-tertiary);
+.scene a > span + span {
+  color: var(--text-secondary);
   font-size: var(--type-small);
   text-wrap: pretty;
 }
+.scene a > .legacyNote {
+  margin-top: 4px;
+  color: var(--text-tertiary);
+}
 @media (max-width: 560px) {
-  .section a {
-    grid-template-columns: 1fr;
-    gap: 2px;
+  .scene {
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 8px;
   }
 }
+
+/* The enlarged legacy screen. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  width: min(1200px, calc(100vw - 32px));
+  height: fit-content;
+  margin: auto;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+}
+/* The shell's scrim; there's no token for it yet. */
+.lightbox::backdrop {
+  background: oklch(0 0 0 / 0.55);
+}
+:global([data-theme="light"]) .lightbox::backdrop {
+  background: oklch(0.2 0.01 282 / 0.3);
+}
+.lightbox figure {
+  margin: 0;
+}
+.lightbox img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.lightbox figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 8px var(--space-card);
+  font-size: var(--type-small);
+}
+.lightbox strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--size-control);
+  height: var(--size-control);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.close:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .open,
-  .section a {
+  .thumb,
+  .scene a {
     transition: none;
   }
 }
