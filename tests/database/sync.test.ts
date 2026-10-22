@@ -163,7 +163,7 @@ void test("a browser downloads its rows once, then only what changed, deleted ro
   assert.deepEqual([none.rows, none.reset], [[], false]);
   // A browser too old for this server is told to reload.
   assert.equal(
-    (await refusalOf(alex.api.sync.pull({ since: null, clientBuild: "0:old" })))
+    (await refusalOf(alex.api.sync.pull({ since: null, clientBuild: "1:old" })))
       ?.kind,
     "staleClient",
   );
