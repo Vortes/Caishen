@@ -659,9 +659,6 @@ svg {
 .category-row:hover {
   background: #16172c;
 }
-.category-row.is-selected {
-  background: var(--selected);
-}
 .category-name-cell {
   display: flex;
   gap: 10px;
@@ -2335,9 +2332,6 @@ input[type="checkbox"] {
 }
 .register-table tr:hover {
   background: var(--card);
-}
-.register-table tr[data-selected] {
-  background: var(--selected);
 }
 .register-table th:first-child,
 .register-table td:first-child {

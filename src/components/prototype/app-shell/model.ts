@@ -16,7 +16,7 @@ import {
 } from "~/components/budget/format";
 import type { State, View } from "~/components/budget/types";
 import { partnerOf, sharePercent } from "~/components/shared-expenses/split";
-import { transactionCategory } from "~/components/transactions/transaction-row";
+import { transactionCategory } from "~/components/transactions/transaction-category";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import type { Target } from "~/domain/engine";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";

@@ -7,6 +7,8 @@ import type { Panel, View } from "~/components/budget/types";
 import { Amount, Icon } from "~/components/shared";
 import { Checkbox } from "~/components/ui-legacy/checkbox";
 import { cn } from "~/lib/utils";
+import selectionStyles from "~/components/ui/row-selection.module.css";
+import { transactionCategory } from "./transaction-category";
 
 type Transaction = View["budget"]["transactions"][number];
 
@@ -24,6 +26,7 @@ export function TransactionRow({
   categoryName,
   showAccount,
   selected,
+  entering,
   busy,
   rowRef,
   onSelect,
@@ -37,6 +40,7 @@ export function TransactionRow({
   categoryName?: string;
   showAccount: boolean;
   selected: boolean;
+  entering?: boolean;
   busy: boolean;
   rowRef?: RefCallback<HTMLTableRowElement>;
   onSelect: (id: string, checked: boolean) => void;
@@ -58,6 +62,9 @@ export function TransactionRow({
       aria-rowindex={index + 2 + rowOffset}
       aria-selected={selected}
       data-selected={selected ? "" : undefined}
+      className={selectionStyles.row}
+      data-checked={selected || undefined}
+      data-entering={entering ? "" : undefined}
     >
       <td className="register-select-cell">
         <Checkbox
@@ -148,25 +155,4 @@ export function TransactionRow({
       </td>
     </tr>
   );
-}
-
-export function transactionCategory(kind: Transaction["kind"], amount: number) {
-  switch (kind) {
-    case "transfer":
-    case "card-payment":
-      return "Category not needed";
-    case "loan-payment":
-      return "Loan payment";
-    case "statement-credit":
-      return "Statement credit";
-    case "reimbursement":
-      return "Reimbursement";
-    case "settlement":
-      return "Partner repayment";
-    // YNAB's reconciliation adjustments go straight to Ready to Assign.
-    case "adjustment":
-      return "Inflow: Ready to Assign";
-    default:
-      return amount > 0 ? "Inflow: Ready to Assign" : "Choose category";
-  }
 }

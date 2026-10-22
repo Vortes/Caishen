@@ -34,8 +34,12 @@ What is the element?
  ├── A date header row inside a list → --surface-group
  ├── A card, popover, or tooltip → --surface-raised
  ├── A row or quiet control under the pointer → --surface-hover
- └── The selected row or pressed quiet control → --surface-selected
+ └── The current detail row or pressed quiet control → --surface-selected
 ```
+
+Rows selected for action use the grouped outline and accent mixes in
+[rows.md](rows.md), not `--surface-selected` alone. The current detail row
+and the checked selection are different states.
 
 Buttons, tabs, and segmented controls have their own fills
 (`--control-bg`, `--control-bg-hover`, `--control-bg-active`) and borders
@@ -83,7 +87,9 @@ What does the color communicate?
  ├── Something finished or is confirmed (cleared, all reviewed)
  │    → --feedback-success
  ├── The committing action → --accent-text and --accent-line, through
- │    Button variant="primary"; never set them directly
+ │    Button variant="primary"
+ ├── Rows selected for action → --accent-line for the outline and
+ │    --accent-solid mixed into --surface-panel; see rows.md
  ├── A destructive confirm → --danger-text and --danger-line, through
  │    Button variant="danger"
  └── Checked boxes, the focus ring → --accent-solid, --focus-ring

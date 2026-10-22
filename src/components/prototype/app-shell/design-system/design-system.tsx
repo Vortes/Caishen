@@ -15,6 +15,7 @@ import { ButtonSpecimens } from "./button-specimens";
 import { SkeletonSpecimens } from "./skeleton-specimens";
 import { TagSpecimens } from "./tag-specimens";
 import { ToastSpecimens } from "./toast-specimens";
+import { RowSelectionSpecimens } from "./row-selection-specimens";
 import styles from "./design-system.module.css";
 
 // The app shell's components with hardcoded examples, so every state can be
@@ -200,6 +201,8 @@ export function DesignSystem() {
             </a>
           </div>
         </header>
+
+        <RowSelectionSpecimens />
 
         <ButtonSpecimens />
 

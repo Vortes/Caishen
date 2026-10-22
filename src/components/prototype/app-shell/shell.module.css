@@ -1169,148 +1169,19 @@ button.actionItem:disabled {
 }
 /* The checkbox overlays the row, so hover is tracked on the wrapper to keep
    the row highlighted while the pointer is on the checkbox. */
-.rowWrap:hover > .row {
+.rowWrap:has(> .row):hover {
   background: var(--surface-hover);
+}
+.rowWrap:has(> .row[aria-current="true"]) {
+  background: var(--surface-selected);
+}
+.rowWrap > .row,
+.rowWrap:hover > .row,
+.rowWrap > .row[aria-current="true"] {
+  background: transparent;
 }
 .rowWrap:hover > .groupRow {
   color: var(--text-primary);
-}
-.rowWrap[data-checked] > .row {
-  background: color-mix(
-    in oklch,
-    var(--accent-solid) 16%,
-    var(--surface-panel)
-  );
-}
-.rowWrap[data-checked]:hover > .row {
-  background: color-mix(
-    in oklch,
-    var(--accent-solid) 22%,
-    var(--surface-panel)
-  );
-}
-.register {
-  --selection-fill: color-mix(
-    in oklch,
-    var(--accent-solid) 6%,
-    var(--surface-panel)
-  );
-  --selection-fill-hover: color-mix(
-    in oklch,
-    var(--accent-solid) 11%,
-    var(--surface-panel)
-  );
-  --selection-exit: calc(var(--duration-selection) * 0.75);
-}
-.register .rowWrap {
-  isolation: isolate;
-  border-radius: var(--radius-row);
-}
-.register .rowWrap > .row,
-.register .rowWrap:hover > .row,
-.register .rowWrap[data-checked]:hover > .row {
-  background: transparent;
-}
-.register .rowWrap:hover {
-  background: var(--surface-hover);
-}
-.register .rowWrap:has(> .row[aria-current="true"]) {
-  background: var(--surface-selected);
-}
-.register .rowWrap::before,
-.register .rowWrap::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-row);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity var(--selection-exit) ease-in,
-    border-radius 0s var(--selection-exit),
-    box-shadow 0s var(--selection-exit),
-    background-color 150ms ease;
-}
-.register .rowWrap::after {
-  z-index: -1;
-  background: var(--selection-fill);
-}
-.register .rowWrap::before {
-  z-index: 1;
-  box-shadow:
-    inset 1px 0 0 var(--accent-line),
-    inset -1px 0 0 var(--accent-line),
-    inset 0 1px 0 var(--accent-line),
-    inset 0 -1px 0 var(--accent-line);
-}
-.register .rowWrap[data-checked]::before,
-.register .rowWrap[data-checked]::after {
-  opacity: 1;
-  border-radius: 0;
-  transition:
-    opacity var(--duration-selection) var(--ease-selection),
-    border-radius var(--duration-selection) var(--ease-selection),
-    box-shadow var(--duration-selection) var(--ease-selection),
-    background-color 150ms ease;
-}
-.register .rowWrap[data-checked]::before {
-  box-shadow:
-    inset 1px 0 0 var(--accent-line),
-    inset -1px 0 0 var(--accent-line),
-    inset 0 1px 0 transparent,
-    inset 0 -1px 0 transparent;
-}
-.register .rowWrap[data-checked]:hover::after {
-  background: var(--selection-fill-hover);
-}
-.register .rowWrap[data-checked]:not(.rowWrap[data-checked] + .rowWrap)::before,
-.register .rowWrap[data-checked]:not(.rowWrap[data-checked] + .rowWrap)::after {
-  border-top-left-radius: var(--radius-row);
-  border-top-right-radius: var(--radius-row);
-}
-.register .rowWrap[data-checked]:not(:has(+ .rowWrap[data-checked]))::before,
-.register .rowWrap[data-checked]:not(:has(+ .rowWrap[data-checked]))::after {
-  border-bottom-left-radius: var(--radius-row);
-  border-bottom-right-radius: var(--radius-row);
-}
-.register
-  .rowWrap[data-checked]:not(.rowWrap[data-checked] + .rowWrap)::before {
-  box-shadow:
-    inset 1px 0 0 var(--accent-line),
-    inset -1px 0 0 var(--accent-line),
-    inset 0 1px 0 var(--accent-line),
-    inset 0 -1px 0 transparent;
-}
-.register .rowWrap[data-checked]:not(:has(+ .rowWrap[data-checked]))::before {
-  box-shadow:
-    inset 1px 0 0 var(--accent-line),
-    inset -1px 0 0 var(--accent-line),
-    inset 0 1px 0 transparent,
-    inset 0 -1px 0 var(--accent-line);
-}
-.register
-  .rowWrap[data-checked]:not(.rowWrap[data-checked] + .rowWrap):not(
-    :has(+ .rowWrap[data-checked])
-  )::before {
-  box-shadow:
-    inset 1px 0 0 var(--accent-line),
-    inset -1px 0 0 var(--accent-line),
-    inset 0 1px 0 var(--accent-line),
-    inset 0 -1px 0 var(--accent-line);
-}
-.register .rowWrap[data-entering]::before,
-.register .rowWrap[data-entering]::after {
-  transition-property: opacity;
-}
-.register[data-instant] .rowWrap::before,
-.register[data-instant] .rowWrap::after {
-  transition: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .register .rowWrap::before,
-  .register .rowWrap::after {
-    transition: none;
-  }
 }
 .checkboxSlot {
   position: absolute;

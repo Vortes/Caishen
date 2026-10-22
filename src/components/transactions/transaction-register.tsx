@@ -43,6 +43,8 @@ import {
 } from "~/components/ui-legacy/dropdown-menu";
 import type { Command } from "~/domain/engine";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
+import { useRowSelection } from "~/components/ui/use-row-selection";
+import selectionStyles from "~/components/ui/row-selection.module.css";
 
 type RegisterRow =
   | {
@@ -201,6 +203,7 @@ export function TransactionRegister({
     }
     return { selected, selectedForApproval, selectedAmount };
   }, [transactions, selectedIdSet]);
+  const selectionStyle = useRowSelection(selected);
   const allSelected =
     transactions.length > 0 && selected.length === transactions.length;
   const indexById = useMemo(
@@ -330,6 +333,7 @@ export function TransactionRegister({
         }
         showAccount={!accountId}
         selected={selectedIdSet.has(transaction.id)}
+        entering={selectionStyle.rowProps(transaction.id)["data-entering"]}
         busy={busy}
         rowRef={virtualized ? virtualizer.measureElement : undefined}
         onSelect={selectTransaction}
@@ -542,7 +546,8 @@ export function TransactionRegister({
           </button>
         )}
         <table
-          className="register-table"
+          className={`register-table ${selectionStyles.list}`}
+          {...selectionStyle.listProps}
           aria-rowcount={rows.length + 1 + (editor ? 2 : 0)}
         >
           <colgroup>
