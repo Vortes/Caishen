@@ -606,7 +606,7 @@ export async function setupBankAccounts(
       });
       return { ...result, accountIds };
     }
-    if (household.revision !== input.expectedRevision)
+    if (opened.requestRevision !== input.expectedRevision)
       throw refusal(
         "conflict",
         "Your budget changed. Refresh before adding accounts.",
@@ -1396,7 +1396,7 @@ export async function resolveImport(
             ? openingSnapshotChangedMessage
             : "This activity is already included in the opening balance or predates the import start date. Ignore it rather than duplicating opening history.",
         );
-      if (household.revision !== input.expectedRevision)
+      if (opened.requestRevision !== input.expectedRevision)
         throw refusal(
           "conflict",
           "Your budget changed. Refresh before confirming this import.",

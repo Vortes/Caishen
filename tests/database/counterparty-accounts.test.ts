@@ -2,14 +2,26 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import nextEnv from "@next/env";
-import { createBook, withCounterpartyAccounts } from "../../src/domain/engine";
+import {
+  createBook,
+  execute,
+  executeWithChanges,
+  withCounterpartyAccounts,
+} from "../../src/domain/engine";
 import { bookToRows, tombstone, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { writeChangeSet } from "../../src/server/storage/rows";
-import { createHousehold } from "./fixtures";
+import { importCategories } from "../../src/server/services/household-operations";
+import { jsonValue } from "../../src/server/services/safety";
+import { createBankConnection, createHousehold } from "./fixtures";
+import {
+  applyTransactionSync,
+  normalizePlaidTransaction,
+} from "../../src/server/integrations/transactions";
+import { bankSetupDate } from "../../src/server/services/bank-account-setup";
 
 // Every budget holds its counterparty accounts and their paired envelopes:
 // from creation, from joining a partner, and, for budgets made before they
@@ -75,6 +87,7 @@ const onboard = (who: Member, name: string) =>
   who.api.budget.onboard({ name, month, timezone: "America/Los_Angeles" });
 
 test.after(async () => {
+  await db.bankConnection.deleteMany({ where: { clerkUserId: { in: users } } });
   const memberships = await db.workspaceMember.findMany({
     where: { clerkUserId: { in: users } },
   });
@@ -185,4 +198,272 @@ void test("a budget under maintenance shows maintenance instead of being upgrade
 
   // The upgrade waits; the budget shows its maintenance message.
   await assert.rejects(() => pullAll(kim), /maintenance/);
+});
+
+void test("a legacy budget's first direct command creates its paired envelopes before assigning a float and retries only once", async () => {
+  const lee = await member("Lee");
+  let book = createBook(lee.userId, "Lee", month);
+  book = execute(book, lee.userId, {
+    type: "account.add",
+    id: randomUUID(),
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+  });
+  workspaceIds.push(await createHousehold(db, book));
+  const command = {
+    type: "assign.set" as const,
+    id: randomUUID(),
+    categoryId: "envelope:reimbursements",
+    month,
+    amount: 20_000,
+  };
+  const input = { command, baseRevision: 1, clientId: "direct-client" };
+
+  const first = await lee.api.budget.execute(input);
+  assert.equal(first.revision, 3);
+  assert.deepEqual(await lee.api.budget.execute(input), {
+    ...first,
+    rebased: false,
+  });
+  const state = await lee.api.budget.state({ month });
+  assert.equal(state.revision, 3);
+  assert.equal(state.view?.readyToAssign, 80_000);
+  assert.equal(
+    state.view?.categories.find(
+      (category) =>
+        category.counterpartyAccountId === "counterparty:reimbursements",
+    )?.available,
+    20_000,
+  );
+});
+
+void test("a legacy budget's first server category import upgrades its accounts without invalidating the request revision", async () => {
+  const robin = await member("Robin");
+  workspaceIds.push(
+    await createHousehold(db, createBook(robin.userId, "Robin", month)),
+  );
+
+  const saved = await importCategories(db, robin.userId, {
+    expectedRevision: 1,
+    categories: [
+      { categoryId: "groceries", name: "Groceries", group: "Everyday" },
+    ],
+  });
+  const state = await robin.api.budget.state({ month });
+  assert.ok(
+    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+  );
+  assert.ok(
+    state.view?.categories.some((category) => category.id === "groceries"),
+  );
+  assert.equal(saved.revision, 3);
+  assert.equal(state.revision, 3);
+});
+
+void test("a future command revision is still refused when it happens to equal the upgrade's revision", async () => {
+  const quinn = await member("Quinn");
+  workspaceIds.push(
+    await createHousehold(db, createBook(quinn.userId, "Quinn", month)),
+  );
+
+  await assert.rejects(
+    quinn.api.budget.execute({
+      clientId: "future-client",
+      baseRevision: 2,
+      command: {
+        type: "income.expect",
+        id: randomUUID(),
+        month,
+        amount: 50_000,
+      },
+    }),
+    { code: "CONFLICT" },
+  );
+  assert.equal((await quinn.api.budget.state({ month })).revision, 2);
+});
+
+void test("a legacy budget can add its first bank account before pulling and retry setup after the system upgrade", async () => {
+  const dana = await member("Dana");
+  const today = bankSetupDate("America/Los_Angeles");
+  const bankMonth = today.slice(0, 7);
+  workspaceIds.push(
+    await createHousehold(db, createBook(dana.userId, "Dana", bankMonth)),
+  );
+  const connectionId = randomUUID();
+  await createBankConnection(db, {
+    data: {
+      id: connectionId,
+      clerkUserId: dana.userId,
+      itemId: `counterparty-bank-${connectionId}`,
+      encryptedToken: "fixture-no-provider-token",
+      accountMappings: {},
+      lastSyncedAt: new Date(),
+      imports: {
+        accounts: [
+          {
+            accountId: "cash",
+            name: "Cash",
+            officialName: null,
+            mask: "1234",
+            type: "depository",
+            subtype: "checking",
+            currentBalance: 1000,
+            availableBalance: 1000,
+            currency: "USD",
+          },
+        ],
+        transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+        synchronizedAccountIds: ["cash"],
+      },
+    },
+  });
+  const input = {
+    connectionId,
+    operationId: randomUUID(),
+    expectedRevision: 1,
+    accounts: [
+      { providerAccountId: "cash", name: "Checking", expectedBalance: 1000 },
+    ],
+  };
+
+  const saved = await dana.api.budget.setupBankAccounts(input);
+  assert.equal(saved.revision, 3);
+  assert.deepEqual(await dana.api.budget.setupBankAccounts(input), saved);
+  const state = await dana.api.budget.state({ month: bankMonth });
+  assert.equal(state.revision, 3);
+  assert.equal(state.view?.readyToAssign, 100_000);
+  assert.ok(
+    state.view?.categories.some(
+      (category) =>
+        category.counterpartyAccountId === "counterparty:reimbursements",
+    ),
+  );
+});
+
+void test("a legacy budget's first bank import keeps its original revision and records the purchase once", async () => {
+  const remy = await member("Remy");
+  let book = createBook(remy.userId, "Remy", month);
+  book = execute(book, remy.userId, {
+    type: "account.add",
+    id: randomUUID(),
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+    date: "2026-10-01",
+  });
+  book = execute(book, remy.userId, {
+    type: "category.add",
+    id: randomUUID(),
+    categoryId: "food",
+    name: "Food",
+  });
+  workspaceIds.push(await createHousehold(db, book));
+  const connectionId = randomUUID();
+  const records = applyTransactionSync(
+    [],
+    {
+      added: [
+        normalizePlaidTransaction({
+          transaction_id: "market",
+          account_id: "cash",
+          pending: false,
+          amount: 15,
+          iso_currency_code: "USD",
+          date: "2026-10-10",
+          name: "Market",
+        }),
+      ],
+      modified: [],
+      removed: [],
+    },
+    connectionId,
+  ).records;
+  await createBankConnection(db, {
+    data: {
+      id: connectionId,
+      clerkUserId: remy.userId,
+      itemId: `counterparty-import-${connectionId}`,
+      encryptedToken: "fixture-no-provider-token",
+      accountMappings: {
+        cash: { accountId: "checking", startDate: "2026-10-02" },
+      },
+      imports: jsonValue({ records }),
+    },
+  });
+  const input = {
+    connectionId,
+    logicalId: records[0]!.id,
+    expectedRevision: 2,
+    ignore: false,
+    command: {
+      type: "transaction.upsert" as const,
+      id: randomUUID(),
+      transactionId: "market",
+      accountId: "checking",
+      categoryId: "food",
+      date: "2026-10-10",
+      amount: -1500,
+      payee: "Market",
+    },
+  };
+
+  const saved = await remy.api.budget.resolveImport(input);
+  assert.equal(saved.revision, 4);
+  assert.deepEqual(await remy.api.budget.resolveImport(input), saved);
+  const state = await remy.api.budget.state({ month });
+  assert.equal(state.revision, 4);
+  assert.equal(state.view?.budget.transactions.length, 1);
+  assert.equal(state.view?.personalSpending, 1500);
+  assert.ok(
+    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+  );
+});
+
+void test("a legacy budget can undo its previous user change before pulling without undoing the system accounts", async () => {
+  const noa = await member("Noa");
+  const book = createBook(noa.userId, "Noa", month);
+  const workspaceId = await createHousehold(db, book);
+  workspaceIds.push(workspaceId);
+  const command = {
+    type: "category.add" as const,
+    id: randomUUID(),
+    categoryId: "old-category",
+    name: "Old category",
+  };
+  const legacy = executeWithChanges(book, noa.userId, command);
+  await writeChangeSet(db, {
+    workspaceId,
+    baseRevision: 1,
+    changeSet: legacy.changeSet,
+    operation: {
+      actorId: noa.userId,
+      source: "user",
+      type: command.type,
+      inputHash: "legacy-fixture",
+      command,
+    },
+  });
+  const input = {
+    direction: "undo" as const,
+    expectedRevision: 2,
+    operationId: randomUUID(),
+  };
+
+  const saved = await noa.api.budget.changeHistory(input);
+  assert.equal(saved.revision, 4);
+  assert.deepEqual(await noa.api.budget.changeHistory(input), {
+    ...saved,
+    rebased: false,
+  });
+  const state = await noa.api.budget.state({ month });
+  assert.equal(
+    state.view?.categories.some((category) => category.id === "old-category"),
+    false,
+  );
+  assert.ok(
+    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+  );
 });

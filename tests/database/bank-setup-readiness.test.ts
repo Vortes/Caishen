@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test, { afterEach, mock, type TestContext } from "node:test";
 
-import { createBook } from "../../src/domain/engine";
+import { createBook, isCounterparty } from "../../src/domain/engine";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
 import { ObservedRevision } from "../../src/server/api/trpc";
@@ -139,7 +139,9 @@ void test("a completed empty Amex history can be added with its current balance"
   });
   const saved = await h.state();
   assert.deepEqual(
-    saved.view!.accounts.map((a) => [a.name, a.kind, a.balance]),
+    saved
+      .view!.accounts.filter((account) => !isCounterparty(account))
+      .map((a) => [a.name, a.kind, a.balance]),
     [["EveryDay", "credit", 0]],
   );
   assert.equal(saved.view!.readyToAssign, 0);
@@ -206,10 +208,9 @@ void test("an unchanged Business Platinum stays ready when another card advances
     ],
   });
   assert.deepEqual(
-    (await h.state()).view!.accounts.map((account) => [
-      account.name,
-      account.balance,
-    ]),
+    (await h.state())
+      .view!.accounts.filter((account) => !isCounterparty(account))
+      .map((account) => [account.name, account.balance]),
     [["Business Platinum", 0]],
   );
 });
@@ -295,7 +296,9 @@ void test("a card with stored history recovers lost readiness only from a matchi
   });
   const saved = await h.state();
   assert.deepEqual(
-    saved.view!.accounts.map((account) => [account.name, account.balance]),
+    saved
+      .view!.accounts.filter((account) => !isCounterparty(account))
+      .map((account) => [account.name, account.balance]),
     [["Business Platinum", 0]],
   );
   assert.equal(saved.view!.readyToAssign, 0);
@@ -364,7 +367,10 @@ void test("a connected loan without a Plaid balance can be added using confirmed
     ]),
     [["Discover personal loan", 820_113, 49_848]],
   );
-  assert.equal(saved.view!.accounts.length, 0);
+  assert.equal(
+    saved.view!.accounts.filter((account) => !isCounterparty(account)).length,
+    0,
+  );
   assert.equal(saved.view!.readyToAssign, 0);
   assert.ok(
     saved.view!.budget.categories.some(
@@ -426,7 +432,10 @@ void test("a connected loan can link to an existing loan without replacing its b
     saved.view!.loans.map((loan) => [loan.id, loan.name, loan.balance]),
     [["existing-loan", "My loan", 500_000]],
   );
-  assert.equal(saved.view!.accounts.length, 0);
+  assert.equal(
+    saved.view!.accounts.filter((account) => !isCounterparty(account)).length,
+    0,
+  );
   assert.equal(saved.view!.readyToAssign, 0);
   await assert.rejects(
     h.caller.budget.setupBankAccounts({
@@ -481,7 +490,10 @@ void test("new loan activity asks for confirmed principal and interest without b
   assert.equal(activity.accountId, null);
   assert.match(activity.error!, /principal and interest/);
   assert.equal(saved.view!.loans[0]!.balance, 500_000);
-  assert.equal(saved.view!.accounts.length, 0);
+  assert.equal(
+    saved.view!.accounts.filter((account) => !isCounterparty(account)).length,
+    0,
+  );
   assert.equal(saved.view!.budget.transactions.length, 0);
   await assert.rejects(
     h.caller.budget.resolveImport({

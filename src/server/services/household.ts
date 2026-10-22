@@ -35,6 +35,7 @@ import {
 } from "~/server/storage/households";
 import { findOperation, RevisionConflictError } from "~/server/storage/rows";
 import { bankMappingsSchema } from "./bank-account-setup";
+import { addCounterpartyAccounts } from "./household-operations";
 import { matchesSavedOperation, operationHash } from "./safety";
 import { refusal } from "./sync-refusal";
 
@@ -52,6 +53,8 @@ export type Database = PrismaClient;
 export type RevisionObserver = (revision: number) => void;
 
 export type OpenLedger = {
+  /** The revision before this request alone added the system accounts. */
+  requestRevision: number;
   household: Household;
   ledger: Extract<HouseholdLedger, { status: "ready" }>;
 };
@@ -87,6 +90,7 @@ export async function requireHousehold(
   userId: string,
   observe?: RevisionObserver,
 ): Promise<OpenLedger> {
+  const upgrade = await addCounterpartyAccounts(db, userId, observe);
   const opened = await openHousehold(db, userId, observe);
   if (!opened)
     throw new TRPCError({
@@ -94,7 +98,14 @@ export async function requireHousehold(
       message: "Create your personal budget first.",
     });
   if (opened.ledger.status !== "ready") throw budgetMaintenance();
-  return { household: opened.household, ledger: opened.ledger };
+  return {
+    household: opened.household,
+    ledger: opened.ledger,
+    requestRevision:
+      upgrade?.revision === opened.household.revision
+        ? upgrade.previousRevision
+        : opened.household.revision,
+  };
 }
 
 export type OperationResult = {
@@ -309,12 +320,12 @@ export async function executeCommand(
       return saved && earlierResult(saved, actorId, submitted, command);
     };
     // A retry finds the household moved on, by the operation itself.
-    const stale = household.revision !== baseRevision;
+    const stale = opened.requestRevision !== baseRevision;
     if (stale) {
       const result = await earlier();
       if (result) return result;
     }
-    if (baseRevision > household.revision)
+    if (baseRevision > opened.requestRevision)
       throw refusal(
         "conflict",
         "Your budget changed. Refresh before saving.",

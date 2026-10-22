@@ -94,23 +94,24 @@ export async function onboard(
 /**
  * Gives a household's budgets the counterparty accounts and paired
  * envelopes they lack, as one operation; budgets made before these accounts
- * existed get them the first time they load. Does nothing while any part of
- * the household doesn't read, and leaves a write race to the next load.
+ * existed get them before their first pull or write. Does nothing while any
+ * part of the household doesn't read, and leaves a write race to the next request.
  */
 export async function addCounterpartyAccounts(
   db: Database,
   userId: string,
   observe?: RevisionObserver,
-): Promise<void> {
+): Promise<{ previousRevision: number; revision: number } | undefined> {
   if (!(await lacksCounterpartyAccounts(db, userId))) return;
   const opened = await openHousehold(db, userId, observe);
   if (!opened) return;
   const { household, ledger } = opened;
   if (ledger.status !== "ready" || ledger.personal || ledger.failures.length)
     return;
+  const book = ledger.state as Book;
   const changes = diffRows(
-    rowsIn(household.rows).filter((row) => !row.deleted),
-    bookToRows(withCounterpartyAccounts(ledger.state as Book)),
+    bookToRows(book),
+    bookToRows(withCounterpartyAccounts(book)),
   );
   if (!changes.after.length) return;
   const operationId = randomUUID();
@@ -126,6 +127,7 @@ export async function addCounterpartyAccounts(
       },
     });
     observe?.(written.revision);
+    return { previousRevision: household.revision, revision: written.revision };
   } catch (error) {
     if (!(error instanceof RevisionConflictError)) throw error;
   }
@@ -283,7 +285,7 @@ async function bulkOperation(
     );
     if (saved)
       return earlierResult(saved, actorId, input.submitted, input.submitted);
-    if (opened.household.revision !== input.expectedRevision)
+    if (opened.requestRevision !== input.expectedRevision)
       throw refusal(
         "conflict",
         "Your budget changed in another session. Refresh before saving.",
