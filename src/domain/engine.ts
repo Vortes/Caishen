@@ -426,7 +426,9 @@ type ParsedCommand = z.output<typeof commandSchema>;
 export type Account = {
   id: string;
   name: string;
-  kind: "cash" | "credit" | "tracking";
+  // Partner and reimbursements are the counterparty accounts: what the
+  // partner, or anyone else, owes you (positive) or you owe them.
+  kind: "cash" | "credit" | "tracking" | "partner" | "reimbursements";
   openingBalance: number;
   date: string;
   // The last time the cleared balance was confirmed against the bank's.
@@ -439,6 +441,8 @@ export type Category = {
   target?: Target;
   pairedAccountId?: string;
   pairedLoanId?: string;
+  // The counterparty account this paired envelope holds the cash of.
+  counterpartyAccountId?: string;
 };
 export type TransactionHistory = {
   revision: number;
@@ -671,7 +675,7 @@ export const budgetShape = z.object({
     z.object({
       id: storedIdentifier,
       name: z.string(),
-      kind: z.enum(["cash", "credit", "tracking"]),
+      kind: z.enum(["cash", "credit", "tracking", "partner", "reimbursements"]),
       openingBalance: cents,
       date: daySchema,
       reconciled: z.object({ date: daySchema, balance: cents }).optional(),
@@ -686,6 +690,7 @@ export const budgetShape = z.object({
       target: targetSchema.optional(),
       pairedAccountId: storedIdentifier.optional(),
       pairedLoanId: storedIdentifier.optional(),
+      counterpartyAccountId: storedIdentifier.optional(),
     }),
   ),
   transactions: z.array(transactionSchema),

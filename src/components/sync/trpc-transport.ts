@@ -15,7 +15,7 @@ import {
  * together with the server's MINIMUM_CLIENT_FORMAT when old browsers could
  * no longer read what it sends.
  */
-export const CLIENT_FORMAT = 1;
+export const CLIENT_FORMAT = 2;
 
 /** Sent on every pull as `${format}:${build}`. */
 export const clientBuild = `${CLIENT_FORMAT}:${process.env.CAISHEN_BUILD ?? "development"}`;

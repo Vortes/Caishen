@@ -226,19 +226,21 @@ model CategoryGroup {
 }
 
 model Category {
-  workspaceId     String
-  userId          String
-  id              String
-  name            String
-  group           String
-  pairedAccountId String?
-  pairedLoanId    String?
-  sort            Int
-  revision        Int
-  deleted         Boolean      @default(false)
-  member          Member       @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
-  target          Target?
-  assignments     Assignment[]
+  workspaceId           String
+  userId                String
+  id                    String
+  name                  String
+  group                 String
+  pairedAccountId       String?
+  pairedLoanId          String?
+  // A paired envelope: the counterparty account whose cash it holds.
+  counterpartyAccountId String?
+  sort                  Int
+  revision              Int
+  deleted               Boolean      @default(false)
+  member                Member       @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  target                Target?
+  assignments           Assignment[]
 
   @@id([workspaceId, userId, id])
   @@index([workspaceId, revision])

@@ -1050,6 +1050,8 @@
       "values": [
         "cash",
         "credit",
+        "partner",
+        "reimbursements",
         "tracking"
       ]
     },
@@ -1102,6 +1104,7 @@
     "$": {
       "type": "object",
       "fields": {
+        "counterpartyAccountId": "optional",
         "group": "required",
         "id": "required",
         "name": "required",
@@ -1124,6 +1127,9 @@
       "type": "string"
     },
     "$.pairedLoanId": {
+      "type": "string"
+    },
+    "$.counterpartyAccountId": {
       "type": "string"
     },
     "$.userId": {

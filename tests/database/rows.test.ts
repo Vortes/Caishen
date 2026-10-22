@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import nextEnv from "@next/env";
 import {
+  createBook,
   executeWithChanges,
   type Book,
   type Command,
@@ -152,6 +153,39 @@ void test("the development seed and bank imports are stored whole, and each part
       "shared rows",
     );
   }
+});
+
+void test("counterparty accounts and their paired envelopes are stored whole", async () => {
+  const book = createBook("alex", "Alex", "2026-08");
+  const budget = book.budgets.alex!;
+  budget.accounts.push(
+    {
+      id: "counterparty:partner",
+      name: "Partner",
+      kind: "partner",
+      openingBalance: 0,
+      date: "2026-08-01",
+    },
+    {
+      id: "counterparty:reimbursements",
+      name: "Reimbursements",
+      kind: "reimbursements",
+      openingBalance: 0,
+      date: "2026-08-01",
+    },
+  );
+  budget.categories.push({
+    id: "envelope:reimbursements",
+    name: "Reimbursements",
+    group: "People",
+    counterpartyAccountId: "counterparty:reimbursements",
+  });
+  const workspaceId = await household(book, 1);
+
+  assert.deepStrictEqual(
+    json(rowsToBook(await loadRows(db, workspaceId))),
+    stored(book),
+  );
 });
 
 void test("every command's change set writes through the database with stamped revisions", async () => {

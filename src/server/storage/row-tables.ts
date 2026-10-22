@@ -130,6 +130,7 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("group"),
       text("pairedAccountId", true),
       text("pairedLoanId", true),
+      text("counterpartyAccountId", true),
       sort,
     ],
   },

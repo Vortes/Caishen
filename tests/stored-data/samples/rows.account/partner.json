@@ -1,0 +1,9 @@
+{
+  "id": "counterparty:partner",
+  "name": "Partner",
+  "kind": "partner",
+  "openingBalance": 0,
+  "date": "2026-08-01",
+  "userId": "alex",
+  "sort": 5
+}
