@@ -225,8 +225,10 @@ void test(
 
       const ownInbox = await state();
       const otherInbox = await bob.budget.state({ month: "2026-10" });
-      assert.equal(ownInbox.imports.length, 4);
-      assert.equal(otherInbox.imports.length, 1);
+      // Activity from bank accounts not added to the budget stays out of
+      // the inbox until they are.
+      assert.equal(ownInbox.imports.length, 0);
+      assert.equal(otherInbox.imports.length, 0);
       // The app shell reads the same connections and inbox beside its rows.
       for (const [caller, inbox] of [
         [alice, ownInbox],
@@ -250,18 +252,6 @@ void test(
       assert.ok(
         !JSON.stringify(otherInbox).includes("fixture-bob-token-never-return"),
       );
-
-      const matchConflict = ownInbox.imports.find(
-        (item) => item.logicalId === conflict.id,
-      );
-      assert.ok(matchConflict);
-      assert.equal(
-        matchConflict.needsMatchReview,
-        true,
-        "a status-only identity conflict must reopen a previously resolved import",
-      );
-      assert.match(matchConflict.error!, /conflicting provider identity/);
-      assert.equal(matchConflict.reviewEvidence.length, 1);
 
       await assert.rejects(
         () =>
@@ -327,6 +317,23 @@ void test(
       const mappedState = await state();
       assert.equal(mappedState.revision, ownInbox.revision + 1);
       assert.deepEqual(mappedState.history, { undo: null, redo: null });
+      // Opening history before the start date stays out.
+      assert.equal(mappedState.imports.length, 3);
+      assert.ok(
+        !JSON.stringify(mappedState).includes("Bob private fixture merchant"),
+      );
+      const matchConflict = mappedState.imports.find(
+        (item) => item.logicalId === conflict.id,
+      );
+      assert.ok(matchConflict);
+      assert.equal(
+        matchConflict.needsMatchReview,
+        true,
+        "a status-only identity conflict must reopen a previously resolved import",
+      );
+      assert.match(matchConflict.error!, /conflicting provider identity/);
+      assert.equal(matchConflict.reviewEvidence.length, 1);
+
       assert.ok(
         !mappedState.imports.some((item) => item.logicalId === preopening.id),
       );
@@ -419,9 +426,10 @@ void test(
           (item) => item.logicalId === pendingIncome.id,
         ),
       );
+      // Bob's bank account was never added to his budget.
       assert.equal(
         (await bob.budget.state({ month: "2026-10" })).imports.length,
-        1,
+        0,
       );
     } finally {
       await db.bankConnection.deleteMany({

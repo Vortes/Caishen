@@ -253,6 +253,32 @@ void test("bank update Link tokens and completion enforce connection ownership b
   );
 });
 
+// A harness whose bank checking account is added to the budget as Checking,
+// so its activity reaches the inbox.
+async function linkedHarness() {
+  const h = await harness();
+  let book = execute(await h.book(), alice, {
+    type: "account.add",
+    id: "cash",
+    accountId: "cash",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 10000,
+    date: "2026-10-01",
+  });
+  book = execute(book, alice, {
+    type: "category.add",
+    id: "category",
+    categoryId: "dining",
+    name: "Dining",
+  });
+  await h.setBook(book);
+  await h.setMappings({
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
+  return h;
+}
+
 const importFact = (id: string, pending = false) =>
   normalizePlaidTransaction({
     transaction_id: id,
@@ -1121,7 +1147,7 @@ function syncPages(pages: Record<string, unknown>[]) {
 }
 
 void test("a non-USD transaction is quarantined for review while the rest of the sync applies", async () => {
-  const h = await harness();
+  const h = await linkedHarness();
   const warn = mock.method(console, "warn", () => undefined);
   syncPages([
     {
@@ -1169,7 +1195,7 @@ void test("a non-USD transaction is quarantined for review while the rest of the
 });
 
 void test("malformed sync records are quarantined or skipped without blocking the cursor", async () => {
-  const h = await harness();
+  const h = await linkedHarness();
   mock.method(console, "warn", () => undefined);
   syncPages([
     {
@@ -1214,7 +1240,7 @@ void test("malformed sync records are quarantined or skipped without blocking th
 });
 
 void test("a quarantined transaction leaves review once the bank fixes, removes, or the user dismisses it", async () => {
-  const h = await harness();
+  const h = await linkedHarness();
   mock.method(console, "warn", () => undefined);
   const eur = (id: string) =>
     plaidTransaction({ transaction_id: id, iso_currency_code: "EUR" });
