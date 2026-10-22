@@ -547,8 +547,16 @@
 }
 .indexLinks li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
+}
+/* The review bar sits between the header and the first section. */
+.indexHeader + * {
+  margin-bottom: 24px;
+}
+.stateReview {
+  flex-basis: 100%;
 }
 .stateText {
   display: flex;
