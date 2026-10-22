@@ -5,6 +5,15 @@
 - Do not preserve the introductory product brief as a project document.
 - Delete one-off scripts and their temporary artifacts before finishing each task, including ignored and untracked files. Keep only reusable development and maintenance commands in `scripts/`.
 
+## Writing tests
+
+Write every new or changed test with the `tdd` skill, at every level from domain to end-to-end:
+
+1. Test only at seams the user has confirmed. Propose the seams, with what each catches and misses, before writing any test.
+2. Write one failing test, watch it fail for the expected reason, then write only enough code to pass it. Repeat one vertical slice at a time.
+3. Test behavior through public interfaces. Do not mock internal collaborators, test private functions, verify through side channels, or recompute expected values the way the code does.
+4. Include this rule in delegated tasks and handoffs, and report the red and green runs for each new test.
+
 ## UI review before end-to-end tests
 
 1. Finish the proposed UI, then present it to the user in the live app shell with a link directly to the feature, screenshots of the changes, and brief notes on what to try.
