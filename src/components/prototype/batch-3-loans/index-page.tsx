@@ -1,6 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import {
+  ItemNotes,
+  ReviewNotesBar,
+  ReviewNotesProvider,
+} from "~/components/prototype/review-notes";
 import { Button } from "~/components/ui/button";
 import styles from "./loans.module.css";
 
@@ -135,45 +140,54 @@ export function LoansIndex() {
   };
   return (
     <main className={styles.index} data-theme={theme}>
-      <div className={styles.indexInner}>
-        <header className={styles.indexHead}>
-          <div>
-            <h1>Batch 3 · Loans</h1>
-            <p>
-              Add a loan, confirm a variable rate, preview an extra payment, and
-              record a lender payment, on the shell’s Loans screen. Hardcoded
-              data for October 21, 2026; nothing reaches a budget. Every page
-              has prototype controls along the bottom: scenario, the four
-              variants, theme, and Reset. Hover a control to see the variable it
-              moves. Each item shows what the legacy app did; click it to
-              enlarge.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            aria-pressed={theme === "light"}
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            Light theme
-          </Button>
-        </header>
-        {groups.map((group) => (
-          <section key={group.title}>
-            <h2>{group.title}</h2>
-            <ul className={styles.links}>
-              {group.links.map((link) => (
-                <li key={link.href}>
-                  <a href={link.href}>
-                    {link.label}
-                    <span>{link.detail}</span>
-                  </a>
-                  <LegacyThumb legacy={link.legacy} onOpen={enlarge} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
+      <ReviewNotesProvider storageKey="batch-3" title="Batch 3: loans">
+        <div className={styles.indexInner}>
+          <header className={styles.indexHead}>
+            <div>
+              <h1>Batch 3 · Loans</h1>
+              <p>
+                Add a loan, confirm a variable rate, preview an extra payment,
+                and record a lender payment, on the shell’s Loans screen.
+                Hardcoded data for October 21, 2026; nothing reaches a budget.
+                Every page has prototype controls along the bottom: scenario,
+                the four variants, theme, and Reset. Hover a control to see the
+                variable it moves. Each item shows what the legacy app did;
+                click it to enlarge.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              aria-pressed={theme === "light"}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              Light theme
+            </Button>
+          </header>
+          <ReviewNotesBar />
+          {groups.map((group) => (
+            <section key={group.title}>
+              <h2>{group.title}</h2>
+              <ul className={styles.links}>
+                {group.links.map((link) => (
+                  <li key={link.href}>
+                    <a href={link.href}>
+                      {link.label}
+                      <span>{link.detail}</span>
+                    </a>
+                    <LegacyThumb legacy={link.legacy} onOpen={enlarge} />
+                    <div className={styles.review}>
+                      <ItemNotes
+                        id={`${group.title}:${link.label}`}
+                        title={`${group.title === "Flows" ? "Flow" : "State"}: ${link.label}`}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </ReviewNotesProvider>
       <dialog
         ref={dialog}
         className={styles.lightbox}
