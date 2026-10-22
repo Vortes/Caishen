@@ -559,6 +559,7 @@ export type Reimbursement = {
 // entries (src/domain/payee-memory.ts). It names a budget category or Ready
 // to Assign.
 export type PayeeMemory = {
+  counterpartyShare?: CounterpartyShare;
   // The payee as it was written when last categorized.
   payee: string;
   kind: "category" | "readyToAssign";
@@ -735,6 +736,7 @@ const loanSchema = z.object({
   ),
 });
 export const payeeMemorySchema = z.object({
+  counterpartyShare: counterpartyShareSchema.optional(),
   payee: z.string(),
   kind: z.enum(["category", "readyToAssign"]),
   categoryId: storedIdentifier.optional(),
