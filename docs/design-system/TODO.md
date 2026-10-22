@@ -25,9 +25,8 @@ doesn't follow the design system yet. Check items off as they land.
       [toasts.md](toasts.md))
 - [x] Skeleton: the app shell's loading screen
       (`src/components/ui/skeleton.tsx`, [loading.md](loading.md))
-- [ ] Progress line and busy status message: the header's month-loading
-      line (`shell.module.css`, `.monthLoading`) and Reflect's spinning
-      `Notice` (`reflect/reflect-view.tsx`) have no primitive
+- [ ] Busy status message: Reflect's spinning `Notice`
+      (`reflect/reflect-view.tsx`) has no primitive
 - [ ] Filter chip: the plan's focused views are `Button size="sm"` toggles,
       which have no tone, so Overspent lost YNAB's red or yellow fill and only
       its count takes the funding color; decide whether chips become a

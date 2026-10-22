@@ -96,7 +96,6 @@ function isTyping(target: EventTarget | null) {
 
 export function AppShellPrototype({
   data,
-  progress,
   onMonthChange,
   moveMoney,
   categoryAdder,
@@ -107,9 +106,6 @@ export function AppShellPrototype({
   overlays,
 }: {
   data: ShellData;
-  // What the budget is doing in the background (saving, updating), shown
-  // as the header's progress line; null when it's settled.
-  progress: string | null;
   onMonthChange: (month: string) => void;
   moveMoney: MoveMoney;
   categoryAdder: CategoryAdder;
@@ -571,11 +567,6 @@ export function AppShellPrototype({
                         onMonthChange(next);
                       }}
                     />
-                  )}
-                  {progress && !settingsOpen && (
-                    <div className={styles.monthLoading} role="status">
-                      <span className="sr-only">{progress}</span>
-                    </div>
                   )}
                 </header>
 

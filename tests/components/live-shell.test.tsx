@@ -32,7 +32,6 @@ test("an Assigned edit shows at once and saves the month's total", async () => {
 
   // The editor closes and the plan shows the total before the server answers.
   expect(amount().getAttribute("aria-label")).toMatch(/^\$150\.00 assigned/);
-  expect(screen.getByRole("status").textContent).toBe("Saving your changes…");
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)).toEqual([
     expect.objectContaining({
@@ -46,7 +45,6 @@ test("an Assigned edit shows at once and saves the month's total", async () => {
   gate.resolve();
   const toast = await findToast("Gifts now has $150.00 assigned");
   expect(within(toast).getByRole("button", { name: "Undo" })).toBeTruthy();
-  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
 });
 
 const assignedLabel = () => amount().getAttribute("aria-label");

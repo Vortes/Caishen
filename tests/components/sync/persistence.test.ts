@@ -74,13 +74,11 @@ test("a new tab shows the stored rows at once and pulls only what changed since"
   server.act("alex", assign("elsewhere", "rent", 1_000));
   const second = tab(server);
   second.connection.holding = true;
-  await vi.waitFor(() =>
-    expect(second.store.getSnapshot()).toMatchObject({
-      status: "ready",
-      revision: 1,
-      updating: true,
-    }),
-  );
+  await vi.waitFor(() => expect(second.connection.held).toHaveLength(1));
+  expect(second.store.getSnapshot()).toMatchObject({
+    status: "ready",
+    revision: 1,
+  });
   expect(
     second.store.month(month)!.categories.find((item) => item.id === "food")!
       .assigned,
@@ -89,10 +87,7 @@ test("a new tab shows the stored rows at once and pulls only what changed since"
   second.connection.releaseAll();
   await second.client.ready;
   expect(server.pulls.at(-1)!.input.since).toBe(1);
-  expect(second.store.getSnapshot()).toMatchObject({
-    revision: 2,
-    updating: false,
-  });
+  expect(second.store.getSnapshot()).toMatchObject({ revision: 2 });
   expect(second.store.month(month)).toEqual(serverMonth(server));
   await second.client.idle();
   expect((await stored())?.revision).toBe(2);
