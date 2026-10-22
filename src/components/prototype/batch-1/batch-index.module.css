@@ -131,6 +131,28 @@
   font-size: var(--type-small);
 }
 
+/* Review notes, under the legacy screenshots: the screen, then each open
+   choice. */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px calc(var(--space-card) * -1) 0;
+  padding: 12px var(--space-card) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.choiceLabel {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+
 /* The enlarged screenshot. The scrim's raw value matches the shell's until
    an --overlay token exists. */
 .overlay {

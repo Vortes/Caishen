@@ -6,6 +6,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import {
+  ItemNotes,
+  ReviewNotesBar,
+  ReviewNotesProvider,
+} from "~/components/prototype/review-notes";
 import { IconButton } from "~/components/ui/icon-button";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { resetPrototype, useTheme } from "./prototype";
@@ -148,72 +153,91 @@ export function BatchIndex() {
   return (
     <div ref={setRoot} className={batch.page} data-theme={theme}>
       <TooltipProvider container={root}>
-        <main className={styles.main}>
-          <header className={styles.header}>
-            <div className={styles.headerText}>
-              <h1 className={styles.title}>Batch 1: account and entry</h1>
-              <p className={styles.lede}>
-                Design prototypes with hardcoded data; nothing here is wired to
-                Clerk, Plaid, or your budget. Each screen shows what the legacy
-                app did beside it; open one to try the new design. On each
-                screen, the Prototype panel at the bottom left switches variants
-                (each named by the one variable it moves), states, and the
-                theme. Reset puts every screen back to its start.
-              </p>
-            </div>
-            <Button onClick={resetPrototype}>
-              <RotateCcwIcon aria-hidden />
-              Reset all
-            </Button>
-          </header>
-          <ul className={styles.list}>
-            {screens.map((screen) => (
-              <li key={screen.title}>
-                <Card>
-                  <div className={styles.row}>
-                    <div className={styles.rowText}>
-                      <h2 className={styles.rowTitle}>
-                        {screen.title}
-                        <span className={styles.where}>{screen.where}</span>
-                      </h2>
-                      <p className={styles.covers}>{screen.covers}</p>
-                      {screen.variants.length > 0 && (
-                        <ul className={styles.variants}>
-                          {screen.variants.map((variant) => (
-                            <li key={variant}>{variant}</li>
+        <ReviewNotesProvider
+          storageKey="batch-1"
+          title="Batch 1: account and entry"
+        >
+          <main className={styles.main}>
+            <header className={styles.header}>
+              <div className={styles.headerText}>
+                <h1 className={styles.title}>Batch 1: account and entry</h1>
+                <p className={styles.lede}>
+                  Design prototypes with hardcoded data; nothing here is wired
+                  to Clerk, Plaid, or your budget. Each screen shows what the
+                  legacy app did beside it; open one to try the new design. On
+                  each screen, the Prototype panel at the bottom left switches
+                  variants (each named by the one variable it moves), states,
+                  and the theme. Reset puts every screen back to its start.
+                </p>
+              </div>
+              <Button onClick={resetPrototype}>
+                <RotateCcwIcon aria-hidden />
+                Reset all
+              </Button>
+            </header>
+            <ReviewNotesBar />
+            <ul className={styles.list}>
+              {screens.map((screen) => (
+                <li key={screen.title}>
+                  <Card>
+                    <div className={styles.row}>
+                      <div className={styles.rowText}>
+                        <h2 className={styles.rowTitle}>
+                          {screen.title}
+                          <span className={styles.where}>{screen.where}</span>
+                        </h2>
+                        <p className={styles.covers}>{screen.covers}</p>
+                        {screen.variants.length > 0 && (
+                          <ul className={styles.variants}>
+                            {screen.variants.map((variant) => (
+                              <li key={variant}>{variant}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <Button asChild>
+                        <Link href={screen.href}>
+                          Open
+                          <ArrowRightIcon aria-hidden />
+                        </Link>
+                      </Button>
+                    </div>
+                    <div className={styles.legacy}>
+                      <span className={styles.legacyLabel}>Legacy</span>
+                      {screen.legacy.length ? (
+                        <ul className={styles.thumbs}>
+                          {screen.legacy.map((shot) => (
+                            <li key={shot.src}>
+                              <LegacyShot shot={shot} container={root} />
+                            </li>
                           ))}
                         </ul>
+                      ) : (
+                        <p className={styles.noLegacy}>
+                          No legacy equivalent: the legacy email had no
+                          unsubscribe link.
+                        </p>
                       )}
                     </div>
-                    <Button asChild>
-                      <Link href={screen.href}>
-                        Open
-                        <ArrowRightIcon aria-hidden />
-                      </Link>
-                    </Button>
-                  </div>
-                  <div className={styles.legacy}>
-                    <span className={styles.legacyLabel}>Legacy</span>
-                    {screen.legacy.length ? (
-                      <ul className={styles.thumbs}>
-                        {screen.legacy.map((shot) => (
-                          <li key={shot.src}>
-                            <LegacyShot shot={shot} container={root} />
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className={styles.noLegacy}>
-                        No legacy equivalent: the legacy email had no
-                        unsubscribe link.
-                      </p>
-                    )}
-                  </div>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        </main>
+                    <div className={styles.review}>
+                      <span className={styles.legacyLabel}>Review</span>
+                      <ItemNotes id={screen.title} title={screen.title} />
+                      {screen.variants.map((variant) => (
+                        <div key={variant} className={styles.choice}>
+                          <p className={styles.choiceLabel}>{variant}</p>
+                          <ItemNotes
+                            id={`${screen.title} / ${variant}`}
+                            title={`${screen.title}, choice: ${variant}`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          </main>
+        </ReviewNotesProvider>
       </TooltipProvider>
     </div>
   );
