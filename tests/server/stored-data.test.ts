@@ -2,11 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import { z, type ZodTypeAny } from "zod";
-import {
-  bookSchema,
-  householdSchema,
-  transactionSchema,
-} from "../../src/domain/engine";
+import { householdSchema, transactionSchema } from "../../src/domain/engine";
 import { rowDataSchemas } from "../../src/domain/row-schemas";
 import { tableNames } from "../../src/domain/rows";
 import {
@@ -38,7 +34,6 @@ import {
 //   and between them use every recorded enum value.
 
 const jsonColumns: Record<string, ZodTypeAny> = {
-  "Workspace.book": bookSchema,
   "BankConnection.imports": connectionColumnSchema,
   "BankConnection.accountMappings": bankMappingsSchema,
   "ReviewEvidence.evidence": savedEvidenceSchema,

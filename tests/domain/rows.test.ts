@@ -47,10 +47,7 @@ const seed = buildDevelopmentSeed({
 const sample = bookSchema.parse(
   JSON.parse(
     readFileSync(
-      new URL(
-        "../stored-data/samples/Workspace.book/every-stored-value.json",
-        import.meta.url,
-      ),
+      new URL("./fixtures/every-stored-value-book.json", import.meta.url),
       "utf8",
     ),
   ),

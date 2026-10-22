@@ -515,9 +515,10 @@ const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 /**
- * Replaces all of a household's rows with these, at a revision. Only the
- * one-time copy from stored books (scripts/copy-books-to-rows.ts) uses it;
- * it neither bumps the revision nor records an operation.
+ * Replaces all of a household's rows with these, at a revision, for a
+ * household no browser holds yet (a new development seed, test setup). It
+ * neither bumps the revision nor records an operation; resetHouseholdRows
+ * replaces a household browsers may hold.
  */
 export async function replaceRows(
   db: Database,
@@ -580,7 +581,7 @@ export async function findOperation(
   };
 }
 
-/** Operations recorded before the operations table, kept for retries. */
+/** Operations recorded without a change set (development seeds), kept for retries. */
 export async function recordPastOperations(
   db: Database,
   workspaceId: string,
@@ -618,15 +619,6 @@ export async function pruneOperations(
     data: { command: Prisma.DbNull, changeSet: Prisma.DbNull },
   });
   return pruned.count;
-}
-
-/** Every household operation id recorded, for checks. */
-export async function operationIds(db: Database, workspaceId: string) {
-  const found = await db.operation.findMany({
-    where: { workspaceId },
-    select: { operationId: true },
-  });
-  return found.map((operation) => operation.operationId);
 }
 
 // Readers for the operations table's JSON columns (ADR 0006, stored data).
