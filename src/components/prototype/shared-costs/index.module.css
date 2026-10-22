@@ -1,0 +1,116 @@
+/* The shared costs index: what to review, with links into the prototype. */
+
+.themed {
+  min-height: 100vh;
+  background: var(--surface-panel);
+}
+.index {
+  padding: 48px 24px 96px;
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+.index > * {
+  max-width: 720px;
+  margin-inline: auto;
+}
+.indexHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 40px;
+}
+.index h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.index h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+.index h3 {
+  margin: 8px 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.index p {
+  margin: 0;
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+.index a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.index a:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.indexPrimary {
+  font-weight: 500;
+}
+/* The review bar sits between the header and the first section. */
+.indexHeader + * {
+  margin-bottom: 24px;
+}
+.indexSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.indexList,
+.indexLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+.indexList strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.indexLinks {
+  gap: 10px;
+  padding-left: 0;
+  list-style: none;
+}
+.stateText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.stateText > span {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+.call {
+  color: var(--text-primary);
+}
+.against {
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 560px) {
+  .index {
+    padding: 32px 16px 64px;
+  }
+}

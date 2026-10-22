@@ -1,0 +1,574 @@
+/* Shared costs prototype: the partner and reimbursements accounts inside the
+   app shell, styled on the shell's tokens. Fields repeat the transaction
+   editor's wells; rows and cards are the shell's own. */
+
+/* ---------- Stage: the prototype bar over the shell ---------- */
+
+.stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-app);
+}
+.stage > .shellRoot {
+  position: relative;
+  inset: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px dashed var(--border-strong);
+  background: var(--surface-app);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.barTitle {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.barTitle:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.barChoices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.barChoice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.barLabel {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.barActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.barMenu {
+  z-index: 80;
+  max-width: 340px;
+}
+.scenarioMenu {
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+.menuItemTall {
+  height: auto;
+  padding-block: 6px;
+}
+.menuItemText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menuHint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.staticBanks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-md);
+  padding: 0 10px;
+  color: var(--text-secondary);
+}
+.allMonths {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* ---------- Register ---------- */
+
+.categoryCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.shareChip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 60%;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.transferCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-tertiary);
+}
+
+/* The share sits under the transaction's own row, from the payee column. */
+.shareRow {
+  align-items: center;
+  padding-bottom: 8px;
+}
+.shareLabel {
+  justify-self: end;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareSpan {
+  grid-column: 2 / -1;
+  min-width: 0;
+}
+:global([data-accounts]) .shareLabel {
+  grid-column: 2;
+}
+:global([data-accounts]) .shareSpan {
+  grid-column: 3 / -1;
+}
+
+.share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+}
+.share[data-layout="stack"] {
+  align-items: flex-start;
+}
+.shareWho {
+  width: 11rem;
+}
+.shareAmount {
+  width: 7.5rem;
+}
+.shareWord {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareSummary {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.shareSummary strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.share[data-layout="row"] .shareSummary {
+  margin-left: auto;
+}
+.share[data-layout="stack"] .shareSummary {
+  flex-basis: 100%;
+}
+.shareError {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger-text);
+}
+
+.splitLines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 calc(var(--space-row-x) + 16px + 16px - 8px) 8px var(--row-gutter);
+}
+.splitLines[data-layout="panel"] {
+  padding: 8px 0 0;
+}
+.splitLine {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.splitLineFields {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lineLabel {
+  flex: none;
+  width: 3.5rem;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.lineCategory {
+  flex: 1;
+  min-width: 0;
+  max-width: 18rem;
+}
+.lineAmount {
+  width: 7.5rem;
+}
+.splitLineShare {
+  padding-left: calc(3.5rem + 10px);
+}
+.splitFoot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+}
+.splitLeft {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.splitLeft[data-off] {
+  color: var(--feedback-attention);
+}
+.hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+
+/* A settlement's review opens where its row was. */
+.reviewCard,
+.detailCard {
+  margin-top: 4px;
+}
+.reviewHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--size-row-lg);
+  padding: 0 var(--space-row-x) 0 var(--row-gutter);
+  color: var(--text-primary);
+}
+.reviewHead > svg {
+  color: var(--text-tertiary);
+}
+.reviewAmount {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.reviewBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 68ch;
+  padding: 0 var(--space-row-x) 10px var(--row-gutter);
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.reviewBody p,
+.panelText p {
+  margin: 0;
+}
+.reviewFoot {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* ---------- Details panel variant ---------- */
+
+.panelForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+}
+.panelFields {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+}
+.panelFields > .share {
+  min-width: 0;
+}
+.panelLabel {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.panelShare {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.panelForm :global(form) {
+  margin: 0;
+}
+.panelForm [class*="rowFooter"] {
+  flex-wrap: wrap;
+  padding: 12px 0 0;
+}
+.panelForm [class*="rowFooter"] > p {
+  flex-basis: 100%;
+}
+.panelText {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.panelActions {
+  padding-top: 12px;
+}
+
+/* ---------- Ledger ---------- */
+
+div.ledger {
+  --tx-columns: 4.5rem minmax(0, 1.3fr) 4.25rem minmax(0, 1fr) 6rem 5.5rem
+    5.5rem 6.5rem 16px;
+}
+div.reimbursements {
+  --tx-columns: 4.5rem minmax(0, 1.3fr) 6.5rem minmax(0, 1fr) 6.5rem 6.5rem 16px;
+}
+
+.balanceHero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.balanceHero strong {
+  color: var(--text-primary);
+  font-size: var(--type-figure);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.balanceCaption {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.signLegend {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.ledgerAside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+.request {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 18rem;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.request > [class*="meter"] {
+  align-self: stretch;
+  padding-top: 4px;
+}
+.requestTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+.requestTitle > svg {
+  color: var(--text-tertiary);
+}
+.inlineForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.splitSetting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--type-small);
+}
+.percent {
+  width: 4.5rem;
+}
+
+.detailGrid {
+  display: flex;
+  flex-direction: column;
+  padding: 10px var(--space-row-x) 4px var(--row-gutter);
+}
+.detail {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+}
+.detail + .detail {
+  border-top: 1px solid var(--border-subtle);
+}
+.detailLabel {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.detailValue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.detailRow {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.detailRow > svg {
+  color: var(--text-tertiary);
+}
+.shareEdit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.sideCategory {
+  width: 14rem;
+}
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+.history li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.history svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.recordGrid {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 12px;
+  padding: 14px var(--space-row-x) 10px var(--row-gutter);
+}
+.recordField {
+  max-width: 18rem;
+}
+
+/* ---------- Partnering ---------- */
+
+.inviteRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.code {
+  padding: 4px 8px;
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.setup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 34rem;
+  margin: 72px auto;
+  padding: 0 var(--space-card);
+}
+.setupTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.setupText {
+  margin: 0;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* ---------- Plan inspector ---------- */
+
+.wrapAction {
+  display: contents;
+}
+.linkValue {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.linkValue:hover {
+  text-decoration-color: currentColor;
+}
+.cardNote {
+  margin: 6px 2px 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.equation strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.minus {
+  font-variant-numeric: tabular-nums;
+}
+.floatForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.wrapText {
+  white-space: normal;
+  text-wrap: pretty;
+}
+.balanceHero strong[data-sign="1"] {
+  color: var(--money-positive);
+}
+
+.fit {
+  display: flex;
+}
