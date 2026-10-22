@@ -166,6 +166,7 @@ export class BudgetStore {
   private readonly listeners = new Set<() => void>();
   private readonly noticeListeners = new Set<(notice: Notice) => void>();
   private readonly commitListeners = new Set<(commit: Commit) => void>();
+  private readonly noBudgetListeners = new Set<() => void>();
   private readonly projections = new WeakMap<
     PersonalLedger,
     Map<string, BudgetProjection>
@@ -196,6 +197,12 @@ export class BudgetStore {
   onCommit(listener: (commit: Commit) => void): () => void {
     this.commitListeners.add(listener);
     return () => this.commitListeners.delete(listener);
+  }
+
+  /** The server said this user has no budget; stored rows must go. */
+  onNoBudget(listener: () => void): () => void {
+    this.noBudgetListeners.add(listener);
+    return () => this.noBudgetListeners.delete(listener);
   }
 
   get confirmedRevision(): number | null {
@@ -608,6 +615,7 @@ export class BudgetStore {
       this.confirmedLedger = null;
       this.replay();
     }
+    for (const listener of this.noBudgetListeners) listener();
     this.changed();
   }
 
