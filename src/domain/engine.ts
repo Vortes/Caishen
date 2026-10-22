@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { counterpartyLines, counterpartyRegisterEntries, shareContribution } from "./counterparty";
+export { counterpartyRegisterEntries } from "./counterparty";
 import {
   isTransfer,
   transferCounterparts,
@@ -1623,8 +1625,8 @@ function replay(
     cursor = nextMonth(cursor)
   ) {
     const rows = index.months.get(cursor) ?? empty;
-    for (const state of categories.values()) {
-      state.opening = Math.max(0, state.available);
+    for (const [categoryId, state] of categories) {
+      state.opening = index.category(categoryId).counterpartyAccountId ? state.available : Math.max(0, state.available);
       state.available = state.opening;
       state.assigned = 0;
       state.activity = 0;
@@ -1694,10 +1696,29 @@ function replay(
         if (account.kind === "credit") payments.push(transaction);
         continue;
       }
+      if (transaction.linkedCounterpartyAccountId) {
+        const counterparty = accounts.get(transaction.linkedCounterpartyAccountId)!;
+        counterparty.balance = safe(counterparty.balance - transaction.amount);
+        const category = budget.categories.find(item => item.counterpartyAccountId === transaction.linkedCounterpartyAccountId)!;
+        const state = categories.get(category.id)!;
+        state.activity = safe(state.activity + transaction.amount);
+        state.available = safe(state.available + transaction.amount);
+        state.cashActivity = safe(state.cashActivity + transaction.amount);
+        cashByCategory.set(category.id, safe((cashByCategory.get(category.id) ?? 0) + transaction.amount));
+      }
       if (transaction.kind === "reimbursement" || transaction.kind === "income")
         continue;
       if (transaction.kind === "settlement") continue;
-      for (const { categoryId, amount } of categoryLines(transaction)) {
+      const accountingLines = counterpartyLines(transaction).flatMap(line => {
+        const share = line.counterpartyShare;
+        if (!share) return [line];
+        const contribution = shareContribution(line.amount, share);
+        const counterparty = accounts.get(share.accountId)!;
+        counterparty.balance = safe(counterparty.balance + contribution);
+        const paired = budget.categories.find(item => item.counterpartyAccountId === share.accountId)!;
+        return [{categoryId: line.categoryId, amount: safe(line.amount + contribution)}, {categoryId: paired.id, amount: -contribution}];
+      });
+      for (const { categoryId, amount } of accountingLines) {
         const state = categories.get(categoryId)!;
         state.activity = safe(state.activity + amount);
         state.available = safe(state.available + amount);
@@ -1836,7 +1857,7 @@ function replay(
         categories.get(refund.categoryId)!.available - refund.remaining,
       );
     for (const [categoryId, amount] of liquidity)
-      categories.get(categoryId)!.cashOverspending = Math.max(0, -amount);
+      categories.get(categoryId)!.cashOverspending = Math.max(0, -amount) - (index.category(categoryId).counterpartyAccountId ? Math.min(Math.max(0, -categories.get(categoryId)!.opening), Math.max(0, -amount)) : 0);
     for (const transfer of debtTransfers) {
       const from = accounts.get(transfer.from)!;
       const to = accounts.get(transfer.to)!;
@@ -1888,6 +1909,12 @@ function replay(
         state.available = account.reserve;
         state.activity = safe(state.available - state.opening - state.assigned);
       }
+    for (const category of budget.categories) {
+      if (!category.counterpartyAccountId) continue;
+      const state = categories.get(category.id)!;
+      const float = sum(budget.assignments.filter(item => item.categoryId === category.id && item.month <= cursor).map(item => item.amount));
+      state.available = safe(float - accounts.get(category.counterpartyAccountId)!.balance);
+    }
     snapshots.set(
       cursor,
       new Map([...categories].map(([id, state]) => [id, { ...state }])),
@@ -2463,7 +2490,7 @@ function projectAccountingState(
     accounts: budget.accounts.map((account) => ({
       ...account,
       ...calculated.accounts.get(account.id)!,
-      cleared: clearedBalance(budget, account),
+      cleared: isCounterparty(account) ? sum(counterpartyRegisterEntries(budget, {accountId: account.id, cutoff}).map(entry => entry.amount)) : clearedBalance(budget, account),
     })),
     personalSpending,
     amountPaid,
@@ -2475,6 +2502,7 @@ function projectAccountingState(
     settlement: { youOwe, owedToYou, net: safe(youOwe - owedToYou) },
     sharedStatement: sharedStatement(book, userId, month),
     sharedLedger: projectSharedLedger(book, userId),
+    counterpartyRegister: counterpartyRegisterEntries(budget, { cutoff }),
     reimbursements: budget.reimbursements.map((claim) => ({
       ...structuredClone(claim),
       outstanding: safe(
