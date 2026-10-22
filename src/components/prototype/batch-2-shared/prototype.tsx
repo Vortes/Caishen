@@ -51,18 +51,20 @@ import { SharedTab } from "./shared-tab";
 import {
   accountName,
   BLOCKED,
-  choices,
-  defaultVariants,
   net,
   ProtoProvider,
   sharedFor,
   splitLabel,
   type Actions,
-  type ChoiceKey,
   type Notice,
   useProto,
-  type Variants,
 } from "./state";
+import {
+  choices,
+  defaultVariants,
+  type ChoiceKey,
+  type Variants,
+} from "./choices";
 import styles from "./batch2.module.css";
 
 const READY_TO_ASSIGN = 248650;

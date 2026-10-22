@@ -18,13 +18,8 @@ import target from "../app-shell/target-editor.module.css";
 import banks from "../app-shell/banks.module.css";
 import { PARTNER } from "./data";
 import { Field, NumberWell } from "./fields";
-import {
-  hasActivity,
-  sharedFor,
-  splitLabel,
-  useProto,
-  type Variants,
-} from "./state";
+import { hasActivity, sharedFor, splitLabel, useProto } from "./state";
+import type { Variants } from "./choices";
 import styles from "./batch2.module.css";
 
 export type ShareEditing = "share" | "split" | null;
