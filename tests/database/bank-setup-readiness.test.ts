@@ -145,6 +145,162 @@ void test("a completed empty Amex history can be added with its current balance"
   assert.equal(saved.view!.readyToAssign, 0);
 });
 
+void test("an unchanged Business Platinum stays ready when another card advances the sync cursor", async (t) => {
+  const h = await connection(t);
+  const platinum = providerAccount("business-platinum");
+  const gold = providerAccount("gold", "credit", "credit card", 100);
+  const page: Record<string, unknown> = {
+    accounts: [platinum, gold],
+    next_cursor: "initial-history",
+    added: [
+      {
+        transaction_id: "platinum-purchase",
+        account_id: "business-platinum",
+        pending: false,
+        date: h.today,
+        name: "Business purchase",
+        amount: 20,
+        iso_currency_code: "USD",
+      },
+    ],
+  };
+  plaid([platinum, gold], page);
+  await h.caller.budget.sync();
+  assert.ok(
+    (await h.state()).connections[0]!.synchronizedAccountIds.includes(
+      "business-platinum",
+    ),
+  );
+
+  page.accounts = [gold];
+  page.next_cursor = "gold-update";
+  page.added = [
+    {
+      transaction_id: "gold-purchase",
+      account_id: "gold",
+      pending: false,
+      date: h.today,
+      name: "Gold purchase",
+      amount: 12.78,
+      iso_currency_code: "USD",
+    },
+  ];
+  await h.caller.budget.sync();
+  const refreshed = await h.state();
+  assert.ok(
+    refreshed.connections[0]!.synchronizedAccountIds.includes(
+      "business-platinum",
+    ),
+    "An unchanged Business Platinum must remain ready after another card updates",
+  );
+  await h.caller.budget.setupBankAccounts({
+    connectionId: h.connectionId,
+    operationId: randomUUID(),
+    expectedRevision: refreshed.revision,
+    accounts: [
+      {
+        providerAccountId: "business-platinum",
+        name: "Business Platinum",
+        expectedBalance: 0,
+      },
+    ],
+  });
+  assert.deepEqual(
+    (await h.state()).view!.accounts.map((account) => [
+      account.name,
+      account.balance,
+    ]),
+    [["Business Platinum", 0]],
+  );
+});
+
+void test("a card with stored history recovers lost readiness only from a matching full-history cursor", async (t) => {
+  const h = await connection(t);
+  const platinum = providerAccount("business-platinum");
+  const purchase = {
+    transaction_id: "platinum-purchase",
+    account_id: "business-platinum",
+    pending: false,
+    date: h.today,
+    name: "Business purchase",
+    amount: 20,
+    iso_currency_code: "USD",
+  };
+  let reconnecting = false;
+  let historyCursor = "initial-history";
+  let incrementalCursor = "initial-history";
+  mock.method(
+    globalThis,
+    "fetch",
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const path = new URL(input instanceof Request ? input.url : input)
+        .pathname;
+      if (path === "/accounts/get")
+        return Response.json({
+          accounts: [platinum],
+          item: {
+            institution_id: "amex",
+            institution_name: "American Express",
+          },
+        });
+      if (path !== "/transactions/sync")
+        throw new Error(`Unexpected provider request: ${path}`);
+      const body = init?.body;
+      assert.ok(typeof body === "string");
+      const request = JSON.parse(body) as { cursor?: string };
+      const fullHistory = !request.cursor;
+      return Response.json({
+        accounts: !reconnecting || fullHistory ? [platinum] : [],
+        added: !reconnecting || fullHistory ? [purchase] : [],
+        modified: [],
+        removed: [],
+        next_cursor: fullHistory ? historyCursor : incrementalCursor,
+        has_more: false,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      });
+    },
+  );
+  await h.caller.budget.sync();
+  await h.caller.budget.plaidReconnect({ connectionId: h.connectionId });
+  reconnecting = true;
+
+  historyCursor = "history-before-new-update";
+  incrementalCursor = "history-after-new-update";
+  await h.caller.budget.sync();
+  assert.deepEqual(
+    (await h.state()).connections[0]!.synchronizedAccountIds,
+    [],
+    "Balances from a different history cursor cannot restore readiness",
+  );
+
+  historyCursor = incrementalCursor;
+  await h.caller.budget.sync();
+  const recovered = await h.state();
+  assert.deepEqual(
+    recovered.connections[0]!.synchronizedAccountIds,
+    ["business-platinum"],
+    "A complete matching history snapshot must recover the already-stuck card",
+  );
+  await h.caller.budget.setupBankAccounts({
+    connectionId: h.connectionId,
+    operationId: randomUUID(),
+    expectedRevision: recovered.revision,
+    accounts: [
+      {
+        providerAccountId: "business-platinum",
+        name: "Business Platinum",
+        expectedBalance: 0,
+      },
+    ],
+  });
+  const saved = await h.state();
+  assert.deepEqual(
+    saved.view!.accounts.map((account) => [account.name, account.balance]),
+    [["Business Platinum", 0]],
+  );
+  assert.equal(saved.view!.readyToAssign, 0);
+});
+
 void test("unreadable activity cannot make an account look like a completed empty history", async (t) => {
   const h = await connection(t);
   plaid([providerAccount()], {
