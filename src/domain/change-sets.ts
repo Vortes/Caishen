@@ -7,6 +7,7 @@ import {
 } from "./engine";
 import {
   orphanRows,
+  rowOwner,
   rowsToBook,
   rowsToPersonalLedger,
   rowVisibleTo,
@@ -99,18 +100,66 @@ export function changeSetVisibleTo(
 }
 
 /**
- * The rows a change set changed that have changed again since. A stamped
- * change set compares revisions, as the server does; one not yet stamped
- * (a browser's local preview) compares content.
+ * The rows a change set changed whose content has changed again since: a
+ * revert would overwrite them. Content, not revision, decides, so undoing
+ * two operations on the same row one after the other works (undoing the
+ * second restores what the first wrote), while a partner's later edit is
+ * still refused. The server and the browser decide the same way.
  */
 export function revertConflicts(set: RowSet, target: ChangeSet): WireRow[] {
   return target.after.filter((row) => {
     const current = getRow(set, row.table, row.id);
     if (!current) return !row.deleted;
-    return target.revision
-      ? current.revision !== target.revision
-      : current.deleted !== row.deleted || !sameJson(current.data, row.data);
+    return current.deleted !== row.deleted || !sameJson(current.data, row.data);
   });
+}
+
+/**
+ * Whether every row a change set changes belongs to one partner's own
+ * budget. Only such a change is re-run against a newer revision (ADR 0006);
+ * one that changes anything shared, a partner's rows, or the partner facts
+ * derived for them is a conflict.
+ */
+export function changesOnlyBudgetOf(
+  changeSet: ChangeSet,
+  userId: string,
+): boolean {
+  return changeSet.after.every((row) => rowOwner(row) === userId);
+}
+
+/**
+ * Several change sets applied one after another, as one operation's change
+ * set: each row's first prior content and last content. A row that ends as
+ * it began is left out.
+ */
+export function composeChangeSets(
+  operationId: string,
+  changeSets: ChangeSet[],
+): ChangeSet {
+  const pairs = new Map<string, { before: WireRow; after: WireRow }>();
+  for (const changeSet of changeSets)
+    changeSet.after.forEach((after, index) => {
+      const key = `${after.table} ${after.id}`;
+      const pair = pairs.get(key);
+      if (pair) pair.after = after;
+      else pairs.set(key, { before: changeSet.before[index]!, after });
+    });
+  const composed: ChangeSet = {
+    operationId,
+    revision: 0,
+    after: [],
+    before: [],
+  };
+  for (const { before, after } of pairs.values()) {
+    if (
+      before.deleted === after.deleted &&
+      (before.deleted || sameJson(before.data, after.data))
+    )
+      continue;
+    composed.before.push(before);
+    composed.after.push(after);
+  }
+  return composed;
 }
 
 /**
