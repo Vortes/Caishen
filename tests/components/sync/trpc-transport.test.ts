@@ -297,3 +297,130 @@ test("sync calls go alone so each answer carries the revision; other calls are b
   expect(revisions).toEqual([1, 2, 2]);
   stop();
 });
+
+// A Clerk session token lives about a minute and the browser renews it in
+// the background; a tab that slept can send one that just expired.
+function expiringSession(renewed: boolean | (() => Promise<boolean>)) {
+  const session = {
+    refreshes: 0,
+    refresh: async () => {
+      session.refreshes += 1;
+      return typeof renewed === "function" ? renewed() : renewed;
+    },
+  };
+  return session;
+}
+
+function signedOutUntil(attempts: { count: number }, accepts: number) {
+  return () => {
+    attempts.count += 1;
+    if (attempts.count < accepts) throw new TRPCError({ code: "UNAUTHORIZED" });
+    return undefined;
+  };
+}
+
+test("an expired session token is renewed and the call sent once more before syncing stops", async () => {
+  const outcome = (error: unknown) =>
+    error instanceof SyncError ? error.kind : "unknown";
+  for (const call of ["execute", "pull"] as const) {
+    const path = call === "execute" ? "budget.execute" : "sync.pull";
+    const send = (transport: ReturnType<typeof trpcTransport>) =>
+      call === "execute"
+        ? transport.execute({
+            command: food("a1", 100),
+            baseRevision: 0,
+            clientId: "tab",
+          })
+        : transport.pull({ since: null, clientBuild });
+    const scenario = async (
+      renewed: Parameters<typeof expiringSession>[0],
+      accepts: number,
+    ) => {
+      const attempts = { count: 0 };
+      const server = new FakeServer(household());
+      const unauthorized = signedOutUntil(attempts, accepts);
+      const client = createTRPCClient<AppRouter>({
+        links: appLinks({
+          url: "http://component.invalid/api/trpc",
+          fetch: componentFetch(server, "alex", {
+            [path]: (input, fake) => {
+              unauthorized();
+              return call === "execute"
+                ? fake.execute("alex", input as never)
+                : fake.pull("alex", input as never);
+            },
+          }),
+        }),
+      });
+      const session = expiringSession(renewed);
+      const result = await send(trpcTransport(client, session.refresh)).then(
+        () => "answered",
+        outcome,
+      );
+      return { result, sent: attempts.count, refreshes: session.refreshes };
+    };
+
+    expect(await scenario(true, 2), call).toEqual({
+      result: "answered",
+      sent: 2,
+      refreshes: 1,
+    });
+    // Renewed, yet still turned away: signed out for real.
+    expect(await scenario(true, 3), call).toEqual({
+      result: "signedOut",
+      sent: 2,
+      refreshes: 1,
+    });
+    // No session left to renew.
+    expect(await scenario(false, 2), call).toEqual({
+      result: "signedOut",
+      sent: 1,
+      refreshes: 1,
+    });
+    // Couldn't reach Clerk: nothing is known yet, so it's retried later.
+    expect(
+      await scenario(() => Promise.reject(new TypeError("Failed to fetch")), 2),
+      call,
+    ).toEqual({ result: "unknown", sent: 1, refreshes: 1 });
+  }
+});
+
+test("an account that may no longer use Caishen is not renewed", async () => {
+  const { server } = connect();
+  const session = expiringSession(true);
+  const client = createTRPCClient<AppRouter>({
+    links: appLinks({
+      url: "http://component.invalid/api/trpc",
+      fetch: componentFetch(server, "alex", {
+        "sync.pull": () => {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Inactive." });
+        },
+      }),
+    }),
+  });
+  const refused = await trpcTransport(client, session.refresh)
+    .pull({ since: null, clientBuild })
+    .catch((error: unknown) => error);
+  expect(refused).toMatchObject({ kind: "signedOut", message: "Inactive." });
+  expect(session.refreshes).toBe(0);
+});
+
+test("a server-only operation sent with an expired session token is renewed and sent once more", async () => {
+  const attempts = { count: 0 };
+  const { client, stop } = connect({
+    "budget.resolveImport": signedOutUntil(attempts, 2),
+  });
+  const session = expiringSession(true);
+  await serverOperation(
+    () =>
+      client.budget.resolveImport.mutate({
+        connectionId: "bank",
+        logicalId: "import",
+        expectedRevision: 0,
+      }),
+    session.refresh,
+  );
+  expect(attempts.count).toBe(2);
+  expect(session.refreshes).toBe(1);
+  stop();
+});
