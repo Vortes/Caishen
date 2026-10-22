@@ -8,7 +8,6 @@ import {
   ChevronRightIcon,
   ListFilterIcon,
   PanelLeftIcon,
-  PanelRightIcon,
   PlusIcon,
   RotateCcwIcon,
   SlidersHorizontalIcon,
@@ -25,7 +24,6 @@ import { SearchField } from "~/components/prototype/app-shell/account";
 import { Caret } from "~/components/prototype/app-shell/sidebar";
 import shell from "~/components/prototype/app-shell/shell.module.css";
 import { accounts, money, type AccountId } from "./data";
-import { PlanInspector, PlanList } from "./plan";
 import { RegisterView, emptyUi, type RegisterUi } from "./register";
 import {
   BookProvider,
@@ -35,23 +33,14 @@ import {
 } from "./state";
 import styles from "./batch-5.module.css";
 
-type Screen =
-  { type: "plan" } | { type: "register"; accountId: AccountId | null };
-
-// Where a link from the index page starts: the screen, the selection, and
+// Where a link from the index page starts: the account, the selection, and
 // which variant is showing.
 function fromUrl() {
   const params = new URLSearchParams(window.location.search);
   const account = params.get("account");
-  const screen: Screen =
-    params.get("screen") === "plan"
-      ? { type: "plan" }
-      : {
-          type: "register",
-          accountId: accounts.some((item) => item.id === account)
-            ? (account as AccountId)
-            : null,
-        };
+  const accountId = accounts.some((item) => item.id === account)
+    ? (account as AccountId)
+    : null;
   const select = params.get("select");
   const edit = params.get("edit");
   const variants = { ...defaultVariants };
@@ -66,7 +55,6 @@ function fromUrl() {
         editing: {
           id: edit,
           history: params.get("panel") === "history",
-          expect: params.get("panel") === "expect",
         },
       }
     : select
@@ -77,11 +65,10 @@ function fromUrl() {
         }
       : emptyUi;
   return {
-    screen,
+    accountId,
     ui,
     variants,
     reviewOnly: params.get("review") === "1",
-    claim: params.get("claim"),
   };
 }
 
@@ -102,11 +89,10 @@ function Prototype() {
   const state = useBookState();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [variants, setVariants] = useState<Variants>(start.variants);
-  const [screen, setScreen] = useState<Screen>(start.screen);
+  const [accountId, setAccountId] = useState<AccountId | null>(start.accountId);
   const [ui, setUiState] = useState<RegisterUi>(start.ui);
   const [reviewOnly, setReviewOnly] = useState(start.reviewOnly);
   const [query, setQuery] = useState("");
-  const [claim, setClaim] = useState<string | null>(start.claim);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   // The real shell turns both panels into drawers here; the prototype just
   // hides them so the register can be judged at phone width.
@@ -131,24 +117,22 @@ function Prototype() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const go = (next: Screen) => {
-    setScreen(next);
+  const go = (next: AccountId | null) => {
+    setAccountId(next);
     setUiState(emptyUi);
     setQuery("");
   };
   const reset = () => {
     actions.reset();
     setVariants(start.variants);
-    setScreen(start.screen);
+    setAccountId(start.accountId);
     setUiState(start.ui);
     setReviewOnly(start.reviewOnly);
-    setClaim(start.claim);
     setQuery("");
   };
-  const account =
-    screen.type === "register" && screen.accountId
-      ? accounts.find((item) => item.id === screen.accountId)
-      : undefined;
+  const account = accountId
+    ? accounts.find((item) => item.id === accountId)
+    : undefined;
   const shown = account ? [account] : accounts;
   const working = shown.reduce((sum, item) => sum + item.balance, 0);
   const uncleared = book.transactions
@@ -184,19 +168,14 @@ function Prototype() {
                 </div>
                 <div className={shell.sidebarScroll}>
                   <ul className={shell.navList}>
-                    <NavItem
-                      icon={WalletCardsIcon}
-                      label="Plan"
-                      current={screen.type === "plan"}
-                      onClick={() => go({ type: "plan" })}
-                    />
+                    <NavItem icon={WalletCardsIcon} label="Plan" />
                     <NavItem icon={ChartPieIcon} label="Reflect" />
                     <NavItem
                       icon={ArrowLeftRightIcon}
                       label="All accounts"
-                      current={screen.type === "register" && !screen.accountId}
+                      current={!accountId}
                       toReview={toReview.length > 0}
-                      onClick={() => go({ type: "register", accountId: null })}
+                      onClick={() => go(null)}
                     />
                     <NavItem icon={ChartNoAxesCombinedIcon} label="Loans" />
                   </ul>
@@ -216,16 +195,8 @@ function Prototype() {
                                   key={item.id}
                                   label={item.name}
                                   value={money(item.balance)}
-                                  current={
-                                    screen.type === "register" &&
-                                    screen.accountId === item.id
-                                  }
-                                  onClick={() =>
-                                    go({
-                                      type: "register",
-                                      accountId: item.id,
-                                    })
-                                  }
+                                  current={accountId === item.id}
+                                  onClick={() => go(item.id)}
                                 />
                               ))}
                           </ul>
@@ -243,9 +214,7 @@ function Prototype() {
               <header className={shell.header}>
                 <div className={shell.titleGroup}>
                   <h1 className={shell.headerTitle}>
-                    {screen.type === "plan"
-                      ? "Plan"
-                      : (account?.name ?? "All accounts")}
+                    {account?.name ?? "All accounts"}
                   </h1>
                 </div>
                 <div className={shell.monthNav}>
@@ -259,146 +228,78 @@ function Prototype() {
                 </div>
               </header>
 
-              {screen.type === "register" && (
-                <div className={shell.accountSummary}>
-                  <dl className={shell.balances}>
-                    <div>
-                      <dt>Cleared</dt>
-                      <dd>{money(working - uncleared)}</dd>
-                    </div>
-                    <span className={shell.balanceOperator} aria-hidden>
-                      +
-                    </span>
-                    <div>
-                      <dt>Uncleared</dt>
-                      <dd>{money(uncleared)}</dd>
-                    </div>
-                    <span className={shell.balanceOperator} aria-hidden>
-                      =
-                    </span>
-                    <div data-total>
-                      <dt>Working balance</dt>
-                      <dd>{money(working)}</dd>
-                    </div>
-                  </dl>
-                </div>
-              )}
-
-              <div
-                className={shell.toolbar}
-                data-wrap={screen.type === "register" || undefined}
-              >
-                {screen.type === "register" ? (
-                  <>
-                    <Button
-                      size="sm"
-                      aria-pressed={reviewOnly}
-                      onClick={() => {
-                        setReviewOnly((value) => !value);
-                        setUiState(emptyUi);
-                      }}
-                    >
-                      <span className={shell.reviewDot} data-on data-inline />
-                      To review
-                      <span className={shell.numeric}>
-                        {
-                          toReview.filter(
-                            (item) =>
-                              !screen.accountId ||
-                              item.accountId === screen.accountId,
-                          ).length
-                        }
-                      </span>
-                    </Button>
-                    <Button size="sm">
-                      <PlusIcon aria-hidden />
-                      Add transaction
-                    </Button>
-                  </>
-                ) : (
-                  <div className={shell.views}>
-                    <Button size="sm" aria-pressed>
-                      All
-                    </Button>
+              <div className={shell.accountSummary}>
+                <dl className={shell.balances}>
+                  <div>
+                    <dt>Cleared</dt>
+                    <dd>{money(working - uncleared)}</dd>
                   </div>
-                )}
+                  <span className={shell.balanceOperator} aria-hidden>
+                    +
+                  </span>
+                  <div>
+                    <dt>Uncleared</dt>
+                    <dd>{money(uncleared)}</dd>
+                  </div>
+                  <span className={shell.balanceOperator} aria-hidden>
+                    =
+                  </span>
+                  <div data-total>
+                    <dt>Working balance</dt>
+                    <dd>{money(working)}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className={shell.toolbar} data-wrap>
+                <Button
+                  size="sm"
+                  aria-pressed={reviewOnly}
+                  onClick={() => {
+                    setReviewOnly((value) => !value);
+                    setUiState(emptyUi);
+                  }}
+                >
+                  <span className={shell.reviewDot} data-on data-inline />
+                  To review
+                  <span className={shell.numeric}>
+                    {
+                      toReview.filter(
+                        (item) => !accountId || item.accountId === accountId,
+                      ).length
+                    }
+                  </span>
+                </Button>
+                <Button size="sm">
+                  <PlusIcon aria-hidden />
+                  Add transaction
+                </Button>
                 <div className={shell.toolbarActions}>
-                  {screen.type === "register" && (
-                    <SearchField
-                      value={query}
-                      onChange={setQuery}
-                      placeholder={`Search ${account?.name ?? "all accounts"}`}
-                    />
-                  )}
+                  <SearchField
+                    value={query}
+                    onChange={setQuery}
+                    placeholder={`Search ${account?.name ?? "all accounts"}`}
+                  />
                   <IconButton label="Filter" shortcut="F" variant="secondary">
                     <ListFilterIcon aria-hidden />
                   </IconButton>
                   <IconButton label="Display options" variant="secondary">
                     <SlidersHorizontalIcon aria-hidden />
                   </IconButton>
-                  {screen.type === "plan" && (
-                    <IconButton
-                      label="Hide details"
-                      shortcut="]"
-                      variant="secondary"
-                      pressed
-                    >
-                      <PanelRightIcon aria-hidden />
-                    </IconButton>
-                  )}
                 </div>
               </div>
 
               <div className={shell.body}>
                 <main className={shell.content}>
-                  {screen.type === "register" ? (
-                    <RegisterView
-                      key={`${screen.accountId ?? "all"}-${reviewOnly}`}
-                      accountId={screen.accountId}
-                      reviewOnly={reviewOnly}
-                      query={query}
-                      ui={ui}
-                      setUi={setUi}
-                    />
-                  ) : (
-                    <PlanList />
-                  )}
+                  <RegisterView
+                    key={`${accountId ?? "all"}-${reviewOnly}`}
+                    accountId={accountId}
+                    reviewOnly={reviewOnly}
+                    query={query}
+                    ui={ui}
+                    setUi={setUi}
+                  />
                 </main>
-                {screen.type === "plan" && !narrow && (
-                  <div className={shell.inspectorSlot}>
-                    <aside
-                      className={shell.inspector}
-                      style={{ width: 440 }}
-                      aria-label="Details"
-                    >
-                      <div
-                        className={shell.inspectorInner}
-                        style={{ width: 440 }}
-                      >
-                        <PlanInspector
-                          openClaim={claim}
-                          onOpenClaim={setClaim}
-                          onShowPurchase={(id) => {
-                            const purchase = book.transactions.find(
-                              (item) => item.id === id,
-                            );
-                            if (!purchase) return;
-                            setScreen({
-                              type: "register",
-                              accountId: purchase.accountId,
-                            });
-                            setReviewOnly(false);
-                            setUiState({
-                              checked: [id],
-                              selectedId: id,
-                              editing: null,
-                            });
-                          }}
-                        />
-                      </div>
-                    </aside>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -456,18 +357,6 @@ function Prototype() {
                   onChange={(match) => {
                     setVariants((value) => ({ ...value, match }));
                     setUiState(emptyUi);
-                  }}
-                />
-                <Segmented
-                  label="Expect"
-                  value={variants.expect}
-                  options={[
-                    ["editor", "In editor"],
-                    ["island", "Selection bar"],
-                  ]}
-                  onChange={(expect) => {
-                    setVariants((value) => ({ ...value, expect }));
-                    setUiState((value) => ({ ...value, editing: null }));
                   }}
                 />
                 <Segmented

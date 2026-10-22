@@ -1,5 +1,5 @@
-// Hardcoded data for the Batch 5 prototype: register history, bank import
-// match and reject, and reimbursements. Nothing here reads or writes the
+// Hardcoded data for the Batch 5 prototype: register history and bank
+// import match and reject. Nothing here reads or writes the
 // budget; every action changes this page's state only.
 
 export type AccountId = "chase" | "savings" | "amex" | "discover";
@@ -62,9 +62,7 @@ export type HistoryEvent = {
     | "date"
     | "approved"
     | "matched"
-    | "unmatched"
-    | "expected"
-    | "received";
+    | "unmatched";
   // What changed, in plain words, and the value before and after when
   // there is one.
   text: string;
@@ -103,31 +101,6 @@ export type Transaction = {
   };
   history: HistoryEvent[];
 };
-
-export type Reimbursement = {
-  id: string;
-  transactionId: string;
-  from: string;
-  amount: number;
-  receipts: {
-    id: string;
-    date: string;
-    amount: number;
-    accountId: AccountId;
-    // Matched to a bank import rather than entered by hand.
-    importId?: string;
-  }[];
-};
-
-export type Categories = {
-  id: string;
-  name: string;
-  group: string;
-  assigned: number;
-  activity: number;
-  available: number;
-  funding: "funded" | "underfunded" | "overspent" | "credit" | "empty";
-}[];
 
 export const TODAY = "2026-10-21";
 
@@ -266,38 +239,12 @@ export function initialTransactions(): Transaction[] {
       ],
     },
     {
-      id: "i-cedar",
-      accountId: "chase",
-      date: "2026-10-19",
-      payee: "Cedar Labs",
-      bankPayee: "CEDAR LABS INC EXP REIMB",
-      amount: 28000,
-      status: "posted",
-      category: "Ready to Assign",
-      needsReview: true,
-      source: "bank",
-      history: [],
-    },
-    {
       id: "i-safeway",
       accountId: "amex",
       date: "2026-10-18",
       payee: "Safeway",
       bankPayee: "SAFEWAY #1507",
       amount: -6107,
-      status: "posted",
-      category: "",
-      needsReview: true,
-      source: "bank",
-      history: [],
-    },
-    {
-      id: "i-amexcredit",
-      accountId: "amex",
-      date: "2026-10-17",
-      payee: "Amex Offer credit",
-      bankPayee: "AMEX OFFER CREDIT REI",
-      amount: 1500,
       status: "posted",
       category: "",
       needsReview: true,
@@ -434,7 +381,6 @@ export function initialTransactions(): Transaction[] {
     t("t-hotel", "amex", "2026-10-06", "Hotel Kabuki", -31240, "Travel", {
       bankPayee: "HOTEL KABUKI SAN FRANCISCO",
     }),
-    t("t-sam", "chase", "2026-10-12", "Sam · Venmo", 2000, "Reimbursement", {}),
   ]);
 }
 
@@ -446,124 +392,6 @@ function importedFirst(items: Transaction[]) {
   );
 }
 
-export function initialReimbursements(): Reimbursement[] {
-  return [
-    {
-      id: "r-cedar",
-      transactionId: "t-hotel",
-      from: "Cedar Labs",
-      amount: 28000,
-      receipts: [],
-    },
-    {
-      id: "r-rei",
-      transactionId: "t-rei",
-      from: "Amex Offer",
-      amount: 1500,
-      receipts: [],
-    },
-    {
-      id: "r-sam",
-      transactionId: "t-nopalito",
-      from: "Sam",
-      amount: 4320,
-      receipts: [
-        {
-          id: "rr-sam-1",
-          date: "2026-10-12",
-          amount: 2000,
-          accountId: "chase",
-        },
-      ],
-    },
-    {
-      id: "r-mom",
-      transactionId: "t-concert",
-      from: "Mom",
-      amount: 12000,
-      receipts: [
-        {
-          id: "rr-mom-1",
-          date: "2026-10-03",
-          amount: 12000,
-          accountId: "chase",
-        },
-      ],
-    },
-  ];
-}
-
-// The purchases claims point at that aren't in October's register.
-export const olderPurchases: Record<string, { payee: string; date: string }> = {
-  "t-concert": { payee: "Ticketmaster · Phoebe Bridgers", date: "2026-09-12" },
-};
-
-export const categories: Categories = [
-  {
-    id: "c-groceries",
-    name: "Groceries",
-    group: "Everyday",
-    assigned: 60000,
-    activity: -52911,
-    available: 96397,
-    funding: "funded",
-  },
-  {
-    id: "c-dining",
-    name: "Dining & coffee",
-    group: "Everyday",
-    assigned: 49574,
-    activity: -49574,
-    available: 0,
-    funding: "funded",
-  },
-  {
-    id: "c-gas",
-    name: "Gas & transit",
-    group: "Everyday",
-    assigned: 20000,
-    activity: -10885,
-    available: 32467,
-    funding: "funded",
-  },
-  {
-    id: "c-utilities",
-    name: "Utilities & internet",
-    group: "Home",
-    assigned: 25000,
-    activity: -26561,
-    available: -1561,
-    funding: "overspent",
-  },
-  {
-    id: "c-travel",
-    name: "Travel",
-    group: "True expenses",
-    assigned: 40000,
-    activity: -31240,
-    available: 8760,
-    funding: "funded",
-  },
-  {
-    id: "c-clothing",
-    name: "Clothing & home",
-    group: "True expenses",
-    assigned: 15000,
-    activity: -24800,
-    available: -9800,
-    funding: "credit",
-  },
-  {
-    id: "c-medical",
-    name: "Medical & pharmacy",
-    group: "True expenses",
-    assigned: 5000,
-    activity: -16786,
-    available: -10758,
-    funding: "overspent",
-  },
-];
-
 export const categoryNames = [
   "Groceries",
   "Dining & coffee",
@@ -574,9 +402,6 @@ export const categoryNames = [
   "Medical & pharmacy",
 ];
 
-export const outstanding = (claim: Reimbursement) =>
-  claim.amount - claim.receipts.reduce((sum, item) => sum + item.amount, 0);
-
 // YNAB's matching window: a bank import and an entered transaction match
 // when they're in the same account, within 10 days, for the same amount.
 const MATCH_DAYS = 10;
@@ -584,55 +409,22 @@ const MATCH_DAYS = 10;
 const daysBetween = (a: string, b: string) =>
   Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
 
-export type MatchCandidate =
-  | { type: "transaction"; transaction: Transaction }
-  | { type: "reimbursement"; claim: Reimbursement; purchase: Transaction };
-
-// What an import could be, best first. An outflow can be a transaction
-// already entered; an inflow can also be money expected back, on the card
-// the purchase was on or into a cash account.
+// The transactions an import could duplicate.
 export function candidatesFor(
   item: Transaction,
   transactions: Transaction[],
-  reimbursements: Reimbursement[],
-): MatchCandidate[] {
+): Transaction[] {
   if (item.source !== "bank" || item.removedByBank) return [];
-  const entered: MatchCandidate[] = transactions
-    .filter(
-      (other) =>
-        other.source === "budget" &&
-        !other.matched &&
-        !item.notWith?.includes(other.id) &&
-        !other.bankPayee &&
-        other.accountId === item.accountId &&
-        other.amount === item.amount &&
-        daysBetween(other.date, item.date) <= MATCH_DAYS,
-    )
-    .map((transaction) => ({ type: "transaction", transaction }));
-  if (item.amount <= 0) return entered;
-  const account = accounts.find((entry) => entry.id === item.accountId)!;
-  const claims: MatchCandidate[] = reimbursements
-    .filter((claim) => {
-      const purchase = transactions.find(
-        (entry) => entry.id === claim.transactionId,
-      );
-      if (!purchase || outstanding(claim) < item.amount) return false;
-      if (purchase.date > item.date) return false;
-      // A card credit can only be for a purchase on that card.
-      return account.kind === "cash" || purchase.accountId === item.accountId;
-    })
-    .map((claim) => ({
-      type: "reimbursement",
-      claim,
-      purchase: transactions.find((entry) => entry.id === claim.transactionId)!,
-    }));
-  // An exact amount is the likeliest; a partial payment can still match.
-  const exact = (candidate: MatchCandidate) =>
-    candidate.type === "reimbursement" &&
-    outstanding(candidate.claim) === item.amount
-      ? 0
-      : 1;
-  return [...claims, ...entered].sort((a, b) => exact(a) - exact(b));
+  return transactions.filter(
+    (other) =>
+      other.source === "budget" &&
+      !other.matched &&
+      !item.notWith?.includes(other.id) &&
+      !other.bankPayee &&
+      other.accountId === item.accountId &&
+      other.amount === item.amount &&
+      daysBetween(other.date, item.date) <= MATCH_DAYS,
+  );
 }
 
 export const money = (cents: number) =>

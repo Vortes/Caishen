@@ -2,7 +2,7 @@ import { type Metadata } from "next";
 import { Batch5Prototype } from "~/components/prototype/batch-5-register/prototype";
 
 export const metadata: Metadata = {
-  title: "Register, imports, reimbursements · Caishen",
+  title: "Register and imports · Caishen",
   robots: { index: false },
 };
 

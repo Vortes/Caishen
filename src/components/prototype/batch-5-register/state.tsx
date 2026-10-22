@@ -5,20 +5,14 @@ import {
   TODAY,
   day,
   importedEvent,
-  initialReimbursements,
   initialTransactions,
   money,
-  outstanding,
-  type AccountId,
   type HistoryEvent,
-  type MatchCandidate,
-  type Reimbursement,
   type Transaction,
 } from "./data";
 
 export type Book = {
   transactions: Transaction[];
-  reimbursements: Reimbursement[];
 };
 
 // The genuine design choices on this page. Each moves one variable.
@@ -27,21 +21,17 @@ export type Variants = {
   history: "editor" | "popover";
   // How a bank import finds the transaction it duplicates.
   match: "suggest" | "select";
-  // Where "Expect money back" starts.
-  expect: "editor" | "island";
 };
 
 export const defaultVariants: Variants = {
   history: "editor",
   match: "suggest",
-  expect: "editor",
 };
 
 export type Notice = { id: number; message: string; undo?: Book };
 
 const fresh = (): Book => ({
   transactions: initialTransactions(),
-  reimbursements: initialReimbursements(),
 });
 
 const now = () => `${TODAY}T${new Date().toTimeString().slice(0, 5)}`;
@@ -85,107 +75,50 @@ export function useBookState() {
     },
 
     // YNAB keeps the bank's amount and the person's date, payee, and
-    // category. A reimbursement match records the receipt instead.
-    match(importId: string, candidate: MatchCandidate) {
+    // category.
+    match(importId: string, target: Transaction) {
       const before = book;
       const item = book.transactions.find((entry) => entry.id === importId)!;
       const rest = book.transactions.filter((entry) => entry.id !== importId);
-      if (candidate.type === "transaction") {
-        const target = candidate.transaction;
-        const changed = target.amount !== item.amount;
-        setBook({
-          ...book,
-          transactions: change(rest, target.id, (entry) => ({
-            ...entry,
-            amount: item.amount,
-            status: item.status,
-            bankPayee: item.bankPayee,
-            matched: {
-              importId: item.id,
-              bankPayee: item.bankPayee ?? item.payee,
-              bankDate: item.date,
-              bankAmount: item.amount,
-              enteredAmount: entry.amount,
-              automatic: false,
-            },
-            history: [
-              ...entry.history,
-              ...item.history,
-              event(
-                "matched",
-                `You matched it with the ${day(item.date)} bank import. Your date and payee were kept`,
-              ),
-              ...(changed
-                ? [
-                    event("amount", "The bank’s amount replaced yours", {
-                      actor: "bank",
-                      from: money(Math.abs(entry.amount)),
-                      to: money(Math.abs(item.amount)),
-                    }),
-                  ]
-                : []),
-            ],
-          })),
-        });
-        say(
-          changed
-            ? `Matched ${target.payee}. It now uses the bank’s ${money(Math.abs(item.amount))}.`
-            : `Matched ${target.payee} with the bank import.`,
-          before,
-        );
-        return;
-      }
-      const { claim, purchase } = candidate;
-      const receipt: Transaction = {
-        id: next("t-receipt"),
-        accountId: item.accountId,
-        date: item.date,
-        payee: claim.from,
-        bankPayee: item.bankPayee,
-        amount: item.amount,
-        status: item.status,
-        category: "Reimbursement",
-        needsReview: false,
-        source: "budget",
-        history: [
-          ...item.history,
-          event(
-            "received",
-            `You matched it to ${claim.from} paying back ${purchase.payee}`,
-          ),
-        ],
-      };
+      const changed = target.amount !== item.amount;
       setBook({
-        transactions: change([receipt, ...rest], purchase.id, (entry) => ({
+        ...book,
+        transactions: change(rest, target.id, (entry) => ({
           ...entry,
+          amount: item.amount,
+          status: item.status,
+          bankPayee: item.bankPayee,
+          matched: {
+            importId: item.id,
+            bankPayee: item.bankPayee ?? item.payee,
+            bankDate: item.date,
+            bankAmount: item.amount,
+            enteredAmount: entry.amount,
+            automatic: false,
+          },
           history: [
             ...entry.history,
-            event("received", `${claim.from} paid back ${money(item.amount)}`, {
-              actor: "bank",
-              to: `${money(outstanding(claim) - item.amount)} still expected`,
-            }),
+            ...item.history,
+            event(
+              "matched",
+              `You matched it with the ${day(item.date)} bank import. Your date and payee were kept`,
+            ),
+            ...(changed
+              ? [
+                  event("amount", "The bank’s amount replaced yours", {
+                    actor: "bank",
+                    from: money(Math.abs(entry.amount)),
+                    to: money(Math.abs(item.amount)),
+                  }),
+                ]
+              : []),
           ],
         })),
-        reimbursements: book.reimbursements.map((entry) =>
-          entry.id === claim.id
-            ? {
-                ...entry,
-                receipts: [
-                  ...entry.receipts,
-                  {
-                    id: receipt.id,
-                    date: item.date,
-                    amount: item.amount,
-                    accountId: item.accountId,
-                    importId: item.id,
-                  },
-                ],
-              }
-            : entry,
-        ),
       });
       say(
-        `Recorded ${money(item.amount)} from ${claim.from} for ${purchase.payee}.`,
+        changed
+          ? `Matched ${target.payee}. It now uses the bank’s ${money(Math.abs(item.amount))}.`
+          : `Matched ${target.payee} with the bank import.`,
         before,
       );
     },
@@ -280,7 +213,6 @@ export function useBookState() {
     save(
       id: string,
       draft: { payee: string; category: string; amount: number },
-      claim?: { from: string; amount: number },
     ) {
       const item = book.transactions.find((entry) => entry.id === id)!;
       const events: HistoryEvent[] = [];
@@ -307,12 +239,6 @@ export function useBookState() {
             to: money(Math.abs(draft.amount)),
           }),
         );
-      if (claim)
-        events.push(
-          event("expected", `You expect ${claim.from} to pay you back`, {
-            to: money(claim.amount),
-          }),
-        );
       setBook({
         transactions: change(book.transactions, id, (entry) => ({
           ...entry,
@@ -321,129 +247,7 @@ export function useBookState() {
           needsReview: false,
           history: [...entry.history, ...events],
         })),
-        reimbursements: claim
-          ? [
-              ...book.reimbursements,
-              {
-                id: next("r"),
-                transactionId: id,
-                from: claim.from,
-                amount: claim.amount,
-                receipts: [],
-              },
-            ]
-          : book.reimbursements,
       });
-    },
-
-    expect(transactionId: string, from: string, amount: number) {
-      setBook({
-        transactions: change(book.transactions, transactionId, (entry) => ({
-          ...entry,
-          history: [
-            ...entry.history,
-            event("expected", `You expect ${from} to pay you back`, {
-              to: money(amount),
-            }),
-          ],
-        })),
-        reimbursements: [
-          ...book.reimbursements,
-          { id: next("r"), transactionId, from, amount, receipts: [] },
-        ],
-      });
-    },
-
-    stopExpecting(claimId: string) {
-      const before = book;
-      const claim = book.reimbursements.find((entry) => entry.id === claimId)!;
-      setBook({
-        transactions: change(
-          book.transactions,
-          claim.transactionId,
-          (entry) => ({
-            ...entry,
-            history: [
-              ...entry.history,
-              event(
-                "expected",
-                `You stopped expecting money from ${claim.from}`,
-                {
-                  from: money(outstanding(claim)),
-                },
-              ),
-            ],
-          }),
-        ),
-        reimbursements: book.reimbursements.filter(
-          (entry) => entry.id !== claimId,
-        ),
-      });
-      say(`No longer expecting money from ${claim.from}.`, before);
-    },
-
-    // Cash that arrived without a bank import, like a Venmo transfer
-    // moved into checking by hand.
-    receive(
-      claimId: string,
-      accountId: AccountId,
-      amount: number,
-      date: string,
-    ) {
-      const before = book;
-      const claim = book.reimbursements.find((entry) => entry.id === claimId)!;
-      const receiptId = next("t-receipt");
-      const purchase = book.transactions.find(
-        (entry) => entry.id === claim.transactionId,
-      );
-      const receipt: Transaction = {
-        id: receiptId,
-        accountId,
-        date,
-        payee: claim.from,
-        amount,
-        status: "posted",
-        category: "Reimbursement",
-        needsReview: false,
-        source: "budget",
-        history: [
-          event(
-            "received",
-            `You recorded ${claim.from} paying back ${purchase?.payee ?? "a purchase"}`,
-            { to: money(amount) },
-          ),
-        ],
-      };
-      setBook({
-        transactions: change(
-          [receipt, ...book.transactions],
-          claim.transactionId,
-          (entry) => ({
-            ...entry,
-            history: [
-              ...entry.history,
-              event("received", `${claim.from} paid back ${money(amount)}`, {
-                to:
-                  outstanding(claim) - amount > 0
-                    ? `${money(outstanding(claim) - amount)} still expected`
-                    : "Paid back in full",
-              }),
-            ],
-          }),
-        ),
-        reimbursements: book.reimbursements.map((entry) =>
-          entry.id === claimId
-            ? {
-                ...entry,
-                receipts: [
-                  ...entry.receipts,
-                  { id: receiptId, date, amount, accountId },
-                ],
-              }
-            : entry,
-        ),
-      });
-      say(`${money(amount)} from ${claim.from} is in Ready to Assign.`, before);
     },
   };
   return { book, notice, actions };

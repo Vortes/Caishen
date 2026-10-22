@@ -117,75 +117,6 @@ const sections: { title: string; intro: string; scenes: Scene[] }[] = [
       },
     ],
   },
-  {
-    title: "Expect money back",
-    intro:
-      "Starts from the purchase. No cash or card-credit choice: what arrives decides that.",
-    scenes: [
-      {
-        title: "In the editor",
-        note: "Chevron, nothing expected yet.",
-        query: "edit=t-chevron&panel=expect",
-        legacy: {
-          src: "legacy-reimbursement-expect",
-          caption: "Expect a reimbursement dialog from the Plan inspector.",
-        },
-      },
-      {
-        title: "From the selection bar",
-        note: "The same, as a popover over the bar.",
-        query: "expect=island&select=t-chevron",
-        legacy: {
-          src: "legacy-reimbursement-expect",
-          caption: "The same dialog.",
-        },
-      },
-      {
-        title: "Partly paid back",
-        note: "Nopalito: Sam sent $20.00 of $43.20.",
-        query: "edit=t-nopalito&panel=expect&account=amex",
-        legacy: {
-          src: "legacy-reimbursements-section",
-          caption:
-            "Expected back list in the Plan inspector; no partial amounts shown.",
-        },
-      },
-    ],
-  },
-  {
-    title: "Receive it",
-    intro:
-      "An imported deposit or card credit is matched to what you expect, so a card credit needs no separate statement-credit flow.",
-    scenes: [
-      {
-        title: "Card credit, two possible claims",
-        note: "Amex Offer credit $15.00 could pay back REI or part of Nopalito.",
-        query: "review=1&select=i-amexcredit",
-        legacy: {
-          src: "legacy-reimbursement-statement-credit",
-          caption: "A separate statement-credit dialog, entered by hand.",
-        },
-      },
-      {
-        title: "Deposit from an employer",
-        note: "Cedar Labs reimburses the conference hotel.",
-        query: "review=1&select=i-cedar",
-        legacy: {
-          src: "legacy-reimbursement-receive",
-          caption: "Record money received dialog, entered by hand.",
-        },
-      },
-      {
-        title: "By hand, in Plan",
-        note: "Cash that never imports, like Venmo moved to checking.",
-        query: "screen=plan&claim=r-sam",
-        legacy: {
-          src: "legacy-reimbursement-receive",
-          caption: "The same dialog.",
-        },
-      },
-    ],
-  },
 ];
 
 // Follows the system theme, like the shell's own pages.
@@ -205,10 +136,10 @@ export function Batch5Index() {
       <main className={styles.main}>
         <ReviewNotesProvider
           storageKey="batch-5"
-          title="Batch 5: register, bank imports, and reimbursements"
+          title="Batch 5: register and bank imports"
         >
           <header className={styles.header}>
-            <h1>Register, bank imports, and reimbursements</h1>
+            <h1>Register and bank imports</h1>
             <p>
               Batch 5 prototype on hardcoded data. Nothing here saves. Each link
               opens the shell in one state; the Reset control in the corner

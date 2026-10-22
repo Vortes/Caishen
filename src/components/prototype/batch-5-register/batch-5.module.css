@@ -1,5 +1,5 @@
-/* Batch 5 additions to the app shell: transaction history, bank import
-   matching, and reimbursements. Semantic tokens only; layout borrows the
+/* Batch 5 additions to the app shell: transaction history and bank import
+   matching. Semantic tokens only; layout borrows the
    shell's register grid and the editor's wells. */
 
 /* ---------- Prototype controls (not part of the design) ---------- */
@@ -227,74 +227,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Expect money back ---------- */
-
-.expect {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  font-size: var(--type-small);
-}
-.expectFields {
-  display: grid;
-  grid-template-columns: minmax(0, 18rem) 8rem minmax(0, 1fr);
-  align-items: start;
-  gap: 8px 16px;
-}
-.expectPopover .expectFields {
-  grid-template-columns: minmax(0, 1fr) 7rem;
-}
-.expectPopover .expectFields > .hint {
-  grid-column: 1 / -1;
-  padding-top: 0;
-}
-.expectPopover {
-  width: min(360px, calc(100vw - 24px));
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  color: var(--text-secondary);
-}
-.field .fieldError {
-  margin: 0;
-}
-.hint {
-  max-width: 52ch;
-  margin: 0;
-  color: var(--text-tertiary);
-  text-wrap: pretty;
-}
-/* The hint sits beside the fields, level with their wells. */
-.expectFields > .hint {
-  padding-top: calc(var(--type-small) * 1.5 + 6px);
-}
-.claimList {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--text-secondary);
-}
-.claimList li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: var(--size-control-xs);
-}
 @container (max-width: 760px) {
-  .expectFields {
-    grid-template-columns: minmax(0, 1fr) 7rem;
-  }
-  .expectFields > .hint {
-    grid-column: 1 / -1;
-    padding-top: 0;
-  }
   .editorSection {
     margin-left: var(--space-row-x);
   }
@@ -324,73 +257,6 @@
 }
 .choiceText > span + span {
   font-size: var(--type-small);
-}
-
-/* ---------- Reimbursements tab ---------- */
-
-.claims {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.claim[data-open] {
-  border-radius: var(--radius-row);
-  background: var(--surface-group);
-}
-.claimRow {
-  height: auto;
-  min-height: var(--size-row-lg);
-  padding-block: 6px;
-}
-.claim[data-open] .claimRow:hover {
-  background: transparent;
-}
-.claimAmount {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: var(--type-small);
-}
-.claimAmount > span:first-child {
-  color: var(--text-primary);
-  font-size: var(--type-body);
-}
-.subheading {
-  margin: 10px 0 2px;
-  padding: 0 6px;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  font-weight: 500;
-}
-.done {
-  color: var(--feedback-success);
-}
-.claimRow > .done {
-  color: var(--feedback-success);
-}
-
-.receive {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 2px 8px 10px 27px;
-  font-size: var(--type-small);
-}
-.receiveFields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 7.5rem;
-  gap: 8px;
-}
-.receiveActions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.receiveActions > button:first-child {
-  margin-left: -10px;
-}
-.spacer {
-  flex: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

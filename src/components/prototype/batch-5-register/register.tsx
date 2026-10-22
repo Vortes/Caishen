@@ -1,11 +1,9 @@
 "use client";
 
 import {
-  CircleAlertIcon,
   CircleCheckIcon,
   CircleXIcon,
   Clock3Icon,
-  HandCoinsIcon,
   HistoryIcon,
   Link2Icon,
   Unlink2Icon,
@@ -31,9 +29,6 @@ import {
   categoryNames,
   day,
   money,
-  outstanding,
-  type MatchCandidate,
-  type Reimbursement,
   type Transaction,
 } from "./data";
 import { TransactionHistory } from "./history";
@@ -43,7 +38,7 @@ import styles from "./batch-5.module.css";
 export type RegisterUi = {
   checked: string[];
   selectedId: string | null;
-  editing: { id: string; history: boolean; expect: boolean } | null;
+  editing: { id: string; history: boolean } | null;
 };
 
 export const emptyUi: RegisterUi = {
@@ -56,16 +51,6 @@ const statusIcon = {
   pending: { icon: Clock3Icon, label: "Pending" },
   posted: { icon: CircleCheckIcon, label: "Cleared" },
 };
-
-function claimsOn(id: string, reimbursements: Reimbursement[]) {
-  return reimbursements.filter((claim) => claim.transactionId === id);
-}
-
-function candidateLabel(candidate: MatchCandidate) {
-  return candidate.type === "transaction"
-    ? candidate.transaction.payee
-    : candidate.claim.from;
-}
 
 export function RegisterView({
   accountId,
@@ -81,7 +66,7 @@ export function RegisterView({
   setUi: (update: (ui: RegisterUi) => RegisterUi) => void;
 }) {
   const { book, variants } = useBook();
-  const { transactions, reimbursements } = book;
+  const { transactions } = book;
   const listRef = useRef<HTMLDivElement>(null);
   const search = query.trim().toLowerCase();
   const rows = transactions
@@ -119,7 +104,7 @@ export function RegisterView({
       ...value,
       selectedId: id,
       checked: [id],
-      editing: { id, history: false, expect: false },
+      editing: { id, history: false },
     }));
 
   useEffect(() => {
@@ -133,19 +118,13 @@ export function RegisterView({
     if (item.removedByBank) return <Tag tone="attention">Removed by bank</Tag>;
     if (item.source === "bank") {
       const candidates =
-        variants.match === "suggest"
-          ? candidatesFor(item, transactions, reimbursements)
-          : [];
+        variants.match === "suggest" ? candidatesFor(item, transactions) : [];
       if (candidates.length)
         return (
           <span className={styles.suggestion}>
-            {candidates[0]!.type === "reimbursement" ? (
-              <HandCoinsIcon size={13} aria-label="Money you expect back" />
-            ) : (
-              <Link2Icon size={13} aria-label="Already entered" />
-            )}
+            <Link2Icon size={13} aria-label="Already entered" />
             <span className={shell.truncate}>
-              Could be {candidateLabel(candidates[0]!)}
+              Could be {candidates[0]!.payee}
               {candidates.length > 1 && (
                 <span className={shell.faint}> +{candidates.length - 1}</span>
               )}
@@ -154,18 +133,7 @@ export function RegisterView({
         );
       if (!item.category) return <Tag tone="attention">Needs category</Tag>;
     }
-    const claims = claimsOn(item.id, reimbursements);
-    const owed = claims.reduce((sum, claim) => sum + outstanding(claim), 0);
-    return (
-      <>
-        <span className={shell.muted}>{item.category}</span>
-        {claims.length > 0 && (
-          <span className={shell.faint}>
-            {owed > 0 ? ` · ${money(owed)} expected back` : " · paid back"}
-          </span>
-        )}
-      </>
-    );
+    return <span className={shell.muted}>{item.category}</span>;
   };
 
   const row = (item: Transaction) => {
@@ -493,7 +461,7 @@ function EditorCard({
   onState: (state: NonNullable<RegisterUi["editing"]>) => void;
   onClose: () => void;
 }) {
-  const { book, actions, variants } = useBook();
+  const { actions, variants } = useBook();
   const formId = useId();
   const [payee, setPayee] = useState(item.payee);
   const [category, setCategory] = useState(item.category);
@@ -503,20 +471,10 @@ function EditorCard({
   const [inflow, setInflow] = useState(
     item.amount > 0 ? (item.amount / 100).toFixed(2) : "",
   );
-  const claims = claimsOn(item.id, book.reimbursements);
-  const expect = useExpectDraft(item, claims);
-  const purchase = item.amount < 0 && item.source === "budget";
-  const showExpect = variants.expect === "editor" && purchase;
   const historyCount = item.history.length;
   const save = () => {
     const amount = outflow ? -parseAmount(outflow) : parseAmount(inflow);
-    let claim: { from: string; amount: number } | undefined;
-    if (state.expect) {
-      const result = expect.validate();
-      if (!result) return;
-      claim = result;
-    }
-    actions.save(item.id, { payee, category, amount }, claim);
+    actions.save(item.id, { payee, category, amount });
     onClose();
   };
   const cell = (column: string, label: string, control: ReactNode) => (
@@ -620,11 +578,6 @@ function EditorCard({
         {cell("inflow", "Inflow", text("inflow", inflow, setInflow, true))}
         <span data-column="status" aria-hidden />
       </div>
-      {showExpect && state.expect && (
-        <section className={styles.editorSection} aria-label="Money back">
-          <ExpectFields draft={expect} purchase={item} claims={claims} />
-        </section>
-      )}
       {variants.history === "editor" && state.history && (
         <section className={styles.editorSection} aria-label="History">
           <TransactionHistory
@@ -654,17 +607,6 @@ function EditorCard({
               <span className={styles.count}>{historyCount}</span>
             </Button>
           )}
-          {showExpect && (
-            <Button
-              variant="quiet"
-              size="sm"
-              aria-expanded={state.expect}
-              onClick={() => onState({ ...state, expect: !state.expect })}
-            >
-              <HandCoinsIcon aria-hidden />
-              {claims.length ? "Money back" : "Expect money back"}
-            </Button>
-          )}
         </div>
         <div className={entry.actions}>
           <Button size="sm" onClick={onClose}>
@@ -676,204 +618,6 @@ function EditorCard({
         </div>
       </div>
     </form>
-  );
-}
-
-// ---------- Expect money back ----------
-
-function useExpectDraft(purchase: Transaction, claims: Reimbursement[]) {
-  const claimed = claims.reduce((sum, claim) => sum + claim.amount, 0);
-  const room = -purchase.amount - claimed;
-  const [from, setFrom] = useState("");
-  const [amount, setAmount] = useState(room > 0 ? (room / 100).toFixed(2) : "");
-  const [errors, setErrors] = useState<{ from?: string; amount?: string }>({});
-  return {
-    from,
-    amount,
-    errors,
-    room,
-    setFrom: (value: string) => {
-      setFrom(value);
-      setErrors((current) => ({ ...current, from: undefined }));
-    },
-    setAmount: (value: string) => {
-      setAmount(value);
-      setErrors((current) => ({ ...current, amount: undefined }));
-    },
-    validate() {
-      const cents = parseAmount(amount);
-      const next = {
-        from: from.trim() ? undefined : "Enter who’s paying you back.",
-        amount: !(cents > 0)
-          ? "Enter an amount above zero."
-          : cents > room
-            ? `You can expect up to ${money(room)} back for this purchase.`
-            : undefined,
-      };
-      setErrors(next);
-      return next.from || next.amount
-        ? null
-        : { from: from.trim(), amount: cents };
-    },
-  };
-}
-
-function ExpectFields({
-  draft,
-  purchase,
-  claims,
-}: {
-  draft: ReturnType<typeof useExpectDraft>;
-  purchase: Transaction;
-  claims: Reimbursement[];
-}) {
-  const id = useId();
-  const { actions } = useBook();
-  return (
-    <div className={styles.expect}>
-      {claims.length > 0 && (
-        <ul className={styles.claimList}>
-          {claims.map((claim) => (
-            <li key={claim.id}>
-              <span>
-                {outstanding(claim) > 0
-                  ? `${money(outstanding(claim))} expected from ${claim.from}`
-                  : `${claim.from} paid back ${money(claim.amount)}`}
-              </span>
-              {claim.receipts.length === 0 && (
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  onClick={() => actions.stopExpecting(claim.id)}
-                >
-                  Stop expecting
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {draft.room > 0 ? (
-        <div className={styles.expectFields}>
-          <div className={styles.field}>
-            <label htmlFor={`${id}-from`}>Who’s paying you back</label>
-            <div
-              className={entry.well}
-              data-invalid={draft.errors.from ? "" : undefined}
-            >
-              <input
-                id={`${id}-from`}
-                className={entry.input}
-                value={draft.from}
-                placeholder="Cedar Labs, Sam, Amex Offer…"
-                autoComplete="off"
-                aria-invalid={Boolean(draft.errors.from) || undefined}
-                aria-describedby={
-                  draft.errors.from ? `${id}-from-error` : undefined
-                }
-                onChange={(event) => draft.setFrom(event.target.value)}
-              />
-            </div>
-            {draft.errors.from && (
-              <p id={`${id}-from-error`} className={entry.fieldError}>
-                <CircleAlertIcon size={13} aria-hidden />
-                {draft.errors.from}
-              </p>
-            )}
-          </div>
-          <div className={styles.field} data-amount>
-            <label htmlFor={`${id}-amount`}>Amount</label>
-            <div
-              className={entry.well}
-              data-amount
-              data-invalid={draft.errors.amount ? "" : undefined}
-            >
-              <span className={entry.prefix} aria-hidden>
-                $
-              </span>
-              <input
-                id={`${id}-amount`}
-                className={entry.input}
-                inputMode="decimal"
-                value={draft.amount}
-                autoComplete="off"
-                aria-invalid={Boolean(draft.errors.amount) || undefined}
-                aria-describedby={
-                  draft.errors.amount ? `${id}-amount-error` : `${id}-hint`
-                }
-                onChange={(event) => draft.setAmount(event.target.value)}
-              />
-            </div>
-            {draft.errors.amount && (
-              <p id={`${id}-amount-error`} className={entry.fieldError}>
-                <CircleAlertIcon size={13} aria-hidden />
-                {draft.errors.amount}
-              </p>
-            )}
-          </div>
-          <p id={`${id}-hint`} className={styles.hint}>
-            It isn’t spendable until it arrives. When the deposit or card credit
-            imports, it’s suggested as the match.
-          </p>
-        </div>
-      ) : (
-        <p className={styles.hint}>
-          The whole {money(-purchase.amount)} is already expected back.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ExpectAction({ purchase }: { purchase: Transaction }) {
-  const { book, actions } = useBook();
-  const container = usePortalContainer();
-  const [open, setOpen] = useState(false);
-  const claims = claimsOn(purchase.id, book.reimbursements);
-  const draft = useExpectDraft(purchase, claims);
-  return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
-        <Button size="sm">
-          <HandCoinsIcon aria-hidden />
-          Expect money back
-        </Button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          className={`${review.categoryPopover} ${styles.expectPopover}`}
-          side="top"
-          align="end"
-          sideOffset={8}
-          collisionPadding={12}
-        >
-          <form
-            className={review.categoryForm}
-            aria-label="Expect money back"
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              const claim = draft.validate();
-              if (!claim) return;
-              actions.expect(purchase.id, claim.from, claim.amount);
-              setOpen(false);
-            }}
-          >
-            <ExpectFields draft={draft} purchase={purchase} claims={claims} />
-            <div className={review.actions}>
-              <Button size="sm" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              {draft.room > 0 && (
-                <Button size="sm" variant="primary" type="submit">
-                  Expect {draft.amount ? `$${draft.amount}` : "it"}
-                </Button>
-              )}
-            </div>
-          </form>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
   );
 }
 
@@ -898,10 +642,10 @@ function SelectionBar({
   // Suggest: one import, matched to what it could be.
   const suggested =
     variants.match === "suggest" && imports.length === 1 && !budget.length
-      ? candidatesFor(imports[0]!, book.transactions, book.reimbursements)
+      ? candidatesFor(imports[0]!, book.transactions)
       : [];
   // Select both (YNAB): one import and the transaction it duplicates.
-  let pair: { candidate?: MatchCandidate; hint?: string } | null = null;
+  let pair: { candidate?: Transaction; hint?: string } | null = null;
   if (
     variants.match === "select" &&
     imports.length === 1 &&
@@ -909,22 +653,15 @@ function SelectionBar({
   ) {
     const item = imports[0]!;
     const other = budget[0]!;
-    const open = claimsOn(other.id, book.reimbursements).find(
-      (claim) => outstanding(claim) >= item.amount,
-    );
-    if (other.accountId !== item.accountId && !(item.amount > 0 && open))
+    if (other.accountId !== item.accountId)
       pair = { hint: "Pick two in the same account to match." };
     else if (other.matched)
       pair = { hint: `${other.payee} is already matched.` };
-    else if (item.amount > 0 && other.amount < 0 && open)
-      pair = {
-        candidate: { type: "reimbursement", claim: open, purchase: other },
-      };
     else if (Math.sign(item.amount) !== Math.sign(other.amount))
       pair = { hint: "An inflow can’t match an outflow." };
     else
       pair = {
-        candidate: { type: "transaction", transaction: other },
+        candidate: other,
         hint:
           other.amount !== item.amount
             ? `Keeps the bank’s ${money(Math.abs(item.amount))}.`
@@ -933,13 +670,7 @@ function SelectionBar({
   }
   const single = selected.length === 1 ? selected[0]! : null;
   const unmatchable = single?.matched ? single : null;
-  const expectable =
-    variants.expect === "island" &&
-    single?.source === "budget" &&
-    single.amount < 0
-      ? single
-      : null;
-  const match = (candidate: MatchCandidate) => {
+  const match = (candidate: Transaction) => {
     actions.match(imports[0]!.id, candidate);
     onDone();
   };
@@ -988,9 +719,7 @@ function SelectionBar({
               onClick={() => match(pair.candidate!)}
             >
               <Link2Icon aria-hidden />
-              {pair.candidate.type === "reimbursement"
-                ? "Match as money back"
-                : "Match"}
+              Match
             </Button>
           )}
           {approvable.length > 0 && imports.length === 0 && (
@@ -1030,7 +759,6 @@ function SelectionBar({
               Unmatch
             </Button>
           )}
-          {expectable && <ExpectAction purchase={expectable} />}
         </div>
       </div>
     </div>
@@ -1041,8 +769,8 @@ function MatchChooser({
   candidates,
   onMatch,
 }: {
-  candidates: MatchCandidate[];
-  onMatch: (candidate: MatchCandidate) => void;
+  candidates: Transaction[];
+  onMatch: (candidate: Transaction) => void;
 }) {
   const container = usePortalContainer();
   return (
@@ -1064,39 +792,21 @@ function MatchChooser({
           <p className={styles.popoverTitle}>Match with</p>
           <ul className={shell.actionList}>
             {candidates.map((candidate) => (
-              <li
-                key={
-                  candidate.type === "transaction"
-                    ? candidate.transaction.id
-                    : candidate.claim.id
-                }
-              >
+              <li key={candidate.id}>
                 <button
                   type="button"
                   className={`${shell.actionItem} ${styles.choice}`}
                   onClick={() => onMatch(candidate)}
                 >
-                  {candidate.type === "reimbursement" ? (
-                    <HandCoinsIcon size={13} aria-hidden />
-                  ) : (
-                    <Link2Icon size={13} aria-hidden />
-                  )}
+                  <Link2Icon size={13} aria-hidden />
                   <span className={styles.choiceText}>
-                    <span>
-                      {candidate.type === "reimbursement"
-                        ? candidate.claim.from
-                        : candidate.transaction.payee}
-                    </span>
+                    <span>{candidate.payee}</span>
                     <span className={shell.faint}>
-                      {candidate.type === "reimbursement"
-                        ? `For ${candidate.purchase.payee}, ${day(candidate.purchase.date)}`
-                        : `Entered ${day(candidate.transaction.date)}`}
+                      Entered {day(candidate.date)}
                     </span>
                   </span>
                   <span className={shell.numeric}>
-                    {candidate.type === "reimbursement"
-                      ? `${money(outstanding(candidate.claim))} expected`
-                      : money(Math.abs(candidate.transaction.amount))}
+                    {money(Math.abs(candidate.amount))}
                   </span>
                 </button>
               </li>

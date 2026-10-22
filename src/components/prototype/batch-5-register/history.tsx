@@ -2,7 +2,6 @@
 
 import {
   CircleCheckIcon,
-  HandCoinsIcon,
   LandmarkIcon,
   Link2Icon,
   PencilLineIcon,
@@ -33,8 +32,6 @@ const icons: Record<HistoryEvent["kind"], LucideIcon> = {
   approved: CircleCheckIcon,
   matched: Link2Icon,
   unmatched: Unlink2Icon,
-  expected: HandCoinsIcon,
-  received: HandCoinsIcon,
 };
 
 // Every change to one transaction, oldest first so it reads as its story.
