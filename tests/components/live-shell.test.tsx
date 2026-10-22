@@ -204,7 +204,7 @@ test("while the server can't be reached, changes stay on screen, leaving warns, 
   const after = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(after);
   expect(after.defaultPrevented).toBe(false);
-}, 10_000);
+});
 
 test("changes made elsewhere show when the window regains focus", async () => {
   const shell = await renderShell();
@@ -246,7 +246,7 @@ test("a budget that can't refresh says so and catches up on Try again", async ()
   );
   await waitFor(() => expect(assignedLabel()).toMatch(/^\$40\.00 assigned/));
   expect(screen.queryByText(/^Your budget couldn’t refresh/)).toBeNull();
-}, 10_000);
+});
 
 test("an app older than the server asks for a reload", async () => {
   const shell = await renderShell();
