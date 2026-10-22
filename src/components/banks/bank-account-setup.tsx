@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "~/components/ui-legacy/dialog";
 import { api } from "~/trpc/react";
+import { LoanSetupFields } from "./loan-setup-fields";
 
 type Connection = State["connections"][number];
 
@@ -39,6 +40,10 @@ type AccountDraft = {
   name: string;
   existingAccountId: string;
   startDate: string;
+  loanBalance: string;
+  annualRate: string;
+  minimumPayment: string;
+  variable: boolean;
 };
 
 export function bankAccountMappings(value: unknown) {
@@ -66,10 +71,11 @@ export function bankAccountMappings(value: unknown) {
 export function accountSetupType(
   account: BankAccount,
 ):
-  | { kind: "cash" | "credit"; reason?: never }
+  | { kind: "cash" | "credit" | "loan"; reason?: never }
   | { kind?: never; reason: string } {
   if (account.currency !== "USD")
     return { reason: "Only US dollar accounts can be added to this budget." };
+  if (account.type === "loan") return { kind: "loan" };
   if (
     account.currentBalance === null ||
     !Number.isFinite(account.currentBalance)
@@ -192,6 +198,10 @@ export function useBankAccountSetupForm({
           name: account.name.trim().slice(0, 120),
           existingAccountId: "",
           startDate: "",
+          loanBalance: account.currentBalance?.toString() ?? "",
+          annualRate: "",
+          minimumPayment: "",
+          variable: false,
         },
       ]),
     ),
@@ -256,6 +266,10 @@ export function useBankAccountSetupForm({
         name: "",
         existingAccountId: "",
         startDate: "",
+        loanBalance: "",
+        annualRate: "",
+        minimumPayment: "",
+        variable: false,
         ...previous[accountId],
         ...next,
       },
@@ -277,10 +291,14 @@ export function useBankAccountSetupForm({
       ),
     ),
   );
+  const synchronized = (account: BankAccount) =>
+    account.type === "loan"
+      ? ready
+      : synchronizedAccountIds.has(account.accountId);
   const selected = connection.accounts.filter(
     (account) =>
       !mappings.has(account.accountId) &&
-      synchronizedAccountIds.has(account.accountId) &&
+      synchronized(account) &&
       accountSetupType(account).kind &&
       drafts[account.accountId]?.selected,
   );
@@ -288,7 +306,7 @@ export function useBankAccountSetupForm({
     (account) =>
       !mappings.has(account.accountId) &&
       accountSetupType(account).kind &&
-      !synchronizedAccountIds.has(account.accountId),
+      !synchronized(account),
   );
 
   const rows = connection.accounts.map((account) => {
@@ -302,16 +320,26 @@ export function useBankAccountSetupForm({
     return {
       account,
       type,
-      synchronized: synchronizedAccountIds.has(account.accountId),
+      synchronized: synchronized(account),
       draft: drafts[account.accountId],
       fieldError: fieldErrors[account.accountId],
       // The budget account a bank account was already added as.
       addedAs: mapping
-        ? (state.view?.accounts.find((item) => item.id === mapping.accountId)
-            ?.name ?? "a budget account")
+        ? ((account.type === "loan"
+            ? state.view?.loans
+            : state.view?.accounts
+          )?.find((item) => item.id === mapping.accountId)?.name ??
+          "a budget account")
         : undefined,
       existingAccounts:
-        state.view?.budget.accounts.filter(
+        (type.kind === "loan"
+          ? state.view?.budget.loans.map((loan) => ({
+              id: loan.id,
+              name: loan.name,
+              kind: "loan" as const,
+            }))
+          : state.view?.budget.accounts
+        )?.filter(
           (existing) =>
             existing.kind === type.kind &&
             !mappedAccountIds.has(existing.id) &&
@@ -329,12 +357,45 @@ export function useBankAccountSetupForm({
         errors[account.accountId] =
           "Enter an account name with 1 to 120 characters.";
       if (draft.existingAccountId) {
-        const existing = state.view?.budget.accounts.find(
-          (item) => item.id === draft.existingAccountId,
-        );
-        if (!draft.startDate || !existing || draft.startDate <= existing.date)
+        const existing =
+          account.type === "loan"
+            ? state.view?.budget.loans.find(
+                (item) => item.id === draft.existingAccountId,
+              )
+            : state.view?.budget.accounts.find(
+                (item) => item.id === draft.existingAccountId,
+              );
+        const openingDate =
+          existing &&
+          ("rates" in existing
+            ? existing.rates.map((rate) => rate.effectiveDate).sort()[0]!
+            : existing.date);
+        if (!draft.startDate || !openingDate || draft.startDate <= openingDate)
           errors[account.accountId] =
             "Choose an import date after this account’s opening balance date.";
+      } else if (account.type === "loan") {
+        const money = /^\d+(?:\.\d{1,2})?$/;
+        const principal =
+          account.currentBalance?.toString() ?? draft.loanBalance;
+        if (
+          !money.test(principal) ||
+          !Number.isSafeInteger(Math.round(Number(principal) * 100))
+        )
+          errors[account.accountId] =
+            "Enter the current principal owed from your lender’s latest statement.";
+        else if (
+          !money.test(draft.annualRate) ||
+          Number(draft.annualRate) > 1000
+        )
+          errors[account.accountId] =
+            "Enter the loan’s confirmed APR, including 0 for an interest-free loan.";
+        else if (
+          !money.test(draft.minimumPayment) ||
+          Number(draft.minimumPayment) <= 0 ||
+          !Number.isSafeInteger(Math.round(Number(draft.minimumPayment) * 100))
+        )
+          errors[account.accountId] =
+            "Enter the required monthly payment from your lender.";
       }
     }
     if (Object.keys(errors).length) {
@@ -354,13 +415,26 @@ export function useBankAccountSetupForm({
         return {
           providerAccountId: account.accountId,
           name: draft.name.trim(),
-          expectedBalance: account.currentBalance!,
+          expectedBalance: account.currentBalance,
           ...(draft.existingAccountId
             ? {
                 existingAccountId: draft.existingAccountId,
                 startDate: draft.startDate,
               }
-            : {}),
+            : account.type === "loan"
+              ? {
+                  loan: {
+                    principal: Math.round(
+                      Number(account.currentBalance ?? draft.loanBalance) * 100,
+                    ),
+                    annualRateBps: Math.round(Number(draft.annualRate) * 100),
+                    minimumPayment: Math.round(
+                      Number(draft.minimumPayment) * 100,
+                    ),
+                    variable: draft.variable,
+                  },
+                }
+              : {}),
         };
       });
       const accounts = submittedAccounts.current;
@@ -482,7 +556,8 @@ export function BankAccountSetup({
             {connection.institutionName
               ? ` from ${connection.institutionName}`
               : ""}
-            . Checking and savings go in Cash. Credit cards go in Credit.
+            . Checking and savings go in Cash, credit cards in Credit, and loans
+            in Loans.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -586,6 +661,20 @@ export function BankAccountSetup({
                                   })
                                 }
                               />
+                              {account.type === "loan" &&
+                                !draft.existingAccountId && (
+                                  <LoanSetupFields
+                                    id={`loan-${account.accountId}`}
+                                    currentBalance={account.currentBalance}
+                                    draft={draft}
+                                    busy={busy}
+                                    fieldError={fieldError}
+                                    errorId={errorId}
+                                    onChange={(next) =>
+                                      form.change(account.accountId, next)
+                                    }
+                                  />
+                                )}
                               {existingAccounts.length > 0 && (
                                 <details className="small">
                                   <summary className="muted cursor-pointer">

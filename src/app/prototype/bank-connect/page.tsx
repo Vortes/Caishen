@@ -6,6 +6,16 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-export default function BankConnectPrototypePage() {
-  return <BankConnectPrototype />;
+export default async function BankConnectPrototypePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ scenario?: string; theme?: string }>;
+}) {
+  const { scenario, theme } = await searchParams;
+  return (
+    <BankConnectPrototype
+      initialScenario={scenario}
+      theme={theme === "light" ? "light" : "dark"}
+    />
+  );
 }

@@ -12,6 +12,7 @@ import {
   createPlaidClient,
 } from "~/server/integrations/plaid";
 import { applyTransactionSync } from "~/server/integrations/transactions";
+import { usdToCents } from "~/server/integrations/validation";
 import {
   findOperation,
   readHouseholdRevision,
@@ -436,6 +437,10 @@ export function bankInboxItems(
         );
       })
       .map((record) => {
+        const mapping = mappings[record.current.providerAccountId];
+        const loanId = budget?.loans.find(
+          (loan) => loan.id === mapping?.accountId,
+        )?.id;
         const transactionId = state.resolved[record.id]?.transactionId;
         const transaction = transactionId
           ? transactions.get(transactionId)
@@ -456,19 +461,20 @@ export function bankInboxItems(
           connectionId: connection.id,
           logicalId: record.id,
           providerAccountId: record.current.providerAccountId,
-          accountId:
-            mappings[record.current.providerAccountId]?.accountId ?? null,
+          accountId: loanId ? null : (mapping?.accountId ?? null),
+          ...(loanId ? { loanId } : {}),
           date: record.current.date,
           payee: record.current.merchantName ?? record.current.name,
           amount: -record.current.amountCents,
           pending: record.current.pending,
           removed: record.removed,
           needsMatchReview: record.matchStatus === "needs_review",
-          error:
-            bankImportEligibility(
-              mappings[record.current.providerAccountId],
-              record,
-            ) === "opening_snapshot_changed"
+          error: loanId
+            ? loanActivityReviewMessage
+            : bankImportEligibility(
+                  mappings[record.current.providerAccountId],
+                  record,
+                ) === "opening_snapshot_changed"
               ? openingSnapshotChangedMessage
               : (state.errors[record.id] ?? null),
           history: record.history,
@@ -484,6 +490,10 @@ export function bankInboxItems(
       )
       .map((review) => {
         const { transaction } = review;
+        const mapping = mappings[transaction.providerAccountId];
+        const loanId = budget?.loans.find(
+          (loan) => loan.id === mapping?.accountId,
+        )?.id;
         return {
           categoryName: null,
           categoryId: null,
@@ -492,7 +502,8 @@ export function bankInboxItems(
           connectionId: connection.id,
           logicalId: review.logicalTransactionId,
           providerAccountId: transaction.providerAccountId,
-          accountId: mappings[transaction.providerAccountId]?.accountId ?? null,
+          accountId: loanId ? null : (mapping?.accountId ?? null),
+          ...(loanId ? { loanId } : {}),
           date: transaction.date ?? review.receivedOn,
           payee: transaction.name ?? "Unreadable bank transaction",
           // Budgets hold US dollars only; the bank's amount is in the message.
@@ -509,6 +520,9 @@ export function bankInboxItems(
     return [...imports, ...quarantined];
   });
 }
+
+const loanActivityReviewMessage =
+  "Review this loan activity with your lender. Record payments using the confirmed principal and interest, then dismiss this update. Loan balances are not changed automatically.";
 
 // A connection of the member's and everything bank setup needs with it.
 async function openConnection(
@@ -641,6 +655,7 @@ export async function setupBankAccounts(
             "This bank account is no longer available. Update accounts first.",
         });
       if (
+        provider.type !== "loan" &&
         !selected.existingAccountId &&
         !state.synchronizedAccountIds.includes(provider.accountId)
       )
@@ -658,6 +673,68 @@ export async function setupBankAccounts(
           message:
             "The bank balance changed. Refresh and review the latest balance before adding this account.",
         });
+      if (provider.type === "loan") {
+        if (provider.currency !== "USD")
+          throw new Error("Only bank accounts in USD are supported.");
+        if (selected.existingAccountId) {
+          const existing = budget.loans.find(
+            (loan) => loan.id === selected.existingAccountId,
+          );
+          if (!existing)
+            throw new Error("Choose an existing loan from this budget.");
+          if (usedAccountIds.has(existing.id))
+            throw new Error("This loan is already linked to a bank.");
+          const openingDate = existing.rates
+            .map((rate) => rate.effectiveDate)
+            .sort()[0]!;
+          if (!selected.startDate || selected.startDate <= openingDate)
+            throw new Error(
+              "Choose an import date after this loan's opening balance date.",
+            );
+          mappings[provider.accountId] = {
+            accountId: existing.id,
+            startDate: selected.startDate,
+          };
+          usedAccountIds.add(existing.id);
+          accountIds.push(existing.id);
+          continue;
+        }
+        if (!selected.loan)
+          throw new Error(
+            "Enter the loan's confirmed balance, APR, and required payment.",
+          );
+        if (
+          provider.currentBalance !== null &&
+          usdToCents(provider.currentBalance) !== selected.loan.principal
+        )
+          throw new Error(
+            "Use the loan's latest bank balance, then review its terms.",
+          );
+        if (selected.startDate && selected.startDate !== today)
+          throw new Error("New loans start with today's confirmed balance.");
+        const loanId = `bank:${input.operationId}:${commandHash(provider.accountId).slice(0, 32)}`;
+        commands.push({
+          type: "loan.add",
+          id: `${input.operationId}:${commandHash(provider.accountId).slice(0, 32)}`,
+          loanId,
+          categoryId: `${loanId}:payment`,
+          name: selected.name,
+          ...selected.loan,
+          effectiveDate: today,
+        });
+        mappings[provider.accountId] = {
+          accountId: loanId,
+          startDate: today,
+          openingSnapshot: openingSnapshot(
+            state.records,
+            provider.accountId,
+            state.reviews,
+          ),
+        };
+        usedAccountIds.add(loanId);
+        accountIds.push(loanId);
+        continue;
+      }
       const opening = bankAccountOpening(provider);
       let accountId: string;
       if (selected.existingAccountId) {
@@ -960,6 +1037,27 @@ async function applyBankUpdate(
       account,
     ]),
   );
+  // Plaid omits accounts without transactions from /transactions/sync.
+  // A completed, empty history with a reported zero balance can start at zero.
+  const accountsWithActivity = new Set([
+    ...plan.records.map((record) => record.current.providerAccountId),
+    ...quarantinedTransactions(old.reviews).map(
+      (review) => review.transaction.providerAccountId,
+    ),
+    ...delta.skipped.quarantined.map((record) => record.providerAccountId),
+  ]);
+  if (
+    delta.updateStatus === "HISTORICAL_UPDATE_COMPLETE" &&
+    !delta.skipped.unidentifiable
+  )
+    for (const account of accounts.accounts)
+      if (
+        !synchronizedAccounts.has(account.accountId) &&
+        account.currentBalance === 0 &&
+        !changedAccounts.has(account.accountId) &&
+        !accountsWithActivity.has(account.accountId)
+      )
+        synchronizedAccounts.set(account.accountId, account);
   const state: ImportState = {
     ...accounts,
     accounts: [
@@ -1009,6 +1107,7 @@ async function applyBankUpdate(
       state.errors[record.id] = openingSnapshotChangedMessage;
     if (
       !mapped ||
+      opened.ledger.budget.loans.some((loan) => loan.id === mapped.accountId) ||
       eligibility !== "eligible" ||
       record.matchStatus !== "confirmed" ||
       !resolution?.transactionId
@@ -1234,6 +1333,8 @@ export async function resolveImport(
         throw new Error(
           "Map this provider account to your own ledger account first.",
         );
+      if (ledger.budget.loans.some((loan) => loan.id === mapping.accountId))
+        throw new Error(loanActivityReviewMessage);
       const eligibility = bankImportEligibility(mapping, record);
       if (eligibility !== "eligible")
         throw new Error(

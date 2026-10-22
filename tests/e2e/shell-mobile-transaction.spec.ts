@@ -5,6 +5,7 @@ import {
   available,
   fillPurchase,
   openRegister,
+  saved,
   transactionRow,
   transactions,
 } from "./shell-controls";
@@ -23,6 +24,7 @@ test("a purchase created on a phone persists exactly once with account and categ
   const form = await fillPurchase(page, budget, "Phone market", "12.50");
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form).toHaveCount(0);
+  await saved(page);
 
   await reloadBudget(page, budget);
   await expect(available(page, budget.category)).toHaveText("$187.50");
