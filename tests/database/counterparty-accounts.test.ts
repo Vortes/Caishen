@@ -121,6 +121,16 @@ void test("joining a partner gives each budget a partner account and its envelop
         ["Reimbursements", "counterparty:reimbursements"],
       ],
     });
+  // The partner account goes by the partner's first name.
+  await db.user.update({
+    where: { clerkUserId: anna.userId },
+    data: { firstName: "Anna" },
+  });
+  const overview = await alan.api.budget.overview();
+  assert.equal(
+    overview.status === "ready" && overview.partnerFirstName,
+    "Anna",
+  );
 });
 
 void test("a budget made before counterparty accounts gets them once, the first time it loads", async () => {

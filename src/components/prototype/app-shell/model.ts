@@ -228,6 +228,9 @@ export type ShellSource = {
   view: View;
   connections: State["connections"];
   imports: State["imports"];
+  // The partner's first name from their profile, which names the partner
+  // account; a member's own name is their budget's.
+  partnerFirstName?: string;
 };
 
 export function toShellData(
@@ -243,12 +246,9 @@ export function toShellData(
   const loanName = new Map(view.loans.map((item) => [item.id, item.name]));
   // Counterparty accounts go by who they are with: the partner's first name,
   // or Reimbursements for everyone else.
-  const partnerName = view.members
-    .find((member) => member.userId !== userId)
-    ?.name.trim()
-    .split(/\s+/)[0];
   const displayName = (account: { kind: string; name: string }) =>
-    (account.kind === "partner" ? partnerName : undefined) ?? account.name;
+    (account.kind === "partner" ? state.partnerFirstName : undefined) ??
+    account.name;
   const counterparty = new Map(
     view.accounts
       .filter(

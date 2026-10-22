@@ -1,7 +1,7 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { addMember, withCounterpartyAccounts } from "~/domain/engine";
-import { budgetFixture, renderShell } from "./shell-harness";
+import { budgetFixture, readyOverview, renderShell } from "./shell-harness";
 
 // The owner's budget as every budget now is: with its reimbursements account
 // and paired envelope.
@@ -91,16 +91,21 @@ test("the envelope's details show its float minus what's owed as its available m
 });
 
 test("with a partner, People lists the partner by first name before Reimbursements", async () => {
+  // A member's name is their budget's; the first name is their profile's.
   await renderShell({
     book: withCounterpartyAccounts(
-      addMember(budgetFixture(), "anna", "Anna Lee", "2026-10"),
+      addMember(budgetFixture(), "anna", "Home budget", "2026-10"),
     ),
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
   });
 
-  const people = sidebar()
-    .getAllByRole("button", { name: /^(Anna|Reimbursements|Partner)/ })
-    .map((button) => button.textContent?.replace(/\$.*/, ""));
-  expect(people).toEqual(["Anna", "Reimbursements"]);
+  await waitFor(() =>
+    expect(
+      sidebar()
+        .getAllByRole("button", { name: /^(Anna|Reimbursements|Partner)/ })
+        .map((button) => button.textContent?.replace(/\$.*/, "")),
+    ).toEqual(["Anna", "Reimbursements"]),
+  );
   expect(plan().getByRole("checkbox", { name: "Select Anna" })).toBeTruthy();
 });
 
