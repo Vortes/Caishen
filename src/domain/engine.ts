@@ -1638,6 +1638,7 @@ function replay(
   );
   const snapshots = new Map<string, Map<string, CategoryMonth>>();
   const startingBalances = new Map<string, number>();
+  const carriedCounterpartyCredit = new Map<string, Map<string, number>>();
   const empty: MonthRows = {
     transactions: [],
     assignments: [],
@@ -1673,7 +1674,9 @@ function replay(
       state.paymentsMade = 0;
       state.creditsReleased = 0;
     }
-    const creditByCategory = new Map<string, Map<string, number>>();
+    const creditByCategory = new Map([...carriedCounterpartyCredit].map(([categoryId, cards]) => [categoryId, new Map(cards)]));
+    const priorCounterpartyCredit = new Map([...carriedCounterpartyCredit].map(([categoryId, cards]) => [categoryId, sum([...cards.values()])]));
+    carriedCounterpartyCredit.clear();
     const cashByCategory = new Map<string, number>();
     const credits: Transaction[] = [];
     const payments: Transaction[] = [];
@@ -1830,6 +1833,7 @@ function replay(
         categoryId,
         safe(
           state.opening +
+            (priorCounterpartyCredit.get(categoryId) ?? 0) +
             state.assigned +
             (cashByCategory.get(categoryId) ?? 0),
         ),
@@ -1899,15 +1903,12 @@ function replay(
       categories.get(refund.categoryId)!.available = safe(
         categories.get(refund.categoryId)!.available - refund.remaining,
       );
-    for (const [categoryId, amount] of liquidity)
-      categories.get(categoryId)!.cashOverspending =
-        Math.max(0, -amount) -
-        (index.category(categoryId).counterpartyAccountId
-          ? Math.min(
-              Math.max(0, -categories.get(categoryId)!.opening),
-              Math.max(0, -amount),
-            )
-          : 0);
+    for (const [categoryId, amount] of liquidity) {
+      const state = categories.get(categoryId)!;
+      const priorCashDeficit = index.category(categoryId).counterpartyAccountId
+        ? Math.max(0, -state.opening - (priorCounterpartyCredit.get(categoryId) ?? 0)) : 0;
+      state.cashOverspending = Math.max(0, -amount - priorCashDeficit);
+    }
     for (const transfer of debtTransfers) {
       const from = accounts.get(transfer.from)!;
       const to = accounts.get(transfer.to)!;
@@ -1959,6 +1960,31 @@ function replay(
         state.available = account.reserve;
         state.activity = safe(state.available - state.opening - state.assigned);
       }
+    for (const purchase of purchases) {
+      if (!purchase.remaining || !index.category(purchase.categoryId).counterpartyAccountId) continue;
+      const cards = carriedCounterpartyCredit.get(purchase.categoryId) ?? new Map<string, number>();
+      cards.set(purchase.cardId, safe((cards.get(purchase.cardId) ?? 0) + purchase.remaining));
+      carriedCounterpartyCredit.set(purchase.categoryId, cards);
+    }
+    for (const transfer of debtTransfers) {
+      let remaining = transfer.amount;
+      for (const cards of carriedCounterpartyCredit.values()) {
+        const moved = Math.min(remaining, cards.get(transfer.from) ?? 0);
+        if (!moved) continue;
+        cards.set(transfer.from, cards.get(transfer.from)! - moved);
+        cards.set(transfer.to, safe((cards.get(transfer.to) ?? 0) + moved));
+        remaining -= moved;
+      }
+    }
+    for (const account of budget.accounts.filter(item => item.kind === "credit")) {
+      const state = accounts.get(account.id)!;
+      let remainingDebt = Math.max(0, -state.balance - state.reserve);
+      for (const cards of carriedCounterpartyCredit.values()) {
+        const debt = Math.min(cards.get(account.id) ?? 0, remainingDebt);
+        cards.set(account.id, debt);
+        remainingDebt -= debt;
+      }
+    }
     for (const category of budget.categories) {
       if (!category.counterpartyAccountId) continue;
       const state = categories.get(category.id)!;
