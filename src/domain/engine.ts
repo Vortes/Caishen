@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { counterpartyLines, counterpartyRegisterEntries, shareContribution } from "./counterparty";
+import {
+  counterpartyLines,
+  counterpartyRegisterEntries,
+  shareContribution,
+} from "./counterparty";
 export { counterpartyRegisterEntries } from "./counterparty";
 import {
   isTransfer,
@@ -649,11 +653,15 @@ export const counterpartyShareSchema = z.object({
 export const transactionHistorySchema = z.object({
   actorId: storedIdentifier.optional(),
   at: z.string().datetime().optional(),
-  shareChanges: z.array(z.object({
-    lineId: storedIdentifier,
-    previous: counterpartyShareSchema.nullable(),
-    next: counterpartyShareSchema.nullable(),
-  })).optional(),
+  shareChanges: z
+    .array(
+      z.object({
+        lineId: storedIdentifier,
+        previous: counterpartyShareSchema.nullable(),
+        next: counterpartyShareSchema.nullable(),
+      }),
+    )
+    .optional(),
   revision: z.number().int().nonnegative(),
   amount: cents,
   status: z.enum(["pending", "posted"]),
@@ -683,12 +691,16 @@ export const transactionSchema = z.object({
   payee: z.string(),
   status: z.enum(["pending", "posted"]),
   categoryId: storedIdentifier.optional(),
-  lines: z.array(z.object({
-    counterpartyShare: counterpartyShareSchema.optional(),
-    id: storedIdentifier,
-    categoryId: storedIdentifier,
-    amount: cents,
-  })).optional(),
+  lines: z
+    .array(
+      z.object({
+        counterpartyShare: counterpartyShareSchema.optional(),
+        id: storedIdentifier,
+        categoryId: storedIdentifier,
+        amount: cents,
+      }),
+    )
+    .optional(),
   expenseMonth: monthSchema,
   sharedCategoryId: storedIdentifier.optional(),
   shares: z.record(nonnegativeCents).optional(),
@@ -843,17 +855,26 @@ export function budgetReferenceIssues(
       (transaction) =>
         !transaction.removed &&
         (!accounts.has(transaction.accountId) ||
-          categoryLines(transaction).some(line => !categories.has(line.categoryId))),
+          categoryLines(transaction).some(
+            (line) => !categories.has(line.categoryId),
+          )),
     )
   )
     issues.push("Invalid transaction reference");
-  if (budget.transactions.some(transaction => transaction.lines && (
-    transaction.lines.length < 2 ||
-    transaction.categoryId !== undefined ||
-    new Set(transaction.lines.map(line => line.id)).size !== transaction.lines.length ||
-    transaction.lines.some(line => !line.amount) ||
-    transaction.lines.reduce((total, line) => total + line.amount, 0) !== transaction.amount
-  ))) issues.push("Invalid stored transaction lines");
+  if (
+    budget.transactions.some(
+      (transaction) =>
+        transaction.lines &&
+        (transaction.lines.length < 2 ||
+          transaction.categoryId !== undefined ||
+          new Set(transaction.lines.map((line) => line.id)).size !==
+            transaction.lines.length ||
+          transaction.lines.some((line) => !line.amount) ||
+          transaction.lines.reduce((total, line) => total + line.amount, 0) !==
+            transaction.amount),
+    )
+  )
+    issues.push("Invalid stored transaction lines");
   if (
     budget.assignments.some(
       (assignment) => !categories.has(assignment.categoryId),
@@ -1224,7 +1245,6 @@ function rescaleLines(
   );
   return scaled.every((line) => line.amount) ? scaled : undefined;
 }
-
 
 export function categoryLines(
   transaction: Pick<Transaction, "categoryId" | "lines" | "amount">,
@@ -1626,7 +1646,9 @@ function replay(
   ) {
     const rows = index.months.get(cursor) ?? empty;
     for (const [categoryId, state] of categories) {
-      state.opening = index.category(categoryId).counterpartyAccountId ? state.available : Math.max(0, state.available);
+      state.opening = index.category(categoryId).counterpartyAccountId
+        ? state.available
+        : Math.max(0, state.available);
       state.available = state.opening;
       state.assigned = 0;
       state.activity = 0;
@@ -1697,26 +1719,43 @@ function replay(
         continue;
       }
       if (transaction.linkedCounterpartyAccountId) {
-        const counterparty = accounts.get(transaction.linkedCounterpartyAccountId)!;
+        const counterparty = accounts.get(
+          transaction.linkedCounterpartyAccountId,
+        )!;
         counterparty.balance = safe(counterparty.balance - transaction.amount);
-        const category = budget.categories.find(item => item.counterpartyAccountId === transaction.linkedCounterpartyAccountId)!;
+        const category = budget.categories.find(
+          (item) =>
+            item.counterpartyAccountId ===
+            transaction.linkedCounterpartyAccountId,
+        )!;
         const state = categories.get(category.id)!;
         state.activity = safe(state.activity + transaction.amount);
         state.available = safe(state.available + transaction.amount);
         state.cashActivity = safe(state.cashActivity + transaction.amount);
-        cashByCategory.set(category.id, safe((cashByCategory.get(category.id) ?? 0) + transaction.amount));
+        cashByCategory.set(
+          category.id,
+          safe((cashByCategory.get(category.id) ?? 0) + transaction.amount),
+        );
       }
       if (transaction.kind === "reimbursement" || transaction.kind === "income")
         continue;
       if (transaction.kind === "settlement") continue;
-      const accountingLines = counterpartyLines(transaction).flatMap(line => {
+      const accountingLines = counterpartyLines(transaction).flatMap((line) => {
         const share = line.counterpartyShare;
         if (!share) return [line];
         const contribution = shareContribution(line.amount, share);
         const counterparty = accounts.get(share.accountId)!;
         counterparty.balance = safe(counterparty.balance + contribution);
-        const paired = budget.categories.find(item => item.counterpartyAccountId === share.accountId)!;
-        return [{categoryId: line.categoryId, amount: safe(line.amount + contribution)}, {categoryId: paired.id, amount: -contribution}];
+        const paired = budget.categories.find(
+          (item) => item.counterpartyAccountId === share.accountId,
+        )!;
+        return [
+          {
+            categoryId: line.categoryId,
+            amount: safe(line.amount + contribution),
+          },
+          { categoryId: paired.id, amount: -contribution },
+        ];
       });
       for (const { categoryId, amount } of accountingLines) {
         const state = categories.get(categoryId)!;
@@ -1857,7 +1896,14 @@ function replay(
         categories.get(refund.categoryId)!.available - refund.remaining,
       );
     for (const [categoryId, amount] of liquidity)
-      categories.get(categoryId)!.cashOverspending = Math.max(0, -amount) - (index.category(categoryId).counterpartyAccountId ? Math.min(Math.max(0, -categories.get(categoryId)!.opening), Math.max(0, -amount)) : 0);
+      categories.get(categoryId)!.cashOverspending =
+        Math.max(0, -amount) -
+        (index.category(categoryId).counterpartyAccountId
+          ? Math.min(
+              Math.max(0, -categories.get(categoryId)!.opening),
+              Math.max(0, -amount),
+            )
+          : 0);
     for (const transfer of debtTransfers) {
       const from = accounts.get(transfer.from)!;
       const to = accounts.get(transfer.to)!;
@@ -1912,8 +1958,16 @@ function replay(
     for (const category of budget.categories) {
       if (!category.counterpartyAccountId) continue;
       const state = categories.get(category.id)!;
-      const float = sum(budget.assignments.filter(item => item.categoryId === category.id && item.month <= cursor).map(item => item.amount));
-      state.available = safe(float - accounts.get(category.counterpartyAccountId)!.balance);
+      const float = sum(
+        budget.assignments
+          .filter(
+            (item) => item.categoryId === category.id && item.month <= cursor,
+          )
+          .map((item) => item.amount),
+      );
+      state.available = safe(
+        float - accounts.get(category.counterpartyAccountId)!.balance,
+      );
     }
     snapshots.set(
       cursor,
@@ -2490,7 +2544,14 @@ function projectAccountingState(
     accounts: budget.accounts.map((account) => ({
       ...account,
       ...calculated.accounts.get(account.id)!,
-      cleared: isCounterparty(account) ? sum(counterpartyRegisterEntries(budget, {accountId: account.id, cutoff}).map(entry => entry.amount)) : clearedBalance(budget, account),
+      cleared: isCounterparty(account)
+        ? sum(
+            counterpartyRegisterEntries(budget, {
+              accountId: account.id,
+              cutoff,
+            }).map((entry) => entry.amount),
+          )
+        : clearedBalance(budget, account),
     })),
     personalSpending,
     amountPaid,
@@ -3540,7 +3601,12 @@ function applyCommand(
         (categoryId || command.sharedCategoryId || existing?.sharedCategoryId)
       )
         fail("Tracking activity does not use budget categories");
-      if (account.kind === "credit" && command.amount > 0 && !categoryId && !lines)
+      if (
+        account.kind === "credit" &&
+        command.amount > 0 &&
+        !categoryId &&
+        !lines
+      )
         fail("Use a card payment or posted statement credit for card inflows");
       if (categoryId) {
         const category = getCategory(budget, categoryId);
@@ -3619,7 +3685,11 @@ function applyCommand(
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
         kind:
-          command.amount < 0 ? "purchase" : categoryId || lines ? "refund" : "income",
+          command.amount < 0
+            ? "purchase"
+            : categoryId || lines
+              ? "refund"
+              : "income",
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
