@@ -239,7 +239,8 @@ export function ReviewNotesBar() {
   return (
     <div ref={setRoot} className={styles.bar}>
       <div className={styles.barRow}>
-        <p className={styles.count} aria-live="polite">
+        {/* A div, not a p: index pages style their own paragraphs. */}
+        <div className={styles.count} aria-live="polite">
           <span>
             {looksGood.length} of {items.length} look good
           </span>
@@ -248,7 +249,7 @@ export function ReviewNotesBar() {
               {withNotes.length} with notes
             </span>
           )}
-        </p>
+        </div>
         <div className={styles.actions}>
           <Button variant="primary" size="sm" onClick={copy}>
             {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
