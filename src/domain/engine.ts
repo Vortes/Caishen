@@ -2892,7 +2892,7 @@ function saveRegisterTransaction(
     return;
   }
   if (command.lines) fail("A transfer cannot be split");
-  if (command.counterpartyShare || existing?.counterpartyShare || command.refundOfTransactionId || existing?.refundOfTransactionId)
+  if (command.counterpartyShare || existing?.counterpartyShare || existing?.lines?.some(line => line.counterpartyShare) || command.refundOfTransactionId || existing?.refundOfTransactionId)
     fail("Resolve counterparty shares and linked refunds before converting to a transfer");
   if (existing?.sharedCategoryId || command.sharedCategoryId || command.shares)
     fail("Resolve the shared expense before converting it to a transfer");
@@ -3771,7 +3771,7 @@ function applyCommand(
           if (!amount) return [];
           const share = line.counterpartyShare;
           const shareAmount = share ? Number(BigInt(share.amount) * BigInt(Math.abs(cumulative)) / BigInt(Math.abs(line.amount))) - Number(BigInt(share.amount) * BigInt(Math.abs(previousAmount)) / BigInt(Math.abs(line.amount))) : 0;
-          return [{lineId: line.id, categoryId: line.categoryId, amount, counterpartyShare: share ? {...share, amount: shareAmount} : undefined}];
+          return [{lineId: line.id, categoryId: line.categoryId, amount, counterpartyShare: share ? {...share, amount: Math.abs(shareAmount)} : undefined}];
         });
         if (!refundLines.length) fail("The original purchase has no refundable category");
         if (refundLines.length === 1) {
