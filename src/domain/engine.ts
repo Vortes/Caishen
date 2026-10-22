@@ -454,7 +454,20 @@ export type Category = {
   // The counterparty account this paired envelope holds the cash of.
   counterpartyAccountId?: string;
 };
+export type CounterpartyShare = {
+  accountId: string;
+  amount: number;
+  counterpartyName?: string;
+};
+export type ShareChange = {
+  lineId: string;
+  previous: CounterpartyShare | null;
+  next: CounterpartyShare | null;
+};
 export type TransactionHistory = {
+  actorId?: string;
+  at?: string;
+  shareChanges?: ShareChange[];
   revision: number;
   amount: number;
   status: "pending" | "posted";
@@ -472,11 +485,16 @@ export type TransactionHistory = {
   combinedId?: string;
 };
 export type TransactionLine = {
+  counterpartyShare?: CounterpartyShare;
   id: string;
   categoryId: string;
   amount: number;
 };
 export type Transaction = {
+  counterpartyShare?: CounterpartyShare;
+  refundOfTransactionId?: string;
+  linkedCounterpartyAccountId?: string;
+  counterpartyName?: string;
   id: string;
   accountId: string;
   date: string;
@@ -620,7 +638,19 @@ export type Book = {
 };
 
 export const storedIdentifier = z.string().min(1).max(1024);
+export const counterpartyShareSchema = z.object({
+  accountId: storedIdentifier,
+  amount: nonnegativeCents,
+  counterpartyName: z.string().trim().min(1).max(240).optional(),
+});
 export const transactionHistorySchema = z.object({
+  actorId: storedIdentifier.optional(),
+  at: z.string().datetime().optional(),
+  shareChanges: z.array(z.object({
+    lineId: storedIdentifier,
+    previous: counterpartyShareSchema.nullable(),
+    next: counterpartyShareSchema.nullable(),
+  })).optional(),
   revision: z.number().int().nonnegative(),
   amount: cents,
   status: z.enum(["pending", "posted"]),
@@ -639,6 +669,10 @@ export const transactionHistorySchema = z.object({
   combinedId: storedIdentifier.optional(),
 });
 export const transactionSchema = z.object({
+  counterpartyShare: counterpartyShareSchema.optional(),
+  refundOfTransactionId: storedIdentifier.optional(),
+  linkedCounterpartyAccountId: storedIdentifier.optional(),
+  counterpartyName: z.string().optional(),
   id: storedIdentifier,
   accountId: storedIdentifier,
   date: daySchema,
@@ -647,6 +681,7 @@ export const transactionSchema = z.object({
   status: z.enum(["pending", "posted"]),
   categoryId: storedIdentifier.optional(),
   lines: z.array(z.object({
+    counterpartyShare: counterpartyShareSchema.optional(),
     id: storedIdentifier,
     categoryId: storedIdentifier,
     amount: cents,
