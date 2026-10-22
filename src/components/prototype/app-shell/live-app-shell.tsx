@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useClerk } from "@clerk/nextjs";
 import { InfoIcon, LogInIcon, RotateCwIcon, WrenchIcon } from "lucide-react";
 import {
   useCallback,
@@ -27,6 +27,7 @@ import {
   clientBuild,
   serverOperation,
   trpcTransport,
+  type RenewSession,
 } from "~/components/sync/trpc-transport";
 import {
   MAINTENANCE_DETAIL,
@@ -69,7 +70,8 @@ export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
   const { isLoaded, userId } = useAuth();
   const [month, setMonth] = useState(() => initialMonth ?? currentMonth());
   const settings = useSavedSettings();
-  const client = useBudgetClientFor(userId);
+  const renewSession = useRenewSession();
+  const client = useBudgetClientFor(userId, renewSession);
   const overview = api.budget.overview.useQuery(undefined, {
     enabled: Boolean(userId),
     // A budget under maintenance checks back every minute, so the plan
@@ -97,16 +99,35 @@ export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
   );
 }
 
+// Asks Clerk for a fresh session token, which also renews the session
+// cookie the API reads. Stays the same function, so the budget client
+// isn't reopened.
+function useRenewSession(): RenewSession {
+  const clerk = useClerk();
+  const current = useRef(clerk);
+  useEffect(() => {
+    current.current = clerk;
+  }, [clerk]);
+  return useCallback(
+    async () =>
+      Boolean(await current.current.session?.getToken({ skipCache: true })),
+    [],
+  );
+}
+
 // One budget client per signed-in user, for as long as the shell is open.
 // Revisions on any API response tell it when to catch up.
-function useBudgetClientFor(userId: string | null | undefined) {
+function useBudgetClientFor(
+  userId: string | null | undefined,
+  renewSession: RenewSession,
+) {
   const trpc = api.useUtils().client;
   const [client, setClient] = useState<BudgetClient | null>(null);
   useEffect(() => {
     if (!userId) return;
     const opened = openBudgetClient({
       userId,
-      transport: trpcTransport(trpc),
+      transport: trpcTransport(trpc, renewSession),
       clientBuild,
     });
     const stop = serverRevisions.subscribe((hint) => opened.signal.emit(hint));
@@ -116,7 +137,7 @@ function useBudgetClientFor(userId: string | null | undefined) {
       opened.dispose();
       setClient(null);
     };
-  }, [userId, trpc]);
+  }, [userId, trpc, renewSession]);
   return client;
 }
 
@@ -224,6 +245,7 @@ function LiveWorkspace({
   const view = useBudgetMonth(month)!;
   const utils = api.useUtils();
   const trpc = utils.client;
+  const renewSession = useRenewSession();
   const services = overview?.services ?? noServices;
   const connections = overview?.connections ?? noConnections;
   // Imports a save just resolved stay hidden until the inbox catches up.
@@ -297,7 +319,8 @@ function LiveWorkspace({
     new Promise<void>((resolve, reject) => {
       const result = client.runOnServer(
         operationId,
-        (baseRevision) => serverOperation(() => send(baseRevision)),
+        (baseRevision) =>
+          serverOperation(() => send(baseRevision), renewSession),
         {
           summary,
           onSettled: (settled) =>
