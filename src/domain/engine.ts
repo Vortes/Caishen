@@ -3755,6 +3755,7 @@ function applyCommand(
         const refunded = sum(earlier.map(item => item.amount));
         if (refunded + command.amount > -original.amount) fail("Refunds exceed the original purchase");
         const originalLines = counterpartyLines(original);
+        if (!originalLines.length) fail("Categorize the original purchase before linking its refund");
         const allocateRefund = (amount: number) => {
           const parts = originalLines.map(line => ({id: line.id, amount: Number(BigInt(-line.amount) * BigInt(amount) / BigInt(-original.amount))}));
           const largest = parts.reduce((a,b) => Math.abs(a.amount) >= Math.abs(b.amount) ? a : b);
@@ -3776,7 +3777,7 @@ function applyCommand(
         if (refundLines.length === 1) {
           command.lines = undefined;
           command.categoryId = refundLines[0]!.categoryId;
-          command.counterpartyShare = refundLines[0]!.counterpartyShare;
+          command.counterpartyShare = refundLines[0]!.counterpartyShare ?? null;
         } else {
           command.lines = refundLines;
           command.categoryId = undefined;
