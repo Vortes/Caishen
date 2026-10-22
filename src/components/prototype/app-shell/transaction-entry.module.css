@@ -411,3 +411,80 @@
     padding-left: var(--space-row-x);
   }
 }
+
+/* A split's lines, each a row on the register's grid under the entry row:
+   a category and its amounts under their columns, and a remove button in
+   the status column. */
+.lines {
+  display: flex;
+  flex-direction: column;
+}
+.entryRow.lineRow {
+  grid-template-rows: minmax(var(--size-row-md), auto);
+}
+.entryRow.lineRow > .cell {
+  padding-top: calc((var(--size-row-md) - var(--size-control)) / 2);
+}
+.removeLine {
+  display: flex;
+  justify-self: center;
+  padding-top: calc((var(--size-row-md) - var(--size-control)) / 2);
+}
+/* Add line under the categories, and what the lines leave of the total
+   under the amounts. */
+.splitFooter {
+  align-items: start;
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
+.splitFooter > [data-column="category"] {
+  margin-left: -8px;
+}
+.remaining {
+  display: flex;
+  grid-column: -4 / -2;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: var(--size-control);
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.remaining[data-unsplit] > p:first-child {
+  color: var(--feedback-attention);
+}
+@container (max-width: 760px) {
+  .spacer {
+    display: none;
+  }
+  /* Each line reads as its own block, with its remove button beside the
+     line's name instead of on a row of its own. */
+  .entryRow.lineRow {
+    border-top: 1px solid var(--border-subtle);
+  }
+  .entryRow.lineRow > [data-column="category"] {
+    grid-row: 1;
+  }
+  .entryRow.lineRow > .removeLine {
+    display: flex;
+    grid-row: 1;
+    grid-column: 2;
+    align-self: start;
+    justify-self: end;
+    margin-top: -6px;
+    padding-top: 0;
+  }
+  .splitFooter {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: var(--space-row-x);
+  }
+  .splitFooter > [data-column="category"] {
+    margin-left: 0;
+  }
+  .remaining {
+    grid-column: auto;
+  }
+}

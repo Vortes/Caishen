@@ -132,8 +132,15 @@ const transactionInput = {
   amount: cents,
   payee: z.string().min(1).max(240),
   categoryId: identifier.optional(),
-  // This release reads saved lines but does not accept split creation.
-  lines: z.never().optional(),
+  // A split: the transaction's amount across several categories. Absent
+  // keeps a saved split, or a single category.
+  lines: z
+    .array(
+      z.object({ lineId: identifier, categoryId: identifier, amount: cents }),
+    )
+    .min(2)
+    .max(100)
+    .optional(),
   status: z.enum(["pending", "posted"]).default("posted"),
   expenseMonth: monthSchema.optional(),
   sharedCategoryId: identifier.optional(),
@@ -2625,6 +2632,7 @@ function saveRegisterTransaction(
     );
     return;
   }
+  if (command.lines) fail("A transfer cannot be split");
   if (existing?.sharedCategoryId || command.sharedCategoryId || command.shares)
     fail("Resolve the shared expense before converting it to a transfer");
   if (
@@ -3425,10 +3433,35 @@ function applyCommand(
           break;
         fail("Stale transaction revision requires review");
       }
-      const lines = command.categoryId || !existing?.lines
+      const lines = command.lines
+        ? command.lines.map((line) => ({
+            id: line.lineId,
+            categoryId: line.categoryId,
+            amount: line.amount,
+          }))
+        : command.categoryId || !existing?.lines
+          ? undefined
+          : rescaleLines(existing.lines, command.amount);
+      const categoryId = lines
         ? undefined
-        : rescaleLines(existing.lines, command.amount);
-      const categoryId = lines ? undefined : command.categoryId ?? existing?.categoryId;
+        : (command.categoryId ?? existing?.categoryId);
+      if (lines) {
+        if (account.kind === "tracking")
+          fail("Tracking activity does not use budget categories");
+        if (command.sharedCategoryId || existing?.sharedCategoryId)
+          fail("A shared expense cannot be split");
+        if (new Set(lines.map((line) => line.id)).size !== lines.length)
+          fail("Each split line needs its own id");
+        for (const line of lines) {
+          if (!line.amount) fail("Enter an amount on every split line");
+          const category = getCategory(budget, line.categoryId);
+          refusePairedEnvelope(category);
+          if (category.pairedAccountId || category.pairedLoanId)
+            fail("Choose a spending category for every split line");
+        }
+        if (sum(lines.map((line) => line.amount)) !== command.amount)
+          fail("Split lines must add up to the transaction amount");
+      }
       if (
         account.kind === "tracking" &&
         (categoryId || command.sharedCategoryId || existing?.sharedCategoryId)

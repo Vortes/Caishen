@@ -438,6 +438,7 @@ export function toShellData(
       const needsCategory =
         item.kind === "purchase" &&
         !item.categoryId &&
+        !item.lines &&
         account.kind !== "tracking";
       return {
         id: item.id,
@@ -463,10 +464,12 @@ export function toShellData(
           ? "Category not needed"
           : needsCategory
             ? "Needs category"
-            : ((item.categoryId && categoryName.get(item.categoryId)) ??
-              (boundary
-                ? "Inflow: Ready to Assign"
-                : transactionCategory(item.kind, item.amount))),
+            : item.lines
+              ? `Split (${item.lines.length})`
+              : ((item.categoryId && categoryName.get(item.categoryId)) ??
+                (boundary
+                  ? "Inflow: Ready to Assign"
+                  : transactionCategory(item.kind, item.amount))),
         needsCategory,
         categoryNotNeeded,
         forMonth:

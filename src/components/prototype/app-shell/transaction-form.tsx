@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlertIcon } from "lucide-react";
+import { CircleAlertIcon, PlusIcon, XIcon } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -10,12 +10,20 @@ import {
   type ReactNode,
 } from "react";
 import { isTransfer, transferNeedsCategory } from "~/domain/transfers";
-import { today } from "~/components/budget/format";
+import { newId, today } from "~/components/budget/format";
 import {
   READY_TO_ASSIGN,
+  SPLIT,
+  amountFields,
+  draftAmount,
+  lineField,
   paymentPayees,
+  splitRemaining,
+  type DraftLine,
 } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
+import { IconButton } from "~/components/ui/icon-button";
+import { money } from "./model";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -39,7 +47,7 @@ export function TransactionEditor({
   return <TransactionForm key={session.key} accountColumn={accountColumn} />;
 }
 
-type Control = DraftField | "error";
+type Control = DraftField | "error" | "addLine";
 
 function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const entry = useTransactionEntry();
@@ -62,6 +70,16 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   useEffect(() => {
     if (lost && draft.categoryId === lost) entry.change({ categoryId: "" });
   }, [lost, draft.categoryId, entry]);
+
+  // A field to focus once the next render shows it, such as a line just
+  // added.
+  const focusNext = useRef<Control | null>(null);
+  useEffect(() => {
+    const target = focusNext.current;
+    if (!target) return;
+    focusNext.current = null;
+    controls.current[target]?.focus({ preventScroll: true });
+  });
 
   // Takes the controller's pending focus move once this editor is on screen.
   // Opening focuses a text field only with a mouse or trackpad, so a touch
@@ -103,6 +121,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const shared = view.sharedCategories.find(
     (item) => item.id === draft.sharedCategoryId,
   );
+  // A purchase or refund can split; a transfer, loan payment, tracked
+  // activity, or shared expense can't.
+  const splittable =
+    !draft.transferAccountId &&
+    !draft.loanId &&
+    account?.kind !== "tracking" &&
+    !shared;
+  const split = draft.lines.length > 0;
+  const remaining = split ? splitRemaining(draft) : undefined;
   const accountOptions = useMemo<ChoiceOption[]>(
     () =>
       view.accounts.map((item) => ({
@@ -117,7 +144,22 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       })),
     [view.accounts],
   );
+  const spendingOptions: ChoiceOption[] = view.categories
+    .filter(
+      (category) =>
+        !category.pairedAccountId &&
+        !category.counterpartyAccountId &&
+        (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId) &&
+        (!shared || shared.categoryIds[view.budget.userId] === category.id),
+    )
+    .map((category) => ({
+      value: category.id,
+      label: category.name,
+      group: category.group,
+      amount: category.available,
+    }));
   const categoryOptions: ChoiceOption[] = [
+    ...(splittable ? [{ value: SPLIT, label: "Split" }] : []),
     {
       value: READY_TO_ASSIGN,
       label: "Ready to Assign",
@@ -132,20 +174,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           initial?.kind !== "loan-payment") ||
         Boolean(shared),
     },
-    ...view.categories
-      .filter(
-        (category) =>
-          !category.pairedAccountId &&
-          !category.counterpartyAccountId &&
-          (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId) &&
-          (!shared || shared.categoryIds[view.budget.userId] === category.id),
-      )
-      .map((category) => ({
-        value: category.id,
-        label: category.name,
-        group: category.group,
-        amount: category.available,
-      })),
+    ...spendingOptions,
   ];
   if (
     added &&
@@ -337,8 +366,93 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       }}
     />
   );
+  // Splitting keeps the chosen category and the amount on the first line,
+  // and adds an empty second line. The total comes first when it's still
+  // empty, then the lines.
+  const startSplit = () => {
+    const lines: DraftLine[] = [
+      {
+        lineId: newId(),
+        categoryId: spendingOptions.some(
+          (option) => option.value === draft.categoryId,
+        )
+          ? draft.categoryId
+          : "",
+        ...amountFields(draftAmount(draft) ?? 0),
+      },
+      { lineId: newId(), categoryId: "", outflow: "", inflow: "" },
+    ];
+    entry.change({ categoryId: "", lines });
+    return lines;
+  };
+  // The lines a split started with, until the editor shows them.
+  const splitLines = useRef<DraftLine[] | null>(null);
+  // Choosing one category ends a split.
+  const chooseCategory = (categoryId: string) => {
+    if (categoryId === SPLIT) {
+      if (!split) splitLines.current = startSplit();
+    } else entry.change({ categoryId, lines: [] });
+  };
+  const changeLine = (lineId: string, next: Partial<DraftLine>) =>
+    entry.change({
+      lines: draft.lines.map((line) =>
+        line.lineId === lineId ? { ...line, ...next } : line,
+      ),
+    });
+  // A line's category takes what's left of the amount when the line has
+  // none yet, so the last line usually needs no typing.
+  const chooseLineCategory = (line: DraftLine, categoryId: string) =>
+    changeLine(line.lineId, {
+      categoryId,
+      ...(!line.outflow.trim() && !line.inflow.trim() && remaining
+        ? amountFields(remaining)
+        : {}),
+    });
+  const lineAmountField = (line: DraftLine) =>
+    lineField(
+      line.lineId,
+      line.inflow.trim() || (!line.outflow.trim() && (remaining ?? 0) > 0)
+        ? "inflow"
+        : "outflow",
+    );
+  const addLine = () => {
+    const line: DraftLine = {
+      lineId: newId(),
+      categoryId: "",
+      ...amountFields(remaining ?? 0),
+    };
+    entry.change({ lines: [...draft.lines, line] });
+    focusNext.current = lineField(line.lineId, "categoryId");
+  };
+  // Removing the second-to-last line ends the split: the one left becomes
+  // the transaction's category.
+  const removeLine = (lineId: string) => {
+    const rest = draft.lines.filter((line) => line.lineId !== lineId);
+    if (rest.length > 1) {
+      entry.change({ lines: rest });
+      focusNext.current = "addLine";
+    } else {
+      entry.change({ lines: [], categoryId: rest[0]?.categoryId ?? "" });
+      focusNext.current = "outflow";
+    }
+  };
   // Ready to Assign only takes an inflow.
-  const afterCategory = (categoryId: string) =>
+  const afterCategory = (categoryId: string) => {
+    if (categoryId !== SPLIT) {
+      afterSingleCategory(categoryId);
+      return;
+    }
+    const first = (splitLines.current ?? draft.lines)[0];
+    splitLines.current = null;
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    focusNext.current =
+      draftAmount(draft) && first
+        ? lineField(first.lineId, "categoryId")
+        : draft.inflow.trim()
+          ? "inflow"
+          : "outflow";
+  };
+  const afterSingleCategory = (categoryId: string) =>
     advance(
       categoryId === READY_TO_ASSIGN
         ? account?.kind === "tracking" && boundary
@@ -371,7 +485,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       onAdded={(category) => {
         setAdded(category);
         setLost(null);
-        entry.change({ categoryId: category.id });
+        chooseCategory(category.id);
       }}
       onSettled={(category, saved) => {
         if (!saved) setLost(category.id);
@@ -385,13 +499,13 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         <ChoiceField
           id={id("categoryId")}
           label="Category"
-          value={draft.categoryId}
+          value={split ? SPLIT : draft.categoryId}
           options={categoryOptions}
           placeholder="Category"
           inputRef={register("categoryId")}
           invalid={Boolean(fields.categoryId)}
           describedBy={described("categoryId")}
-          onChange={(categoryId) => entry.change({ categoryId })}
+          onChange={chooseCategory}
           onPicked={afterCategory}
           // A loan's payment or a shared expense takes a category that
           // already exists.
@@ -467,6 +581,113 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     </div>
   );
 
+  // What the lines leave of the total: still to split, or split past it.
+  const remainingLabel =
+    remaining === undefined
+      ? ""
+      : remaining === 0 ||
+          Math.sign(remaining) === Math.sign(draftAmount(draft) ?? 0)
+        ? `Remaining ${money(Math.abs(remaining))}`
+        : `Over by ${money(Math.abs(remaining))}`;
+  // The columns before Category, empty on a split's rows.
+  const leadingColumns = (
+    <>
+      {accountColumn && (
+        <span className={styles.spacer} data-column="account" />
+      )}
+      <span className={styles.spacer} data-column="date" />
+      <span className={styles.spacer} data-column="payee" />
+    </>
+  );
+  // A split line: its category and amount under the row's own columns.
+  const lineRow = (line: DraftLine, index: number) => {
+    const number = index + 1;
+    const lineId = (field: "categoryId" | "outflow" | "inflow") =>
+      lineField(line.lineId, field);
+    const lineAmount = (name: "outflow" | "inflow") => (
+      <div
+        className={styles.well}
+        data-invalid={fields[lineId(name)] ? "" : undefined}
+        data-amount
+      >
+        <span className={styles.prefix} aria-hidden>
+          $
+        </span>
+        <input
+          ref={register(lineId(name))}
+          id={id(lineId(name))}
+          className={styles.input}
+          inputMode="decimal"
+          placeholder={name === "outflow" ? "Outflow" : "Inflow"}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={Boolean(fields[lineId(name)]) || undefined}
+          aria-describedby={described(lineId(name))}
+          value={line[name]}
+          onFocus={(event) => event.currentTarget.select()}
+          onChange={(event) => {
+            const value = event.target.value;
+            changeLine(line.lineId, {
+              [name]: value,
+              ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
+              ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
+            });
+          }}
+        />
+      </div>
+    );
+    return (
+      <div
+        key={line.lineId}
+        className={`${shell.txColumns} ${styles.entryRow} ${styles.lineRow}`}
+        data-accounts={accountColumn || undefined}
+      >
+        {leadingColumns}
+        {cell(
+          lineId("categoryId"),
+          "category",
+          `Line ${number} category`,
+          <ChoiceField
+            id={id(lineId("categoryId"))}
+            label={`Line ${number} category`}
+            value={line.categoryId}
+            options={spendingOptions}
+            placeholder="Category"
+            inputRef={register(lineId("categoryId"))}
+            invalid={Boolean(fields[lineId("categoryId")])}
+            describedBy={described(lineId("categoryId"))}
+            onChange={(categoryId) => chooseLineCategory(line, categoryId)}
+            onPicked={() => {
+              if (!window.matchMedia("(pointer: fine)").matches) return;
+              focusNext.current = lineAmountField(line);
+            }}
+          />,
+        )}
+        {cell(
+          lineId("outflow"),
+          "outflow",
+          `Line ${number} outflow`,
+          lineAmount("outflow"),
+        )}
+        {cell(
+          lineId("inflow"),
+          "inflow",
+          `Line ${number} inflow`,
+          lineAmount("inflow"),
+        )}
+        <div className={styles.removeLine} data-column="status">
+          <IconButton
+            label={`Remove line ${number}`}
+            size="sm"
+            onClick={() => removeLine(line.lineId)}
+          >
+            <XIcon aria-hidden />
+          </IconButton>
+        </div>
+      </div>
+    );
+  };
+
   const title = editing ? "Edit transaction" : "New transaction";
   return (
     <form
@@ -513,6 +734,46 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           </p>
         )}
       </div>
+      {split && (
+        <div role="group" aria-label="Split" className={styles.lines}>
+          {draft.lines.map((line, index) => lineRow(line, index))}
+          <div
+            className={`${shell.txColumns} ${styles.splitFooter}`}
+            data-accounts={accountColumn || undefined}
+          >
+            {leadingColumns}
+            <div data-column="category">
+              <Button
+                ref={register("addLine")}
+                variant="quiet"
+                size="sm"
+                onClick={addLine}
+              >
+                <PlusIcon aria-hidden />
+                Add line
+              </Button>
+            </div>
+            <div
+              ref={register("remaining")}
+              tabIndex={-1}
+              className={styles.remaining}
+              data-unsplit={remaining ? "" : undefined}
+              aria-live="polite"
+            >
+              <p>{remainingLabel}</p>
+              {fields.remaining && (
+                <p
+                  id={`${formId}-remaining-error`}
+                  className={styles.fieldError}
+                >
+                  <CircleAlertIcon size={13} aria-hidden />
+                  {fields.remaining}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {loan && (
         <div className={styles.loanDetails}>
           <div>

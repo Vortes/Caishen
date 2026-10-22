@@ -60,9 +60,7 @@
     },
     "$.records[].current.provider": {
       "type": "enum",
-      "values": [
-        "plaid"
-      ]
+      "values": ["plaid"]
     },
     "$.records[].current.providerTransactionId": {
       "type": "string"
@@ -79,9 +77,7 @@
     },
     "$.records[].current.currency": {
       "type": "enum",
-      "values": [
-        "USD"
-      ]
+      "values": ["USD"]
     },
     "$.records[].current.date": {
       "type": "string"
@@ -109,10 +105,7 @@
     },
     "$.records[].matchStatus": {
       "type": "enum",
-      "values": [
-        "confirmed",
-        "needs_review"
-      ]
+      "values": ["confirmed", "needs_review"]
     },
     "$.records[].history": {
       "type": "array"
@@ -127,13 +120,7 @@
     },
     "$.records[].history[].kind": {
       "type": "enum",
-      "values": [
-        "added",
-        "modified",
-        "pending_posted",
-        "removed",
-        "restored"
-      ]
+      "values": ["added", "modified", "pending_posted", "removed", "restored"]
     },
     "$.records[].history[].before": {
       "type": "object",
@@ -154,9 +141,7 @@
     },
     "$.records[].history[].before.provider": {
       "type": "enum",
-      "values": [
-        "plaid"
-      ]
+      "values": ["plaid"]
     },
     "$.records[].history[].before.providerTransactionId": {
       "type": "string"
@@ -173,9 +158,7 @@
     },
     "$.records[].history[].before.currency": {
       "type": "enum",
-      "values": [
-        "USD"
-      ]
+      "values": ["USD"]
     },
     "$.records[].history[].before.date": {
       "type": "string"
@@ -213,9 +196,7 @@
     },
     "$.records[].history[].after.provider": {
       "type": "enum",
-      "values": [
-        "plaid"
-      ]
+      "values": ["plaid"]
     },
     "$.records[].history[].after.providerTransactionId": {
       "type": "string"
@@ -232,9 +213,7 @@
     },
     "$.records[].history[].after.currency": {
       "type": "enum",
-      "values": [
-        "USD"
-      ]
+      "values": ["USD"]
     },
     "$.records[].history[].after.date": {
       "type": "string"
@@ -437,11 +416,7 @@
     },
     "$.status": {
       "type": "enum",
-      "values": [
-        "discrepancy",
-        "insufficient_evidence",
-        "reconciled"
-      ]
+      "values": ["discrepancy", "insufficient_evidence", "reconciled"]
     },
     "$.differenceCents": {
       "type": "number",
@@ -615,9 +590,7 @@
     },
     "$.current.provider": {
       "type": "enum",
-      "values": [
-        "plaid"
-      ]
+      "values": ["plaid"]
     },
     "$.current.providerTransactionId": {
       "type": "string"
@@ -634,9 +607,7 @@
     },
     "$.current.currency": {
       "type": "enum",
-      "values": [
-        "USD"
-      ]
+      "values": ["USD"]
     },
     "$.current.date": {
       "type": "string"
@@ -664,10 +635,7 @@
     },
     "$.matchStatus": {
       "type": "enum",
-      "values": [
-        "confirmed",
-        "needs_review"
-      ]
+      "values": ["confirmed", "needs_review"]
     },
     "$.history": {
       "type": "array"
@@ -682,13 +650,7 @@
     },
     "$.history[].kind": {
       "type": "enum",
-      "values": [
-        "added",
-        "modified",
-        "pending_posted",
-        "removed",
-        "restored"
-      ]
+      "values": ["added", "modified", "pending_posted", "removed", "restored"]
     },
     "$.history[].before": {
       "type": "object",
@@ -709,9 +671,7 @@
     },
     "$.history[].before.provider": {
       "type": "enum",
-      "values": [
-        "plaid"
-      ]
+      "values": ["plaid"]
     },
     "$.history[].before.providerTransactionId": {
       "type": "string"
@@ -728,9 +688,7 @@
     },
     "$.history[].before.currency": {
       "type": "enum",
-      "values": [
-        "USD"
-      ]
+      "values": ["USD"]
     },
     "$.history[].before.date": {
       "type": "string"
@@ -768,9 +726,7 @@
     },
     "$.history[].after.provider": {
       "type": "enum",
-      "values": [
-        "plaid"
-      ]
+      "values": ["plaid"]
     },
     "$.history[].after.providerTransactionId": {
       "type": "string"
@@ -787,9 +743,7 @@
     },
     "$.history[].after.currency": {
       "type": "enum",
-      "values": [
-        "USD"
-      ]
+      "values": ["USD"]
     },
     "$.history[].after.date": {
       "type": "string"
@@ -902,6 +856,7 @@
         "target",
         "transaction",
         "transactionHistory",
+        "transactionLine",
         "transactionShare"
       ]
     },
@@ -959,6 +914,7 @@
         "target",
         "transaction",
         "transactionHistory",
+        "transactionLine",
         "transactionShare"
       ]
     },
@@ -1047,11 +1003,7 @@
     },
     "$.kind": {
       "type": "enum",
-      "values": [
-        "cash",
-        "credit",
-        "tracking"
-      ]
+      "values": ["cash", "credit", "tracking"]
     },
     "$.openingBalance": {
       "type": "number"
@@ -1179,11 +1131,7 @@
     },
     "$&1.behavior": {
       "type": "enum",
-      "values": [
-        "balance",
-        "contribution",
-        "refill"
-      ]
+      "values": ["balance", "contribution", "refill"]
     },
     "$&1.amount": {
       "type": "number"
@@ -1205,10 +1153,7 @@
     },
     "$&1.repeatUnit": {
       "type": "enum",
-      "values": [
-        "months",
-        "years"
-      ]
+      "values": ["months", "years"]
     },
     "$&1.snoozedMonths": {
       "type": "array"
@@ -1308,10 +1253,7 @@
     },
     "$.status": {
       "type": "enum",
-      "values": [
-        "pending",
-        "posted"
-      ]
+      "values": ["pending", "posted"]
     },
     "$.categoryId": {
       "type": "string"
@@ -1414,10 +1356,7 @@
     },
     "$.status": {
       "type": "enum",
-      "values": [
-        "pending",
-        "posted"
-      ]
+      "values": ["pending", "posted"]
     },
     "$.date": {
       "type": "string"
@@ -1581,10 +1520,7 @@
     },
     "$.kind": {
       "type": "enum",
-      "values": [
-        "cash",
-        "statement-credit"
-      ]
+      "values": ["cash", "statement-credit"]
     },
     "$.userId": {
       "type": "string"
@@ -1842,10 +1778,7 @@
     },
     "$.kind": {
       "type": "enum",
-      "values": [
-        "offset",
-        "payment"
-      ]
+      "values": ["offset", "payment"]
     },
     "$.settlementId": {
       "type": "string"
@@ -1892,10 +1825,7 @@
     },
     "$|0.status": {
       "type": "enum",
-      "values": [
-        "pending",
-        "posted"
-      ]
+      "values": ["pending", "posted"]
     },
     "$|0.shares": {
       "type": "record"
@@ -1908,9 +1838,7 @@
     },
     "$|0.kind": {
       "type": "enum",
-      "values": [
-        "purchase"
-      ]
+      "values": ["purchase"]
     },
     "$|0.sort": {
       "type": "number"
@@ -1935,9 +1863,7 @@
     },
     "$|1.kind": {
       "type": "enum",
-      "values": [
-        "receipt"
-      ]
+      "values": ["receipt"]
     },
     "$|1.settlementId": {
       "type": "string"
@@ -1960,9 +1886,7 @@
     },
     "$|2.kind": {
       "type": "enum",
-      "values": [
-        "activity"
-      ]
+      "values": ["activity"]
     },
     "$|2.payerId": {
       "type": "string"
@@ -1972,6 +1896,37 @@
     },
     "$|2.sort": {
       "type": "number"
+    }
+  },
+  "rows.transactionLine": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "categoryId": "required",
+        "id": "required",
+        "sort": "required",
+        "transactionId": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.categoryId": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    },
+    "$.transactionId": {
+      "type": "string"
     }
   }
 }

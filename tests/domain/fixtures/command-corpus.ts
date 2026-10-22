@@ -198,6 +198,15 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     transactionId: "groceries",
     duplicateId: "groceries-copy",
   });
+  // A receipt split across two categories.
+  alex({
+    ...purchase("warehouse", -9_000, "food"),
+    categoryId: undefined,
+    lines: [
+      { lineId: "warehouse-food", categoryId: "food", amount: -6_000 },
+      { lineId: "warehouse-fun", categoryId: "dining", amount: -3_000 },
+    ],
+  });
   alex(purchase("unreviewed", -3_000, "food"), "agent");
   alex({ type: "transaction.approve", transactionIds: ["unreviewed"] });
   alex(purchase("rejected", -2_000, "food"), "provider");
