@@ -28,12 +28,28 @@ export function CounterpartyRegister({
   const [error, setError] = useState("");
   const formId = useId();
   const cash = view.accounts.filter((item) => item.kind === "cash");
-  const entries = counterpartyRegisterEntries(view.budget, { accountId: account.id })
+  const entries = counterpartyRegisterEntries(view.budget, {
+    accountId: account.id,
+  })
     .map((entry) => {
-      const transaction = view.budget.transactions.find((item) => item.id === entry.transactionId);
-      const categoryId = transaction?.lines?.find((line) => line.id === entry.lineId)?.categoryId ?? transaction?.categoryId;
-      return { ...entry, name: entry.counterpartyName ?? account.name, category: entry.kind === "repayment" ? "Ready to Assign" : view.categories.find((item) => item.id === categoryId)?.name ?? "", receipt: entry.kind === "repayment" };
-    }).sort((a, b) => b.date.localeCompare(a.date));
+      const transaction = view.budget.transactions.find(
+        (item) => item.id === entry.transactionId,
+      );
+      const categoryId =
+        transaction?.lines?.find((line) => line.id === entry.lineId)
+          ?.categoryId ?? transaction?.categoryId;
+      return {
+        ...entry,
+        name: entry.counterpartyName ?? account.name,
+        category:
+          entry.kind === "repayment"
+            ? account.name
+            : (view.categories.find((item) => item.id === categoryId)?.name ??
+              ""),
+        receipt: entry.kind === "repayment",
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
   const names = [...new Set(entries.map((item) => item.name))].sort();
   const rows = entries.filter(
     (item) =>
@@ -115,11 +131,11 @@ export function CounterpartyRegister({
         >
           <h2>Receive repayment</h2>
           <p className={shell.muted}>
-            Received cash goes to Ready to Assign. It does not count as new
-            earnings.
+            Repayments reduce what is owed and restore your {account.name}{" "}
+            envelope.
           </p>
-          <label>
-            Person or organization
+          <div>
+            <label htmlFor={`${formId}-person`}>Person or organization</label>
             <ChoiceField
               id={`${formId}-person`}
               label="Person or organization"
@@ -128,9 +144,9 @@ export function CounterpartyRegister({
               placeholder="Everyone"
               onChange={setName}
             />
-          </label>
-          <label>
-            Received in
+          </div>
+          <div>
+            <label htmlFor={`${formId}-cash`}>Received in</label>
             <ChoiceField
               id={`${formId}-cash`}
               label="Received in"
@@ -142,7 +158,7 @@ export function CounterpartyRegister({
               placeholder="Choose cash account"
               onChange={setCashAccountId}
             />
-          </label>
+          </div>
           <label>
             Date
             <div className={styles.well}>
@@ -215,20 +231,23 @@ export function CounterpartyRegister({
                 >
                   Edit share
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    start({
-                      accountId: view.budget.transactions.find(
-                        (transaction) => transaction.id === item.transactionId,
-                      )?.accountId,
-                      refundOfTransactionId: item.transactionId,
-                      field: "inflow",
-                    })
-                  }
-                >
-                  Refund
-                </Button>
+                {item.kind === "share" && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      start({
+                        accountId: view.budget.transactions.find(
+                          (transaction) =>
+                            transaction.id === item.transactionId,
+                        )?.accountId,
+                        refundOfTransactionId: item.transactionId,
+                        field: "inflow",
+                      })
+                    }
+                  >
+                    Refund
+                  </Button>
+                )}
               </div>
             </details>
           )}

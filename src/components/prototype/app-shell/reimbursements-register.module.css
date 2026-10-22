@@ -17,10 +17,9 @@
 .header,
 .row {
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1.2fr) minmax(0, 1fr) minmax(
-      0,
-      1fr
-    ) 7rem;
+  grid-template-columns:
+    7rem minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr)
+    7rem;
   gap: 16px;
   align-items: center;
   min-height: var(--size-row-lg);

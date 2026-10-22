@@ -43,7 +43,9 @@ export function ShareField({
               ? {
                   ...value,
                   accountId,
-                  amount: value?.amount ?? (Math.round(Math.abs(total) / 2) / 100).toFixed(2),
+                  amount:
+                    value?.amount ??
+                    (Math.round(Math.abs(total) / 2) / 100).toFixed(2),
                 }
               : null,
           )

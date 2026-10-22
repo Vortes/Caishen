@@ -334,7 +334,9 @@ export function useTransactionEntryController({
       }
       const draft = { ...current.draft, ...next };
       const shareChosen =
-        current.shareChosen || "counterpartyShare" in next || "lines" in next;
+        Boolean(current.shareChosen) ||
+        "counterpartyShare" in next ||
+        "lines" in next;
       if (
         !shareChosen &&
         !current.initial &&

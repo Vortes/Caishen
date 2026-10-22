@@ -356,7 +356,9 @@ export function buildTransactionDraftCommand({
       fields[field] = "Enter the person or organization that owes you.";
     return {
       ...share,
-      counterpartyName: share.counterpartyName?.trim() || undefined,
+      counterpartyName: share.counterpartyName?.trim()
+        ? share.counterpartyName.trim()
+        : undefined,
       amount: amount ?? 0,
     };
   };
@@ -512,7 +514,7 @@ export function buildTransactionDraftCommand({
           ? undefined
           : categoryId,
     ...(split ? { lines } : { counterpartyShare }),
-    refundOfTransactionId: draft.refundOfTransactionId || undefined,
+    refundOfTransactionId: draft.refundOfTransactionId,
     recordedAt: new Date().toISOString(),
     status: draft.status,
     expenseMonth: expenseMonth || undefined,

@@ -1934,4 +1934,6 @@ button.actionItem:disabled {
   padding-block: 8px;
 }
 
-.register [data-row] [data-column] { user-select: text; }
+.register [data-row] [data-column] {
+  user-select: text;
+}

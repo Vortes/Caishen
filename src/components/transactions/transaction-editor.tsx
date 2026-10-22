@@ -237,7 +237,7 @@ export function TransactionEditor({
     }
   };
   const input = (
-    field: Exclude<keyof TransactionDraft, "lines">,
+    field: Exclude<keyof TransactionDraft, "lines" | "counterpartyShare">,
     label: string,
     props: ComponentProps<typeof Input> = {},
     visibleLabel = false,

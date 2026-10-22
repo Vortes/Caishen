@@ -617,8 +617,14 @@ export function RegisterView({
           aria-current={selectedId === item.id ? "true" : undefined}
           onClick={(event) => {
             if (event.detail > 0 && window.getSelection()?.toString()) return;
-            if (event.target instanceof Element && event.target.closest('[data-column="share"]')) {
-              entry.start({ transactionId: item.id, field: "counterpartyShare" });
+            if (
+              event.target instanceof Element &&
+              event.target.closest('[data-column="share"]')
+            ) {
+              entry.start({
+                transactionId: item.id,
+                field: "counterpartyShare",
+              });
               return;
             }
             // A pointer click; Enter and Space click with no position.

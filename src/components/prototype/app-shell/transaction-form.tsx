@@ -765,7 +765,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           ) : !categoryNotNeeded && !draft.loanId ? (
             <ShareField
               id={`${formId}-share`}
-                inputRef={register("counterpartyShare")}
+              inputRef={register("counterpartyShare")}
               value={draft.counterpartyShare}
               total={draftAmount(draft) ?? 0}
               onChange={(counterpartyShare) =>
