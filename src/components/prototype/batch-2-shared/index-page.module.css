@@ -1,0 +1,118 @@
+.page {
+  min-height: 100dvh;
+  padding: 48px 16px 64px;
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+.page > * {
+  max-width: 720px;
+  margin-inline: auto;
+}
+.header h1 {
+  margin: 0 0 8px;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.header p {
+  margin: 0;
+  max-width: 65ch;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.section {
+  margin-top: 32px;
+}
+.section h2 {
+  margin: 0 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+}
+.list > li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px var(--space-card);
+  color: inherit;
+  text-decoration: none;
+}
+.row:hover {
+  background: var(--surface-hover);
+}
+.list > li:first-child .row {
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+.list > li:last-child .row {
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+}
+.row strong,
+.choice strong,
+.chip strong {
+  font-weight: 500;
+}
+.row span,
+.chip span {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.row small {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 10px var(--space-card);
+}
+.choice span {
+  color: var(--text-secondary);
+}
+.chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+  color: inherit;
+  text-decoration: none;
+}
+.chip:hover {
+  background: var(--surface-hover);
+}
+.footnote {
+  margin: 8px 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.page :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

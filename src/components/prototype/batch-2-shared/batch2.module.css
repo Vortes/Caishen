@@ -1,0 +1,477 @@
+/* Batch 2 shared-expenses prototype. The shell's own classes do the layout;
+   this file adds the statement, the editors' extras, and the harness bar. */
+
+/* The shell sits under the prototype's control bar. */
+.root[data-theme] {
+  top: var(--proto-bar, 88px);
+}
+.inspector {
+  width: 440px;
+}
+.inspector > div {
+  width: 440px;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: var(--size-badge);
+  height: var(--size-badge);
+  border-radius: 999px;
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
+  font-size: var(--type-caption);
+  font-weight: 600;
+}
+
+.aside {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.inlineLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.inlineLink:hover {
+  color: var(--text-primary);
+}
+
+/* ---------- Share editor ---------- */
+
+.cardNote {
+  margin: 0;
+  padding: 2px 2px 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.editorHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.editorHead strong {
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+.editorHead span {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.percentRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.percentWell {
+  width: 96px;
+}
+.percentOther {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.example {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.example strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.confirm p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ---------- Statement ---------- */
+
+.statement {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.statement:focus {
+  outline: none;
+}
+.statement section {
+  display: flex;
+  flex-direction: column;
+}
+.figureRow[data-direction="owed"] strong {
+  color: var(--money-positive);
+}
+.figureRow[data-direction="even"] span {
+  color: var(--feedback-success);
+}
+.note {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.sectionLabel {
+  margin: 8px 0 2px;
+  padding: 0 2px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--size-row-sm);
+  margin: 0 -6px;
+  width: calc(100% + 12px);
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+}
+button.line {
+  cursor: pointer;
+}
+button.line:hover {
+  background: var(--surface-hover);
+}
+.lineName {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.count,
+.split {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.caret {
+  flex: none;
+  color: var(--text-tertiary);
+  rotate: -90deg;
+  transition: rotate 150ms ease-out;
+}
+.caret[data-open] {
+  rotate: 0deg;
+}
+.chevron {
+  flex: none;
+  margin-left: -2px;
+  color: var(--text-tertiary);
+}
+.direction {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.dirWord {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.dirAmount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+[data-direction="owed"] > .dirAmount,
+.dirAmount[data-direction="owed"] {
+  color: var(--money-positive);
+}
+.dirEven {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.footerActions {
+  display: flex;
+  padding-top: 4px;
+}
+
+/* ---------- Detail ---------- */
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -4px;
+}
+.detailHead > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.detailHead strong {
+  font-weight: 500;
+}
+.detailHead span {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.detailEmpty {
+  margin: 0;
+  padding: 6px 2px;
+  color: var(--text-tertiary);
+}
+.purchases {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* A purchase is two lines: what and how much was paid, then who paid and
+   what it adds to the balance. */
+.purchase {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 2px;
+  padding: 8px 2px;
+  border-top: 1px solid var(--border-subtle);
+}
+.lines .purchases {
+  margin: 0 0 6px 18px;
+}
+.purchaseName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.purchasePaid {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.purchaseMeta {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.purchase .direction,
+.purchase .dirEven {
+  justify-self: end;
+  font-size: var(--type-small);
+}
+.total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 2px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-weight: 500;
+}
+
+/* ---------- Repayments ---------- */
+
+.repayment[data-open] {
+  margin: 0 -6px 4px;
+  padding: 0 6px 12px;
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+}
+.repayment[data-open] .line {
+  margin: 0;
+  width: 100%;
+  padding: 0;
+}
+.repaymentStatus {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.received {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.lineNote {
+  margin: -6px 0 4px;
+  padding: 0 2px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.receipt {
+  padding-top: 6px;
+}
+
+/* ---------- Settle up ---------- */
+
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.breakdown > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  padding: 0 2px;
+}
+.breakdown dt {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-secondary);
+}
+.breakdown dt span {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.breakdown dd {
+  margin: 0;
+}
+.breakdown > div[data-total] {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-weight: 600;
+}
+.breakdown > div[data-total] dt {
+  color: var(--text-primary);
+}
+.twoUp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+/* ---------- Prototype controls (harness chrome, not part of the design) ---------- */
+
+.bar {
+  position: fixed;
+  z-index: 200;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-app);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.barRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
+.barLink {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.barLink:hover {
+  color: var(--text-primary);
+}
+.barField,
+.barCheck,
+.barChoice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.barField select {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+}
+.barHint {
+  color: var(--text-tertiary);
+}
+.barSpacer {
+  flex: 1;
+}
+.barToggle {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-segmented);
+  background: var(--control-bg);
+}
+.barToggle button,
+.barReset {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.barToggle button:hover,
+.barReset:hover {
+  color: var(--text-primary);
+}
+.barToggle button[aria-pressed="true"] {
+  background: var(--control-bg-active);
+  color: var(--text-primary);
+}
+.barReset {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+}
+.bar :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    transition: none;
+  }
+}
