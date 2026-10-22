@@ -122,6 +122,18 @@ void test("only the user's own categorizations are remembered", () => {
   assert.equal(alan.remembered("Trader Joe's"), undefined);
 });
 
+void test("explicitly choosing a transaction's current category refreshes its payee's memory", () => {
+  const alan = budget();
+  alan.purchase("groceries-run", "Trader Joe's", "groceries");
+  alan.purchase("household-run", "Trader Joe's", "household");
+  alan.run({
+    type: "transaction.categorize",
+    transactionId: "groceries-run",
+    categoryId: "groceries",
+  });
+  assert.equal(alan.remembered("Trader Joe's"), "groceries");
+});
+
 void test("removing or rejecting a transaction keeps its payee's memory", () => {
   const alan = budget();
   alan.purchase("kept", "Trader Joe's", "groceries");

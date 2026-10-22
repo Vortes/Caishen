@@ -3135,7 +3135,13 @@ function executeAccountingState<T extends AccountingState>(
   const changes = new Changes(book);
   applyCommand(book, budget, command, source, changes);
   ensureNoCounterpartyEntries(budget);
-  if (source === "user") rememberCategorizations(budget, changes);
+  if (source === "user")
+    rememberCategorizations(
+      budget,
+      changes,
+      command.type === "transaction.categorize" ||
+        command.type === "transaction.categorize.batch",
+    );
   if (
     [
       "transaction.upsert",

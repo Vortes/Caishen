@@ -51,9 +51,7 @@ export function rememberedCategory(
 }
 
 // What memory would hold for a transaction's categorization, or undefined
-// when it isn't one memory keeps. Split transactions (several category
-// lines) are never remembered: when transactions gain lines, return
-// undefined here for any transaction with more than one.
+// when it isn't one memory keeps. Split transactions never replace memory.
 function categorization(
   budget: Budget,
   transaction: Transaction | undefined,
@@ -61,6 +59,9 @@ function categorization(
   if (
     !transaction ||
     transaction.removed ||
+    ("lines" in transaction &&
+      Array.isArray(transaction.lines) &&
+      transaction.lines.length > 1) ||
     !["purchase", "refund", "income"].includes(transaction.kind)
   )
     return undefined;
@@ -92,12 +93,14 @@ const same = (a: PayeeMemory, b: PayeeMemory) =>
 export function rememberCategorizations(
   budget: Budget,
   changes: Changes,
+  explicitCategorization = false,
 ): void {
   for (const { before, after } of changes.transactionEdits(budget)) {
     const next = categorization(budget, after);
     if (!next) continue;
     const previous = categorization(budget, before);
     if (
+      !explicitCategorization &&
       previous?.key === next.key &&
       previous.kind === next.kind &&
       previous.categoryId === next.categoryId
