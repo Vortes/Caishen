@@ -453,6 +453,36 @@ const registerEditFields: Record<string, DraftField> = {
   inflow: "inflow",
 };
 
+// The editable column under a click at x, or the nearest one, so a click
+// anywhere in the row opens a field: above or below a cell's text, in a gap,
+// or on a column the editor can't change. Columns are measured by their
+// grid tracks, since amounts hug their text and an empty one has no width.
+function columnAt(row: HTMLElement, x: number, skip?: string) {
+  const style = getComputedStyle(row);
+  const tracks = style.gridTemplateColumns.split(" ").map(parseFloat);
+  const gap = parseFloat(style.columnGap);
+  let left =
+    row.getBoundingClientRect().left +
+    parseFloat(style.borderLeftWidth) +
+    parseFloat(style.paddingLeft);
+  const cells = [...row.children].filter(
+    (cell): cell is HTMLElement =>
+      cell instanceof HTMLElement && cell.getClientRects().length > 0,
+  );
+  let nearest: { column: string; distance: number } | undefined;
+  cells.forEach((cell, index) => {
+    const right = left + (tracks[index] ?? 0);
+    const column = cell.dataset.column;
+    if (column && column in registerEditFields && column !== skip) {
+      const distance = x < left ? left - x : x > right ? x - right : 0;
+      if (!nearest || distance < nearest.distance)
+        nearest = { column, distance };
+    }
+    left = right + gap;
+  });
+  return nearest?.column;
+}
+
 export function RegisterView({
   accountId,
   reviewOnly,
@@ -575,16 +605,18 @@ export function RegisterView({
           className={`${styles.txColumns} ${styles.row}`}
           aria-current={selectedId === item.id ? "true" : undefined}
           onClick={(event) => {
-            if (isChecked && checked.length === 1) {
-              const column =
-                event.target instanceof Element
-                  ? event.target.closest<HTMLElement>("[data-column]")?.dataset
-                      .column
-                  : undefined;
-              const field = column ? registerEditFields[column] : undefined;
-              if (field) {
-                if (field !== "categoryId" || !item.categoryNotNeeded)
-                  entry.start({ transactionId: item.id, field });
+            // A pointer click; Enter and Space click with no position.
+            if (isChecked && checked.length === 1 && event.detail > 0) {
+              const column = columnAt(
+                event.currentTarget,
+                event.clientX,
+                item.categoryNotNeeded ? "category" : undefined,
+              );
+              if (column) {
+                entry.start({
+                  transactionId: item.id,
+                  field: registerEditFields[column]!,
+                });
                 return;
               }
             }

@@ -239,6 +239,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         aria-invalid={Boolean(fields[name]) || undefined}
         aria-describedby={described(name)}
         value={draft[name]}
+        onFocus={(event) => event.currentTarget.select()}
         onChange={(event) => {
           const value = event.target.value;
           // Outflow and inflow are one amount: typing in one clears the other.
@@ -527,6 +528,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
                 inputMode="decimal"
                 value={draft.interest}
                 placeholder="0.00"
+                onFocus={(event) => event.currentTarget.select()}
                 aria-invalid={Boolean(fields.interest) || undefined}
                 aria-describedby={described("interest")}
                 onChange={(event) =>

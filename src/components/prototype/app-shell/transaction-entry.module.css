@@ -63,12 +63,15 @@
 }
 /* The actions end where the inflow well does: past the status column and
    its gap, less the well's reach. They stay clear of the calendar that
-   opens under the date. */
+   opens under the date. A divider across the card sets them apart from
+   the fields. */
 .rowFooter {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 calc(var(--space-row-x) + 16px + 16px - 8px) 8px var(--row-gutter);
+  padding: 8px calc(var(--space-row-x) + 16px + 16px - 8px) 8px
+    var(--row-gutter);
+  border-top: 1px solid var(--border-subtle);
 }
 .actions {
   display: flex;
