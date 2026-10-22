@@ -70,6 +70,8 @@
 .period {
   color: var(--welcome-accent);
 }
+/* The intro runs over the pinwheel's upper blades on purpose; the mark is
+   faint enough that the text keeps its contrast. */
 .storyCopy {
   display: flex;
   flex-direction: column;
@@ -92,7 +94,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--welcome-quiet);
+  color: var(--welcome-muted);
   font-size: 13px;
 }
 
@@ -107,9 +109,9 @@
 }
 .pinwheel {
   position: absolute;
-  right: -34%;
-  bottom: -42%;
-  width: 84%;
+  right: -22%;
+  bottom: -26%;
+  width: 92%;
   fill: var(--welcome-mark);
   pointer-events: none;
   user-select: none;
@@ -250,7 +252,8 @@
   .title {
     font-size: 26px;
   }
-  /* Too little panel below the copy for the mark to read as intended. */
+  /* Only a sliver of one blade fits below the copy, which doesn't read as
+     the pinwheel. */
   .pinwheel {
     display: none;
   }
