@@ -36,6 +36,7 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     await assert.rejects(() => caller(null).budget.state({ month }), {
       code: "UNAUTHORIZED",
     });
+    assert.equal((await alice.budget.overview()).status, "new");
     for (const [api, name] of [
       [alice, "Alice"],
       [bob, "Bob"],

@@ -3,27 +3,18 @@ import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 
 import { formatTRPCError } from "~/server/api/error-formatter";
+import { ObservedRevision } from "~/server/api/revision-header";
 import { db } from "~/server/db";
 import { readHouseholdRevision } from "~/server/storage/rows";
 import { ensureLocalUser } from "~/server/users";
-
-/**
- * The household revisions a request saw, for the x-caishen-revision
- * response header (ADR 0006): a browser that sees a revision it doesn't
- * hold pulls what it missed.
- */
-export class ObservedRevision {
-  value: number | undefined;
-  observe = (revision: number) => {
-    this.value = Math.max(this.value ?? revision, revision);
-  };
-}
 
 export const createTRPCContext = async (opts: { headers: Headers }) => {
   const { userId } = await auth();
 
   return { db, userId, revision: new ObservedRevision(), ...opts };
 };
+
+export { ObservedRevision };
 
 const t = initTRPC.context<typeof createTRPCContext>().create({
   transformer: superjson,

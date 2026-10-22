@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { useRef, useState } from "react";
+import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { AccountEntry } from "./account-entry";
@@ -329,7 +330,12 @@ function ProfileMenu({
           <DropdownMenu.Separator className={styles.menuSeparator} />
           <DropdownMenu.Item
             className={styles.menuItem}
-            onSelect={() => void signOut({ redirectUrl: SHELL_PATH })}
+            onSelect={() =>
+              // The budget this browser kept goes before the session does.
+              void deleteStoredBudgets().finally(
+                () => void signOut({ redirectUrl: SHELL_PATH }),
+              )
+            }
           >
             <LogOutIcon size={14} aria-hidden />
             Log out

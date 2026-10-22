@@ -8,6 +8,8 @@ import "./src/env.js";
 const config = {
   devIndicators: false,
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  // The build the browser names on every pull (src/components/sync).
+  env: { CAISHEN_BUILD: process.env.VERCEL_GIT_COMMIT_SHA ?? "development" },
 };
 
 export default config;

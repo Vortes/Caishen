@@ -1,7 +1,7 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Command } from "~/domain/engine";
-import { renderShell, stateFixture } from "./shell-harness";
+import { findToast, renderShell, sent } from "./shell-harness";
 
 const groceries: Command[] = [
   {
@@ -20,13 +20,10 @@ const groceries: Command[] = [
 ];
 
 test("Auto-Assign in a category's details assigns only that category", async () => {
-  const shell = await renderShell({
-    read: (month) => stateFixture({ month, seedCommands: groceries }),
-  });
+  const shell = await renderShell({ seedCommands: groceries });
   await shell.user.click(screen.getByRole("button", { name: "Next month" }));
-  await waitFor(() => expect(shell.read).toHaveBeenCalledWith("2026-11"));
   await shell.user.click(
-    await screen.findByRole("checkbox", { name: "Select Gifts" }),
+    screen.getByRole("checkbox", { name: "Select Gifts" }),
   );
   const details = within(
     screen.getByRole("complementary", { name: "Details" }),
@@ -36,11 +33,12 @@ test("Auto-Assign in a category's details assigns only that category", async () 
     details.getByRole("button", { name: /^Assigned last month/ }),
   );
 
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
-    type: "assign.batch",
-    month: "2026-11",
-    changes: [{ categoryId: "gifts", amount: 10_000 }],
-  });
-  await screen.findByText("Assigned $100.00 to Gifts");
+  await findToast("Assigned $100.00 to Gifts");
+  expect(sent(shell.execute)).toEqual([
+    expect.objectContaining({
+      type: "assign.batch",
+      month: "2026-11",
+      changes: [{ categoryId: "gifts", amount: 10_000 }],
+    }),
+  ]);
 });

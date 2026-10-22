@@ -1,18 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpLink } from "@trpc/client";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import superjson from "superjson";
 import { afterEach, vi } from "vitest";
-import type { State } from "~/components/budget/types";
 import { LiveAppShell } from "~/components/prototype/app-shell/live-app-shell";
-import {
-  createBook,
-  execute,
-  projectBook,
-  type Command,
-} from "~/domain/engine";
-import { api, type RouterInputs } from "~/trpc/react";
+import type {
+  ExecuteInput,
+  PullInput,
+  PullResult,
+} from "~/components/sync/transport";
+import { createBook, execute, type Book, type Command } from "~/domain/engine";
+import { api, type RouterInputs, type RouterOutputs } from "~/trpc/react";
+import { appLinks } from "~/trpc/links";
+import { componentFetch } from "./component-server";
+import { FakeServer } from "./sync/fake-server";
 
 export function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -24,19 +24,11 @@ export function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-// A fixed response fixture, never a server emulator. Tests choose the next
-// response explicitly; submitted commands are not applied to this book.
-export function stateFixture({
-  month = "2026-10",
+/** The owner's budget: a checking account and Gifts with money assigned. */
+export function budgetFixture({
   assigned = 10_000,
-  revision = 5,
   seedCommands = [],
-}: {
-  month?: string;
-  assigned?: number;
-  revision?: number;
-  seedCommands?: Command[];
-} = {}): State {
+}: { assigned?: number; seedCommands?: Command[] } = {}): Book {
   let book = createBook("owner", "Component budget", "2026-10");
   const commands: Command[] = [
     {
@@ -64,43 +56,70 @@ export function stateFixture({
     ...seedCommands,
   ];
   for (const command of commands) book = execute(book, "owner", command);
-  return {
-    status: "ready",
-    view: projectBook(book, "owner", month, "2026-10"),
-    revision,
-    history: { undo: "Assign money", redo: null },
-    services: [],
-    connections: [],
-    evidence: [],
-    imports: [],
-  };
+  return book;
 }
 
-type ExecuteInput = RouterInputs["budget"]["execute"];
+export type Overview = RouterOutputs["budget"]["overview"];
 type ImportInput = RouterInputs["budget"]["resolveImport"];
+type Answer<T> = T | Promise<T>;
+type Executed = ReturnType<FakeServer["execute"]>;
+
+export const readyOverview = (overview: Partial<Overview> = {}): Overview => ({
+  status: "ready",
+  services: [],
+  connections: [],
+  imports: [],
+  ...overview,
+});
+
 const clients = new Set<QueryClient>();
 afterEach(() => {
   for (const client of clients) client.clear();
   clients.clear();
 });
 
+/**
+ * Renders the live shell against a fake server running the real engine.
+ * The browser reaches it through the app's own tRPC links, so commands,
+ * pulls, refusals, and revision headers go the way they do in the app.
+ */
 export async function renderShell(
   options: {
-    read?: (month: string) => State | Promise<State>;
-    execute?: (
-      input: ExecuteInput,
-    ) => { revision: number } | Promise<{ revision: number }>;
+    book?: Book;
+    seedCommands?: Command[];
+    // Answers budget.execute; the fake server's answer unless a test holds
+    // or fails it.
+    execute?: (input: ExecuteInput, server: FakeServer) => Answer<Executed>;
+    // Answers sync.pull; the fake server's answer unless a test fails it.
+    pull?: (input: PullInput, server: FakeServer) => Answer<PullResult>;
+    overview?: (server: FakeServer) => Answer<Overview>;
     resolveImport?: (
       input: ImportInput,
-    ) => { resolved: boolean } | Promise<{ resolved: boolean }>;
+      server: FakeServer,
+    ) => Answer<Executed & { resolved: true }>;
     // Whether to wait for the plan; off for screens shown in its place.
     plan?: boolean;
   } = {},
 ) {
-  const read = vi.fn(options.read ?? (() => stateFixture()));
-  const execute = vi.fn(options.execute ?? (() => ({ revision: 6 })));
+  const server = new FakeServer(
+    options.book ?? budgetFixture({ seedCommands: options.seedCommands }),
+  );
+  const execute = vi.fn(
+    options.execute ??
+      ((input: ExecuteInput) => server.execute("owner", input)),
+  );
+  const overview = vi.fn(options.overview ?? (() => readyOverview()));
+  // An import saves the command it carries, as the server does.
   const resolveImport = vi.fn(
-    options.resolveImport ?? (() => ({ resolved: true })),
+    options.resolveImport ??
+      ((input: ImportInput) => ({
+        ...server.execute("owner", {
+          command: input.command!,
+          baseRevision: input.expectedRevision,
+          clientId: "import",
+        }),
+        resolved: true as const,
+      })),
   );
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -110,56 +129,19 @@ export async function renderShell(
   });
   clients.add(queryClient);
   const client = api.createClient({
-    links: [
-      httpLink({
-        url: "http://component.invalid/api/trpc",
-        transformer: superjson,
-        fetch: async (address, options) => {
-          const url = new URL(
-            typeof address === "string"
-              ? address
-              : address instanceof URL
-                ? address.href
-                : address.url,
-          );
-          const input = superjson.parse<
-            ExecuteInput & ImportInput & { month: string }
-          >(
-            typeof options?.body === "string"
-              ? options.body
-              : url.searchParams.get("input")!,
-          );
-          try {
-            const result = url.pathname.endsWith("/budget.state")
-              ? await read(input.month)
-              : url.pathname.endsWith("/budget.execute")
-                ? await execute(input)
-                : url.pathname.endsWith("/budget.resolveImport")
-                  ? await resolveImport(input)
-                  : (() => {
-                      throw new Error(
-                        `Unexpected component request: ${url.pathname}`,
-                      );
-                    })();
-            return Response.json({
-              result: { data: superjson.serialize(result) },
-            });
-          } catch (error) {
-            return Response.json(
-              {
-                error: superjson.serialize({
-                  message:
-                    error instanceof Error ? error.message : "Request failed",
-                  code: -32603,
-                  data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 500 },
-                }),
-              },
-              { status: 500 },
-            );
-          }
-        },
+    links: appLinks({
+      url: "http://component.invalid/api/trpc",
+      fetch: componentFetch(server, "owner", {
+        "budget.execute": (input) => execute(input as ExecuteInput, server),
+        "budget.overview": () => overview(server),
+        "sync.pull": (input) =>
+          options.pull
+            ? options.pull(input as PullInput, server)
+            : server.pull("owner", input as PullInput),
+        "budget.resolveImport": (input) =>
+          resolveImport(input as ImportInput, server),
       }),
-    ],
+    }),
   });
   render(
     <QueryClientProvider client={queryClient}>
@@ -170,7 +152,40 @@ export async function renderShell(
   );
   if (options.plan !== false)
     await screen.findByRole("heading", { name: "Plan" });
-  return { user: userEvent.setup(), read, execute, resolveImport, queryClient };
+  return {
+    user: userEvent.setup(),
+    server,
+    execute,
+    overview,
+    resolveImport,
+    queryClient,
+  };
+}
+
+/** The commands the server was sent, in order. */
+export function sent(execute: {
+  mock: { calls: [ExecuteInput, ...unknown[]][] };
+}) {
+  return execute.mock.calls.map(([input]) => input.command);
+}
+
+/** The toast showing `text`, once it appears. */
+export async function findToast(
+  text: string | RegExp,
+  options?: { timeout?: number },
+): Promise<HTMLElement> {
+  const region = screen.getByRole("region", { name: "Notifications" });
+  const message = await within(region).findByText(text, {}, options);
+  return message.parentElement!;
+}
+
+/** The window regains focus, which makes the shell catch up. */
+export async function refocus() {
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    await Promise.resolve();
+  });
 }
 
 export async function openPurchase(user: ReturnType<typeof userEvent.setup>) {

@@ -216,11 +216,19 @@ function targetSections(
   return [total];
 }
 
+// What the shell is drawn from: the month as the budget shows it, and the
+// bank connections with their inbox.
+export type ShellSource = {
+  view: View;
+  connections: State["connections"];
+  imports: State["imports"];
+};
+
 export function toShellData(
-  state: State,
+  state: ShellSource,
   activeMonth = currentMonth(),
 ): ShellData {
-  const view = state.view!;
+  const view = state.view;
   const month = view.month;
   const userId = view.budget.userId;
   const accountName = new Map(

@@ -76,6 +76,8 @@ export function AccountReconnectPrototype() {
     view: null,
     state: {} as State,
     notify: (text: string) => setNotice({ id: Date.now(), text }),
+    // Account setup needs the server; this prototype never saves.
+    runOnServer: () => Promise.resolve(),
     start: (connectionId?: string) =>
       setPlaid(
         connections.find((item) => item.id === connectionId)?.institutionName ??

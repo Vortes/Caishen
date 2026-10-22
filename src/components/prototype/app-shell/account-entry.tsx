@@ -23,12 +23,10 @@ export function AccountEntry() {
   const [balance, setBalance] = useState("");
   const [date, setDate] = useState(today(entry.view.budget.settings.timezone));
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
   const attempt = useRef<Extract<Command, { type: "account.add" }> | null>(
     null,
   );
-  const save = async () => {
-    if (saving) return;
+  const save = () => {
     try {
       const amount = parseMoney(balance);
       if (!name.trim()) throw new Error("Enter an account name.");
@@ -57,9 +55,9 @@ export function AccountEntry() {
           accountId: newId(),
           ...facts,
         };
-      setSaving(true);
+      const blocked = entry.addAccount(attempt.current!);
+      if (blocked) throw new Error(blocked);
       setError("");
-      await entry.addAccount(attempt.current!);
       setOpen(false);
       setName("");
       setBalance("");
@@ -70,20 +68,18 @@ export function AccountEntry() {
           ? failure.message
           : "The account could not be saved.",
       );
-    } finally {
-      setSaving(false);
     }
   };
   return (
     <Popover.Root
       open={open}
       onOpenChange={(next) => {
-        if (saving || (next && entry.holdForDraft())) return;
+        if (next && entry.holdForDraft()) return;
         setOpen(next);
       }}
     >
       <Popover.Trigger asChild>
-        <IconButton label="Add account" disabled={entry.busy}>
+        <IconButton label="Add account">
           <PlusIcon aria-hidden />
         </IconButton>
       </Popover.Trigger>
@@ -93,19 +89,13 @@ export function AccountEntry() {
           side="top"
           align="start"
           collisionPadding={12}
-          onInteractOutside={(event) => {
-            if (saving) event.preventDefault();
-          }}
-          onEscapeKeyDown={(event) => {
-            if (saving) event.preventDefault();
-          }}
         >
           <form
             className={styles.form}
             aria-labelledby={`${id}-title`}
             onSubmit={(event) => {
               event.preventDefault();
-              void save();
+              save();
             }}
           >
             <h2 id={`${id}-title`}>Add account</h2>
@@ -123,7 +113,6 @@ export function AccountEntry() {
                       ? "Visa"
                       : "Checking"
                 }
-                disabled={saving}
                 onChange={(event) => setName(event.target.value)}
               />
             </div>
@@ -132,7 +121,6 @@ export function AccountEntry() {
               <select
                 id={`${id}-kind`}
                 value={kind}
-                disabled={saving}
                 aria-describedby={`${id}-kind-help`}
                 onChange={(event) =>
                   setKind(event.target.value as Account["kind"])
@@ -158,7 +146,6 @@ export function AccountEntry() {
                 inputMode="decimal"
                 placeholder="0.00"
                 required
-                disabled={saving}
                 onChange={(event) => setBalance(event.target.value)}
               />
             </div>
@@ -171,7 +158,6 @@ export function AccountEntry() {
                 min={`${entry.view.budget.startMonth}-01`}
                 max={today(entry.view.budget.settings.timezone)}
                 required
-                disabled={saving}
                 onChange={(event) => setDate(event.target.value)}
               />
             </div>
@@ -182,20 +168,11 @@ export function AccountEntry() {
               </p>
             )}
             <div className={styles.actions}>
-              <Button
-                size="sm"
-                disabled={saving}
-                onClick={() => setOpen(false)}
-              >
+              <Button size="sm" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                type="submit"
-                disabled={saving}
-              >
-                {saving ? "Saving…" : "Add account"}
+              <Button size="sm" variant="primary" type="submit">
+                Add account
               </Button>
             </div>
           </form>

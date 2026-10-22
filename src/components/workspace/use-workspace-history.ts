@@ -4,36 +4,11 @@ import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import type { State } from "~/components/budget/types";
 import { api } from "~/trpc/react";
-
-export type HistoryDirection = "undo" | "redo";
-
-function shortcutDirection(event: KeyboardEvent): HistoryDirection | null {
-  if (
-    event.defaultPrevented ||
-    event.isComposing ||
-    event.repeat ||
-    event.altKey ||
-    event.metaKey === event.ctrlKey
-  )
-    return null;
-  const key = event.key.toLowerCase();
-  if (key === "z") return event.shiftKey ? "redo" : "undo";
-  if (key === "y" && event.ctrlKey && !event.shiftKey) return "redo";
-  return null;
-}
-
-function isEditing(event: KeyboardEvent) {
-  return event
-    .composedPath()
-    .some(
-      (target) =>
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          target.matches(
-            'input, textarea, select, [role="textbox"], [role="dialog"]',
-          )),
-    );
-}
+import {
+  isEditing,
+  shortcutDirection,
+  type HistoryDirection,
+} from "./history-shortcuts";
 
 // Binds Cmd+Z, Cmd+Shift+Z, and Ctrl+Y to the saved history, and returns the
 // same guarded change for any visible control that offers it.

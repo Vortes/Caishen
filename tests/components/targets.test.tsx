@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import type userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import type { Command, Target } from "~/domain/engine";
-import { renderShell, stateFixture } from "./shell-harness";
+import { renderShell, sent } from "./shell-harness";
 
 type User = ReturnType<typeof userEvent.setup>;
 
@@ -40,12 +40,6 @@ function targetForm(name: RegExp) {
   return screen.getByRole("form", { name });
 }
 
-function sent(execute: { mock: { calls: unknown[][] } }) {
-  return execute.mock.calls.map(
-    ([input]) => (input as { command: Command }).command,
-  );
-}
-
 test("creating a weekly refill target sends it and shows its summary", async () => {
   const shell = await renderShell();
   await select(shell.user, "Gifts");
@@ -80,13 +74,6 @@ test("creating a weekly refill target sends it and shows its summary", async () 
     startMonth: "2026-10",
     snoozedMonths: [],
   };
-  // The saved budget the shell reads back once the save succeeds.
-  shell.read.mockReturnValue(
-    stateFixture({
-      revision: 6,
-      seedCommands: [{ ...giftsTarget, target: weekly }],
-    }),
-  );
   await shell.user.click(
     within(form).getByRole("button", { name: "Save target" }),
   );
@@ -124,9 +111,7 @@ test("a missing amount is named at the field and nothing is sent", async () => {
 });
 
 test("editing opens with the saved target, and Delete target removes it", async () => {
-  const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: [giftsTarget] }),
-  });
+  const shell = await renderShell({ seedCommands: [giftsTarget] });
   await select(shell.user, "Gifts");
   expect(screen.getByText("Set aside another $50.00 each month")).toBeTruthy();
   await shell.user.click(screen.getByRole("button", { name: "Edit target" }));
@@ -199,9 +184,7 @@ test("a custom balance goal can be due by a month", async () => {
 });
 
 test("a card's payment category is paid monthly or off by a date", async () => {
-  const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: [card] }),
-  });
+  const shell = await renderShell({ seedCommands: [card] });
   await select(shell.user, "Visa");
   await shell.user.click(screen.getByRole("button", { name: "Create target" }));
   const form = targetForm(/^Create target for Visa/);

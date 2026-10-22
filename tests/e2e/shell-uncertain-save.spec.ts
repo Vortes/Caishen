@@ -22,21 +22,15 @@ test("retrying a purchase whose committed response was lost has exactly one fina
     attempts++;
     if (attempts !== 1) return route.continue();
 
-    // Request an ordinary JSON response so its success can be checked only
-    // after tRPC has awaited the database commit. No synthetic budget response
-    // is ever delivered; the retry and all reads reach the real server.
-    const response = await route.fetch({
-      headers: {
-        ...route.request().headers(),
-        "trpc-accept": "application/json",
-      },
-      maxRetries: 0,
-    });
+    // Let the server commit, then lose its answer. No synthetic budget
+    // response is ever delivered; the retry and all reads reach the real
+    // server.
+    const response = await route.fetch({ maxRetries: 0 });
     try {
       expect(response.ok()).toBe(true);
-      expect(await response.json()).toMatchObject([
-        { result: { data: { json: { revision: expect.any(Number) } } } },
-      ]);
+      expect(await response.json()).toMatchObject({
+        result: { data: { json: { revision: expect.any(Number) } } },
+      });
       await route.abort("connectionreset");
       droppedCommittedResponse = true;
     } finally {
@@ -44,16 +38,17 @@ test("retrying a purchase whose committed response was lost has exactly one fina
     }
   });
 
-  await form.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(form).toContainText(
-    "Not saved. Your changes are still here, so you can try again.",
-  );
-  expect(droppedCommittedResponse).toBe(true);
-  await expect(form.getByLabel("Payee", { exact: true })).toHaveValue(
-    "Uncertain market",
-  );
+  // The editor closes as the purchase shows; the browser retries the lost
+  // answer with the same operation on its own.
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form).toHaveCount(0);
+  await expect(transactionRow(page, "Uncertain market")).toContainText(
+    "$12.50",
+  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Saving your changes…" }),
+  ).toHaveCount(0);
+  expect(droppedCommittedResponse).toBe(true);
   expect(attempts).toBe(2);
 
   await reloadBudget(page, budget);

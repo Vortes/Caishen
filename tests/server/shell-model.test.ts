@@ -42,13 +42,8 @@ function setup(cardBalance = 0) {
   const data = (viewMonth = month, activeMonth = month) =>
     toShellData(
       {
-        status: "ready",
         view: projectBook(book, "owner", viewMonth, month),
-        revision: 0,
-        history: { undo: null, redo: null },
-        services: [],
         connections: [],
-        evidence: [],
         imports: [],
       },
       activeMonth,

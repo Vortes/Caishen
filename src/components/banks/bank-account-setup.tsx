@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { State } from "~/components/budget/types";
+import type { ExecuteResult } from "~/components/sync/transport";
 import { FormField, SelectField } from "~/components/shared";
 import { Button } from "~/components/ui-legacy/button";
 import { Checkbox } from "~/components/ui-legacy/checkbox";
@@ -16,6 +17,21 @@ import {
 import { api } from "~/trpc/react";
 
 type Connection = State["connections"][number];
+
+/** What the setup form reads of the budget. */
+export type BankSetupState = Pick<State, "connections" | "view" | "revision">;
+
+/**
+ * Sends an operation only the server can apply behind the budget's pending
+ * changes (the app shell's budget client). `send` gets the revision to
+ * check against. Resolves once saved; rejects with the reason the server
+ * refused it.
+ */
+export type ServerRunner = (
+  operationId: string,
+  send: (expectedRevision: number) => Promise<ExecuteResult>,
+  summary: string,
+) => Promise<void>;
 type BankAccount = Connection["accounts"][number];
 type AccountMapping = { accountId: string; startDate: string };
 type AccountDraft = {
@@ -154,10 +170,12 @@ export function useBankAccountSetupForm({
   state,
   connection,
   onSaved,
+  runOnServer,
 }: {
-  state: State;
+  state: BankSetupState;
   connection: Connection;
   onSaved: (added: number) => void;
+  runOnServer?: ServerRunner;
 }) {
   const utils = api.useUtils();
   const save = api.budget.setupBankAccounts.useMutation();
@@ -210,7 +228,7 @@ export function useBankAccountSetupForm({
     setError("");
     try {
       await current.current.sync.mutateAsync();
-      await current.current.utils.budget.state.invalidate();
+      await current.current.utils.budget.invalidate();
       setRefreshed(true);
     } catch (failure) {
       setError(
@@ -345,16 +363,29 @@ export function useBankAccountSetupForm({
             : {}),
         };
       });
-      await save.mutateAsync({
-        connectionId: connection.id,
-        operationId,
-        expectedRevision: state.revision,
-        accounts: submittedAccounts.current,
-      });
-      await utils.budget.state.invalidate();
-      onSaved(submittedAccounts.current.length);
+      const accounts = submittedAccounts.current;
+      const send = (expectedRevision: number) =>
+        save.mutateAsync({
+          connectionId: connection.id,
+          operationId,
+          expectedRevision,
+          accounts,
+        });
+      if (runOnServer)
+        await runOnServer(
+          operationId,
+          send,
+          `Added ${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}`,
+        );
+      else await send(state.revision);
+      await utils.budget.invalidate();
+      onSaved(accounts.length);
     } catch (failure) {
-      if (
+      // The budget client only gives up on a save the server refused.
+      if (runOnServer) {
+        submittedAccounts.current = null;
+        setOperationId(crypto.randomUUID());
+      } else if (
         failure &&
         typeof failure === "object" &&
         "data" in failure &&
@@ -374,7 +405,7 @@ export function useBankAccountSetupForm({
           ? failure.message
           : "Your accounts couldn’t be added. Try again.",
       );
-      await utils.budget.state.invalidate();
+      await utils.budget.invalidate();
     } finally {
       saving.current = false;
       setSubmitting(false);

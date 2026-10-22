@@ -25,6 +25,10 @@ import {
   bankAccountMappings,
   useBankAccountSetupForm,
 } from "~/components/banks/bank-account-setup";
+import type {
+  BankSetupState,
+  ServerRunner,
+} from "~/components/banks/bank-account-setup";
 import { loadPlaid } from "~/components/banks/plaid-link-sdk";
 import { usePlaidLink } from "~/components/banks/use-plaid-link";
 import type { State } from "~/components/budget/types";
@@ -74,10 +78,12 @@ export function useBankConnections({
   state,
   notify,
   holdOpen,
+  runOnServer,
 }: {
-  state: State;
+  state: BankSetupState & Pick<State, "services">;
   notify: Notify;
   holdOpen: () => () => void;
+  runOnServer: ServerRunner;
 }) {
   const link = usePlaidLink();
   const [setupId, setSetupId] = useState<string | null>(null);
@@ -145,6 +151,7 @@ export function useBankConnections({
     view,
     state,
     notify,
+    runOnServer,
     start: (connectionId?: string) => {
       reconnect.current = Boolean(connectionId);
       setDismissed(false);
@@ -600,6 +607,7 @@ function SetupForm({
   const [showUnsupported, setShowUnsupported] = useState(false);
   const form = useBankAccountSetupForm({
     state: banks.state,
+    runOnServer: banks.runOnServer,
     connection,
     onSaved: (added) => {
       banks.close();
