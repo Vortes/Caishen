@@ -1,5 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
+import { ZodError } from "zod";
 import { SyncError } from "~/components/sync/transport";
 import {
   deferred,
@@ -123,6 +125,53 @@ test("a change the server refuses comes off the screen with the server's reason"
   expect(assignedLabel()).toMatch(/^\$100\.00 assigned/);
   // Nothing is left to undo.
   await shell.user.keyboard("{Meta>}z{/Meta}");
+  expect(shell.execute).toHaveBeenCalledTimes(1);
+});
+
+test("a change the server can't read comes off the screen and isn't sent again", async () => {
+  const shell = await renderShell({
+    execute: () => {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        cause: new ZodError([
+          {
+            code: "invalid_type",
+            expected: "number",
+            received: "string",
+            path: ["command", "amount"],
+            message: "Expected number, received string",
+          },
+        ]),
+      });
+    },
+  });
+  await assign(shell.user, "150");
+  const toast = await findToast(
+    "Caishen couldn’t read this change, so it wasn’t saved.",
+  );
+  expect(toast.getAttribute("role")).toBe("alert");
+  expect(assignedLabel()).toMatch(/^\$100\.00 assigned/);
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  expect(shell.execute).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText(/^Saving paused/)).toBeNull();
+});
+
+test("signing out elsewhere stops saving and asks to sign in, keeping the change on screen", async () => {
+  const shell = await renderShell({
+    execute: () => {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    },
+  });
+  await assign(shell.user, "150");
+  const toast = await findToast(
+    "You’ve been signed out. Sign in to keep saving your changes.",
+  );
+  expect(toast.getAttribute("role")).toBe("alert");
+  expect(
+    within(toast).getByRole("link", { name: "Sign in" }).getAttribute("href"),
+  ).toBe("/sign-in?redirect_url=/prototype/app-shell");
+  expect(assignedLabel()).toMatch(/^\$150\.00 assigned/);
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
   expect(shell.execute).toHaveBeenCalledTimes(1);
 });
 

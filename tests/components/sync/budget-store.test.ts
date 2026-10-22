@@ -10,6 +10,7 @@ import {
   sameJson,
 } from "~/domain/rows";
 import { buildCommandCorpus } from "../../domain/fixtures/command-corpus";
+import { SyncError } from "~/components/sync/transport";
 import { FakeConnection, FakeServer, household } from "./fake-server";
 
 const month = "2026-10";
@@ -301,6 +302,37 @@ describe("BudgetStore", () => {
     expect(store.month(month)).toEqual(serverMonth(server));
   });
 
+  test("a pull whose pages race a change shows the budget whole, never with rows missing", async () => {
+    const { client, store, server } = setup();
+    server.pageSize = 1;
+    // Alex's settings change after the first page: the later pages leave
+    // the settings row out, and the rows sent hold a budget without them.
+    let changed = false;
+    server.onPull = (input) => {
+      if (!input.cursor || changed) return;
+      changed = true;
+      server.act("alex", {
+        type: "settings.update",
+        id: "rename",
+        name: "Alex renamed",
+      });
+    };
+    const shown: (string | null)[] = [];
+    store.subscribe(() => {
+      const snapshot = store.getSnapshot();
+      shown.push(snapshot.status);
+      if (snapshot.status === "ready")
+        expect(store.month(month)).toEqual(serverMonth(server));
+    });
+    await client.ready;
+    await client.idle();
+    expect(changed).toBe(true);
+    expect(shown).not.toContain("empty");
+    expect(store.getSnapshot()).toMatchObject({ status: "ready", revision: 1 });
+    expect(store.getSnapshot().ledger!.budget.name).toBe("Alex renamed");
+    expect(store.month(month)).toEqual(serverMonth(server));
+  });
+
   test("an operation only the server can apply waits for its rows", async () => {
     const { client, store, server } = setup();
     await client.ready;
@@ -418,6 +450,129 @@ describe("Outbox retries", () => {
       refreshFailed: false,
       revision: 1,
     });
+  });
+});
+
+describe("Sync that can't go on", () => {
+  const timers = () =>
+    vi.useFakeTimers({
+      toFake: ["Date", "setTimeout", "clearTimeout"],
+      now: new Date("2026-10-20T19:00:00Z"),
+    });
+
+  test("a command the server can never accept is dropped and rolled back, not retried", async () => {
+    timers();
+    const { client, store, server, connection, notices } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    await client.ready;
+    const settled = vi.fn();
+    connection.failNext(
+      "execute",
+      false,
+      new SyncError("rejected", "Caishen couldn’t read this change."),
+    );
+    client.run(assign("a1", "food", 10_000), {
+      summary: "Assigned",
+      onSettled: settled,
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toHaveBeenCalledExactlyOnceWith({
+      ok: false,
+      kind: "rejected",
+      message: "Caishen couldn’t read this change.",
+    });
+    expect(notices).toMatchObject([
+      { kind: "refused", operationId: "a1", reason: "rejected" },
+    ]);
+    expect(server.executed).toEqual([]);
+    expect(store.getSnapshot()).toMatchObject({
+      pending: [],
+      undo: null,
+      savingPaused: false,
+    });
+    expect(assigned(store, "food")).toBe(0);
+  });
+
+  test("signing out stops saving and refreshing, and keeps unsaved changes on screen", async () => {
+    timers();
+    const { client, store, server, connection } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    await client.ready;
+    const sends = vi.spyOn(connection, "execute");
+    const pulls = vi.spyOn(connection, "pull");
+    connection.failNext(
+      "execute",
+      false,
+      new SyncError("signedOut", "Sign in to keep saving your changes."),
+    );
+    client.run(assign("a1", "food", 10_000), { summary: "Assigned" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getSnapshot()).toMatchObject({
+      signedOut: true,
+      savingPaused: false,
+      pending: [{ operationId: "a1" }],
+    });
+    expect(assigned(store, "food")).toBe(10_000);
+
+    // Nothing more goes out: not on a timer, a hint, or Try again.
+    server.act("jordan", assign("j1", "rent", 1_000));
+    client.signal.emit({ revision: 1 });
+    client.retrySaving();
+    await client.refresh();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(sends).toHaveBeenCalledTimes(1);
+    expect(pulls).not.toHaveBeenCalled();
+    expect(server.executed).toEqual([]);
+  });
+
+  test("a refresh that finds the user signed out stops syncing", async () => {
+    timers();
+    const { client, store, connection } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    await client.ready;
+    const pulls = vi.spyOn(connection, "pull");
+    connection.failNext(
+      "pull",
+      false,
+      new SyncError("signedOut", "Sign in to keep saving your changes."),
+    );
+    client.signal.emit();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(pulls).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot()).toMatchObject({
+      status: "ready",
+      signedOut: true,
+      refreshFailed: false,
+    });
+  });
+
+  test("someone without a budget isn't polled, and their budget shows once they make one", async () => {
+    timers();
+    const { client, store, server } = setup();
+    server.withoutBudget.add("alex");
+    await vi.advanceTimersByTimeAsync(0);
+    await client.ready;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(server.pulls).toHaveLength(1);
+    expect(store.getSnapshot()).toMatchObject({
+      status: "empty",
+      refreshFailed: false,
+      updating: false,
+    });
+    expect(
+      client.run(assign("a1", "food", 100), { summary: "Assigned" }),
+    ).toEqual({
+      ok: false,
+      message: expect.any(String) as string,
+    });
+
+    // They create a budget elsewhere and come back to the tab.
+    server.withoutBudget.delete("alex");
+    client.signal.emit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(server.pulls).toHaveLength(2);
+    expect(store.getSnapshot()).toMatchObject({ status: "ready", revision: 0 });
+    expect(store.month(month)).toEqual(serverMonth(server));
   });
 });
 

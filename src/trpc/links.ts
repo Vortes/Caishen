@@ -1,4 +1,5 @@
 import {
+  httpBatchLink,
   httpBatchStreamLink,
   httpLink,
   splitLink,
@@ -9,9 +10,11 @@ import SuperJSON from "superjson";
 import { RevisionSignal } from "~/components/sync/revision-signal";
 import type { AppRouter } from "~/server/api/root";
 
-// How the browser talks to the API. Writes and the sync layer's pulls go one
-// request each, without streaming, so their responses carry the household
-// revision header (ADR 0006); other queries are batched and streamed.
+// How the browser talks to the API. The sync layer's calls go one request
+// each, so the household revision header (ADR 0006) on each answer is that
+// call's own. Other writes are batched without streaming, so their answers
+// still carry the header; queries are batched and streamed, which sends
+// headers before any procedure ran, so they carry none.
 
 const REVISION_HEADER = "x-caishen-revision";
 
@@ -50,6 +53,9 @@ const revisionLink: TRPCLink<AppRouter> =
       });
     });
 
+/** The calls whose answers the budget client reads revisions from. */
+const syncPaths = new Set(["budget.execute", "sync.pull"]);
+
 export function appLinks({
   url,
   fetch,
@@ -66,9 +72,13 @@ export function appLinks({
   return [
     revisionLink,
     splitLink({
-      condition: (op) => op.type === "mutation" || op.path === "sync.pull",
+      condition: (op) => syncPaths.has(op.path),
       true: httpLink(options),
-      false: httpBatchStreamLink(options),
+      false: splitLink({
+        condition: (op) => op.type === "mutation",
+        true: httpBatchLink(options),
+        false: httpBatchStreamLink(options),
+      }),
     }),
   ];
 }

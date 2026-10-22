@@ -55,7 +55,7 @@ export class Outbox {
   }
 
   private async loop() {
-    while (!this.stopped) {
+    while (!this.stopped && !this.store.halted) {
       const op = this.store.nextToSend();
       const base = this.store.confirmedRevision;
       if (!op || base === null) return;
@@ -102,9 +102,9 @@ export class Outbox {
       return;
     }
     this.store.setSync({ savingPaused: false });
-    if (error.kind === "staleClient") {
-      this.store.setSync({ staleClient: true });
-      this.stop();
+    // Sending again can't help; the command stays pending on screen.
+    if (error.kind === "staleClient" || error.kind === "signedOut") {
+      this.store.setSync({ [error.kind]: true });
       return;
     }
     this.store.refuse(operationId, error.kind, error.message);

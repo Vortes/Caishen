@@ -2,6 +2,7 @@ import { focusManager } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
 import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
+import { SyncError } from "~/components/sync/transport";
 import { readyOverview, refocus, renderShell } from "./shell-harness";
 
 test("a budget the server can't read shows maintenance in place of the plan, then the plan once it reads again", async () => {
@@ -38,7 +39,8 @@ test("a budget the server can't read shows maintenance in place of the plan, the
   focusManager.setFocused(undefined);
 });
 
-test("someone without a budget is sent to create one", async () => {
+test("someone without a budget is sent to create one, without the budget being polled", async () => {
+  let pulls = 0;
   await renderShell({
     overview: () => ({
       status: "new",
@@ -47,10 +49,8 @@ test("someone without a budget is sent to create one", async () => {
       imports: [],
     }),
     pull: () => {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Create your personal budget first.",
-      });
+      pulls++;
+      throw new SyncError("noBudget", "Create your personal budget first.");
     },
     plan: false,
   });
@@ -58,4 +58,7 @@ test("someone without a budget is sent to create one", async () => {
   expect(
     screen.getByRole("link", { name: "Create one in Caishen" }),
   ).toBeTruthy();
+  // A failed pull would be retried after a second.
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  expect(pulls).toBe(1);
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "~/generated/prisma";
 import { rowIssues } from "~/domain/row-schemas";
 import { tableNames, type WireRow } from "~/domain/rows";
 import {
@@ -63,10 +64,12 @@ export type PullResult = {
 };
 
 /**
- * One page of a partner's pull. Every page of a pull is read at the
- * revision of its first; rows changed after it come with the next pull.
- * The browser starts over (reset) when its revision is older than the
- * household's last reset, or isn't one of this household's.
+ * One page of a partner's pull. A page is one snapshot of the database, so
+ * a pull of one page holds every row as it stood at its revision. Every
+ * later page is read at the revision of the first, leaving out rows changed
+ * after it; those come with the next pull. The browser starts over (reset)
+ * when its revision is older than the household's last reset, or isn't one
+ * of this household's.
  */
 export async function pull(
   db: Database,
@@ -76,9 +79,21 @@ export async function pull(
 ): Promise<PullResult> {
   if (clientFormat(input.clientBuild) < MINIMUM_CLIENT_FORMAT)
     throw refusal("staleClient", "Reload Caishen to get the latest version.");
+  return db.$transaction(
+    (snapshot) => readPage(snapshot as Database, viewerId, input, observe),
+    { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+  );
+}
+
+async function readPage(
+  db: Database,
+  viewerId: string,
+  input: z.infer<typeof pullInputSchema>,
+  observe?: RevisionObserver,
+): Promise<PullResult> {
   const household = await readHouseholdRevision(db, viewerId);
   if (!household)
-    throw refusal("rejected", "Create your personal budget first.");
+    throw refusal("noBudget", "Create your personal budget first.");
   observe?.(household.revision);
   let page: {
     revision: number;

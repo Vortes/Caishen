@@ -67,10 +67,12 @@ export type SyncState = {
   savingPaused: boolean;
   /** The server needs a newer version of the app. */
   staleClient: boolean;
+  /** The user is signed out or may no longer use Caishen. */
+  signedOut: boolean;
 };
 
 export type BudgetSnapshot = SyncState & {
-  /** loading until rows arrive; empty when they hold no budget for the user. */
+  /** loading until rows arrive; empty when the user has no budget. */
   status: "loading" | "ready" | "empty";
   /** The confirmed revision. */
   revision: number | null;
@@ -157,7 +159,10 @@ export class BudgetStore {
     refreshFailed: false,
     savingPaused: false,
     staleClient: false,
+    signedOut: false,
   };
+  // The server said the user has no budget.
+  private noBudget = false;
 
   private snapshot: BudgetSnapshot;
   private dirty = false;
@@ -198,6 +203,11 @@ export class BudgetStore {
 
   get confirmedRevision(): number | null {
     return this.revision;
+  }
+
+  /** Syncing has stopped until the page reloads or the user signs in. */
+  get halted(): boolean {
+    return this.sync.staleClient || this.sync.signedOut;
   }
 
   /** The month as shown, computed once per ledger, month, and current month. */
@@ -590,6 +600,21 @@ export class BudgetStore {
   }
 
   /**
+   * The server holds no budget for this user. Nothing is shown or sent
+   * until a pull brings one.
+   */
+  markNoBudget() {
+    this.noBudget = true;
+    if (this.revision !== null) {
+      this.revision = null;
+      this.confirmedRows = noRows;
+      this.confirmedLedger = null;
+      this.replay();
+    }
+    this.changed();
+  }
+
+  /**
    * A change set another tab confirmed. Returns false when it does not
    * follow the revision held here, so the caller pulls instead.
    */
@@ -634,6 +659,7 @@ export class BudgetStore {
   ) {
     this.confirmedRows = rows;
     this.revision = revision;
+    this.noBudget = false;
     this.confirmedLedger = ledger ?? this.buildLedger(rows);
     const dropped = this.dropConfirmed();
     this.expireHistory();
@@ -720,7 +746,9 @@ export class BudgetStore {
       ...this.sync,
       status:
         this.revision === null
-          ? "loading"
+          ? this.noBudget
+            ? "empty"
+            : "loading"
           : this.confirmedLedger
             ? "ready"
             : "empty",
