@@ -258,6 +258,27 @@
     calc(100vw - 24px)
   );
 }
+.listPopover[data-footer] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.listOptions {
+  min-height: 0;
+  overflow-y: auto;
+}
+.listDivider {
+  flex: none;
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.listFooter {
+  display: flex;
+  flex: none;
+  padding: var(--space-inset);
+}
 :global([data-theme="light"]) .listPopover {
   color-scheme: light;
 }

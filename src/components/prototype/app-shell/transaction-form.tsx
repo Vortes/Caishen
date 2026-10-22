@@ -159,7 +159,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       amount: category.available,
     }));
   const categoryOptions: ChoiceOption[] = [
-    ...(splittable ? [{ value: SPLIT, label: "Split" }] : []),
     {
       value: READY_TO_ASSIGN,
       label: "Ready to Assign",
@@ -500,6 +499,18 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           id={id("categoryId")}
           label="Category"
           value={split ? SPLIT : draft.categoryId}
+          displayValue={split ? "Split" : undefined}
+          footerAction={
+            splittable
+              ? {
+                  label: "Split",
+                  onClick: () => {
+                    chooseCategory(SPLIT);
+                    afterCategory(SPLIT);
+                  },
+                }
+              : undefined
+          }
           options={categoryOptions}
           placeholder="Category"
           inputRef={register("categoryId")}

@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { money } from "./model";
 import shell from "./shell.module.css";
@@ -37,7 +38,7 @@ type FieldProps = {
 };
 
 // The list under a field. Focus stays in the field, which moves the active
-// option, so the list itself is never tabbed into.
+// option, so only a separate footer action can receive focus.
 function OptionList({
   open,
   onClose,
@@ -46,6 +47,7 @@ function OptionList({
   anchor,
   wide = false,
   children,
+  footer,
 }: {
   open: boolean;
   onClose: () => void;
@@ -55,6 +57,7 @@ function OptionList({
   // Room for a long name beside its balance.
   wide?: boolean;
   children: ReactNode;
+  footer?: ReactNode;
 }) {
   const container = usePortalContainer();
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -70,11 +73,12 @@ function OptionList({
       </Popover.Anchor>
       <Popover.Portal container={container}>
         <Popover.Content
-          id={listId}
-          role="listbox"
+          id={footer ? `${listId}-popover` : listId}
+          role={footer ? "dialog" : "listbox"}
           aria-label={label}
           className={styles.listPopover}
           data-wide={wide || undefined}
+          data-footer={footer ? "" : undefined}
           align="start"
           sideOffset={4}
           collisionPadding={12}
@@ -90,7 +94,22 @@ function OptionList({
           // Keeps focus in the field while the pointer picks.
           onMouseDown={(event) => event.preventDefault()}
         >
-          {children}
+          {footer ? (
+            <>
+              <div
+                id={listId}
+                role="listbox"
+                aria-label={label}
+                className={styles.listOptions}
+              >
+                {children}
+              </div>
+              <hr className={styles.listDivider} />
+              <div className={styles.listFooter}>{footer}</div>
+            </>
+          ) : (
+            children
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -168,6 +187,8 @@ export function ChoiceField({
   onPicked,
   onCreate,
   wide = true,
+  displayValue,
+  footerAction,
 }: FieldProps & {
   value: string;
   options: ChoiceOption[];
@@ -176,9 +197,12 @@ export function ChoiceField({
   // Adds an option named for the typed text, like YNAB's Create Category.
   onCreate?: { noun: string; create: (name: string) => void };
   wide?: boolean;
+  displayValue?: string;
+  footerAction?: { label: string; onClick: () => void };
 }) {
   const listId = `${id}-list`;
   const listRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLButtonElement>(null);
   const [expanded, setExpanded] = useState(false);
   // The field's text while the list is open: the chosen name until typing
   // replaces it, which is when it starts filtering.
@@ -212,7 +236,7 @@ export function ChoiceField({
   const open = expanded && !disabled && !readOnly;
 
   const show = (text?: string) => {
-    setQuery(text ?? selected?.label ?? "");
+    setQuery(text ?? selected?.label ?? displayValue ?? "");
     setTyped(text !== undefined);
     setActive(null);
     setExpanded(true);
@@ -254,6 +278,15 @@ export function ChoiceField({
       setExpanded(false);
     } else if (
       event.key === "Tab" &&
+      !event.shiftKey &&
+      open &&
+      footerAction &&
+      !search
+    ) {
+      event.preventDefault();
+      footerRef.current?.focus();
+    } else if (
+      event.key === "Tab" &&
       open &&
       search &&
       current &&
@@ -271,6 +304,35 @@ export function ChoiceField({
       listId={listId}
       label={label}
       wide={wide}
+      footer={
+        footerAction && (
+          <Button
+            ref={footerRef}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                document.getElementById(id)?.focus();
+                setExpanded(false);
+              } else if (event.key === "Tab" && event.shiftKey) {
+                event.preventDefault();
+                document.getElementById(id)?.focus();
+              }
+            }}
+            onBlur={(event) => {
+              if (event.relatedTarget !== document.getElementById(id))
+                setExpanded(false);
+            }}
+            onClick={() => {
+              setExpanded(false);
+              setQuery("");
+              footerAction.onClick();
+            }}
+          >
+            {footerAction.label}
+          </Button>
+        )
+      }
       anchor={
         <div
           className={styles.well}
@@ -295,7 +357,7 @@ export function ChoiceField({
             disabled={disabled}
             readOnly={readOnly}
             placeholder={placeholder}
-            value={open ? query : (selected?.label ?? "")}
+            value={open ? query : (selected?.label ?? displayValue ?? "")}
             onFocus={(event) => {
               if (!open) show();
               event.currentTarget.select();
@@ -303,7 +365,13 @@ export function ChoiceField({
             onClick={() => {
               if (!open) show();
             }}
-            onBlur={() => setExpanded(false)}
+            onBlur={(event) => {
+              if (
+                !footerRef.current ||
+                event.relatedTarget !== footerRef.current
+              )
+                setExpanded(false);
+            }}
             onChange={(event) => show(event.target.value)}
             onKeyDown={onKeyDown}
           />
