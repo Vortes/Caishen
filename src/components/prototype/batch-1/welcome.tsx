@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  ArrowRightIcon,
-  InboxIcon,
-  ShieldCheckIcon,
-  UsersRoundIcon,
-  WalletCardsIcon,
-} from "lucide-react";
+import { ArrowRightIcon, ShieldCheckIcon } from "lucide-react";
 import Link from "next/link";
 import type { MouseEvent } from "react";
 import { Button } from "~/components/ui/button";
@@ -16,35 +10,15 @@ import {
   BRAND_TILE_RADIUS,
   BRAND_TILE_STOPS,
 } from "~/components/shared/brand-geometry";
-import {
-  Choice,
-  PrototypeBar,
-  PrototypePage,
-  useNotice,
-  useStored,
-  useTheme,
-} from "./prototype";
+import { PrototypeBar, PrototypePage, useNotice, useTheme } from "./prototype";
 import { ONBOARDING_PATH } from "./routes";
 import styles from "./welcome.module.css";
 
-// The legacy Welcome, kept as the base and allowed past the app's design
-// system limits. Each variant changes one thing from the faithful port:
-// "display" moves the headline's scale, "atmosphere" moves the story
-// panel's surface. Everything else is identical across all three.
-type Variant = "port" | "display" | "atmosphere";
-
-const facts = [
-  { icon: WalletCardsIcon, text: "A cash-backed plan that you control" },
-  {
-    icon: UsersRoundIcon,
-    text: "Shared costs, with personal spending kept private",
-  },
-  { icon: InboxIcon, text: "One inbox for the things that need a look" },
-];
-
+// The legacy Welcome, allowed past the app's design system limits: a 96px
+// display headline, violet-tinted panels, a solid primary button, and the
+// brand's pinwheel drawn faintly across the story panel.
 export function WelcomePrototype() {
   const [theme, setTheme] = useTheme();
-  const [variant, setVariant] = useStored<Variant>("welcome.look", "port");
   const notice = useNotice();
 
   const signUp = (event: MouseEvent) => {
@@ -65,23 +39,12 @@ export function WelcomePrototype() {
     <PrototypePage
       theme={theme}
       controls={
-        <PrototypeBar title="Welcome" theme={theme} onTheme={setTheme}>
-          <Choice
-            label="Variant (one change from A)"
-            value={variant}
-            options={[
-              ["port", "A: faithful port"],
-              ["display", "B: headline scale"],
-              ["atmosphere", "C: story panel surface"],
-            ]}
-            onChange={setVariant}
-          />
-        </PrototypeBar>
+        <PrototypeBar title="Welcome" theme={theme} onTheme={setTheme} />
       }
     >
-      <div className={styles.welcome} data-variant={variant}>
+      <div className={styles.welcome}>
         <section className={styles.story}>
-          {variant === "atmosphere" && <Pinwheel />}
+          <Pinwheel />
           <Wordmark />
           <div className={styles.storyCopy}>
             <h1 className={styles.headline}>
@@ -117,14 +80,6 @@ export function WelcomePrototype() {
                 Sign in
               </a>
             </div>
-            <ul className={styles.facts}>
-              {facts.map(({ icon: Icon, text }) => (
-                <li key={text}>
-                  <Icon size={18} aria-hidden />
-                  {text}
-                </li>
-              ))}
-            </ul>
             <nav className={styles.policies} aria-label="Policies">
               <a href="/privacy">Privacy policy</a>
               <a href="/terms">Terms of service</a>
@@ -174,7 +129,7 @@ function Wordmark() {
   );
 }
 
-// Variant C's atmosphere: the brand's own pinwheel, drawn huge in the
+// The story panel's atmosphere: the brand's own pinwheel, drawn huge in the
 // panel's hue and cropped by its edge, instead of a generic glow.
 function Pinwheel() {
   return (

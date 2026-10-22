@@ -16,7 +16,7 @@
   --welcome-control: oklch(0.25 0.035 var(--hue));
   --welcome-control-hover: oklch(0.29 0.04 var(--hue));
   --welcome-mark: oklch(0.235 0.05 var(--hue));
-  --headline-size: clamp(44px, 4.6vw, 66px);
+  --headline-size: clamp(56px, 6.4vw, 96px);
 
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -40,11 +40,6 @@
   --welcome-mark: oklch(0.915 0.032 var(--hue));
 }
 
-/* B moves one variable: the headline's scale. */
-.welcome[data-variant="display"] {
-  --headline-size: clamp(56px, 6.4vw, 96px);
-}
-
 /* ---------- The story ---------- */
 
 .story {
@@ -56,7 +51,6 @@
   overflow: hidden;
   padding: 56px 60px;
   border-right: 1px solid var(--welcome-line);
-  background: var(--welcome-story);
 }
 .story > :not(.pinwheel) {
   position: relative;
@@ -84,10 +78,6 @@
 .headline {
   font-size: var(--headline-size);
   font-weight: 700;
-  letter-spacing: -0.045em;
-  line-height: 1.02;
-}
-.welcome[data-variant="display"] .headline {
   letter-spacing: -0.055em;
   line-height: 0.96;
 }
@@ -106,10 +96,9 @@
   font-size: 13px;
 }
 
-/* C moves one variable: the story panel's surface. The pinwheel from the
-   brand mark, drawn one step off the panel's color and cropped by the
-   edge, with the panel shading darker toward it. */
-.welcome[data-variant="atmosphere"] .story {
+/* The pinwheel from the brand mark, drawn one step off the panel's color
+   and cropped by the edge, with the panel shading darker toward it. */
+.story {
   background: linear-gradient(
     to bottom,
     var(--welcome-story),
@@ -118,9 +107,9 @@
 }
 .pinwheel {
   position: absolute;
-  right: -22%;
-  bottom: -26%;
-  width: 92%;
+  right: -34%;
+  bottom: -42%;
+  width: 84%;
   fill: var(--welcome-mark);
   pointer-events: none;
   user-select: none;
@@ -167,8 +156,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-bottom: 26px;
-  border-bottom: 1px solid var(--welcome-line);
 }
 .primary,
 .secondary {
@@ -209,29 +196,10 @@
   outline: 2px solid var(--welcome-accent);
   outline-offset: 2px;
 }
-.facts {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  margin: 26px 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--welcome-muted);
-  font-size: 16px;
-}
-.facts li {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.facts li > svg {
-  flex: none;
-  color: var(--welcome-accent);
-}
 .policies {
   display: flex;
   gap: 20px;
-  margin-top: 24px;
+  margin-top: 20px;
   font-size: 14px;
 }
 .policies a {
@@ -260,11 +228,8 @@
 /* Phones: the story becomes the top of one column. */
 @media (max-width: 720px) {
   .welcome {
-    --headline-size: 44px;
-    grid-template-columns: 1fr;
-  }
-  .welcome[data-variant="display"] {
     --headline-size: 58px;
+    grid-template-columns: 1fr;
   }
   .story {
     gap: 40px;
@@ -285,10 +250,9 @@
   .title {
     font-size: 26px;
   }
+  /* Too little panel below the copy for the mark to read as intended. */
   .pinwheel {
-    right: -34%;
-    bottom: -62%;
-    width: 72%;
+    display: none;
   }
 }
 
