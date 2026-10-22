@@ -111,13 +111,11 @@ export class SyncController {
 
   private async pullOnce() {
     if (this.stopped || this.store.halted) return;
-    this.store.setSync({ updating: true });
     try {
       this.store.applyPull(await this.download());
       this.failures = 0;
-      this.store.setSync({ updating: false, refreshFailed: false });
+      this.store.setSync({ refreshFailed: false });
     } catch (error) {
-      this.store.setSync({ updating: false });
       if (error instanceof SyncError) {
         if (error.kind === "staleClient" || error.kind === "signedOut") {
           this.store.setSync({ [error.kind]: true, refreshFailed: false });

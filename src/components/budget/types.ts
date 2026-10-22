@@ -19,7 +19,6 @@ export type Panel = {
     | "rate"
     | "reconcile"
     | "join"
-    | "rule"
     | "history";
   id?: string;
   accountId?: string;

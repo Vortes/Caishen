@@ -179,7 +179,7 @@ void test("an undo is refused when later changes depend on what it removes", () 
   // An undo runs only against the operation it names.
   assert.match(
     refusal(() =>
-      executeRevert(final, revertOf(find("rule.set")), loan.stamped),
+      executeRevert(final, revertOf(find("income.expect")), loan.stamped),
     ),
     /Undo access denied/,
   );

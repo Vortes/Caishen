@@ -278,3 +278,106 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     await db.$disconnect();
   }
 });
+
+void test("standing rules an earlier release stored still load, sync, and undo", async () => {
+  const db = new PrismaClient();
+  const a = `test-rules-${randomUUID()}`;
+  const alice = createCaller({
+    revision: new ObservedRevision(),
+    db,
+    userId: a,
+    headers: new Headers(),
+  });
+  try {
+    await alice.budget.onboard({
+      name: "Alice",
+      month,
+      timezone: "America/Los_Angeles",
+    });
+    let { revision } = await alice.budget.execute({
+      clientId: "test",
+      baseRevision: (await alice.budget.state({ month })).revision,
+      command: {
+        type: "category.add",
+        id: randomUUID(),
+        categoryId: "dining",
+        name: "Dining",
+      },
+    });
+    const member = await db.workspaceMember.findUniqueOrThrow({
+      where: { clerkUserId: a },
+    });
+    // The earlier release's rule.set, as it was stored.
+    const rule: WireRow = {
+      table: "rule",
+      id: rowKey(a, "dining-rule"),
+      revision: 0,
+      deleted: false,
+      data: {
+        id: "dining-rule",
+        fromCategoryId: "dining",
+        toCategoryId: "dining",
+        enabled: true,
+        userId: a,
+        sort: 0,
+      },
+    };
+    ({ revision } = await writeChangeSet(db, {
+      workspaceId: member.workspaceId,
+      baseRevision: revision,
+      changeSet: {
+        operationId: "earlier-rule",
+        revision: 0,
+        before: [{ ...rule, deleted: true, data: null }],
+        after: [rule],
+      },
+      operation: {
+        actorId: a,
+        source: "user",
+        type: "rule.set",
+        inputHash: "",
+        command: null,
+      },
+    }));
+
+    const state = await alice.budget.state({ month });
+    assert.equal(state.status, "ready");
+    const pulled = await alice.sync.pull({
+      since: null,
+      clientBuild: "1:test",
+    });
+    assert.ok(pulled.rows.some((row) => row.id === rule.id && !row.deleted));
+    ({ revision } = await alice.budget.execute({
+      clientId: "test",
+      baseRevision: state.revision,
+      command: {
+        type: "category.add",
+        id: randomUUID(),
+        categoryId: "travel",
+        name: "Travel",
+      },
+    }));
+    const undone = await alice.budget.execute({
+      clientId: "test",
+      baseRevision: revision,
+      command: {
+        type: "revert",
+        id: randomUUID(),
+        targetOperationId: "earlier-rule",
+      },
+    });
+    assert.ok(
+      undone.changeSet?.after.some((row) => row.id === rule.id && row.deleted),
+    );
+    assert.equal((await alice.budget.state({ month })).status, "ready");
+  } finally {
+    const memberships = await db.workspaceMember.findMany({
+      where: { clerkUserId: a },
+    });
+    await db.workspace.deleteMany({
+      where: { id: { in: memberships.map((m) => m.workspaceId) } },
+    });
+    await db.user.deleteMany({ where: { clerkUserId: a } });
+    await db.$disconnect();
+  }
+});

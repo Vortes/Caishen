@@ -5,7 +5,7 @@ import { Button } from "~/components/ui-legacy/button";
 
 import { type Command } from "~/domain/engine";
 import { FormField, Icon, SelectField } from "~/components/shared";
-import { type Panel, type State } from "~/components/budget/types";
+import { type State } from "~/components/budget/types";
 import { newId, text } from "~/components/budget/format";
 import { BankConnections } from "~/components/banks/bank-connections";
 import { TimezoneOptions } from "~/components/settings/timezone-options";
@@ -14,14 +14,12 @@ export function SettingsView({
   state,
   run,
   busy,
-  open,
   sync,
   syncBusy,
 }: {
   state: State;
   run: (command: Command) => void;
   busy: boolean;
-  open: (panel: Panel) => void;
   sync: () => void;
   syncBusy: boolean;
 }) {
@@ -142,65 +140,6 @@ export function SettingsView({
           <div className="panel-footer">
             Daily account updates depend on your institution. A recent cached
             balance alone does not prove reconciliation.
-          </div>
-        </section>
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Standing rules</h2>
-              <p>Only rules you explicitly establish can cover overspending.</p>
-            </div>
-          </div>
-          <div className="panel-body">
-            {view.budget.rules.length ? (
-              view.budget.rules.map((rule) => (
-                <p key={rule.id} className="small">
-                  Cover{" "}
-                  {
-                    view.categories.find(
-                      (category) => category.id === rule.toCategoryId,
-                    )?.name
-                  }{" "}
-                  from{" "}
-                  {
-                    view.categories.find(
-                      (category) => category.id === rule.fromCategoryId,
-                    )?.name
-                  }{" "}
-                  · {rule.enabled ? "Enabled" : "Disabled"}
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      run({
-                        type: "rule.set",
-                        id: newId(),
-                        ruleId: rule.id,
-                        fromCategoryId: rule.fromCategoryId,
-                        toCategoryId: rule.toCategoryId,
-                        enabled: !rule.enabled,
-                      })
-                    }
-                  >
-                    {rule.enabled ? "Disable" : "Enable"}
-                  </Button>
-                </p>
-              ))
-            ) : (
-              <p className="small muted">
-                No standing rules. Cover overspending by choosing and moving
-                money yourself.
-              </p>
-            )}
-            <Button
-              variant="ghost"
-              style={{ marginTop: 10 }}
-              disabled={view.categories.length < 2}
-              onClick={() => open({ type: "rule" })}
-            >
-              Create a standing rule
-            </Button>
           </div>
         </section>
       </div>

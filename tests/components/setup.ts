@@ -1,6 +1,10 @@
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { takeOracleFailures } from "../change-set-oracle";
+
+// Finding what a render shows waits longer than Testing Library's 1s
+// default, which a loaded machine exceeds.
+configure({ asyncUtilTimeout: 5_000 });
 
 // The component boundary excludes Clerk and the browser layout engine.
 // No browser process, application server, or database is started here.
