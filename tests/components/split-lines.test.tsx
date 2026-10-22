@@ -55,7 +55,6 @@ test("a Costco receipt splits across Groceries and Household, and the register s
   ).toBeNull();
   const splitButton = screen.getByRole("button", {
     name: "Split",
-    exact: true,
   });
   expect(categoryList.contains(splitButton)).toBe(false);
   expect(
@@ -121,7 +120,7 @@ test("the category footer Split button is reachable with Tab and activates with 
   const form = await newTransaction(shell);
   await shell.user.click(form.getByRole("combobox", { name: "Category" }));
   await shell.user.tab();
-  expect(screen.getByRole("button", { name: "Split", exact: true })).toBe(
+  expect(screen.getByRole("button", { name: "Split" })).toBe(
     document.activeElement,
   );
   await shell.user.keyboard("{Enter}");
