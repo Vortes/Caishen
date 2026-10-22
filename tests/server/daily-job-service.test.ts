@@ -49,7 +49,6 @@ function makeMember(
       id: `workspace_${userId}`,
       revision: 0,
       resetRevision: 0,
-      book: null,
       createdAt: now,
       updatedAt: now,
     },

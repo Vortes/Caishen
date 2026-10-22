@@ -150,28 +150,6 @@ function detailsColumn(stored: unknown, details: ConnectionDetails) {
   });
 }
 
-/**
- * Import state a connection saved before rows (ADR 0006), for the one-time
- * copy into rows. Null when the connection can't be read.
- */
-export function legacyImportState(
-  connection: StoredConnection,
-): ImportRowState | null {
-  const column = readColumn(
-    connection,
-    "BankConnection.imports",
-    connectionColumnSchema,
-    connection.imports,
-  );
-  if (!column) return null;
-  return {
-    records: column.records ?? [],
-    resolved: column.resolved ?? {},
-    errors: column.errors ?? {},
-    reviews: column.reviews,
-  };
-}
-
 // A connection whose saved details or import rows can't be read is left
 // alone and shown as under maintenance; the budget and other connections
 // still work.

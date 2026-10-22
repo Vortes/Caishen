@@ -25,12 +25,9 @@ model Workspace {
   // Browsers holding an older revision download every row again: the
   // household changed shape or rows were removed outright (ADR 0006).
   resetRevision    Int               @default(0)
-  // Before rows (ADR 0006); kept only for the one-time copy into rows.
-  book             Json?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   members          WorkspaceMember[]
-  operations       BudgetOperation[]
   invites          PartnerInvite[]
   // Rows (ADR 0006). Read and written only through src/server/storage.
   budgetMembers    Member[]
@@ -49,23 +46,6 @@ model WorkspaceMember {
   createdAt   DateTime  @default(now())
 
   @@index([workspaceId])
-}
-
-model BudgetOperation {
-  id          String    @id @default(cuid())
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  operationId String
-  actorId     String
-  actor       User      @relation(fields: [actorId], references: [clerkUserId], onDelete: Restrict)
-  source      String
-  type        String
-  commandHash String
-  revision    Int
-  createdAt   DateTime  @default(now())
-
-  @@unique([workspaceId, operationId])
-  @@index([workspaceId, actorId, createdAt])
 }
 
 model PartnerInvite {
@@ -144,7 +124,6 @@ model User {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   memberships     WorkspaceMember[]
-  operations      BudgetOperation[]
   bankConnections BankConnection[]
   evidence        ReviewEvidence[]
   deliveries      DailyDelivery[]

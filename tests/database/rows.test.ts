@@ -65,7 +65,7 @@ function stored(book: Book): Book {
 async function household(book: Book, revision: number, more: WireRow[] = []) {
   const id = `test-rows-${randomUUID()}`;
   workspaceIds.push(id);
-  await db.workspace.create({ data: { id, revision, book: {} } });
+  await db.workspace.create({ data: { id, revision } });
   await replaceRows(db, id, [...bookToRows(book), ...more], revision);
   return id;
 }

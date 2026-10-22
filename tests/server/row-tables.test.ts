@@ -41,7 +41,17 @@ function everyRow(): WireRow[] {
   const rows = [
     ...bookToRows(seed.book),
     ...bookToRows(
-      bookSchema.parse(sample("Workspace.book/every-stored-value.json")),
+      bookSchema.parse(
+        JSON.parse(
+          readFileSync(
+            new URL(
+              "../domain/fixtures/every-stored-value-book.json",
+              import.meta.url,
+            ),
+            "utf8",
+          ),
+        ),
+      ),
     ),
     ...corpus.steps.flatMap((step) => bookToRows(step.after)),
     ...importStateRows(
