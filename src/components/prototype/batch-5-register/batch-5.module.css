@@ -1,0 +1,400 @@
+/* Batch 5 additions to the app shell: transaction history, bank import
+   matching, and reimbursements. Semantic tokens only; layout borrows the
+   shell's register grid and the editor's wells. */
+
+/* ---------- Prototype controls (not part of the design) ---------- */
+
+.controls {
+  max-width: min(640px, calc(100vw - 32px));
+}
+.controls a {
+  color: inherit;
+  text-decoration: none;
+}
+/* Out of the selection bar's way on a phone. */
+@media (max-width: 560px) {
+  .controls {
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+    left: auto;
+  }
+}
+
+/* ---------- Register ---------- */
+
+/* The name a bank sent, before anyone renamed it. Monospace would shout;
+   tertiary text says "raw" quietly. */
+.bankName {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* An import's likely match, in place of Needs category. */
+.suggestion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  color: var(--text-secondary);
+}
+.suggestion > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* A row action that shows on hover, focus, or selection, like Linear's. */
+.reveal {
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.rowHost:hover .reveal,
+.rowHost:focus-within .reveal,
+.rowHost[data-checked] .reveal,
+.reveal:has([aria-pressed="true"]) {
+  opacity: 1;
+}
+@media (hover: none) {
+  .reveal {
+    opacity: 1;
+  }
+}
+
+.islandHint {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ---------- Editor sections ---------- */
+
+/* A band inside the lifted editor, under its fields, like a loan payment's
+   interest. Starts at the row's text, not the checkbox gutter. */
+.editorSection {
+  margin: 0 var(--space-row-x) var(--space-inset) var(--row-gutter);
+  padding-top: var(--space-inset);
+  border-top: 1px solid var(--border-subtle);
+}
+.footerTools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* The quiet buttons' text lines up with the row's text above. */
+  margin-left: -10px;
+}
+.count {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- History ---------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--type-small);
+}
+.provenance {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+}
+.provenance > div {
+  display: contents;
+}
+.provenance dt {
+  color: var(--text-tertiary);
+}
+.provenance dd {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.matchLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.matchLine > span {
+  max-width: 60ch;
+  text-wrap: pretty;
+}
+/* The quiet button sits on the text's line without growing it. */
+.matchLine > button {
+  margin-block: -6px;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+}
+/* The line joining one change to the next. */
+.event:not(:last-child)::before {
+  position: absolute;
+  top: 24px;
+  bottom: -4px;
+  left: 9.5px;
+  width: 1px;
+  background: var(--border-subtle);
+  content: "";
+}
+.eventIcon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  align-self: start;
+  border-radius: 50%;
+  background: var(--surface-group);
+  color: var(--text-tertiary);
+}
+.eventIcon[data-actor="you"] {
+  color: var(--text-secondary);
+}
+.eventText {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  color: var(--text-primary);
+  text-wrap: pretty;
+}
+.diff {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.before {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-tertiary);
+}
+.after {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.arrow {
+  color: var(--text-tertiary);
+}
+.eventTime {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.historyEmpty {
+  margin: 0;
+  color: var(--text-tertiary);
+}
+
+.historyPopover {
+  z-index: 40;
+  width: min(440px, calc(100vw - 24px));
+  max-height: min(28rem, var(--radix-popover-content-available-height));
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-primary);
+}
+.popoverTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+  color: var(--text-primary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.popoverTitle > span {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Expect money back ---------- */
+
+.expect {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--type-small);
+}
+.expectFields {
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) 8rem minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 16px;
+}
+.expectPopover .expectFields {
+  grid-template-columns: minmax(0, 1fr) 7rem;
+}
+.expectPopover .expectFields > .hint {
+  grid-column: 1 / -1;
+  padding-top: 0;
+}
+.expectPopover {
+  width: min(360px, calc(100vw - 24px));
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+.field .fieldError {
+  margin: 0;
+}
+.hint {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--text-tertiary);
+  text-wrap: pretty;
+}
+/* The hint sits beside the fields, level with their wells. */
+.expectFields > .hint {
+  padding-top: calc(var(--type-small) * 1.5 + 6px);
+}
+.claimList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+}
+.claimList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--size-control-xs);
+}
+@container (max-width: 760px) {
+  .expectFields {
+    grid-template-columns: minmax(0, 1fr) 7rem;
+  }
+  .expectFields > .hint {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+  .editorSection {
+    margin-left: var(--space-row-x);
+  }
+  .footerTools {
+    margin-left: -10px;
+  }
+}
+
+/* ---------- Match chooser ---------- */
+
+.choice {
+  height: auto;
+  min-height: var(--size-row-lg);
+  padding-block: 6px;
+}
+.choiceText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text-primary);
+}
+.choiceText > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.choiceText > span + span {
+  font-size: var(--type-small);
+}
+
+/* ---------- Reimbursements tab ---------- */
+
+.claims {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.claim[data-open] {
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+}
+.claimRow {
+  height: auto;
+  min-height: var(--size-row-lg);
+  padding-block: 6px;
+}
+.claim[data-open] .claimRow:hover {
+  background: transparent;
+}
+.claimAmount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: var(--type-small);
+}
+.claimAmount > span:first-child {
+  color: var(--text-primary);
+  font-size: var(--type-body);
+}
+.subheading {
+  margin: 10px 0 2px;
+  padding: 0 6px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.done {
+  color: var(--feedback-success);
+}
+.claimRow > .done {
+  color: var(--feedback-success);
+}
+
+.receive {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 8px 10px 27px;
+  font-size: var(--type-small);
+}
+.receiveFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7.5rem;
+  gap: 8px;
+}
+.receiveActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.receiveActions > button:first-child {
+  margin-left: -10px;
+}
+.spacer {
+  flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    transition: none;
+  }
+}
