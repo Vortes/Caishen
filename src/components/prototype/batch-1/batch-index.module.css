@@ -73,6 +73,117 @@
   font-size: var(--type-small);
   line-height: 1.5;
 }
+/* What the legacy app did, under each screen. */
+.legacy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px calc(var(--space-card) * -1) 0;
+  padding: 12px var(--space-card) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.legacyLabel {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(176px, 40%), 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: zoom-in;
+}
+.thumb img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  object-position: top left;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+  transition: border-color 150ms;
+}
+.thumb:hover img {
+  border-color: var(--border-strong);
+}
+.thumbCaption {
+  font-size: var(--type-caption);
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.noLegacy {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* The enlarged screenshot. The scrim's raw value matches the shell's until
+   an --overlay token exists. */
+.overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: oklch(0 0 0 / 0.6);
+}
+.viewer {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(1200px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  transform: translate(-50%, -50%);
+}
+.viewer:focus-visible {
+  outline: none;
+}
+.viewerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 6px;
+}
+.viewerTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+.viewerImage {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: calc(100dvh - 100px);
+  object-fit: contain;
+  border-radius: var(--radius-row);
+}
+
 @media (max-width: 560px) {
   .header,
   .row {
