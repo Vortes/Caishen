@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LegacyPreview, SavedTheme } from "./legacy-preview";
 import { SCENARIOS, type ScenarioId } from "./scenarios";
 import styles from "./batch-4.module.css";
 
@@ -106,61 +107,68 @@ const labelOf = (id: ScenarioId) => SCENARIOS.find((item) => item.id === id)!;
 
 export function Batch4Index() {
   return (
-    <main className={styles.index}>
-      <header className={styles.indexHeader}>
-        <h1>Batch 4: Plan</h1>
-        <p>
-          Prototype for owner review, with hardcoded data and none of it saved.
-          Each choice moves one variable; switch variants in the bar above the
-          shell. The recommended variant is on by default.
-        </p>
-        <p>
-          <Link className={styles.indexPrimary} href={PLAN}>
-            Open the plan prototype
-          </Link>
-        </p>
-      </header>
-      {features.map((feature) => (
-        <section key={feature.title} className={styles.indexSection}>
-          <h2>{feature.title}</h2>
-          <p>{feature.summary}</p>
-          <h3>Variable: {feature.variable}</h3>
+    <SavedTheme>
+      <main className={styles.index}>
+        <header className={styles.indexHeader}>
+          <h1>Batch 4: Plan</h1>
+          <p>
+            Prototype for owner review, with hardcoded data and none of it
+            saved. Each choice moves one variable; switch variants in the bar
+            above the shell. The recommended variant is on by default.
+          </p>
+          <p>
+            <Link className={styles.indexPrimary} href={PLAN}>
+              Open the plan prototype
+            </Link>
+          </p>
+        </header>
+        {features.map((feature) => (
+          <section key={feature.title} className={styles.indexSection}>
+            <h2>{feature.title}</h2>
+            <p>{feature.summary}</p>
+            <h3>Variable: {feature.variable}</h3>
+            <ul className={styles.indexList}>
+              {feature.variants.map(([name, detail]) => (
+                <li key={name}>
+                  <strong>{name}.</strong> {detail}
+                </li>
+              ))}
+            </ul>
+            <h3>States to try, beside what legacy did</h3>
+            <ul className={styles.indexLinks}>
+              {feature.states.map((id) => (
+                <li key={id}>
+                  <LegacyPreview state={id} />
+                  <span className={styles.stateText}>
+                    <Link href={`${PLAN}?state=${id}`}>
+                      {labelOf(id).label}
+                    </Link>
+                    <span>{labelOf(id).hint}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        <section className={styles.indexSection}>
+          <h2>Keyboard</h2>
           <ul className={styles.indexList}>
-            {feature.variants.map(([name, detail]) => (
-              <li key={name}>
-                <strong>{name}.</strong> {detail}
-              </li>
-            ))}
-          </ul>
-          <h3>States to try</h3>
-          <ul className={styles.indexLinks}>
-            {feature.states.map((id) => (
-              <li key={id}>
-                <Link href={`${PLAN}?state=${id}`}>{labelOf(id).label}</Link>
-                <span>{labelOf(id).hint}</span>
-              </li>
-            ))}
+            <li>
+              <strong>F</strong> finds a category. In the field, Down or Enter
+              moves into the results; Escape clears, then closes.
+            </li>
+            <li>
+              In the month grid, arrows move by month and row, Page Up and Page
+              Down by year, Enter picks, Escape closes. In two lists, Left and
+              Right move between years and months.
+            </li>
+            <li>
+              The snooze switch toggles with Space. Expected income saves with
+              Enter; Escape cancels.
+            </li>
           </ul>
         </section>
-      ))}
-      <section className={styles.indexSection}>
-        <h2>Keyboard</h2>
-        <ul className={styles.indexList}>
-          <li>
-            <strong>F</strong> finds a category. In the field, Down or Enter
-            moves into the results; Escape clears, then closes.
-          </li>
-          <li>
-            In the month grid, arrows move by month and row, Page Up and Page
-            Down by year, Enter picks, Escape closes. In two lists, Left and
-            Right move between years and months.
-          </li>
-          <li>
-            The snooze switch toggles with Space. Expected income saves with
-            Enter; Escape cancels.
-          </li>
-        </ul>
-      </section>
-    </main>
+      </main>
+    </SavedTheme>
   );
 }
