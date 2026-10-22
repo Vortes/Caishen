@@ -14,6 +14,8 @@ import {
   keyColumns,
   keyOf,
   postgresTypes,
+  rowIdOf,
+  StoredRowError,
   tableSpec,
   tableSpecs,
   toColumns,
@@ -40,8 +42,8 @@ export type RowQuery = {
   includeDeleted?: boolean;
 };
 
-function rowFilter(spec: TableSpec, workspaceId: string, query: RowQuery) {
-  const conditions = [Prisma.sql`x."workspaceId" = ${workspaceId}`];
+function rowFilter(spec: TableSpec, workspace: Prisma.Sql, query: RowQuery) {
+  const conditions = [Prisma.sql`x."workspaceId" = ${workspace}`];
   if (!query.includeDeleted) conditions.push(Prisma.sql`NOT x."deleted"`);
   if (query.since !== undefined)
     conditions.push(Prisma.sql`x."revision" > ${query.since}`);
@@ -53,21 +55,67 @@ function rowFilter(spec: TableSpec, workspaceId: string, query: RowQuery) {
 }
 
 // A table's stored columns as one JSON array, each row an object keyed by
-// column name. The household id is left out: every row has the same.
+// column name, in key order. The household id is left out: every row has
+// the same.
 function aggregate(spec: TableSpec, from: Prisma.Sql) {
-  const columns = [
+  const names = [
     ...(spec.key === "key" ? keyColumns(spec) : []),
     ...spec.columns,
-  ].map((column) => `x."${column.name}"`);
-  return Prisma.sql`SELECT ${spec.table}::text AS "table", (SELECT coalesce(json_agg(r), '[]'::json) FROM (SELECT ${Prisma.raw([...columns, 'x."revision"', 'x."deleted"'].join(", "))} ${from}) r) AS "rows"`;
+  ].map((column) => column.name);
+  const order = keyColumns(spec)
+    .map((column) => `r."${column.name}"`)
+    .join(", ");
+  return Prisma.sql`SELECT ${spec.table}::text AS "table", (SELECT coalesce(json_agg(r ORDER BY ${Prisma.raw(order)}), '[]'::json) FROM (SELECT ${Prisma.raw([...names, "revision", "deleted"].map((name) => `x."${name}"`).join(", "))} ${from}) r) AS "rows"`;
 }
+
+export type StoredIssue = {
+  path: (string | number)[];
+  code: string;
+  message: string;
+};
+
+/** A stored row whose columns can't be read. */
+export type UnreadableRow = {
+  table: TableName;
+  id: string;
+  issues: StoredIssue[];
+};
+
+// Each stored row, or why it can't be read, in the order read.
+function readStored(
+  results: { table: string; rows: Record<string, unknown>[] }[],
+): (WireRow | UnreadableRow)[] {
+  return results.flatMap(({ table, rows }) => {
+    const spec = tableSpec(table as TableName);
+    return rows.map((stored): WireRow | UnreadableRow => {
+      try {
+        return fromColumns(spec, stored);
+      } catch (error) {
+        if (!(error instanceof StoredRowError)) throw error;
+        return {
+          table: spec.table,
+          id: spec.key === "key" ? String(stored.key) : rowIdOf(spec, stored),
+          issues: [{ path: [], code: "custom", message: error.message }],
+        };
+      }
+    });
+  });
+}
+
+const isUnreadable = (row: WireRow | UnreadableRow): row is UnreadableRow =>
+  "issues" in row;
 
 function fromStored(
   results: { table: string; rows: Record<string, unknown>[] }[],
 ): WireRow[] {
-  return results.flatMap(({ table, rows }) => {
-    const spec = tableSpec(table as TableName);
-    return rows.map((stored) => fromColumns(spec, stored));
+  return readStored(results).map((row) => {
+    if (isUnreadable(row))
+      throw new StoredRowError(
+        tableSpec(row.table),
+        row.id,
+        row.issues[0]!.message,
+      );
+    return row;
   });
 }
 
@@ -86,12 +134,157 @@ export async function loadRows(
     tableSpecs.map((spec) =>
       aggregate(
         spec,
-        Prisma.sql`FROM ${identifier(spec.model)} x WHERE ${rowFilter(spec, workspaceId, query)}`,
+        Prisma.sql`FROM ${identifier(spec.model)} x WHERE ${rowFilter(spec, Prisma.sql`${workspaceId}`, query)}`,
       ),
     ),
     " UNION ALL ",
   )}`;
   return fromStored(results);
+}
+
+/**
+ * A member's household as of now, read in one statement: its revision, the
+ * revision browsers must reset before, and its rows, or null when the
+ * member has none. With `since`, only rows changed after that revision are
+ * read, deleted rows included; `since` is left out of the result when it
+ * can't be used (the member's household is another one, or rows were
+ * removed outright since), and every live row is read instead.
+ */
+export async function loadHouseholdRows(
+  db: Database,
+  userId: string,
+  since?: { workspaceId: string; since: number },
+): Promise<{
+  workspaceId: string;
+  revision: number;
+  resetRevision: number;
+  since?: number;
+  rows: WireRow[];
+  unreadable: UnreadableRow[];
+} | null> {
+  const read = async (delta?: typeof since) => {
+    const workspace = delta
+      ? Prisma.sql`(SELECT "id" FROM m WHERE "id" = ${delta.workspaceId} AND "resetRevision" <= ${delta.since})`
+      : Prisma.sql`(SELECT "id" FROM m)`;
+    const results = await db.$queryRaw<
+      { table: string; rows: Record<string, unknown>[] }[]
+    >`WITH m AS (
+        SELECT w."id", w."revision", w."resetRevision"
+        FROM "WorkspaceMember" wm JOIN "Workspace" w ON w."id" = wm."workspaceId"
+        WHERE wm."clerkUserId" = ${userId}
+      )
+      SELECT '' AS "table", (SELECT coalesce(json_agg(m), '[]'::json) FROM m) AS "rows"
+      UNION ALL ${Prisma.join(
+        tableSpecs.map((spec) =>
+          aggregate(
+            spec,
+            Prisma.sql`FROM ${identifier(spec.model)} x WHERE ${rowFilter(
+              spec,
+              workspace,
+              delta ? { since: delta.since, includeDeleted: true } : {},
+            )}`,
+          ),
+        ),
+        " UNION ALL ",
+      )}`;
+    const [meta] = results.find((result) => result.table === "")!.rows as {
+      id: string;
+      revision: number;
+      resetRevision: number;
+    }[];
+    if (!meta) return null;
+    const rows = readStored(results.filter((result) => result.table !== ""));
+    return {
+      workspaceId: meta.id,
+      revision: meta.revision,
+      resetRevision: meta.resetRevision,
+      rows: rows.filter((row): row is WireRow => !isUnreadable(row)),
+      unreadable: rows.filter(isUnreadable),
+    };
+  };
+  if (since) {
+    const delta = await read(since);
+    if (
+      !delta ||
+      (delta.workspaceId === since.workspaceId &&
+        delta.resetRevision <= since.since)
+    )
+      return delta && { ...delta, since: since.since };
+  }
+  return read();
+}
+
+/** Where a page of a pull ended: the last row's table and key. */
+export type PullPosition = { table: TableName; id: string };
+
+/**
+ * One page of the rows a partner's browser holds, as of a fixed revision:
+ * rows changed after `since` (deleted rows included), or with `since` null
+ * every live row. Rows are read in table order, then key order, starting
+ * after `after`. Rows changed after `revision` are left out; the browser
+ * learns of them by pulling from `revision` next.
+ */
+export async function pullRows(
+  db: Database,
+  input: {
+    workspaceId: string;
+    viewerId: string;
+    since: number | null;
+    revision: number;
+    after?: PullPosition;
+    limit: number;
+  },
+): Promise<{
+  rows: (WireRow | UnreadableRow)[];
+  next?: PullPosition;
+}> {
+  const start = input.after
+    ? tableSpecs.findIndex((spec) => spec.table === input.after!.table)
+    : 0;
+  if (start < 0) throw new Error("The pull position names no table");
+  const specs = tableSpecs.slice(start);
+  const results = await db.$queryRaw<
+    { table: string; rows: Record<string, unknown>[] }[]
+  >`${Prisma.join(
+    specs.map((spec) => {
+      const conditions = [
+        rowFilter(spec, Prisma.sql`${input.workspaceId}`, {
+          viewerId: input.viewerId,
+          ...(input.since === null
+            ? {}
+            : { since: input.since, includeDeleted: true }),
+        }),
+        Prisma.sql`x."revision" <= ${input.revision}`,
+      ];
+      const after = input.after;
+      if (after?.table === spec.table) {
+        const columns = keyColumns(spec);
+        conditions.push(
+          Prisma.sql`(${Prisma.raw(columns.map((column) => `x."${column.name}"`).join(", "))}) > (SELECT ${Prisma.raw(columns.map((column) => `k."${column.name}"`).join(", "))} FROM jsonb_to_record(${JSON.stringify(keyOf(spec, after.id))}::jsonb) AS k(${recordType(columns)}))`,
+        );
+      }
+      return aggregate(
+        spec,
+        Prisma.sql`FROM ${identifier(spec.model)} x WHERE ${Prisma.join(conditions, " AND ")} ORDER BY ${Prisma.raw(
+          keyColumns(spec)
+            .map((column) => `x."${column.name}"`)
+            .join(", "),
+        )} LIMIT ${input.limit + 1}`,
+      );
+    }),
+    " UNION ALL ",
+  )}`;
+  // Tables in order: the union's order isn't guaranteed.
+  const order = new Map(specs.map((spec, index) => [spec.table, index]));
+  results.sort(
+    (a, b) =>
+      order.get(a.table as TableName)! - order.get(b.table as TableName)!,
+  );
+  const rows = readStored(results);
+  if (rows.length <= input.limit) return { rows };
+  const page = rows.slice(0, input.limit);
+  const last = page.at(-1)!;
+  return { rows: page, next: { table: last.table, id: last.id } };
 }
 
 // Rows by table and id, deleted rows included, as they are now.
@@ -247,26 +440,32 @@ export async function writeChangeSet(
     baseRevision: number;
     changeSet: ChangeSet;
     operation: OperationRecord;
+    /**
+     * The household changed shape: every browser downloads all rows again.
+     * The revision moves past `after` too, so a browser holding a revision
+     * of another household can't mistake it for this one's.
+     */
+    reset?: { after: number };
   },
 ): Promise<{ revision: number; changeSet: ChangeSet }> {
-  const { workspaceId, baseRevision, changeSet, operation } = input;
+  const { workspaceId, baseRevision, changeSet, operation, reset } = input;
   if (changeSet.before.length !== changeSet.after.length)
     throw new Error("A change set pairs each row before with its row after");
   return inTransaction(db, async (tx) => {
+    const revision = Math.max(baseRevision, reset?.after ?? 0) + 1;
     // Taking the household row first serializes writers: a concurrent one
     // waits here, then finds the revision moved.
     const bumped = await tx.workspace.updateMany({
       where: { id: workspaceId, revision: baseRevision },
-      data: { revision: { increment: 1 } },
+      data: { revision, ...(reset ? { resetRevision: revision } : {}) },
     });
     if (bumped.count !== 1) {
-      const workspace = await tx.workspace.findUniqueOrThrow({
+      const workspace = await tx.workspace.findUnique({
         where: { id: workspaceId },
         select: { revision: true },
       });
-      throw new RevisionConflictError(workspace.revision);
+      throw new RevisionConflictError(workspace?.revision ?? 0);
     }
-    const revision = baseRevision + 1;
     const current = await loadKeys(tx, workspaceId, changeSet.after);
     const currentSet = toRowSet(current);
     changeSet.after.forEach((after, index) => {
@@ -334,6 +533,31 @@ export async function replaceRows(
       ", ",
     )} SELECT 1`;
     await writeRows(tx, workspaceId, rows, revision);
+  });
+}
+
+/**
+ * Replaces all of a household's rows with these at its next revision, and
+ * has every browser download them again: rows removed here leave no deleted
+ * rows behind. Development seeding uses it.
+ */
+export async function resetHouseholdRows(
+  db: Database,
+  workspaceId: string,
+  rows: WireRow[],
+): Promise<number> {
+  return inTransaction(db, async (tx) => {
+    const { revision } = await tx.workspace.update({
+      where: { id: workspaceId },
+      data: { revision: { increment: 1 } },
+      select: { revision: true },
+    });
+    await tx.workspace.update({
+      where: { id: workspaceId },
+      data: { resetRevision: revision },
+    });
+    await replaceRows(tx, workspaceId, rows, revision);
+    return revision;
   });
 }
 

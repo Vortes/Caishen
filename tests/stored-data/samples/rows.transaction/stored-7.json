@@ -1,0 +1,15 @@
+{
+  "id": "dev-seed:319:credit",
+  "accountId": "amex",
+  "date": "2026-10-12",
+  "amount": 1000,
+  "payee": "Posted statement credit",
+  "status": "posted",
+  "expenseMonth": "2026-10",
+  "revision": 1,
+  "reviewed": true,
+  "kind": "statement-credit",
+  "linkedId": "amex-offer",
+  "userId": "alex",
+  "sort": 85
+}

@@ -61,6 +61,7 @@ function harness() {
   let workspace: Workspace = {
     id: "workspace",
     revision: 0,
+    resetRevision: 0,
     book: jsonValue(fixture()) as Prisma.JsonValue,
     history: {},
     createdAt: now,

@@ -1,0 +1,10 @@
+{
+  "cadence": "weekly",
+  "behavior": "refill",
+  "amount": 15000,
+  "startMonth": "2026-08",
+  "weekday": 6,
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "groceries"
+}

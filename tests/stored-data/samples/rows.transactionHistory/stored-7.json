@@ -1,0 +1,12 @@
+{
+  "revision": 2,
+  "amount": -2700,
+  "status": "posted",
+  "date": "2026-10-11",
+  "payee": "Walgreens · voided charge",
+  "operationId": "dev-seed:331",
+  "reason": "removed",
+  "userId": "alex",
+  "transactionId": "voided-charge",
+  "sequence": 1
+}

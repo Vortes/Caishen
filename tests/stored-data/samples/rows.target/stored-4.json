@@ -1,0 +1,9 @@
+{
+  "cadence": "monthly",
+  "behavior": "refill",
+  "amount": 130000,
+  "startMonth": "2026-08",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "rent"
+}

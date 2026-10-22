@@ -1,0 +1,16 @@
+{
+  "id": "rent",
+  "participants": [
+    "alex",
+    "jordan"
+  ],
+  "weights": {
+    "alex": 1,
+    "jordan": 1
+  },
+  "categoryIds": {
+    "alex": "rent",
+    "jordan": "rent"
+  },
+  "sort": 0
+}

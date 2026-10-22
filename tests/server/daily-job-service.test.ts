@@ -48,6 +48,7 @@ function makeMember(
     workspace: {
       id: `workspace_${userId}`,
       revision: 0,
+      resetRevision: 0,
       history: {},
       book: JSON.parse(JSON.stringify(book)) as Prisma.JsonValue,
       createdAt: now,

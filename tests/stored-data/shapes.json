@@ -1777,5 +1777,1000 @@
     "$.before[].data.*": {
       "type": "unknown"
     }
+  },
+  "rows.member": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "name": "required",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    },
+    "$.name": {
+      "type": "string"
+    }
+  },
+  "rows.budgetSettings": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "emailEnabled": "required",
+        "emailHour": "required",
+        "startMonth": "required",
+        "timezone": "required",
+        "userId": "required"
+      }
+    },
+    "$.timezone": {
+      "type": "string"
+    },
+    "$.emailEnabled": {
+      "type": "boolean"
+    },
+    "$.emailHour": {
+      "type": "number"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.startMonth": {
+      "type": "string"
+    }
+  },
+  "rows.account": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "date": "required",
+        "id": "required",
+        "kind": "required",
+        "name": "required",
+        "openingBalance": "required",
+        "reconciled": "optional",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.name": {
+      "type": "string"
+    },
+    "$.kind": {
+      "type": "enum",
+      "values": [
+        "cash",
+        "credit",
+        "tracking"
+      ]
+    },
+    "$.openingBalance": {
+      "type": "number"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.reconciled": {
+      "type": "object",
+      "fields": {
+        "balance": "required",
+        "date": "required"
+      }
+    },
+    "$.reconciled.date": {
+      "type": "string"
+    },
+    "$.reconciled.balance": {
+      "type": "number"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.categoryGroup": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "name": "required",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    },
+    "$.name": {
+      "type": "string"
+    }
+  },
+  "rows.category": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "group": "required",
+        "id": "required",
+        "name": "required",
+        "pairedAccountId": "optional",
+        "pairedLoanId": "optional",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.name": {
+      "type": "string"
+    },
+    "$.group": {
+      "type": "string"
+    },
+    "$.pairedAccountId": {
+      "type": "string"
+    },
+    "$.pairedLoanId": {
+      "type": "string"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.target": {
+    "$": {
+      "type": "intersection"
+    },
+    "$&0": {
+      "type": "object",
+      "fields": {
+        "categoryId": "required",
+        "userId": "required"
+      }
+    },
+    "$&0.userId": {
+      "type": "string"
+    },
+    "$&0.categoryId": {
+      "type": "string"
+    },
+    "$&1": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "behavior": "required",
+        "cadence": "required",
+        "dueDate": "optional",
+        "monthDay": "optional",
+        "repeatEvery": "optional",
+        "repeatUnit": "optional",
+        "snoozedMonths": "optional",
+        "startMonth": "required",
+        "weekday": "optional"
+      }
+    },
+    "$&1.cadence": {
+      "type": "enum",
+      "values": [
+        "card-monthly",
+        "card-payoff",
+        "custom",
+        "loan",
+        "monthly",
+        "weekly",
+        "yearly"
+      ]
+    },
+    "$&1.behavior": {
+      "type": "enum",
+      "values": [
+        "balance",
+        "contribution",
+        "refill"
+      ]
+    },
+    "$&1.amount": {
+      "type": "number"
+    },
+    "$&1.startMonth": {
+      "type": "string"
+    },
+    "$&1.dueDate": {
+      "type": "string"
+    },
+    "$&1.weekday": {
+      "type": "number"
+    },
+    "$&1.monthDay": {
+      "type": "number"
+    },
+    "$&1.repeatEvery": {
+      "type": "number"
+    },
+    "$&1.repeatUnit": {
+      "type": "enum",
+      "values": [
+        "months",
+        "years"
+      ]
+    },
+    "$&1.snoozedMonths": {
+      "type": "array"
+    },
+    "$&1.snoozedMonths[]": {
+      "type": "string"
+    }
+  },
+  "rows.assignment": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "categoryId": "required",
+        "id": "required",
+        "month": "required",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.categoryId": {
+      "type": "string"
+    },
+    "$.month": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.expectedIncome": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "month": "required",
+        "userId": "required"
+      }
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.month": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    }
+  },
+  "rows.transaction": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "categoryId": "optional",
+        "date": "required",
+        "expenseMonth": "required",
+        "id": "required",
+        "kind": "required",
+        "linkedId": "optional",
+        "payee": "required",
+        "providerId": "optional",
+        "reconciled": "optional",
+        "removed": "optional",
+        "reviewed": "required",
+        "revision": "required",
+        "sharedCategoryId": "optional",
+        "sort": "required",
+        "status": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.accountId": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.payee": {
+      "type": "string"
+    },
+    "$.status": {
+      "type": "enum",
+      "values": [
+        "pending",
+        "posted"
+      ]
+    },
+    "$.categoryId": {
+      "type": "string"
+    },
+    "$.expenseMonth": {
+      "type": "string"
+    },
+    "$.sharedCategoryId": {
+      "type": "string"
+    },
+    "$.providerId": {
+      "type": "string"
+    },
+    "$.revision": {
+      "type": "number"
+    },
+    "$.reviewed": {
+      "type": "boolean"
+    },
+    "$.kind": {
+      "type": "enum",
+      "values": [
+        "adjustment",
+        "card-payment",
+        "income",
+        "loan-payment",
+        "purchase",
+        "refund",
+        "reimbursement",
+        "settlement",
+        "statement-credit",
+        "transfer"
+      ]
+    },
+    "$.linkedId": {
+      "type": "string"
+    },
+    "$.removed": {
+      "type": "boolean"
+    },
+    "$.reconciled": {
+      "type": "boolean"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.transactionShare": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "participantId": "required",
+        "share": "optional",
+        "transactionId": "required",
+        "userId": "required",
+        "weight": "optional"
+      }
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.transactionId": {
+      "type": "string"
+    },
+    "$.participantId": {
+      "type": "string"
+    },
+    "$.share": {
+      "type": "number"
+    },
+    "$.weight": {
+      "type": "number"
+    }
+  },
+  "rows.transactionHistory": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "combinedId": "optional",
+        "date": "required",
+        "operationId": "required",
+        "payee": "required",
+        "reason": "required",
+        "revision": "required",
+        "sequence": "required",
+        "status": "required",
+        "transactionId": "required",
+        "userId": "required"
+      }
+    },
+    "$.revision": {
+      "type": "number"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.status": {
+      "type": "enum",
+      "values": [
+        "pending",
+        "posted"
+      ]
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.payee": {
+      "type": "string"
+    },
+    "$.operationId": {
+      "type": "string"
+    },
+    "$.reason": {
+      "type": "enum",
+      "values": [
+        "categorized",
+        "created",
+        "merged",
+        "redone",
+        "removed",
+        "undone",
+        "updated"
+      ]
+    },
+    "$.combinedId": {
+      "type": "string"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.transactionId": {
+      "type": "string"
+    },
+    "$.sequence": {
+      "type": "number"
+    }
+  },
+  "rows.loan": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "categoryId": "required",
+        "id": "required",
+        "minimumPayment": "required",
+        "name": "required",
+        "principal": "required",
+        "sort": "required",
+        "userId": "required",
+        "variable": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.name": {
+      "type": "string"
+    },
+    "$.categoryId": {
+      "type": "string"
+    },
+    "$.principal": {
+      "type": "number"
+    },
+    "$.minimumPayment": {
+      "type": "number"
+    },
+    "$.variable": {
+      "type": "boolean"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.loanRate": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "annualRateBps": "required",
+        "effectiveDate": "required",
+        "loanId": "required",
+        "sequence": "required",
+        "userId": "required"
+      }
+    },
+    "$.effectiveDate": {
+      "type": "string"
+    },
+    "$.annualRateBps": {
+      "type": "number"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.loanId": {
+      "type": "string"
+    },
+    "$.sequence": {
+      "type": "number"
+    }
+  },
+  "rows.loanPayment": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "date": "required",
+        "id": "required",
+        "interest": "required",
+        "loanId": "required",
+        "principal": "required",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.principal": {
+      "type": "number"
+    },
+    "$.interest": {
+      "type": "number"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    },
+    "$.loanId": {
+      "type": "string"
+    }
+  },
+  "rows.reimbursement": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "id": "required",
+        "kind": "required",
+        "name": "required",
+        "sort": "required",
+        "transactionId": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.transactionId": {
+      "type": "string"
+    },
+    "$.name": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.kind": {
+      "type": "enum",
+      "values": [
+        "cash",
+        "statement-credit"
+      ]
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.reimbursementReceipt": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "date": "required",
+        "id": "required",
+        "reimbursementId": "required",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    },
+    "$.reimbursementId": {
+      "type": "string"
+    }
+  },
+  "rows.rule": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "enabled": "required",
+        "fromCategoryId": "required",
+        "id": "required",
+        "sort": "required",
+        "toCategoryId": "required",
+        "userId": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.fromCategoryId": {
+      "type": "string"
+    },
+    "$.toCategoryId": {
+      "type": "string"
+    },
+    "$.enabled": {
+      "type": "boolean"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.bankImport": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "connectionId": "required",
+        "error": "optional",
+        "logicalId": "required",
+        "record": "optional",
+        "resolved": "optional",
+        "reviews": "optional",
+        "sort": "required",
+        "userId": "required"
+      }
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    },
+    "$.connectionId": {
+      "type": "string"
+    },
+    "$.logicalId": {
+      "type": "string"
+    },
+    "$.record": {
+      "type": "unknown"
+    },
+    "$.resolved": {
+      "type": "unknown"
+    },
+    "$.error": {
+      "type": "string"
+    },
+    "$.reviews": {
+      "type": "array"
+    },
+    "$.reviews[]": {
+      "type": "unknown"
+    }
+  },
+  "rows.sharedCategory": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "categoryIds": "required",
+        "id": "required",
+        "participants": "required",
+        "sort": "required",
+        "weights": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.participants": {
+      "type": "array"
+    },
+    "$.participants[]": {
+      "type": "string"
+    },
+    "$.weights": {
+      "type": "record"
+    },
+    "$.weights.*": {
+      "type": "number"
+    },
+    "$.categoryIds": {
+      "type": "record"
+    },
+    "$.categoryIds.*": {
+      "type": "string"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.obligation": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "creditorId": "required",
+        "date": "optional",
+        "debtorId": "required",
+        "expenseMonth": "optional",
+        "id": "required",
+        "opening": "required",
+        "payee": "optional",
+        "payerId": "optional",
+        "sharedCategoryId": "required",
+        "sort": "required",
+        "transactionId": "optional"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.sharedCategoryId": {
+      "type": "string"
+    },
+    "$.debtorId": {
+      "type": "string"
+    },
+    "$.creditorId": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.expenseMonth": {
+      "type": "string"
+    },
+    "$.transactionId": {
+      "type": "string"
+    },
+    "$.payerId": {
+      "type": "string"
+    },
+    "$.payee": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.opening": {
+      "type": "boolean"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.settlement": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "date": "required",
+        "id": "required",
+        "payerId": "required",
+        "received": "required",
+        "recipientId": "required",
+        "sort": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.payerId": {
+      "type": "string"
+    },
+    "$.recipientId": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.received": {
+      "type": "boolean"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.settlementAllocation": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "kind": "required",
+        "obligationId": "required",
+        "sequence": "required",
+        "settlementId": "required"
+      }
+    },
+    "$.obligationId": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.kind": {
+      "type": "enum",
+      "values": [
+        "offset",
+        "payment"
+      ]
+    },
+    "$.settlementId": {
+      "type": "string"
+    },
+    "$.sequence": {
+      "type": "number"
+    }
+  },
+  "rows.partnerFact": {
+    "$": {
+      "type": "union"
+    },
+    "$|0": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "date": "required",
+        "expenseMonth": "required",
+        "id": "required",
+        "kind": "required",
+        "payee": "required",
+        "payerId": "required",
+        "sharedCategoryId": "required",
+        "shares": "optional",
+        "sort": "required",
+        "status": "required",
+        "viewerId": "required"
+      }
+    },
+    "$|0.id": {
+      "type": "string"
+    },
+    "$|0.amount": {
+      "type": "number"
+    },
+    "$|0.date": {
+      "type": "string"
+    },
+    "$|0.expenseMonth": {
+      "type": "string"
+    },
+    "$|0.payee": {
+      "type": "string"
+    },
+    "$|0.status": {
+      "type": "enum",
+      "values": [
+        "pending",
+        "posted"
+      ]
+    },
+    "$|0.shares": {
+      "type": "record"
+    },
+    "$|0.shares.*": {
+      "type": "number"
+    },
+    "$|0.viewerId": {
+      "type": "string"
+    },
+    "$|0.kind": {
+      "type": "enum",
+      "values": [
+        "purchase"
+      ]
+    },
+    "$|0.sort": {
+      "type": "number"
+    },
+    "$|0.payerId": {
+      "type": "string"
+    },
+    "$|0.sharedCategoryId": {
+      "type": "string"
+    },
+    "$|1": {
+      "type": "object",
+      "fields": {
+        "date": "required",
+        "kind": "required",
+        "settlementId": "required",
+        "viewerId": "required"
+      }
+    },
+    "$|1.viewerId": {
+      "type": "string"
+    },
+    "$|1.kind": {
+      "type": "enum",
+      "values": [
+        "receipt"
+      ]
+    },
+    "$|1.settlementId": {
+      "type": "string"
+    },
+    "$|1.date": {
+      "type": "string"
+    },
+    "$|2": {
+      "type": "object",
+      "fields": {
+        "kind": "required",
+        "payerId": "required",
+        "sharedCategoryId": "required",
+        "sort": "required",
+        "viewerId": "required"
+      }
+    },
+    "$|2.viewerId": {
+      "type": "string"
+    },
+    "$|2.kind": {
+      "type": "enum",
+      "values": [
+        "activity"
+      ]
+    },
+    "$|2.payerId": {
+      "type": "string"
+    },
+    "$|2.sharedCategoryId": {
+      "type": "string"
+    },
+    "$|2.sort": {
+      "type": "number"
+    }
   }
 }

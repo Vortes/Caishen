@@ -604,7 +604,7 @@ export type Book = {
 };
 
 export const storedIdentifier = z.string().min(1).max(1024);
-const historySchema = z.object({
+export const transactionHistorySchema = z.object({
   revision: z.number().int().nonnegative(),
   amount: cents,
   status: z.enum(["pending", "posted"]),
@@ -652,7 +652,7 @@ export const transactionSchema = z.object({
   linkedId: storedIdentifier.optional(),
   removed: z.boolean().optional(),
   reconciled: z.boolean().optional(),
-  history: z.array(historySchema),
+  history: z.array(transactionHistorySchema),
 });
 const loanSchema = z.object({
   id: storedIdentifier,
@@ -678,7 +678,7 @@ const loanSchema = z.object({
     }),
   ),
 });
-const budgetShape = z.object({
+export const budgetShape = z.object({
   userId: storedIdentifier,
   name: z.string(),
   startMonth: monthSchema,
@@ -748,48 +748,54 @@ const budgetShape = z.object({
 // budget, so one partner's budget can be read without the other's.
 export const budgetSchema: z.ZodType<Budget, z.ZodTypeDef, unknown> =
   budgetShape.superRefine((budget, context) => {
-    for (const collection of [
-      budget.accounts,
-      budget.categories,
-      budget.transactions,
-      budget.loans,
-      budget.reimbursements,
-    ])
-      if (new Set(collection.map((item) => item.id)).size !== collection.length)
-        context.addIssue({
-          code: "custom",
-          message: "Duplicate ledger storedIdentifier",
-        });
-    if (
-      budget.transactions.some(
-        (transaction) =>
-          !transaction.removed &&
-          (!budget.accounts.some(
-            (account) => account.id === transaction.accountId,
-          ) ||
-            (transaction.categoryId &&
-              !budget.categories.some(
-                (category) => category.id === transaction.categoryId,
-              ))),
-      )
-    )
-      context.addIssue({
-        code: "custom",
-        message: "Invalid transaction reference",
-      });
-    if (
-      budget.assignments.some(
-        (assignment) =>
-          !budget.categories.some(
-            (category) => category.id === assignment.categoryId,
-          ),
-      )
-    )
-      context.addIssue({
-        code: "custom",
-        message: "Invalid assignment reference",
-      });
+    for (const message of budgetReferenceIssues(budget))
+      context.addIssue({ code: "custom", message });
   });
+/**
+ * What makes a budget's records inconsistent with each other: duplicate
+ * ids, and transactions or assignments that name an account or category the
+ * budget doesn't have.
+ */
+export function budgetReferenceIssues(
+  budget: Pick<
+    Budget,
+    | "accounts"
+    | "categories"
+    | "transactions"
+    | "loans"
+    | "reimbursements"
+    | "assignments"
+  >,
+): string[] {
+  const issues: string[] = [];
+  for (const collection of [
+    budget.accounts,
+    budget.categories,
+    budget.transactions,
+    budget.loans,
+    budget.reimbursements,
+  ])
+    if (new Set(collection.map((item) => item.id)).size !== collection.length)
+      issues.push("Duplicate ledger storedIdentifier");
+  const accounts = new Set(budget.accounts.map((account) => account.id));
+  const categories = new Set(budget.categories.map((category) => category.id));
+  if (
+    budget.transactions.some(
+      (transaction) =>
+        !transaction.removed &&
+        (!accounts.has(transaction.accountId) ||
+          (transaction.categoryId && !categories.has(transaction.categoryId))),
+    )
+  )
+    issues.push("Invalid transaction reference");
+  if (
+    budget.assignments.some(
+      (assignment) => !categories.has(assignment.categoryId),
+    )
+  )
+    issues.push("Invalid assignment reference");
+  return issues;
+}
 // The stored data both partners share: shared categories, what they owe each
 // other, their settlements, and the command audit.
 export const householdSchema = z.object({

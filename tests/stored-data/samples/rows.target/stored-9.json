@@ -1,0 +1,12 @@
+{
+  "cadence": "custom",
+  "behavior": "contribution",
+  "amount": 16500,
+  "startMonth": "2026-08",
+  "dueDate": "2026-12-15",
+  "repeatEvery": 10,
+  "repeatUnit": "years",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "passport"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "target-refund",
+  "accountId": "checking",
+  "date": "2026-10-11",
+  "amount": 1500,
+  "payee": "Target · returned household item",
+  "status": "posted",
+  "categoryId": "shopping",
+  "expenseMonth": "2026-10",
+  "revision": 2,
+  "reviewed": true,
+  "kind": "refund",
+  "userId": "alex",
+  "sort": 86
+}

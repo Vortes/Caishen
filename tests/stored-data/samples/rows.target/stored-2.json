@@ -1,0 +1,9 @@
+{
+  "cadence": "card-monthly",
+  "behavior": "contribution",
+  "amount": 20000,
+  "startMonth": "2026-08",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "card:amex"
+}

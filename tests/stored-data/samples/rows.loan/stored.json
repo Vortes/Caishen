@@ -1,0 +1,10 @@
+{
+  "id": "student",
+  "name": "Nelnet student loan",
+  "categoryId": "student-payment",
+  "principal": 2450000,
+  "minimumPayment": 32000,
+  "variable": true,
+  "userId": "alex",
+  "sort": 0
+}

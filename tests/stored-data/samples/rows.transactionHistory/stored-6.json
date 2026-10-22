@@ -1,0 +1,12 @@
+{
+  "revision": 3,
+  "amount": -3600,
+  "status": "posted",
+  "date": "2026-10-12",
+  "payee": "Garden center",
+  "operationId": "sample-redo",
+  "reason": "redone",
+  "userId": "alex",
+  "transactionId": "sample-plant",
+  "sequence": 2
+}

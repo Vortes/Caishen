@@ -1,0 +1,14 @@
+{
+  "id": "salary-2026-08-1",
+  "accountId": "checking",
+  "date": "2026-08-01",
+  "amount": 325000,
+  "payee": "Cedar Labs · payroll",
+  "status": "posted",
+  "expenseMonth": "2026-08",
+  "revision": 2,
+  "reviewed": true,
+  "kind": "income",
+  "userId": "alex",
+  "sort": 0
+}

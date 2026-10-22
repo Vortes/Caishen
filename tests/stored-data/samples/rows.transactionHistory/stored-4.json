@@ -1,0 +1,13 @@
+{
+  "revision": 2,
+  "amount": -7500,
+  "status": "posted",
+  "date": "2026-10-10",
+  "payee": "Costco · household supplies",
+  "operationId": "dev-seed:329",
+  "reason": "merged",
+  "combinedId": "duplicate-copy",
+  "userId": "alex",
+  "transactionId": "duplicate-original",
+  "sequence": 2
+}

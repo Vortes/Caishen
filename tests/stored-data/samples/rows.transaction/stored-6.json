@@ -1,0 +1,15 @@
+{
+  "id": "dev-seed:313:receipt",
+  "accountId": "checking",
+  "date": "2026-10-10",
+  "amount": 20000,
+  "payee": "Cedar Labs · conference hotel",
+  "status": "posted",
+  "expenseMonth": "2026-10",
+  "revision": 1,
+  "reviewed": true,
+  "kind": "reimbursement",
+  "linkedId": "work-hotel",
+  "userId": "alex",
+  "sort": 81
+}

@@ -1,0 +1,15 @@
+{
+  "id": "dev-seed:132:payment",
+  "accountId": "checking",
+  "date": "2026-08-20",
+  "amount": -133621,
+  "payee": "Settlement with Demo · Jordan’s budget",
+  "status": "posted",
+  "expenseMonth": "2026-08",
+  "revision": 1,
+  "reviewed": true,
+  "kind": "settlement",
+  "linkedId": "settlement-2026-08",
+  "userId": "alex",
+  "sort": 26
+}

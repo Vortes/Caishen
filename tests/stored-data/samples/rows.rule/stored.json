@@ -1,0 +1,8 @@
+{
+  "id": "dining-from-emergency",
+  "fromCategoryId": "emergency",
+  "toCategoryId": "dining",
+  "enabled": true,
+  "userId": "alex",
+  "sort": 0
+}

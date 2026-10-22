@@ -1,0 +1,9 @@
+{
+  "id": "amex",
+  "name": "Demo · American Express",
+  "kind": "credit",
+  "openingBalance": -42500,
+  "date": "2026-08-01",
+  "userId": "alex",
+  "sort": 2
+}

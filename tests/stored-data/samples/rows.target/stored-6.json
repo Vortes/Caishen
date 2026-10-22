@@ -1,0 +1,10 @@
+{
+  "cadence": "yearly",
+  "behavior": "contribution",
+  "amount": 120000,
+  "startMonth": "2026-08",
+  "dueDate": "2027-03-01",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "insurance"
+}

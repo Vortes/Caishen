@@ -7,6 +7,8 @@ import {
   householdSchema,
   transactionSchema,
 } from "../../src/domain/engine";
+import { rowDataSchemas } from "../../src/domain/row-schemas";
+import { tableNames } from "../../src/domain/rows";
 import { openPersonalBudget } from "../../src/domain/stored-book";
 import {
   reconciliationResultSchema,
@@ -28,15 +30,16 @@ import {
 // enum value or field in one release, never make an optional field required,
 // and ship the release that reads a new value before any release writes it.
 //
-// These tests enforce that for every JSON column:
+// These tests enforce that for every JSON column and every row table:
 // - each column's reader schema is listed below (a new Json column fails
-//   until it is),
+//   until it is); each row table's is its data schema in
+//   src/domain/row-schemas.ts,
 // - tests/stored-data/shapes.json records every path, field, and enum value
 //   readers accept, and may only grow,
 // - tests/stored-data/samples holds stored records that must always load,
 //   and between them use every recorded enum value.
 
-const columns: Record<string, ZodTypeAny> = {
+const jsonColumns: Record<string, ZodTypeAny> = {
   "Workspace.book": bookSchema,
   "Workspace.history": workspaceHistorySchema,
   "BankConnection.imports": importStateSchema,
@@ -55,6 +58,12 @@ const columns: Record<string, ZodTypeAny> = {
   "Operation.command": operationCommandSchema,
   "Operation.changeSet": changeSetSchema,
 };
+// Row tables store their data as columns: kinds and statuses are text, and
+// their values may only grow like any stored enum.
+const rowTables: Record<string, ZodTypeAny> = Object.fromEntries(
+  tableNames.map((table) => [`rows.${table}`, rowDataSchemas[table]]),
+);
+const columns = { ...jsonColumns, ...rowTables };
 
 const directory = new URL("../stored-data/", import.meta.url);
 const shapesFile = new URL("shapes.json", directory);
@@ -124,6 +133,10 @@ function describe(
     });
     for (const [name, field] of Object.entries(shape))
       describe(field, `${path}.${name}`, out);
+  } else if (inner instanceof z.ZodIntersection) {
+    add({ type: "intersection" });
+    describe(inner._def.left as ZodTypeAny, `${path}&0`, out);
+    describe(inner._def.right as ZodTypeAny, `${path}&1`, out);
   } else if (inner instanceof z.ZodArray) {
     add({ type: "array" });
     describe(inner.element as ZodTypeAny, `${path}[]`, out);
@@ -191,7 +204,10 @@ function observe(
         `${path}.${name}`,
         out,
       );
-  else if (inner instanceof z.ZodArray)
+  else if (inner instanceof z.ZodIntersection) {
+    observe(inner._def.left as ZodTypeAny, value, `${path}&0`, out);
+    observe(inner._def.right as ZodTypeAny, value, `${path}&1`, out);
+  } else if (inner instanceof z.ZodArray)
     for (const item of value as unknown[])
       observe(inner.element as ZodTypeAny, item, `${path}[]`, out);
   else if (inner instanceof z.ZodRecord)
@@ -294,7 +310,7 @@ void test("every Json column in the Prisma schema has a registered reader schema
   );
   assert.deepEqual(
     json.sort(),
-    Object.keys(columns).sort(),
+    Object.keys(jsonColumns).sort(),
     "List each Json column with the schema its readers parse it with in tests/server/stored-data.test.ts, and add a stored sample of it to tests/stored-data/samples/.",
   );
 });
