@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import type { TRPC_ERROR_CODE_KEY } from "@trpc/server/rpc";
 
 export type SyncErrorKind =
-  "rejected" | "conflict" | "revertRefused" | "staleClient";
+  "rejected" | "conflict" | "revertRefused" | "staleClient" | "noBudget";
 
 /**
  * A refusal the browser can act on, sent as `data.caishen` on the error
@@ -25,6 +25,7 @@ const refusalCodes: Record<SyncErrorKind, TRPC_ERROR_CODE_KEY> = {
   conflict: "CONFLICT",
   revertRefused: "CONFLICT",
   staleClient: "PRECONDITION_FAILED",
+  noBudget: "NOT_FOUND",
 };
 
 export function refusal(

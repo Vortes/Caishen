@@ -6,7 +6,9 @@ import { SyncError, type PullResult, type SyncTransport } from "./transport";
 
 // Brings the store up to the server's revision with sync.pull. Only one
 // pull runs at a time; requests made meanwhile share one follow-up pull.
-// A failed pull is retried with backoff until one succeeds.
+// A failed pull is retried with backoff until one succeeds. A user without
+// a budget isn't pulled for again until a hint (focus, another tab, an
+// answer from the server) suggests one may exist.
 
 export type SyncControllerOptions = {
   clientBuild: string;
@@ -36,7 +38,10 @@ export class SyncController {
    */
   request(revision?: number): Promise<void> {
     const held = this.store.confirmedRevision;
-    if (revision !== undefined && held !== null && revision <= held)
+    if (
+      this.store.halted ||
+      (revision !== undefined && held !== null && revision <= held)
+    )
       return Promise.resolve();
     if (this.running) {
       this.again = true;
@@ -47,7 +52,7 @@ export class SyncController {
         do {
           this.again = false;
           await this.pullOnce();
-        } while (this.again && !this.stopped);
+        } while (this.again && !this.stopped && !this.store.halted);
       } finally {
         this.running = null;
       }
@@ -105,7 +110,7 @@ export class SyncController {
   }
 
   private async pullOnce() {
-    if (this.stopped) return;
+    if (this.stopped || this.store.halted) return;
     this.store.setSync({ updating: true });
     try {
       this.store.applyPull(await this.download());
@@ -113,10 +118,17 @@ export class SyncController {
       this.store.setSync({ updating: false, refreshFailed: false });
     } catch (error) {
       this.store.setSync({ updating: false });
-      if (error instanceof SyncError && error.kind === "staleClient") {
-        this.store.setSync({ staleClient: true });
-        this.stop();
-        return;
+      if (error instanceof SyncError) {
+        if (error.kind === "staleClient" || error.kind === "signedOut") {
+          this.store.setSync({ [error.kind]: true, refreshFailed: false });
+          return;
+        }
+        if (error.kind === "noBudget") {
+          this.failures = 0;
+          this.store.setSync({ refreshFailed: false });
+          this.store.markNoBudget();
+          return;
+        }
       }
       this.failures++;
       if (this.failures >= ATTENTION_AFTER_FAILURES)
@@ -129,13 +141,40 @@ export class SyncController {
     }
   }
 
-  // Every page of one pull, which the server reads at one revision.
+  /**
+   * What changed since the revision the store holds, taken in whole. A pull
+   * of one page is one consistent read. Later pages leave out rows changed
+   * after the first page's revision, so what several pages bring can hold
+   * a row without its parent; the changes since that revision are pulled
+   * too, until they come in one page, before any of it is shown.
+   */
   private async download(): Promise<Omit<PullResult, "nextCursor">> {
-    const since = this.store.confirmedRevision;
+    let { pages, ...result } = await this.pages(this.store.confirmedRevision);
+    while (pages > 1) {
+      const next = await this.pages(result.revision);
+      pages = next.pages;
+      result = {
+        revision: next.revision,
+        rows: next.reset ? next.rows : [...result.rows, ...next.rows],
+        reset: result.reset || next.reset,
+        confirmedOperationIds: [
+          ...result.confirmedOperationIds,
+          ...next.confirmedOperationIds,
+        ],
+      };
+    }
+    return result;
+  }
+
+  // Every page of one pull, which the server reads at one revision.
+  private async pages(
+    since: number | null,
+  ): Promise<Omit<PullResult, "nextCursor"> & { pages: number }> {
     const rows: WireRow[] = [];
     const confirmed: string[] = [];
     let cursor: string | undefined;
     let first: PullResult | undefined;
+    let pages = 0;
     do {
       const page = await this.transport.pull({
         since,
@@ -145,6 +184,7 @@ export class SyncController {
       if (first && page.revision !== first.revision)
         throw new Error("Pull pages came from different revisions");
       first ??= page;
+      pages++;
       rows.push(...page.rows);
       confirmed.push(...page.confirmedOperationIds);
       cursor = page.nextCursor;
@@ -154,6 +194,7 @@ export class SyncController {
       rows,
       reset: first.reset,
       confirmedOperationIds: confirmed,
+      pages,
     };
   }
 }

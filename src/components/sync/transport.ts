@@ -50,11 +50,26 @@ export type SyncTransport = {
 };
 
 /**
- * A refusal the server decided. Anything else a transport throws is treated
- * as an unknown outcome and retried with the same operation id.
+ * An answer that settles a request: the same request can't succeed by
+ * being sent again. Anything else a transport throws (no connection, a
+ * timeout, a server error) is an unknown outcome, and the command is
+ * retried with the same operation id.
+ *
+ * - rejected: the server turned the command down, or could never accept
+ *   the request at all (invalid input). It is dropped and rolled back.
+ * - conflict, revertRefused: the household changed under the command.
+ * - staleClient: the server needs a newer app; syncing stops.
+ * - noBudget: the user has no budget to sync yet; pulls wait for a hint.
+ * - signedOut: the user is signed out or may no longer use Caishen;
+ *   syncing stops and unsaved commands stay pending.
  */
 export type SyncErrorKind =
-  "rejected" | "conflict" | "revertRefused" | "staleClient";
+  | "rejected"
+  | "conflict"
+  | "revertRefused"
+  | "staleClient"
+  | "noBudget"
+  | "signedOut";
 
 export class SyncError extends Error {
   constructor(

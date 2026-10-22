@@ -78,13 +78,7 @@ export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
       query.state.data?.status === "maintenance" ? 60_000 : false,
   });
 
-  if (isLoaded && !userId)
-    return (
-      <Status icon={<LogInIcon size={18} />}>
-        <strong>Sign in to see your budget here.</strong>
-        <a href="/sign-in?redirect_url=/prototype/app-shell">Sign in</a>
-      </Status>
-    );
+  if (isLoaded && !userId) return <SignIn />;
   const skeleton = (
     <ShellSkeleton settings={settings} month={monthName(month)} />
   );
@@ -163,6 +157,7 @@ function LiveBudget({
         {MAINTENANCE_DETAIL}
       </Status>
     );
+  if (snapshot.signedOut && snapshot.status !== "ready") return <SignIn />;
   if (snapshot.staleClient && snapshot.status !== "ready")
     return (
       <Status icon={<RotateCwIcon size={18} />}>
@@ -488,6 +483,19 @@ function SyncToasts({
   client: BudgetClient;
   snapshot: BudgetSnapshot;
 }) {
+  if (snapshot.signedOut)
+    return (
+      <Toast
+        tone="attention"
+        action={
+          <Button size="sm" asChild>
+            <a href={SIGN_IN_URL}>Sign in</a>
+          </Button>
+        }
+      >
+        You’ve been signed out. Sign in to keep saving your changes.
+      </Toast>
+    );
   if (snapshot.staleClient)
     return (
       <Toast
@@ -534,6 +542,17 @@ function SyncToasts({
 
 function message(result: RunResult): string | null {
   return result.ok ? null : result.message;
+}
+
+const SIGN_IN_URL = "/sign-in?redirect_url=/prototype/app-shell";
+
+function SignIn() {
+  return (
+    <Status icon={<LogInIcon size={18} />}>
+      <strong>Sign in to see your budget here.</strong>
+      <a href={SIGN_IN_URL}>Sign in</a>
+    </Status>
+  );
 }
 
 function Status({ icon, children }: { icon: ReactNode; children: ReactNode }) {

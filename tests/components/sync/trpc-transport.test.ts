@@ -1,5 +1,6 @@
 import { createTRPCClient } from "@trpc/client";
 import { TRPCError } from "@trpc/server";
+import { ZodError } from "zod";
 import { expect, test } from "vitest";
 import {
   clientBuild,
@@ -130,6 +131,9 @@ test("a server-only operation the server turned down is refused, not retried", a
     crashed: () => {
       throw new Error("Database unavailable");
     },
+    busy: () => {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
+    },
   };
   const outcomes: Record<string, unknown> = {};
   for (const [name, fail] of Object.entries(errors)) {
@@ -148,8 +152,148 @@ test("a server-only operation the server turned down is refused, not retried", a
   expect(outcomes).toEqual({
     notFound: "rejected",
     precondition: "rejected",
-    // Signing in again or a server that recovers can still save it.
-    unauthorized: "unknown",
+    unauthorized: "signedOut",
+    // A server that recovers can still save it.
     crashed: "unknown",
+    busy: "unknown",
   });
+});
+
+const invalidInput = () =>
+  new TRPCError({
+    code: "BAD_REQUEST",
+    message: JSON.stringify([{ path: ["command", "amount"] }]),
+    cause: new ZodError([
+      {
+        code: "invalid_type",
+        expected: "number",
+        received: "string",
+        path: ["command", "amount"],
+        message: "Expected number, received string",
+      },
+    ]),
+  });
+
+test("a request the server can never accept is refused, and a lost sign-in stops syncing, for commands and pulls alike", async () => {
+  const errors: Record<string, () => never> = {
+    invalid: () => {
+      throw invalidInput();
+    },
+    unreadable: () => {
+      throw new TRPCError({ code: "PARSE_ERROR" });
+    },
+    signedOut: () => {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    },
+    inactive: () => {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This Caishen account is inactive.",
+      });
+    },
+    crashed: () => {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+    },
+    maintenance: () => {
+      throw new TRPCError({ code: "SERVICE_UNAVAILABLE" });
+    },
+    timedOut: () => {
+      throw new TRPCError({ code: "TIMEOUT" });
+    },
+    busy: () => {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
+    },
+  };
+  const outcome = (error: unknown) =>
+    error instanceof SyncError ? `${error.kind}: ${error.message}` : "unknown";
+  for (const call of ["execute", "pull"] as const) {
+    const outcomes: Record<string, string> = {};
+    for (const [name, fail] of Object.entries(errors)) {
+      const { transport, stop } = connect({
+        [call === "execute" ? "budget.execute" : "sync.pull"]: fail,
+      });
+      outcomes[name] = await (
+        call === "execute"
+          ? transport.execute({
+              command: food("a1", 100),
+              baseRevision: 0,
+              clientId: "tab",
+            })
+          : transport.pull({ since: null, clientBuild })
+      ).then(() => "answered", outcome);
+      stop();
+    }
+    expect(outcomes, call).toEqual({
+      invalid:
+        "rejected: Caishen couldn’t read this change, so it wasn’t saved.",
+      unreadable:
+        "rejected: Caishen couldn’t read this change, so it wasn’t saved.",
+      signedOut: "signedOut: Sign in to keep saving your changes.",
+      inactive: "signedOut: This Caishen account is inactive.",
+      crashed: "unknown",
+      maintenance: "unknown",
+      timedOut: "unknown",
+      busy: "unknown",
+    });
+  }
+});
+
+test("someone without a budget is told so, not left retrying", async () => {
+  const { server, transport, stop } = connect();
+  server.withoutBudget.add("alex");
+  const refused = await transport
+    .pull({ since: null, clientBuild })
+    .catch((error: unknown) => error);
+  expect(refused).toBeInstanceOf(SyncError);
+  expect(refused).toMatchObject({ kind: "noBudget" });
+  stop();
+});
+
+test("sync calls go alone so each answer carries the revision; other calls are batched and still report it", async () => {
+  const server = new FakeServer(household());
+  const requests: string[] = [];
+  const served = componentFetch(server, "alex", {
+    "budget.invite": () => ({ code: "invite" }),
+    "budget.sync": () => ({ synced: true }),
+  });
+  const client = createTRPCClient<AppRouter>({
+    links: appLinks({
+      url: "http://component.invalid/api/trpc",
+      fetch: (address, init) => {
+        const url = new URL(
+          address instanceof Request ? address.url : address.toString(),
+        );
+        requests.push(
+          `${url.pathname.replace("/api/trpc/", "")}${url.searchParams.has("batch") ? " (batch)" : ""}`,
+        );
+        return served(address, init);
+      },
+    }),
+  });
+  const revisions: (number | undefined)[] = [];
+  const stop = serverRevisions.subscribe((hint) =>
+    revisions.push(hint.revision),
+  );
+  const transport = trpcTransport(client);
+
+  await Promise.all([
+    transport.execute({
+      command: food("a1", 100),
+      baseRevision: 0,
+      clientId: "tab",
+    }),
+    transport.pull({ since: null, clientBuild }),
+  ]);
+  expect(requests.sort()).toEqual(["budget.execute", "sync.pull"]);
+  expect(revisions).toEqual([1]);
+
+  requests.length = 0;
+  server.act("jordan", food("j1", 500));
+  await Promise.all([
+    client.budget.invite.mutate(),
+    client.budget.sync.mutate(),
+  ]);
+  expect(requests).toEqual(["budget.invite,budget.sync (batch)"]);
+  expect(revisions).toEqual([1, 2, 2]);
+  stop();
 });

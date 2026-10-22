@@ -18,6 +18,8 @@ import {
   households,
   writeOperation,
 } from "../../src/server/storage/households";
+import { pull } from "../../src/server/services/pull";
+import type { Database } from "../../src/server/services/household";
 import {
   findOperation,
   pruneOperations,
@@ -473,4 +475,86 @@ void test("a server instance holding an old copy of the household answers from t
   );
   assert.equal(mine.revision, written.revision + 1);
   assert.equal(mine.rebased, true);
+});
+
+void test("someone without a budget is told so", async () => {
+  const stranger = caller(`test-sync-stranger-${run}`);
+  users.push(`test-sync-stranger-${run}`);
+  assert.equal(
+    (
+      await refusalOf(
+        stranger.api.sync.pull({ since: null, clientBuild: build }),
+      )
+    )?.kind,
+    "noBudget",
+  );
+});
+
+void test("a pull reads one revision even when a change commits while it reads", async () => {
+  const before = await pullAll(alex.api, null);
+  // Alex renames the budget just after the pull read the household's
+  // revision, before it reads the rows.
+  let renamed: Promise<unknown> | undefined;
+  const racing = (client: Database): Database =>
+    new Proxy(client, {
+      get(target, property, receiver) {
+        const value: unknown = Reflect.get(target, property, receiver);
+        if (property === "workspaceMember")
+          return new Proxy(value as object, {
+            get(members, method, membersReceiver) {
+              const original: unknown = Reflect.get(
+                members,
+                method,
+                membersReceiver,
+              );
+              if (method !== "findUnique" || typeof original !== "function")
+                return original;
+              return async (...args: unknown[]) => {
+                const found: unknown = await original.apply(members, args);
+                renamed ??= execute(
+                  alex,
+                  {
+                    type: "settings.update",
+                    id: randomUUID(),
+                    name: "Renamed",
+                  },
+                  before.revision,
+                );
+                await renamed;
+                return found;
+              };
+            },
+          });
+        if (property === "$transaction" && typeof value === "function")
+          return (callback: unknown, ...rest: unknown[]) =>
+            typeof callback === "function"
+              ? (value as (...a: unknown[]) => unknown).call(
+                  target,
+                  (tx: Database) =>
+                    (callback as (tx: Database) => unknown)(racing(tx)),
+                  ...rest,
+                )
+              : (value as (...a: unknown[]) => unknown).call(
+                  target,
+                  callback,
+                  ...rest,
+                );
+        return value;
+      },
+    });
+  const page = await pull(racing(db), alexId, {
+    since: null,
+    clientBuild: build,
+  });
+  assert.ok(renamed, "the change ran during the pull");
+  assert.equal(page.revision, before.revision);
+  assert.equal(page.nextCursor, undefined);
+  // Every row as it stood at that revision: none changed by the rename is
+  // missing, and the rename comes with the next pull.
+  const keys = (rows: WireRow[]) =>
+    rows.map((row) => `${row.table} ${row.id} ${row.revision}`).sort();
+  assert.deepEqual(keys(page.rows), keys(before.rows));
+  const after = await pullAll(alex.api, page.revision);
+  assert.ok(after.rows.length > 0);
+  assert.ok(after.rows.every((row) => row.revision === page.revision + 1));
 });

@@ -64,7 +64,6 @@ export class FakeServer {
   revision = 0;
   rows: RowSet;
   readonly operations = new Map<string, Operation>();
-  private readonly history = new Map<number, RowSet>();
   /** Rows per pull page. */
   pageSize = Number.POSITIVE_INFINITY;
   /** Pulls since an older revision than this reset the browser. */
@@ -77,10 +76,13 @@ export class FakeServer {
   /** Answers staleClient to any other build. */
   requiredBuild?: string;
   readonly pulls: { viewerId: string; input: PullInput }[] = [];
+  /** Runs as each pull page is asked for, before the server reads it. */
+  onPull?: (input: PullInput) => void;
+  /** People who haven't created a budget yet. */
+  readonly withoutBudget = new Set<string>();
 
   constructor(book: Book) {
     this.rows = toRowSet(bookToRows(book));
-    this.history.set(0, this.rows);
   }
 
   book(): Book {
@@ -119,24 +121,37 @@ export class FakeServer {
     };
   }
 
+  // Like the server, a pull's later pages read the rows as they are now,
+  // leaving out rows changed after the pull's revision: those come with
+  // the next pull. The cursor is the last row sent, by table and id.
   pull(viewerId: string, input: PullInput): PullResult {
     this.pulls.push({ viewerId, input });
+    this.onPull?.(input);
     if (this.requiredBuild && input.clientBuild !== this.requiredBuild)
       throw new SyncError("staleClient", "Reload to get the latest version");
-    const [revisionText, offsetText] = (input.cursor ?? "").split(":");
-    const revision = input.cursor ? Number(revisionText) : this.revision;
-    const rows = this.history.get(revision)!;
+    if (this.withoutBudget.has(viewerId))
+      throw new SyncError("noBudget", "Create your personal budget first.");
+    const cursor = input.cursor?.split("\n");
+    const revision = cursor ? Number(cursor[0]) : this.revision;
+    const after = cursor?.[1];
     const reset = input.since !== null && input.since < this.oldestDelta;
     const since = reset ? null : input.since;
-    const changed = rowsIn(rows)
+    const key = (row: { table: string; id: string }) =>
+      `${row.table} ${row.id}`;
+    const changed = rowsIn(this.rows)
+      .filter((row) => row.revision <= revision)
       .filter((row) => rowVisibleTo(row, viewerId))
-      .filter((row) => (since === null ? !row.deleted : row.revision > since));
-    const offset = input.cursor ? Number(offsetText) : 0;
-    const end = offset + this.pageSize;
+      .filter((row) => (since === null ? !row.deleted : row.revision > since))
+      .filter((row) => after === undefined || key(row) > after)
+      .sort((a, b) => (key(a) < key(b) ? -1 : 1));
+    const rows = changed.slice(0, this.pageSize);
     return {
       revision,
-      rows: changed.slice(offset, end),
-      nextCursor: end < changed.length ? `${revision}:${end}` : undefined,
+      rows,
+      nextCursor:
+        rows.length < changed.length
+          ? `${revision}\n${key(rows.at(-1)!)}`
+          : undefined,
       reset,
       confirmedOperationIds: input.cursor
         ? []
@@ -189,7 +204,6 @@ export class FakeServer {
     const stamped = stampChangeSet(changeSet, this.revision + 1, this.rows);
     this.revision++;
     this.rows = applyChangeSet(this.rows, stamped);
-    this.history.set(this.revision, this.rows);
     this.operations.set(command.id, {
       actorId,
       hash: canonicalJson(input),
@@ -210,16 +224,27 @@ type Delivery = { release: () => void; fail: () => void };
 export class FakeConnection implements SyncTransport {
   holding = false;
   readonly held: Delivery[] = [];
-  private failures: { kind: "execute" | "pull"; applied: boolean }[] = [];
+  private failures: {
+    kind: "execute" | "pull";
+    applied: boolean;
+    error: Error;
+  }[] = [];
 
   constructor(
     readonly server: FakeServer,
     readonly viewerId: string,
   ) {}
 
-  /** The next request of this kind fails; `applied` means the server ran it. */
-  failNext(kind: "execute" | "pull", applied = false) {
-    this.failures.push({ kind, applied });
+  /**
+   * The next request of this kind fails with `error`; `applied` means the
+   * server ran it first.
+   */
+  failNext(
+    kind: "execute" | "pull",
+    applied = false,
+    error: Error = new TypeError("Failed to fetch"),
+  ) {
+    this.failures.push({ kind, applied, error });
   }
 
   releaseAll() {
@@ -237,8 +262,7 @@ export class FakeConnection implements SyncTransport {
   private deliver<T>(kind: "execute" | "pull", answer: () => T): Promise<T> {
     const index = this.failures.findIndex((failure) => failure.kind === kind);
     const failure = index >= 0 ? this.failures.splice(index, 1)[0] : undefined;
-    if (failure && !failure.applied)
-      return Promise.reject(new TypeError("Failed to fetch"));
+    if (failure && !failure.applied) return Promise.reject(failure.error);
     // The server answers when the request arrives, whenever the browser
     // hears back.
     let result: { value: T } | { error: unknown };
@@ -247,7 +271,7 @@ export class FakeConnection implements SyncTransport {
     } catch (error) {
       result = { error };
     }
-    if (failure) return Promise.reject(new TypeError("Failed to fetch"));
+    if (failure) return Promise.reject(failure.error);
     const settle = (
       resolve: (value: T) => void,
       reject: (e: unknown) => void,

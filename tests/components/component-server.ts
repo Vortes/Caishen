@@ -23,13 +23,16 @@ const t = initTRPC
   .context<{ revision: ObservedRevision }>()
   .create({ transformer: superjson, errorFormatter: formatTRPCError });
 
-// The fake server's refusals, as the real server sends them.
+// The fake server's refusals, as the real server sends them. Signing out
+// is no refusal: the server only finds no one signed in.
 async function served(answer: () => unknown): Promise<unknown> {
   try {
     return await answer();
   } catch (error) {
     if (error instanceof SyncError)
-      throw refusal(error.kind, error.message, error.revision);
+      throw error.kind === "signedOut"
+        ? new TRPCError({ code: "UNAUTHORIZED" })
+        : refusal(error.kind, error.message, error.revision);
     throw error;
   }
 }
