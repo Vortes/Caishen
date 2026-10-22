@@ -41,6 +41,14 @@
 .section {
   margin-top: 32px;
 }
+/* Review notes under each scene's text, after the bar under the header. */
+.header + * {
+  margin-top: 24px;
+}
+.review {
+  grid-column: 2;
+  padding: 0 0 4px 8px;
+}
 .section h2 {
   margin: 0 0 4px;
   color: var(--text-primary);

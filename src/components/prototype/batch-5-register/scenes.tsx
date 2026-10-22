@@ -2,6 +2,11 @@
 
 import { XIcon } from "lucide-react";
 import { useRef, useState } from "react";
+import {
+  ItemNotes,
+  ReviewNotesBar,
+  ReviewNotesProvider,
+} from "~/components/prototype/review-notes";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import shell from "~/components/prototype/app-shell/shell.module.css";
 import styles from "./scenes.module.css";
@@ -198,68 +203,80 @@ export function Batch5Index() {
       data-theme={light ? "light" : "dark"}
     >
       <main className={styles.main}>
-        <header className={styles.header}>
-          <h1>Register, bank imports, and reimbursements</h1>
-          <p>
-            Batch 5 prototype on hardcoded data. Nothing here saves. Each link
-            opens the shell in one state; the Reset control in the corner
-            returns to it, and the variant toggles sit beside it. Beside each
-            one is what the legacy app did.
-          </p>
-          <a className={styles.open} href={APP}>
-            Open the register
-          </a>
-        </header>
-        {sections.map((section) => (
-          <section key={section.title} className={styles.section}>
-            <h2>{section.title}</h2>
-            <p className={styles.intro}>{section.intro}</p>
-            <ul>
-              {section.scenes.map((scene) => (
-                <li key={scene.title} className={styles.scene}>
-                  {"src" in scene.legacy ? (
-                    <button
-                      type="button"
-                      className={styles.thumb}
-                      aria-label={`Enlarge the legacy screen for ${scene.title}`}
-                      onClick={() => {
-                        if (!("src" in scene.legacy)) return;
-                        setEnlarged({ ...scene.legacy, title: scene.title });
-                        dialog.current?.showModal();
-                      }}
-                    >
-                      {/* A prototype-only asset; next/image adds nothing here. */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`/prototype/legacy/${scene.legacy.src}.webp`}
-                        alt=""
-                        width={1440}
-                        height={900}
-                        loading="lazy"
-                        decoding="async"
+        <ReviewNotesProvider
+          storageKey="batch-5"
+          title="Batch 5: register, bank imports, and reimbursements"
+        >
+          <header className={styles.header}>
+            <h1>Register, bank imports, and reimbursements</h1>
+            <p>
+              Batch 5 prototype on hardcoded data. Nothing here saves. Each link
+              opens the shell in one state; the Reset control in the corner
+              returns to it, and the variant toggles sit beside it. Beside each
+              one is what the legacy app did.
+            </p>
+            <a className={styles.open} href={APP}>
+              Open the register
+            </a>
+          </header>
+          <ReviewNotesBar />
+          {sections.map((section) => (
+            <section key={section.title} className={styles.section}>
+              <h2>{section.title}</h2>
+              <p className={styles.intro}>{section.intro}</p>
+              <ul>
+                {section.scenes.map((scene) => (
+                  <li key={scene.title} className={styles.scene}>
+                    {"src" in scene.legacy ? (
+                      <button
+                        type="button"
+                        className={styles.thumb}
+                        aria-label={`Enlarge the legacy screen for ${scene.title}`}
+                        onClick={() => {
+                          if (!("src" in scene.legacy)) return;
+                          setEnlarged({ ...scene.legacy, title: scene.title });
+                          dialog.current?.showModal();
+                        }}
+                      >
+                        {/* A prototype-only asset; next/image adds nothing here. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/prototype/legacy/${scene.legacy.src}.webp`}
+                          alt=""
+                          width={1440}
+                          height={900}
+                          loading="lazy"
+                          decoding="async"
+                        />
+                        <span className={styles.legacyLabel}>Legacy</span>
+                      </button>
+                    ) : (
+                      <div className={styles.noLegacy}>
+                        <span className={styles.legacyLabel}>Legacy</span>
+                        <span>None</span>
+                      </div>
+                    )}
+                    <a href={`${APP}?${scene.query}`}>
+                      <span>{scene.title}</span>
+                      <span>{scene.note}</span>
+                      <span className={styles.legacyNote}>
+                        {"src" in scene.legacy
+                          ? `Legacy: ${scene.legacy.caption}`
+                          : scene.legacy.none}
+                      </span>
+                    </a>
+                    <div className={styles.review}>
+                      <ItemNotes
+                        id={`${section.title} / ${scene.title}`}
+                        title={`${section.title}: ${scene.title}`}
                       />
-                      <span className={styles.legacyLabel}>Legacy</span>
-                    </button>
-                  ) : (
-                    <div className={styles.noLegacy}>
-                      <span className={styles.legacyLabel}>Legacy</span>
-                      <span>None</span>
                     </div>
-                  )}
-                  <a href={`${APP}?${scene.query}`}>
-                    <span>{scene.title}</span>
-                    <span>{scene.note}</span>
-                    <span className={styles.legacyNote}>
-                      {"src" in scene.legacy
-                        ? `Legacy: ${scene.legacy.caption}`
-                        : scene.legacy.none}
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </ReviewNotesProvider>
       </main>
       <dialog
         ref={dialog}
