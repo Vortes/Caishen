@@ -375,6 +375,15 @@ export function toShellData(
     group.categories.some((category) => category.pairs),
   );
   if (people > 0) groups.unshift(...groups.splice(people, 1));
+  // The partner leads People, as in the sidebar.
+  if (people >= 0) {
+    const isPartner = (category: Category) =>
+      category.pairs !== undefined &&
+      counterparty.get(category.pairs.accountId)?.kind === "partner";
+    groups[0]!.categories.sort(
+      (a, b) => Number(isPartner(b)) - Number(isPartner(a)),
+    );
+  }
 
   const active = view.budget.transactions.filter((item) => !item.removed);
   const accounts = view.accounts.map((item): Account => {

@@ -106,7 +106,12 @@ test("with a partner, People lists the partner by first name before Reimbursemen
         .map((button) => button.textContent?.replace(/\$.*/, "")),
     ).toEqual(["Anna", "Reimbursements"]),
   );
-  expect(plan().getByRole("checkbox", { name: "Select Anna" })).toBeTruthy();
+  // The plan lists the envelopes in the same order.
+  expect(
+    plan()
+      .getAllByRole("checkbox", { name: /^Select (Anna|Reimbursements)$/ })
+      .map((box) => box.getAttribute("aria-label")),
+  ).toEqual(["Select Anna", "Select Reimbursements"]);
 });
 
 test("Reimbursements opens its register, which explains where its entries come from and offers no way to add one", async () => {
@@ -118,6 +123,11 @@ test("Reimbursements opens its register, which explains where its entries come f
   expect(screen.queryByRole("button", { name: "Add transaction" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Reconcile" })).toBeNull();
   expect(screen.queryByRole("button", { name: "File import" })).toBeNull();
+  // No bank clears these entries, so the balance is simply what's owed.
+  expect(screen.queryByText("Cleared")).toBeNull();
+  expect(screen.getByText("Owed to you").nextElementSibling?.textContent).toBe(
+    "$0.00",
+  );
 });
 
 test("a new transaction can't go to a counterparty account or into a paired envelope", async () => {

@@ -28,6 +28,19 @@ export function AccountSummary({
   const { today } = useShellData();
   const working = accounts.reduce((sum, item) => sum + item.balance, 0);
   const uncleared = accounts.reduce((sum, item) => sum + item.pending, 0);
+  // No bank clears a counterparty account's entries: its balance is just
+  // what one side owes the other.
+  if (account && isCounterparty(account))
+    return (
+      <div className={styles.accountSummary}>
+        <dl className={styles.balances}>
+          <div data-total>
+            <dt>{account.balance < 0 ? "You owe" : "Owed to you"}</dt>
+            <dd>{money(Math.abs(account.balance))}</dd>
+          </div>
+        </dl>
+      </div>
+    );
   return (
     <div className={styles.accountSummary}>
       <dl className={styles.balances}>
@@ -51,7 +64,7 @@ export function AccountSummary({
         </div>
       </dl>
       {/* Reconciling compares one account with one bank statement. */}
-      {account && !isCounterparty(account) && (
+      {account && (
         <div className={styles.summaryActions}>
           <span className={styles.reconciledLabel}>
             {reconciledLabel(account, today)}
