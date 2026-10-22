@@ -928,16 +928,63 @@ export async function syncBanks(db: Database, userId: string) {
   let imported = 0,
     updated = 0;
   for (const connection of connections) {
-    if (readBankConnection(connection, readable).status === "maintenance")
-      continue;
+    const read = readBankConnection(connection, readable);
+    if (read.status === "maintenance") continue;
     try {
       const plaid = client();
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
-      const delta = await plaid.syncTransactions(
-        accessToken,
-        connection.cursor,
-      );
+      let delta = await plaid.syncTransactions(accessToken, connection.cursor);
       const accounts = await plaid.getAccounts(accessToken);
+      const missingBalanceIds = new Set(
+        accounts.accounts
+          .filter(
+            (account) =>
+              ["credit", "depository"].includes(account.type) &&
+              account.currency === "USD" &&
+              account.currentBalance !== null &&
+              !read.mappings[account.accountId] &&
+              !read.state.synchronizedAccountIds.includes(account.accountId) &&
+              !delta.accounts.some(
+                (synced) => synced.accountId === account.accountId,
+              ),
+          )
+          .map((account) => account.accountId),
+      );
+      if (
+        connection.cursor &&
+        delta.updateStatus === "HISTORICAL_UPDATE_COMPLETE" &&
+        read.state.records.some((record) =>
+          missingBalanceIds.has(record.current.providerAccountId),
+        )
+      ) {
+        // Recover lost readiness without losing incremental removals. Snapshot
+        // balances belong to this history only if both reads end at one cursor.
+        const snapshot = await plaid.syncTransactions(accessToken);
+        delta = await plaid.syncTransactions(accessToken, connection.cursor);
+        if (
+          snapshot.nextCursor === delta.nextCursor &&
+          !snapshot.skipped.unidentifiable
+        ) {
+          const unreadableIds = new Set(
+            snapshot.skipped.quarantined.map(
+              (record) => record.providerAccountId,
+            ),
+          );
+          delta = {
+            ...delta,
+            accounts: [
+              ...new Map(
+                [
+                  ...snapshot.accounts.filter(
+                    (account) => !unreadableIds.has(account.accountId),
+                  ),
+                  ...delta.accounts,
+                ].map((account) => [account.accountId, account]),
+              ).values(),
+            ],
+          };
+        }
+      }
       let counts: { imported: number; updated: number } | undefined;
       // The household may change while this runs; the update is planned
       // again on the newer rows.
@@ -1023,14 +1070,21 @@ async function applyBankUpdate(
       ...delta.skipped.quarantined,
     ].map((record) => record.providerAccountId),
   );
-  const retainedAccounts =
-    fresh.cursor === delta.nextCursor
-      ? old.accounts.filter(
-          (account) =>
-            old.synchronizedAccountIds.includes(account.accountId) &&
-            !changedAccounts.has(account.accountId),
-        )
-      : [];
+  const reportedAccounts = new Map(
+    accounts.accounts.map((account) => [account.accountId, account]),
+  );
+  const retainedAccounts = old.accounts.filter((account) => {
+    const reported = reportedAccounts.get(account.accountId);
+    return (
+      old.synchronizedAccountIds.includes(account.accountId) &&
+      !changedAccounts.has(account.accountId) &&
+      (fresh.cursor === delta.nextCursor ||
+        (!delta.skipped.unidentifiable &&
+          account.currentBalance !== null &&
+          reported?.currentBalance === account.currentBalance &&
+          reported.currency === account.currency))
+    );
+  });
   const synchronizedAccounts = new Map(
     [...retainedAccounts, ...delta.accounts].map((account) => [
       account.accountId,
