@@ -521,7 +521,6 @@ export function syntheticBook(options: SyntheticOptions): Book {
       assignments,
       loans: [],
       reimbursements: [],
-      rules: [],
       settings: {
         timezone: "America/Los_Angeles",
         emailEnabled: true,

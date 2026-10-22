@@ -33,7 +33,6 @@ const commandLabels = {
   "assign.set": "Assign money",
   "assign.batch": "Assign money",
   cover: "Cover overspending",
-  "rule.set": "Update standing rule",
   "target.set": "Update category target",
   "target.snooze": "Snooze category target",
   "transaction.upsert": "Save transaction",
@@ -65,6 +64,8 @@ const commandLabels = {
 const labels: Record<string, string> = {
   ...commandLabels,
   "suggestions.approve": "Approve suggested categories",
+  // Standing rules are gone; operations recorded before still have a name.
+  "rule.set": "Update standing rule",
 };
 
 type Entry = { operationId: string; label: string };

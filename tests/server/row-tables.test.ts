@@ -62,6 +62,15 @@ function everyRow(): WireRow[] {
       ),
     ),
   ];
+  // Standing rules are no longer kept, but their stored rows still read.
+  const rule = sample("rows.rule/stored.json") as { id: string };
+  rows.push({
+    table: "rule",
+    id: rowKey("alex", rule.id),
+    revision: 0,
+    deleted: false,
+    data: rule,
+  } as WireRow);
   // Optional fields no stored book sets yet.
   const extend = (table: WireRow["table"], fields: Record<string, unknown>) => {
     const row = rows.find((item) => item.table === table)!;

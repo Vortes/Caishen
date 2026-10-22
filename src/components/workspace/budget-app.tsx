@@ -402,7 +402,6 @@ function BudgetWorkspace({
               state={state}
               run={run}
               busy={busy}
-              open={open}
               sync={() => sync.mutate()}
               syncBusy={sync.isPending}
             />

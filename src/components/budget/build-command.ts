@@ -3,7 +3,6 @@ import { buildCategoryCommand } from "~/components/budget/category-commands";
 import type { CommandInput } from "~/components/budget/command-types";
 import { buildLoanCommand } from "~/components/loans/commands";
 import { buildReimbursementCommand } from "~/components/reimbursements/commands";
-import { buildRuleCommand } from "~/components/settings/rule-command";
 import { buildSharedCommand } from "~/components/shared-expenses/commands";
 
 export function buildCommand(input: CommandInput) {
@@ -22,8 +21,6 @@ export function buildCommand(input: CommandInput) {
     case "reimbursement":
     case "receive":
       return buildReimbursementCommand(input);
-    case "rule":
-      return buildRuleCommand(input);
     case "shared-category":
     case "opening":
     case "settlement":

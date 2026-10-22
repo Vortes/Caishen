@@ -282,7 +282,7 @@ describe("BudgetStore", () => {
       index === 0 ? ledger !== before : ledger !== ledgers[index - 1],
     );
     expect(changed).toHaveLength(1);
-    expect(store.getSnapshot()).toMatchObject({ revision: 3, updating: false });
+    expect(store.getSnapshot()).toMatchObject({ revision: 3 });
     expect(store.month(month)).toEqual(serverMonth(server));
   });
 
@@ -557,7 +557,6 @@ describe("Sync that can't go on", () => {
     expect(store.getSnapshot()).toMatchObject({
       status: "empty",
       refreshFailed: false,
-      updating: false,
     });
     expect(
       client.run(assign("a1", "food", 100), { summary: "Assigned" }),

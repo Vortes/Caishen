@@ -354,27 +354,6 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     revision: revision("alex", "car-payment") + 1,
   }));
   alex({
-    type: "rule.set",
-    ruleId: "dining-covers-food",
-    fromCategoryId: "dining",
-    toCategoryId: "food",
-    enabled: true,
-  });
-  alex({
-    type: "rule.set",
-    ruleId: "travel-covers-food",
-    fromCategoryId: "travel",
-    toCategoryId: "food",
-    enabled: false,
-  });
-  alex({
-    type: "rule.set",
-    ruleId: "dining-covers-food",
-    fromCategoryId: "dining",
-    toCategoryId: "food",
-    enabled: false,
-  });
-  alex({
     type: "cover",
     fromCategoryId: "dining",
     toCategoryId: "food",

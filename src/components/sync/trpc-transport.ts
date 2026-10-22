@@ -88,9 +88,30 @@ function settled(error: unknown): SyncError | null {
   return null;
 }
 
+/**
+ * Renews the signed-in session's token, resolving false when no one is
+ * signed in any more. Clerk renews tokens in the background, but a tab that
+ * slept can still send one that just expired.
+ */
+export type RenewSession = () => Promise<boolean>;
+
 // An unknown outcome is rethrown as is; the outbox retries it with the same
-// operation id, and the server applies it at most once.
-async function mapped<T>(request: () => Promise<T>): Promise<T> {
+// operation id, and the server applies it at most once. A request turned
+// away for its sign-in is sent once more with a renewed session token
+// before syncing stops.
+async function mapped<T>(
+  request: () => Promise<T>,
+  renewSession?: RenewSession,
+): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    const answer = settled(error);
+    if (!renewSession || !answer || !expiredSignIn(error))
+      throw answer ?? error;
+    // A renewal that fails (Clerk out of reach) is an unknown outcome too.
+    if (!(await renewSession())) throw answer;
+  }
   try {
     return await request();
   } catch (error) {
@@ -98,10 +119,21 @@ async function mapped<T>(request: () => Promise<T>): Promise<T> {
   }
 }
 
-export function trpcTransport(client: TRPCClient<AppRouter>): SyncTransport {
+function expiredSignIn(error: unknown) {
+  return (
+    error instanceof TRPCClientError &&
+    (error.data as { code?: unknown } | undefined)?.code === "UNAUTHORIZED"
+  );
+}
+
+export function trpcTransport(
+  client: TRPCClient<AppRouter>,
+  renewSession?: RenewSession,
+): SyncTransport {
   return {
-    execute: (input) => mapped(() => client.budget.execute.mutate(input)),
-    pull: (input) => mapped(() => client.sync.pull.query(input)),
+    execute: (input) =>
+      mapped(() => client.budget.execute.mutate(input), renewSession),
+    pull: (input) => mapped(() => client.sync.pull.query(input), renewSession),
   };
 }
 
@@ -112,6 +144,7 @@ export function trpcTransport(client: TRPCClient<AppRouter>): SyncTransport {
  */
 export function serverOperation(
   send: () => Promise<ExecuteResult>,
+  renewSession?: RenewSession,
 ): Promise<ExecuteResult> {
-  return mapped(send);
+  return mapped(send, renewSession);
 }
