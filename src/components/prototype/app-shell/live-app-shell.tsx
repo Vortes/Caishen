@@ -31,7 +31,7 @@ import {
 import {
   MAINTENANCE_DETAIL,
   MAINTENANCE_TITLE,
-} from "~/components/workspace/use-budget-state";
+} from "~/components/workspace/maintenance";
 import type { Command } from "~/domain/engine";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { serverRevisions } from "~/trpc/links";

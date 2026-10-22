@@ -13,7 +13,7 @@ import {
   rollbackBudgetCommand,
 } from "./optimistic-cache";
 
-export function useBudgetCommand({
+function useBudgetCommand({
   onSuccess,
   onError,
 }: {
@@ -50,7 +50,7 @@ export function useBudgetCommand({
 // Why a new command can't be sent right now: another change is still saving,
 // the month on screen is a placeholder while the next one loads, or the
 // budget failed to refresh, so the revision on screen may be stale.
-export type CommandBlock = "saving" | "loading" | "stale";
+type CommandBlock = "saving" | "loading" | "stale";
 
 // Sends commands against the revision on screen, refusing them while one of
 // the blocks above applies. Every screen that writes shares these guards.

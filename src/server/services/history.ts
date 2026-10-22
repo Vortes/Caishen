@@ -19,9 +19,9 @@ import {
 // anything else last changed the household. Undo reverts the latest change
 // still standing; redo reverts that undo.
 
-export const HISTORY_LIMIT = 50;
+const HISTORY_LIMIT = 50;
 
-export type HistoryDirection = "undo" | "redo";
+type HistoryDirection = "undo" | "redo";
 
 const commandLabels = {
   "account.add": "Add account",
@@ -70,7 +70,7 @@ const labels: Record<string, string> = {
 type Entry = { operationId: string; label: string };
 
 /** The member's undo and redo stacks, latest last. */
-export async function historyStacks(
+async function historyStacks(
   db: Database,
   household: Pick<Household, "workspaceId">,
   actorId: string,

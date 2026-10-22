@@ -2360,7 +2360,6 @@ function projectAccountingState(
   };
 }
 export type BudgetProjection = ReturnType<typeof projectBook>;
-export type ProjectedBook = BudgetProjection;
 
 /**
  * One partner's personal ledger from the whole household, as the browser

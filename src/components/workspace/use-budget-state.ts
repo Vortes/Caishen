@@ -4,11 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getMutationKey } from "@trpc/react-query";
 import { api } from "~/trpc/react";
 
-// Shown in place of the plan while the server can't read the stored budget.
-export const MAINTENANCE_TITLE = "We’re doing some maintenance.";
-export const MAINTENANCE_DETAIL =
-  "Your plan will be back in a couple of minutes. Check back later.";
-
 // The signed-in budget for one month. A refetch while a command is saving
 // would race its optimistic preview, so focus and reconnect refetches wait
 // until no command is in flight. The previous month stays on screen as
