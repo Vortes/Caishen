@@ -1568,33 +1568,6 @@ button.actionItem:disabled {
   color: var(--text-tertiary);
   font-size: var(--type-small);
 }
-/* Indeterminate progress along the header's bottom edge while another
-   month loads; the previous month stays on screen until it arrives. */
-.monthLoading {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 1px;
-  overflow: hidden;
-}
-.monthLoading::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 30%;
-  background: var(--accent-solid);
-  animation: month-loading 900ms ease-in-out infinite;
-}
-@keyframes month-loading {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(340%);
-  }
-}
-
 /* ---------- Collapsed sidebar peek ---------- */
 
 /* Floats below the header so the breadcrumb and sidebar button stay usable.
@@ -2075,7 +2048,6 @@ button.actionItem:disabled {
     transition-duration: 0ms !important;
   }
   .empty > .spin,
-  .monthLoading::after,
   .menu[data-state] {
     animation: none;
   }

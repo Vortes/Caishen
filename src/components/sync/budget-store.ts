@@ -59,8 +59,6 @@ export type PendingView = {
 export type HistoryView = { operationId: string; label: string };
 
 export type SyncState = {
-  /** A pull is bringing in rows. */
-  updating: boolean;
   /** Pulls keep failing; the numbers may be out of date. */
   refreshFailed: boolean;
   /** Sending keeps failing; commands wait and are retried. */
@@ -155,7 +153,6 @@ export class BudgetStore {
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
   private sync: SyncState = {
-    updating: false,
     refreshFailed: false,
     savingPaused: false,
     staleClient: false,

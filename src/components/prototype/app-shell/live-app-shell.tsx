@@ -424,13 +424,6 @@ function LiveWorkspace({
         <BankConnectionsProvider value={banks}>
           <AppShellPrototype
             data={data}
-            progress={
-              snapshot.pending.length
-                ? "Saving your changes…"
-                : snapshot.updating
-                  ? "Updating your budget…"
-                  : null
-            }
             onMonthChange={onMonthChange}
             moveMoney={moveMoney}
             categoryAdder={categoryAdder}
