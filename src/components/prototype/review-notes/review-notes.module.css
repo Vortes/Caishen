@@ -4,7 +4,7 @@
 .bar {
   position: sticky;
   z-index: 20;
-  top: 0;
+  top: var(--space-gutter);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -56,18 +56,25 @@
   max-height: 30dvh;
 }
 
+/* The switch sits beside the notes, and above them when the row is narrow. */
 .item {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 14px;
+}
+
+.item .textarea {
+  flex: 1 1 260px;
 }
 
 .looksGood {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: none;
   width: fit-content;
-  min-height: var(--size-control-xs);
+  min-height: var(--size-control);
   color: var(--text-secondary);
   font-size: var(--type-small);
   font-weight: 500;
