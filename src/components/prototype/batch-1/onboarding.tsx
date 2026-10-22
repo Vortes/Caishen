@@ -7,7 +7,6 @@ import {
   CircleAlertIcon,
   CircleCheckIcon,
   CircleIcon,
-  CopyIcon,
   LandmarkIcon,
   PlusIcon,
 } from "lucide-react";
@@ -17,7 +16,15 @@ import { Card } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Switch } from "~/components/ui/switch";
 import { Tag } from "~/components/ui/tag";
-import { Brand, useBrandName } from "./brand";
+import { Brand } from "./brand";
+import {
+  CodeDisplay,
+  CodeField,
+  codeError,
+  isComplete,
+  useLock,
+  type CodeResult,
+} from "./invite-code";
 import {
   chaseAccounts,
   detectedTimezone,
@@ -50,7 +57,7 @@ type Pacing = "guided" | "checklist";
 type CategorySource = "questions" | "list";
 
 type Outcome = "succeeds" | "fails";
-type CodeOutcome = "valid" | "invalid";
+type InviteOutcome = Exclude<CodeResult, "own">;
 type BankOutcome = "connects" | "cancelled" | "fails";
 
 type Stage = "basics" | "categories" | "accounts" | "ready";
@@ -127,7 +134,6 @@ const steps: { id: Stage; label: string }[] = [
 // exists. Lives at app.curate.is/welcome after sign-up.
 export function OnboardingPrototype() {
   const [theme, setTheme] = useTheme();
-  const [name] = useBrandName();
   const [pacing, setPacing] = useStored<Pacing>("onboarding.pacing", "guided");
   const [source, setSource] = useStored<CategorySource>(
     "onboarding.categories",
@@ -137,8 +143,8 @@ export function OnboardingPrototype() {
     "onboarding.create",
     "succeeds",
   );
-  const [codeOutcome, setCodeOutcome] = useStored<CodeOutcome>(
-    "onboarding.code",
+  const [codeOutcome, setCodeOutcome] = useStored<InviteOutcome>(
+    "onboarding.invite",
     "valid",
   );
   const [bank, setBank] = useStored<BankOutcome>("onboarding.bank", "connects");
@@ -199,7 +205,11 @@ export function OnboardingPrototype() {
             value={codeOutcome}
             options={[
               ["valid", "Valid"],
-              ["invalid", "Expired or used"],
+              ["expired", "Expired"],
+              ["used", "Already used"],
+              ["full", "Partner already has one"],
+              ["invalid", "No match"],
+              ["rate-limited", "Too many tries"],
             ]}
             onChange={setCodeOutcome}
           />
@@ -219,7 +229,7 @@ export function OnboardingPrototype() {
       <div className={styles.frame}>
         <header className={styles.header}>
           <a href={WELCOME_PATH} className={styles.brandLink}>
-            <Brand name={name} />
+            <Brand />
           </a>
           <div className={styles.account}>
             <span>{me.email}</span>
@@ -423,34 +433,14 @@ function BasicsStep({
   flow: Flow;
   update: (change: Partial<Flow>) => void;
   createOutcome: Outcome;
-  codeOutcome: CodeOutcome;
+  codeOutcome: InviteOutcome;
   onCreated: () => void;
 }) {
   const id = useId();
   const [nameError, setNameError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [codeError, setCodeError] = useState<string | null>(null);
-  const joining = flow.codeChecked && !codeError;
-
-  const checkCode = () => {
-    if (flow.code.trim().length < 20) {
-      setCodeError("Paste the whole code. It’s 32 letters and numbers.");
-      return;
-    }
-    setChecking(true);
-    setCodeError(null);
-    window.setTimeout(() => {
-      setChecking(false);
-      if (codeOutcome === "invalid") {
-        setCodeError(
-          "This code is expired or already used. Ask your partner for a new one; each works once, for 24 hours.",
-        );
-        update({ codeChecked: false });
-      } else update({ codeChecked: true });
-    }, 700);
-  };
+  const joining = flow.codeChecked;
 
   const submit = () => {
     if (!flow.name.trim()) {
@@ -464,7 +454,9 @@ function BasicsStep({
       setCreating(false);
       if (createOutcome === "fails") {
         setCreateError(
-          "Your budget couldn’t be created. Check your connection, then try again.",
+          joining
+            ? "Your budget couldn’t be created, so you haven’t joined yet. Check your connection, then try again."
+            : "Your budget couldn’t be created. Check your connection, then try again.",
         );
         return;
       }
@@ -476,8 +468,16 @@ function BasicsStep({
   return (
     <Step
       heading={heading}
-      title={`Welcome, ${me.firstName}. Let’s set up your budget.`}
-      lede="Your budget plans the money you have today. It’s yours alone; a partner gets their own and sees only what you share."
+      title={
+        joining
+          ? `Welcome, ${me.firstName}. ${partner.fullName} invited you.`
+          : `Welcome, ${me.firstName}. Let’s set up your budget.`
+      }
+      lede={
+        joining
+          ? `First, set up your own budget. It stays yours: ${partner.firstName} sees only the categories you share and who owes whom.`
+          : "Your budget plans the money you have today. It’s yours alone; a partner gets their own and sees only what you share."
+      }
     >
       <form
         className={styles.form}
@@ -487,6 +487,12 @@ function BasicsStep({
           submit();
         }}
       >
+        {joining && (
+          <Invitation
+            code={flow.code}
+            onChange={() => update({ codeChecked: false })}
+          />
+        )}
         <Card>
           <div className={styles.fields}>
             <div className={batch.field}>
@@ -559,17 +565,9 @@ function BasicsStep({
           <p className={styles.currency}>Amounts are in US dollars.</p>
         </Card>
 
-        <PartnerCode
-          flow={flow}
-          update={update}
-          checking={checking}
-          error={codeError}
-          onCheck={checkCode}
-          onClear={() => {
-            setCodeError(null);
-            update({ codeOpen: false, code: "", codeChecked: false });
-          }}
-        />
+        {!joining && (
+          <PartnerCode flow={flow} update={update} outcome={codeOutcome} />
+        )}
 
         {createError && (
           <p className={batch.error} role="alert">
@@ -593,24 +591,71 @@ function BasicsStep({
   );
 }
 
+// Who the code belongs to, once the server has looked it up: the inviter's
+// name and photo, never their email or anything in their budget.
+function Invitation({
+  code,
+  onChange,
+}: {
+  code: string;
+  onChange: () => void;
+}) {
+  return (
+    <Card>
+      <div className={styles.invitation}>
+        <span className={styles.avatar} data-size="large" aria-hidden>
+          J
+        </span>
+        <span className={styles.switchText}>
+          <span className={styles.switchLabel}>
+            {partner.fullName} invited you to share expenses
+          </span>
+          <span className={batch.fieldHint}>
+            Code {code} · expires today at 9:41 p.m.
+          </span>
+        </span>
+        <Button size="sm" variant="quiet" onClick={onChange}>
+          Use a different code
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 // Most people start alone; the person a partner invited opens this. Their
 // budget is still created first, then joined to the partner's household.
 function PartnerCode({
   flow,
   update,
-  checking,
-  error,
-  onCheck,
-  onClear,
+  outcome,
 }: {
   flow: Flow;
   update: (change: Partial<Flow>) => void;
-  checking: boolean;
-  error: string | null;
-  onCheck: () => void;
-  onClear: () => void;
+  outcome: InviteOutcome;
 }) {
   const id = useId();
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<CodeResult | null>(null);
+  const [incomplete, setIncomplete] = useState(false);
+  const locked = useLock(result === "rate-limited");
+  const error = incomplete
+    ? "Enter all 8 characters."
+    : result
+      ? codeError(result, flow.code)
+      : null;
+
+  const check = () => {
+    if (!isComplete(flow.code)) return setIncomplete(true);
+    setIncomplete(false);
+    setChecking(true);
+    setResult(null);
+    window.setTimeout(() => {
+      setChecking(false);
+      if (outcome === "valid") update({ codeChecked: true });
+      else setResult(outcome);
+    }, 700);
+  };
+
   if (!flow.codeOpen)
     return (
       <div>
@@ -629,71 +674,33 @@ function PartnerCode({
             owes whom are the only things you both see.
           </span>
         </div>
-        <Button size="sm" variant="quiet" onClick={onClear}>
+        <Button
+          size="sm"
+          variant="quiet"
+          onClick={() => update({ codeOpen: false, code: "" })}
+        >
           Cancel
         </Button>
       </div>
-      {flow.codeChecked && !error ? (
-        <div className={styles.invitedBy}>
-          <span className={styles.avatar} aria-hidden>
-            J
-          </span>
-          <span className={styles.switchText}>
-            <span className={styles.switchLabel}>
-              {partner.fullName} invited you
-            </span>
-            <span className={batch.fieldHint}>
-              You’ll join when your budget is created.
-            </span>
-          </span>
-          <Button
-            size="sm"
-            variant="quiet"
-            onClick={() => update({ codeChecked: false })}
-          >
-            Change code
-          </Button>
-        </div>
-      ) : (
-        <div className={styles.codeRow}>
-          <div className={batch.field}>
-            <label className={batch.fieldLabel} htmlFor={`${id}-code`}>
-              Invitation code
-            </label>
-            <input
-              id={`${id}-code`}
-              className={`${batch.input} ${batch.code}`}
-              value={flow.code}
-              placeholder={`Like ${myInviteCode.slice(0, 12)}…`}
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              aria-invalid={Boolean(error)}
-              aria-describedby={error ? `${id}-code-error` : undefined}
-              onChange={(event) => update({ code: event.target.value })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  onCheck();
-                }
-              }}
-            />
-          </div>
-          <Button disabled={checking} onClick={onCheck}>
-            {checking ? "Checking…" : "Check code"}
-          </Button>
-          {error && (
-            <span
-              id={`${id}-code-error`}
-              className={`${batch.error} ${styles.codeError}`}
-              role="alert"
-            >
-              <CircleAlertIcon size={13} aria-hidden />
-              {error}
-            </span>
-          )}
-        </div>
-      )}
+      <div className={styles.codeField}>
+        <CodeField
+          id={`${id}-code`}
+          label="Invitation code"
+          value={flow.code}
+          error={error}
+          locked={locked}
+          onChange={(code) => {
+            update({ code });
+            setIncomplete(false);
+            if (result !== "rate-limited") setResult(null);
+          }}
+          action={
+            <Button disabled={checking || Boolean(locked)} onClick={check}>
+              {checking ? "Checking…" : "Check code"}
+            </Button>
+          }
+        />
+      </div>
     </Card>
   );
 }
@@ -1376,13 +1383,6 @@ function PartnerPanel({
   flow: Flow;
   update: (change: Partial<Flow>) => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
   if (flow.joined)
     return (
       <Card>
@@ -1407,8 +1407,8 @@ function PartnerPanel({
         <span className={styles.switchText}>
           <span className={styles.switchLabel}>Budgeting with a partner?</span>
           <span className={batch.fieldHint}>
-            Send them a code to enter after they sign up. It works once, for 24
-            hours. You can also do this later in Settings.
+            Send them a code to enter when they sign up. You can also do this
+            later in Settings.
           </span>
         </span>
         {!flow.inviteCreated && (
@@ -1418,13 +1418,7 @@ function PartnerPanel({
         )}
       </div>
       {flow.inviteCreated && (
-        <div className={styles.inviteCode}>
-          <code className={batch.code}>{myInviteCode}</code>
-          <Button size="sm" onClick={() => setCopied(true)}>
-            {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        </div>
+        <CodeDisplay code={myInviteCode} expires="tomorrow at 9:41 a.m." />
       )}
     </Card>
   );

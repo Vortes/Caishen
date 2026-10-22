@@ -1,6 +1,5 @@
 "use client";
 
-import { CheckIcon, CircleAlertIcon, CopyIcon } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
@@ -13,21 +12,27 @@ import {
   useStored,
   useTheme,
 } from "./prototype";
+import {
+  CodeDisplay,
+  CodeField,
+  codeError,
+  isComplete,
+  useLock,
+  type CodeResult,
+} from "./invite-code";
 import { SettingsFrame } from "./settings-frame";
-import batch from "./batch.module.css";
 import styles from "./settings.module.css";
 
 // The variable the variants move: how prominent joining is next to
 // inviting. Most people invite; the person invited usually joins during
 // onboarding, so here joining is for someone who already has a budget.
 type Variant = "rows" | "link";
-type CodeResult = "valid" | "expired" | "own";
 
 export function PartnerSettingsPrototype() {
   const [theme, setTheme] = useTheme();
   const [variant, setVariant] = useStored<Variant>("partner.variant", "rows");
   const [connected, setConnected] = useStored("partner.connected", false);
-  const [result, setResult] = useStored<CodeResult>("partner.code", "valid");
+  const [result, setResult] = useStored<CodeResult>("partner.join", "valid");
   const notice = useNotice();
 
   return (
@@ -63,8 +68,12 @@ export function PartnerSettingsPrototype() {
             value={result}
             options={[
               ["valid", "Valid"],
-              ["expired", "Expired or used"],
+              ["expired", "Expired"],
+              ["used", "Already used"],
+              ["full", "Partner already has one"],
               ["own", "Your own code"],
+              ["invalid", "No match"],
+              ["rate-limited", "Too many tries"],
             ]}
             onChange={setResult}
           />
@@ -121,56 +130,47 @@ export function PartnerSettingsPrototype() {
 function Invite() {
   const [code, setCode] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
+  const create = (next: string) => {
+    setCreating(true);
+    window.setTimeout(() => {
+      setCreating(false);
+      setCode(next);
+    }, 600);
+  };
   return (
     <>
       <div className={shell.settingRow}>
         <div className={shell.settingText}>
           <span className={shell.settingLabel}>Invite your partner</span>
           <span className={shell.settingHint}>
-            They enter the code in their own account. It works once and expires
-            in 24 hours.
+            {code
+              ? "Read it out or send it. They enter it in their own account, when they sign up or later in Settings."
+              : "Create a code for them to enter in their own account. It works once, for 24 hours."}
           </span>
         </div>
         {!code && (
           <Button
             variant="primary"
             disabled={creating}
-            onClick={() => {
-              setCreating(true);
-              window.setTimeout(() => {
-                setCreating(false);
-                setCode(myInviteCode);
-              }, 600);
-            }}
+            onClick={() => create(myInviteCode)}
           >
             {creating ? "Creating code…" : "Create code"}
           </Button>
         )}
       </div>
       {code && (
-        <div className={shell.inviteCode}>
-          <code>{code}</code>
-          <Button size="sm" onClick={() => setCopied(true)}>
-            {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        </div>
+        <CodeDisplay
+          code={code}
+          expires="tomorrow at 9:41 a.m."
+          // A new code replaces the old one, which stops working.
+          onNew={() =>
+            create(code === myInviteCode ? "R2VN-8HTK" : myInviteCode)
+          }
+        />
       )}
     </>
   );
 }
-
-const errors: Record<Exclude<CodeResult, "valid">, string> = {
-  expired:
-    "This code is expired or already used. Ask your partner for a new one; each works once, for 24 hours.",
-  own: "That’s the code you created. Give it to your partner to enter in their own account.",
-};
 
 function Join({
   variant,
@@ -185,18 +185,25 @@ function Join({
   const [open, setOpen] = useState(variant === "rows");
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<CodeResult | null>(null);
+  const [incomplete, setIncomplete] = useState(false);
+  const locked = useLock(outcome === "rate-limited");
   useEffect(() => setOpen(variant === "rows"), [variant]);
+  const error = incomplete
+    ? "Enter all 8 characters."
+    : outcome
+      ? codeError(outcome, code)
+      : null;
 
   const join = () => {
-    if (code.trim().length < 20)
-      return setError("Paste the whole code. It’s 32 letters and numbers.");
-    setError(null);
+    if (!isComplete(code)) return setIncomplete(true);
+    setIncomplete(false);
+    setOutcome(null);
     setJoining(true);
     window.setTimeout(() => {
       setJoining(false);
       if (result === "valid") onJoined();
-      else setError(errors[result]);
+      else setOutcome(result);
     }, 900);
   };
 
@@ -219,37 +226,29 @@ function Join({
       }}
     >
       <div className={shell.settingText}>
-        <label className={shell.settingLabel} htmlFor={`${id}-code`}>
-          Join your partner
-        </label>
+        <span className={shell.settingLabel}>Join your partner</span>
         <span className={shell.settingHint}>
           Got a code from them? Your budget stays yours; you’ll both see the
           categories you share and who owes whom.
         </span>
       </div>
-      <div className={styles.joinRow}>
-        <input
-          id={`${id}-code`}
-          className={`${batch.input} ${batch.code}`}
-          value={code}
-          placeholder="Paste their code"
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${id}-error` : undefined}
-          onChange={(event) => setCode(event.target.value)}
-        />
-        <Button type="submit" disabled={joining}>
-          {joining ? "Joining…" : "Join"}
-        </Button>
-      </div>
-      {error && (
-        <span id={`${id}-error`} className={batch.error} role="alert">
-          <CircleAlertIcon size={13} aria-hidden />
-          {error}
-        </span>
-      )}
+      <CodeField
+        id={`${id}-code`}
+        label="Their code"
+        value={code}
+        error={error}
+        locked={locked}
+        onChange={(next) => {
+          setCode(next);
+          setIncomplete(false);
+          if (outcome !== "rate-limited") setOutcome(null);
+        }}
+        action={
+          <Button type="submit" disabled={joining || Boolean(locked)}>
+            {joining ? "Joining…" : "Join"}
+          </Button>
+        }
+      />
     </form>
   );
 }

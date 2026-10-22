@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BellIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleUserRoundIcon,
@@ -24,7 +23,6 @@ const pages: { id: SettingsPage; label: string; icon: LucideIcon }[] = [
   { id: "profile", label: "Profile", icon: CircleUserRoundIcon },
   { id: "appearance", label: "Appearance", icon: PaletteIcon },
   { id: "partner", label: "Partner", icon: HeartHandshakeIcon },
-  { id: "notifications", label: "Notifications", icon: BellIcon },
 ];
 
 // The shell's settings, drawn with the shell's own classes so the new pages

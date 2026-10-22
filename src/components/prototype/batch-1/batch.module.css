@@ -225,11 +225,6 @@
 .input::placeholder {
   color: var(--text-tertiary);
 }
-.code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: var(--type-small);
-  letter-spacing: 0.02em;
-}
 @media (pointer: coarse) {
   .input,
   .select {

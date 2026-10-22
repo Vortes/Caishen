@@ -15,9 +15,9 @@ export const partner = {
   connectedOn: "Oct 3, 2026",
 };
 
-// Invite codes are 24 random bytes in base64url, as budget.invite makes them.
-export const myInviteCode = "q3Jx9vT2mKpL0aZ7cR4wYbN8eH1sUfGd";
-export const partnerInviteCode = "Vn6pR2tYb8LqXz0mKc5wHa3sJd7uEf1G";
+// Short invite codes: 8 characters without 0, 1, I, L, or O.
+export const myInviteCode = "KQ7M-4XPD";
+export const partnerInviteCode = "H8TR-W3NC";
 
 // The browser's zone, as Intl reports it, picked first in every list.
 export const detectedTimezone = "America/Los_Angeles";

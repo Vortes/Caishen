@@ -121,15 +121,41 @@
   gap: var(--space-inset);
 }
 
-/* Notifications */
+/* Timezone and the daily email */
+.zoneHint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+}
 .nextEmail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin: 14px calc(var(--space-card) * -1) calc(var(--space-card) * -1);
-  padding: 10px var(--space-card);
+  padding: 6px 8px 6px var(--space-card);
   border-top: 1px solid var(--border-subtle);
   border-radius: 0 0 var(--radius-card) var(--radius-card);
   background: var(--surface-group);
   color: var(--text-secondary);
   font-size: var(--type-small);
+}
+
+.previewChevron {
+  transition: transform 150ms var(--ease-panel);
+}
+.previewChevron[data-open] {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .previewChevron {
+    transition: none;
+  }
 }
 
 /* The email, in the light theme, as a mail app shows it. */

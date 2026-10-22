@@ -25,20 +25,18 @@ const screens: {
 }[] = [
   {
     title: "Welcome",
-    where: "curate.is",
+    where: "Signed out",
     href: WELCOME_PATH,
     covers:
-      "The public landing. Create your account and Sign in go to app.curate.is; a visitor who’s already signed in gets Open your budget. Privacy and Terms.",
-    variants: [
-      "How much it sells: shows the product, tells the story (legacy, restyled), or just the door",
-    ],
+      "The legacy Welcome, same content and purpose, on the design system: Create your account, Sign in, Privacy policy, and Terms of service.",
+    variants: [],
   },
   {
     title: "Onboarding",
-    where: "app.curate.is/welcome",
+    where: "After sign-up",
     href: ONBOARDING_PATH,
     covers:
-      "Its own page after sign-up. Budget name, timezone, daily email, joining a partner by code, categories, accounts (Plaid or by hand), and Ready to Assign. Errors for a failed create, a bad code, and a bank that closes or fails.",
+      "Its own page. Budget name, timezone, daily email, categories, accounts (Plaid or by hand), and Ready to Assign. Joining with a partner’s code shows who invited you; expired, used, full, no-match, and too-many-tries codes each have their own message.",
     variants: [
       "Pacing: guided steps, or one step and then a checklist",
       "Categories from: a few questions, or a starter list",
@@ -49,9 +47,9 @@ const screens: {
     where: "Settings",
     href: settingsPath("profile"),
     covers:
-      "Manage account: change email with a code, add or change a password, connected accounts, and deleting the account inline with a typed confirmation.",
+      "Timezone beside the budget name; the daily email’s on/off and hour with a preview; Manage account (email, password, connected accounts); and deleting the account in place by typing your email.",
     variants: [
-      "Who draws it: our rows, Clerk’s UserProfile in the page, or Clerk’s window",
+      "Who draws Account: our rows, Clerk’s UserProfile in the page, or Clerk’s window",
     ],
   },
   {
@@ -59,16 +57,8 @@ const screens: {
     where: "Settings",
     href: settingsPath("partner"),
     covers:
-      "Join with a partner’s code beside the existing invite. Expired, used, and your-own-code errors; the connected state.",
+      "Short invite codes like KQ7M-4XPD: create, copy, and replace one; join with a partner’s code, formatted as you type or paste. Every error, and the connected state.",
     variants: ["Joining is: a row beside inviting, or behind a link"],
-  },
-  {
-    title: "Settings › Notifications",
-    where: "Settings",
-    href: settingsPath("notifications"),
-    covers:
-      "Daily email on or off, the hour, and the budget’s timezone, all applying at once. Unsubscribed-from-email state, a traveling-browser hint, and a preview of the email with its new unsubscribe link.",
-    variants: [],
   },
   {
     title: "Unsubscribe",

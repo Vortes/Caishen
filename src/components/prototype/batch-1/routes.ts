@@ -7,8 +7,10 @@ export const UNSUBSCRIBE_PATH = `${BASE}/unsubscribe`;
 export const BANK_OAUTH_PATH = `${BASE}/bank-oauth`;
 export const LOAD_ERROR_PATH = `${BASE}/load-error`;
 
-export type SettingsPage =
-  "profile" | "appearance" | "partner" | "notifications";
+export type SettingsPage = "profile" | "appearance" | "partner";
 
 export const settingsPath = (page: SettingsPage) =>
   page === "profile" ? SETTINGS_PATH : `${SETTINGS_PATH}/${page}`;
+
+// Where the unsubscribe page sends people to change the email.
+export const DAILY_EMAIL_PATH = `${SETTINGS_PATH}#daily-email`;

@@ -26,6 +26,12 @@ import {
   useStored,
   useTheme,
 } from "./prototype";
+import {
+  DailyEmailSection,
+  initialEmail,
+  TimezoneRow,
+  type EmailSettings,
+} from "./daily-email";
 import { SettingsFrame } from "./settings-frame";
 import batch from "./batch.module.css";
 import styles from "./settings.module.css";
@@ -42,7 +48,17 @@ export function ProfileSettingsPrototype() {
   const [signIn, setSignIn] = useStored<SignIn>("profile.sign-in", "google");
   const [hasPartner, setHasPartner] = useStored("profile.partner", true);
   const [codeRight, setCodeRight] = useStored("profile.code-right", true);
+  const [email, setEmail] = useStored<EmailSettings>(
+    "profile.email",
+    initialEmail,
+  );
+  const [browserZone, setBrowserZone] = useStored(
+    "profile.browser-zone",
+    "America/Los_Angeles",
+  );
   const notice = useNotice();
+  const changeEmail = (change: Partial<EmailSettings>) =>
+    setEmail((current) => ({ ...current, ...change }));
 
   return (
     <SettingsFrame
@@ -55,7 +71,7 @@ export function ProfileSettingsPrototype() {
           onTheme={setTheme}
         >
           <Choice
-            label="Variant: who draws it"
+            label="Variant: who draws Account"
             value={variant}
             options={[
               ["ours", "Our rows"],
@@ -90,6 +106,32 @@ export function ProfileSettingsPrototype() {
               ["wrong", "Wrong"],
             ]}
             onChange={(value) => setCodeRight(value === "right")}
+          />
+          <Choice
+            label="Daily email"
+            value={
+              email.on ? "on" : email.unsubscribedOn ? "unsubscribed" : "off"
+            }
+            options={[
+              ["on", "On"],
+              ["off", "Turned off here"],
+              ["unsubscribed", "Unsubscribed from the email"],
+            ]}
+            onChange={(value) =>
+              changeEmail({
+                on: value === "on",
+                unsubscribedOn: value === "unsubscribed" ? "Oct 20" : null,
+              })
+            }
+          />
+          <Choice
+            label="This browser’s timezone"
+            value={browserZone}
+            options={[
+              ["America/Los_Angeles", "Same as budget"],
+              ["America/New_York", "New York (traveling)"],
+            ]}
+            onChange={setBrowserZone}
           />
         </PrototypeBar>
       }
@@ -130,32 +172,41 @@ export function ProfileSettingsPrototype() {
                 spellCheck={false}
               />
             </div>
+            <div className={shell.settingDivider} />
+            <TimezoneRow
+              timezone={email.timezone}
+              browserZone={browserZone}
+              onChange={(timezone) => changeEmail({ timezone })}
+            />
           </Card>
         </section>
 
+        <DailyEmailSection email={email} onChange={changeEmail} />
+
         {variant === "ours" && (
-          <OurAccount
-            signIn={signIn}
-            hasPartner={hasPartner}
-            codeRight={codeRight}
-            onDeleted={() =>
-              notice.show(
-                "Account deleted. Signs out and lands on curate.is with a goodbye note",
-              )
-            }
-          />
+          <OurAccount signIn={signIn} codeRight={codeRight} />
         )}
         {variant === "clerk-inline" && (
           <section className={shell.settingsSection}>
             <h2 className={shell.settingsHeading}>Account</h2>
             <p className={shell.settingsIntro}>
               Clerk’s account manager, themed with our colors. It updates itself
-              as Clerk adds sign-in features.
+              as Clerk adds sign-in features. Deleting the account stays ours,
+              below.
             </p>
             <ClerkProfile signIn={signIn} />
           </section>
         )}
         {variant === "clerk-window" && <ClerkWindow signIn={signIn} />}
+
+        <DeleteAccount
+          hasPartner={hasPartner}
+          onDeleted={() =>
+            notice.show(
+              "Account deleted. Signs out and returns to the Welcome page",
+            )
+          }
+        />
       </div>
       {notice.region}
     </SettingsFrame>
@@ -166,14 +217,10 @@ export function ProfileSettingsPrototype() {
 
 function OurAccount({
   signIn,
-  hasPartner,
   codeRight,
-  onDeleted,
 }: {
   signIn: SignIn;
-  hasPartner: boolean;
   codeRight: boolean;
-  onDeleted: () => void;
 }) {
   const [google, setGoogle] = useState(true);
   // Without a password, Google is the only way in and can't be removed.
@@ -235,7 +282,6 @@ function OurAccount({
           </div>
         </Card>
       </section>
-      <DeleteAccount hasPartner={hasPartner} onDeleted={onDeleted} />
     </>
   );
 }
@@ -585,9 +631,9 @@ function DeleteAccount({
               <li>The daily email stops, and {me.email} can sign up again.</li>
               {hasPartner && (
                 <li>
-                  {partner.fullName} keeps their budget. Shared categories stop
-                  splitting, and what you owe each other stays on their side as
-                  it is today.
+                  {partner.fullName} keeps their budget. What you owe each other
+                  freezes at today’s amounts, and your shared categories stop
+                  splitting new spending.
                 </li>
               )}
             </ul>
@@ -712,11 +758,6 @@ function ClerkProfile({ signIn }: { signIn: SignIn }) {
               </span>
               <span className={styles.clerkValue}>iPhone · Safari</span>
             </ClerkLine>
-            <ClerkLine label="Delete account">
-              <button type="button" className={styles.clerkDanger}>
-                Delete account
-              </button>
-            </ClerkLine>
           </>
         )}
       </div>
@@ -785,8 +826,8 @@ function ClerkWindow({ signIn }: { signIn: SignIn }) {
         </div>
         <div className={shell.settingDivider} />
         <p className={shell.settingHint}>
-          Email, password, connected accounts, devices, and deleting your
-          account are in Clerk’s account window.
+          Email, password, connected accounts, and devices are in Clerk’s
+          account window. Deleting the account is below.
         </p>
       </Card>
     </section>

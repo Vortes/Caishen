@@ -13,7 +13,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { ShellSkeleton } from "~/components/prototype/app-shell/shell-skeleton";
 import { defaults } from "~/components/prototype/app-shell/settings";
 import { SHELL_PATH } from "~/components/prototype/app-shell/settings-pages";
-import { Brand, useBrandName } from "./brand";
+import { Brand } from "./brand";
 import { chaseAccounts, money } from "./mock";
 import {
   Choice,
@@ -54,7 +54,6 @@ const order: Phase[] = ["plaid", "saving", "syncing"];
 // and back here; this page picks the Plaid session up where it stopped.
 export function BankOAuthPrototype() {
   const [theme, setTheme] = useTheme();
-  const [name] = useBrandName();
   const [variant, setVariant] = useStored<Variant>("oauth.variant", "shell");
   const [play, setPlay] = useStored<Play>("oauth.state", "play");
   const [outcome, setOutcome] = useStored<Outcome>("oauth.outcome", "connects");
@@ -213,7 +212,7 @@ export function BankOAuthPrototype() {
       ) : (
         <PrototypePage theme={theme} controls={controls}>
           <main className={page.page}>
-            <Brand name={name} />
+            <Brand />
             <div className={`${page.card} ${styles.pageCard}`}>{card}</div>
           </main>
           {notice.region}

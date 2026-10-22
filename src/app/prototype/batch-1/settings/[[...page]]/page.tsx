@@ -1,7 +1,6 @@
 import { type Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AppearancePlaceholder } from "~/components/prototype/batch-1/appearance-placeholder";
-import { NotificationSettingsPrototype } from "~/components/prototype/batch-1/notification-settings";
 import { PartnerSettingsPrototype } from "~/components/prototype/batch-1/partner-settings";
 import { ProfileSettingsPrototype } from "~/components/prototype/batch-1/profile-settings";
 
@@ -14,7 +13,6 @@ const pages = {
   profile: ProfileSettingsPrototype,
   appearance: AppearancePlaceholder,
   partner: PartnerSettingsPrototype,
-  notifications: NotificationSettingsPrototype,
 };
 
 export default async function SettingsPrototypePage({

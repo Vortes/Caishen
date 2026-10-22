@@ -7,21 +7,12 @@ import {
   BRAND_TILE_RADIUS,
   BRAND_TILE_STOPS,
 } from "~/components/shared/brand-geometry";
-import { useStored } from "./prototype";
 import styles from "./batch.module.css";
 
 const markOffset = (100 - 100 * BRAND_SMALL_MARK_SCALE) / 2;
 
-export type BrandName = "Caishen" | "Curate";
-
-// The product's name is an open question while the app moves to curate.is;
-// every screen in the batch reads the same choice.
-export function useBrandName() {
-  return useStored<BrandName>("brand-name", "Caishen");
-}
-
 // The pinwheel mark from the favicon, beside the product's name.
-export function Brand({ name }: { name: BrandName }) {
+export function Brand() {
   const gradientId = useId();
   return (
     <span className={styles.brand}>
@@ -48,7 +39,7 @@ export function Brand({ name }: { name: BrandName }) {
           ))}
         </g>
       </svg>
-      {name}
+      Caishen
     </span>
   );
 }

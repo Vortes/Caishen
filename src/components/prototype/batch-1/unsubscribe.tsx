@@ -4,7 +4,7 @@ import { CircleAlertIcon, CircleCheckIcon, MailIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "~/components/ui/button";
-import { Brand, useBrandName } from "./brand";
+import { Brand } from "./brand";
 import { me } from "./mock";
 import {
   Choice,
@@ -13,7 +13,7 @@ import {
   useStored,
   useTheme,
 } from "./prototype";
-import { settingsPath } from "./routes";
+import { DAILY_EMAIL_PATH } from "./routes";
 import batch from "./batch.module.css";
 import styles from "./unsubscribe.module.css";
 
@@ -31,7 +31,6 @@ const masked = `${me.email.slice(0, 2)}••••••@${me.email.split("@")[
 
 export function UnsubscribePrototype() {
   const [theme, setTheme] = useTheme();
-  const [name] = useBrandName();
   const [variant, setVariant] = useStored<Variant>(
     "unsubscribe.variant",
     "press",
@@ -64,7 +63,7 @@ export function UnsubscribePrototype() {
         body="It may be from an old email, or it was cut short when copied. Sign in to turn the daily email off in Settings."
       >
         <Button variant="primary" asChild>
-          <Link href={settingsPath("notifications")}>Sign in to Settings</Link>
+          <Link href={DAILY_EMAIL_PATH}>Sign in to Settings</Link>
         </Button>
       </Message>
     );
@@ -93,9 +92,7 @@ export function UnsubscribePrototype() {
           {phase === "working" ? "Unsubscribing…" : "Unsubscribe"}
         </Button>
         <Button asChild>
-          <Link href={settingsPath("notifications")}>
-            Change the time instead
-          </Link>
+          <Link href={DAILY_EMAIL_PATH}>Change the time instead</Link>
         </Button>
       </Message>
     );
@@ -128,7 +125,7 @@ export function UnsubscribePrototype() {
         body="The next one arrives tomorrow at 8 a.m. Los Angeles time. Change the time in Settings."
       >
         <Button asChild>
-          <Link href={settingsPath("notifications")}>Open Settings</Link>
+          <Link href={DAILY_EMAIL_PATH}>Open Settings</Link>
         </Button>
       </Message>
     );
@@ -161,14 +158,14 @@ export function UnsubscribePrototype() {
       }
     >
       <main className={styles.page}>
-        <Brand name={name} />
+        <Brand />
         <div className={styles.card} aria-live="polite">
           {content}
         </div>
         <p className={styles.footnote}>
           Every email setting, including the time it arrives, is in{" "}
-          <Link className={batch.textLink} href={settingsPath("notifications")}>
-            Settings › Notifications
+          <Link className={batch.textLink} href={DAILY_EMAIL_PATH}>
+            Settings › Profile
           </Link>
           .
         </p>
