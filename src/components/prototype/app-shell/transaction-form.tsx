@@ -136,6 +136,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       .filter(
         (category) =>
           !category.pairedAccountId &&
+          !category.counterpartyAccountId &&
           (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId) &&
           (!shared || shared.categoryIds[view.budget.userId] === category.id),
       )

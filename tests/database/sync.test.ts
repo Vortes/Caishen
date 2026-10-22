@@ -36,7 +36,7 @@ const alexId = `test-sync-alex-${run}`;
 const jordanId = `test-sync-jordan-${run}`;
 const users = [alexId, jordanId];
 const month = "2026-10";
-const build = "1:test";
+const build = "2:test";
 
 function caller(userId: string) {
   const revision = new ObservedRevision();

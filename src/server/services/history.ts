@@ -85,6 +85,7 @@ async function historyStacks(
   // operation by anyone or anything else, or one too old to undo.
   const run = [];
   for (const operation of operations) {
+    if (operation.type === "budget.counterparties") continue;
     if (
       operation.actorId !== actorId ||
       operation.source !== "user" ||
@@ -151,7 +152,11 @@ export async function changeHistory(
   },
   observe?: RevisionObserver,
 ): Promise<OperationResult> {
-  const { household } = await requireHousehold(db, actorId, observe);
+  const { household, requestRevision } = await requireHousehold(
+    db,
+    actorId,
+    observe,
+  );
   const saved = await findOperation(
     db,
     household.workspaceId,
@@ -172,7 +177,7 @@ export async function changeHistory(
       "This operation ID has already been used with different details.",
       saved.revision,
     );
-  if (household.revision !== input.expectedRevision)
+  if (requestRevision !== input.expectedRevision)
     throw refusal(
       "conflict",
       "Your budget changed in another session. Refresh before saving.",
@@ -193,10 +198,14 @@ export async function changeHistory(
     id: input.operationId,
     targetOperationId: entry.operationId,
   };
-  return executeCommand(
+  const result = await executeCommand(
     db,
     actorId,
-    { command, submitted: command, baseRevision: input.expectedRevision },
+    { command, submitted: command, baseRevision: household.revision },
     observe,
   );
+  return {
+    ...result,
+    rebased: result.revision !== input.expectedRevision + 1,
+  };
 }

@@ -6,20 +6,27 @@ import {
   execute,
   executeWithChanges,
   mergeBooks,
+  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "~/domain/engine";
 import { bookToRows, diffRows, tombstone, type ChangeSet } from "~/domain/rows";
 import { Prisma } from "~/generated/prisma";
-import { householdLedger, households } from "~/server/storage/households";
+import {
+  householdLedger,
+  households,
+  writeOperation,
+} from "~/server/storage/households";
 import {
   carryOperations,
   findOperation,
+  lacksCounterpartyAccounts,
   RevisionConflictError,
   writeChangeSet,
 } from "~/server/storage/rows";
 import {
   earlierResult,
+  openHousehold,
   refusal,
   requireHousehold,
   writeServerOperation,
@@ -42,11 +49,11 @@ export async function onboard(
   observe?: RevisionObserver,
 ): Promise<OperationResult> {
   try {
-    const book = execute(createBook(userId, input.name, input.month), userId, {
-      type: "settings.update",
-      id: randomUUID(),
-      timezone: input.timezone,
-    });
+    const book = execute(
+      withCounterpartyAccounts(createBook(userId, input.name, input.month)),
+      userId,
+      { type: "settings.update", id: randomUUID(), timezone: input.timezone },
+    );
     const rows = bookToRows(book);
     const operationId = randomUUID();
     const changeSet: ChangeSet = {
@@ -81,6 +88,48 @@ export async function onboard(
     };
   } catch (error) {
     domainError(error);
+  }
+}
+
+/**
+ * Gives a household's budgets the counterparty accounts and paired
+ * envelopes they lack, as one operation; budgets made before these accounts
+ * existed get them before their first pull or write. Does nothing while any
+ * part of the household doesn't read, and leaves a write race to the next request.
+ */
+export async function addCounterpartyAccounts(
+  db: Database,
+  userId: string,
+  observe?: RevisionObserver,
+): Promise<{ previousRevision: number; revision: number } | undefined> {
+  if (!(await lacksCounterpartyAccounts(db, userId))) return;
+  const opened = await openHousehold(db, userId, observe);
+  if (!opened) return;
+  const { household, ledger } = opened;
+  if (ledger.status !== "ready" || ledger.personal || ledger.failures.length)
+    return;
+  const book = ledger.state as Book;
+  const changes = diffRows(
+    bookToRows(book),
+    bookToRows(withCounterpartyAccounts(book)),
+  );
+  if (!changes.after.length) return;
+  const operationId = randomUUID();
+  try {
+    const written = await writeOperation(db, household, {
+      changeSet: { operationId, revision: 0, ...changes },
+      operation: {
+        actorId: userId,
+        source: "user",
+        type: "budget.counterparties",
+        inputHash: operationHash({ operationId }),
+        command: null,
+      },
+    });
+    observe?.(written.revision);
+    return { previousRevision: household.revision, revision: written.revision };
+  } catch (error) {
+    if (!(error instanceof RevisionConflictError)) throw error;
   }
 }
 
@@ -131,7 +180,9 @@ export async function joinHousehold(
           code: "NOT_FOUND",
           message: "This invitation is invalid, expired, or already used.",
         });
-      const merged = mergeBooks(host.book, own.book, userId);
+      const merged = withCounterpartyAccounts(
+        mergeBooks(host.book, own.book, userId),
+      );
       const operationId = randomUUID();
       const changeSet: ChangeSet = {
         operationId,
@@ -234,7 +285,7 @@ async function bulkOperation(
     );
     if (saved)
       return earlierResult(saved, actorId, input.submitted, input.submitted);
-    if (opened.household.revision !== input.expectedRevision)
+    if (opened.requestRevision !== input.expectedRevision)
       throw refusal(
         "conflict",
         "Your budget changed in another session. Refresh before saving.",

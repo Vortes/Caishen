@@ -212,6 +212,7 @@ function CategorizeAction({
       (category) =>
         !category.pairedAccountId &&
         !category.pairedLoanId &&
+        !category.counterpartyAccountId &&
         transactions.every(
           (item) => !item.sharedCategoryId || item.categoryId === category.id,
         ),

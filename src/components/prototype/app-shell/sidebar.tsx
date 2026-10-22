@@ -111,6 +111,29 @@ export function Sidebar({
         })),
     },
     {
+      // The counterparty accounts: the partner first, then Reimbursements.
+      id: "people",
+      label: "People",
+      empty: undefined,
+      items: accounts
+        .filter(
+          (account) =>
+            account.kind === "partner" || account.kind === "reimbursements",
+        )
+        .sort((a, b) =>
+          a.kind === "partner" ? -1 : b.kind === "partner" ? 1 : 0,
+        )
+        .map((account) => ({
+          id: account.id,
+          label: account.name,
+          value: account.balance,
+          warning: false,
+          current:
+            screen.type === "register" && screen.accountId === account.id,
+          go: () => onNavigate({ type: "register", accountId: account.id }),
+        })),
+    },
+    {
       id: "loans",
       label: "Loans",
       empty: undefined,

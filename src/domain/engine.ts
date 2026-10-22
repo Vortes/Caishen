@@ -993,6 +993,90 @@ export function createBook(userId: string, name: string, month: string): Book {
   };
 }
 
+// The counterparty accounts a budget holds, each with one paired envelope in
+// People: reimbursements always, for everyone who is not the partner, and the
+// partner account once the household has two members.
+const counterparties = [
+  { kind: "reimbursements", name: "Reimbursements" },
+  { kind: "partner", name: "Partner" },
+] as const;
+export const counterpartyId = (kind: CounterpartyKind) =>
+  `counterparty:${kind}`;
+export const pairedEnvelopeId = (kind: CounterpartyKind) => `envelope:${kind}`;
+export type CounterpartyKind = (typeof counterparties)[number]["kind"];
+export const PEOPLE_GROUP = "People";
+
+// A paired envelope's activity is its counterparty account's, so nothing
+// else is categorized into it.
+function refusePairedEnvelope(category: Category): void {
+  if (category.counterpartyAccountId)
+    fail(
+      "A paired envelope changes only with its counterparty account. Choose a spending category",
+    );
+}
+
+/** The partner and reimbursements accounts, which the system keeps. */
+export const isCounterparty = (account: Pick<Account, "kind">) =>
+  account.kind === "partner" || account.kind === "reimbursements";
+
+// Until shares and settlements write them, a counterparty account holds no
+// entries of its own, so its balance stays what its paired envelope shows.
+function ensureNoCounterpartyEntries(budget: Budget): void {
+  const counterpartyIds = new Set(
+    budget.accounts.filter(isCounterparty).map((account) => account.id),
+  );
+  if (
+    budget.transactions.some(
+      (transaction) =>
+        !transaction.removed && counterpartyIds.has(transaction.accountId),
+    )
+  )
+    fail(
+      "Entries on Partner and Reimbursements come from shares and settlements, not from the register",
+    );
+}
+
+/**
+ * The book with every counterparty account and paired envelope its budgets
+ * should hold, adding only what is missing. The server runs it when a budget
+ * is created, when a partner joins, and on budgets made before these
+ * accounts existed.
+ */
+export function withCounterpartyAccounts(book: Book): Book {
+  const result = structuredClone(book);
+  const partnered = Object.keys(result.budgets).length === 2;
+  for (const budget of Object.values(result.budgets))
+    for (const { kind, name } of counterparties) {
+      if (kind === "partner" && !partnered) continue;
+      const accountId = counterpartyId(kind);
+      const existing = budget.accounts.find(
+        (account) => account.id === accountId,
+      );
+      if (existing && existing.kind !== kind)
+        fail("A budget account already uses a counterparty account's ID");
+      if (!existing)
+        budget.accounts.push({
+          id: accountId,
+          name,
+          kind,
+          openingBalance: 0,
+          date: `${budget.startMonth}-01`,
+        });
+      const envelopeId = pairedEnvelopeId(kind);
+      const envelope = budget.categories.find((item) => item.id === envelopeId);
+      if (envelope && envelope.counterpartyAccountId !== accountId)
+        fail("A category already uses a paired envelope's ID");
+      if (!envelope)
+        budget.categories.push({
+          id: envelopeId,
+          name,
+          group: PEOPLE_GROUP,
+          counterpartyAccountId: accountId,
+        });
+    }
+  return result;
+}
+
 export function addMember(
   book: Book,
   userId: string,
@@ -2628,6 +2712,7 @@ function saveRegisterTransaction(
           fail("Choose a spending category for money leaving the budget");
       } else {
         const category = getCategory(budget, command.categoryId ?? "");
+        refusePairedEnvelope(category);
         if (category.pairedAccountId || category.pairedLoanId)
           fail("Choose a spending category for this transfer");
         categoryId = category.id;
@@ -3040,6 +3125,7 @@ function executeAccountingState<T extends AccountingState>(
   const budget = ownBudget(book, actorId);
   const changes = new Changes(book);
   applyCommand(book, budget, command, source, changes);
+  ensureNoCounterpartyEntries(budget);
   if (
     [
       "transaction.upsert",
@@ -3352,6 +3438,7 @@ function applyCommand(
         fail("Use a card payment or posted statement credit for card inflows");
       if (categoryId) {
         const category = getCategory(budget, categoryId);
+        refusePairedEnvelope(category);
         if (category.pairedAccountId || category.pairedLoanId)
           fail("Use the paired payment operation");
       }
@@ -3595,6 +3682,7 @@ function applyCommand(
         )
           fail("This transfer does not use a category");
         const category = getCategory(budget, command.categoryId);
+        refusePairedEnvelope(category);
         if (category.pairedAccountId || category.pairedLoanId)
           fail("Choose a spending category for this transfer");
         for (const item of [transaction, other]) {
@@ -3617,6 +3705,7 @@ function applyCommand(
       if (getAccount(budget, transaction.accountId).kind === "tracking")
         fail("Tracking activity does not use budget categories");
       const category = getCategory(budget, command.categoryId);
+      refusePairedEnvelope(category);
       if (category.pairedAccountId || category.pairedLoanId)
         fail("Payment categories cannot categorize purchases");
       if (
@@ -4077,6 +4166,7 @@ function applyCommand(
         };
         changes.addCategory(budget, category);
       }
+      refusePairedEnvelope(category);
       if (category.pairedAccountId || category.pairedLoanId)
         fail("Category is already paired");
       changes.category(budget, category).pairedLoanId = command.loanId;

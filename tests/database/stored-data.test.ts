@@ -226,10 +226,10 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     // Browsers get no rows that don't read: the owner's pull waits, the
     // partner's holds none of the owner's budget anyway.
     await assert.rejects(
-      alerts(() => alice.sync.pull({ since: null, clientBuild: "1:test" })),
+      alerts(() => alice.sync.pull({ since: null, clientBuild: "2:test" })),
       maintenance,
     );
-    const pulled = await bob.sync.pull({ since: null, clientBuild: "1:test" });
+    const pulled = await bob.sync.pull({ since: null, clientBuild: "2:test" });
     assert.ok(pulled.rows.length > 0);
     assert.ok(!pulled.rows.some((row) => rowOwner(row) === a));
 
@@ -344,7 +344,7 @@ void test("standing rules an earlier release stored still load, sync, and undo",
     assert.equal(state.status, "ready");
     const pulled = await alice.sync.pull({
       since: null,
-      clientBuild: "1:test",
+      clientBuild: "2:test",
     });
     assert.ok(pulled.rows.some((row) => row.id === rule.id && !row.deleted));
     ({ revision } = await alice.budget.execute({

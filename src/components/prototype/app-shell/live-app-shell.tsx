@@ -258,9 +258,10 @@ function LiveWorkspace({
         : allImports,
     [allImports, resolved],
   );
+  const partnerFirstName = overview?.partnerFirstName ?? undefined;
   const data = useMemo(
-    () => toShellData({ view, connections, imports }),
-    [view, connections, imports],
+    () => toShellData({ view, connections, imports, partnerFirstName }),
+    [view, connections, imports, partnerFirstName],
   );
 
   const [notice, setNotice] = useState<Notice | null>(null);

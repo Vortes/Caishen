@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 
 import { PrismaClient } from "../../src/generated/prisma";
-import { createBook } from "../../src/domain/engine";
+import {
+  createBook,
+  isCounterparty,
+  withCounterpartyAccounts,
+} from "../../src/domain/engine";
 import { createCaller } from "../../src/server/api/root";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import {
@@ -16,7 +20,6 @@ import {
 } from "../../src/server/services/bank-account-setup";
 import { jsonValue } from "../../src/server/services/safety";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
-import { recentOperations } from "../../src/server/storage/rows";
 import {
   createBankConnection,
   createHousehold,
@@ -101,14 +104,6 @@ void test(
       transactionStatus: null as string | null,
       synchronizedAccountIds: [] as string[],
     };
-    const setups = async () => {
-      const member = await db.workspaceMember.findUniqueOrThrow({
-        where: { clerkUserId: aliceId },
-      });
-      return (await recentOperations(db, member.workspaceId, 100)).filter(
-        (operation) => operation.type === "bank.accounts.setup",
-      ).length;
-    };
     const request = {
       connectionId,
       operationId: randomUUID(),
@@ -131,7 +126,10 @@ void test(
         data: users.map((clerkUserId) => ({ clerkUserId })),
       });
       for (const userId of users)
-        await createHousehold(db, createBook(userId, "Fixture", month));
+        await createHousehold(
+          db,
+          withCounterpartyAccounts(createBook(userId, "Fixture", month)),
+        );
       await createBankConnection(db, {
         data: {
           id: connectionId,
@@ -203,9 +201,13 @@ void test(
       );
       const untouched = await state();
       assert.equal(untouched.revision, request.expectedRevision);
-      assert.deepEqual(untouched.view!.budget.accounts, []);
+      assert.deepEqual(
+        untouched.view!.budget.accounts.filter(
+          (account) => !isCounterparty(account),
+        ),
+        [],
+      );
       assert.deepEqual(untouched.connections[0]!.accountMappings, {});
-      assert.equal(await setups(), 0);
 
       const added = await alice.budget.setupBankAccounts(request);
       assert.equal(added.revision, request.expectedRevision + 1);
@@ -231,11 +233,9 @@ void test(
       assert.equal(saved.view!.cash, 120050);
       assert.equal(saved.view!.readyToAssign, 120050);
       assert.deepEqual(
-        saved.view!.accounts.map((account) => [
-          account.name,
-          account.kind,
-          account.balance,
-        ]),
+        saved
+          .view!.accounts.filter((account) => !isCounterparty(account))
+          .map((account) => [account.name, account.kind, account.balance]),
         [
           ["Everyday cash", "cash", 120050],
           ["Travel card", "credit", -20025],
@@ -263,10 +263,12 @@ void test(
         true,
       );
       assert.equal(
-        (await bob.budget.state({ month })).view!.accounts.length,
+        (await bob.budget.state({ month })).view!.accounts.filter(
+          (account) => !isCounterparty(account),
+        ).length,
         0,
       );
-      assert.equal(await setups(), 1);
+      assert.equal(saved.revision, added.revision);
       await assert.rejects(
         alice.budget.setupBankAccounts({
           ...request,
@@ -428,7 +430,12 @@ void test(
       assert.equal(manual.name, "My existing cash");
       assert.equal(manual.balance, 300000);
       assert.equal(linked.view!.cash, 420050);
-      assert.equal(linked.view!.budget.accounts.length, 3);
+      assert.equal(
+        linked.view!.budget.accounts.filter(
+          (account) => !isCounterparty(account),
+        ).length,
+        3,
+      );
       const linkedMapping = bankMappingsSchema.parse(
         linked.connections.find(
           (connection) => connection.id === secondConnectionId,

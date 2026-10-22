@@ -6,6 +6,7 @@ import { PrismaClient } from "../../src/generated/prisma";
 import {
   createBook,
   execute,
+  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "../../src/domain/engine";
@@ -175,7 +176,10 @@ void test(
         [aliceId, "alice"],
         [bobId, "bob"],
       ] as const) {
-        await createHousehold(db, fixtureBook(userId, prefix));
+        await createHousehold(
+          db,
+          withCounterpartyAccounts(fixtureBook(userId, prefix)),
+        );
       }
       await createBankConnection(db, {
         data: {
@@ -462,7 +466,10 @@ void test(
     const record = fixtureRecord(connectionId, "history-purchase");
     try {
       await db.user.create({ data: { clerkUserId: userId } });
-      await createHousehold(db, fixtureBook(userId, "history"));
+      await createHousehold(
+        db,
+        withCounterpartyAccounts(fixtureBook(userId, "history")),
+      );
       await createBankConnection(db, {
         data: {
           id: connectionId,

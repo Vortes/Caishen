@@ -56,9 +56,14 @@ const MAX_LENGTH = 120;
 
 // A group of card or loan payment categories, which Caishen makes with their
 // card or loan. Everyday categories don't go there.
-export function isPaymentGroup(group: { categories: { pays?: unknown }[] }) {
+// A group the system keeps, like card payments or People, which takes no
+// categories of the user's own.
+export function isSystemGroup(group: {
+  categories: { pays?: unknown; pairs?: unknown }[];
+}) {
   return (
-    group.categories.length > 0 && group.categories.every((item) => item.pays)
+    group.categories.length > 0 &&
+    group.categories.every((item) => item.pays ?? item.pairs)
   );
 }
 
@@ -159,7 +164,7 @@ function NameForm({
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const target = choice ? chosen : group;
-  const choices = groups.filter((item) => !isPaymentGroup(item));
+  const choices = groups.filter((item) => !isSystemGroup(item));
 
   const fail = (message: string) => {
     setError({ field: "name", message });
@@ -312,7 +317,7 @@ export function NewCategoryPopover({
   const container = usePortalContainer();
   const added = useRef<NewCategory | null>(null);
   const { groups } = useShellData();
-  const choices = groups.filter((item) => !isPaymentGroup(item));
+  const choices = groups.filter((item) => !isSystemGroup(item));
   const start =
     choices.find((item) => item.name === group)?.name ?? choices[0]?.name;
   return (

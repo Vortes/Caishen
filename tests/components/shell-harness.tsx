@@ -65,11 +65,15 @@ type SetupInput = RouterInputs["budget"]["setupBankAccounts"];
 type Answer<T> = T | Promise<T>;
 type Executed = ReturnType<FakeServer["execute"]>;
 
-export const readyOverview = (overview: Partial<Overview> = {}): Overview => ({
+type ReadyOverview = Extract<Overview, { status: "ready" }>;
+export const readyOverview = (
+  overview: Partial<ReadyOverview> = {},
+): ReadyOverview => ({
   status: "ready",
   services: [],
   connections: [],
   imports: [],
+  partnerFirstName: null,
   ...overview,
 });
 

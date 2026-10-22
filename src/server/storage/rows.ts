@@ -654,6 +654,40 @@ export async function readHouseholdRevision(db: Database, userId: string) {
     : null;
 }
 
+/**
+ * Whether a member's household lacks a counterparty account its budgets
+ * should hold: reimbursements for every member, and partner for both once
+ * there are two. Cheap enough to ask on every pull.
+ */
+export async function lacksCounterpartyAccounts(
+  db: Database,
+  userId: string,
+): Promise<boolean> {
+  const workspace = await db.workspace.findFirst({
+    where: { members: { some: { clerkUserId: userId } } },
+    select: {
+      id: true,
+      _count: { select: { budgetMembers: { where: { deleted: false } } } },
+    },
+  });
+  if (!workspace) return false;
+  const workspaceId = workspace.id;
+  const members = workspace._count.budgetMembers;
+  const accounts = await db.account.findMany({
+    where: {
+      workspaceId,
+      deleted: false,
+      kind: { in: ["partner", "reimbursements"] },
+    },
+    select: { kind: true },
+  });
+  const count = (kind: string) =>
+    accounts.filter((account) => account.kind === kind).length;
+  return (
+    count("reimbursements") < members || (members === 2 && count("partner") < 2)
+  );
+}
+
 /** A member's operations written after one revision, through another. */
 export async function confirmedOperationIds(
   db: Database,

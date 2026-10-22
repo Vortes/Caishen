@@ -4,7 +4,7 @@ import { SearchIcon, XIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
-import { money, type Account } from "./model";
+import { isCounterparty, money, type Account } from "./model";
 import {
   ReconcilePopover,
   reconciledLabel,
@@ -28,6 +28,19 @@ export function AccountSummary({
   const { today } = useShellData();
   const working = accounts.reduce((sum, item) => sum + item.balance, 0);
   const uncleared = accounts.reduce((sum, item) => sum + item.pending, 0);
+  // No bank clears a counterparty account's entries: its balance is just
+  // what one side owes the other.
+  if (account && isCounterparty(account))
+    return (
+      <div className={styles.accountSummary}>
+        <dl className={styles.balances}>
+          <div data-total>
+            <dt>{account.balance < 0 ? "You owe" : "Owed to you"}</dt>
+            <dd>{money(Math.abs(account.balance))}</dd>
+          </div>
+        </dl>
+      </div>
+    );
   return (
     <div className={styles.accountSummary}>
       <dl className={styles.balances}>

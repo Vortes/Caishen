@@ -87,6 +87,22 @@ const savedBankConnections = (db: Database, userId: string) =>
     },
   });
 
+// The partner's first name from their profile, which names the partner
+// account in the shell.
+async function partnerFirstName(
+  db: Database,
+  workspaceId: string,
+  userId: string,
+) {
+  const partner = await db.workspaceMember.findFirst({
+    where: { workspaceId, clerkUserId: { not: userId } },
+    select: { user: { select: { firstName: true } } },
+  });
+  const name = partner?.user.firstName?.trim();
+  // A blank name counts as none.
+  return name === "" ? null : (name ?? null);
+}
+
 export const budgetRouter = createTRPCRouter({
   // What the app shell shows beside the rows it syncs (ADR 0006): whether
   // the budget can be read, and the bank connections with their inbox.
@@ -114,6 +130,11 @@ export const budgetRouter = createTRPCRouter({
       services,
       connections: banks.map(bankConnectionView),
       imports: bankInboxItems(banks, opened.ledger.budget),
+      partnerFirstName: await partnerFirstName(
+        ctx.db,
+        opened.household.workspaceId,
+        ctx.userId,
+      ),
     };
   }),
 
