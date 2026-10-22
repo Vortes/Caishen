@@ -316,6 +316,14 @@ void test("joining resets every browser, and partners see only their own rows of
     ),
   );
   assert.ok(!facts.rows.some((row) => row.table === "transaction"));
+  // Alex's payee memory stays in Alex's browser.
+  const remembered = (rows: WireRow[]) =>
+    rows.filter((row) => row.table === "payeeMemory").map((row) => row.id);
+  assert.deepEqual(
+    remembered((await pullAll(alex.api, shared.revision)).rows),
+    [rowKey(alexId, "market")],
+  );
+  assert.deepEqual(remembered(facts.rows), []);
   assert.ok(
     purchase.changeSet!.after.every((row) => rowVisibleTo(row, alexId)),
     "Alex's answer leaves out the fact derived for Jordan",

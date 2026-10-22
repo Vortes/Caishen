@@ -1289,3 +1289,203 @@ void test("a quarantined transaction leaves review once the bank fixes, removes,
     "a changed fact needs review again",
   );
 });
+
+// Saves a bank import from the inbox as the register's editor does, with
+// the category the user chose.
+async function saveImport(
+  h: Awaited<ReturnType<typeof harness>>,
+  logicalId: string,
+  // Absent for Ready to Assign.
+  categoryId?: string,
+) {
+  const item = (await bankInbox(h.db, alice)).find(
+    (entry) => entry.logicalId === logicalId,
+  )!;
+  await resolveImport(h.db, alice, {
+    connectionId: item.connectionId,
+    logicalId: item.logicalId,
+    expectedFingerprint: item.fingerprint,
+    expectedRevision: await h.revision(),
+    ignore: false,
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: randomUUID(),
+      accountId: item.accountId!,
+      date: item.date,
+      amount: item.amount,
+      payee: item.payee,
+      categoryId,
+      status: item.pending ? "pending" : "posted",
+    },
+  });
+}
+
+const groceryRun = (id: string, date: string, overrides = {}) =>
+  plaidTransaction({
+    transaction_id: id,
+    date,
+    amount: 42.1,
+    name: "TRADER JOE'S #552 SAN FRANCISCO CA",
+    merchant_name: "Trader Joe's",
+    ...overrides,
+  });
+
+void test("an import from a payee the user categorized arrives categorized and counted, still to review", async () => {
+  const h = await linkedHarness();
+  syncPages([
+    { added: [groceryRun("first-run", "2026-10-12")], next_cursor: "1" },
+    {
+      added: [
+        groceryRun("second-run", "2026-10-19"),
+        plaidTransaction({ transaction_id: "deli", name: "Corner Deli" }),
+      ],
+      next_cursor: "2",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  const [first] = await bankInbox(h.db, alice);
+  assert.equal(first?.payee, "Trader Joe's");
+  await saveImport(h, first.logicalId, "dining");
+
+  await syncBanks(h.db, alice);
+  const second = (await h.book()).budgets[alice]!.transactions.find(
+    (transaction) => transaction.providerId === "second-run",
+  );
+  assert.ok(second, "the remembered payee's import became a transaction");
+  assert.equal(second.categoryId, "dining");
+  assert.equal(second.amount, -4210);
+  assert.equal(second.payee, "Trader Joe's");
+  assert.equal(second.status, "posted");
+  assert.equal(second.reviewed, false);
+  // A payee with no memory waits in the inbox as before.
+  assert.deepEqual(
+    (await bankInbox(h.db, alice)).map((item) => item.payee),
+    ["Corner Deli"],
+  );
+});
+
+void test("a remembered payee's import waits in the inbox when a hand-entered transaction may be the same purchase", async () => {
+  const h = await linkedHarness();
+  syncPages([
+    { added: [groceryRun("first-run", "2026-10-02")], next_cursor: "1" },
+    { added: [groceryRun("second-run", "2026-10-19")], next_cursor: "2" },
+  ]);
+  await syncBanks(h.db, alice);
+  await saveImport(h, (await bankInbox(h.db, alice))[0]!.logicalId, "dining");
+  // Entered by hand at the checkout, three days before the bank posts it.
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: "by-hand",
+      transactionId: "by-hand",
+      accountId: "cash",
+      date: "2026-10-16",
+      amount: -4210,
+      payee: "Trader Joe's",
+      status: "posted",
+      categoryId: "dining",
+    }),
+  );
+  await syncBanks(h.db, alice);
+  assert.equal(
+    (await h.book()).budgets[alice]!.transactions.filter(
+      (transaction) => !transaction.removed,
+    ).length,
+    2,
+  );
+  assert.deepEqual(
+    (await bankInbox(h.db, alice)).map((item) => [item.payee, item.date]),
+    [["Trader Joe's", "2026-10-19"]],
+  );
+});
+
+void test("a remembered import keeps its category when it posts, and leaves when the bank removes it", async () => {
+  const h = await linkedHarness();
+  syncPages([
+    { added: [groceryRun("first-run", "2026-10-02")], next_cursor: "1" },
+    {
+      added: [groceryRun("pending-run", "2026-10-18", { pending: true })],
+      next_cursor: "2",
+    },
+    {
+      added: [
+        groceryRun("posted-run", "2026-10-19", {
+          pending_transaction_id: "pending-run",
+        }),
+      ],
+      removed: [
+        { transaction_id: "pending-run", account_id: "provider-checking" },
+      ],
+      next_cursor: "3",
+    },
+    {
+      removed: [
+        { transaction_id: "posted-run", account_id: "provider-checking" },
+      ],
+      next_cursor: "4",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  await saveImport(h, (await bankInbox(h.db, alice))[0]!.logicalId, "dining");
+  const runs = async () =>
+    (await h.book()).budgets[alice]!.transactions.filter(
+      (transaction) =>
+        !transaction.removed && transaction.payee === "Trader Joe's",
+    );
+  await syncBanks(h.db, alice);
+  assert.deepEqual(
+    (await runs()).map((item) => [item.status, item.categoryId, item.reviewed]),
+    [
+      ["posted", "dining", false],
+      ["pending", "dining", false],
+    ],
+  );
+  await syncBanks(h.db, alice);
+  assert.deepEqual(
+    (await runs()).map((item) => [item.status, item.date, item.categoryId]),
+    [
+      ["posted", "2026-10-02", "dining"],
+      ["posted", "2026-10-19", "dining"],
+    ],
+  );
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+  await syncBanks(h.db, alice);
+  assert.equal((await runs()).length, 1);
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+});
+
+void test("pay remembered as Ready to Assign arrives there, and money going out to the same payee waits for a category", async () => {
+  const h = await linkedHarness();
+  const payroll = (id: string, date: string, amount: number) =>
+    plaidTransaction({
+      transaction_id: id,
+      date,
+      amount,
+      name: "ACME CORP PAYROLL",
+      merchant_name: "Acme Payroll",
+    });
+  syncPages([
+    { added: [payroll("october-1", "2026-10-01", -3000)], next_cursor: "1" },
+    {
+      added: [
+        payroll("october-15", "2026-10-15", -3000),
+        payroll("clawback", "2026-10-16", 40),
+      ],
+      next_cursor: "2",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  await saveImport(h, (await bankInbox(h.db, alice))[0]!.logicalId);
+  await syncBanks(h.db, alice);
+  const pay = (await h.book()).budgets[alice]!.transactions.find(
+    (transaction) => transaction.providerId === "october-15",
+  );
+  assert.equal(pay?.kind, "income");
+  assert.equal(pay.categoryId, undefined);
+  assert.equal(pay.reviewed, false);
+  assert.deepEqual(
+    (await bankInbox(h.db, alice)).map((item) => [item.payee, item.amount]),
+    [["Acme Payroll", -4000]],
+  );
+});
