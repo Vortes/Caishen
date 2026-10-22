@@ -30,6 +30,10 @@
 .entryRow > .cell {
   padding-top: calc((var(--size-row-lg) - var(--size-control)) / 2);
 }
+/* Focusing an editor in a scrolled register must clear its sticky header. */
+.entryRow .input {
+  scroll-margin-block-start: calc(var(--size-row-md) + var(--space-card));
+}
 /* A well grows past its column on its text side, by its border and
    padding, so what's typed starts where the row's text did. Amounts are
    right-aligned, so theirs grows to the right. */
@@ -92,6 +96,9 @@
   }
   .entryRow > .cell {
     padding-top: 0;
+  }
+  .entryRow .input {
+    scroll-margin-block-start: calc(var(--size-row-md) + var(--size-row-lg));
   }
   .entryRow .well,
   .entryRow .well[data-amount] {
