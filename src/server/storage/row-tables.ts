@@ -130,6 +130,7 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("group"),
       text("pairedAccountId", true),
       text("pairedLoanId", true),
+      text("counterpartyAccountId", true),
       sort,
     ],
   },
@@ -224,6 +225,19 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("operationId"),
       text("reason"),
       text("combinedId", true),
+    ],
+  },
+  transactionLine: {
+    model: "TransactionLine",
+    key: ["userId", "transactionId", "id"],
+    visibleTo: "userId",
+    columns: [
+      userId,
+      text("transactionId"),
+      text("id"),
+      text("categoryId"),
+      cents("amount"),
+      sort,
     ],
   },
   loan: {
@@ -393,6 +407,18 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("status", true),
       json("shares", true),
       int("sort", true),
+    ],
+  },
+  payeeMemory: {
+    model: "PayeeMemory",
+    key: ["userId", "payeeKey"],
+    visibleTo: "userId",
+    columns: [
+      userId,
+      text("payeeKey"),
+      text("payee"),
+      text("kind"),
+      text("categoryId", true),
     ],
   },
 };

@@ -1,5 +1,6 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { rowsIn } from "~/domain/change-sets";
+import { CLIENT_FORMAT } from "~/domain/client-format";
 import type { WireRow } from "~/domain/rows";
 import type { Commit } from "./budget-store";
 import {
@@ -9,13 +10,23 @@ import {
 } from "./persistence";
 
 // The confirmed rows kept in IndexedDB, one database per signed-in user
-// (`caishen:{userId}`), shared by that user's tabs. Each commit is one
+// (`caishen:{format}:{userId}`), shared by compatible tabs. Each commit is one
 // transaction and is skipped when storage already holds its revision or a
 // newer one, so tabs never move it backward and need no leader.
 
 /** Raised when stored rows can no longer be read as they are: they are dropped. */
 export const STORE_SCHEMA_VERSION = 1;
 const DATABASE_PREFIX = "caishen:";
+const knownDatabases = new Set<string>();
+
+function userDatabaseNames(userId: string) {
+  return [
+    `${DATABASE_PREFIX}${userId}`,
+    ...Array.from({ length: CLIENT_FORMAT }, (_, index) =>
+      `${DATABASE_PREFIX}${index + 1}:${userId}`,
+    ),
+  ];
+}
 
 type Meta = { revision: number; storeSchemaVersion: number; build: string };
 
@@ -25,7 +36,7 @@ interface BudgetDatabase extends DBSchema {
 }
 
 export const budgetDatabaseName = (userId: string) =>
-  `${DATABASE_PREFIX}${userId}`;
+  `${DATABASE_PREFIX}${CLIENT_FORMAT}:${userId}`;
 
 export class IndexedDbPersistence implements Persistence {
   private closed = false;
@@ -42,6 +53,7 @@ export class IndexedDbPersistence implements Persistence {
     userId: string,
     build: string,
   ): Promise<IndexedDbPersistence> {
+    for (const name of userDatabaseNames(userId)) knownDatabases.add(name);
     const db = await openDB<BudgetDatabase>(budgetDatabaseName(userId), 1, {
       upgrade(database) {
         database.createObjectStore("rows", { keyPath: ["table", "id"] });
@@ -151,11 +163,18 @@ export async function deleteStoredBudgets({
   userId,
 }: { except?: string; userId?: string } = {}): Promise<void> {
   if (typeof indexedDB === "undefined") return;
-  const names = new Set<string>();
-  if (userId) names.add(budgetDatabaseName(userId));
+  const names = new Set(knownDatabases);
+  if (userId)
+    for (const name of userDatabaseNames(userId)) names.add(name);
   if ("databases" in indexedDB)
     for (const database of await indexedDB.databases())
       if (database.name?.startsWith(DATABASE_PREFIX)) names.add(database.name);
-  if (except) names.delete(budgetDatabaseName(except));
+  if (except) {
+    for (const name of names) {
+      const owner = name.slice(DATABASE_PREFIX.length).replace(/^\d+:/, "");
+      if (owner === except) names.delete(name);
+    }
+  }
   await Promise.all([...names].map((name) => deleteDB(name)));
+  for (const name of names) knownDatabases.delete(name);
 }

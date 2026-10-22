@@ -6,7 +6,7 @@ import {
 
 // One transaction's contribution to a person's personal spending: their share of
 // a purchase or refund, wherever it was paid from, and the interest part of a
-// loan payment. Repayments, card payments, income, and reimbursements are not
+// loan payment, with a split counted line by line. Repayments, card payments, income, and reimbursements are not
 // spending. See "Personal spending" in docs/GLOSSARY.md and ADR 0001.
 export type SpendingEntry = {
   id: string;
@@ -57,6 +57,21 @@ export function personalSpendingEntries(
         payments.find((payment) => payment.id === transaction.linkedId)
           ?.interest ?? 0;
     if (!amount) continue;
+    if (transaction.lines && !transaction.shares) {
+      for (const line of transaction.lines)
+        entries.push({
+          id: `${userId}:${transaction.id}:${line.id}`,
+          transactionId: transaction.id,
+          paidByYou: true,
+          month: transaction.expenseMonth,
+          date: transaction.date,
+          payee: transaction.payee,
+          accountId: transaction.accountId,
+          categoryId: line.categoryId,
+          amount: -line.amount,
+        });
+      continue;
+    }
     entries.push({
       id: `${userId}:${transaction.id}`,
       transactionId: transaction.id,

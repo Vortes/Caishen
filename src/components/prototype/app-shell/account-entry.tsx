@@ -7,9 +7,12 @@ import { newId, parseMoney, today } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
-import type { Account, Command } from "~/domain/engine";
+import type { Command } from "~/domain/engine";
 import { useTransactionEntry } from "./transaction-entry";
 import styles from "./account-entry.module.css";
+
+// The kinds a person adds; counterparty accounts are the system's.
+type NewAccountKind = Extract<Command, { type: "account.add" }>["kind"];
 
 export function AccountEntry() {
   const entry = useTransactionEntry();
@@ -19,7 +22,7 @@ export function AccountEntry() {
   const { holdOpen } = entry;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<Account["kind"]>("cash");
+  const [kind, setKind] = useState<NewAccountKind>("cash");
   const [balance, setBalance] = useState("");
   const [date, setDate] = useState(today(entry.view.budget.settings.timezone));
   const [error, setError] = useState("");
@@ -123,7 +126,7 @@ export function AccountEntry() {
                 value={kind}
                 aria-describedby={`${id}-kind-help`}
                 onChange={(event) =>
-                  setKind(event.target.value as Account["kind"])
+                  setKind(event.target.value as NewAccountKind)
                 }
               >
                 <option value="cash">Cash / checking / savings</option>

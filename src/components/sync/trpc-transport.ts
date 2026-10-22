@@ -1,5 +1,6 @@
 import { TRPCClientError, type TRPCClient } from "@trpc/client";
 import type { AppRouter } from "~/server/api/root";
+import { CLIENT_FORMAT } from "~/domain/client-format";
 import {
   SyncError,
   type ExecuteResult,
@@ -11,11 +12,10 @@ import {
 
 /**
  * The format of the rows this browser holds and reads. The server refuses
- * pulls from a format older than its minimum (staleClient), so raise it
- * together with the server's MINIMUM_CLIENT_FORMAT when old browsers could
- * no longer read what it sends.
+ * requests from a format older than its minimum (staleClient). Ship the
+ * new reader before raising the server minimum and enabling its writers.
  */
-export const CLIENT_FORMAT = 1;
+export { CLIENT_FORMAT } from "~/domain/client-format";
 
 /** Sent on every pull as `${format}:${build}`. */
 export const clientBuild = `${CLIENT_FORMAT}:${process.env.CAISHEN_BUILD ?? "development"}`;
