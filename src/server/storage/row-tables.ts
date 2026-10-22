@@ -395,6 +395,18 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       int("sort", true),
     ],
   },
+  payeeMemory: {
+    model: "PayeeMemory",
+    key: ["userId", "payeeKey"],
+    visibleTo: "userId",
+    columns: [
+      userId,
+      text("payeeKey"),
+      text("payee"),
+      text("kind"),
+      text("categoryId", true),
+    ],
+  },
 };
 
 /** Every table's storage, parents before children. */

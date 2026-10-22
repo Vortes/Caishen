@@ -173,6 +173,7 @@ model Member {
   rules        Rule[]
   bankImports  BankImport[]
   partnerFacts PartnerFact[]
+  payees       PayeeMemory[]
 
   @@id([workspaceId, userId])
   @@index([workspaceId, revision])
@@ -609,4 +610,20 @@ model Operation {
   @@index([workspaceId, revision])
   @@index([workspaceId, actorId, revision])
   @@index([createdAt])
+}
+
+// A payee's most recent categorization, by its normalized payee key.
+model PayeeMemory {
+  workspaceId String
+  userId      String
+  payeeKey    String
+  payee       String
+  kind        String
+  categoryId  String?
+  revision    Int
+  deleted     Boolean @default(false)
+  member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, payeeKey])
+  @@index([workspaceId, revision])
 }

@@ -4399,7 +4399,18 @@
         "emailEnabled": false,
         "emailHour": 8
       },
-      "expectedIncome": {}
+      "expectedIncome": {},
+      "payeeMemory": {
+        "traderjoes": {
+          "payee": "Trader Joe’s",
+          "kind": "category",
+          "categoryId": "groceries"
+        },
+        "acmepayroll": {
+          "payee": "Acme Payroll",
+          "kind": "readyToAssign"
+        }
+      }
     },
     "jordan": {
       "userId": "jordan",

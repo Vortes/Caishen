@@ -166,6 +166,64 @@ void test("stored standing rules still read and are left out of every budget", (
   );
 });
 
+void test("stored payee memory reads into its owner's budget and writes back as the same rows", () => {
+  const memory: WireRow[] = [
+    {
+      table: "payeeMemory",
+      id: rowKey("alex", "traderjoes"),
+      revision: 4,
+      deleted: false,
+      data: {
+        userId: "alex",
+        payeeKey: "traderjoes",
+        payee: "Trader Joe’s",
+        kind: "category",
+        categoryId: "food",
+      },
+    },
+    {
+      table: "payeeMemory",
+      id: rowKey("alex", "acmepayroll"),
+      revision: 5,
+      deleted: false,
+      data: {
+        userId: "alex",
+        payeeKey: "acmepayroll",
+        payee: "Acme Payroll",
+        kind: "readyToAssign",
+      },
+    },
+  ];
+  for (const row of memory)
+    assert.ok(rowDataSchemas.payeeMemory.safeParse(row.data).success);
+  const rows = [...bookToRows(corpus.book), ...memory];
+  const remembered = {
+    traderjoes: { payee: "Trader Joe’s", kind: "category", categoryId: "food" },
+    acmepayroll: { payee: "Acme Payroll", kind: "readyToAssign" },
+  };
+  const book = rowsToBook(rows);
+  assert.deepStrictEqual(json(book.budgets.alex!.payeeMemory), remembered);
+  assert.equal(book.budgets.jordan!.payeeMemory, undefined);
+  const written = (from: WireRow[]) =>
+    json(
+      from
+        .filter((row) => row.table === "payeeMemory")
+        .map((row) => ({ ...row, revision: 0 }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    );
+  const expected = written(memory);
+  assert.deepStrictEqual(written(bookToRows(book)), expected);
+
+  // Only Alex's browser holds Alex's memory, and it reads the same there.
+  assert.ok(memory.every((row) => !rowVisibleTo(row, "jordan")));
+  const ledger = rowsToPersonalLedger(
+    rows.filter((row) => rowVisibleTo(row, "alex")),
+    "alex",
+  );
+  assert.deepStrictEqual(json(ledger.budget.payeeMemory), remembered);
+  assert.deepStrictEqual(written(personalLedgerToRows(ledger)), expected);
+});
+
 void test("row ids join key parts unambiguously", () => {
   for (const parts of [
     ["alex", "card:visa"],

@@ -893,6 +893,7 @@
         "member",
         "obligation",
         "partnerFact",
+        "payeeMemory",
         "reimbursement",
         "reimbursementReceipt",
         "rule",
@@ -950,6 +951,7 @@
         "member",
         "obligation",
         "partnerFact",
+        "payeeMemory",
         "reimbursement",
         "reimbursementReceipt",
         "rule",
@@ -1972,6 +1974,37 @@
     },
     "$|2.sort": {
       "type": "number"
+    }
+  },
+  "rows.payeeMemory": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "categoryId": "optional",
+        "kind": "required",
+        "payee": "required",
+        "payeeKey": "required",
+        "userId": "required"
+      }
+    },
+    "$.payee": {
+      "type": "string"
+    },
+    "$.kind": {
+      "type": "enum",
+      "values": [
+        "category",
+        "readyToAssign"
+      ]
+    },
+    "$.categoryId": {
+      "type": "string"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.payeeKey": {
+      "type": "string"
     }
   }
 }

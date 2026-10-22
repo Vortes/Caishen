@@ -405,6 +405,19 @@
         "sharedCategoryId": "rent",
         "sort": 24
       }
+    },
+    {
+      "table": "payeeMemory",
+      "id": "alex/traderjoes",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "payeeKey": "traderjoes",
+        "payee": "Trader Joe’s",
+        "kind": "category",
+        "categoryId": "groceries"
+      }
     }
   ],
   "before": [
@@ -565,6 +578,13 @@
     {
       "table": "partnerFact",
       "id": "alex/activity/rent",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "payeeMemory",
+      "id": "alex/traderjoes",
       "revision": 0,
       "deleted": true,
       "data": null

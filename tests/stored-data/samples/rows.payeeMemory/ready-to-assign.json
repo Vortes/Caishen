@@ -1,0 +1,6 @@
+{
+  "userId": "alex",
+  "payeeKey": "acmepayroll",
+  "payee": "Acme Payroll",
+  "kind": "readyToAssign"
+}

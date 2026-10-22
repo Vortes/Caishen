@@ -517,6 +517,15 @@ export type Reimbursement = {
   kind: "cash" | "statement-credit";
   receipts: { id: string; date: string; amount: number }[];
 };
+// A payee's most recent categorization, which prefills its new imports and
+// entries (src/domain/payee-memory.ts). It names a budget category or Ready
+// to Assign.
+export type PayeeMemory = {
+  // The payee as it was written when last categorized.
+  payee: string;
+  kind: "category" | "readyToAssign";
+  categoryId?: string;
+};
 export type Budget = {
   userId: string;
   name: string;
@@ -533,6 +542,8 @@ export type Budget = {
   reimbursements: Reimbursement[];
   settings: { timezone: string; emailEnabled: boolean; emailHour: number };
   expectedIncome: Record<string, number>;
+  // By payee key; absent until a payee is first categorized.
+  payeeMemory?: Record<string, PayeeMemory>;
 };
 export type SharedCategory = {
   id: string;
@@ -663,6 +674,11 @@ const loanSchema = z.object({
     }),
   ),
 });
+export const payeeMemorySchema = z.object({
+  payee: z.string(),
+  kind: z.enum(["category", "readyToAssign"]),
+  categoryId: storedIdentifier.optional(),
+});
 export const budgetShape = z.object({
   userId: storedIdentifier,
   name: z.string(),
@@ -720,6 +736,7 @@ export const budgetShape = z.object({
     emailHour: z.number().int().min(0).max(23),
   }),
   expectedIncome: z.record(monthSchema, nonnegativeCents).default({}),
+  payeeMemory: z.record(storedIdentifier, payeeMemorySchema).optional(),
 });
 // One partner's stored personal budget, with the checks that need only that
 // budget, so one partner's budget can be read without the other's.

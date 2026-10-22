@@ -6,6 +6,7 @@ import type {
   Category,
   Loan,
   Obligation,
+  PayeeMemory,
   Reimbursement,
   Settlement,
   SharedCategory,
@@ -52,6 +53,7 @@ export const tableNames = [
   "settlement",
   "settlementAllocation",
   "partnerFact",
+  "payeeMemory",
 ] as const;
 export type TableName = (typeof tableNames)[number];
 
@@ -134,6 +136,7 @@ export type TableData = {
     sequence: number;
   } & Settlement["allocations"][number];
   partnerFact: PartnerFact;
+  payeeMemory: Owned & { payeeKey: string } & PayeeMemory;
 };
 
 /**
@@ -199,6 +202,7 @@ const budgetTables = new Set<TableName>([
   "reimbursementReceipt",
   "rule",
   "bankImport",
+  "payeeMemory",
 ]);
 
 /**
@@ -367,6 +371,22 @@ export function expectedIncomeRows(
   return amount === undefined
     ? []
     : [row("expectedIncome", rowKey(userId, month), { userId, month, amount })];
+}
+
+export function payeeMemoryRows(
+  userId: string,
+  payeeKey: string,
+  memory: PayeeMemory | undefined,
+): WireRow[] {
+  return memory
+    ? [
+        row("payeeMemory", rowKey(userId, payeeKey), {
+          ...memory,
+          userId,
+          payeeKey,
+        }),
+      ]
+    : [];
 }
 
 export function transactionRows(
@@ -593,6 +613,9 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
     ...budget.loans.flatMap((loan, index) => loanRows(userId, loan, index)),
     ...budget.reimbursements.flatMap((claim, index) =>
       reimbursementRows(userId, claim, index),
+    ),
+    ...Object.entries(budget.payeeMemory ?? {}).flatMap(([key, memory]) =>
+      payeeMemoryRows(userId, key, memory),
     ),
   ];
 }
@@ -829,6 +852,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   const receipts = groupBy(data.reimbursementReceipt, (receipt) =>
     childKey(receipt.userId, receipt.reimbursementId),
   );
+  const memory = groupBy(data.payeeMemory, owner);
   const settings = new Map(
     data.budgetSettings.map((item) => [item.userId, item]),
   );
@@ -844,6 +868,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       .map((group) => group.name);
     const record = (values: Record<string, number> | undefined) =>
       values && Object.keys(values).length ? values : undefined;
+    const payees = memory.get(userId);
     return {
       userId,
       name: names.get(userId)?.name ?? "",
@@ -914,6 +939,16 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       expectedIncome: Object.fromEntries(
         (income.get(userId) ?? []).map((item) => [item.month, item.amount]),
       ),
+      ...(payees
+        ? {
+            payeeMemory: Object.fromEntries(
+              payees.map((item) => [
+                item.payeeKey,
+                without(item, ["userId", "payeeKey"]),
+              ]),
+            ),
+          }
+        : {}),
     };
   });
 }
