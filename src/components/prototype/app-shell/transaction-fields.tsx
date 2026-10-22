@@ -180,10 +180,13 @@ export function ChoiceField({
   const listId = `${id}-list`;
   const listRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
+  // The field's text while the list is open: the chosen name until typing
+  // replaces it, which is when it starts filtering.
   const [query, setQuery] = useState("");
+  const [typed, setTyped] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   const selected = options.find((option) => option.value === value);
-  const search = query.trim().toLowerCase();
+  const search = typed ? query.trim().toLowerCase() : "";
   const visible = options.filter((option) =>
     `${option.group ?? ""} ${option.label}`.toLowerCase().includes(search),
   );
@@ -208,8 +211,9 @@ export function ChoiceField({
       : `${listId}-${visible.indexOf(option)}`;
   const open = expanded && !disabled && !readOnly;
 
-  const show = (text = "") => {
-    setQuery(text);
+  const show = (text?: string) => {
+    setQuery(text ?? selected?.label ?? "");
+    setTyped(text !== undefined);
     setActive(null);
     setExpanded(true);
   };
@@ -292,8 +296,9 @@ export function ChoiceField({
             readOnly={readOnly}
             placeholder={placeholder}
             value={open ? query : (selected?.label ?? "")}
-            onFocus={() => {
+            onFocus={(event) => {
               if (!open) show();
+              event.currentTarget.select();
             }}
             onClick={() => {
               if (!open) show();
