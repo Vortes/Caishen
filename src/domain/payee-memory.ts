@@ -1,5 +1,10 @@
 import type { Changes } from "./changes";
-import type { Budget, PayeeMemory, Transaction } from "./engine";
+import type {
+  Budget,
+  CounterpartyShare,
+  PayeeMemory,
+  Transaction,
+} from "./engine";
 import { READY_TO_ASSIGN } from "./transfers";
 
 // Payee memory, like YNAB's memorized payee category: the user's most recent
@@ -58,6 +63,44 @@ export function rememberedCategory(
     : undefined;
 }
 
+/** The remembered share for an owned spending account; absent means zero. */
+export function rememberedCounterpartyShare(
+  budget: Budget,
+  {
+    payee,
+    accountId,
+    amount,
+  }: { payee: string; accountId: string; amount?: number },
+): CounterpartyShare | undefined {
+  const account = budget.accounts.find((item) => item.id === accountId);
+  const memory = budget.payeeMemory?.[payeeKey(payee)];
+  if (
+    !account ||
+    (account.kind !== "cash" && account.kind !== "credit") ||
+    memory?.kind !== "category" ||
+    !rememberedCategory(budget, { payee, accountId, amount }) ||
+    (amount !== undefined && amount >= 0)
+  )
+    return undefined;
+  const share = memory.counterpartyShare;
+  if (!share) return undefined;
+  const counterparty = budget.accounts.find(
+    (item) => item.id === share.accountId,
+  );
+  if (
+    !counterparty ||
+    (counterparty.kind !== "partner" && counterparty.kind !== "reimbursements")
+  )
+    return undefined;
+  return {
+    ...share,
+    amount:
+      amount === undefined
+        ? share.amount
+        : Math.min(share.amount, Math.abs(amount)),
+  };
+}
+
 // What memory would hold for a transaction's categorization, or undefined
 // when it isn't one memory keeps. Split transactions never replace memory.
 function categorization(
@@ -97,6 +140,9 @@ function categorization(
       payee: transaction.payee,
       kind: "category",
       categoryId: transaction.categoryId,
+      ...(transaction.counterpartyShare
+        ? { counterpartyShare: { ...transaction.counterpartyShare } }
+        : {}),
     };
   }
   return transaction.kind === "income"
@@ -104,13 +150,24 @@ function categorization(
     : undefined;
 }
 
+const sameShare = (
+  a: CounterpartyShare | undefined,
+  b: CounterpartyShare | undefined,
+) =>
+  a?.accountId === b?.accountId &&
+  a?.amount === b?.amount &&
+  a?.counterpartyName === b?.counterpartyName;
+
 const same = (a: PayeeMemory, b: PayeeMemory) =>
-  a.payee === b.payee && a.kind === b.kind && a.categoryId === b.categoryId;
+  a.payee === b.payee &&
+  a.kind === b.kind &&
+  a.categoryId === b.categoryId &&
+  sameShare(a.counterpartyShare, b.counterpartyShare);
 
 /**
  * Remembers each categorization a user's command set or changed: a
- * transaction that is new, or whose payee or category changed. Approving,
- * removing, or changing only an amount or date leaves memory as it was.
+ * transaction that is new, or whose payee, category, or share changed.
+ * Approving, removing, or changing only an amount or date keeps memory.
  */
 export function rememberCategorizations(
   budget: Budget,
@@ -125,7 +182,8 @@ export function rememberCategorizations(
       !explicitCategorization &&
       previous?.key === next.key &&
       previous.kind === next.kind &&
-      previous.categoryId === next.categoryId
+      previous.categoryId === next.categoryId &&
+      sameShare(previous.counterpartyShare, next.counterpartyShare)
     )
       continue;
     const { key, ...memory } = next;
