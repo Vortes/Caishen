@@ -1,9 +1,9 @@
 import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { renderShell, stateFixture } from "./shell-harness";
+import { renderShell } from "./shell-harness";
 
 async function openRegister() {
-  const state = stateFixture({
+  const { user } = await renderShell({
     seedCommands: [
       {
         type: "transaction.upsert",
@@ -31,13 +31,12 @@ async function openRegister() {
       },
     ],
   });
-  const { user } = await renderShell({ read: () => state });
   await user.click(screen.getByRole("button", { name: /^Checking/ }));
   return user;
 }
 
 test("category checkboxes add to the selection and remove only the unchecked category", async () => {
-  const state = stateFixture({
+  const { user } = await renderShell({
     seedCommands: [
       {
         type: "category.add",
@@ -47,7 +46,6 @@ test("category checkboxes add to the selection and remove only the unchecked cat
       },
     ],
   });
-  const { user } = await renderShell({ read: () => state });
   const categories = within(screen.getByRole("group", { name: "Categories" }));
   const gifts = await categories.findByRole("checkbox", {
     name: "Select Gifts",
@@ -225,7 +223,7 @@ test("the keyboard shortcut toggles the focused transaction and its selection to
 });
 
 test("a category group's checkbox selects all of a partial selection and then clears the group", async () => {
-  const state = stateFixture({
+  const { user } = await renderShell({
     seedCommands: [
       {
         type: "category.add",
@@ -235,7 +233,6 @@ test("a category group's checkbox selects all of a partial selection and then cl
       },
     ],
   });
-  const { user } = await renderShell({ read: () => state });
   const categories = within(screen.getByRole("group", { name: "Categories" }));
   const group = await categories.findByRole("checkbox", {
     name: "Select Everyday",
