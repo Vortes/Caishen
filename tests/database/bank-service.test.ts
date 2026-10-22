@@ -1122,6 +1122,9 @@ function syncPages(pages: Record<string, unknown>[]) {
 
 void test("a non-USD transaction is quarantined for review while the rest of the sync applies", async () => {
   const h = await harness();
+  await h.setMappings({
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
   const warn = mock.method(console, "warn", () => undefined);
   syncPages([
     {
@@ -1170,6 +1173,9 @@ void test("a non-USD transaction is quarantined for review while the rest of the
 
 void test("malformed sync records are quarantined or skipped without blocking the cursor", async () => {
   const h = await harness();
+  await h.setMappings({
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
   mock.method(console, "warn", () => undefined);
   syncPages([
     {
@@ -1215,6 +1221,9 @@ void test("malformed sync records are quarantined or skipped without blocking th
 
 void test("a quarantined transaction leaves review once the bank fixes, removes, or the user dismisses it", async () => {
   const h = await harness();
+  await h.setMappings({
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
   mock.method(console, "warn", () => undefined);
   const eur = (id: string) =>
     plaidTransaction({ transaction_id: id, iso_currency_code: "EUR" });
