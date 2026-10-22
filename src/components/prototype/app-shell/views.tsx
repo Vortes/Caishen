@@ -459,9 +459,21 @@ const registerEditFields: Record<string, DraftField> = {
 
 // The editable column under a click at x, or the nearest one, so a click
 // anywhere in the row opens a field: above or below a cell's text, in a gap,
-// or on a column the editor can't change. Columns are measured by their
-// grid tracks, since amounts hug their text and an empty one has no width.
-function columnAt(row: HTMLElement, x: number, skip?: string) {
+// or on a column the editor can't change. A click on an editable cell opens
+// that cell. Others measure columns by their grid tracks, since amounts hug
+// their text and an empty one has no width.
+function columnAt(
+  row: HTMLElement,
+  target: EventTarget,
+  x: number,
+  skip?: string,
+) {
+  const clicked =
+    target instanceof Element
+      ? target.closest<HTMLElement>("[data-column]")?.dataset.column
+      : undefined;
+  if (clicked && clicked in registerEditFields && clicked !== skip)
+    return clicked;
   const style = getComputedStyle(row);
   const tracks = style.gridTemplateColumns.split(" ").map(parseFloat);
   const gap = parseFloat(style.columnGap);
@@ -611,6 +623,7 @@ export function RegisterView({
             if (isChecked && checked.length === 1 && event.detail > 0) {
               const column = columnAt(
                 event.currentTarget,
+                event.target,
                 event.clientX,
                 item.categoryNotNeeded ? "category" : undefined,
               );
