@@ -861,20 +861,24 @@ export function budgetReferenceIssues(
     )
   )
     issues.push("Invalid transaction reference");
-  if (
-    budget.transactions.some(
-      (transaction) =>
-        transaction.lines &&
-        (transaction.lines.length < 2 ||
-          transaction.categoryId !== undefined ||
-          new Set(transaction.lines.map((line) => line.id)).size !==
-            transaction.lines.length ||
-          transaction.lines.some((line) => !line.amount) ||
-          transaction.lines.reduce((total, line) => total + line.amount, 0) !==
-            transaction.amount),
-    )
-  )
-    issues.push("Invalid stored transaction lines");
+  const counterpartyAccount = (id: string) => budget.accounts.find(account => account.id === id && isCounterparty(account));
+  if (budget.transactions.some(transaction => !transaction.removed && (
+    (transaction.counterpartyShare && (!transaction.categoryId || transaction.lines !== undefined)) ||
+    (transaction.linkedCounterpartyAccountId && (!counterpartyAccount(transaction.linkedCounterpartyAccountId) || transaction.kind !== "reimbursement")) ||
+    counterpartyLines(transaction).some(line => line.counterpartyShare && (
+      !counterpartyAccount(line.counterpartyShare.accountId) ||
+      line.counterpartyShare.amount > Math.abs(line.amount) ||
+      !budget.categories.some(category => category.counterpartyAccountId === line.counterpartyShare!.accountId) ||
+      !["purchase", "refund"].includes(transaction.kind)
+    ))
+  ))) issues.push("Invalid counterparty share reference");
+  if (budget.transactions.some(transaction => transaction.lines && (
+    transaction.lines.length < 2 ||
+    transaction.categoryId !== undefined ||
+    new Set(transaction.lines.map(line => line.id)).size !== transaction.lines.length ||
+    transaction.lines.some(line => !line.amount) ||
+    transaction.lines.reduce((total, line) => total + line.amount, 0) !== transaction.amount
+  ))) issues.push("Invalid stored transaction lines");
   if (
     budget.assignments.some(
       (assignment) => !categories.has(assignment.categoryId),
