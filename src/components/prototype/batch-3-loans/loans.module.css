@@ -1,0 +1,435 @@
+/* Batch 3 (loans) prototype: only what the shell's classes don't already
+   cover. Product pieces use semantic tokens; the harness is prototype
+   chrome, styled apart like the bank-connect prototype's controls. */
+
+.root button {
+  font: inherit;
+}
+
+/* Two short fields side by side in the details panel. */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+  align-items: start;
+}
+
+.summary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.summary strong {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabStack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 2px 0;
+}
+
+/* Before → after, label and value, like the inspector's properties. */
+.compare {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.compare > div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  min-height: var(--size-row-sm);
+}
+.compare dt {
+  color: var(--text-tertiary);
+}
+.compare dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.compare strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Payment and rate history: two lines a row, amounts at the end. */
+.history {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.history > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 2px;
+}
+.history > li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+.historyMain,
+.historyDetail {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.historyDetail {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+.loanName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.loanName > :last-child:not(:first-child) {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* ---------- Add loan as a list row ---------- */
+
+.rowForm {
+  margin-top: 4px;
+}
+/* The terms sit on the list's own columns, each well centered in a row's
+   height, at every width the list keeps its columns. */
+.rowFields {
+  grid-template-rows: minmax(var(--size-row-lg), auto);
+  align-items: start;
+}
+.rowFields > * {
+  padding-top: calc((var(--size-row-lg) - var(--size-control)) / 2);
+  padding-bottom: 6px;
+}
+.rowPayoff {
+  display: flex;
+  align-items: center;
+  box-sizing: content-box;
+  height: var(--size-control);
+  font-variant-numeric: tabular-nums;
+}
+@container (max-width: 560px) {
+  .rowFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rowFields > .rowPayoff {
+    display: none;
+  }
+}
+.rowDetails {
+  display: grid;
+  grid-template-columns: auto minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 12px 16px;
+  align-items: start;
+  padding: 6px var(--space-row-x) 12px var(--row-gutter);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+}
+.rowFooter {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 var(--space-row-x) 10px var(--row-gutter);
+}
+.rowFooterText {
+  flex: 1;
+  min-width: 0;
+}
+.rowFooterText p {
+  margin: 0;
+}
+@container (max-width: 760px) {
+  .rowDetails {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-left: var(--space-row-x);
+  }
+  .rowFooter {
+    flex-direction: column;
+    align-items: stretch;
+    padding-left: var(--space-row-x);
+  }
+}
+
+/* ---------- Register ---------- */
+
+.staticRow {
+  display: grid;
+  align-items: center;
+}
+.loanEntry {
+  align-items: flex-start;
+}
+.interestField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 16rem;
+}
+.interestField label {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.faintSmall {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.entrySplit {
+  flex: 1;
+  min-width: 14rem;
+  padding-top: 18px;
+}
+
+/* ---------- Payoff chart ---------- */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.legend {
+  display: flex;
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend i {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top: 2px solid var(--text-primary);
+}
+.legend i[data-line="base"] {
+  border-top-style: dashed;
+  border-top-color: var(--text-tertiary);
+}
+.plot {
+  position: relative;
+  height: 132px;
+  touch-action: pan-y;
+}
+.plot svg {
+  display: block;
+  overflow: visible;
+}
+.axis {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+.tick {
+  fill: var(--text-tertiary);
+  font-size: var(--type-caption);
+  font-variant-numeric: tabular-nums;
+}
+.line {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.line[data-line="base"] {
+  stroke: var(--text-tertiary);
+  stroke-dasharray: 4 4;
+}
+.crosshair {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.dot {
+  fill: var(--text-primary);
+  stroke: var(--surface-raised);
+  stroke-width: 2;
+}
+.dot[data-line="base"] {
+  fill: var(--text-tertiary);
+}
+.tooltip {
+  position: absolute;
+  top: -6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 132px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-row);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-tooltip);
+  color: var(--text-secondary);
+  font-size: var(--type-caption);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  translate: -50% -100%;
+}
+.tooltip strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ---------- Harness (prototype chrome) ---------- */
+
+/* Floats along the bottom left, clear of the header and of toasts in the
+   bottom right. */
+.harness {
+  position: fixed;
+  z-index: 2147483000;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: rgba(10, 10, 10, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+    0 8px 24px rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.harness:has(> .harnessButton:only-child) {
+  padding-left: 4px;
+}
+.harnessLink {
+  margin-right: 4px;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.harnessChoice {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 2px 0 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.harnessChoice > span {
+  color: rgba(255, 255, 255, 0.5);
+}
+.harnessChoice select {
+  max-width: 118px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.harnessChoice select option {
+  color: #000;
+}
+.harnessButton {
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  cursor: pointer;
+}
+.harnessButton:hover,
+.harnessChoice:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.harness :focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ---------- Index page ---------- */
+
+.index {
+  min-height: 100vh;
+  padding: 48px 24px 96px;
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+.indexInner {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.index h1 {
+  margin: 0 0 6px;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.index h2 {
+  margin: 0 0 10px;
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+.index p {
+  margin: 0;
+  max-width: 65ch;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.links {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+}
+.links li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+.links a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.links a:hover {
+  background: var(--surface-hover);
+}
+.links a:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.links a span {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
