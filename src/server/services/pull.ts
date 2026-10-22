@@ -10,6 +10,7 @@ import {
   type PullPosition,
 } from "~/server/storage/rows";
 import { refusal, type Database, type RevisionObserver } from "./household";
+import { addCounterpartyAccounts } from "./household-operations";
 import { budgetMaintenance, reportUnreadable } from "./stored-data";
 
 // sync.pull (ADR 0006): the rows a partner's browser holds, changed since
@@ -80,6 +81,8 @@ export async function pull(
 ): Promise<PullResult> {
   if (clientFormat(input.clientBuild) < MINIMUM_CLIENT_FORMAT)
     throw refusal("staleClient", "Reload Caishen to get the latest version.");
+  // Budgets made before counterparty accounts get them as they load.
+  if (!input.cursor) await addCounterpartyAccounts(db, viewerId, observe);
   return db.$transaction(
     (snapshot) => readPage(snapshot as Database, viewerId, input, observe),
     { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
