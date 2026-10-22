@@ -21,7 +21,7 @@ function solo() {
     book = execute(book, "alan", {
       ...command,
       id: `operation-${++sequence}`,
-    } as Command);
+    });
     return book;
   };
   run({

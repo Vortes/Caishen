@@ -33,7 +33,7 @@ import { PartnerSettings } from "./partner";
 import { ProfileSettings } from "./profile";
 import { Inspector } from "./inspector";
 import { findPalette, paletteVars } from "./palettes";
-import type { ShellData } from "./model";
+import { isCounterparty, type ShellData } from "./model";
 import { MoveMoneyProvider, type MoveMoney } from "./move-money";
 import { TargetEditingProvider, type TargetEditing } from "./target-editor";
 import { PlanViews } from "./plan-views";
@@ -136,6 +136,14 @@ export function AppShellPrototype({
       ? { type: "register", accountId: accountId === "all" ? null : accountId }
       : { type: "plan" };
   });
+  const account =
+    screen.type === "register"
+      ? accounts.find((item) => item.id === screen.accountId)
+      : undefined;
+  // Partner and Reimbursements fill from shares and settlements, not from
+  // entries or bank statements.
+  const recordable =
+    screen.type === "register" && !(account && isCounterparty(account));
   const [reportKind, setReportKind] = useState<ReportKind>("breakdown");
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [path, setPath] = useState<DrillPath>({});
@@ -274,7 +282,7 @@ export function AppShellPrototype({
         inspector.toggle();
       else if (event.key === "n" && screen.type === "plan")
         setAddingGroup(true);
-      else if (event.key === "n" && screen.type === "register") {
+      else if (event.key === "n" && recordable) {
         if (!entry.start({ accountId: screen.accountId })) return;
       } else if (
         event.key === "e" &&
@@ -306,6 +314,7 @@ export function AppShellPrototype({
     peekOpen,
     checked.length,
     screen,
+    recordable,
     path,
     entry,
     selectedId,
@@ -419,10 +428,6 @@ export function AppShellPrototype({
       />
     );
 
-  const account =
-    screen.type === "register"
-      ? accounts.find((item) => item.id === screen.accountId)
-      : undefined;
   const reviewCount = transactions.filter(
     (item) => item.needsReview && (!account || item.accountId === account.id),
   ).length;
@@ -622,7 +627,7 @@ export function AppShellPrototype({
                           }}
                         />
                       )}
-                      {screen.type === "register" && (
+                      {recordable && (
                         <Button
                           size="sm"
                           aria-pressed={reviewOnly}
@@ -641,7 +646,7 @@ export function AppShellPrototype({
                           <span className={styles.numeric}>{reviewCount}</span>
                         </Button>
                       )}
-                      {screen.type === "register" && (
+                      {recordable && (
                         <AddTransactionTooltip editing={Boolean(entry.session)}>
                           <Button
                             size="sm"
@@ -659,7 +664,7 @@ export function AppShellPrototype({
                           </Button>
                         </AddTransactionTooltip>
                       )}
-                      {screen.type === "register" && account && (
+                      {recordable && account && (
                         <Button size="sm">
                           <FileUpIcon aria-hidden />
                           File import

@@ -154,7 +154,7 @@ void test("a budget under maintenance shows maintenance instead of being upgrade
   const unknown = {
     ...account,
     data: { ...account.data!, kind: "crypto" },
-  } as WireRow;
+  } as unknown as WireRow;
   await writeChangeSet(db, {
     workspaceId: household,
     baseRevision: 1,

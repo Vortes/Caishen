@@ -18,7 +18,9 @@ import type { State, View } from "~/components/budget/types";
 import { partnerOf, sharePercent } from "~/components/shared-expenses/split";
 import { transactionCategory } from "~/components/transactions/transaction-category";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
-import type { Target } from "~/domain/engine";
+import { isCounterparty, type Target } from "~/domain/engine";
+
+export { isCounterparty };
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import {
   canEditImport,
@@ -56,6 +58,9 @@ export type Category = {
   // The target as the engine stores it, for the target editor.
   rule?: Target;
   pays?: { type: "card" | "loan"; id: string; name: string };
+  // A paired envelope's counterparty account: available is the float set
+  // aside minus what the account says is owed to you.
+  pairs?: { accountId: string; name: string; balance: number };
   reserved: number;
   spendable: number;
   sharePercents: number[];
@@ -236,8 +241,28 @@ export function toShellData(
     view.accounts.map((item) => [item.id, item.name]),
   );
   const loanName = new Map(view.loans.map((item) => [item.id, item.name]));
+  // Counterparty accounts go by who they are with: the partner's first name,
+  // or Reimbursements for everyone else.
+  const partnerName = view.members
+    .find((member) => member.userId !== userId)
+    ?.name.trim()
+    .split(/\s+/)[0];
+  const displayName = (account: { kind: string; name: string }) =>
+    (account.kind === "partner" ? partnerName : undefined) ?? account.name;
+  const counterparty = new Map(
+    view.accounts
+      .filter(
+        (item) => item.kind === "partner" || item.kind === "reimbursements",
+      )
+      .map((item) => [item.id, item]),
+  );
   const categoryName = new Map(
-    view.categories.map((item) => [item.id, item.name]),
+    view.categories.map((item) => {
+      const pair = item.counterpartyAccountId
+        ? counterparty.get(item.counterpartyAccountId)
+        : undefined;
+      return [item.id, pair ? displayName(pair) : item.name];
+    }),
   );
   const shares = new Map<string, number[]>();
   for (const shared of view.sharedCategories) {
@@ -264,9 +289,12 @@ export function toShellData(
           ? "underfunded"
           : categoryStatus(item);
     const progress = item.targetProgress;
+    const pair = item.counterpartyAccountId
+      ? counterparty.get(item.counterpartyAccountId)
+      : undefined;
     return {
       id: item.id,
-      name: item.name,
+      name: categoryName.get(item.id)!,
       group: item.group,
       assigned: item.assigned,
       activity: item.activity,
@@ -313,6 +341,11 @@ export function toShellData(
               name: loanName.get(item.pairedLoanId) ?? "Loan",
             }
           : undefined,
+      pairs: pair && {
+        accountId: pair.id,
+        name: displayName(pair),
+        balance: pair.balance,
+      },
       reserved: item.reserved,
       spendable: item.spendable,
       sharePercents: shares.get(item.id) ?? [],
@@ -337,6 +370,11 @@ export function toShellData(
         categories: [category],
       });
   }
+  // People, which holds the paired envelopes, leads the plan.
+  const people = groups.findIndex((group) =>
+    group.categories.some((category) => category.pairs),
+  );
+  if (people > 0) groups.unshift(...groups.splice(people, 1));
 
   const active = view.budget.transactions.filter((item) => !item.removed);
   const accounts = view.accounts.map((item): Account => {
@@ -347,7 +385,7 @@ export function toShellData(
     );
     return {
       id: item.id,
-      name: item.name,
+      name: displayName(item),
       kind: item.kind,
       balance: item.balance,
       // The engine leaves pending inflows out of the balance until they

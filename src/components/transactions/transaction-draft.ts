@@ -1,6 +1,6 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
-import type { Command } from "~/domain/engine";
+import { isCounterparty, type Command } from "~/domain/engine";
 import {
   isTransfer,
   registerPayee,
@@ -368,7 +368,7 @@ export function paymentPayees(view: View, draft: TransactionDraft) {
   if (!account) return [];
   return [
     ...view.accounts
-      .filter((item) => item.id !== account.id)
+      .filter((item) => item.id !== account.id && !isCounterparty(item))
       .map((other) => {
         const amount = draft.inflow
           ? 1

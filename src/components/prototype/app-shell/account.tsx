@@ -4,7 +4,7 @@ import { SearchIcon, XIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
-import { money, type Account } from "./model";
+import { isCounterparty, money, type Account } from "./model";
 import {
   ReconcilePopover,
   reconciledLabel,
@@ -51,7 +51,7 @@ export function AccountSummary({
         </div>
       </dl>
       {/* Reconciling compares one account with one bank statement. */}
-      {account && (
+      {account && !isCounterparty(account) && (
         <div className={styles.summaryActions}>
           <span className={styles.reconciledLabel}>
             {reconciledLabel(account, today)}

@@ -372,6 +372,7 @@ function CategoryDetails({ category }: { category: Category }) {
           </MoveMoneyPopover>
         </div>
       </Card>
+      {category.pairs && <PairedBalance category={category} />}
       <Card>
         <Property label="Assigned">{money(category.assigned)}</Property>
         <Property label="Activity">{money(category.activity)}</Property>
@@ -379,6 +380,11 @@ function CategoryDetails({ category }: { category: Category }) {
         <Property label="Group" icon={FolderIcon}>
           {category.group}
         </Property>
+        {category.pairs && (
+          <Property label="Account" icon={UsersIcon}>
+            {category.pairs.name}
+          </Property>
+        )}
         {category.pays && (
           <Property
             label="Pays"
@@ -419,6 +425,24 @@ function CategoryDetails({ category }: { category: Category }) {
         </Tabs>
       </Card>
     </>
+  );
+}
+
+// A paired envelope's money, as one subtraction: the float set aside, less
+// what its account says is owed to you, is what it has available.
+function PairedBalance({ category }: { category: Category }) {
+  const balance = category.pairs!.balance;
+  const float = category.available + balance;
+  return (
+    <Card>
+      <Property label="Float">{money(float)}</Property>
+      {balance >= 0 ? (
+        <Property label="Owed to you">{money(-balance || 0)}</Property>
+      ) : (
+        <Property label="You owe">+{money(-balance)}</Property>
+      )}
+      <Property label="Available">{money(category.available)}</Property>
+    </Card>
   );
 }
 

@@ -25,6 +25,7 @@ import { Tag } from "~/components/ui/tag";
 import { useRowSelection } from "~/components/ui/use-row-selection";
 import selectionStyles from "~/components/ui/row-selection.module.css";
 import {
+  isCounterparty,
   shortDay,
   money,
   type Category,
@@ -34,7 +35,7 @@ import {
 import {
   AddToGroupButton,
   FirstGroupButton,
-  isPaymentGroup,
+  isSystemGroup,
   type Added,
 } from "./add-category";
 import { AssignedCell } from "./assigned";
@@ -226,7 +227,7 @@ export function PlanView({
                       {group.categories.length}
                     </span>
                   </button>
-                  {!isPaymentGroup(group) && (
+                  {!isSystemGroup(group) && (
                     <span className={styles.groupAdd}>
                       <AddToGroupButton group={group.name} />
                     </span>
@@ -550,7 +551,20 @@ export function RegisterView({
     session && rows.some((item) => item.id === editingId)
       ? editingId
       : undefined;
+  const counterparty = accounts.find(
+    (entry) => entry.id === accountId && isCounterparty(entry),
+  );
   if (!rows.length && !session) {
+    // A counterparty account's entries come from shares and settlements,
+    // so its empty register says what will fill it.
+    if (counterparty && !search)
+      return (
+        <Empty title="Nothing owed yet." icon={UsersIcon}>
+          {counterparty.kind === "partner"
+            ? `When you and ${counterparty.name} share a cost, what one of you owes the other shows here.`
+            : "When you pay for someone, what they owe you shows here. Its envelope in People can set money aside to cover it."}
+        </Empty>
+      );
     return search ? (
       <Empty title={`No transactions match “${search}”.`} icon={SearchIcon}>
         Search looks at payees, categories, and amounts in every month.

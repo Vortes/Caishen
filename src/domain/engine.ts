@@ -1015,7 +1015,8 @@ function refusePairedEnvelope(category: Category): void {
     );
 }
 
-const isCounterparty = (account: Account) =>
+/** The partner and reimbursements accounts, which the system keeps. */
+export const isCounterparty = (account: Pick<Account, "kind">) =>
   account.kind === "partner" || account.kind === "reimbursements";
 
 // Until shares and settlements write them, a counterparty account holds no
