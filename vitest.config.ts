@@ -11,6 +11,9 @@ export default defineConfig({
     environment: "jsdom",
     include: ["tests/components/**/*.test.{ts,tsx}"],
     setupFiles: ["tests/components/setup.ts"],
+    // Whole-shell renders take seconds; a busy machine (parallel suites,
+    // other worktrees) can more than double that.
+    testTimeout: 20_000,
     environmentOptions: {
       jsdom: { url: "http://localhost/prototype/app-shell" },
     },
