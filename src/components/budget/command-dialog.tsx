@@ -19,7 +19,6 @@ import { LoanPaymentForm } from "~/components/loans/loan-payment-form";
 import { LoanRateForm } from "~/components/loans/loan-rate-form";
 import { ExpectedReimbursementForm } from "~/components/reimbursements/expected-reimbursement-form";
 import { ReceiptForm } from "~/components/reimbursements/receipt-form";
-import { StandingRuleForm } from "~/components/settings/standing-rule-form";
 import { Amount, Dialog } from "~/components/shared";
 import { JoinBudgetForm } from "~/components/shared-expenses/join-budget-form";
 import { OpeningObligationForm } from "~/components/shared-expenses/opening-obligation-form";
@@ -43,7 +42,6 @@ const saveLabels: Partial<Record<Panel["type"], string>> = {
   loan: "Add loan",
   "loan-payment": "Record lender payment",
   rate: "Save confirmed rate",
-  rule: "Create standing rule",
 };
 
 const dialogTitles: Record<Panel["type"], string> = {
@@ -63,7 +61,6 @@ const dialogTitles: Record<Panel["type"], string> = {
   rate: "Update a confirmed loan rate",
   reconcile: "Reconcile a bank statement",
   join: "Connect with your partner",
-  rule: "Create a standing rule",
   history: "Transaction history",
 };
 
@@ -228,7 +225,6 @@ function CommandDialogContent({
         {panel.type === "import" && (
           <CategoryImportForm fileText={fileText} readFile={readFile} />
         )}
-        {panel.type === "rule" && <StandingRuleForm view={view} />}
         {panel.type === "join" && <JoinBudgetForm />}
         {panel.type === "card-payment" && (
           <CardPaymentForm

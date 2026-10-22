@@ -83,7 +83,7 @@ function harness(members = [makeMember()]) {
       ),
     },
     bankConnection: { findMany: mock.fn(async () => connections) },
-    reviewEvidence: { findMany: mock.fn(async () => []) },
+    reviewEvidence: { findMany: mock.fn(async (): Promise<unknown[]> => []) },
     user: { findUnique: mock.fn(async () => ({ active: true })) },
     dailyDelivery: {
       updateMany: async (args: {
@@ -308,6 +308,25 @@ void test("daily review counts posted activity and matching problems without ale
   assert.match(
     h.send.mock.calls[0]!.arguments[0].message.text,
     /2 unresolved items are/,
+  );
+});
+
+void test("statement comparisons no longer count as unresolved items", async () => {
+  const h = harness();
+  // A statement an earlier release compared, which no longer matches.
+  h.raw.reviewEvidence.findMany = mock.fn(async () => [
+    {
+      id: "statement",
+      accountId: "checking",
+      result: { status: "unresolved_discrepancy" },
+      evidence: { revision: 7 },
+    },
+  ]);
+  const result = await runDailyJob(h.db, now, h.dependencies);
+  assert.equal(result.scheduled, 1);
+  assert.match(
+    h.send.mock.calls[0]!.arguments[0].message.text,
+    /^0 unresolved items are/,
   );
 });
 

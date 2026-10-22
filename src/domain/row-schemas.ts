@@ -92,7 +92,15 @@ export const rowDataSchemas = {
     ...sort,
     reimbursementId: storedIdentifier,
   }),
-  rule: element(budget.rules).extend({ ...owned, ...sort }),
+  // Standing rules are no longer kept; their stored rows still read.
+  rule: z.object({
+    id: storedIdentifier,
+    fromCategoryId: storedIdentifier,
+    toCategoryId: storedIdentifier,
+    enabled: z.boolean(),
+    ...owned,
+    ...sort,
+  }),
   // The server reads the JSON parts with its own bank import schemas
   // (src/server/services/bank-import-rows.ts).
   bankImport: z.object({

@@ -11,8 +11,9 @@ What is loading?
  │    with nothing on it yet and a known layout, like Reflect's report
  │    → Skeleton: its own frame, with bones where its data goes
  └── New data replacing data already on screen, like another month
-      → keep the old data up and show the progress line along the
-        panel header's bottom edge (.monthLoading in shell.module.css)
+      → keep the old data up until the new data replaces it. The
+        shell shows nothing while it saves or catches up in the
+        background; toasts speak up only when that goes wrong
 ```
 
 Reflect's layout is known before its spending arrives: the report tab,
@@ -23,9 +24,9 @@ in the skeleton colors, with the bones' shine, which the slices sweep over
 when they arrive. Bones are capsules everywhere else; a chart's bone is
 drawn in its chart's texture. Trends keeps its band's size, empty.
 
-The progress line has no primitive yet; copy the prototype's pattern. Never show a spinner over a skeleton, and never replace
-data that's already on screen with bones: a screen that empties itself to
-load looks like it lost the data.
+Never show a spinner over a skeleton, and never replace data that's already
+on screen with bones: a screen that empties itself to load looks like it
+lost the data.
 
 ## Skeleton
 

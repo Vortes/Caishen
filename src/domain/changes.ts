@@ -22,7 +22,6 @@ import {
   openingObligationRows,
   partnerFactRows,
   reimbursementRows,
-  ruleRows,
   settlementRows,
   sharedCategoryRows,
   transactionRows,
@@ -258,11 +257,6 @@ export class Changes {
   addReimbursement(budget: Budget, claim: Reimbursement): void {
     this.reimbursement(budget, claim);
     budget.reimbursements.push(claim);
-  }
-
-  /** The standing rules, which the caller replaces or reorders. */
-  rules(budget: Budget): void {
-    this.touch(`rules ${budget.userId}`, () => ruleRows(budget));
   }
 
   /** The shared categories, which the caller changes, adds, or removes. */

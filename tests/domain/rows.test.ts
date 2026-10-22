@@ -19,6 +19,7 @@ import {
   tableNames,
   type WireRow,
 } from "../../src/domain/rows";
+import { rowDataSchemas } from "../../src/domain/row-schemas";
 import { deriveObligations } from "../../src/domain/shared-ledger";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 import { buildCommandCorpus } from "./fixtures/command-corpus";
@@ -84,10 +85,11 @@ void test("every book round-trips through rows", () => {
     );
     assert.deepStrictEqual(json(rows), rows, `${name}: rows are plain JSON`);
   }
-  // Bank import rows come from the server's import state, not the engine.
+  // Bank import rows come from the server's import state, not the engine,
+  // and standing rules are no longer kept.
   assert.deepStrictEqual(
     tableNames.filter((table) => !filled.has(table)),
-    ["bankImport"],
+    ["rule", "bankImport"],
   );
 });
 
@@ -126,20 +128,42 @@ void test("rows keep each collection's order in explicit sort columns", () => {
       ["Bills", 0],
     ],
   );
-  // Setting a rule again moves it to the end.
-  assert.deepStrictEqual(
-    of("rule").map((rule) => [
-      (rule as { id: string }).id,
-      (rule as { sort: number }).sort,
-    ]),
-    [
-      ["travel-covers-food", 0],
-      ["dining-covers-food", 1],
-    ],
-  );
   // Rows given in any order build the same book.
   const shuffled = [...rows].reverse();
   assert.deepStrictEqual(json(rowsToBook(shuffled)), stored(corpus.book));
+});
+
+void test("stored standing rules still read and are left out of every budget", () => {
+  const rows = bookToRows(corpus.book);
+  const rule: WireRow = {
+    table: "rule",
+    id: rowKey("alex", "dining-covers-food"),
+    revision: 3,
+    deleted: false,
+    data: {
+      id: "dining-covers-food",
+      fromCategoryId: "dining",
+      toCategoryId: "food",
+      enabled: true,
+      userId: "alex",
+      sort: 0,
+    },
+  };
+  assert.ok(rowDataSchemas.rule.safeParse(rule.data).success);
+  assert.deepStrictEqual(
+    json(rowsToBook([...rows, rule])),
+    json(rowsToBook(rows)),
+  );
+  const visible = [...rows, rule].filter((row) => rowVisibleTo(row, "alex"));
+  assert.deepStrictEqual(
+    json(rowsToPersonalLedger(visible, "alex")),
+    json(
+      rowsToPersonalLedger(
+        visible.filter((row) => row !== rule),
+        "alex",
+      ),
+    ),
+  );
 });
 
 void test("row ids join key parts unambiguously", () => {
