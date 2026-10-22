@@ -110,6 +110,7 @@ function categorization(
   if (
     !transaction ||
     transaction.removed ||
+    transaction.refundOfTransactionId ||
     (transaction.lines?.length ?? 0) > 1 ||
     !["purchase", "refund", "income"].includes(transaction.kind)
   )
