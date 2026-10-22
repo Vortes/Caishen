@@ -1,0 +1,11 @@
+[
+  {
+    "key": "pending-match:item-sample:t-bakery",
+    "kind": "possible_pending_match",
+    "logicalTransactionId": "plaid:item-sample:t-bakery",
+    "candidateIds": [
+      "plaid:item-sample:p-bakery"
+    ],
+    "message": "Similar merchant and dates may indicate a pending purchase posting. Provider identity evidence is missing; confirm the match."
+  }
+]

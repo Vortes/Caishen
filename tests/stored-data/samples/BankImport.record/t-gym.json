@@ -1,0 +1,88 @@
+{
+  "id": "plaid:item-sample:t-gym",
+  "namespace": "item-sample",
+  "providerTransactionIds": [
+    "t-gym"
+  ],
+  "current": {
+    "provider": "plaid",
+    "providerTransactionId": "t-gym",
+    "providerAccountId": "plaid-card",
+    "pendingTransactionId": null,
+    "amountCents": 6000,
+    "currency": "USD",
+    "date": "2026-10-10",
+    "authorizedDate": null,
+    "name": "GYM",
+    "merchantName": null,
+    "pending": false
+  },
+  "categoryId": null,
+  "removed": false,
+  "matchStatus": "confirmed",
+  "history": [
+    {
+      "kind": "added",
+      "before": null,
+      "after": {
+        "provider": "plaid",
+        "providerTransactionId": "t-gym",
+        "providerAccountId": "plaid-card",
+        "pendingTransactionId": null,
+        "amountCents": 6000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "GYM",
+        "merchantName": null,
+        "pending": false
+      }
+    },
+    {
+      "kind": "removed",
+      "before": {
+        "provider": "plaid",
+        "providerTransactionId": "t-gym",
+        "providerAccountId": "plaid-card",
+        "pendingTransactionId": null,
+        "amountCents": 6000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "GYM",
+        "merchantName": null,
+        "pending": false
+      },
+      "after": null
+    },
+    {
+      "kind": "restored",
+      "before": {
+        "provider": "plaid",
+        "providerTransactionId": "t-gym",
+        "providerAccountId": "plaid-card",
+        "pendingTransactionId": null,
+        "amountCents": 6000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "GYM",
+        "merchantName": null,
+        "pending": false
+      },
+      "after": {
+        "provider": "plaid",
+        "providerTransactionId": "t-gym",
+        "providerAccountId": "plaid-card",
+        "pendingTransactionId": null,
+        "amountCents": 6000,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "GYM",
+        "merchantName": null,
+        "pending": false
+      }
+    }
+  ]
+}

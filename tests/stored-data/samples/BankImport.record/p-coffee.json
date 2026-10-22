@@ -1,0 +1,72 @@
+{
+  "id": "plaid:item-sample:p-coffee",
+  "namespace": "item-sample",
+  "providerTransactionIds": [
+    "p-coffee",
+    "t-coffee"
+  ],
+  "current": {
+    "provider": "plaid",
+    "providerTransactionId": "t-coffee",
+    "providerAccountId": "plaid-checking",
+    "pendingTransactionId": "p-coffee",
+    "amountCents": 550,
+    "currency": "USD",
+    "date": "2026-10-11",
+    "authorizedDate": null,
+    "name": "BLUE BOTTLE",
+    "merchantName": "Blue Bottle",
+    "pending": false
+  },
+  "categoryId": null,
+  "removed": false,
+  "matchStatus": "confirmed",
+  "history": [
+    {
+      "kind": "added",
+      "before": null,
+      "after": {
+        "provider": "plaid",
+        "providerTransactionId": "p-coffee",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 450,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "BLUE BOTTLE",
+        "merchantName": "Blue Bottle",
+        "pending": true
+      }
+    },
+    {
+      "kind": "pending_posted",
+      "before": {
+        "provider": "plaid",
+        "providerTransactionId": "p-coffee",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 450,
+        "currency": "USD",
+        "date": "2026-10-10",
+        "authorizedDate": null,
+        "name": "BLUE BOTTLE",
+        "merchantName": "Blue Bottle",
+        "pending": true
+      },
+      "after": {
+        "provider": "plaid",
+        "providerTransactionId": "t-coffee",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": "p-coffee",
+        "amountCents": 550,
+        "currency": "USD",
+        "date": "2026-10-11",
+        "authorizedDate": null,
+        "name": "BLUE BOTTLE",
+        "merchantName": "Blue Bottle",
+        "pending": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "id": "plaid:item-sample:t-bakery",
+  "namespace": "item-sample",
+  "providerTransactionIds": [
+    "t-bakery"
+  ],
+  "current": {
+    "provider": "plaid",
+    "providerTransactionId": "t-bakery",
+    "providerAccountId": "plaid-checking",
+    "pendingTransactionId": null,
+    "amountCents": 1225,
+    "currency": "USD",
+    "date": "2026-10-12",
+    "authorizedDate": null,
+    "name": "TARTINE",
+    "merchantName": "Tartine",
+    "pending": false
+  },
+  "categoryId": null,
+  "removed": false,
+  "matchStatus": "needs_review",
+  "history": [
+    {
+      "kind": "added",
+      "before": null,
+      "after": {
+        "provider": "plaid",
+        "providerTransactionId": "t-bakery",
+        "providerAccountId": "plaid-checking",
+        "pendingTransactionId": null,
+        "amountCents": 1225,
+        "currency": "USD",
+        "date": "2026-10-12",
+        "authorizedDate": null,
+        "name": "TARTINE",
+        "merchantName": "Tartine",
+        "pending": false
+      }
+    }
+  ]
+}

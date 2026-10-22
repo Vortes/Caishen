@@ -20,15 +20,22 @@ model CrudItem {
 }
 
 model Workspace {
-  id         String            @id @default(cuid())
-  revision   Int               @default(0)
-  book       Json
-  history    Json              @default("{}")
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  members    WorkspaceMember[]
-  operations BudgetOperation[]
-  invites    PartnerInvite[]
+  id               String            @id @default(cuid())
+  revision         Int               @default(0)
+  book             Json
+  history          Json              @default("{}")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  members          WorkspaceMember[]
+  operations       BudgetOperation[]
+  invites          PartnerInvite[]
+  // Rows (ADR 0006). Read and written only through src/server/storage.
+  budgetMembers    Member[]
+  sharedCategories SharedCategory[]
+  obligations      Obligation[]
+  settlements      Settlement[]
+  partnerFacts     PartnerFact[]
+  operationLog     Operation[]
 }
 
 model WorkspaceMember {
@@ -72,10 +79,10 @@ model PartnerInvite {
 }
 
 model BankConnection {
-  id              String    @id @default(cuid())
+  id              String       @id @default(cuid())
   clerkUserId     String
-  user            User      @relation(fields: [clerkUserId], references: [clerkUserId], onDelete: Restrict)
-  itemId          String    @unique
+  user            User         @relation(fields: [clerkUserId], references: [clerkUserId], onDelete: Restrict)
+  itemId          String       @unique
   encryptedToken  String
   cursor          String?
   imports         Json
@@ -83,8 +90,9 @@ model BankConnection {
   lastSyncedAt    DateTime?
   lastAttemptAt   DateTime?
   error           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  importRows      BankImport[]
 
   @@index([clerkUserId])
 }
@@ -141,6 +149,7 @@ model User {
   invitesCreated  PartnerInvite[]     @relation("InviteCreator")
   invitesUsed     PartnerInvite[]     @relation("InviteRecipient")
   webhookEvents   ClerkWebhookEvent[]
+  operationLog    Operation[]
 }
 
 model ClerkWebhookEvent {
@@ -154,4 +163,468 @@ model ClerkWebhookEvent {
   createdAt   DateTime @default(now())
 
   @@index([clerkUserId, occurredAt])
+}
+
+// Personal budgets and household data as rows (ADR 0006). One table per row
+// table in src/domain/rows.ts, read and written only through the data-access
+// layer in src/server/storage (enforced by lint). Every row carries the
+// household revision at which it last changed and a deletion flag; rows are
+// never removed while browsers may still need to learn of the deletion.
+// Amounts are cents. Kinds and statuses are text: stored values only grow
+// (ADR 0006), and the engine validates them.
+
+model Member {
+  workspaceId  String
+  userId       String
+  name         String
+  sort         Int
+  revision     Int
+  deleted      Boolean          @default(false)
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  settings     BudgetSettings?
+  accounts     Account[]
+  groups       CategoryGroup[]
+  categories   Category[]
+  income       ExpectedIncome[]
+  transactions Transaction[]
+  loans        Loan[]
+  claims       Reimbursement[]
+  rules        Rule[]
+  bankImports  BankImport[]
+  partnerFacts PartnerFact[]
+
+  @@id([workspaceId, userId])
+  @@index([workspaceId, revision])
+}
+
+model BudgetSettings {
+  workspaceId  String
+  userId       String
+  startMonth   String
+  timezone     String
+  emailEnabled Boolean
+  emailHour    Int
+  revision     Int
+  deleted      Boolean @default(false)
+  member       Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([workspaceId, revision])
+}
+
+model Account {
+  workspaceId       String
+  userId            String
+  id                String
+  name              String
+  kind              String
+  openingBalance    BigInt
+  date              String
+  reconciledDate    String?
+  reconciledBalance BigInt?
+  sort              Int
+  revision          Int
+  deleted           Boolean @default(false)
+  member            Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, id])
+  @@index([workspaceId, revision])
+}
+
+model CategoryGroup {
+  workspaceId String
+  userId      String
+  name        String
+  sort        Int
+  revision    Int
+  deleted     Boolean @default(false)
+  member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, name])
+  @@index([workspaceId, revision])
+}
+
+model Category {
+  workspaceId     String
+  userId          String
+  id              String
+  name            String
+  group           String
+  pairedAccountId String?
+  pairedLoanId    String?
+  sort            Int
+  revision        Int
+  deleted         Boolean      @default(false)
+  member          Member       @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  target          Target?
+  assignments     Assignment[]
+
+  @@id([workspaceId, userId, id])
+  @@index([workspaceId, revision])
+}
+
+model Target {
+  workspaceId   String
+  userId        String
+  categoryId    String
+  cadence       String
+  behavior      String
+  amount        BigInt
+  startMonth    String
+  dueDate       String?
+  weekday       Int?
+  monthDay      Int?
+  repeatEvery   Int?
+  repeatUnit    String?
+  snoozedMonths String[]
+  revision      Int
+  deleted       Boolean  @default(false)
+  category      Category @relation(fields: [workspaceId, userId, categoryId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, categoryId])
+  @@index([workspaceId, revision])
+}
+
+// One per budget category and month, holding the month's total.
+model Assignment {
+  workspaceId String
+  userId      String
+  categoryId  String
+  month       String
+  id          String
+  amount      BigInt
+  sort        Int
+  revision    Int
+  deleted     Boolean  @default(false)
+  category    Category @relation(fields: [workspaceId, userId, categoryId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, categoryId, month])
+  @@index([workspaceId, revision])
+}
+
+model ExpectedIncome {
+  workspaceId String
+  userId      String
+  month       String
+  amount      BigInt
+  revision    Int
+  deleted     Boolean @default(false)
+  member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, month])
+  @@index([workspaceId, revision])
+}
+
+model Transaction {
+  workspaceId         String
+  userId              String
+  id                  String
+  accountId           String
+  date                String
+  amount              BigInt
+  payee               String
+  status              String
+  categoryId          String?
+  expenseMonth        String
+  sharedCategoryId    String?
+  providerId          String?
+  // The transaction's own revision, which its history entries record.
+  transactionRevision Int
+  reviewed            Boolean
+  kind                String
+  linkedId            String?
+  removed             Boolean?
+  reconciled          Boolean?
+  sort                Int
+  revision            Int
+  deleted             Boolean              @default(false)
+  member              Member               @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  shares              TransactionShare[]
+  history             TransactionHistory[]
+
+  @@id([workspaceId, userId, id])
+  @@index([workspaceId, revision])
+}
+
+model TransactionShare {
+  workspaceId   String
+  userId        String
+  transactionId String
+  participantId String
+  share         BigInt?
+  weight        BigInt?
+  revision      Int
+  deleted       Boolean     @default(false)
+  transaction   Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, transactionId, participantId])
+  @@index([workspaceId, revision])
+}
+
+// Keyed by the entry's position: combining records repeats revisions.
+model TransactionHistory {
+  workspaceId         String
+  userId              String
+  transactionId       String
+  sequence            Int
+  transactionRevision Int
+  amount              BigInt
+  status              String
+  date                String
+  payee               String
+  operationId         String
+  reason              String
+  combinedId          String?
+  revision            Int
+  deleted             Boolean     @default(false)
+  transaction         Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, transactionId, sequence])
+  @@index([workspaceId, revision])
+}
+
+model Loan {
+  workspaceId    String
+  userId         String
+  id             String
+  name           String
+  categoryId     String
+  principal      BigInt
+  minimumPayment BigInt
+  variable       Boolean
+  sort           Int
+  revision       Int
+  deleted        Boolean       @default(false)
+  member         Member        @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  rates          LoanRate[]
+  payments       LoanPayment[]
+
+  @@id([workspaceId, userId, id])
+  @@index([workspaceId, revision])
+}
+
+model LoanRate {
+  workspaceId   String
+  userId        String
+  loanId        String
+  sequence      Int
+  effectiveDate String
+  annualRateBps Int
+  revision      Int
+  deleted       Boolean @default(false)
+  loan          Loan    @relation(fields: [workspaceId, userId, loanId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, loanId, sequence])
+  @@index([workspaceId, revision])
+}
+
+model LoanPayment {
+  workspaceId String
+  userId      String
+  loanId      String
+  id          String
+  date        String
+  principal   BigInt
+  interest    BigInt
+  sort        Int
+  revision    Int
+  deleted     Boolean @default(false)
+  loan        Loan    @relation(fields: [workspaceId, userId, loanId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, loanId, id])
+  @@index([workspaceId, revision])
+}
+
+model Reimbursement {
+  workspaceId   String
+  userId        String
+  id            String
+  transactionId String
+  name          String
+  amount        BigInt
+  kind          String
+  sort          Int
+  revision      Int
+  deleted       Boolean                @default(false)
+  member        Member                 @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  receipts      ReimbursementReceipt[]
+
+  @@id([workspaceId, userId, id])
+  @@index([workspaceId, revision])
+}
+
+model ReimbursementReceipt {
+  workspaceId     String
+  userId          String
+  reimbursementId String
+  id              String
+  date            String
+  amount          BigInt
+  sort            Int
+  revision        Int
+  deleted         Boolean       @default(false)
+  reimbursement   Reimbursement @relation(fields: [workspaceId, userId, reimbursementId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, reimbursementId, id])
+  @@index([workspaceId, revision])
+}
+
+model Rule {
+  workspaceId    String
+  userId         String
+  id             String
+  fromCategoryId String
+  toCategoryId   String
+  enabled        Boolean
+  sort           Int
+  revision       Int
+  deleted        Boolean @default(false)
+  member         Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, id])
+  @@index([workspaceId, revision])
+}
+
+// One bank connection's import state for one logical bank transaction: its
+// stored import, how it was resolved, its error, and its review evidence.
+// The connection's own details stay on BankConnection.
+model BankImport {
+  workspaceId  String
+  userId       String
+  connectionId String
+  logicalId    String
+  record       Json?
+  resolved     Json?
+  error        String?
+  reviews      Json?
+  sort         Int
+  revision     Int
+  deleted      Boolean        @default(false)
+  member       Member         @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  connection   BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, connectionId, logicalId])
+  @@index([workspaceId, revision])
+  @@index([connectionId])
+}
+
+model SharedCategory {
+  workspaceId  String
+  id           String
+  participants String[]
+  weights      Json
+  categoryIds  Json
+  sort         Int
+  revision     Int
+  deleted      Boolean   @default(false)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, revision])
+}
+
+// Opening shared balances only; generated obligations are derived.
+model Obligation {
+  workspaceId      String
+  id               String
+  sharedCategoryId String
+  debtorId         String
+  creditorId       String
+  amount           BigInt
+  expenseMonth     String?
+  transactionId    String?
+  payerId          String?
+  payee            String?
+  date             String?
+  opening          Boolean
+  sort             Int
+  revision         Int
+  deleted          Boolean   @default(false)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, revision])
+}
+
+model Settlement {
+  workspaceId String
+  id          String
+  payerId     String
+  recipientId String
+  date        String
+  amount      BigInt
+  received    Boolean
+  sort        Int
+  revision    Int
+  deleted     Boolean                @default(false)
+  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  allocations SettlementAllocation[]
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, revision])
+}
+
+model SettlementAllocation {
+  workspaceId  String
+  settlementId String
+  sequence     Int
+  obligationId String
+  amount       BigInt
+  kind         String
+  revision     Int
+  deleted      Boolean    @default(false)
+  settlement   Settlement @relation(fields: [workspaceId, settlementId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, settlementId, sequence])
+  @@index([workspaceId, revision])
+}
+
+// What one partner's ledger uses of the other partner's budget, derived by
+// the server. Its kinds key differently, so it is keyed by its row id.
+model PartnerFact {
+  workspaceId      String
+  key              String
+  viewerId         String
+  kind             String
+  payerId          String?
+  sharedCategoryId String?
+  settlementId     String?
+  transactionId    String?
+  date             String?
+  expenseMonth     String?
+  amount           BigInt?
+  payee            String?
+  status           String?
+  shares           Json?
+  sort             Int?
+  revision         Int
+  deleted          Boolean   @default(false)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  viewer           Member    @relation(fields: [workspaceId, viewerId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, key])
+  @@index([workspaceId, revision])
+}
+
+// Every operation applied to a household. The command and its change set
+// are kept for a limited time (for retries and undo); the rest is kept
+// forever so a retried operation is never applied twice.
+model Operation {
+  workspaceId String
+  operationId String
+  actorId     String
+  source      String
+  type        String
+  inputHash   String
+  revision    Int
+  createdAt   DateTime  @default(now())
+  command     Json?
+  changeSet   Json?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor       User      @relation(fields: [actorId], references: [clerkUserId], onDelete: Restrict)
+
+  @@id([workspaceId, operationId])
+  @@index([workspaceId, revision])
+  @@index([workspaceId, actorId, revision])
+  @@index([createdAt])
 }

@@ -1,0 +1,573 @@
+{
+  "operationId": "operation-sample",
+  "revision": 7,
+  "after": [
+    {
+      "table": "member",
+      "id": "alex",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "name": "Demo · Alex’s budget",
+        "sort": 0
+      }
+    },
+    {
+      "table": "budgetSettings",
+      "id": "alex",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "startMonth": "2026-08",
+        "timezone": "America/Los_Angeles",
+        "emailEnabled": false,
+        "emailHour": 8
+      }
+    },
+    {
+      "table": "account",
+      "id": "alex/checking",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "checking",
+        "name": "Demo · Chase Total Checking",
+        "kind": "cash",
+        "openingBalance": 850000,
+        "date": "2026-08-01",
+        "userId": "alex",
+        "sort": 0
+      }
+    },
+    {
+      "table": "categoryGroup",
+      "id": "alex/Bills",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "name": "Bills",
+        "sort": 0
+      }
+    },
+    {
+      "table": "category",
+      "id": "alex/card:amex",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "card:amex",
+        "name": "Demo · American Express payment",
+        "group": "Credit card payments",
+        "pairedAccountId": "amex",
+        "userId": "alex",
+        "sort": 0
+      }
+    },
+    {
+      "table": "target",
+      "id": "alex/card:amex",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "cadence": "card-monthly",
+        "behavior": "contribution",
+        "amount": 20000,
+        "startMonth": "2026-08",
+        "snoozedMonths": [],
+        "userId": "alex",
+        "categoryId": "card:amex"
+      }
+    },
+    {
+      "table": "assignment",
+      "id": "alex/rent/2026-08",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "dev-seed:47",
+        "categoryId": "rent",
+        "month": "2026-08",
+        "amount": 130000,
+        "userId": "alex",
+        "sort": 0
+      }
+    },
+    {
+      "table": "expectedIncome",
+      "id": "alex/2026-02",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "month": "2026-02",
+        "amount": 300000
+      }
+    },
+    {
+      "table": "transaction",
+      "id": "alex/salary-2026-08-1",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "salary-2026-08-1",
+        "accountId": "checking",
+        "date": "2026-08-01",
+        "amount": 325000,
+        "payee": "Cedar Labs · payroll",
+        "status": "posted",
+        "expenseMonth": "2026-08",
+        "revision": 1,
+        "reviewed": true,
+        "kind": "income",
+        "userId": "alex",
+        "sort": 0
+      }
+    },
+    {
+      "table": "transactionShare",
+      "id": "alex/utilities-2026-08/alex",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "transactionId": "utilities-2026-08",
+        "participantId": "alex",
+        "share": 9471,
+        "weight": 1
+      }
+    },
+    {
+      "table": "transactionHistory",
+      "id": "alex/salary-2026-08-1/0",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "revision": 1,
+        "amount": 325000,
+        "status": "posted",
+        "date": "2026-08-01",
+        "payee": "Cedar Labs · payroll",
+        "operationId": "dev-seed:44",
+        "reason": "created",
+        "userId": "alex",
+        "transactionId": "salary-2026-08-1",
+        "sequence": 0
+      }
+    },
+    {
+      "table": "loan",
+      "id": "alex/student",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "student",
+        "name": "Nelnet student loan",
+        "categoryId": "student-payment",
+        "principal": 2450000,
+        "minimumPayment": 32000,
+        "variable": true,
+        "userId": "alex",
+        "sort": 0
+      }
+    },
+    {
+      "table": "loanRate",
+      "id": "alex/student/0",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "effectiveDate": "2026-08-01",
+        "annualRateBps": 625,
+        "userId": "alex",
+        "loanId": "student",
+        "sequence": 0
+      }
+    },
+    {
+      "table": "loanPayment",
+      "id": "alex/student/dev-seed:84",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "dev-seed:84",
+        "date": "2026-08-12",
+        "principal": 19225,
+        "interest": 12775,
+        "userId": "alex",
+        "loanId": "student",
+        "sort": 0
+      }
+    },
+    {
+      "table": "reimbursement",
+      "id": "alex/work-hotel",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "work-hotel",
+        "transactionId": "conference-hotel",
+        "name": "Cedar Labs · conference hotel",
+        "amount": 48000,
+        "kind": "cash",
+        "userId": "alex",
+        "sort": 0
+      }
+    },
+    {
+      "table": "reimbursementReceipt",
+      "id": "alex/work-hotel/dev-seed:317",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "dev-seed:317",
+        "date": "2026-10-10",
+        "amount": 20000,
+        "userId": "alex",
+        "reimbursementId": "work-hotel",
+        "sort": 0
+      }
+    },
+    {
+      "table": "rule",
+      "id": "alex/dining-from-emergency",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "dining-from-emergency",
+        "fromCategoryId": "emergency",
+        "toCategoryId": "dining",
+        "enabled": true,
+        "userId": "alex",
+        "sort": 0
+      }
+    },
+    {
+      "table": "bankImport",
+      "id": "alex/connection-sample/plaid:item-sample:p-coffee",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "connectionId": "connection-sample",
+        "logicalId": "plaid:item-sample:p-coffee",
+        "sort": 0,
+        "record": {
+          "id": "plaid:item-sample:p-coffee",
+          "namespace": "item-sample",
+          "providerTransactionIds": [
+            "p-coffee",
+            "t-coffee"
+          ],
+          "current": {
+            "provider": "plaid",
+            "providerTransactionId": "t-coffee",
+            "providerAccountId": "plaid-checking",
+            "pendingTransactionId": "p-coffee",
+            "amountCents": 550,
+            "currency": "USD",
+            "date": "2026-10-11",
+            "authorizedDate": null,
+            "name": "BLUE BOTTLE",
+            "merchantName": "Blue Bottle",
+            "pending": false
+          },
+          "categoryId": null,
+          "removed": false,
+          "matchStatus": "confirmed",
+          "history": [
+            {
+              "kind": "added",
+              "before": null,
+              "after": {
+                "provider": "plaid",
+                "providerTransactionId": "p-coffee",
+                "providerAccountId": "plaid-checking",
+                "pendingTransactionId": null,
+                "amountCents": 450,
+                "currency": "USD",
+                "date": "2026-10-10",
+                "authorizedDate": null,
+                "name": "BLUE BOTTLE",
+                "merchantName": "Blue Bottle",
+                "pending": true
+              }
+            },
+            {
+              "kind": "pending_posted",
+              "before": {
+                "provider": "plaid",
+                "providerTransactionId": "p-coffee",
+                "providerAccountId": "plaid-checking",
+                "pendingTransactionId": null,
+                "amountCents": 450,
+                "currency": "USD",
+                "date": "2026-10-10",
+                "authorizedDate": null,
+                "name": "BLUE BOTTLE",
+                "merchantName": "Blue Bottle",
+                "pending": true
+              },
+              "after": {
+                "provider": "plaid",
+                "providerTransactionId": "t-coffee",
+                "providerAccountId": "plaid-checking",
+                "pendingTransactionId": "p-coffee",
+                "amountCents": 550,
+                "currency": "USD",
+                "date": "2026-10-11",
+                "authorizedDate": null,
+                "name": "BLUE BOTTLE",
+                "merchantName": "Blue Bottle",
+                "pending": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "table": "sharedCategory",
+      "id": "rent",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "rent",
+        "participants": [
+          "alex",
+          "jordan"
+        ],
+        "weights": {
+          "alex": 1,
+          "jordan": 1
+        },
+        "categoryIds": {
+          "alex": "rent",
+          "jordan": "rent"
+        },
+        "sort": 0
+      }
+    },
+    {
+      "table": "obligation",
+      "id": "opening-rent",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "opening-rent",
+        "sharedCategoryId": "rent",
+        "debtorId": "alex",
+        "creditorId": "jordan",
+        "amount": 17500,
+        "opening": true,
+        "sort": 0
+      }
+    },
+    {
+      "table": "settlement",
+      "id": "settlement-2026-08",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "settlement-2026-08",
+        "payerId": "alex",
+        "recipientId": "jordan",
+        "date": "2026-08-20",
+        "amount": 133621,
+        "received": true,
+        "sort": 0
+      }
+    },
+    {
+      "table": "settlementAllocation",
+      "id": "settlement-2026-08/0",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "obligationId": "opening-rent",
+        "amount": 16879,
+        "kind": "offset",
+        "settlementId": "settlement-2026-08",
+        "sequence": 0
+      }
+    },
+    {
+      "table": "partnerFact",
+      "id": "alex/activity/rent",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "viewerId": "alex",
+        "kind": "activity",
+        "payerId": "jordan",
+        "sharedCategoryId": "rent",
+        "sort": 24
+      }
+    }
+  ],
+  "before": [
+    {
+      "table": "member",
+      "id": "alex",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "budgetSettings",
+      "id": "alex",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "account",
+      "id": "alex/checking",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "categoryGroup",
+      "id": "alex/Bills",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "category",
+      "id": "alex/card:amex",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "target",
+      "id": "alex/card:amex",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "assignment",
+      "id": "alex/rent/2026-08",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "expectedIncome",
+      "id": "alex/2026-02",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "transaction",
+      "id": "alex/salary-2026-08-1",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "transactionShare",
+      "id": "alex/utilities-2026-08/alex",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "transactionHistory",
+      "id": "alex/salary-2026-08-1/0",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "loan",
+      "id": "alex/student",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "loanRate",
+      "id": "alex/student/0",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "loanPayment",
+      "id": "alex/student/dev-seed:84",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "reimbursement",
+      "id": "alex/work-hotel",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "reimbursementReceipt",
+      "id": "alex/work-hotel/dev-seed:317",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "rule",
+      "id": "alex/dining-from-emergency",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "bankImport",
+      "id": "alex/connection-sample/plaid:item-sample:p-coffee",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "sharedCategory",
+      "id": "rent",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "obligation",
+      "id": "opening-rent",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "settlement",
+      "id": "settlement-2026-08",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "settlementAllocation",
+      "id": "settlement-2026-08/0",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "partnerFact",
+      "id": "alex/activity/rent",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    }
+  ]
+}

@@ -105,8 +105,18 @@ export type TableData = {
   reimbursementReceipt: Owned &
     Sorted & { reimbursementId: string } & Reimbursement["receipts"][number];
   rule: Owned & Sorted & Budget["rules"][number];
-  // Written by the server's bank import state, never by the engine.
-  bankImport: Owned & Record<string, unknown>;
+  // One bank connection's import state for one logical bank transaction,
+  // written by the server, never by the engine. The server validates the
+  // parts it holds (src/server/services/bank-import-rows.ts).
+  bankImport: Owned &
+    Sorted & {
+      connectionId: string;
+      logicalId: string;
+      record?: unknown;
+      resolved?: unknown;
+      error?: string;
+      reviews?: unknown[];
+    };
   sharedCategory: Sorted & SharedCategory;
   // Opening shared balances only; generated obligations are derived.
   obligation: Sorted & Obligation;
