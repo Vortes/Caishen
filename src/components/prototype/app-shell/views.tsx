@@ -42,6 +42,7 @@ import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
+import { CounterpartyRegister } from "./reimbursements-register";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
@@ -445,6 +446,7 @@ function matches(item: Transaction, query: string, accountName?: string) {
   return [
     item.payee,
     item.categoryLabel,
+    item.shareLabel,
     accountName,
     money(Math.abs(item.amount)),
   ].some((value) => value?.toLowerCase().includes(text));
@@ -454,6 +456,7 @@ const registerEditFields: Record<string, DraftField> = {
   date: "date",
   payee: "payee",
   category: "categoryId",
+  share: "counterpartyShare",
   outflow: "outflow",
   inflow: "inflow",
 };
@@ -554,17 +557,9 @@ export function RegisterView({
   const counterparty = accounts.find(
     (entry) => entry.id === accountId && isCounterparty(entry),
   );
+  if (counterparty)
+    return <CounterpartyRegister account={counterparty} query={query} />;
   if (!rows.length && !session) {
-    // A counterparty account's entries come from shares and settlements,
-    // so its empty register says what will fill it.
-    if (counterparty && !search)
-      return (
-        <Empty title="Nothing owed yet." icon={UsersIcon}>
-          {counterparty.kind === "partner"
-            ? `When you and ${counterparty.name} share a cost, what one of you owes the other shows here.`
-            : "When you pay for someone, what they owe you shows here. Its envelope in People can set money aside to cover it."}
-        </Empty>
-      );
     return search ? (
       <Empty title={`No transactions match “${search}”.`} icon={SearchIcon}>
         Search looks at payees, categories, and amounts in every month.
@@ -621,6 +616,11 @@ export function RegisterView({
           className={`${styles.txColumns} ${styles.row}`}
           aria-current={selectedId === item.id ? "true" : undefined}
           onClick={(event) => {
+            if (event.detail > 0 && window.getSelection()?.toString()) return;
+            if (event.target instanceof Element && event.target.closest('[data-column="share"]')) {
+              entry.start({ transactionId: item.id, field: "counterpartyShare" });
+              return;
+            }
             // A pointer click; Enter and Space click with no position.
             if (isChecked && checked.length === 1 && event.detail > 0) {
               const skip = item.categoryNotNeeded ? "category" : undefined;
@@ -689,6 +689,12 @@ export function RegisterView({
             )}
           </span>
           <span
+            className={`${styles.truncate} ${styles.muted}`}
+            data-column="share"
+          >
+            {item.shareLabel ?? "Share"}
+          </span>
+          <span
             className={styles.numeric}
             data-column="outflow"
             data-empty={item.amount < 0 ? undefined : true}
@@ -712,6 +718,27 @@ export function RegisterView({
             />
           </span>
         </button>
+        {selectedId === item.id &&
+          item.history.some((change) => change.shares?.length) && (
+            <details className={styles.shareHistory}>
+              <summary>Share history</summary>
+              {item.history
+                .filter((change) => change.shares?.length)
+                .map((change, index) => (
+                  <div key={index}>
+                    <p>
+                      {change.reason} · {change.actorId ?? "Unknown author"}
+                      {change.at
+                        ? ` · ${new Date(change.at).toLocaleString()}`
+                        : ""}
+                    </p>
+                    {change.shares?.map((share, shareIndex) => (
+                      <p key={shareIndex}>{share}</p>
+                    ))}
+                  </div>
+                ))}
+            </details>
+          )}
         {item.counterpart && (
           <div className={`${styles.txColumns} ${styles.rowActions}`}>
             <span className={styles.counterpartAction}>
@@ -791,6 +818,9 @@ export function RegisterView({
         </span>
         <span data-column="category" aria-hidden>
           Category
+        </span>
+        <span data-column="share" aria-hidden>
+          Share
         </span>
         <span
           className={styles.numeric}

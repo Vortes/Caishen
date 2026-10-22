@@ -128,7 +128,14 @@ export type Transaction = {
   categoryNotNeeded: boolean;
   forMonth?: string;
   shared: boolean;
-  history: { reason: string; amount: number }[];
+  shareLabel?: string;
+  history: {
+    reason: string;
+    amount: number;
+    actorId?: string;
+    at?: string;
+    shares?: string[];
+  }[];
 };
 
 export type ShellData = {
@@ -485,7 +492,9 @@ export function toShellData(
           ? "Category not needed"
           : needsCategory
             ? "Needs category"
-            : item.lines
+            : item.lines?.length === 1
+              ? (categoryName.get(item.lines[0]!.categoryId) ?? "Needs category")
+              : item.lines
               ? `Split (${item.lines.length})`
               : ((item.categoryId && categoryName.get(item.categoryId)) ??
                 (boundary
@@ -497,10 +506,33 @@ export function toShellData(
           item.expenseMonth !== item.date.slice(0, 7)
             ? monthName(item.expenseMonth)
             : undefined,
-        shared: Boolean(item.sharedCategoryId),
+        shared:
+          Boolean(item.sharedCategoryId) ||
+          Boolean(item.counterpartyShare) ||
+          Boolean(item.lines?.some((line) => line.counterpartyShare)),
+        shareLabel:
+          [
+            item.counterpartyShare,
+            ...(item.lines?.map((line) => line.counterpartyShare) ?? []),
+          ]
+            .filter((share) => Boolean(share))
+            .map(
+              (share) =>
+                `${share!.counterpartyName ?? view.budget.accounts.find((account) => account.id === share!.accountId)?.name ?? "Share"} ${money(share!.amount)}`,
+            )
+            .join(" · ") || undefined,
         history: item.history.map((entry) => ({
           reason: historyReason[entry.reason],
           amount: entry.amount,
+          actorId: entry.actorId,
+          at: entry.at,
+          shares: entry.shareChanges?.map((change) => {
+            const label = (share: typeof change.previous) =>
+              share
+                ? `${share.counterpartyName ?? view.budget.accounts.find((account) => account.id === share.accountId)?.name ?? "Share"} ${money(share.amount)}`
+                : "No share";
+            return `${label(change.previous)} → ${label(change.next)}`;
+          }),
         })),
       };
     }),

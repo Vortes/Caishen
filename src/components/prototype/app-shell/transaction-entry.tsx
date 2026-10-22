@@ -15,7 +15,10 @@ import {
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
 import type { Command } from "~/domain/engine";
-import { rememberedCategory } from "~/domain/payee-memory";
+import {
+  rememberedCategory,
+  rememberedCounterpartyShare,
+} from "~/domain/payee-memory";
 import {
   canEditImport,
   createImportDraft,
@@ -66,6 +69,7 @@ export type TransactionSession = {
   // Until the user chooses a category, a new transaction's category follows
   // its payee's memory; this is what it has when the payee has none.
   unremembered?: string;
+  shareChosen?: boolean;
 };
 
 type FocusTarget = DraftField | "calendar" | "error";
@@ -86,6 +90,7 @@ const screenOrder = (draft: TransactionDraft): DraftField[] => [
   "date",
   "payee",
   "categoryId",
+  "counterpartyShare",
   "outflow",
   "inflow",
   ...draft.lines.flatMap((line) =>
@@ -205,8 +210,10 @@ export function useTransactionEntryController({
     transactionId,
     accountId,
     field,
+    refundOfTransactionId,
   }: {
     transactionId?: string;
+    refundOfTransactionId?: string;
     accountId?: string | null;
     field?: DraftField;
   }) => {
@@ -235,6 +242,20 @@ export function useTransactionEntryController({
           transaction,
           accountId ?? undefined,
         );
+    if (refundOfTransactionId) {
+      const original = view.budget.transactions.find(
+        (item) => item.id === refundOfTransactionId && !item.removed,
+      );
+      if (!original || original.amount >= 0) return false;
+      draft.refundOfTransactionId = original.id;
+      draft.payee = original.payee;
+      draft.categoryId =
+        original.categoryId ?? original.lines?.[0]?.categoryId ?? "";
+      draft.outflow = "";
+      draft.inflow = (Math.abs(original.amount) / 100).toFixed(2);
+      draft.counterpartyShare = undefined;
+      draft.lines = [];
+    }
     const unremembered = transaction
       ? undefined
       : imported
@@ -312,6 +333,26 @@ export function useTransactionEntryController({
         }
       }
       const draft = { ...current.draft, ...next };
+      const shareChosen =
+        current.shareChosen || "counterpartyShare" in next || "lines" in next;
+      if (
+        !shareChosen &&
+        !current.initial &&
+        !draft.lines.length &&
+        ["payee", "accountId", "outflow", "inflow"].some((key) => key in next)
+      ) {
+        const share = rememberedCounterpartyShare(view.budget, {
+          payee: draft.payee,
+          accountId: draft.accountId,
+          amount:
+            draftAmount(draft) === undefined
+              ? undefined
+              : Math.round(draftAmount(draft)! * 100),
+        });
+        draft.counterpartyShare = share
+          ? { ...share, amount: (share.amount / 100).toFixed(2) }
+          : undefined;
+      }
       const unremembered = chosen ? undefined : current.unremembered;
       if (
         unremembered !== undefined &&
@@ -326,8 +367,14 @@ export function useTransactionEntryController({
             accountId: draft.accountId,
             amount: draftAmount(draft),
           }) ?? unremembered;
-      return { ...current, draft, fields, error: "", unremembered };
-
+      return {
+        ...current,
+        draft,
+        fields,
+        error: "",
+        unremembered,
+        shareChosen,
+      };
     });
   };
 
@@ -463,6 +510,7 @@ export function useTransactionEntryController({
   return {
     view,
     holdOpen,
+    saveCommand: saver.save,
     // Returns why the account can't be added, or null once it's on its way.
     addAccount: (command: Extract<Command, { type: "account.add" }>) =>
       saver.save(command, `Added ${command.name}`),

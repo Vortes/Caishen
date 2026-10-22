@@ -516,3 +516,28 @@
     grid-column: auto;
   }
 }
+
+.shareFields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding-bottom: 6px;
+}
+.shareLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+@container (max-width: 760px) {
+  .entryRow > [data-column="share"] {
+    grid-column: 1 / -1;
+  }
+}
+@media (pointer: coarse) {
+  .shareFields input {
+    font-size: var(--type-title);
+  }
+}

@@ -32,6 +32,7 @@ import {
   PayeeField,
   type ChoiceOption,
 } from "./transaction-fields";
+import { ShareField } from "./share-field";
 import shell from "./shell.module.css";
 import styles from "./transaction-entry.module.css";
 
@@ -378,10 +379,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           ? draft.categoryId
           : "",
         ...amountFields(draftAmount(draft) ?? 0),
+        counterpartyShare: draft.counterpartyShare,
       },
       { lineId: newId(), categoryId: "", outflow: "", inflow: "" },
     ];
-    entry.change({ categoryId: "", lines }, true);
+    entry.change({ categoryId: "", lines, counterpartyShare: undefined }, true);
     return lines;
   };
   // The lines a split started with, until the editor shows them.
@@ -431,7 +433,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       entry.change({ lines: rest });
       focusNext.current = "addLine";
     } else {
-      entry.change({ lines: [], categoryId: rest[0]?.categoryId ?? "" });
+      entry.change({
+        lines: [],
+        categoryId: rest[0]?.categoryId ?? "",
+        counterpartyShare: rest[0]?.counterpartyShare,
+      });
       focusNext.current = "outflow";
     }
   };
@@ -674,6 +680,17 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             }}
           />,
         )}
+        <div className={styles.cell} data-column="share">
+          <span className={styles.cellLabel}>Line {number} share</span>
+          <ShareField
+            id={`${formId}-share-${line.lineId}`}
+            value={line.counterpartyShare}
+            total={draftAmount(line) ?? 0}
+            onChange={(counterpartyShare) =>
+              changeLine(line.lineId, { counterpartyShare })
+            }
+          />
+        </div>
         {cell(
           lineId("outflow"),
           "outflow",
@@ -726,6 +743,12 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         {title}
       </h2>
       {notice}
+      {draft.refundOfTransactionId && (
+        <p className={styles.notice}>
+          Linked refund: each original line’s share will be reduced in
+          proportion to the refund amount. Review the amount before saving.
+        </p>
+      )}
       <div
         className={`${shell.txColumns} ${styles.entryRow}`}
         data-accounts={accountColumn || undefined}
@@ -735,6 +758,25 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         {cell("date", "date", "Date", dateControl)}
         {cell("payee", "payee", "Payee", payeeControl)}
         {cell("categoryId", "category", "Category", categoryControl)}
+        <div className={styles.cell} data-column="share">
+          <span className={styles.cellLabel}>Share</span>
+          {split ? (
+            <span className={styles.notice}>Set on each line</span>
+          ) : !categoryNotNeeded && !draft.loanId ? (
+            <ShareField
+              id={`${formId}-share`}
+                inputRef={register("counterpartyShare")}
+              value={draft.counterpartyShare}
+              total={draftAmount(draft) ?? 0}
+              onChange={(counterpartyShare) =>
+                entry.change({ counterpartyShare })
+              }
+            />
+          ) : (
+            <span>—</span>
+          )}
+          {fieldError("counterpartyShare")}
+        </div>
         {cell("outflow", "outflow", "Outflow", amount("outflow"))}
         {cell("inflow", "inflow", "Inflow", amount("inflow"))}
         <span data-column="status" aria-hidden />

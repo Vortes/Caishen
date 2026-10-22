@@ -182,6 +182,23 @@ export function SelectionIsland({
               </Button>
             </>
           )}
+          {selected.length === 1 &&
+            selected[0]!.source === "budget" &&
+            selected[0]!.amount < 0 && (
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  entry.start({
+                    accountId: selected[0]!.accountId,
+                    refundOfTransactionId: selected[0]!.id,
+                    field: "inflow",
+                  })
+                }
+              >
+                Refund
+              </Button>
+            )}
           <CategorizeAction selected={selected} disabled={busy} />
         </div>
       </div>
