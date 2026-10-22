@@ -472,6 +472,7 @@ export function useTransactionEntryController({
     dirty,
     start,
     change,
+    focus,
     // The user's own choice of category, which the payee's memory then
     // leaves alone.
     chooseCategory: (categoryId: string) =>

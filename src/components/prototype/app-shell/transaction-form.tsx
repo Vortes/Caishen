@@ -285,7 +285,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   // Touch keeps focus where it is, so a keyboard doesn't open over the form.
   const advance = (to: DraftField) => {
     if (!window.matchMedia("(pointer: fine)").matches) return;
-    controls.current[to]?.focus({ preventScroll: true });
+    entry.focus(to);
   };
   const todayKey = today(view.budget.settings.timezone);
   const dateControl = (

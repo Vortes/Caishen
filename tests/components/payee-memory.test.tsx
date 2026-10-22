@@ -119,6 +119,34 @@ test("a new transaction takes its payee's remembered category", async () => {
   });
 });
 
+test("picking a remembered payee selects its whole category label for acceptance or replacement", async () => {
+  const shell = await renderShell({ seedCommands: [categorized, household] });
+  const form = await newTransaction(shell);
+  const payee = form.getByLabelText("Payee", { exact: true });
+  const category = form.getByRole("combobox", { name: "Category" });
+  await shell.user.type(payee, "Trader");
+  expect(document.activeElement).toBe(payee);
+  await shell.user.keyboard("{ArrowDown}{Enter}");
+  expect(document.activeElement).toBe(category);
+  expect(category).toHaveProperty("value", "Gifts");
+  expect(category).toHaveProperty("selectionStart", 0);
+  expect(category).toHaveProperty("selectionEnd", 5);
+
+  await shell.user.tab();
+  expect(document.activeElement).toBe(
+    form.getByLabelText("Outflow", { exact: true }),
+  );
+  expect(category).toHaveProperty("value", "Gifts");
+  await shell.user.tab({ shift: true });
+  await shell.user.keyboard("Household");
+  expect(category).toHaveProperty("value", "Household");
+  await shell.user.keyboard("{Enter}");
+  expect(category).toHaveProperty("value", "Household");
+  expect(document.activeElement).toBe(
+    form.getByLabelText("Outflow", { exact: true }),
+  );
+});
+
 test("a payee with no memory prefills nothing, and a category you choose stays when the payee changes", async () => {
   const shell = await renderShell({ seedCommands: [categorized, household] });
   const form = await newTransaction(shell);
