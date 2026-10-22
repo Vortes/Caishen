@@ -2,23 +2,32 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { bookSchema, type Command } from "../../src/domain/engine";
+import { type Command } from "../../src/domain/engine";
+import { rowsToBook } from "../../src/domain/rows";
+import { loadRows } from "../../src/server/storage/rows";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
 assertDevelopmentDatabase(process.env);
 void test("expected income, transaction approval, card payments, and loan payments persist through the budget API", async () => {
   const db = new PrismaClient();
   const userId = `test-payments-${randomUUID()}`;
-  const api = createCaller({ db, userId, headers: new Headers() });
+  const api = createCaller({
+    revision: new ObservedRevision(),
+    db,
+    userId,
+    headers: new Headers(),
+  });
   const month = "2026-10";
   const date = "2026-10-02";
   const state = () => api.budget.state({ month });
   const run = async (command: Command) =>
     api.budget.execute({
       command,
-      expectedRevision: (await state()).revision,
+      clientId: "test",
+      baseRevision: (await state()).revision,
     });
   try {
     await api.budget.onboard({
@@ -158,9 +167,10 @@ void test("expected income, transaction approval, card payments, and loan paymen
     assert.equal(view.cash, 60_000);
     const member = await db.workspaceMember.findUniqueOrThrow({
       where: { clerkUserId: userId },
-      include: { workspace: true },
     });
-    const saved = bookSchema.parse(member.workspace.book).budgets[userId]!;
+    const saved = rowsToBook(await loadRows(db, member.workspaceId)).budgets[
+      userId
+    ]!;
     assert.equal(saved.expectedIncome[month], 100_000);
     const purchases = saved.transactions.filter(
       (transaction) => transaction.id === "purchase" && !transaction.removed,

@@ -19,6 +19,7 @@ import {
 } from "~/components/workspace/use-budget-state";
 import { useWorkspaceHistory } from "~/components/workspace/use-workspace-history";
 import { api } from "~/trpc/react";
+import { clientId } from "~/components/workspace/client-id";
 import { AppShellPrototype, type CategoryAdder } from "./app-shell-prototype";
 import {
   AssignMoneyProvider,
@@ -254,7 +255,11 @@ function LiveWorkspace({
         command.id,
         `Categorized ${count} ${count === 1 ? "transaction" : "transactions"}`,
       );
-      await execute.mutateAsync({ command, expectedRevision: state.revision });
+      await execute.mutateAsync({
+        command,
+        baseRevision: state.revision,
+        clientId,
+      });
     },
     busy,
   };
@@ -270,7 +275,11 @@ function LiveWorkspace({
     // draft when the save fails.
     save: async (command, summary) => {
       summaries.current.set(command.id, summary);
-      await execute.mutateAsync({ command, expectedRevision: state.revision });
+      await execute.mutateAsync({
+        command,
+        baseRevision: state.revision,
+        clientId,
+      });
     },
     saveImport: async (item, command, summary) => {
       await resolveImport.mutateAsync({

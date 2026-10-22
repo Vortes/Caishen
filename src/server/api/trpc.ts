@@ -4,12 +4,25 @@ import superjson from "superjson";
 
 import { formatTRPCError } from "~/server/api/error-formatter";
 import { db } from "~/server/db";
+import { readHouseholdRevision } from "~/server/storage/rows";
 import { ensureLocalUser } from "~/server/users";
+
+/**
+ * The household revisions a request saw, for the x-caishen-revision
+ * response header (ADR 0006): a browser that sees a revision it doesn't
+ * hold pulls what it missed.
+ */
+export class ObservedRevision {
+  value: number | undefined;
+  observe = (revision: number) => {
+    this.value = Math.max(this.value ?? revision, revision);
+  };
+}
 
 export const createTRPCContext = async (opts: { headers: Headers }) => {
   const { userId } = await auth();
 
-  return { db, userId, ...opts };
+  return { db, userId, revision: new ObservedRevision(), ...opts };
 };
 
 const t = initTRPC.context<typeof createTRPCContext>().create({
@@ -29,7 +42,16 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
       code: "FORBIDDEN",
       message: "This Caishen account is inactive.",
     });
-  return next({ ctx: { ...ctx, userId: ctx.userId, localUser } });
+  const result = await next({ ctx: { ...ctx, userId: ctx.userId, localUser } });
+  // Every response carries the household's revision, even when the
+  // procedure didn't read the household.
+  if (ctx.revision.value === undefined) {
+    const household = await readHouseholdRevision(ctx.db, ctx.userId).catch(
+      () => null,
+    );
+    if (household) ctx.revision.observe(household.revision);
+  }
+  return result;
 });
 
 /**

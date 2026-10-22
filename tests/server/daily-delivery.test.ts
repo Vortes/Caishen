@@ -5,7 +5,7 @@ import {
   cancelScheduledDailyReviews,
   type DailyDeliveryPayload,
 } from "../../src/server/services/daily-delivery";
-import { type Database } from "../../src/server/services/workspace";
+import { type Database } from "../../src/server/services/household";
 
 const now = new Date("2026-10-17T01:00:00Z");
 type Delivery = DailyDelivery;

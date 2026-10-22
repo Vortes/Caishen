@@ -6,6 +6,7 @@ import {
   projectBook,
   bookSchema,
   type Command,
+  type Book,
 } from "../../src/domain/engine";
 import {
   READY_TO_ASSIGN,
@@ -17,9 +18,35 @@ import {
   type TransactionDraft,
 } from "../../src/components/transactions/transaction-draft";
 import {
-  recordWorkspaceHistory,
-  restoreWorkspaceHistory,
-} from "../../src/server/services/workspace-history";
+  applyChangeSet,
+  executeRevert,
+  toRowSet,
+} from "../../src/domain/change-sets";
+import { bookToRows, diffRows, type ChangeSet } from "../../src/domain/rows";
+
+// Undo as a revert of what changed from one book to the next (ADR 0006).
+function undo(before: Book, after: Book, id: string) {
+  const rows = toRowSet(bookToRows(after));
+  const target: ChangeSet = {
+    operationId: `edit-${id}`,
+    revision: 1,
+    ...diffRows(bookToRows(before), bookToRows(after)),
+  };
+  const reverted = executeRevert(
+    rows,
+    { type: "revert", id, targetOperationId: target.operationId },
+    target,
+  );
+  return {
+    book: reverted.book as Book,
+    redo: () =>
+      executeRevert(
+        applyChangeSet(rows, reverted.changeSet),
+        { type: "revert", id: `redo-${id}`, targetOperationId: id },
+        reverted.changeSet,
+      ).book as Book,
+  };
+}
 import { optimisticState } from "../../src/components/workspace/optimistic-state";
 import type { State } from "../../src/components/budget/types";
 
@@ -126,35 +153,13 @@ void test("cash transfers conserve budget money and edit either side with one hi
   assert.equal(f.transaction(sent.id).amount, -7501);
   assert.equal(f.transaction(sent.id).date, `${month}-11`);
   assert.equal(f.transaction(sent.id).revision, 2);
-  const history = recordWorkspaceHistory(
-    {},
-    "owner",
-    0,
-    original,
-    f.book,
-    "Save transfer",
-  );
-  const undone = restoreWorkspaceHistory(
-    history,
-    "owner",
-    1,
-    f.book,
-    "undo",
-    "undo-transfer",
-  );
+  const undone = undo(original, f.book, "undo-transfer");
   assert.equal(
     undone.book.budgets.owner!.transactions.find((item) => item.id === sent.id)!
       .amount,
     -5000,
   );
-  const redone = restoreWorkspaceHistory(
-    undone.history,
-    "owner",
-    2,
-    undone.book,
-    "redo",
-    "redo-transfer",
-  );
+  const redone = { book: undone.redo() };
   assert.equal(
     redone.book.budgets.owner!.transactions.find(
       (item) => item.id === received.id,
@@ -426,22 +431,7 @@ void test("rejecting an imported transfer removes both sides and undo restores t
     f.view().accounts.find((item) => item.id === "savings")!.balance,
     50_000,
   );
-  const history = recordWorkspaceHistory(
-    {},
-    "owner",
-    0,
-    before,
-    f.book,
-    "Reject transactions",
-  );
-  const restored = restoreWorkspaceHistory(
-    history,
-    "owner",
-    1,
-    f.book,
-    "undo",
-    "undo-reject",
-  );
+  const restored = undo(before, f.book, "undo-reject");
   const pair = restored.book.budgets.owner!.transactions.filter(
     (item) => item.linkedId === sent.linkedId,
   );

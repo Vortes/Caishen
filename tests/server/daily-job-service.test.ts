@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test, { afterEach, mock } from "node:test";
 import { type DailyDelivery, type Prisma } from "../../src/generated/prisma";
-import { bookSchema, createBook } from "../../src/domain/engine";
+import { createBook, type Budget } from "../../src/domain/engine";
 import { runDailyJob } from "../../src/server/services/daily-job";
-import { type Database } from "../../src/server/services/workspace";
+import { type Database } from "../../src/server/services/household";
 
 type Payload = Parameters<
   NonNullable<NonNullable<Parameters<typeof runDailyJob>[2]>["send"]>
 >[0];
 type Member = Prisma.WorkspaceMemberGetPayload<{
   include: { workspace: true };
-}>;
+}> & { budget: Budget };
 const now = new Date("2026-10-17T00:20:00Z");
 const environmentKeys = [
   "RESEND_API_KEY",
@@ -49,11 +49,11 @@ function makeMember(
       id: `workspace_${userId}`,
       revision: 0,
       resetRevision: 0,
-      history: {},
-      book: JSON.parse(JSON.stringify(book)) as Prisma.JsonValue,
+      book: null,
       createdAt: now,
       updatedAt: now,
     },
+    budget: book.budgets[userId]!,
   };
 }
 
@@ -214,8 +214,10 @@ function harness(members = [makeMember()]) {
       return { canceled };
     }),
     bankInbox: async () => [],
-    readWorkspace: async (_db: Database, userId: string) =>
-      members.find((member) => member.clerkUserId === userId) ?? null,
+    readBudget: async (_db: Database, userId: string) => {
+      const member = members.find((item) => item.clerkUserId === userId);
+      return member ? { budget: member.budget, revision: 0 } : null;
+    },
   };
   return {
     members,
@@ -457,11 +459,7 @@ void test("email disabled while the provider request is in flight is canceled af
   const h = harness();
   h.send.mock.mockImplementation(async () => {
     const member = h.members[0]!;
-    const book = bookSchema.parse(member.workspace.book);
-    book.budgets[member.clerkUserId]!.settings.emailEnabled = false;
-    member.workspace.book = JSON.parse(
-      JSON.stringify(book),
-    ) as Prisma.JsonValue;
+    member.budget.settings.emailEnabled = false;
     return { id: "provider_fixture" };
   });
   const result = await runDailyJob(h.db, now, h.dependencies);
@@ -509,11 +507,7 @@ for (const ownerState of ["inactive", "disabled"] as const) {
         }));
       } else {
         const member = h.members[0]!;
-        const book = bookSchema.parse(member.workspace.book);
-        book.budgets[member.clerkUserId]!.settings.emailEnabled = false;
-        member.workspace.book = JSON.parse(
-          JSON.stringify(book),
-        ) as Prisma.JsonValue;
+        member.budget.settings.emailEnabled = false;
       }
       return { id: "provider_fixture" };
     });

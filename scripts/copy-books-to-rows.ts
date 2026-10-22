@@ -16,9 +16,11 @@ and as each partner's browser holds them), must equal the view built from the
 stored book to the cent, and every loan, reimbursement, obligation, settlement,
 shared category, bank import, and operation must match record by record.
 
-Rows are written at the household's current revision. Running it again
-changes nothing unless a stored book changed since; then that household's
-rows are replaced. Do not run it once the app writes rows instead of books.
+Rows are written at the household's current revision, only into a
+household that has none yet: running it again changes nothing, and rows the
+app wrote since are never replaced (that household is reported instead).
+Households created after the switch to rows have no book and are skipped
+(rowsOnly).
 
 --verify-only     Compare without copying.
 --workspace <id>  Only these households (repeatable).
@@ -54,6 +56,7 @@ async function main() {
       households: workspaceIds.length,
       copied: 0,
       unchanged: 0,
+      rowsOnly: 0,
       rows: 0,
       operations: 0,
       budgets: 0,

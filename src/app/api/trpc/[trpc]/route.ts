@@ -21,6 +21,12 @@ const handler = (req: NextRequest) =>
     req,
     router: appRouter,
     createContext: () => createContext(req),
+    // Streamed responses send headers before any procedure ran; the sync
+    // layer's link doesn't stream.
+    responseMeta: ({ ctx, eagerGeneration }) =>
+      !eagerGeneration && ctx?.revision.value !== undefined
+        ? { headers: { "x-caishen-revision": String(ctx.revision.value) } }
+        : {},
     onError:
       env.NODE_ENV === "development"
         ? ({ path, error }) => {

@@ -7,6 +7,7 @@ import type { Command } from "~/domain/engine";
 import type { State } from "~/components/budget/types";
 import type { AppRouter } from "~/server/api/root";
 import { api } from "~/trpc/react";
+import { clientId } from "./client-id";
 import {
   previewBudgetCommand,
   rollbackBudgetCommand,
@@ -23,17 +24,17 @@ export function useBudgetCommand({
   const utils = api.useUtils();
   return api.budget.execute.useMutation({
     retry: false,
-    onMutate: ({ command, expectedRevision }) =>
+    onMutate: ({ command, baseRevision }) =>
       previewBudgetCommand(
         client,
         getQueryKey(api.budget.state, undefined, "query"),
-        command,
-        expectedRevision,
+        command as Command,
+        baseRevision,
       ),
-    onSuccess: (result, { command }) => onSuccess(command, result),
+    onSuccess: (result, { command }) => onSuccess(command as Command, result),
     onError: (error, { command }, snapshots) => {
       rollbackBudgetCommand(client, snapshots);
-      onError(error, command);
+      onError(error, command as Command);
     },
     onSettled: async (_result, _error, _input, snapshots) => {
       try {
@@ -78,7 +79,7 @@ export function useRunBudgetCommand({
           : null;
   const run = (command: Command) => {
     if (blocked()) return false;
-    execute.mutate({ command, expectedRevision: state.revision });
+    execute.mutate({ command, baseRevision: state.revision, clientId });
     return true;
   };
   return { execute, blocked, run };

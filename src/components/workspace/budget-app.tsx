@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { api } from "~/trpc/react";
+import { clientId } from "~/components/workspace/client-id";
 import type { Command } from "~/domain/engine";
 import { currentMonth, newId } from "~/components/budget/format";
 import type { Panel, State, Tab } from "~/components/budget/types";
@@ -178,7 +179,11 @@ function BudgetWorkspace({
       throw new Error(
         "Wait for the current update to finish, then save again.",
       );
-    await execute.mutateAsync({ command, expectedRevision: state.revision });
+    await execute.mutateAsync({
+      command,
+      baseRevision: state.revision,
+      clientId,
+    });
   };
   const navigate = (next: Tab) => {
     setTab(next);

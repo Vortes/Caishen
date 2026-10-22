@@ -2,14 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { PrismaClient, type Prisma } from "../../src/generated/prisma";
+import { rowKey, rowOwner, type WireRow } from "../../src/domain/rows";
+import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   BUDGET_MAINTENANCE_MESSAGE,
   CONNECTION_MAINTENANCE_MESSAGE,
   STORED_DATA_ALERT,
 } from "../../src/server/services/stored-data";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
+import { loadRows, writeChangeSet } from "../../src/server/storage/rows";
 
 assertDevelopmentDatabase(process.env);
 
@@ -45,7 +48,12 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
   const a = `test-unreadable-a-${randomUUID()}`,
     b = `test-unreadable-b-${randomUUID()}`;
   const api = (userId: string) =>
-    createCaller({ db, userId, headers: new Headers() });
+    createCaller({
+      revision: new ObservedRevision(),
+      db,
+      userId,
+      headers: new Headers(),
+    });
   const alice = api(a),
     bob = api(b);
   try {
@@ -65,7 +73,8 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
       [bob, b],
     ] as const) {
       ({ revision } = await caller.budget.execute({
-        expectedRevision: revision,
+        clientId: "test",
+        baseRevision: revision,
         command: {
           type: "account.add",
           id: randomUUID(),
@@ -77,7 +86,8 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
         },
       }));
       ({ revision } = await caller.budget.execute({
-        expectedRevision: revision,
+        clientId: "test",
+        baseRevision: revision,
         command: {
           type: "transaction.upsert",
           id: randomUUID(),
@@ -93,17 +103,38 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     // A release newer than this code saved a transaction kind it can't read.
     const member = await db.workspaceMember.findUniqueOrThrow({
       where: { clerkUserId: a },
-      include: { workspace: true },
     });
-    const book = member.workspace.book as {
-      budgets: Record<string, { transactions: Record<string, unknown>[] }>;
-    };
-    book.budgets[a]!.transactions[0]!.kind = "rebate";
-    await db.workspace.update({
-      where: { id: member.workspaceId },
-      data: { book: book as unknown as Prisma.InputJsonValue },
+    const purchaseId = rowKey(a, `${a}-groceries`);
+    const purchase = (await loadRows(db, member.workspaceId)).find(
+      (row) => row.table === "transaction" && row.id === purchaseId,
+    )!;
+    await writeChangeSet(db, {
+      workspaceId: member.workspaceId,
+      baseRevision: revision,
+      changeSet: {
+        operationId: "newer-release",
+        revision: 0,
+        before: [purchase],
+        after: [
+          {
+            ...purchase,
+            data: { ...purchase.data!, kind: "rebate" },
+          } as unknown as WireRow,
+        ],
+      },
+      operation: {
+        actorId: a,
+        source: "user",
+        type: "transaction.upsert",
+        inputHash: "",
+        command: null,
+      },
     });
-    const unreadable = structuredClone(book.budgets[a]);
+    const ownRows = async () =>
+      (await loadRows(db, member.workspaceId)).filter(
+        (row) => rowOwner(row) === a,
+      );
+    const unreadable = await ownRows();
 
     const owner = await alerts(() => alice.budget.state({ month }));
     assert.equal(owner.result.status, "maintenance");
@@ -122,14 +153,14 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
       },
       {
         alert: STORED_DATA_ALERT,
-        record: "Workspace.book",
+        record: "rows",
         workspaceId: member.workspaceId,
         userId: a,
         failures: [
           {
             part: "budget",
             budgetOwnerId: a,
-            path: ["budgets", a, "transactions", 0, "kind"],
+            path: ["transaction", purchaseId, "kind"],
           },
         ],
       },
@@ -137,7 +168,8 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     await assert.rejects(alice.budget.spending(), maintenance);
     await assert.rejects(
       alice.budget.execute({
-        expectedRevision: owner.result.revision,
+        clientId: "test",
+        baseRevision: owner.result.revision,
         command: {
           type: "category.add",
           id: randomUUID(),
@@ -167,7 +199,8 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
       97500,
     );
     const saved = await bob.budget.execute({
-      expectedRevision: partner.revision,
+      clientId: "test",
+      baseRevision: partner.revision,
       command: {
         type: "category.add",
         id: randomUUID(),
@@ -181,14 +214,20 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
       operationId: randomUUID(),
     });
     assert.equal(undone.revision, saved.revision + 1);
-    const stored = await db.workspace.findUniqueOrThrow({
-      where: { id: member.workspaceId },
-    });
     assert.deepEqual(
-      (stored.book as typeof book).budgets[a],
+      await ownRows(),
       unreadable,
       "The unreadable budget is stored exactly as it was.",
     );
+    // Browsers get no rows that don't read: the owner's pull waits, the
+    // partner's holds none of the owner's budget anyway.
+    await assert.rejects(
+      alerts(() => alice.sync.pull({ since: null, clientBuild: "1:test" })),
+      maintenance,
+    );
+    const pulled = await bob.sync.pull({ since: null, clientBuild: "1:test" });
+    assert.ok(pulled.rows.length > 0);
+    assert.ok(!pulled.rows.some((row) => rowOwner(row) === a));
 
     // An unreadable bank connection takes down only that connection.
     await db.bankConnection.create({
@@ -211,7 +250,7 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     );
     assert.deepEqual(
       withConnection.lines.map((line) => line.record),
-      ["Workspace.book", "BankConnection.imports"],
+      ["rows", "BankConnection.imports"],
     );
   } finally {
     const memberships = await db.workspaceMember.findMany({
@@ -223,7 +262,7 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
           { id: { in: memberships.map((m) => m.workspaceId) } },
           {
             members: { none: {} },
-            book: { path: ["budgets", b, "userId"], equals: b },
+            budgetMembers: { some: { userId: b } },
           },
         ],
       },

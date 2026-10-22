@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test, { afterEach, mock } from "node:test";
+import nextEnv from "@next/env";
 
-import { type Prisma } from "../../src/generated/prisma";
-import { createBook, execute } from "../../src/domain/engine";
+import { PrismaClient } from "../../src/generated/prisma";
+import { execute, type Book } from "../../src/domain/engine";
+import { bookToRows, diffRows, rowsToBook } from "../../src/domain/rows";
 import {
   applyTransactionSync,
   normalizePlaidTransaction,
 } from "../../src/server/integrations/transactions";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import {
   bankImportFingerprint,
   openingSnapshot,
 } from "../../src/server/services/bank-account-setup";
+import {
+  importStateChange,
+  importStatesFromRows,
+} from "../../src/server/services/bank-import-rows";
 import {
   bankAccountDetails,
   bankInbox,
@@ -20,11 +28,28 @@ import {
   resolveImport,
   syncBanks,
 } from "../../src/server/services/banks";
-import { type Database } from "../../src/server/services/workspace";
+import { onboard } from "../../src/server/services/household-operations";
+import { households } from "../../src/server/storage/households";
+import {
+  findOperation,
+  loadRows,
+  readHouseholdRevision,
+  recentOperations,
+  writeChangeSet,
+} from "../../src/server/storage/rows";
 import {
   decryptBankToken,
   encryptBankToken,
 } from "../../src/server/token-crypto";
+
+// The bank service against a real household (ADR 0006): its import state
+// and budget live in rows, with Plaid answered by fetch mocks.
+nextEnv.loadEnvConfig(process.cwd(), true);
+assertDevelopmentDatabase(process.env);
+const db = new PrismaClient();
+const run = randomUUID();
+const alice = `test-bank-service-alice-${run}`;
+const bob = `test-bank-service-bob-${run}`;
 
 const environmentKeys = [
   "PLAID_CLIENT_ID",
@@ -68,106 +93,164 @@ const accountsResponse = () => ({
 const requestUrl = (input: string | URL | Request) =>
   new URL(input instanceof Request ? input.url : input);
 
-function harness() {
+test.before(async () => {
+  await db.user.createMany({
+    data: [{ clerkUserId: alice }, { clerkUserId: bob }],
+  });
+});
+
+// Each test starts Alice over with a new budget and bank connection.
+async function startOver() {
+  const memberships = await db.workspaceMember.findMany({
+    where: { clerkUserId: { in: [alice, bob] } },
+  });
+  await db.workspace.deleteMany({
+    where: { id: { in: memberships.map((member) => member.workspaceId) } },
+  });
+  await db.bankConnection.deleteMany({
+    where: { clerkUserId: { in: [alice, bob] } },
+  });
+}
+afterEach(startOver);
+
+test.after(async () => {
+  await db.user.deleteMany({ where: { clerkUserId: { in: [alice, bob] } } });
+  await db.$disconnect();
+});
+
+async function harness() {
   process.env.PLAID_CLIENT_ID = "fixture-client";
   process.env.PLAID_SECRET = "fixture-secret";
   process.env.PLAID_ENV = "production";
   process.env.PLAID_REDIRECT_URI = "https://caishen.example/plaid/oauth";
   process.env.BANK_TOKEN_ENCRYPTION_KEY = "a".repeat(64);
-  const book = createBook("alice", "Alice", "2026-10");
-  const workspace = { id: "workspace", book, revision: 0 };
-  const operations: {
-    operationId: string;
-    actorId: string;
-    commandHash: string;
-  }[] = [];
-  const connection = {
-    id: "connection-alice",
-    clerkUserId: "alice",
-    itemId: "item-alice",
-    cursor: null as string | null,
-    encryptedToken: encryptBankToken("private-access-token", "alice"),
-    imports: {
-      records: [],
-      resolved: {},
-      errors: {},
-      reviews: {},
-    } as unknown,
-    accountMappings: {} as Prisma.JsonValue,
-    error: "Reconnect your bank" as string | null,
-    lastSyncedAt: null as Date | null,
+  await startOver();
+  await onboard(db, alice, {
+    name: "Alice",
+    month: "2026-10",
+    timezone: "America/Los_Angeles",
+  });
+  const connection = await db.bankConnection.create({
+    data: {
+      id: `connection-${randomUUID()}`,
+      clerkUserId: alice,
+      itemId: `item-${randomUUID()}`,
+      encryptedToken: encryptBankToken("private-access-token", alice),
+      imports: {},
+      accountMappings: {},
+      error: "Reconnect your bank",
+    },
+  });
+  const workspaceId = (await readHouseholdRevision(db, alice))!.workspaceId;
+  // Writes rows as they now are to these, as one operation.
+  const write = async (
+    change: Pick<ReturnType<typeof diffRows>, "before" | "after">,
+    operationId = randomUUID(),
+  ) => {
+    if (!change.after.length) return;
+    await writeChangeSet(db, {
+      workspaceId,
+      baseRevision: (await readHouseholdRevision(db, alice))!.revision,
+      changeSet: { ...change, operationId, revision: 0 },
+      operation: {
+        actorId: alice,
+        source: "user",
+        type: "test.setup",
+        inputHash: operationId,
+        command: null,
+      },
+    });
   };
-  const raw = {
-    bankConnection: {
-      findFirst: mock.fn(
-        async ({ where }: { where: { id: string; clerkUserId: string } }) =>
-          where.id === connection.id &&
-          where.clerkUserId === connection.clerkUserId
-            ? { ...connection }
-            : null,
-      ),
-      findFirstOrThrow: async () => ({ ...connection }),
-      findUnique: async () => ({ ...connection }),
-      findMany: async () => [{ ...connection }],
-      upsert: mock.fn(
-        async ({ update }: { update: Partial<typeof connection> }) => {
-          Object.assign(connection, update);
-          return { ...connection };
-        },
-      ),
-      update: mock.fn(
-        async ({ data }: { data: Partial<typeof connection> }) => {
-          Object.assign(connection, data);
-          return { ...connection };
-        },
-      ),
-    },
-    workspaceMember: {
-      findUnique: async () => ({ workspaceId: workspace.id, workspace }),
-      findUniqueOrThrow: async () => ({ workspaceId: workspace.id, workspace }),
-    },
-    workspace: {
-      updateMany: mock.fn(async ({ data }: { data: { book: typeof book } }) => {
-        Object.assign(book, data.book);
-        workspace.revision++;
-        return { count: 1 };
-      }),
-    },
-    budgetOperation: {
-      findMany: mock.fn(async ({ where }: { where: { operationId: string } }) =>
-        operations.filter(
-          (operation) => operation.operationId === where.operationId,
+  const household = async () => (await households.load(db, alice))!;
+  return {
+    db,
+    connection,
+    book: async () => rowsToBook(await loadRows(db, workspaceId)),
+    setBook: async (book: Book) =>
+      write(
+        diffRows(
+          (await loadRows(db, workspaceId)).filter(
+            (row) => row.table !== "bankImport",
+          ),
+          bookToRows(book),
         ),
       ),
-      create: mock.fn(
-        async ({ data }: { data: (typeof operations)[number] }) => {
-          operations.push(data);
-          return data;
-        },
-      ),
-      createMany: mock.fn(async ({ data }: { data: unknown[] }) => ({
-        count: data.length,
-      })),
+    /** Sets the connection's import state and, if given, its details. */
+    setImports: async (state: Record<string, unknown>) => {
+      const { records, resolved, errors, reviews, ...details } = state;
+      await write(
+        importStateChange((await household()).rows, alice, connection.id, {
+          records: (records ?? []) as never,
+          resolved: (resolved ?? {}) as never,
+          errors: (errors ?? {}) as never,
+          reviews: (reviews ?? {}) as never,
+        }),
+      );
+      await db.bankConnection.update({
+        where: { id: connection.id },
+        data: { imports: details as never },
+      });
     },
-    $transaction: async (operation: (db: Database) => Promise<unknown>) =>
-      operation(raw as unknown as Database),
+    setMappings: async (mappings: Record<string, unknown>) => {
+      await db.bankConnection.update({
+        where: { id: connection.id },
+        data: { accountMappings: mappings as never },
+      });
+    },
+    saved: () =>
+      db.bankConnection.findUniqueOrThrow({ where: { id: connection.id } }),
+    /** The connection's details and import state, as the bank code reads them. */
+    imports: async () => {
+      const saved = await db.bankConnection.findUniqueOrThrow({
+        where: { id: connection.id },
+      });
+      return {
+        ...(saved.imports as Record<string, unknown>),
+        ...(importStatesFromRows(await loadRows(db, workspaceId)).get(
+          connection.id,
+        ) ?? { records: [], resolved: {}, errors: {}, reviews: {} }),
+      };
+    },
+    revision: async () => (await readHouseholdRevision(db, alice))!.revision,
+    /** Bank updates that changed transactions the member recorded. */
+    transactionUpdates: async () => {
+      let count = 0;
+      for (const operation of await recentOperations(db, workspaceId, 1000))
+        if (
+          operation.type === "bank.sync" &&
+          operation.source === "provider" &&
+          (
+            await findOperation(db, workspaceId, operation.operationId)
+          )?.changeSet?.after.some((row) => row.table === "transaction")
+        )
+          count++;
+      return count;
+    },
+    /** Operations written after Alice's budget was created and set up. */
+    operations: async () =>
+      (await recentOperations(db, workspaceId, 1000)).filter(
+        (operation) =>
+          !["budget.onboard", "test.setup"].includes(operation.type),
+      ).length,
   };
-  return { db: raw as unknown as Database, raw, connection, book, workspace };
 }
 
 void test("bank update Link tokens and completion enforce connection ownership before accessing Plaid", async () => {
-  const h = harness();
+  const h = await harness();
   const fetcher = mock.method(globalThis, "fetch", async () => {
     throw new Error("Provider must not be called");
   });
-  await assert.rejects(linkBankToken(h.db, "bob", h.connection.id), {
+  await assert.rejects(linkBankToken(h.db, bob, h.connection.id), {
     code: "NOT_FOUND",
   });
-  await assert.rejects(reconnectBank(h.db, "bob", h.connection.id), {
+  await assert.rejects(reconnectBank(h.db, bob, h.connection.id), {
     code: "NOT_FOUND",
   });
   assert.equal(fetcher.mock.callCount(), 0);
-  assert.equal(h.raw.bankConnection.update.mock.callCount(), 0);
+  assert.equal(
+    (await h.saved()).updatedAt.getTime(),
+    h.connection.updatedAt.getTime(),
+  );
 });
 
 const importFact = (id: string, pending = false) =>
@@ -181,9 +264,9 @@ const importFact = (id: string, pending = false) =>
     name: "Coffee shop",
   });
 
-function pendingImport() {
-  const h = harness();
-  let book = execute(h.book, "alice", {
+async function pendingImport() {
+  const h = await harness();
+  let book = execute(await h.book(), alice, {
     type: "account.add",
     id: "cash",
     accountId: "cash",
@@ -192,28 +275,28 @@ function pendingImport() {
     openingBalance: 10000,
     date: "2026-10-01",
   });
-  book = execute(book, "alice", {
+  book = execute(book, alice, {
     type: "category.add",
     id: "category",
     categoryId: "dining",
     name: "Dining",
   });
-  Object.assign(h.book, book);
+  await h.setBook(book);
   const records = applyTransactionSync(
     [],
     { added: [importFact("pending-edit", true)], modified: [], removed: [] },
     h.connection.id,
   ).records;
   const record = records[0]!;
-  h.connection.accountMappings = {
+  await h.setMappings({
     "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
-  };
-  h.connection.imports = { records, resolved: {}, errors: {}, reviews: {} };
+  });
+  await h.setImports({ records, resolved: {}, errors: {}, reviews: {} });
   const input = {
     connectionId: h.connection.id,
     logicalId: record.id,
     expectedFingerprint: bankImportFingerprint(record),
-    expectedRevision: 0,
+    expectedRevision: await h.revision(),
     ignore: false,
     command: {
       type: "transaction.upsert" as const,
@@ -231,9 +314,9 @@ function pendingImport() {
 }
 
 void test("the register can edit pending bank activity without clearing it or changing the bank fact", async () => {
-  const h = pendingImport();
-  await resolveImport(h.db, "alice", h.input);
-  const transactions = h.book.budgets.alice!.transactions;
+  const h = await pendingImport();
+  await resolveImport(h.db, alice, h.input);
+  const transactions = (await h.book()).budgets[alice]!.transactions;
   assert.equal(transactions.length, 1);
   const saved = transactions[0]!;
   assert.equal(saved.payee, "Neighborhood cafe");
@@ -244,18 +327,19 @@ void test("the register can edit pending bank activity without clearing it or ch
   assert.equal(saved.providerId, "pending-edit");
   assert.equal(h.record.current.amountCents, 2000);
   assert.equal(h.record.current.name, "Coffee shop");
-  assert.deepEqual(await bankInbox(h.db, "alice"), []);
+  assert.deepEqual(await bankInbox(h.db, alice), []);
 });
 
 void test("retrying a pending import save does not record it twice", async () => {
-  const h = pendingImport();
-  await resolveImport(h.db, "alice", h.input);
-  await resolveImport(h.db, "alice", h.input);
-  assert.equal(h.book.budgets.alice!.transactions.length, 1);
-  assert.equal(h.workspace.revision, 1);
-  assert.equal(h.raw.budgetOperation.create.mock.callCount(), 1);
+  const h = await pendingImport();
+  const start = await h.revision();
+  await resolveImport(h.db, alice, h.input);
+  await resolveImport(h.db, alice, h.input);
+  assert.equal((await h.book()).budgets[alice]!.transactions.length, 1);
+  assert.equal(await h.revision(), start + 1);
+  assert.equal(await h.operations(), 1);
   await assert.rejects(
-    resolveImport(h.db, "alice", {
+    resolveImport(h.db, alice, {
       ...h.input,
       command: { ...h.input.command, payee: "Different edit" },
     }),
@@ -264,8 +348,8 @@ void test("retrying a pending import save does not record it twice", async () =>
 });
 
 void test("an edited pending import posts to the same transaction and keeps the user's payee and category", async () => {
-  const h = pendingImport();
-  await resolveImport(h.db, "alice", h.input);
+  const h = await pendingImport();
+  await resolveImport(h.db, alice, h.input);
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
@@ -291,22 +375,21 @@ void test("an edited pending import posts to the same transaction and keeps the 
       });
     return Response.json(accountsResponse());
   });
-  await syncBanks(h.db, "alice");
-  const transactions = h.book.budgets.alice!.transactions;
+  await syncBanks(h.db, alice);
+  const transactions = (await h.book()).budgets[alice]!.transactions;
   assert.equal(transactions.length, 1);
   assert.equal(transactions[0]!.id, "purchase");
   assert.equal(transactions[0]!.status, "posted");
   assert.equal(transactions[0]!.amount, -2400);
   assert.equal(transactions[0]!.payee, "Neighborhood cafe");
   assert.equal(transactions[0]!.categoryId, "dining");
-  assert.deepEqual(await bankInbox(h.db, "alice"), []);
+  assert.deepEqual(await bankInbox(h.db, alice), []);
 });
 
 void test("a pending bank import can become a paired transfer without becoming approved or cleared", async () => {
-  const h = pendingImport();
-  Object.assign(
-    h.book,
-    execute(h.book, "alice", {
+  const h = await pendingImport();
+  await h.setBook(
+    execute(await h.book(), alice, {
       type: "account.add",
       id: "savings",
       accountId: "savings",
@@ -315,8 +398,9 @@ void test("a pending bank import can become a paired transfer without becoming a
       openingBalance: 0,
     }),
   );
-  await resolveImport(h.db, "alice", {
+  await resolveImport(h.db, alice, {
     ...h.input,
+    expectedRevision: await h.revision(),
     command: {
       ...h.input.command,
       type: "transaction.save",
@@ -324,7 +408,7 @@ void test("a pending bank import can become a paired transfer without becoming a
       categoryId: undefined,
     },
   });
-  const pair = h.book.budgets.alice!.transactions;
+  const pair = (await h.book()).budgets[alice]!.transactions;
   assert.equal(pair.length, 2);
   assert.equal(pair[0]!.amount + pair[1]!.amount, 0);
   assert.equal(
@@ -334,40 +418,40 @@ void test("a pending bank import can become a paired transfer without becoming a
 });
 
 void test("a pending import edit refuses stale bank facts, stale budgets, and other users", async () => {
-  const h = pendingImport();
+  const h = await pendingImport();
+  const start = await h.revision();
   await assert.rejects(
-    resolveImport(h.db, "alice", {
+    resolveImport(h.db, alice, {
       ...h.input,
       expectedFingerprint: "a".repeat(64),
     }),
     /bank updated/,
   );
   await assert.rejects(
-    resolveImport(h.db, "alice", {
+    resolveImport(h.db, alice, {
       ...h.input,
       expectedRevision: 99,
     }),
     /budget changed/,
   );
-  await assert.rejects(resolveImport(h.db, "bob", h.input), {
+  await assert.rejects(resolveImport(h.db, bob, h.input), {
     code: "NOT_FOUND",
   });
-  assert.equal(h.raw.budgetOperation.create.mock.callCount(), 0);
-  assert.equal(h.raw.workspace.updateMany.mock.callCount(), 0);
+  assert.equal(await h.operations(), 0);
+  assert.equal(await h.revision(), start);
 });
 
 void test("pending edits retain bank status and reject account changes or duplicate ledger records", async () => {
-  const h = pendingImport();
+  const h = await pendingImport();
   await assert.rejects(
-    resolveImport(h.db, "alice", {
+    resolveImport(h.db, alice, {
       ...h.input,
       command: { ...h.input.command, accountId: "another-account" },
     }),
     /must match the bank fact/,
   );
-  Object.assign(
-    h.book,
-    execute(h.book, "alice", {
+  await h.setBook(
+    execute(await h.book(), alice, {
       ...h.input.command,
       id: "existing",
       transactionId: "existing",
@@ -377,20 +461,26 @@ void test("pending edits retain bank status and reject account changes or duplic
     }),
   );
   await assert.rejects(
-    resolveImport(h.db, "alice", h.input),
+    resolveImport(h.db, alice, {
+      ...h.input,
+      expectedRevision: await h.revision(),
+    }),
     /matching ledger record/,
   );
-  assert.equal(h.raw.workspace.updateMany.mock.callCount(), 0);
-  const fresh = pendingImport();
-  await resolveImport(fresh.db, "alice", {
+  assert.equal(await h.operations(), 0);
+  const fresh = await pendingImport();
+  await resolveImport(fresh.db, alice, {
     ...fresh.input,
     command: { ...fresh.input.command, status: "posted" },
   });
-  assert.equal(fresh.book.budgets.alice!.transactions[0]!.status, "pending");
+  assert.equal(
+    (await fresh.book()).budgets[alice]!.transactions[0]!.status,
+    "pending",
+  );
 });
 
 void test("first-connect inbox excludes unrecorded tombstones while preserving opening-balance discrepancies", async () => {
-  const h = harness();
+  const h = await harness();
   const initial = applyTransactionSync(
     [],
     {
@@ -409,13 +499,13 @@ void test("first-connect inbox excludes unrecorded tombstones while preserving o
     },
     h.connection.id,
   ).records;
-  h.connection.accountMappings = {
+  await h.setMappings({
     "provider-checking": {
       accountId: "cash",
       startDate: "2026-10-20",
       openingSnapshot: openingSnapshot(initial, "provider-checking"),
     },
-  };
+  });
   const updated = applyTransactionSync(
     initial,
     {
@@ -430,13 +520,13 @@ void test("first-connect inbox excludes unrecorded tombstones while preserving o
     },
     h.connection.id,
   );
-  h.connection.imports = {
+  await h.setImports({
     records: updated.records,
     resolved: {},
     errors: {},
     reviews: {},
-  };
-  const inbox = await bankInbox(h.db, "alice");
+  });
+  const inbox = await bankInbox(h.db, alice);
   assert.equal(inbox.length, 1);
   assert.equal(
     inbox[0]!.logicalId,
@@ -453,7 +543,7 @@ void test("first-connect inbox excludes unrecorded tombstones while preserving o
 });
 
 void test("first-connect opening history ignores payee-only changes for saved legacy snapshots", async () => {
-  const h = harness();
+  const h = await harness();
   const initial = applyTransactionSync(
     [],
     { added: [importFact("opening")], modified: [], removed: [] },
@@ -464,13 +554,13 @@ void test("first-connect opening history ignores payee-only changes for saved le
     postedImportIds: snapshot.postedImportIds,
     fingerprints: snapshot.fingerprints,
   };
-  h.connection.accountMappings = {
+  await h.setMappings({
     "provider-checking": {
       accountId: "cash",
       startDate: "2026-10-20",
       openingSnapshot: legacySnapshot,
     },
-  };
+  });
   const updated = applyTransactionSync(
     initial,
     {
@@ -486,26 +576,26 @@ void test("first-connect opening history ignores payee-only changes for saved le
     },
     h.connection.id,
   ).records;
-  h.connection.imports = {
+  await h.setImports({
     records: updated,
     resolved: {},
     errors: {},
     reviews: {},
-  };
-  assert.deepEqual(await bankInbox(h.db, "alice"), []);
+  });
+  assert.deepEqual(await bankInbox(h.db, alice), []);
   updated[0]!.current.amountCents += 100;
-  h.connection.imports = {
+  await h.setImports({
     records: updated,
     resolved: {},
     errors: {},
     reviews: {},
-  };
-  assert.match((await bankInbox(h.db, "alice"))[0]!.error!, /opening balance/);
+  });
+  assert.match((await bankInbox(h.db, alice))[0]!.error!, /opening balance/);
 });
 
 void test("inbox categories come from the linked ledger category, and normal posting has no discrepancy", async () => {
-  const h = harness();
-  let book = execute(h.book, "alice", {
+  const h = await harness();
+  let book = execute(await h.book(), alice, {
     type: "account.add",
     id: "cash",
     accountId: "cash",
@@ -514,13 +604,13 @@ void test("inbox categories come from the linked ledger category, and normal pos
     openingBalance: 10000,
     date: "2026-10-19",
   });
-  book = execute(book, "alice", {
+  book = execute(book, alice, {
     type: "category.add",
     id: "category",
     categoryId: "dining",
     name: "Dining out",
   });
-  book = execute(book, "alice", {
+  book = execute(book, alice, {
     type: "transaction.upsert",
     id: "purchase",
     transactionId: "purchase",
@@ -531,7 +621,7 @@ void test("inbox categories come from the linked ledger category, and normal pos
     status: "pending",
     categoryId: "dining",
   });
-  Object.assign(h.book, book);
+  await h.setBook(book);
   const initial = applyTransactionSync(
     [],
     { added: [importFact("pending", true)], modified: [], removed: [] },
@@ -552,10 +642,10 @@ void test("inbox categories come from the linked ledger category, and normal pos
     h.connection.id,
   ).records;
   posted[0]!.categoryId = "outdated-import-category";
-  h.connection.accountMappings = {
+  await h.setMappings({
     "provider-checking": { accountId: "cash", startDate: "2026-10-20" },
-  };
-  h.connection.imports = {
+  });
+  await h.setImports({
     records: posted,
     resolved: {
       [posted[0]!.id]: {
@@ -565,18 +655,18 @@ void test("inbox categories come from the linked ledger category, and normal pos
     },
     errors: {},
     reviews: {},
-  };
-  const inbox = await bankInbox(h.db, "alice");
+  });
+  const inbox = await bankInbox(h.db, alice);
   assert.equal(inbox.length, 1);
   assert.equal(inbox[0]!.removed, false);
   assert.equal(inbox[0]!.needsMatchReview, false);
   assert.equal(inbox[0]!.error, null);
   assert.equal(inbox[0]!.categoryName, "Dining out");
   await assert.rejects(
-    resolveImport(h.db, "alice", {
+    resolveImport(h.db, alice, {
       connectionId: h.connection.id,
       logicalId: posted[0]!.id,
-      expectedRevision: 0,
+      expectedRevision: await h.revision(),
       ignore: false,
       command: {
         type: "transaction.upsert",
@@ -598,8 +688,8 @@ for (const delivery of [
   "user deletion",
 ] as const)
   void test(`explicit pending posting (${delivery}) preserves one categorized purchase and respects user deletion`, async () => {
-    const h = harness();
-    let book = execute(h.book, "alice", {
+    const h = await harness();
+    let book = execute(await h.book(), alice, {
       type: "account.add",
       id: "cash",
       accountId: "cash",
@@ -608,13 +698,13 @@ for (const delivery of [
       openingBalance: 10000,
       date: "2026-10-19",
     });
-    book = execute(book, "alice", {
+    book = execute(book, alice, {
       type: "category.add",
       id: "category",
       categoryId: "dining",
       name: "Dining out",
     });
-    book = execute(book, "alice", {
+    book = execute(book, alice, {
       type: "transaction.upsert",
       id: "purchase",
       transactionId: "purchase",
@@ -625,11 +715,10 @@ for (const delivery of [
       status: "pending",
       categoryId: "dining",
     });
-    Object.assign(h.book, book);
+    await h.setBook(book);
     if (delivery === "user deletion")
-      Object.assign(
-        h.book,
-        execute(h.book, "alice", {
+      await h.setBook(
+        execute(await h.book(), alice, {
           type: "transaction.remove",
           id: "user-delete-purchase",
           transactionId: "purchase",
@@ -640,10 +729,10 @@ for (const delivery of [
       { added: [importFact("pending", true)], modified: [], removed: [] },
       h.connection.id,
     ).records;
-    h.connection.accountMappings = {
+    await h.setMappings({
       "provider-checking": { accountId: "cash", startDate: "2026-10-20" },
-    };
-    h.connection.imports = {
+    });
+    await h.setImports({
       records: initial,
       resolved: {
         [initial[0]!.id]: {
@@ -653,7 +742,7 @@ for (const delivery of [
       },
       errors: {},
       reviews: {},
-    };
+    });
     let syncCount = 0;
     mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
       if (requestUrl(url).pathname === "/transactions/sync") {
@@ -687,20 +776,23 @@ for (const delivery of [
       return Response.json(accountsResponse());
     });
     if (delivery !== "same sync") {
-      assert.deepEqual(await syncBanks(h.db, "alice"), {
+      assert.deepEqual(await syncBanks(h.db, alice), {
         imported: 0,
         updated: delivery === "user deletion" ? 0 : 1,
       });
-      assert.equal(h.book.budgets.alice!.transactions[0]!.removed, true);
+      assert.equal(
+        (await h.book()).budgets[alice]!.transactions[0]!.removed,
+        true,
+      );
       if (delivery !== "user deletion")
-        assert.deepEqual(await bankInbox(h.db, "alice"), []);
+        assert.deepEqual(await bankInbox(h.db, alice), []);
     }
-    assert.deepEqual(await syncBanks(h.db, "alice"), {
+    assert.deepEqual(await syncBanks(h.db, alice), {
       imported: 0,
       updated: delivery === "user deletion" ? 0 : 1,
     });
-    assert.equal(h.book.budgets.alice!.transactions.length, 1);
-    const purchase = h.book.budgets.alice!.transactions[0]!;
+    assert.equal((await h.book()).budgets[alice]!.transactions.length, 1);
+    const purchase = (await h.book()).budgets[alice]!.transactions[0]!;
     assert.equal(
       purchase.status,
       delivery === "user deletion" ? "pending" : "posted",
@@ -710,19 +802,18 @@ for (const delivery of [
     assert.equal(purchase.reviewed, true);
     assert.equal(Boolean(purchase.removed), delivery === "user deletion");
     if (delivery !== "user deletion")
-      assert.deepEqual(await bankInbox(h.db, "alice"), []);
-    assert.deepEqual(await syncBanks(h.db, "alice"), {
+      assert.deepEqual(await bankInbox(h.db, alice), []);
+    assert.deepEqual(await syncBanks(h.db, alice), {
       imported: 0,
       updated: 0,
     });
     const operations =
       delivery === "user deletion" ? 0 : delivery === "same sync" ? 1 : 2;
-    assert.equal(h.raw.budgetOperation.createMany.mock.callCount(), operations);
-    assert.equal(h.raw.workspace.updateMany.mock.callCount(), operations);
+    assert.equal(await h.transactionUpdates(), operations);
   });
 
 void test("update mode reuses the private Item token and refreshes metadata without exchanging a public token", async () => {
-  const h = harness();
+  const h = await harness();
   const savedHistory = {
     records: [],
     resolved: { previous: { fingerprint: "b".repeat(64), ignored: true } },
@@ -731,7 +822,7 @@ void test("update mode reuses the private Item token and refreshes metadata with
     synchronizedAccountIds: ["provider-checking"],
     transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
   };
-  h.connection.imports = savedHistory;
+  await h.setImports(savedHistory);
   const paths: string[] = [];
   mock.method(
     globalThis,
@@ -756,53 +847,54 @@ void test("update mode reuses the private Item token and refreshes metadata with
       return Response.json(accountsResponse());
     },
   );
-  const link = await linkBankToken(h.db, "alice", h.connection.id);
+  const link = await linkBankToken(h.db, alice, h.connection.id);
   assert.deepEqual(link, {
     linkToken: "link-update",
     expiration: "2026-10-20T12:00:00Z",
     redirectUri: "https://caishen.example/plaid/oauth",
   });
-  const result = await reconnectBank(h.db, "alice", h.connection.id);
+  const result = await reconnectBank(h.db, alice, h.connection.id);
   assert.deepEqual(result, { id: h.connection.id });
   assert.deepEqual(paths, ["/link/token/create", "/accounts/get"]);
-  assert.equal(h.connection.error, null);
-  assert.deepEqual(h.connection.imports, {
+  assert.equal((await h.saved()).error, null);
+  assert.deepEqual(await h.imports(), {
     ...savedHistory,
-    ...bankAccountDetails(h.connection.imports),
+    ...bankAccountDetails(await h.imports()),
   });
   assert.deepEqual(
-    bankAccountDetails(h.connection.imports).accounts.map((a) => [
+    bankAccountDetails(await h.imports()).accounts.map((a) => [
       a.name,
       a.currentBalance,
     ]),
     [["Chase checking", 123.45]],
   );
-  assert.deepEqual(h.book.budgets.alice!.accounts, []);
+  assert.deepEqual((await h.book()).budgets[alice]!.accounts, []);
   assert.deepEqual(
-    bankAccountDetails(h.connection.imports).synchronizedAccountIds,
+    bankAccountDetails(await h.imports()).synchronizedAccountIds,
     [],
   );
-  assert.equal(
-    bankAccountDetails(h.connection.imports).transactionStatus,
-    null,
-  );
+  assert.equal(bankAccountDetails(await h.imports()).transactionStatus, null);
   assert.ok(!JSON.stringify({ link, result }).includes("private-access-token"));
 });
 
 void test("exchange refuses an Item already owned by another user without replacing its credential", async () => {
-  const h = harness();
-  const before = h.connection.encryptedToken;
+  const h = await harness();
+  await onboard(db, bob, {
+    name: "Bob",
+    month: "2026-10",
+    timezone: "America/Los_Angeles",
+  });
+  const before = (await h.saved()).encryptedToken;
   mock.method(globalThis, "fetch", async () =>
     Response.json({
       access_token: "new-private-token",
       item_id: h.connection.itemId,
     }),
   );
-  await assert.rejects(exchangeBankToken(h.db, "bob", "public-token"), {
+  await assert.rejects(exchangeBankToken(h.db, bob, "public-token"), {
     code: "CONFLICT",
   });
-  assert.equal(h.raw.bankConnection.upsert.mock.callCount(), 0);
-  assert.equal(h.connection.encryptedToken, before);
+  assert.equal((await h.saved()).encryptedToken, before);
 });
 
 void test("account details are backward compatible and never return import history", () => {
@@ -823,7 +915,7 @@ void test("account details are backward compatible and never return import histo
 });
 
 void test("sandbox Link response omits redirectUri when no redirect is configured", async () => {
-  const h = harness();
+  const h = await harness();
   process.env.PLAID_ENV = "sandbox";
   delete process.env.PLAID_REDIRECT_URI;
   mock.method(globalThis, "fetch", async () =>
@@ -832,14 +924,14 @@ void test("sandbox Link response omits redirectUri when no redirect is configure
       expiration: "2026-10-20T12:00:00Z",
     }),
   );
-  assert.deepEqual(await linkBankToken(h.db, "alice"), {
+  assert.deepEqual(await linkBankToken(h.db, alice), {
     linkToken: "link-sandbox",
     expiration: "2026-10-20T12:00:00Z",
   });
 });
 
 void test("successful public token exchange remains saved if account metadata is temporarily unavailable", async () => {
-  const h = harness();
+  const h = await harness();
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/item/public_token/exchange")
       return Response.json({
@@ -854,19 +946,19 @@ void test("successful public token exchange remains saved if account metadata is
       { status: 400 },
     );
   });
-  const result = await exchangeBankToken(h.db, "alice", "public-token");
+  const result = await exchangeBankToken(h.db, alice, "public-token");
   assert.equal(result.id, h.connection.id);
   assert.match(result.warning!, /bank is connected/);
   assert.equal(
-    decryptBankToken(h.connection.encryptedToken, "alice"),
+    decryptBankToken((await h.saved()).encryptedToken, alice),
     "new-private-token",
   );
   assert.ok(!JSON.stringify(result).includes("private provider details"));
-  assert.deepEqual(bankAccountDetails(h.connection.imports).accounts, []);
+  assert.deepEqual(bankAccountDetails(await h.imports()).accounts, []);
 });
 
 void test("bank sync updates cached account details without creating ledger accounts or balances", async () => {
-  const h = harness();
+  const h = await harness();
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
@@ -881,22 +973,22 @@ void test("bank sync updates cached account details without creating ledger acco
     assert.equal(requestUrl(url).pathname, "/accounts/get");
     return Response.json(accountsResponse());
   });
-  assert.deepEqual(await syncBanks(h.db, "alice"), { imported: 0, updated: 0 });
-  assert.equal(h.connection.cursor, "next");
-  assert.equal(h.connection.error, null);
+  assert.deepEqual(await syncBanks(h.db, alice), { imported: 0, updated: 0 });
+  assert.equal((await h.saved()).cursor, "next");
+  assert.equal((await h.saved()).error, null);
   assert.equal(
-    bankAccountDetails(h.connection.imports).accounts[0]!.availableBalance,
+    bankAccountDetails(await h.imports()).accounts[0]!.availableBalance,
     100,
   );
-  assert.deepEqual(h.book.budgets.alice!.accounts, []);
+  assert.deepEqual((await h.book()).budgets[alice]!.accounts, []);
   assert.deepEqual(
-    bankAccountDetails(h.connection.imports).synchronizedAccountIds,
+    bankAccountDetails(await h.imports()).synchronizedAccountIds,
     ["provider-checking"],
   );
 });
 
 void test("opening metadata uses the balance paired with sync activity rather than a newer accounts/get balance", async () => {
-  const h = harness();
+  const h = await harness();
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     const result = accountsResponse();
     result.accounts[0]!.balances.current =
@@ -913,14 +1005,14 @@ void test("opening metadata uses the balance paired with sync activity rather th
       });
     return Response.json(result);
   });
-  await syncBanks(h.db, "alice");
-  const details = bankAccountDetails(h.connection.imports);
+  await syncBanks(h.db, alice);
+  const details = bankAccountDetails(await h.imports());
   assert.equal(details.accounts[0]!.currentBalance, 100);
   assert.deepEqual(details.synchronizedAccountIds, ["provider-checking"]);
 });
 
 void test("a prior sync balance is retained only when its cursor and account activity are unchanged", async () => {
-  const h = harness();
+  const h = await harness();
   let updates = 0;
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync") {
@@ -939,29 +1031,29 @@ void test("a prior sync balance is retained only when its cursor and account act
     result.accounts[0]!.balances.current = 80;
     return Response.json(result);
   });
-  await syncBanks(h.db, "alice");
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
+  await syncBanks(h.db, alice);
   assert.equal(
-    bankAccountDetails(h.connection.imports).accounts[0]!.currentBalance,
+    bankAccountDetails(await h.imports()).accounts[0]!.currentBalance,
     123.45,
   );
   assert.deepEqual(
-    bankAccountDetails(h.connection.imports).synchronizedAccountIds,
+    bankAccountDetails(await h.imports()).synchronizedAccountIds,
     ["provider-checking"],
   );
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
   assert.equal(
-    bankAccountDetails(h.connection.imports).accounts[0]!.currentBalance,
+    bankAccountDetails(await h.imports()).accounts[0]!.currentBalance,
     80,
   );
   assert.deepEqual(
-    bankAccountDetails(h.connection.imports).synchronizedAccountIds,
+    bankAccountDetails(await h.imports()).synchronizedAccountIds,
     [],
   );
 });
 
 void test("an account delta without its matching sync balance invalidates the prior balance source", async () => {
-  const h = harness();
+  const h = await harness();
   let updates = 0;
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync") {
@@ -981,14 +1073,14 @@ void test("an account delta without its matching sync balance invalidates the pr
     }
     return Response.json(accountsResponse());
   });
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
   assert.deepEqual(
-    bankAccountDetails(h.connection.imports).synchronizedAccountIds,
+    bankAccountDetails(await h.imports()).synchronizedAccountIds,
     ["provider-checking"],
   );
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
   assert.deepEqual(
-    bankAccountDetails(h.connection.imports).synchronizedAccountIds,
+    bankAccountDetails(await h.imports()).synchronizedAccountIds,
     [],
   );
 });
@@ -1029,7 +1121,7 @@ function syncPages(pages: Record<string, unknown>[]) {
 }
 
 void test("a non-USD transaction is quarantined for review while the rest of the sync applies", async () => {
-  const h = harness();
+  const h = await harness();
   const warn = mock.method(console, "warn", () => undefined);
   syncPages([
     {
@@ -1045,13 +1137,13 @@ void test("a non-USD transaction is quarantined for review while the rest of the
       next_cursor: "after-eur",
     },
   ]);
-  assert.deepEqual(await syncBanks(h.db, "alice"), {
+  assert.deepEqual(await syncBanks(h.db, alice), {
     imported: 1,
     updated: 0,
   });
-  assert.equal(h.connection.cursor, "after-eur");
-  assert.equal(h.connection.error, null);
-  const inbox = await bankInbox(h.db, "alice");
+  assert.equal((await h.saved()).cursor, "after-eur");
+  assert.equal((await h.saved()).error, null);
+  const inbox = await bankInbox(h.db, alice);
   assert.deepEqual(
     inbox.map((item) => [item.payee, item.quarantined]),
     [
@@ -1077,7 +1169,7 @@ void test("a non-USD transaction is quarantined for review while the rest of the
 });
 
 void test("malformed sync records are quarantined or skipped without blocking the cursor", async () => {
-  const h = harness();
+  const h = await harness();
   mock.method(console, "warn", () => undefined);
   syncPages([
     {
@@ -1097,12 +1189,12 @@ void test("malformed sync records are quarantined or skipped without blocking th
       next_cursor: "after-malformed",
     },
   ]);
-  assert.deepEqual(await syncBanks(h.db, "alice"), {
+  assert.deepEqual(await syncBanks(h.db, alice), {
     imported: 1,
     updated: 0,
   });
-  assert.equal(h.connection.cursor, "after-malformed");
-  const quarantined = (await bankInbox(h.db, "alice")).filter(
+  assert.equal((await h.saved()).cursor, "after-malformed");
+  const quarantined = (await bankInbox(h.db, alice)).filter(
     (item) => item.quarantined,
   );
   assert.deepEqual(quarantined.map((item) => item.payee).sort(), [
@@ -1122,7 +1214,7 @@ void test("malformed sync records are quarantined or skipped without blocking th
 });
 
 void test("a quarantined transaction leaves review once the bank fixes, removes, or the user dismisses it", async () => {
-  const h = harness();
+  const h = await harness();
   mock.method(console, "warn", () => undefined);
   const eur = (id: string) =>
     plaidTransaction({ transaction_id: id, iso_currency_code: "EUR" });
@@ -1148,30 +1240,30 @@ void test("a quarantined transaction leaves review once the bank fixes, removes,
       next_cursor: "4",
     },
   ]);
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
   const quarantinedIds = async () =>
-    (await bankInbox(h.db, "alice"))
+    (await bankInbox(h.db, alice))
       .filter((item) => item.quarantined)
       .map((item) => item.logicalId);
   assert.equal((await quarantinedIds()).length, 3);
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
   assert.equal((await quarantinedIds()).length, 1);
   assert.ok(
-    (await bankInbox(h.db, "alice")).some(
+    (await bankInbox(h.db, alice)).some(
       (item) => !item.quarantined && item.logicalId.includes("fixed"),
     ),
   );
   const [dismissed] = await quarantinedIds();
-  await resolveImport(h.db, "alice", {
+  await resolveImport(h.db, alice, {
     connectionId: h.connection.id,
     logicalId: dismissed!,
-    expectedRevision: h.workspace.revision,
+    expectedRevision: await h.revision(),
     ignore: true,
   });
   assert.deepEqual(await quarantinedIds(), []);
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
   assert.deepEqual(await quarantinedIds(), [], "the same fact stays dismissed");
-  await syncBanks(h.db, "alice");
+  await syncBanks(h.db, alice);
   assert.deepEqual(
     await quarantinedIds(),
     [dismissed],

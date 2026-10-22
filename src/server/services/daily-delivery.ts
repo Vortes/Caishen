@@ -3,7 +3,7 @@ import { Prisma, type DailyDelivery } from "~/generated/prisma";
 import { createResendClient } from "~/server/integrations/daily-review";
 import { providerIdSchema } from "~/server/integrations/validation";
 import { reportUnreadable, zodIssues } from "./stored-data";
-import { type Database } from "./workspace";
+import type { Database } from "./household";
 
 export const dailyDeliveryPayloadSchema = z
   .object({

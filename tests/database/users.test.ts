@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import { createBook } from "../../src/domain/engine";
-import { jsonValue } from "../../src/server/services/safety";
+import { loadRows } from "../../src/server/storage/rows";
+import { createHousehold } from "./fixtures";
 import {
   ClerkUserEventConflictError,
   ensureLocalUser,
@@ -163,13 +165,11 @@ void test("Neon user lifecycle is idempotent, ordered, tombstoned and independen
     assert.equal(clearedProfile.imageUrl, null);
     assert.equal(clearedProfile.primaryEmail, null);
 
-    const workspace = await db.workspace.create({
-      data: {
-        book: jsonValue(createBook(userId, "Existing budget", "2026-10")),
-        members: { create: { clerkUserId: userId } },
-      },
-    });
-    workspaceId = workspace.id;
+    workspaceId = await createHousehold(
+      db,
+      createBook(userId, "Existing budget", "2026-10"),
+    );
+    const rows = await loadRows(db, workspaceId);
     const deleted = await syncClerkUserEvent(
       db,
       `msg_${randomUUID()}`,
@@ -187,7 +187,12 @@ void test("Neon user lifecycle is idempotent, ordered, tombstoned and independen
     assert.equal((await ensureLocalUser(db, userId)).active, false);
     await assert.rejects(
       () =>
-        createCaller({ db, userId, headers: new Headers() }).budget.state({
+        createCaller({
+          revision: new ObservedRevision(),
+          db,
+          userId,
+          headers: new Headers(),
+        }).budget.state({
           month: "2026-10",
         }),
       { code: "FORBIDDEN" },
@@ -207,11 +212,7 @@ void test("Neon user lifecycle is idempotent, ordered, tombstoned and independen
         .active,
       false,
     );
-    assert.deepEqual(
-      (await db.workspace.findUniqueOrThrow({ where: { id: workspace.id } }))
-        .book,
-      workspace.book,
-    );
+    assert.deepEqual(await loadRows(db, workspaceId), rows);
     assert.equal(
       await db.workspaceMember.count({ where: { clerkUserId: userId } }),
       1,

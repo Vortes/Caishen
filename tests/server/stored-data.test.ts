@@ -9,16 +9,14 @@ import {
 } from "../../src/domain/engine";
 import { rowDataSchemas } from "../../src/domain/row-schemas";
 import { tableNames } from "../../src/domain/rows";
-import { openPersonalBudget } from "../../src/domain/stored-book";
 import {
   reconciliationResultSchema,
   savedEvidenceSchema,
 } from "../../src/server/integrations/reconciliation";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
-import { importStateSchema } from "../../src/server/services/banks";
+import { connectionColumnSchema } from "../../src/server/services/banks";
 import { dailyDeliveryPayloadSchema } from "../../src/server/services/daily-delivery";
-import { workspaceHistorySchema } from "../../src/server/services/workspace-history";
 import {
   changeSetSchema,
   operationCommandSchema,
@@ -41,8 +39,7 @@ import {
 
 const jsonColumns: Record<string, ZodTypeAny> = {
   "Workspace.book": bookSchema,
-  "Workspace.history": workspaceHistorySchema,
-  "BankConnection.imports": importStateSchema,
+  "BankConnection.imports": connectionColumnSchema,
   "BankConnection.accountMappings": bankMappingsSchema,
   "ReviewEvidence.evidence": savedEvidenceSchema,
   "ReviewEvidence.result": reconciliationResultSchema,
@@ -345,13 +342,6 @@ void test("every stored sample loads, and the samples use every stored enum valu
       result.success,
       `${file} no longer loads. ${rule}\n${result.success ? "" : result.error.message}`,
     );
-    if (column === "Workspace.book")
-      for (const userId of Object.keys((value as { budgets: object }).budgets))
-        assert.deepEqual(
-          openPersonalBudget(value, userId).failures,
-          [],
-          `${file} no longer opens for ${userId}. ${rule}`,
-        );
     if (!seen.has(column)) seen.set(column, new Map());
     observe(columns[column]!, value, "$", seen.get(column)!);
   }

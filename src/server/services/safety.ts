@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { canonicalJson } from "~/domain/canonical-json";
 import type { Prisma } from "~/generated/prisma";
+import { refusal } from "./sync-refusal";
 
 const prismaErrorNames = new Set([
   "PrismaClientKnownRequestError",
@@ -63,20 +64,16 @@ export function domainError(error: unknown): never {
       error.name === "PrismaClientKnownRequestError" &&
       (error.code === "P2034" || error.code === "P2002")
     )
-      throw new TRPCError({
-        code: "CONFLICT",
-        message: "Your budget changed. Refresh and try again.",
-      });
+      throw refusal("conflict", "Your budget changed. Refresh and try again.");
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: DATABASE_ERROR_MESSAGE,
     });
   }
-  throw new TRPCError({
-    code: "BAD_REQUEST",
-    message:
-      error instanceof Error ? error.message : "Check the entered values.",
-  });
+  throw refusal(
+    "rejected",
+    error instanceof Error ? error.message : "Check the entered values.",
+  );
 }
 
 export function requireCronAuthorization(header: string | null): void {
