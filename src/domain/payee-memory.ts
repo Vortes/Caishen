@@ -25,7 +25,7 @@ export function payeeKey(payee: string): string {
  * READY_TO_ASSIGN for Ready to Assign, or undefined when the payee has no
  * memory that fits. Ready to Assign fits only money coming into a cash
  * account, or an entry in one whose amount isn't known yet. A tracking
- * account takes no category.
+ * or People account takes no remembered category.
  */
 export function rememberedCategory(
   budget: Budget,
@@ -37,7 +37,12 @@ export function rememberedCategory(
 ): string | undefined {
   const account = budget.accounts.find((item) => item.id === accountId);
   const memory = budget.payeeMemory?.[payeeKey(payee)];
-  if (!account || account.kind === "tracking" || !memory) return undefined;
+  if (
+    !account ||
+    (account.kind !== "cash" && account.kind !== "credit") ||
+    !memory
+  )
+    return undefined;
   if (memory.kind === "readyToAssign")
     return account.kind === "cash" && (amount === undefined || amount > 0)
       ? READY_TO_ASSIGN
@@ -45,7 +50,10 @@ export function rememberedCategory(
   const category = budget.categories.find(
     (item) => item.id === memory.categoryId,
   );
-  return category && !category.pairedAccountId && !category.pairedLoanId
+  return category &&
+    !category.pairedAccountId &&
+    !category.pairedLoanId &&
+    !category.counterpartyAccountId
     ? category.id
     : undefined;
 }
@@ -59,9 +67,7 @@ function categorization(
   if (
     !transaction ||
     transaction.removed ||
-    ("lines" in transaction &&
-      Array.isArray(transaction.lines) &&
-      transaction.lines.length > 1) ||
+    (transaction.lines?.length ?? 0) > 1 ||
     !["purchase", "refund", "income"].includes(transaction.kind)
   )
     return undefined;
@@ -69,14 +75,30 @@ function categorization(
     (item) => item.id === transaction.accountId,
   );
   const key = payeeKey(transaction.payee);
-  if (!account || account.kind === "tracking" || !key) return undefined;
-  if (transaction.categoryId)
+  if (
+    !account ||
+    (account.kind !== "cash" && account.kind !== "credit") ||
+    !key
+  )
+    return undefined;
+  if (transaction.categoryId) {
+    const category = budget.categories.find(
+      (item) => item.id === transaction.categoryId,
+    );
+    if (
+      !category ||
+      category.pairedAccountId ||
+      category.pairedLoanId ||
+      category.counterpartyAccountId
+    )
+      return undefined;
     return {
       key,
       payee: transaction.payee,
       kind: "category",
       categoryId: transaction.categoryId,
     };
+  }
   return transaction.kind === "income"
     ? { key, payee: transaction.payee, kind: "readyToAssign" }
     : undefined;
