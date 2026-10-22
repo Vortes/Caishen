@@ -3,9 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   bookSchema,
+  createBook,
+  execute,
   personalLedger,
   projectBook,
   type Book,
+  type Command,
 } from "../../src/domain/engine";
 import {
   bookToRows,
@@ -19,7 +22,7 @@ import {
   tableNames,
   type WireRow,
 } from "../../src/domain/rows";
-import { rowDataSchemas } from "../../src/domain/row-schemas";
+import { rowDataSchemas, rowIssues } from "../../src/domain/row-schemas";
 import { deriveObligations } from "../../src/domain/shared-ledger";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 import { buildCommandCorpus } from "./fixtures/command-corpus";
@@ -259,4 +262,81 @@ void test("rows sharing an id are refused rather than silently merged", () => {
   const book = json(corpus.book);
   book.budgets.alex!.accounts.push(book.budgets.alex!.accounts[0]!);
   assert.throws(() => bookToRows(book), /Two account rows share the id/);
+});
+
+void test("a split transaction stores each line as its own row and reads back whole", () => {
+  let book = createBook("alan", "Alan", "2026-10");
+  const commands: Command[] = [
+    {
+      type: "account.add",
+      id: "op-1",
+      accountId: "checking",
+      name: "Checking",
+      kind: "cash",
+      openingBalance: 100_000,
+    },
+    {
+      type: "category.add",
+      id: "op-2",
+      categoryId: "groceries",
+      name: "Groceries",
+    },
+    {
+      type: "category.add",
+      id: "op-3",
+      categoryId: "household",
+      name: "Household",
+    },
+    {
+      type: "transaction.upsert",
+      id: "op-4",
+      transactionId: "costco",
+      accountId: "checking",
+      date: "2026-10-10",
+      amount: -20_000,
+      payee: "Costco",
+      lines: [
+        { lineId: "food", categoryId: "groceries", amount: -15_000 },
+        { lineId: "paper", categoryId: "household", amount: -5_000 },
+      ],
+    },
+  ];
+  for (const command of commands) book = execute(book, "alan", command);
+  const rows = bookToRows(book);
+  assert.deepStrictEqual(
+    rows
+      .filter((row) => row.table === "transactionLine")
+      .map((row) => [row.id, row.data]),
+    [
+      [
+        "alan/costco/food",
+        {
+          userId: "alan",
+          transactionId: "costco",
+          id: "food",
+          categoryId: "groceries",
+          amount: -15_000,
+          sort: 0,
+        },
+      ],
+      [
+        "alan/costco/paper",
+        {
+          userId: "alan",
+          transactionId: "costco",
+          id: "paper",
+          categoryId: "household",
+          amount: -5_000,
+          sort: 1,
+        },
+      ],
+    ],
+  );
+  const transaction = rows.find((row) => row.table === "transaction")!;
+  assert.equal("lines" in transaction.data!, false);
+  assert.deepStrictEqual(json(rowsToBook(rows)), stored(book));
+  assert.deepStrictEqual(
+    rows.filter((row) => rowIssues(row) !== null),
+    [],
+  );
 });

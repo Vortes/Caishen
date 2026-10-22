@@ -1,0 +1,29 @@
+{
+  "operationId": "operation-split",
+  "revision": 12,
+  "after": [
+    {
+      "table": "transactionLine",
+      "id": "alex/costco-2026-10/costco-2026-10-groceries",
+      "revision": 12,
+      "deleted": false,
+      "data": {
+        "userId": "alex",
+        "transactionId": "costco-2026-10",
+        "id": "costco-2026-10-groceries",
+        "categoryId": "groceries",
+        "amount": -15000,
+        "sort": 0
+      }
+    }
+  ],
+  "before": [
+    {
+      "table": "transactionLine",
+      "id": "alex/costco-2026-10/costco-2026-10-groceries",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    }
+  ]
+}

@@ -15,6 +15,17 @@ type Transaction = View["budget"]["transactions"][number];
 
 export { READY_TO_ASSIGN } from "~/domain/transfers";
 
+// The category list's Split choice, which never names a category.
+export const SPLIT = "\u0000split";
+
+// One line of a split: part of the amount, in one category.
+export type DraftLine = {
+  lineId: string;
+  categoryId: string;
+  outflow: string;
+  inflow: string;
+};
+
 export type TransactionDraft = {
   accountId: string;
   date: string;
@@ -29,11 +40,21 @@ export type TransactionDraft = {
   expenseMonth: string;
   sharedCategoryId: string;
   ownShare: string;
+  // Two or more when the amount is split across categories; none otherwise.
+  lines: DraftLine[];
 };
 
-export type TransactionDraftFields = Partial<
-  Record<keyof TransactionDraft, string>
->;
+// A field that can be in error: one of the draft's, one of a split line's,
+// or what the split's lines leave unassigned.
+export type LineField =
+  `lines.${string}.${"categoryId" | "outflow" | "inflow"}`;
+export type DraftFieldKey = keyof TransactionDraft | LineField | "remaining";
+export const lineField = (
+  lineId: string,
+  field: "categoryId" | "outflow" | "inflow",
+): LineField => `lines.${lineId}.${field}`;
+
+export type TransactionDraftFields = Partial<Record<DraftFieldKey, string>>;
 
 export class TransactionDraftError extends Error {
   readonly fields: TransactionDraftFields;
@@ -124,6 +145,42 @@ export function createTransactionDraft(
     expenseMonth: transaction?.expenseMonth ?? month,
     sharedCategoryId: transaction?.sharedCategoryId ?? "",
     ownShare: "",
+    lines: (transaction?.lines ?? []).map((line) => ({
+      lineId: line.id,
+      categoryId: line.categoryId,
+      ...amountFields(line.amount),
+    })),
+  };
+}
+
+/** The draft's amount in signed cents, or undefined while it doesn't read. */
+export function draftAmount(draft: { outflow: string; inflow: string }) {
+  const outflow = draft.outflow.trim();
+  const inflow = draft.inflow.trim();
+  if (outflow && inflow) return undefined;
+  if (!outflow && !inflow) return 0;
+  const cents = parseAmount(outflow || inflow);
+  return cents === undefined ? undefined : outflow ? -cents : cents;
+}
+
+/**
+ * What a split's lines leave of the amount, in signed cents: negative when
+ * outflow is still to be split, positive when inflow is. Undefined while an
+ * amount doesn't read.
+ */
+export function splitRemaining(draft: TransactionDraft) {
+  const total = draftAmount(draft);
+  const lines = draft.lines.map(draftAmount);
+  if (total === undefined || lines.some((line) => line === undefined))
+    return undefined;
+  return total - lines.reduce<number>((sum, line) => sum + line!, 0);
+}
+
+/** Amount fields holding signed cents. */
+export function amountFields(cents: number) {
+  return {
+    outflow: cents < 0 ? (-cents / 100).toFixed(2) : "",
+    inflow: cents > 0 ? (cents / 100).toFixed(2) : "",
   };
 }
 
@@ -245,7 +302,45 @@ export function buildTransactionDraftCommand({
       fields.categoryId =
         "Choose a category for money entering or leaving your budget.";
   }
-  if (!transfer && account?.kind !== "tracking") {
+  const split = draft.lines.length > 0;
+  const lines: { lineId: string; categoryId: string; amount: number }[] = [];
+  if (split) {
+    if (transfer || account?.kind === "tracking" || sharedCategoryId)
+      fields.categoryId = "Only a purchase or refund can be split.";
+    for (const line of draft.lines) {
+      const category = view.categories.find(
+        (item) => item.id === line.categoryId,
+      );
+      if (
+        !category ||
+        category.pairedAccountId ||
+        category.pairedLoanId ||
+        category.counterpartyAccountId
+      )
+        fields[lineField(line.lineId, "categoryId")] = "Choose a category.";
+      const amount = draftAmount(line);
+      if (amount === undefined || (line.outflow.trim() && line.inflow.trim()))
+        fields[lineField(line.lineId, "outflow")] =
+          "Enter an amount with no more than two decimal places.";
+      else if (!amount)
+        fields[lineField(line.lineId, "outflow")] = "Enter an amount.";
+      else
+        lines.push({
+          lineId: line.lineId,
+          categoryId: line.categoryId,
+          amount,
+        });
+    }
+    const remaining = splitRemaining(draft);
+    if (
+      lines.length === draft.lines.length &&
+      !fields.outflow &&
+      remaining !== undefined &&
+      remaining !== 0
+    )
+      fields.remaining =
+        "Split the whole amount: the lines must add up to the total.";
+  } else if (!transfer && account?.kind !== "tracking") {
     const category = view.categories.find((item) => item.id === categoryId);
     if (categoryId === READY_TO_ASSIGN) {
       if (outflowText)
@@ -332,13 +427,16 @@ export function buildTransactionDraftCommand({
     date,
     payee,
     amount: inflow || -outflow,
-    categoryId: boundary
-      ? categoryId
-      : draft.transferAccountId ||
-          account?.kind === "tracking" ||
-          categoryId === READY_TO_ASSIGN
-        ? undefined
-        : categoryId,
+    categoryId: split
+      ? undefined
+      : boundary
+        ? categoryId
+        : draft.transferAccountId ||
+            account?.kind === "tracking" ||
+            categoryId === READY_TO_ASSIGN
+          ? undefined
+          : categoryId,
+    ...(split ? { lines } : {}),
     status: draft.status,
     expenseMonth: expenseMonth || undefined,
     sharedCategoryId: sharedCategoryId || undefined,

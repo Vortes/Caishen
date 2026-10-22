@@ -8,6 +8,8 @@ import {
   assertTransactionDraftCurrent,
   buildTransactionDraftCommand,
   createTransactionDraft,
+  lineField,
+  type DraftFieldKey,
   type TransactionDraft,
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
@@ -20,7 +22,7 @@ import {
 } from "~/components/transactions/import-draft";
 
 type Transaction = View["budget"]["transactions"][number];
-export type DraftField = keyof TransactionDraft;
+export type DraftField = DraftFieldKey;
 
 // What the live workspace lends the shell for saving transactions: the
 // budget on screen and its command path. A save shows at once and goes to
@@ -72,15 +74,21 @@ const editableKinds: Transaction["kind"][] = [
   "card-payment",
   "loan-payment",
 ];
-// The row's fields as they read on screen, so a failed save focuses the
-// first problem the user sees.
-const screenOrder: DraftField[] = [
+// The row's fields as they read on screen, then its split lines', so a
+// failed save focuses the first problem the user sees.
+const screenOrder = (draft: TransactionDraft): DraftField[] => [
   "accountId",
   "date",
   "payee",
   "categoryId",
   "outflow",
   "inflow",
+  ...draft.lines.flatMap((line) =>
+    (["categoryId", "outflow", "inflow"] as const).map((field) =>
+      lineField(line.lineId, field),
+    ),
+  ),
+  "remaining",
   "interest",
 ];
 
@@ -262,6 +270,23 @@ export function useTransactionEntryController({
         delete fields.outflow;
         delete fields.inflow;
       }
+      // A line's change clears its own errors and what the lines leave.
+      if ("lines" in next || "outflow" in next || "inflow" in next) {
+        delete fields.remaining;
+        for (const line of next.lines ?? []) {
+          const before = current.draft.lines.find(
+            (item) => item.lineId === line.lineId,
+          );
+          for (const field of ["categoryId", "outflow", "inflow"] as const)
+            if (before?.[field] !== line[field]) {
+              delete fields[lineField(line.lineId, field)];
+              if (field !== "categoryId") {
+                delete fields[lineField(line.lineId, "outflow")];
+                delete fields[lineField(line.lineId, "inflow")];
+              }
+            }
+        }
+      }
       return {
         ...current,
         draft: { ...current.draft, ...next },
@@ -316,7 +341,7 @@ export function useTransactionEntryController({
       command = attempt.current.command;
     } catch (failure) {
       if (failure instanceof TransactionDraftError) {
-        const first = screenOrder.find((key) => failure.fields[key]);
+        const first = screenOrder(draft).find((key) => failure.fields[key]);
         patch({ fields: failure.fields, error: "", calendarOpen: false });
         focus(first ?? "payee");
       } else {
