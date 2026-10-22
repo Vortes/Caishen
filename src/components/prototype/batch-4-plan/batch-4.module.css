@@ -1,0 +1,554 @@
+/* Batch 4 prototype: snooze, expected income, category search, and the
+   month picker, styled on the shell's tokens. Popovers repeat the
+   move-money surface; there is no Popover primitive yet. */
+
+/* ---------- Stage: the prototype bar over the shell ---------- */
+
+.stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-app);
+}
+.stage > .shellRoot {
+  position: relative;
+  inset: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px dashed var(--border-strong);
+  background: var(--surface-app);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.barTitle {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.barTitle:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.barChoices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.barChoice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.barLabel {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.barActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.barMenu {
+  z-index: 80;
+  max-width: 300px;
+}
+
+/* ---------- Popovers ---------- */
+
+.popover {
+  z-index: 60;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  transform-origin: var(--radix-popover-content-transform-origin);
+  animation: popover-in 150ms var(--ease-panel);
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.popover[data-instant] {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .popover {
+    animation: none;
+  }
+}
+
+/* ---------- Month picker ---------- */
+
+.monthTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.monthTrigger > svg {
+  color: var(--text-tertiary);
+}
+.monthTrigger[data-state="open"] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.monthGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 248px;
+  padding: 8px;
+}
+.yearRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.yearLabel {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+/* Month cells follow the date calendar: today is a quiet fill, the month on
+   screen is the accent. */
+.monthCell,
+.listItem {
+  height: var(--size-control);
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.monthCell:hover:not(:disabled),
+.listItem:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.monthCell[data-today],
+.listItem[data-today] {
+  background: var(--surface-selected);
+}
+.monthCell[aria-current="date"],
+.listItem[aria-current="date"],
+.listItem[aria-checked="true"] {
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
+}
+.monthCell:disabled,
+.listItem:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.monthCell:focus-visible,
+.listItem:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.lists {
+  display: grid;
+  grid-template-columns: 88px 140px;
+  gap: 4px;
+  padding: 8px;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Tall enough for all twelve months, so only years ever scroll. */
+  max-height: min(436px, 60vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.list + .list {
+  padding-left: 4px;
+  border-left: 1px solid var(--border-subtle);
+}
+.listItem {
+  flex: none;
+  height: var(--size-row-sm);
+  padding: 0 10px;
+  text-align: left;
+}
+
+.pickerFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (pointer: coarse) {
+  .monthCell,
+  .listItem,
+  .finderOption {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .monthCell,
+  .listItem {
+    transition: none;
+  }
+}
+
+/* ---------- Category search ---------- */
+
+.planSearch {
+  flex: 0 1 220px;
+}
+.searchStatus {
+  margin: 0;
+  padding: 10px 20px 2px 34px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.inlineLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.inlineLink:hover {
+  color: var(--text-primary);
+}
+
+.finder {
+  width: var(--size-popover);
+  overflow: hidden;
+}
+.finderField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-md);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+}
+.finderField input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+}
+.finderField input::placeholder {
+  color: var(--text-tertiary);
+}
+.finderField input:focus-visible {
+  outline: none;
+}
+.finderList {
+  max-height: 320px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+.finderOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--size-row-md);
+  padding: 0 8px;
+  border-radius: var(--radius-row);
+  cursor: default;
+}
+.finderOption[aria-selected="true"] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.finderName {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.finderName > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.finderGroup {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.finderEmpty {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--text-tertiary);
+}
+
+/* ---------- Snooze ---------- */
+
+/* A settings row: the text first, the switch at the end. */
+.snoozeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 10px 2px 2px;
+  border-top: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+.snoozeRow[data-disabled] {
+  cursor: default;
+}
+.snoozeText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.snoozeLabel {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.snoozeRow[data-disabled] .snoozeLabel {
+  color: var(--text-secondary);
+}
+.snoozeHint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.menuItemTall {
+  height: auto;
+  min-height: var(--size-row-sm);
+  padding-block: 6px;
+}
+.menuItemTall[data-disabled] {
+  color: var(--text-tertiary);
+}
+.menuItemText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* ---------- Expected income ---------- */
+
+.note {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.incomeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+}
+/* "Expected income" needs a wider label column than the shell's 96px. */
+.incomeRow {
+  grid-template-columns: 120px 1fr;
+}
+/* The move-money amount well at the property row's height. */
+.amountWell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 180px;
+  height: var(--size-control-sm);
+  margin-left: -6px;
+  padding: 0 8px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  transition: border-color 150ms;
+}
+.amountWell:focus-within {
+  border-color: var(--focus-ring);
+}
+.amountWell[data-invalid] {
+  border-color: var(--danger-line);
+}
+.amountWell > span {
+  color: var(--text-tertiary);
+}
+.amountWell input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.amountWell input::placeholder {
+  color: var(--text-tertiary);
+}
+.amountWell input:focus-visible {
+  outline: none;
+}
+@media (pointer: coarse) {
+  .amountWell input {
+    font-size: 16px;
+  }
+}
+.editableValue {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--size-control-sm);
+  font-variant-numeric: tabular-nums;
+}
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.suggestion {
+  display: flex;
+}
+
+/* ---------- Sidebar stand-ins ---------- */
+
+.staticBanks {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-control);
+  margin-right: auto;
+  padding: 0 8px;
+  color: var(--text-secondary);
+}
+
+/* ---------- Index ---------- */
+
+.index {
+  min-height: 100vh;
+  padding: 48px 24px 96px;
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+.index > * {
+  max-width: 680px;
+  margin-inline: auto;
+}
+.indexHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 40px;
+}
+.index h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.index h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+.index h3 {
+  margin: 8px 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.index p {
+  margin: 0;
+  max-width: 65ch;
+  text-wrap: pretty;
+}
+.index a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.index a:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.indexPrimary {
+  font-weight: 500;
+}
+.indexSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.indexList,
+.indexLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+.indexList strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.indexLinks {
+  padding-left: 0;
+  list-style: none;
+}
+.indexLinks li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.indexLinks span {
+  color: var(--text-tertiary);
+}
