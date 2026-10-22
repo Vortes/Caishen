@@ -118,7 +118,7 @@ local-only), **inert** (control exists, does nothing), **missing**,
 | Interaction | What the user does and sees | Code → backend | Undoable | Edge cases handled | E2E | New UI |
 | --- | --- | --- | --- | --- | --- | --- |
 | Preferences form | Name, timezone, email hour, email toggle; Save → toast "Preferences saved." | `settings-view.tsx` → `settings.update` | yes | Deliberately no optimistic preview (would remount the form); failed email-queue cancel surfaces a retry message; undo re-checks email cancellation | undo, optimistic-updates | **missing** (no settings screen) |
-| Standing rules | Create dialog (from/to category); per-rule Enable/Disable | `rule-command.ts` → `rule.set` | yes | Needs ≥ 2 categories | - | **missing** |
+| Standing rules | Removed (owner decision): no longer offered or stored | - | - | - | - | **removed** |
 | Update accounts (bank sync) | Button → sync all connections; toast "Accounts updated. Check your review inbox." | → `budget.sync` | no | Disabled without connections | plaid-oauth | **missing** |
 | Bank connect / reconnect / set up accounts | Plaid Link SDK flow, OAuth return continuation, retry sync, "Set up accounts" naming flow (account + start date each) | `banks/*` → `plaidLinkToken`, `plaidExchange`, `plaidReconnect`, `setupBankAccounts` | no | OAuth origin redirects; resumable sessions; partial setup retry; duplicate-add guards | plaid-oauth, bank-account-setup | status surfaces are **real** (warning dot, sync property); every action **missing**, "Reconnect" tag is a state label, not a button |
 | Services status / audit list | Read-only service config and recent command audit | `settings-view.tsx` (reads) | n/a | - | - | **missing** (audit partly superseded by Reflect?) |
@@ -185,7 +185,7 @@ UIs; where a hook is tangled with legacy UI (e.g. the notice/toast wiring in
 
 ### P2 - occasional and setup flows
 
-13. **Settings screen** (preferences, standing rules, bank connections,
+13. **Settings screen** (preferences, bank connections,
     update accounts, services). Largest new surface; until it lands the
     legacy settings page keeps covering it.
 14. **Loans actions**: add loan, record payment, update rate, extra-payment

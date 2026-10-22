@@ -76,7 +76,7 @@ void test("development seeds are deterministic and preserve accounting and priva
   );
   assert.ok(
     primary.audit.some(
-      (entry) => entry.type === "cover" && entry.source === "agent",
+      (entry) => entry.type === "cover" && entry.source === "user",
     ),
   );
   assert.equal(

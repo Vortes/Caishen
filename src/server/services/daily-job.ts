@@ -5,7 +5,6 @@ import {
   createResendClient,
   dailyReviewSchedule,
 } from "~/server/integrations/daily-review";
-import { savedReconciliationResult } from "~/server/integrations/reconciliation";
 import { bankInbox, syncBanks } from "./banks";
 import {
   cancelScheduledDailyReviews,
@@ -79,14 +78,9 @@ async function preparePayload(
   now: Date,
   dependencies: DailyJobDependencies,
 ): Promise<DailyDeliveryPayload> {
-  const [email, imports, evidence, freshness, read] = await Promise.all([
+  const [email, imports, freshness, read] = await Promise.all([
     dependencies.verifiedEmail(userId),
     dependencies.bankInbox(db, userId),
-    db.reviewEvidence.findMany({
-      where: { clerkUserId: userId },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
     db.bankConnection.findMany({
       where: { clerkUserId: userId },
       select: { lastSyncedAt: true },
@@ -97,34 +91,10 @@ async function preparePayload(
   const { budget } = read;
   if (!budget.settings.emailEnabled)
     throw new Error("Daily email has been disabled.");
-  const latest = new Map<
-    string,
-    ReturnType<typeof savedReconciliationResult>
-  >();
-  for (const item of evidence)
-    if (!latest.has(item.accountId))
-      latest.set(
-        item.accountId,
-        savedReconciliationResult(
-          item.result,
-          item.evidence,
-          read.revision,
-          (error) =>
-            reportUnreadable(
-              { record: "ReviewEvidence.result", evidenceId: item.id, userId },
-              [{ issues: zodIssues(error) }],
-            ),
-        ),
-      );
-  const discrepancies = [...latest.values()].filter(
-    (result) => result.status !== "reconciled",
-  ).length;
   const inboxCount =
     budget.transactions.filter(
       (transaction) => !transaction.removed && !transaction.reviewed,
-    ).length +
-    imports.filter(bankImportNeedsReview).length +
-    discrepancies;
+    ).length + imports.filter(bankImportNeedsReview).length;
   const allUpdated =
     freshness.length > 0 &&
     freshness.every((connection) => connection.lastSyncedAt);

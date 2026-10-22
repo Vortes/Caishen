@@ -242,20 +242,6 @@ export function buildDevelopmentSeed({
       startMonth: firstMonth,
       dueDate: `${shiftMonth(month, 6)}-01`,
     });
-    run(actorId, {
-      type: "rule.set",
-      ruleId: "dining-from-emergency",
-      fromCategoryId: "emergency",
-      toCategoryId: "dining",
-      enabled: true,
-    });
-    run(actorId, {
-      type: "rule.set",
-      ruleId: "shopping-from-travel",
-      fromCategoryId: "travel",
-      toCategoryId: "shopping",
-      enabled: false,
-    });
   }
   for (const [id, weights] of [
     ["rent", { [userId]: 1, [partnerId]: 1 }],
@@ -743,18 +729,13 @@ export function buildDevelopmentSeed({
     (category) => category.id === "dining",
   )!;
   if (dining.available < 0)
-    run(
-      userId,
-      {
-        type: "cover",
-        fromCategoryId: "emergency",
-        toCategoryId: "dining",
-        month,
-        amount: -dining.available,
-        ruleId: "dining-from-emergency",
-      },
-      "agent",
-    );
+    run(userId, {
+      type: "cover",
+      fromCategoryId: "emergency",
+      toCategoryId: "dining",
+      month,
+      amount: -dining.available,
+    });
   run(userId, {
     type: "settlement.record",
     settlementId: "current-partial-settlement",

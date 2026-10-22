@@ -5,6 +5,7 @@ import {
   available,
   fillPurchase,
   openRegister,
+  saved,
   transactionRow,
   transactions,
 } from "./shell-controls";
@@ -45,9 +46,7 @@ test("retrying a purchase whose committed response was lost has exactly one fina
   await expect(transactionRow(page, "Uncertain market")).toContainText(
     "$12.50",
   );
-  await expect(
-    page.getByRole("status").filter({ hasText: "Saving your changes…" }),
-  ).toHaveCount(0);
+  await saved(page);
   expect(droppedCommittedResponse).toBe(true);
   expect(attempts).toBe(2);
 
