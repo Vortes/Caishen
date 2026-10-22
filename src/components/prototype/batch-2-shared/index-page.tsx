@@ -1,4 +1,9 @@
 import Link from "next/link";
+import {
+  ItemNotes,
+  ReviewNotesBar,
+  ReviewNotesProvider,
+} from "~/components/prototype/review-notes";
 import { LegacyShots, SchemeTheme, type Shot } from "./legacy-shots";
 import { choices } from "./choices";
 import styles from "./index-page.module.css";
@@ -131,69 +136,93 @@ const states: { label: string; href: string; note: string; shots: Shot[] }[] = [
 export function Batch2Index() {
   return (
     <SchemeTheme className={styles.page}>
-      <header className={styles.header}>
-        <h1>Batch 2: shared expenses</h1>
-        <p>
-          Design prototype for porting the legacy shared-expense features into
-          the app shell. Hardcoded data for Alex and Jordan in October 2026;
-          nothing here reads or writes a budget. Everything happens in place in
-          the details panel, with no dialogs except the one variant that tests
-          one.
-        </p>
-      </header>
+      <ReviewNotesProvider
+        storageKey="batch-2"
+        title="Batch 2: shared expenses"
+      >
+        <header className={styles.header}>
+          <h1>Batch 2: shared expenses</h1>
+          <p>
+            Design prototype for porting the legacy shared-expense features into
+            the app shell. Hardcoded data for Alex and Jordan in October 2026;
+            nothing here reads or writes a budget. Everything happens in place
+            in the details panel, with no dialogs except the one variant that
+            tests one.
+          </p>
+        </header>
+        <ReviewNotesBar />
 
-      <section className={styles.section} aria-labelledby="flows">
-        <h2 id="flows">Flows</h2>
-        <ul className={styles.list}>
-          {flows.map((flow) => (
-            <li key={flow.title} className={styles.item}>
-              <Link href={flow.href} className={styles.row}>
-                <strong>{flow.title}</strong>
-                <span>{flow.try}</span>
-                <small>{flow.legacy}</small>
-              </Link>
-              <LegacyShots shots={flow.shots} />
-            </li>
-          ))}
-        </ul>
-      </section>
+        <section className={styles.section} aria-labelledby="flows">
+          <h2 id="flows">Flows</h2>
+          <ul className={styles.list}>
+            {flows.map((flow) => (
+              <li key={flow.title} className={styles.item}>
+                <Link href={flow.href} className={styles.row}>
+                  <strong>{flow.title}</strong>
+                  <span>{flow.try}</span>
+                  <small>{flow.legacy}</small>
+                </Link>
+                <LegacyShots shots={flow.shots} />
+                <div className={styles.review}>
+                  <ItemNotes
+                    id={`flow:${flow.title}`}
+                    title={`Flow: ${flow.title}`}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
 
-      <section className={styles.section} aria-labelledby="states">
-        <h2 id="states">States</h2>
-        <ul className={styles.list}>
-          {states.map((state) => (
-            <li key={state.label} className={styles.item}>
-              <Link href={state.href} className={styles.row}>
-                <strong>{state.label}</strong>
-                <span>{state.note}</span>
-              </Link>
-              <LegacyShots shots={state.shots} />
-            </li>
-          ))}
-        </ul>
-        <p className={styles.footnote}>
-          Every screen also has Saves fail (the offline error each editor
-          shows), a light theme, and Reset in the bar at the top.
-        </p>
-      </section>
+        <section className={styles.section} aria-labelledby="states">
+          <h2 id="states">States</h2>
+          <ul className={styles.list}>
+            {states.map((state) => (
+              <li key={state.label} className={styles.item}>
+                <Link href={state.href} className={styles.row}>
+                  <strong>{state.label}</strong>
+                  <span>{state.note}</span>
+                </Link>
+                <LegacyShots shots={state.shots} />
+                <div className={styles.review}>
+                  <ItemNotes
+                    id={`state:${state.label}`}
+                    title={`State: ${state.label}`}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className={styles.footnote}>
+            Every screen also has Saves fail (the offline error each editor
+            shows), a light theme, and Reset in the bar at the top.
+          </p>
+        </section>
 
-      <section className={styles.section} aria-labelledby="choices">
-        <h2 id="choices">Design choices to make</h2>
-        <p className={styles.footnote}>
-          Each toggle in the bar moves one variable. The first option is the
-          recommendation.
-        </p>
-        <ul className={styles.list}>
-          {Object.values(choices).map((choice) => (
-            <li key={choice.variable} className={styles.choice}>
-              <strong>{choice.variable}</strong>
-              <span>
-                {choice.options.map(([, label]) => label).join(" · ")}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
+        <section className={styles.section} aria-labelledby="choices">
+          <h2 id="choices">Design choices to make</h2>
+          <p className={styles.footnote}>
+            Each toggle in the bar moves one variable. The first option is the
+            recommendation.
+          </p>
+          <ul className={styles.list}>
+            {Object.values(choices).map((choice) => (
+              <li key={choice.variable} className={styles.choice}>
+                <strong>{choice.variable}</strong>
+                <span>
+                  {choice.options.map(([, label]) => label).join(" · ")}
+                </span>
+                <div className={styles.review}>
+                  <ItemNotes
+                    id={`choice:${choice.variable}`}
+                    title={`Choice: ${choice.variable}`}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </ReviewNotesProvider>
     </SchemeTheme>
   );
 }
