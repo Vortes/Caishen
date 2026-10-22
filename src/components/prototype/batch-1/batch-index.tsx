@@ -28,8 +28,10 @@ const screens: {
     where: "Signed out",
     href: WELCOME_PATH,
     covers:
-      "The legacy Welcome, same content and purpose, on the design system: Create your account, Sign in, Privacy policy, and Terms of service.",
-    variants: [],
+      "The legacy Welcome, same content and purpose, allowed past the design system’s limits: the story, three points, Create your account, Sign in, Privacy policy, and Terms of service.",
+    variants: [
+      "A: faithful port of the legacy look; B moves the headline scale; C moves the story panel’s surface (the brand pinwheel)",
+    ],
   },
   {
     title: "Onboarding",

@@ -1,123 +1,304 @@
-/* The legacy Welcome on the design system. The type stays on the app's
-   scale: the headline is the figure step, the panel title the title step. */
+/* The Welcome page may go past the app's design system: a display size
+   above 24px, its own violet-tinted surfaces, and a solid primary button,
+   as the legacy page had. Color comes from the same hue as the app's
+   tokens (--hue) and the brand tile, so it still reads as Caishen. */
 
 .welcome {
+  --welcome-story: oklch(0.205 0.04 var(--hue));
+  --welcome-form: oklch(0.14 0.028 var(--hue));
+  --welcome-line: oklch(0.27 0.03 var(--hue));
+  --welcome-text: oklch(0.96 0.012 var(--hue));
+  --welcome-muted: oklch(0.78 0.03 var(--hue));
+  --welcome-quiet: oklch(0.66 0.03 var(--hue));
+  --welcome-accent: oklch(0.8 0.1 var(--hue));
+  --welcome-button: oklch(0.58 0.19 var(--hue));
+  --welcome-button-hover: oklch(0.54 0.2 var(--hue));
+  --welcome-control: oklch(0.25 0.035 var(--hue));
+  --welcome-control-hover: oklch(0.29 0.04 var(--hue));
+  --welcome-mark: oklch(0.235 0.05 var(--hue));
+  --headline-size: clamp(44px, 4.6vw, 66px);
+
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-gutter);
-  height: 100%;
-  padding: var(--space-gutter);
+  min-height: 100dvh;
+  background: var(--welcome-form);
+  color: var(--welcome-text);
+  font-synthesis: none;
+}
+:global([data-theme="light"]) .welcome {
+  --welcome-story: oklch(0.945 0.022 var(--hue));
+  --welcome-form: oklch(0.99 0.004 var(--hue));
+  --welcome-line: oklch(0.89 0.018 var(--hue));
+  --welcome-text: oklch(0.2 0.03 var(--hue));
+  --welcome-muted: oklch(0.42 0.03 var(--hue));
+  --welcome-quiet: oklch(0.52 0.03 var(--hue));
+  --welcome-accent: oklch(0.5 0.17 var(--hue));
+  --welcome-button: oklch(0.55 0.2 var(--hue));
+  --welcome-button-hover: oklch(0.5 0.2 var(--hue));
+  --welcome-control: oklch(0.93 0.018 var(--hue));
+  --welcome-control-hover: oklch(0.9 0.022 var(--hue));
+  --welcome-mark: oklch(0.915 0.032 var(--hue));
 }
 
-/* The story: a panel like the app's main panel. */
+/* B moves one variable: the headline's scale. */
+.welcome[data-variant="display"] {
+  --headline-size: clamp(56px, 6.4vw, 96px);
+}
+
+/* ---------- The story ---------- */
+
 .story {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 40px;
-  padding: 40px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-panel);
-  background: var(--surface-panel);
+  gap: 48px;
+  overflow: hidden;
+  padding: 56px 60px;
+  border-right: 1px solid var(--welcome-line);
+  background: var(--welcome-story);
+}
+.story > :not(.pinwheel) {
+  position: relative;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+.wordmark > svg {
+  width: 28px;
+  height: 28px;
+}
+.period {
+  color: var(--welcome-accent);
 }
 .storyCopy {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
 }
 .headline {
-  font-size: var(--type-figure);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.2;
+  font-size: var(--headline-size);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
 }
-.lede {
-  max-width: 46ch;
-  color: var(--text-secondary);
+.welcome[data-variant="display"] .headline {
+  letter-spacing: -0.055em;
+  line-height: 0.96;
+}
+.intro {
+  max-width: 34ch;
+  color: var(--welcome-muted);
+  font-size: 18px;
   line-height: 1.55;
   text-wrap: pretty;
 }
 .storyFoot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
+  gap: 10px;
+  color: var(--welcome-quiet);
+  font-size: 13px;
 }
 
-/* The way in. */
-.main {
+/* C moves one variable: the story panel's surface. The pinwheel from the
+   brand mark, drawn one step off the panel's color and cropped by the
+   edge, with the panel shading darker toward it. */
+.welcome[data-variant="atmosphere"] .story {
+  background: linear-gradient(
+    to bottom,
+    var(--welcome-story),
+    color-mix(in oklch, var(--welcome-story) 70%, var(--welcome-form))
+  );
+}
+.pinwheel {
+  position: absolute;
+  right: -22%;
+  bottom: -26%;
+  width: 92%;
+  fill: var(--welcome-mark);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------- The way in ---------- */
+
+.form {
   display: flex;
   align-items: center;
-  overflow-y: auto;
-  padding: 40px;
+  padding: 56px 88px;
 }
 .column {
   display: flex;
   flex-direction: column;
-  gap: 24px;
   width: 100%;
-  max-width: 420px;
+  max-width: 548px;
 }
-.intro {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.kicker {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  font-weight: 500;
+.eyebrow {
+  margin-bottom: 14px;
+  color: var(--welcome-accent);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 .title {
-  font-size: var(--type-title);
-  font-weight: 600;
+  margin-bottom: 14px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.lede {
+  max-width: 48ch;
+  margin-bottom: 32px;
+  color: var(--welcome-muted);
+  font-size: 16px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 26px;
+  border-bottom: 1px solid var(--welcome-line);
+}
+.primary,
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background-color 150ms,
+    transform 100ms;
+}
+.primary {
+  background: var(--welcome-button);
+  color: white;
+}
+.primary:hover {
+  background: var(--welcome-button-hover);
+}
+.secondary {
+  background: var(--welcome-control);
+  color: var(--welcome-text);
+}
+.secondary:hover {
+  background: var(--welcome-control-hover);
+}
+.primary:active,
+.secondary:active {
+  transform: scale(0.985);
+}
+.primary:focus-visible,
+.secondary:focus-visible,
+.policies a:focus-visible {
+  outline: 2px solid var(--welcome-accent);
+  outline-offset: 2px;
 }
 .facts {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin: 0;
-  padding: 20px 0 0;
-  border-top: 1px solid var(--border-subtle);
+  gap: 18px;
+  margin: 26px 0 0;
+  padding: 0;
   list-style: none;
-  color: var(--text-secondary);
+  color: var(--welcome-muted);
+  font-size: 16px;
 }
 .facts li {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 .facts li > svg {
   flex: none;
-  color: var(--text-tertiary);
+  color: var(--welcome-accent);
 }
 .policies {
   display: flex;
   gap: 20px;
-  font-size: var(--type-small);
+  margin-top: 24px;
+  font-size: 14px;
 }
-/* The links are 44px tall for touch, like the legacy page's. */
 .policies a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  color: var(--welcome-text);
+  text-decoration: underline;
+  text-decoration-color: var(--welcome-quiet);
+  text-decoration-thickness: from-font;
+  text-underline-offset: 4px;
+}
+.policies a:hover {
+  text-decoration-color: currentColor;
 }
 
-@media (max-width: 760px) {
-  .welcome {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-    overflow-y: auto;
+@media (max-width: 980px) {
+  .form {
+    padding: 48px 40px;
   }
   .story {
-    padding: 24px;
+    padding: 48px 40px;
+  }
+}
+
+/* Phones: the story becomes the top of one column. */
+@media (max-width: 720px) {
+  .welcome {
+    --headline-size: 44px;
+    grid-template-columns: 1fr;
+  }
+  .welcome[data-variant="display"] {
+    --headline-size: 58px;
+  }
+  .story {
+    gap: 40px;
+    padding: 28px 20px 36px;
+    border-right: 0;
+    border-bottom: 1px solid var(--welcome-line);
   }
   .storyFoot {
     display: none;
   }
-  .main {
+  .intro {
+    font-size: 16px;
+  }
+  .form {
     align-items: flex-start;
-    padding: 24px 16px 140px;
+    padding: 36px 20px 140px;
+  }
+  .title {
+    font-size: 26px;
+  }
+  .pinwheel {
+    right: -34%;
+    bottom: -62%;
+    width: 72%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary,
+  .secondary {
+    transition: none;
+  }
+  .primary:active,
+  .secondary:active {
+    transform: none;
   }
 }
