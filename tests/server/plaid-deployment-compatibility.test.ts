@@ -5,6 +5,9 @@ import {
   applyTransactionSync,
   normalizePlaidTransaction,
 } from "../../src/server/integrations/transactions";
+import type { BankMapping } from "../../src/server/services/bank-account-setup";
+import type { ImportRowState } from "../../src/server/services/bank-import-rows";
+import { applyQuarantine } from "../../src/server/services/bank-quarantine";
 import {
   bankAccountDetails,
   bankInboxItems,
@@ -13,12 +16,16 @@ import {
 
 // The inbox of a connection whose column holds these details, with its
 // import state in rows (ADR 0006).
-function inbox(column: unknown, rows?: { records: unknown[] }) {
+function inbox(
+  column: unknown,
+  rows?: Partial<ImportRowState>,
+  accountMappings: Record<string, BankMapping> = {},
+) {
   const connection = {
     id: "connection-alice",
     clerkUserId: "alice",
     imports: column,
-    accountMappings: {},
+    accountMappings,
   };
   return bankInboxItems(
     [
@@ -29,7 +36,13 @@ function inbox(column: unknown, rows?: { records: unknown[] }) {
             ? [
                 [
                   connection.id,
-                  { resolved: {}, errors: {}, reviews: {}, ...rows } as never,
+                  {
+                    records: [],
+                    resolved: {},
+                    errors: {},
+                    reviews: {},
+                    ...rows,
+                  },
                 ],
               ]
             : [],
@@ -40,7 +53,7 @@ function inbox(column: unknown, rows?: { records: unknown[] }) {
   );
 }
 
-void test("budget loading accepts persisted Plaid account metadata alongside import history", async () => {
+void test("budget loading accepts Plaid metadata and only shows imports after their account is added", async () => {
   const records = applyTransactionSync(
     [],
     {
@@ -88,13 +101,74 @@ void test("budget loading accepts persisted Plaid account metadata alongside imp
   };
 
   assert.deepEqual(bankAccountDetails(imports), metadata);
-  const items = inbox(metadata, { records });
+  assert.deepEqual(inbox(metadata, { records }), []);
+  const items = inbox(
+    metadata,
+    { records },
+    {
+      "provider-checking": {
+        accountId: "checking",
+        startDate: "2026-10-01",
+      },
+    },
+  );
   assert.equal(items.length, 1);
   assert.equal(items[0]!.payee, "Bookshop");
   assert.equal(items[0]!.amount, -1250);
   assert.equal(items[0]!.providerAccountId, "provider-checking");
+  assert.equal(items[0]!.accountId, "checking");
   // Import state the column held before rows is never read from it.
   assert.deepEqual(inbox(imports), []);
+});
+
+void test("the bank inbox only shows unreadable transactions for accounts that have been added", () => {
+  const reviews = applyQuarantine(
+    {},
+    "connection-alice",
+    { added: [], modified: [], removed: [] },
+    [
+      {
+        providerTransactionId: "checking-purchase",
+        providerAccountId: "provider-checking",
+        reason: "unsupported_currency",
+        pending: false,
+        date: "2026-10-20",
+        name: "Checking purchase",
+        amount: 12.5,
+        currency: "CAD",
+      },
+      {
+        providerTransactionId: "unadded-purchase",
+        providerAccountId: "provider-unadded",
+        reason: "unreadable",
+        pending: false,
+        date: "2026-10-20",
+        name: "Unadded account purchase",
+        amount: null,
+        currency: "USD",
+      },
+    ],
+    "2026-10-20",
+  );
+
+  const items = inbox(
+    {},
+    { reviews },
+    {
+      "provider-checking": {
+        accountId: "checking",
+        startDate: "2026-10-01",
+      },
+    },
+  );
+  assert.deepEqual(
+    items.map(({ payee, accountId, quarantined }) => ({
+      payee,
+      accountId,
+      quarantined,
+    })),
+    [{ payee: "Checking purchase", accountId: "checking", quarantined: true }],
+  );
 });
 
 void test("budget loading still accepts connections saved before Plaid account metadata", async () => {
