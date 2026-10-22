@@ -14,6 +14,8 @@ export type Persistence = {
    * tabs writing the same storage never move it backward.
    */
   write(commit: Commit): Promise<void>;
+  /** Forgets every stored row and revision. */
+  clear(): Promise<void>;
   close(): void;
 };
 
@@ -31,6 +33,11 @@ export class MemoryPersistence implements Persistence {
   write(commit: Commit): Promise<void> {
     if (!this.stored || commit.revision > this.stored.revision)
       this.stored = { revision: commit.revision, rows: commit.snapshot };
+    return Promise.resolve();
+  }
+
+  clear(): Promise<void> {
+    this.stored = null;
     return Promise.resolve();
   }
 
