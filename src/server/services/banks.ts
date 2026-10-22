@@ -419,10 +419,9 @@ export function bankInboxItems(
     const { connection, state, mappings } = read;
     const imports = state.records
       .filter((record) => {
-        const eligibility = bankImportEligibility(
-          mappings[record.current.providerAccountId],
-          record,
-        );
+        const mapping = mappings[record.current.providerAccountId];
+        if (!mapping) return false;
+        const eligibility = bankImportEligibility(mapping, record);
         const resolution = state.resolved[record.id];
         return (
           ["eligible", "opening_snapshot_changed"].includes(eligibility) &&
@@ -479,8 +478,9 @@ export function bankInboxItems(
     const quarantined = quarantinedTransactions(state.reviews)
       .filter(
         (review) =>
+          mappings[review.transaction.providerAccountId] &&
           state.resolved[review.logicalTransactionId]?.fingerprint !==
-          quarantineFingerprint(review.transaction),
+            quarantineFingerprint(review.transaction),
       )
       .map((review) => {
         const { transaction } = review;
