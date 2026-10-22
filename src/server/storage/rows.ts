@@ -663,23 +663,24 @@ export async function lacksCounterpartyAccounts(
   db: Database,
   userId: string,
 ): Promise<boolean> {
-  const member = await db.workspaceMember.findUnique({
-    where: { clerkUserId: userId },
-    select: { workspaceId: true },
+  const workspace = await db.workspace.findFirst({
+    where: { members: { some: { clerkUserId: userId } } },
+    select: {
+      id: true,
+      _count: { select: { budgetMembers: { where: { deleted: false } } } },
+    },
   });
-  if (!member) return false;
-  const { workspaceId } = member;
-  const [members, accounts] = await Promise.all([
-    db.member.count({ where: { workspaceId, deleted: false } }),
-    db.account.findMany({
-      where: {
-        workspaceId,
-        deleted: false,
-        kind: { in: ["partner", "reimbursements"] },
-      },
-      select: { kind: true },
-    }),
-  ]);
+  if (!workspace) return false;
+  const workspaceId = workspace.id;
+  const members = workspace._count.budgetMembers;
+  const accounts = await db.account.findMany({
+    where: {
+      workspaceId,
+      deleted: false,
+      kind: { in: ["partner", "reimbursements"] },
+    },
+    select: { kind: true },
+  });
   const count = (kind: string) =>
     accounts.filter((account) => account.kind === kind).length;
   return (

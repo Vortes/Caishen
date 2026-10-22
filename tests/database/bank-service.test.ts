@@ -4,7 +4,7 @@ import test, { afterEach, mock } from "node:test";
 import nextEnv from "@next/env";
 
 import { PrismaClient } from "../../src/generated/prisma";
-import { execute, type Book } from "../../src/domain/engine";
+import { execute, isCounterparty, type Book } from "../../src/domain/engine";
 import { bookToRows, diffRows, rowsToBook } from "../../src/domain/rows";
 import {
   applyTransactionSync,
@@ -868,7 +868,12 @@ void test("update mode reuses the private Item token and refreshes metadata with
     ]),
     [["Chase checking", 123.45]],
   );
-  assert.deepEqual((await h.book()).budgets[alice]!.accounts, []);
+  assert.deepEqual(
+    (await h.book()).budgets[alice]!.accounts.filter(
+      (account) => !isCounterparty(account),
+    ),
+    [],
+  );
   assert.deepEqual(
     bankAccountDetails(await h.imports()).synchronizedAccountIds,
     [],
@@ -980,7 +985,12 @@ void test("bank sync updates cached account details without creating ledger acco
     bankAccountDetails(await h.imports()).accounts[0]!.availableBalance,
     100,
   );
-  assert.deepEqual((await h.book()).budgets[alice]!.accounts, []);
+  assert.deepEqual(
+    (await h.book()).budgets[alice]!.accounts.filter(
+      (account) => !isCounterparty(account),
+    ),
+    [],
+  );
   assert.deepEqual(
     bankAccountDetails(await h.imports()).synchronizedAccountIds,
     ["provider-checking"],

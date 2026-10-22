@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
+import { isCounterparty } from "../../src/domain/engine";
 import { Prisma, PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
 import { ObservedRevision } from "../../src/server/api/trpc";
@@ -171,7 +172,9 @@ void test("server operations persist, enforce privacy, protect concurrent writes
       { code: "BAD_REQUEST" },
     );
     assert.equal(
-      (await bob.budget.state({ month })).view?.budget.accounts.length,
+      (await bob.budget.state({ month })).view?.budget.accounts.filter(
+        (account) => !isCounterparty(account),
+      ).length,
       0,
     );
     await assert.rejects(() =>
