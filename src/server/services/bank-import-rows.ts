@@ -1,20 +1,43 @@
 import { z } from "zod";
-import { rowKey, type TableData, type WireRow } from "~/domain/rows";
-import { storedImportSchema } from "~/server/integrations/transactions";
-import { importStateSchema } from "./banks";
+import {
+  diffRows,
+  rowKey,
+  rowKeyParts,
+  type ChangeSet,
+  type RowSet,
+  type TableData,
+  type WireRow,
+} from "~/domain/rows";
+import {
+  storedImportSchema,
+  storedImportsSchema,
+} from "~/server/integrations/transactions";
+import { reportUnreadable, zodIssues } from "./stored-data";
 
 // A bank connection's import state as bankImport rows (ADR 0006): one row
 // per logical bank transaction, holding its stored import, how it was
 // resolved, its error, and its review evidence. The connection's own details
 // (accounts, institution, sync status) stay on BankConnection.
 
-type ImportState = z.infer<typeof importStateSchema>;
-export type ImportRowState = Pick<
-  ImportState,
-  "records" | "resolved" | "errors" | "reviews"
->;
+/** The parts of a connection's import state kept in bankImport rows. */
+export const importRowStateShape = {
+  records: storedImportsSchema,
+  resolved: z.record(
+    z
+      .object({
+        fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+        transactionId: z.string().optional(),
+        ignored: z.boolean().optional(),
+        decidedAt: z.string().datetime().optional(),
+      })
+      .strict(),
+  ),
+  errors: z.record(z.string()),
+  reviews: z.record(z.array(z.unknown()).max(100)).default({}),
+};
+export type ImportRowState = z.infer<z.ZodObject<typeof importRowStateShape>>;
 
-const stateShape = importStateSchema.shape;
+const stateShape = importRowStateShape;
 
 // Readers for the BankImport table's JSON columns.
 export const bankImportColumnSchemas = {
@@ -94,4 +117,67 @@ export function importStatesFromRows(
       );
   }
   return states;
+}
+
+/**
+ * Each of a member's bank connections' import state from the household's
+ * rows, or "unreadable" for a connection whose rows don't read; that
+ * connection alone is under maintenance.
+ */
+export function readImportStates(
+  rows: RowSet,
+  userId: string,
+): Map<string, ImportRowState | "unreadable"> {
+  const byConnection = new Map<string, WireRow[]>();
+  for (const row of rows.get("bankImport")?.values() ?? []) {
+    if (row.deleted || rowKeyParts(row.id)[0] !== userId) continue;
+    const connectionId = rowKeyParts(row.id)[1]!;
+    byConnection.set(connectionId, [
+      ...(byConnection.get(connectionId) ?? []),
+      row,
+    ]);
+  }
+  const states = new Map<string, ImportRowState | "unreadable">();
+  for (const [connectionId, connectionRows] of byConnection)
+    try {
+      states.set(
+        connectionId,
+        importStatesFromRows(connectionRows).get(connectionId) ?? emptyState(),
+      );
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
+      reportUnreadable({ record: "BankImport", connectionId, userId }, [
+        { issues: zodIssues(error) },
+      ]);
+      states.set(connectionId, "unreadable");
+    }
+  return states;
+}
+
+export const emptyState = (): ImportRowState => ({
+  records: [],
+  resolved: {},
+  errors: {},
+  reviews: {},
+});
+
+/**
+ * The rows that change when a connection's import state becomes `next`,
+ * as a change set without an operation.
+ */
+export function importStateChange(
+  rows: RowSet,
+  userId: string,
+  connectionId: string,
+  next: ImportRowState,
+): ChangeSet {
+  const prefix = `${rowKey(userId, connectionId)}/`;
+  const current = [...(rows.get("bankImport")?.values() ?? [])].filter(
+    (row) => !row.deleted && row.id.startsWith(prefix),
+  );
+  return {
+    operationId: "",
+    revision: 0,
+    ...diffRows(current, importStateRows(userId, connectionId, next)),
+  };
 }

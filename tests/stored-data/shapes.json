@@ -729,85 +729,16 @@
       "type": "string"
     }
   },
-  "Workspace.history": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "actorId": "required",
-        "future": "required",
-        "past": "required",
-        "revision": "required"
-      }
-    },
-    "$.actorId": {
-      "type": "string"
-    },
-    "$.revision": {
-      "type": "number"
-    },
-    "$.past": {
-      "type": "array"
-    },
-    "$.past[]": {
-      "type": "object",
-      "fields": {
-        "label": "required",
-        "redo": "required",
-        "undo": "required"
-      }
-    },
-    "$.past[].label": {
-      "type": "string"
-    },
-    "$.past[].undo": {
-      "type": "array"
-    },
-    "$.past[].undo[]": {
-      "type": "any"
-    },
-    "$.past[].redo": {
-      "type": "array"
-    },
-    "$.past[].redo[]": {
-      "type": "any"
-    },
-    "$.future": {
-      "type": "array"
-    },
-    "$.future[]": {
-      "type": "object",
-      "fields": {
-        "label": "required",
-        "redo": "required",
-        "undo": "required"
-      }
-    },
-    "$.future[].label": {
-      "type": "string"
-    },
-    "$.future[].undo": {
-      "type": "array"
-    },
-    "$.future[].undo[]": {
-      "type": "any"
-    },
-    "$.future[].redo": {
-      "type": "array"
-    },
-    "$.future[].redo[]": {
-      "type": "any"
-    }
-  },
   "BankConnection.imports": {
     "$": {
       "type": "object",
       "fields": {
         "accounts": "optional",
-        "errors": "required",
+        "errors": "optional",
         "institutionId": "optional",
         "institutionName": "optional",
-        "records": "required",
-        "resolved": "required",
+        "records": "optional",
+        "resolved": "optional",
         "reviews": "optional",
         "synchronizedAccountIds": "optional",
         "transactionStatus": "optional"

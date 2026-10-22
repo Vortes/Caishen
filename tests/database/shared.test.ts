@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import { type Command } from "../../src/domain/engine";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
@@ -12,7 +13,12 @@ void test("two private server budgets record the exact rent/utilities settlement
   const a = `test-shared-a-${randomUUID()}`,
     b = `test-shared-b-${randomUUID()}`;
   const api = (userId: string) =>
-    createCaller({ db, userId, headers: new Headers() });
+    createCaller({
+      revision: new ObservedRevision(),
+      db,
+      userId,
+      headers: new Headers(),
+    });
   const alice = api(a),
     bob = api(b);
   const state = (userId: string) =>
@@ -20,7 +26,8 @@ void test("two private server budgets record the exact rent/utilities settlement
   const run = async (userId: string, command: Command) =>
     api(userId).budget.execute({
       command,
-      expectedRevision: (await state(userId)).revision,
+      clientId: "test",
+      baseRevision: (await state(userId)).revision,
     });
   try {
     await alice.budget.onboard({
@@ -200,7 +207,7 @@ void test("two private server budgets record the exact rent/utilities settlement
           { id: { in: memberships.map((m) => m.workspaceId) } },
           {
             members: { none: {} },
-            book: { path: ["budgets", b, "userId"], equals: b },
+            budgetMembers: { some: { userId: b } },
           },
         ],
       },

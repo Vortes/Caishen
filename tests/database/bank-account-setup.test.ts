@@ -5,6 +5,7 @@ import test from "node:test";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createBook } from "../../src/domain/engine";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   applyTransactionSync,
   normalizePlaidTransaction,
@@ -15,6 +16,12 @@ import {
 } from "../../src/server/services/bank-account-setup";
 import { jsonValue } from "../../src/server/services/safety";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
+import { recentOperations } from "../../src/server/storage/rows";
+import {
+  createBankConnection,
+  createHousehold,
+  setConnectionImports,
+} from "./fixtures";
 
 assertDevelopmentDatabase(process.env);
 void test(
@@ -26,7 +33,12 @@ void test(
     const [aliceId, bobId] = users as [string, string];
     const connectionId = `setup-connection-${randomUUID()}`;
     const api = (userId: string) =>
-      createCaller({ db, userId, headers: new Headers() });
+      createCaller({
+        revision: new ObservedRevision(),
+        db,
+        userId,
+        headers: new Headers(),
+      });
     const alice = api(aliceId);
     const bob = api(bobId);
     const today = bankSetupDate("America/Los_Angeles");
@@ -89,6 +101,14 @@ void test(
       transactionStatus: null as string | null,
       synchronizedAccountIds: [] as string[],
     };
+    const setups = async () => {
+      const member = await db.workspaceMember.findUniqueOrThrow({
+        where: { clerkUserId: aliceId },
+      });
+      return (await recentOperations(db, member.workspaceId, 100)).filter(
+        (operation) => operation.type === "bank.accounts.setup",
+      ).length;
+    };
     const request = {
       connectionId,
       operationId: randomUUID(),
@@ -111,13 +131,8 @@ void test(
         data: users.map((clerkUserId) => ({ clerkUserId })),
       });
       for (const userId of users)
-        await db.workspace.create({
-          data: {
-            book: jsonValue(createBook(userId, "Fixture", month)),
-            members: { create: { clerkUserId: userId } },
-          },
-        });
-      await db.bankConnection.create({
+        await createHousehold(db, createBook(userId, "Fixture", month));
+      await createBankConnection(db, {
         data: {
           id: connectionId,
           clerkUserId: aliceId,
@@ -128,6 +143,7 @@ void test(
           lastSyncedAt: new Date(),
         },
       });
+      request.expectedRevision = (await state()).revision;
       await assert.rejects(bob.budget.setupBankAccounts(request), {
         code: "NOT_FOUND",
       });
@@ -135,18 +151,12 @@ void test(
         code: "PRECONDITION_FAILED",
       });
       imports.transactionStatus = "HISTORICAL_UPDATE_COMPLETE";
-      await db.bankConnection.update({
-        where: { id: connectionId },
-        data: { imports: jsonValue(imports) },
-      });
+      await setConnectionImports(db, aliceId, connectionId, imports);
       await assert.rejects(alice.budget.setupBankAccounts(request), {
         code: "PRECONDITION_FAILED",
       });
       imports.synchronizedAccountIds = ["checking", "card", "investment"];
-      await db.bankConnection.update({
-        where: { id: connectionId },
-        data: { imports: jsonValue(imports) },
-      });
+      await setConnectionImports(db, aliceId, connectionId, imports);
       const yesterday = new Date();
       yesterday.setUTCDate(yesterday.getUTCDate() - 1);
       await db.bankConnection.update({
@@ -161,7 +171,10 @@ void test(
         data: { lastSyncedAt: new Date() },
       });
       await assert.rejects(
-        alice.budget.setupBankAccounts({ ...request, expectedRevision: 1 }),
+        alice.budget.setupBankAccounts({
+          ...request,
+          expectedRevision: request.expectedRevision - 1,
+        }),
         { code: "CONFLICT" },
       );
       await assert.rejects(
@@ -189,16 +202,13 @@ void test(
         { code: "BAD_REQUEST" },
       );
       const untouched = await state();
-      assert.equal(untouched.revision, 0);
+      assert.equal(untouched.revision, request.expectedRevision);
       assert.deepEqual(untouched.view!.budget.accounts, []);
       assert.deepEqual(untouched.connections[0]!.accountMappings, {});
-      assert.equal(
-        await db.budgetOperation.count({ where: { actorId: aliceId } }),
-        0,
-      );
+      assert.equal(await setups(), 0);
 
       const added = await alice.budget.setupBankAccounts(request);
-      assert.equal(added.revision, 1);
+      assert.equal(added.revision, request.expectedRevision + 1);
       assert.equal(added.accountIds.length, 2);
       assert.deepEqual(
         await alice.budget.setupBankAccounts({
@@ -215,7 +225,7 @@ void test(
             request.accounts[1]!,
           ],
         }),
-        { code: "CONFLICT" },
+        { code: "BAD_REQUEST", message: /different details/ },
       );
       const saved = await state();
       assert.equal(saved.view!.cash, 120050);
@@ -256,10 +266,7 @@ void test(
         (await bob.budget.state({ month })).view!.accounts.length,
         0,
       );
-      assert.equal(
-        await db.budgetOperation.count({ where: { actorId: aliceId } }),
-        1,
-      );
+      assert.equal(await setups(), 1);
       await assert.rejects(
         alice.budget.setupBankAccounts({
           ...request,
@@ -291,10 +298,7 @@ void test(
         { code: "BAD_REQUEST" },
       );
       baseline.current.amountCents = 2500;
-      await db.bankConnection.update({
-        where: { id: connectionId },
-        data: { imports: jsonValue(imports) },
-      });
+      await setConnectionImports(db, aliceId, connectionId, imports);
       const changed = await state();
       assert.match(
         changed.imports.find((record) => record.logicalId === baseline.id)!
@@ -325,7 +329,8 @@ void test(
       );
 
       await alice.budget.execute({
-        expectedRevision: added.revision,
+        clientId: "test",
+        baseRevision: (await state()).revision,
         command: {
           type: "account.add",
           id: randomUUID(),
@@ -337,7 +342,7 @@ void test(
         },
       });
       const secondConnectionId = `second-${randomUUID()}`;
-      await db.bankConnection.create({
+      await createBankConnection(db, {
         data: {
           id: secondConnectionId,
           clerkUserId: aliceId,
@@ -364,7 +369,7 @@ void test(
       const link = {
         connectionId: secondConnectionId,
         operationId: randomUUID(),
-        expectedRevision: added.revision + 1,
+        expectedRevision: (await state()).revision,
         accounts: [
           {
             providerAccountId: "manual-checking",

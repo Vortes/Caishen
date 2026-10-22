@@ -27,7 +27,6 @@ model Workspace {
   resetRevision    Int               @default(0)
   // Before rows (ADR 0006); kept only for the one-time copy into rows.
   book             Json?
-  history          Json              @default("{}")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   members          WorkspaceMember[]

@@ -4,7 +4,12 @@ import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
+import {
+  recentOperations,
+  writeChangeSet,
+} from "../../src/server/storage/rows";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
@@ -14,22 +19,30 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
   const bobId = `test-undo-bob-${randomUUID()}`;
   const users = [aliceId, bobId];
   const caller = (userId: string) =>
-    createCaller({ db, userId, headers: new Headers() });
+    createCaller({
+      revision: new ObservedRevision(),
+      db,
+      userId,
+      headers: new Headers(),
+    });
   const alice = caller(aliceId);
   const bob = caller(bobId);
   const month = "2026-10";
   try {
-    for (const [api, name] of [
-      [alice, "Alice"],
-      [bob, "Bob"],
-    ] as const)
-      await api.budget.onboard({
-        name,
-        month,
-        timezone: "America/Los_Angeles",
-      });
-    await alice.budget.execute({
-      expectedRevision: 0,
+    const [start] = await Promise.all(
+      (
+        [
+          [alice, "Alice"],
+          [bob, "Bob"],
+        ] as const
+      ).map(([api, name]) =>
+        api.budget.onboard({ name, month, timezone: "America/Los_Angeles" }),
+      ),
+    );
+    let revision = start!.revision;
+    ({ revision } = await alice.budget.execute({
+      clientId: "test",
+      baseRevision: revision,
       command: {
         type: "account.add",
         id: randomUUID(),
@@ -39,16 +52,18 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
         openingBalance: 100_000,
         date: `${month}-01`,
       },
-    });
-    await alice.budget.execute({
-      expectedRevision: 1,
+    }));
+    ({ revision } = await alice.budget.execute({
+      clientId: "test",
+      baseRevision: revision,
       command: {
         type: "category.add",
         id: randomUUID(),
         categoryId: "food",
         name: "Groceries",
       },
-    });
+    }));
+    const beforeAssignment = revision;
     const assignment = {
       type: "assign" as const,
       id: randomUUID(),
@@ -56,7 +71,11 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
       month,
       amount: 20_000,
     };
-    await alice.budget.execute({ expectedRevision: 2, command: assignment });
+    await alice.budget.execute({
+      clientId: "test",
+      baseRevision: beforeAssignment,
+      command: assignment,
+    });
     const saved = await caller(aliceId).budget.state({ month });
     assert.equal(saved.history.undo, "Assign money");
     const undo = {
@@ -65,19 +84,31 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
       operationId: randomUUID(),
     };
     const undone = await alice.budget.changeHistory(undo);
-    assert.equal(undone.revision, 4);
-    assert.equal((await alice.budget.changeHistory(undo)).revision, 4);
+    assert.equal(undone.revision, saved.revision + 1);
+    assert.equal(
+      (await alice.budget.changeHistory(undo)).revision,
+      undone.revision,
+      "a retried undo answers with its first result",
+    );
     const beforeRedo = await alice.budget.state({ month });
     assert.equal(
       beforeRedo.view?.categories.find((c) => c.id === "food")?.assigned,
       0,
     );
     assert.equal(beforeRedo.history.redo, "Assign money");
-    await alice.budget.execute({ expectedRevision: 2, command: assignment });
-    assert.equal((await alice.budget.state({ month })).revision, 4);
+    // Retrying the original assignment doesn't apply it again.
+    await alice.budget.execute({
+      clientId: "test",
+      baseRevision: beforeAssignment,
+      command: assignment,
+    });
+    assert.equal(
+      (await alice.budget.state({ month })).revision,
+      undone.revision,
+    );
     await alice.budget.changeHistory({
       direction: "redo",
-      expectedRevision: 4,
+      expectedRevision: undone.revision,
       operationId: randomUUID(),
     });
     assert.equal(
@@ -90,16 +121,17 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
       () =>
         alice.budget.changeHistory({
           direction: "undo",
-          expectedRevision: 4,
+          expectedRevision: undone.revision,
           operationId: randomUUID(),
         }),
       { code: "CONFLICT" },
     );
+    const bobRevision = (await bob.budget.state({ month })).revision;
     await assert.rejects(
       () =>
         bob.budget.changeHistory({
           direction: "undo",
-          expectedRevision: 0,
+          expectedRevision: bobRevision,
           operationId: randomUUID(),
         }),
       { code: "BAD_REQUEST" },
@@ -110,7 +142,8 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
     let state = await alice.budget.state({ month });
     assert.deepEqual(state.history, { undo: null, redo: null });
     await alice.budget.execute({
-      expectedRevision: state.revision,
+      clientId: "test",
+      baseRevision: state.revision,
       command: {
         type: "assign",
         id: randomUUID(),
@@ -132,7 +165,8 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
       { code: "BAD_REQUEST" },
     );
     await bob.budget.execute({
-      expectedRevision: partner.revision,
+      clientId: "test",
+      baseRevision: partner.revision,
       command: {
         type: "category.add",
         id: randomUUID(),
@@ -143,7 +177,8 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
     state = await alice.budget.state({ month });
     assert.deepEqual(state.history, { undo: null, redo: null });
     await alice.budget.execute({
-      expectedRevision: state.revision,
+      clientId: "test",
+      baseRevision: state.revision,
       command: {
         type: "assign",
         id: randomUUID(),
@@ -153,12 +188,27 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
       },
     });
     state = await alice.budget.state({ month });
+    assert.equal(state.history.undo, "Assign money");
+    // A bank update for Alice: the provider's operation ends her run.
     const member = await db.workspaceMember.findUniqueOrThrow({
       where: { clerkUserId: aliceId },
     });
-    await db.workspace.update({
-      where: { id: member.workspaceId },
-      data: { revision: { increment: 1 } },
+    await writeChangeSet(db, {
+      workspaceId: member.workspaceId,
+      baseRevision: state.revision,
+      changeSet: {
+        operationId: randomUUID(),
+        revision: 0,
+        before: [],
+        after: [],
+      },
+      operation: {
+        actorId: aliceId,
+        source: "provider",
+        type: "bank.sync",
+        inputHash: "",
+        command: null,
+      },
     });
     await assert.rejects(
       () =>
@@ -180,17 +230,10 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
         }),
       { code: "BAD_REQUEST" },
     );
-    const audit = await db.budgetOperation.findMany({
-      where: { actorId: aliceId },
-    });
-    assert.equal(
-      audit.filter((entry) => entry.type === "history.undo").length,
-      1,
-    );
-    assert.equal(
-      audit.filter((entry) => entry.type === "history.redo").length,
-      1,
-    );
+    const reverts = (
+      await recentOperations(db, member.workspaceId, 100)
+    ).filter((operation) => operation.type === "revert");
+    assert.equal(reverts.length, 2, "one undo and one redo");
   } finally {
     const memberships = await db.workspaceMember.findMany({
       where: { clerkUserId: { in: users } },
@@ -199,10 +242,7 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
       where: {
         OR: [
           { id: { in: memberships.map((member) => member.workspaceId) } },
-          {
-            members: { none: {} },
-            book: { path: ["budgets", bobId, "userId"], equals: bobId },
-          },
+          { members: { none: {} }, budgetMembers: { some: { userId: bobId } } },
         ],
       },
     });

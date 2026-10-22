@@ -21,7 +21,7 @@ import {
   importStatesFromRows,
   type ImportRowState,
 } from "~/server/services/bank-import-rows";
-import { readBankConnection } from "~/server/services/banks";
+import { legacyImportState } from "~/server/services/banks";
 import {
   loadRows,
   operationIds,
@@ -43,12 +43,14 @@ type StoredHousehold = {
 };
 
 export type CopyProblem = { workspaceId: string; problem: string };
+/** A household created after the switch to rows, with no book. */
+type RowsOnly = { workspaceId: string; rowsOnly: true };
 
 async function readHousehold(
   db: Database,
   workspaceId: string,
   lock: boolean,
-): Promise<StoredHousehold | CopyProblem> {
+): Promise<StoredHousehold | CopyProblem | RowsOnly> {
   // Holds the household and its bank connections still while copying.
   if (lock) {
     await db.$queryRaw`SELECT 1 FROM "Workspace" WHERE id = ${workspaceId} FOR UPDATE`;
@@ -58,6 +60,8 @@ async function readHousehold(
     where: { id: workspaceId },
     include: { members: true, operations: true },
   });
+  // Created after the switch to rows: there is no book to copy.
+  if (workspace.book === null) return { workspaceId, rowsOnly: true };
   const parsed = bookSchema.safeParse(workspace.book);
   if (!parsed.success)
     return {
@@ -71,8 +75,8 @@ async function readHousehold(
     where: { clerkUserId: { in: memberIds } },
     orderBy: { createdAt: "asc" },
   })) {
-    const read = readBankConnection(connection);
-    if (read.status === "maintenance")
+    const state = legacyImportState(connection);
+    if (!state)
       return {
         workspaceId,
         problem: `bank connection ${connection.id} can't be read`,
@@ -85,7 +89,7 @@ async function readHousehold(
     connections.push({
       id: connection.id,
       userId: connection.clerkUserId,
-      state: read.state,
+      state,
     });
   }
   // Operations recorded before the operations table: those saved with
@@ -156,15 +160,28 @@ export async function copyHousehold(
   db: Database,
   workspaceId: string,
 ): Promise<
-  | { status: "copied" | "unchanged"; rows: number; operations: number }
+  | {
+      status: "copied" | "unchanged" | "rowsOnly";
+      rows: number;
+      operations: number;
+    }
   | CopyProblem
 > {
   const run = async (tx: Prisma.TransactionClient) => {
     const household = await readHousehold(tx, workspaceId, true);
     if ("problem" in household) return household;
+    if ("rowsOnly" in household)
+      return { status: "rowsOnly" as const, rows: 0, operations: 0 };
     const rows = storedRows(household);
     const existing = await loadRows(tx, workspaceId, { includeDeleted: true });
     const unchanged = sameRows(rows, existing);
+    // Rows the app wrote since are never replaced with the old book.
+    if (!unchanged && existing.length)
+      return {
+        workspaceId,
+        problem:
+          "the household already has rows that differ from its stored book; the app wrote them, so they were left as they are",
+      };
     if (!unchanged)
       await replaceRows(tx, workspaceId, rows, household.workspace.revision);
     await recordPastOperations(tx, workspaceId, household.operations);
@@ -253,6 +270,16 @@ export async function verifyHousehold(
 ): Promise<Verification | CopyProblem> {
   const household = await readHousehold(db, workspaceId, false);
   if ("problem" in household) return household;
+  if ("rowsOnly" in household)
+    return {
+      workspaceId,
+      rows: 0,
+      rowsByTable: {},
+      budgets: 0,
+      monthViews: 0,
+      records: 0,
+      mismatches: [],
+    };
   const { book } = household;
   const rows = await loadRows(db, workspaceId);
   const result: Verification = {

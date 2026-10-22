@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { stampChangeSet, toRowSet } from "~/domain/change-sets";
 import type { CommandSource } from "~/domain/engine";
 import {
   sameJson,
   tableNames,
+  tombstone,
   type ChangeSet,
   type TableName,
   type WireRow,
@@ -642,3 +644,153 @@ export const changeSetSchema = z.object({
   before: z.array(storedRowSchema),
 }) as unknown as z.ZodType<ChangeSet, z.ZodTypeDef, unknown>;
 export const operationCommandSchema = z.record(z.unknown());
+
+/** A member's household id, revision, and reset revision, or null. */
+export async function readHouseholdRevision(db: Database, userId: string) {
+  const member = await db.workspaceMember.findUnique({
+    where: { clerkUserId: userId },
+    select: {
+      workspace: { select: { id: true, revision: true, resetRevision: true } },
+    },
+  });
+  return member
+    ? {
+        workspaceId: member.workspace.id,
+        revision: member.workspace.revision,
+        resetRevision: member.workspace.resetRevision,
+      }
+    : null;
+}
+
+/** A member's operations written after one revision, through another. */
+export async function confirmedOperationIds(
+  db: Database,
+  input: {
+    workspaceId: string;
+    actorId: string;
+    after: number;
+    through: number;
+  },
+): Promise<string[]> {
+  const found = await db.operation.findMany({
+    where: {
+      workspaceId: input.workspaceId,
+      actorId: input.actorId,
+      revision: { gt: input.after, lte: input.through },
+    },
+    select: { operationId: true },
+    orderBy: { revision: "asc" },
+  });
+  return found.map((operation) => operation.operationId);
+}
+
+/**
+ * A household's latest operations, newest first, without their change
+ * sets: how many rows each changed (null once forgotten) and, for a
+ * revert, the operation it reverted.
+ */
+export async function recentOperations(
+  db: Database,
+  workspaceId: string,
+  limit: number,
+) {
+  return db.$queryRaw<
+    {
+      operationId: string;
+      actorId: string;
+      source: string;
+      type: string;
+      revision: number;
+      targetOperationId: string | null;
+      changes: number | null;
+    }[]
+  >`SELECT "operationId", "actorId", "source", "type", "revision",
+      "command"->>'targetOperationId' AS "targetOperationId",
+      CASE WHEN "changeSet" IS NULL THEN NULL
+        ELSE jsonb_array_length("changeSet"->'after') END AS "changes"
+    FROM "Operation" WHERE "workspaceId" = ${workspaceId}
+    ORDER BY "revision" DESC, "createdAt" DESC LIMIT ${limit}`;
+}
+
+/** Forgets every operation of a household (development reseeding). */
+export async function forgetOperations(db: Database, workspaceId: string) {
+  await db.operation.deleteMany({ where: { workspaceId } });
+}
+
+/**
+ * Records, in another household, that a member's operations were applied,
+ * so retrying one after joining that household never applies it twice.
+ */
+export async function carryOperations(
+  db: Database,
+  input: { from: string; to: string; actorId: string },
+) {
+  const operations = await db.operation.findMany({
+    where: { workspaceId: input.from, actorId: input.actorId },
+    select: {
+      operationId: true,
+      actorId: true,
+      source: true,
+      type: true,
+      inputHash: true,
+      createdAt: true,
+    },
+  });
+  await db.operation.createMany({
+    data: operations.map((operation) => ({
+      ...operation,
+      workspaceId: input.to,
+      revision: 0,
+    })),
+    skipDuplicates: true,
+  });
+}
+
+/**
+ * Marks the import rows of bank connections deleted, in each household
+ * holding them, at its next revision, so browsers learn of the removal
+ * before the connections themselves are removed.
+ */
+export async function removeBankImports(
+  db: Database,
+  connectionIds: string[],
+  actorId: string,
+) {
+  if (!connectionIds.length) return;
+  const held = await db.$queryRaw<
+    { workspaceId: string; revision: number; rows: Record<string, unknown>[] }[]
+  >`SELECT x."workspaceId", w."revision",
+      json_agg(json_build_object('userId', x."userId", 'connectionId', x."connectionId", 'logicalId', x."logicalId")) AS "rows"
+    FROM "BankImport" x JOIN "Workspace" w ON w."id" = x."workspaceId"
+    WHERE x."connectionId" = ANY(${connectionIds}) AND NOT x."deleted"
+    GROUP BY x."workspaceId", w."revision"`;
+  const spec = tableSpec("bankImport");
+  for (const household of held) {
+    const ids = household.rows.map((columns) => rowIdOf(spec, columns));
+    const current = toRowSet(
+      await loadKeys(
+        db,
+        household.workspaceId,
+        ids.map((id) => ({ table: "bankImport" as const, id })),
+      ),
+    );
+    const before = ids.map((id) => current.get("bankImport")!.get(id)!);
+    await writeChangeSet(db, {
+      workspaceId: household.workspaceId,
+      baseRevision: household.revision,
+      changeSet: {
+        operationId: `bank.imports.remove:${randomUUID()}`,
+        revision: 0,
+        before,
+        after: before.map((row) => tombstone(row)),
+      },
+      operation: {
+        actorId,
+        source: "user",
+        type: "bank.connection.remove",
+        inputHash: "",
+        command: { connectionIds },
+      },
+    });
+  }
+}

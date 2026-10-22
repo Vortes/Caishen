@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "~/generated/prisma";
-import { bookSchema } from "~/domain/engine";
-import { commandHash, jsonValue } from "~/server/services/safety";
+import { bookToRows, rowKey, rowsToBook } from "~/domain/rows";
+import { operationHash } from "~/server/services/safety";
+import {
+  forgetOperations,
+  loadRows,
+  recordPastOperations,
+  removeBankImports,
+  replaceRows,
+  resetHouseholdRows,
+} from "~/server/storage/rows";
 import { buildDevelopmentSeed, developmentToday } from "./seed-scenarios";
 import {
   assertDevelopmentDatabase,
@@ -93,12 +101,16 @@ export async function seedDevelopmentDatabase(
       where: { id: identity.workspaceId },
       include: { members: true },
     });
-    if (existing) {
-      const saved = bookSchema.parse(existing.book);
+    const saved = existing
+      ? rowsToBook(await loadRows(tx, identity.workspaceId))
+      : undefined;
+    if (saved) {
       if (
         Object.keys(saved.budgets).length !== 2 ||
         userIds.some((id) => !saved.budgets[id]) ||
-        existing.members.some((member) => !userIds.includes(member.clerkUserId))
+        existing!.members.some(
+          (member) => !userIds.includes(member.clerkUserId),
+        )
       )
         throw new Error(
           "The demo workspace participants do not match. No data was changed.",
@@ -190,8 +202,7 @@ export async function seedDevelopmentDatabase(
           });
       }
     }
-    if (existing && !options.reset) {
-      const saved = bookSchema.parse(existing.book);
+    if (existing && saved && !options.reset) {
       const latestDate =
         Object.values(saved.budgets)
           .flatMap((budget) =>
@@ -219,39 +230,49 @@ export async function seedDevelopmentDatabase(
         },
       };
     }
-    const revision = (existing?.revision ?? 0) + 1;
-    await tx.workspace.upsert({
-      where: { id: identity.workspaceId },
-      create: {
-        id: identity.workspaceId,
-        book: jsonValue(seed.book),
+    await removeBankImports(tx, connectionIds, identity.userId);
+    let revision: number;
+    if (existing)
+      // Browsers holding the old demo download it again.
+      revision = await resetHouseholdRows(
+        tx,
+        identity.workspaceId,
+        bookToRows(seed.book),
+      );
+    else {
+      revision = 1;
+      await tx.workspace.create({
+        data: { id: identity.workspaceId, revision, resetRevision: revision },
+      });
+      await replaceRows(
+        tx,
+        identity.workspaceId,
+        bookToRows(seed.book),
         revision,
-      },
-      update: { book: jsonValue(seed.book), revision },
-    });
+      );
+    }
     for (const clerkUserId of userIds)
       await tx.workspaceMember.upsert({
         where: { clerkUserId },
         create: { clerkUserId, workspaceId: identity.workspaceId },
         update: { workspaceId: identity.workspaceId },
       });
-    await tx.budgetOperation.deleteMany({
-      where: { workspaceId: identity.workspaceId },
-    });
+    await forgetOperations(tx, identity.workspaceId);
     await tx.partnerInvite.deleteMany({
       where: { workspaceId: identity.workspaceId },
     });
-    await tx.budgetOperation.createMany({
-      data: seed.operations.map(({ actorId, source, command }) => ({
-        workspaceId: identity.workspaceId,
+    await recordPastOperations(
+      tx,
+      identity.workspaceId,
+      seed.operations.map(({ actorId, source, command }) => ({
         operationId: command.id,
         actorId,
         type: command.type,
         source,
-        commandHash: commandHash(command),
+        inputHash: operationHash(command),
         revision,
       })),
-    });
+    );
     await tx.bankConnection.deleteMany({
       where: { id: { in: connectionIds } },
     });
@@ -290,7 +311,11 @@ export async function restoreDevelopmentWorkspace(
       throw new Error(
         "Restore requires the active demo workspace and an original budget owned by this account.",
       );
-    if (!bookSchema.parse(original.book).budgets[userId])
+    if (
+      !(await loadRows(tx, workspaceId)).some(
+        (row) => row.table === "member" && row.id === rowKey(userId),
+      )
+    )
       throw new Error(
         "The original workspace does not contain this account’s budget.",
       );
@@ -298,6 +323,11 @@ export async function restoreDevelopmentWorkspace(
       where: { clerkUserId: userId },
       data: { workspaceId },
     });
+    await removeBankImports(
+      tx,
+      [0, 1].map((index) => `${identity.workspaceId}:bank:${index}`),
+      userId,
+    );
     await tx.bankConnection.deleteMany({
       where: {
         id: {

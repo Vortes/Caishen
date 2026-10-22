@@ -1,13 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import type { ZodError } from "zod";
-import { ownBudget, type Budget } from "~/domain/engine";
-import type { AccountingState } from "~/domain/shared-ledger";
-import {
-  openPersonalBudget,
-  storeState,
-  type StoredDataFailure,
-  type StoredDataIssue,
-} from "~/domain/stored-book";
+import type { StoredIssue } from "~/server/storage/rows";
 
 // Stored data that this code can't read raises this alert and is never
 // written over (ADR 0006). Search the server logs for the tag.
@@ -19,20 +12,27 @@ export const CONNECTION_MAINTENANCE_MESSAGE =
   "This bank connection is under maintenance. It will be back in a couple of minutes.";
 
 type StoredRecord =
+  | { record: "rows"; workspaceId: string; userId: string }
   | {
-      record: "Workspace.book" | "Workspace.history";
-      workspaceId: string;
-      userId: string;
-    }
-  | {
-      record: "BankConnection.imports" | "BankConnection.accountMappings";
+      record:
+        | "BankConnection.imports"
+        | "BankConnection.accountMappings"
+        | "BankImport";
       connectionId: string;
       userId: string;
     }
   | { record: "ReviewEvidence.result"; evidenceId: string; userId: string }
   | { record: "DailyDelivery.payload"; deliveryId: string; userId: string };
 
-export function zodIssues(error: ZodError): StoredDataIssue[] {
+/** What didn't read in one part of a stored record. */
+export type StoredFailure = {
+  part?: string;
+  ownerId?: string;
+  viewerId?: string;
+  issues: StoredIssue[];
+};
+
+export function zodIssues(error: ZodError): StoredIssue[] {
   return error.issues.map(({ path, code, message }) => ({
     path,
     code,
@@ -43,15 +43,16 @@ export function zodIssues(error: ZodError): StoredDataIssue[] {
 // One structured line per unreadable read, so log alerting can match the tag.
 export function reportUnreadable(
   record: StoredRecord,
-  failures: (Partial<StoredDataFailure> & { issues: StoredDataIssue[] })[],
+  failures: StoredFailure[],
 ) {
   console.error(
     `${STORED_DATA_ALERT} ${JSON.stringify({
       alert: STORED_DATA_ALERT,
       ...record,
       failures: failures.map((failure) => ({
-        ...("part" in failure ? { part: failure.part } : {}),
-        ...("ownerId" in failure ? { budgetOwnerId: failure.ownerId } : {}),
+        ...(failure.part ? { part: failure.part } : {}),
+        ...(failure.ownerId ? { budgetOwnerId: failure.ownerId } : {}),
+        ...(failure.viewerId ? { viewerId: failure.viewerId } : {}),
         issues: failure.issues.slice(0, 20),
       })),
     })}`,
@@ -70,39 +71,4 @@ export function connectionMaintenance() {
     code: "SERVICE_UNAVAILABLE",
     message: CONNECTION_MAINTENANCE_MESSAGE,
   });
-}
-
-type StoredWorkspace = { id: string; book: unknown };
-
-// Reads one partner's plan from the stored household, alerting once for
-// anything unreadable.
-export function readBudget(workspace: StoredWorkspace, userId: string) {
-  const read = openPersonalBudget(workspace.book, userId);
-  if (read.failures.length)
-    reportUnreadable(
-      { record: "Workspace.book", workspaceId: workspace.id, userId },
-      read.failures,
-    );
-  return read;
-}
-
-export type OpenBudget = {
-  state: AccountingState;
-  budget: Budget;
-  store: (next: AccountingState) => unknown;
-};
-
-// Reads one partner's plan for a change, refusing while it's under
-// maintenance so an unreadable budget is never saved over.
-export function openBudget(
-  workspace: StoredWorkspace,
-  userId: string,
-): OpenBudget {
-  const read = readBudget(workspace, userId);
-  if (read.status === "maintenance") throw budgetMaintenance();
-  return {
-    state: read.state,
-    budget: ownBudget(read.state, userId),
-    store: (next) => storeState(workspace.book, next),
-  };
 }

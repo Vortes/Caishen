@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createBook } from "../../src/domain/engine";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   assertDevelopmentSeedEnvironment,
   developmentSeedArchiveId,
@@ -12,7 +13,8 @@ import {
   seedDevelopmentDatabase,
 } from "../../src/server/dev/seed-database";
 import { developmentToday } from "../../src/server/dev/seed-scenarios";
-import { jsonValue } from "../../src/server/services/safety";
+import { loadRows, recentOperations } from "../../src/server/storage/rows";
+import { createHousehold } from "./fixtures";
 
 assertDevelopmentSeedEnvironment(process.env);
 
@@ -26,16 +28,16 @@ void test("development seed persists through the API, repeats safely, resets onl
   const originalId = `test-original-${randomUUID()}`;
   const originalBankId = `test-original-bank-${randomUUID()}`;
   const originalEvidenceId = `test-original-evidence-${randomUUID()}`;
-  const api = createCaller({ db, userId, headers: new Headers() });
+  const api = createCaller({
+    revision: new ObservedRevision(),
+    db,
+    userId,
+    headers: new Headers(),
+  });
   try {
     await db.user.create({ data: { clerkUserId: userId } });
-    await db.workspace.create({
-      data: {
-        id: originalId,
-        book: jsonValue(originalBook),
-        members: { create: { clerkUserId: userId } },
-      },
-    });
+    await createHousehold(db, originalBook, originalId);
+    const originalRows = await loadRows(db, originalId);
     await db.bankConnection.create({
       data: {
         id: originalBankId,
@@ -88,11 +90,7 @@ void test("development seed persists through the API, repeats safely, resets onl
     assert.deepEqual(first.previousWorkspaces, [
       { userId, workspaceId: originalId },
     ]);
-    assert.deepEqual(
-      (await db.workspace.findUniqueOrThrow({ where: { id: originalId } }))
-        .book,
-      originalBook,
-    );
+    assert.deepEqual(await loadRows(db, originalId), originalRows);
     const state = await api.budget.state({ month });
     assert.equal(state.view!.budget.name, "Demo · Alex’s budget");
     assert.equal(state.imports.length, 0);
@@ -104,7 +102,8 @@ void test("development seed persists through the API, repeats safely, resets onl
       0,
     );
     await api.budget.execute({
-      expectedRevision: state.revision,
+      clientId: "test",
+      baseRevision: state.revision,
       command: {
         id: randomUUID(),
         type: "transaction.upsert",
@@ -130,9 +129,7 @@ void test("development seed persists through the API, repeats safely, resets onl
     assert.equal(reset.revision, edited.revision + 1);
     assert.equal(hasEdit((await api.budget.state({ month })).view), false);
     assert.equal(
-      await db.budgetOperation.count({
-        where: { workspaceId: identity.workspaceId },
-      }),
+      (await recentOperations(db, identity.workspaceId, 10_000)).length,
       reset.seed.operations.length,
     );
     assert.equal(
@@ -148,11 +145,7 @@ void test("development seed persists through the API, repeats safely, resets onl
       0,
     );
     await restoreDevelopmentWorkspace(db, userId, originalId);
-    assert.deepEqual(
-      (await db.workspace.findUniqueOrThrow({ where: { id: originalId } }))
-        .book,
-      originalBook,
-    );
+    assert.deepEqual(await loadRows(db, originalId), originalRows);
     assert.equal(
       (await api.budget.state({ month })).view!.budget.name,
       "Original budget",

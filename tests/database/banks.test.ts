@@ -6,11 +6,11 @@ import { PrismaClient } from "../../src/generated/prisma";
 import {
   createBook,
   execute,
-  parseBook,
   type Book,
   type Command,
 } from "../../src/domain/engine";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   applyTransactionSync,
   normalizePlaidTransaction,
@@ -19,6 +19,10 @@ import {
 import { commandHash, jsonValue } from "../../src/server/services/safety";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
+import { createBankConnection, createHousehold } from "./fixtures";
+import { rowsToBook } from "../../src/domain/rows";
+import { importStatesFromRows } from "../../src/server/services/bank-import-rows";
+import { loadRows } from "../../src/server/storage/rows";
 
 assertDevelopmentDatabase(process.env);
 
@@ -121,7 +125,12 @@ void test(
     const aliceConnectionId = `fixture-bank-${randomUUID()}`;
     const bobConnectionId = `fixture-bank-${randomUUID()}`;
     const api = (userId: string) =>
-      createCaller({ db, userId, headers: new Headers() });
+      createCaller({
+        revision: new ObservedRevision(),
+        db,
+        userId,
+        headers: new Headers(),
+      });
     const alice = api(aliceId);
     const bob = api(bobId);
     const state = () => alice.budget.state({ month: "2026-10" });
@@ -166,14 +175,9 @@ void test(
         [aliceId, "alice"],
         [bobId, "bob"],
       ] as const) {
-        await db.workspace.create({
-          data: {
-            book: jsonValue(fixtureBook(userId, prefix)),
-            members: { create: { clerkUserId: userId } },
-          },
-        });
+        await createHousehold(db, fixtureBook(userId, prefix));
       }
-      await db.bankConnection.create({
+      await createBankConnection(db, {
         data: {
           id: aliceConnectionId,
           clerkUserId: aliceId,
@@ -203,7 +207,7 @@ void test(
           accountMappings: {},
         },
       });
-      await db.bankConnection.create({
+      await createBankConnection(db, {
         data: {
           id: bobConnectionId,
           clerkUserId: bobId,
@@ -290,15 +294,15 @@ void test(
           { code: "BAD_REQUEST" },
         );
       }
-      assert.deepEqual(
-        await alice.budget.mapBankAccount({
-          connectionId: aliceConnectionId,
-          providerAccountId: "fixture-provider-checking",
-          accountId: "alice-checking",
-          startDate: "2026-10-02",
-        }),
-        { mapped: true },
-      );
+      const mapped = await alice.budget.mapBankAccount({
+        connectionId: aliceConnectionId,
+        providerAccountId: "fixture-provider-checking",
+        accountId: "alice-checking",
+        startDate: "2026-10-02",
+      });
+      // The inbox changes, so browsers learn of a new revision.
+      assert.equal(mapped.mapped, true);
+      assert.deepEqual(mapped.changeSet?.after, []);
       await assert.rejects(
         () =>
           alice.budget.mapBankAccount({
@@ -431,17 +435,17 @@ void test(
     const db = new PrismaClient();
     const userId = `test-bank-history-${randomUUID()}`;
     const connectionId = `fixture-bank-history-${randomUUID()}`;
-    const api = createCaller({ db, userId, headers: new Headers() });
+    const api = createCaller({
+      revision: new ObservedRevision(),
+      db,
+      userId,
+      headers: new Headers(),
+    });
     const record = fixtureRecord(connectionId, "history-purchase");
     try {
       await db.user.create({ data: { clerkUserId: userId } });
-      await db.workspace.create({
-        data: {
-          book: jsonValue(fixtureBook(userId, "history")),
-          members: { create: { clerkUserId: userId } },
-        },
-      });
-      await db.bankConnection.create({
+      await createHousehold(db, fixtureBook(userId, "history"));
+      await createBankConnection(db, {
         data: {
           id: connectionId,
           clerkUserId: userId,
@@ -451,11 +455,14 @@ void test(
           accountMappings: {},
         },
       });
+      const start = (await api.budget.state({ month: "2026-10" })).revision;
+      const addAccount = randomUUID();
       await api.budget.execute({
-        expectedRevision: 0,
+        clientId: "test",
+        baseRevision: start,
         command: {
           type: "account.add",
-          id: randomUUID(),
+          id: addAccount,
           accountId: "mapped-account",
           name: "Mapped checking",
           kind: "cash",
@@ -474,13 +481,13 @@ void test(
         startDate: "2026-10-02",
       });
       let state = await api.budget.state({ month: "2026-10" });
-      assert.equal(state.revision, 2);
+      assert.equal(state.revision, start + 2);
       assert.deepEqual(state.history, { undo: null, redo: null });
       await assert.rejects(
         api.budget.changeHistory({
           direction: "undo",
           operationId: randomUUID(),
-          expectedRevision: 1,
+          expectedRevision: start + 1,
         }),
         { code: "CONFLICT" },
       );
@@ -488,9 +495,22 @@ void test(
         api.budget.changeHistory({
           direction: "undo",
           operationId: randomUUID(),
-          expectedRevision: 2,
+          expectedRevision: start + 2,
         }),
         { code: "BAD_REQUEST" },
+      );
+      // Undo from the browser's own history is refused too.
+      await assert.rejects(
+        api.budget.execute({
+          clientId: "test",
+          baseRevision: state.revision,
+          command: {
+            type: "revert",
+            id: randomUUID(),
+            targetOperationId: addAccount,
+          },
+        }),
+        { code: "CONFLICT", message: /bank connection uses it/ },
       );
       assert.ok(
         state.view!.budget.accounts.some(
@@ -499,7 +519,8 @@ void test(
       );
 
       await api.budget.execute({
-        expectedRevision: state.revision,
+        clientId: "test",
+        baseRevision: state.revision,
         command: {
           type: "transaction.upsert",
           id: randomUUID(),
@@ -557,18 +578,21 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
       const userId = `test-bank-race-${randomUUID()}`;
       const connectionId = `fixture-bank-race-${randomUUID()}`;
       const record = fixtureRecord(connectionId, "race-purchase");
-      const api = createCaller({ db, userId, headers: new Headers() });
+      const api = createCaller({
+        revision: new ObservedRevision(),
+        db,
+        userId,
+        headers: new Headers(),
+      });
       const accountId =
         boundary === "mapping" ? "race-account" : "race-checking";
       try {
         await db.user.create({ data: { clerkUserId: userId } });
-        const workspace = await db.workspace.create({
-          data: {
-            book: jsonValue(fixtureBook(userId, "race")),
-            members: { create: { clerkUserId: userId } },
-          },
-        });
-        await db.bankConnection.create({
+        const workspaceId = await createHousehold(
+          db,
+          fixtureBook(userId, "race"),
+        );
+        await createBankConnection(db, {
           data: {
             id: connectionId,
             clerkUserId: userId,
@@ -586,8 +610,9 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
                   },
           },
         });
-        await api.budget.execute({
-          expectedRevision: 0,
+        const { revision: expected } = await api.budget.execute({
+          clientId: "test",
+          baseRevision: (await api.budget.state({ month: "2026-10" })).revision,
           command:
             boundary === "mapping"
               ? {
@@ -615,26 +640,25 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
         const bothRead = new Promise<void>((resolve) => {
           release = resolve;
         });
+        // Both requests read the household before either writes.
         const concurrentDb = db.$extends({
           query: {
-            workspaceMember: {
-              async findUnique({ args, query }) {
-                const member = await query(args);
-                if (
-                  args.where.clerkUserId === userId &&
-                  args.include?.workspace &&
-                  reads < 2
-                ) {
-                  reads++;
-                  if (reads === 2) release();
-                  await bothRead;
-                }
-                return member;
-              },
+            async $allOperations({ operation, args, query }) {
+              const household =
+                operation === "$queryRaw" &&
+                JSON.stringify(args).includes("WorkspaceMember");
+              const result: unknown = await query(args);
+              if (household && reads < 2) {
+                reads++;
+                if (reads === 2) release();
+                await bothRead;
+              }
+              return result;
             },
           },
         }) as unknown as PrismaClient;
         const racer = createCaller({
+          revision: new ObservedRevision(),
           db: concurrentDb,
           userId,
           headers: new Headers(),
@@ -651,11 +675,11 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
                 connectionId,
                 logicalId: record.id,
                 existingTransactionId: "race-transaction",
-                expectedRevision: 1,
+                expectedRevision: expected,
               }),
           racer.budget.changeHistory({
             direction: "undo",
-            expectedRevision: 1,
+            expectedRevision: expected,
             operationId: randomUUID(),
           }),
         ]);
@@ -664,11 +688,11 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
           results.filter((result) => result.status === "fulfilled").length,
           1,
         );
-        const [savedWorkspace, connection] = await Promise.all([
-          db.workspace.findUniqueOrThrow({ where: { id: workspace.id } }),
+        const [rows, connection] = await Promise.all([
+          loadRows(db, workspaceId),
           db.bankConnection.findUniqueOrThrow({ where: { id: connectionId } }),
         ]);
-        const budget = parseBook(savedWorkspace.book).budgets[userId]!;
+        const budget = rowsToBook(rows).budgets[userId]!;
         const externalCommitted = results[0].status === "fulfilled";
         if (boundary === "mapping") {
           const mapping = bankMappingsSchema.parse(connection.accountMappings)[
@@ -680,9 +704,7 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
             externalCommitted,
           );
         } else {
-          const resolved = connection.imports as {
-            resolved: Record<string, { transactionId: string }>;
-          };
+          const resolved = importStatesFromRows(rows).get(connectionId)!;
           assert.equal(
             Boolean(resolved.resolved[record.id]),
             externalCommitted,

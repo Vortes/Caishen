@@ -110,7 +110,7 @@ test("an incoming assignment requires confirmation before replacing the unseen t
   await shell.user.keyboard("{Enter}");
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(shell.execute.mock.calls[0]![0]).toMatchObject({
-    expectedRevision: 6,
+    baseRevision: 6,
     command: { amount: 2_000, month: "2026-10" },
   });
 });

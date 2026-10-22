@@ -135,7 +135,7 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
                 }),
               ],
             });
-            await api.budget.onboard.mutate({
+            let { revision } = await api.budget.onboard.mutate({
               name: budget.name,
               month,
               timezone: "America/Los_Angeles",
@@ -194,11 +194,11 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
                 status: "posted",
                 reviewed: options.purchase.reviewed ?? true,
               });
-            let revision = 0;
             for (const command of commands) {
               ({ revision } = await api.budget.execute.mutate({
                 command,
-                expectedRevision: revision,
+                baseRevision: revision,
+                clientId: "e2e-fixture",
               }));
             }
             return budget;

@@ -1,6 +1,7 @@
 import type { TRPCDefaultErrorShape, TRPCError } from "@trpc/server";
 import { TRPC_ERROR_CODES_BY_KEY } from "@trpc/server/rpc";
 import { ZodError } from "zod";
+import { SyncRefusal } from "~/server/services/sync-refusal";
 import {
   DATABASE_ERROR_MESSAGE,
   isPrismaError,
@@ -25,11 +26,24 @@ export function formatTRPCError({
         zodError: null,
       },
     };
+  const cause = error.cause;
   return {
     ...shape,
     data: {
       ...shape.data,
-      zodError: error.cause instanceof ZodError ? error.cause.flatten() : null,
+      zodError: cause instanceof ZodError ? cause.flatten() : null,
+      // A refusal the browser's sync layer acts on (ADR 0006).
+      ...(cause instanceof SyncRefusal
+        ? {
+            caishen: {
+              kind: cause.kind,
+              ...(cause.revision === undefined
+                ? {}
+                : { revision: cause.revision }),
+              message: cause.message,
+            },
+          }
+        : {}),
     },
   };
 }

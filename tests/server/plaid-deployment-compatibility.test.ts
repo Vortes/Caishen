@@ -5,19 +5,39 @@ import {
   applyTransactionSync,
   normalizePlaidTransaction,
 } from "../../src/server/integrations/transactions";
-import { bankAccountDetails, bankInbox } from "../../src/server/services/banks";
-import { type Database } from "../../src/server/services/workspace";
+import {
+  bankAccountDetails,
+  bankInboxItems,
+  readBankConnection,
+} from "../../src/server/services/banks";
 
-function database(imports: unknown): Database {
-  return {
-    bankConnection: {
-      findMany: async ({ where }: { where: { clerkUserId: string } }) => {
-        assert.equal(where.clerkUserId, "alice");
-        return [{ id: "connection-alice", imports, accountMappings: {} }];
-      },
-    },
-    workspaceMember: { findUnique: async () => null },
-  } as unknown as Database;
+// The inbox of a connection whose column holds these details, with its
+// import state in rows (ADR 0006).
+function inbox(column: unknown, rows?: { records: unknown[] }) {
+  const connection = {
+    id: "connection-alice",
+    clerkUserId: "alice",
+    imports: column,
+    accountMappings: {},
+  };
+  return bankInboxItems(
+    [
+      readBankConnection(
+        connection,
+        new Map(
+          rows
+            ? [
+                [
+                  connection.id,
+                  { resolved: {}, errors: {}, reviews: {}, ...rows } as never,
+                ],
+              ]
+            : [],
+        ),
+      ),
+    ],
+    undefined,
+  );
 }
 
 void test("budget loading accepts persisted Plaid account metadata alongside import history", async () => {
@@ -68,11 +88,13 @@ void test("budget loading accepts persisted Plaid account metadata alongside imp
   };
 
   assert.deepEqual(bankAccountDetails(imports), metadata);
-  const inbox = await bankInbox(database(imports), "alice");
-  assert.equal(inbox.length, 1);
-  assert.equal(inbox[0]!.payee, "Bookshop");
-  assert.equal(inbox[0]!.amount, -1250);
-  assert.equal(inbox[0]!.providerAccountId, "provider-checking");
+  const items = inbox(metadata, { records });
+  assert.equal(items.length, 1);
+  assert.equal(items[0]!.payee, "Bookshop");
+  assert.equal(items[0]!.amount, -1250);
+  assert.equal(items[0]!.providerAccountId, "provider-checking");
+  // Import state the column held before rows is never read from it.
+  assert.deepEqual(inbox(imports), []);
 });
 
 void test("budget loading still accepts connections saved before Plaid account metadata", async () => {
@@ -85,5 +107,5 @@ void test("budget loading still accepts connections saved before Plaid account m
     transactionStatus: null,
     synchronizedAccountIds: [],
   });
-  assert.deepEqual(await bankInbox(database(imports), "alice"), []);
+  assert.deepEqual(inbox(imports), []);
 });

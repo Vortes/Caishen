@@ -5,8 +5,8 @@ import { Prisma, PrismaClient } from "../../src/generated/prisma";
 import { createBook } from "../../src/domain/engine";
 import { runDailyJob } from "../../src/server/services/daily-job";
 import { cancelScheduledDailyReviews } from "../../src/server/services/daily-delivery";
-import { jsonValue } from "../../src/server/services/safety";
-import { type Database } from "../../src/server/services/workspace";
+import { createHousehold } from "./fixtures";
+import { type Database } from "../../src/server/services/household";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
 assertDevelopmentDatabase(process.env);
@@ -29,17 +29,15 @@ after(async () => {
 async function fixture() {
   const userId = `user_daily_${randomUUID()}`;
   await base.user.create({ data: { clerkUserId: userId } });
-  const workspace = await base.workspace.create({
-    data: {
-      book: jsonValue(createBook(userId, "Daily job fixture", "2026-10")),
-      members: { create: { clerkUserId: userId } },
-    },
-  });
+  const workspaceId = await createHousehold(
+    base,
+    createBook(userId, "Daily job fixture", "2026-10"),
+  );
   return {
     userId,
     async cleanup() {
       await base.dailyDelivery.deleteMany({ where: { clerkUserId: userId } });
-      await base.workspace.delete({ where: { id: workspace.id } });
+      await base.workspace.delete({ where: { id: workspaceId } });
       await base.user.delete({ where: { clerkUserId: userId } });
     },
   };

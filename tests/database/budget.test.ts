@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { Prisma, PrismaClient } from "../../src/generated/prisma";
-import { canonicalJson } from "../../src/domain/canonical-json";
-import { parseBook } from "../../src/domain/engine";
 import { createCaller } from "../../src/server/api/root";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { operationHash } from "../../src/server/services/safety";
+import { findOperation, recentOperations } from "../../src/server/storage/rows";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
@@ -18,7 +18,12 @@ const users = [
   `test-eve-${randomUUID()}`,
 ];
 const caller = (userId: string | null) =>
-  createCaller({ db, userId, headers: new Headers() });
+  createCaller({
+    revision: new ObservedRevision(),
+    db,
+    userId,
+    headers: new Headers(),
+  });
 const [aliceId, bobId, eveId] = users as [string, string, string];
 const alice = caller(aliceId),
   bob = caller(bobId),
@@ -42,7 +47,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
         timezone: "America/Los_Angeles",
       });
     await alice.budget.execute({
-      expectedRevision: 0,
+      clientId: "test",
+      baseRevision: 1,
       command: {
         type: "account.add",
         id: cmdId(),
@@ -63,26 +69,23 @@ void test("server operations persist, enforce privacy, protect concurrent writes
       name: "Alice secret category",
     };
     await alice.budget.execute({
-      expectedRevision: 1,
+      clientId: "test",
+      baseRevision: 2,
       command: submittedCategory,
     });
-    const savedCategory = await db.budgetOperation.findFirstOrThrow({
-      where: { actorId: aliceId, operationId: submittedCategory.id },
-    });
-    assert.equal(savedCategory.commandHash, operationHash(submittedCategory));
-    const savedBook = parseBook(
-      (
-        await db.workspaceMember.findUniqueOrThrow({
-          where: { clerkUserId: aliceId },
-          include: { workspace: true },
-        })
-      ).workspace.book,
+    const aliceWorkspace = (
+      await db.workspaceMember.findUniqueOrThrow({
+        where: { clerkUserId: aliceId },
+      })
+    ).workspaceId;
+    const savedCategory = await findOperation(
+      db,
+      aliceWorkspace,
+      submittedCategory.id,
     );
-    assert.equal(
-      savedBook.audit.find((entry) => entry.id === submittedCategory.id)
-        ?.fingerprint,
-      canonicalJson(submittedCategory),
-    );
+    assert.equal(savedCategory?.inputHash, operationHash(submittedCategory));
+    assert.equal(savedCategory.actorId, aliceId);
+    assert.deepEqual(savedCategory.command, submittedCategory);
     const repeated = {
       type: "assign" as const,
       id: cmdId(),
@@ -90,22 +93,32 @@ void test("server operations persist, enforce privacy, protect concurrent writes
       month,
       amount: 20000,
     };
-    await alice.budget.execute({ expectedRevision: 2, command: repeated });
-    assert.equal(
-      (await alice.budget.execute({ expectedRevision: 2, command: repeated }))
-        .revision,
-      3,
+    const first = await alice.budget.execute({
+      clientId: "test",
+      baseRevision: 3,
+      command: repeated,
+    });
+    assert.deepEqual(
+      await alice.budget.execute({
+        clientId: "test",
+        baseRevision: 3,
+        command: repeated,
+      }),
+      { ...first, rebased: false },
+      "a retry answers with the original result and applies nothing",
     );
     await assert.rejects(
       () =>
         alice.budget.execute({
-          expectedRevision: 3,
+          clientId: "test",
+          baseRevision: 4,
           command: { ...repeated, amount: 30000 },
         }),
-      { code: "CONFLICT" },
+      { code: "BAD_REQUEST", message: /different details/ },
     );
     await alice.budget.execute({
-      expectedRevision: 3,
+      clientId: "test",
+      baseRevision: 4,
       command: {
         type: "transaction.upsert",
         id: cmdId(),
@@ -125,7 +138,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     await assert.rejects(
       () =>
         alice.budget.execute({
-          expectedRevision: own.revision,
+          clientId: "test",
+          baseRevision: own.revision,
           command: {
             type: "transaction.upsert",
             id: cmdId(),
@@ -141,7 +155,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     await assert.rejects(
       () =>
         alice.budget.execute({
-          expectedRevision: own.revision,
+          clientId: "test",
+          baseRevision: own.revision,
           command: {
             type: "account.add",
             id: cmdId(),
@@ -160,7 +175,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     );
     await assert.rejects(() =>
       bob.budget.execute({
-        expectedRevision: 0,
+        clientId: "test",
+        baseRevision: 1,
         command: {
           type: "transaction.upsert",
           id: cmdId(),
@@ -200,6 +216,7 @@ void test("server operations persist, enforce privacy, protect concurrent writes
       },
     });
     await createCaller({
+      revision: new ObservedRevision(),
       db: retryingDb,
       userId: bobId,
       headers: new Headers(),
@@ -216,7 +233,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     const concurrentRevision = (await alice.budget.state({ month })).revision;
     const writes = await Promise.allSettled([
       alice.budget.execute({
-        expectedRevision: concurrentRevision,
+        clientId: "test",
+        baseRevision: concurrentRevision,
         command: {
           type: "category.add",
           id: cmdId(),
@@ -225,7 +243,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
         },
       }),
       bob.budget.execute({
-        expectedRevision: concurrentRevision,
+        clientId: "test",
+        baseRevision: concurrentRevision,
         command: {
           type: "category.add",
           id: cmdId(),
@@ -234,8 +253,20 @@ void test("server operations persist, enforce privacy, protect concurrent writes
         },
       }),
     ]);
-    assert.equal(writes.filter((r) => r.status === "fulfilled").length, 1);
-    assert.equal(writes.filter((r) => r.status === "rejected").length, 1);
+    // Both change only their own budget, so the second runs again on the
+    // household the first wrote.
+    const results = writes.map((write) => {
+      assert.equal(write.status, "fulfilled");
+      return write.value;
+    });
+    assert.deepEqual(results.map((result) => result.rebased).sort(), [
+      false,
+      true,
+    ]);
+    assert.deepEqual(results.map((result) => result.revision).sort(), [
+      concurrentRevision + 1,
+      concurrentRevision + 2,
+    ]);
     const eveView = await eve.budget.state({ month });
     assert.equal(eveView.view?.members.length, 1);
     assert.ok(!JSON.stringify(eveView).includes("Alice"));
@@ -253,7 +284,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     assert.equal(reconciledState.evidence[0]?.result.status, "reconciled");
     assert.ok(!("evidence" in reconciledState.evidence[0]));
     const changedPurchase = await alice.budget.execute({
-      expectedRevision: reconciledState.revision,
+      clientId: "test",
+      baseRevision: reconciledState.revision,
       command: {
         type: "transaction.upsert",
         id: cmdId(),
@@ -273,7 +305,8 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     );
     assert.match(staleState.evidence[0].result.reasons[0]!, /ledger changed/);
     await alice.budget.execute({
-      expectedRevision: changedPurchase.revision,
+      clientId: "test",
+      baseRevision: changedPurchase.revision,
       command: {
         type: "transaction.upsert",
         id: cmdId(),
@@ -321,11 +354,10 @@ void test("server operations persist, enforce privacy, protect concurrent writes
     });
     assert.equal(unverified.status, "insufficient_evidence");
     assert.equal((await bob.budget.state({ month })).evidence.length, 0);
-    const audit = await db.budgetOperation.findMany({
-      where: { actorId: aliceId },
-    });
+    const audit = (await recentOperations(db, aliceWorkspace, 100)).filter(
+      (operation) => operation.actorId === aliceId,
+    );
     assert.ok(audit.length >= 4);
-    assert.ok(audit.every((op) => op.commandHash.length === 64));
   } finally {
     const memberships = await db.workspaceMember.findMany({
       where: { clerkUserId: { in: users } },
@@ -336,7 +368,7 @@ void test("server operations persist, enforce privacy, protect concurrent writes
           { id: { in: memberships.map((m) => m.workspaceId) } },
           {
             members: { none: {} },
-            book: { path: ["budgets", bobId, "userId"], equals: bobId },
+            budgetMembers: { some: { userId: bobId } },
           },
         ],
       },

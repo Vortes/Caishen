@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import nextEnv from "@next/env";
-import { PrismaClient } from "../../src/generated/prisma";
+import { Prisma, PrismaClient } from "../../src/generated/prisma";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 import {
@@ -112,7 +112,8 @@ void test("the development seed, its bank imports, and its operations copy to ro
     status: "unchanged",
   });
 
-  // A changed book is copied again, and a difference is reported.
+  // Rows that differ from the book are the app's: the copy never replaces
+  // them, and verifying reports the difference.
   const book = structuredClone(seed.book);
   book.budgets[alexId]!.name = "Renamed";
   await db.workspace.update({
@@ -121,13 +122,15 @@ void test("the development seed, its bank imports, and its operations copy to ro
   });
   const mismatched = await verifyHousehold(db, workspaceId, "2026-10");
   assert.ok(!("problem" in mismatched) && mismatched.mismatches.length > 0);
-  assert.equal(
-    ((await copyHousehold(db, workspaceId)) as { status: string }).status,
-    "copied",
+  const refused = await copyHousehold(db, workspaceId);
+  assert.ok("problem" in refused);
+  assert.match(refused.problem, /the app wrote them/);
+  assert.deepEqual(
+    (await loadRows(db, workspaceId)).find(
+      (row) => row.table === "member" && row.id === alexId,
+    )?.data,
+    { userId: alexId, name: seed.book.budgets[alexId]!.name, sort: 0 },
   );
-  const again = await verifyHousehold(db, workspaceId, "2026-10");
-  assert.ok(!("problem" in again));
-  assert.deepEqual(again.mismatches, []);
 
   // A book this code can't read is reported, not copied.
   await db.workspace.update({
@@ -139,4 +142,15 @@ void test("the development seed, its bank imports, and its operations copy to ro
   const unreadable = await copyHousehold(db, workspaceId);
   assert.ok("problem" in unreadable);
   assert.match(unreadable.problem, /can't be read/);
+
+  // A household created after the switch to rows has no book to copy.
+  await db.workspace.update({
+    where: { id: workspaceId },
+    data: { book: Prisma.DbNull },
+  });
+  assert.deepEqual(await copyHousehold(db, workspaceId), {
+    status: "rowsOnly",
+    rows: 0,
+    operations: 0,
+  });
 });

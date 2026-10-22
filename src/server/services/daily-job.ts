@@ -15,13 +15,28 @@ import {
   type DailyDeliveryTarget,
 } from "./daily-delivery";
 import { jsonValue } from "./safety";
-import { openBudget, reportUnreadable, zodIssues } from "./stored-data";
-import { readWorkspace, type Database } from "./workspace";
+import type { Budget } from "~/domain/engine";
+import { openHousehold, type Database } from "./household";
+import { budgetMaintenance, reportUnreadable, zodIssues } from "./stored-data";
+
+/**
+ * A member's budget and their household's revision, or null when they have
+ * none. Refused while their plan is under maintenance.
+ */
+async function readBudget(
+  db: Database,
+  userId: string,
+): Promise<{ budget: Budget; revision: number } | null> {
+  const opened = await openHousehold(db, userId);
+  if (!opened) return null;
+  if (opened.ledger.status !== "ready") throw budgetMaintenance();
+  return { budget: opened.ledger.budget, revision: opened.household.revision };
+}
 
 interface DailyJobDependencies {
   syncBanks: typeof syncBanks;
   bankInbox: typeof bankInbox;
-  readWorkspace: typeof readWorkspace;
+  readBudget: typeof readBudget;
   verifiedEmail: (userId: string) => Promise<string>;
   send: (payload: DailyDeliveryPayload) => Promise<{ id: string }>;
   cancel: (
@@ -34,7 +49,7 @@ interface DailyJobDependencies {
 const defaultDependencies: DailyJobDependencies = {
   syncBanks,
   bankInbox,
-  readWorkspace,
+  readBudget,
   cancel: cancelScheduledDailyReviews,
   async verifiedEmail(userId) {
     const user = await (await clerkClient()).users.getUser(userId);
@@ -64,7 +79,7 @@ async function preparePayload(
   now: Date,
   dependencies: DailyJobDependencies,
 ): Promise<DailyDeliveryPayload> {
-  const [email, imports, evidence, freshness, member] = await Promise.all([
+  const [email, imports, evidence, freshness, read] = await Promise.all([
     dependencies.verifiedEmail(userId),
     dependencies.bankInbox(db, userId),
     db.reviewEvidence.findMany({
@@ -76,10 +91,10 @@ async function preparePayload(
       where: { clerkUserId: userId },
       select: { lastSyncedAt: true },
     }),
-    dependencies.readWorkspace(db, userId),
+    dependencies.readBudget(db, userId),
   ]);
-  if (!member) throw new Error("The personal budget is no longer available.");
-  const { budget } = openBudget(member.workspace, userId);
+  if (!read) throw new Error("The personal budget is no longer available.");
+  const { budget } = read;
   if (!budget.settings.emailEnabled)
     throw new Error("Daily email has been disabled.");
   const latest = new Map<
@@ -93,7 +108,7 @@ async function preparePayload(
         savedReconciliationResult(
           item.result,
           item.evidence,
-          member.workspace.revision,
+          read.revision,
           (error) =>
             reportUnreadable(
               { record: "ReviewEvidence.result", evidenceId: item.id, userId },
@@ -159,14 +174,14 @@ async function dailyEmailEnabled(
   userId: string,
   dependencies: DailyJobDependencies,
 ) {
-  const [user, member] = await Promise.all([
+  const [user, read] = await Promise.all([
     db.user.findUnique({
       where: { clerkUserId: userId },
       select: { active: true },
     }),
-    dependencies.readWorkspace(db, userId),
+    dependencies.readBudget(db, userId),
   ]);
-  const budget = member ? openBudget(member.workspace, userId).budget : null;
+  const budget = read?.budget;
   return !!(user?.active && budget?.settings.emailEnabled);
 }
 
@@ -256,7 +271,6 @@ export async function runDailyJob(
   for (;;) {
     const members = await db.workspaceMember.findMany({
       where: { user: { active: true } },
-      include: { workspace: true },
       orderBy: { clerkUserId: "asc" },
       take: 100,
       ...(cursor ? { cursor: { clerkUserId: cursor }, skip: 1 } : {}),
@@ -265,7 +279,9 @@ export async function runDailyJob(
     for (const member of members) {
       const userId = member.clerkUserId;
       try {
-        const { budget } = openBudget(member.workspace, userId);
+        const read = await dependencies.readBudget(db, userId);
+        if (!read) continue;
+        const { budget } = read;
         const connections = await db.bankConnection.findMany({
           where: { clerkUserId: userId },
           select: { lastSyncedAt: true },

@@ -1,20 +1,13 @@
 import { TRPCError } from "@trpc/server";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { z, type ZodError } from "zod";
-import { Prisma } from "~/generated/prisma";
 import {
-  bookSchema,
   commandSchema,
-  createBook,
-  execute,
-  mergeBooks,
-  ownBudget,
+  ledgerCommandSchema,
   projectBook,
-  type Command,
 } from "~/domain/engine";
-import { isPersonalLedger } from "~/domain/shared-ledger";
 import { personalSpendingEntries } from "~/domain/spending";
-import { budgetDay, prepareUserCommand } from "~/domain/user-command";
+import { budgetDay } from "~/domain/user-command";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -32,19 +25,24 @@ import { dateSchema, centsSchema } from "~/server/integrations/validation";
 import { commandHash, domainError, jsonValue } from "~/server/services/safety";
 import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import {
-  changeWorkspaceHistory,
-  historyAlert,
-  mutateWorkspace,
-  readWorkspace,
-} from "~/server/services/workspace";
+  approveSuggestions,
+  importCategories,
+  joinHousehold,
+  onboard,
+} from "~/server/services/household-operations";
+import {
+  executeCommand,
+  openHousehold,
+  requireHousehold,
+} from "~/server/services/household";
+import { changeHistory, historySummary } from "~/server/services/history";
 import {
   budgetMaintenance,
-  openBudget,
-  readBudget,
   reportUnreadable,
   zodIssues,
 } from "~/server/services/stored-data";
-import { historySummary } from "~/server/services/workspace-history";
+import { readImportStates } from "~/server/services/bank-import-rows";
+import { readHouseholdRevision } from "~/server/storage/rows";
 import {
   bankInboxItems,
   bankConnectionView,
@@ -66,13 +64,6 @@ const submittedCommand = z.object({ command: z.unknown() });
 function currentMonth(zone: string) {
   return budgetDay(zone).slice(0, 7);
 }
-// Joining merges both whole households, so every part of each must read.
-function wholeBook(workspace: { id: string; book: unknown }, userId: string) {
-  const read = readBudget(workspace, userId);
-  if (read.status === "maintenance" || isPersonalLedger(read.state))
-    throw budgetMaintenance();
-  return read.state;
-}
 const evidenceAlert =
   (evidenceId: string, userId: string) => (error: ZodError) =>
     reportUnreadable({ record: "ReviewEvidence.result", evidenceId, userId }, [
@@ -83,8 +74,8 @@ export const budgetRouter = createTRPCRouter({
   state: protectedProcedure
     .input(z.object({ month }))
     .query(async ({ ctx, input }) => {
-      const [member, savedConnections, evidence] = await Promise.all([
-        readWorkspace(ctx.db, ctx.userId),
+      const [opened, savedConnections, evidence] = await Promise.all([
+        openHousehold(ctx.db, ctx.userId, ctx.revision.observe),
         ctx.db.bankConnection.findMany({
           where: { clerkUserId: ctx.userId },
           select: {
@@ -113,22 +104,24 @@ export const budgetRouter = createTRPCRouter({
         }),
       ]);
       const services = integrationStatus(process.env);
-      const read = member && readBudget(member.workspace, ctx.userId);
-      if (!member || read?.status !== "ready")
+      if (opened?.ledger.status !== "ready")
         return {
           // A budget that can't be read shows a maintenance message in place
           // of the plan, never partial numbers.
-          status: member ? ("maintenance" as const) : ("new" as const),
+          status: opened ? ("maintenance" as const) : ("new" as const),
           view: null,
-          revision: member?.workspace.revision ?? 0,
+          revision: opened?.household.revision ?? 0,
           history: { undo: null, redo: null },
           services,
           connections: [],
           evidence: [],
           imports: [],
         };
-      const budget = ownBudget(read.state, ctx.userId);
-      const banks = savedConnections.map(readBankConnection);
+      const { household, ledger } = opened;
+      const imports = readImportStates(household.rows, ctx.userId);
+      const banks = savedConnections.map((connection) =>
+        readBankConnection(connection, imports),
+      );
       const connections = banks.map(bankConnectionView);
       try {
         const currentEvidence = evidence.map(
@@ -137,7 +130,7 @@ export const budgetRouter = createTRPCRouter({
             result: savedReconciliationResult(
               result,
               savedEvidence,
-              member.workspace.revision,
+              household.revision,
               evidenceAlert(item.id, ctx.userId),
             ),
           }),
@@ -145,22 +138,17 @@ export const budgetRouter = createTRPCRouter({
         return {
           status: "ready" as const,
           view: projectBook(
-            read.state,
+            ledger.state,
             ctx.userId,
             input.month,
-            currentMonth(budget.settings.timezone),
+            currentMonth(ledger.budget.settings.timezone),
           ),
-          revision: member.workspace.revision,
-          history: historySummary(
-            member.workspace.history,
-            ctx.userId,
-            member.workspace.revision,
-            historyAlert(member.workspace, ctx.userId),
-          ),
+          revision: household.revision,
+          history: await historySummary(ctx.db, household, ctx.userId),
           services,
           connections,
           evidence: currentEvidence,
-          imports: bankInboxItems(banks, budget),
+          imports: bankInboxItems(banks, ledger.budget),
         };
       } catch (error) {
         domainError(error);
@@ -170,17 +158,23 @@ export const budgetRouter = createTRPCRouter({
   // Every month of personal spending, for reports that filter and group it
   // on the client.
   spending: protectedProcedure.query(async ({ ctx }) => {
-    const member = await readWorkspace(ctx.db, ctx.userId);
-    if (!member) return { entries: [] };
-    const { state } = openBudget(member.workspace, ctx.userId);
+    const opened = await openHousehold(
+      ctx.db,
+      ctx.userId,
+      ctx.revision.observe,
+    );
+    if (!opened) return { entries: [] };
+    if (opened.ledger.status !== "ready") throw budgetMaintenance();
     try {
-      return { entries: personalSpendingEntries(state, ctx.userId) };
+      return {
+        entries: personalSpendingEntries(opened.ledger.state, ctx.userId),
+      };
     } catch (error) {
       domainError(error);
     }
   }),
 
-  onboard: protectedProcedure
+  onboard: submittedInputProcedure
     .input(
       z.object({
         name: z.string().trim().min(1).max(120),
@@ -188,49 +182,29 @@ export const budgetRouter = createTRPCRouter({
         timezone: z.string().max(100),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const base = createBook(ctx.userId, input.name, input.month);
-        const book = execute(base, ctx.userId, {
-          type: "settings.update",
-          id: randomUUID(),
-          timezone: input.timezone,
-        });
-        await ctx.db.workspace.create({
-          data: {
-            book: jsonValue(book),
-            members: { create: { clerkUserId: ctx.userId } },
-          },
-        });
-        return { revision: 0 };
-      } catch (error) {
-        domainError(error);
-      }
-    }),
+    .mutation(({ ctx, input }) =>
+      onboard(ctx.db, ctx.userId, input, ctx.revision.observe),
+    ),
 
   execute: submittedInputProcedure
-    .input(z.object({ command: commandSchema, expectedRevision: revision }))
+    .input(
+      z.object({
+        command: ledgerCommandSchema,
+        baseRevision: revision,
+        clientId: z.string().min(1).max(200),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const { command: submitted } = submittedCommand.parse(ctx.submittedInput);
-      const result = await mutateWorkspace(
+      const result = await executeCommand(
         ctx.db,
         ctx.userId,
-        input.expectedRevision,
-        [input.command],
-        "user",
-        (state, commands) =>
-          commands.reduce(
-            (book, command) =>
-              execute(
-                book,
-                ctx.userId,
-                prepareUserCommand(ownBudget(book, ctx.userId), command),
-                "user",
-                submitted,
-              ),
-            state,
-          ),
-        { submitted: [submitted] },
+        {
+          command: input.command,
+          submitted,
+          baseRevision: input.baseRevision,
+        },
+        ctx.revision.observe,
       );
       if (
         input.command.type === "settings.update" &&
@@ -258,13 +232,19 @@ export const budgetRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await changeWorkspaceHistory(ctx.db, ctx.userId, input);
+      const result = await changeHistory(
+        ctx.db,
+        ctx.userId,
+        input,
+        ctx.revision.observe,
+      );
       let warning: string | null = null;
       try {
-        const member = await readWorkspace(ctx.db, ctx.userId);
-        const budget =
-          member && openBudget(member.workspace, ctx.userId).budget;
-        if (budget && !budget.settings.emailEnabled)
+        const opened = await openHousehold(ctx.db, ctx.userId);
+        if (
+          opened?.ledger.status === "ready" &&
+          !opened.ledger.budget.settings.emailEnabled
+        )
           await cancelScheduledDailyReviews(ctx.db, ctx.userId);
       } catch {
         warning =
@@ -273,7 +253,7 @@ export const budgetRouter = createTRPCRouter({
       return { ...result, warning };
     }),
 
-  approveSuggestions: protectedProcedure
+  approveSuggestions: submittedInputProcedure
     .input(
       z.object({
         operationId: z.string().uuid(),
@@ -289,34 +269,15 @@ export const budgetRouter = createTRPCRouter({
           .max(100),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      if (
-        new Set(input.items.map((item) => item.transactionId)).size !==
-        input.items.length
-      )
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Choose each purchase only once.",
-        });
-      const commands: Command[] = input.items.map((item) => ({
-        type: "transaction.categorize",
-        id: `${input.operationId}:${commandHash(item).slice(0, 32)}`,
-        ...item,
-      }));
-      return mutateWorkspace(
+    .mutation(({ ctx, input }) =>
+      approveSuggestions(
         ctx.db,
         ctx.userId,
-        input.expectedRevision,
-        commands,
-        "user",
-        (state, fresh) =>
-          fresh.reduce(
-            (book, command) => execute(book, ctx.userId, command),
-            state,
-          ),
-        { label: "Approve suggested categories" },
-      );
-    }),
+        input,
+        ctx.submittedInput,
+        ctx.revision.observe,
+      ),
+    ),
 
   importCategories: protectedProcedure
     .input(
@@ -324,26 +285,17 @@ export const budgetRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const categories = parseCategoryImport(input.text);
-        const command: Command = {
-          type: "category.import",
-          id: randomUUID(),
-          categories: categories.map((category) => ({
-            categoryId: `ynab:${commandHash(category).slice(0, 32)}`,
-            ...category,
-          })),
-        };
-        return await mutateWorkspace(
+        return await importCategories(
           ctx.db,
           ctx.userId,
-          input.expectedRevision,
-          [command],
-          "user",
-          (state, commands) =>
-            commands.reduce(
-              (book, cmd) => execute(book, ctx.userId, cmd),
-              state,
-            ),
+          {
+            categories: parseCategoryImport(input.text).map((category) => ({
+              categoryId: `ynab:${commandHash(category).slice(0, 32)}`,
+              ...category,
+            })),
+            expectedRevision: input.expectedRevision,
+          },
+          ctx.revision.observe,
         );
       } catch (error) {
         domainError(error);
@@ -351,7 +303,9 @@ export const budgetRouter = createTRPCRouter({
     }),
 
   invite: protectedProcedure.mutation(async ({ ctx }) => {
-    const member = await readWorkspace(ctx.db, ctx.userId);
+    const member = await ctx.db.workspaceMember.findUnique({
+      where: { clerkUserId: ctx.userId },
+    });
     if (!member)
       throw new TRPCError({
         code: "NOT_FOUND",
@@ -380,99 +334,16 @@ export const budgetRouter = createTRPCRouter({
 
   join: protectedProcedure
     .input(z.object({ code: z.string().trim().min(20).max(100) }))
-    .mutation(async ({ ctx, input }) => {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          return await ctx.db.$transaction(
-            async (tx) => {
-              const invite = await tx.partnerInvite.findUnique({
-                where: { tokenHash: commandHash(input.code) },
-                include: { workspace: { include: { members: true } } },
-              });
-              if (!invite || invite.usedBy || invite.expiresAt < new Date())
-                throw new TRPCError({
-                  code: "NOT_FOUND",
-                  message:
-                    "This invitation is invalid, expired, or already used.",
-                });
-              if (invite.createdBy === ctx.userId)
-                throw new TRPCError({
-                  code: "BAD_REQUEST",
-                  message:
-                    "Give this code to your partner to use in their own account.",
-                });
-              const member = await tx.workspaceMember.findUnique({
-                where: { clerkUserId: ctx.userId },
-                include: { workspace: true },
-              });
-              if (!member)
-                throw new TRPCError({
-                  code: "PRECONDITION_FAILED",
-                  message: "Create your own personal budget first.",
-                });
-              const book = bookSchema.parse(
-                mergeBooks(
-                  wholeBook(invite.workspace, invite.createdBy),
-                  wholeBook(member.workspace, ctx.userId),
-                  ctx.userId,
-                ),
-              );
-              const changed = await tx.workspace.updateMany({
-                where: {
-                  id: invite.workspaceId,
-                  revision: invite.workspace.revision,
-                },
-                data: { book: jsonValue(book), revision: { increment: 1 } },
-              });
-              const sourceLocked = await tx.workspace.updateMany({
-                where: {
-                  id: member.workspaceId,
-                  revision: member.workspace.revision,
-                },
-                data: { revision: { increment: 1 } },
-              });
-              if (changed.count !== 1 || sourceLocked.count !== 1)
-                throw new TRPCError({
-                  code: "CONFLICT",
-                  message: "A budget changed while joining. Try again.",
-                });
-              await tx.workspaceMember.update({
-                where: { clerkUserId: ctx.userId },
-                data: { workspaceId: invite.workspaceId },
-              });
-              await tx.partnerInvite.update({
-                where: { id: invite.id },
-                data: { usedBy: ctx.userId },
-              });
-              return { revision: invite.workspace.revision + 1 };
-            },
-            {
-              isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-              timeout: 15_000,
-            },
-          );
-        } catch (error) {
-          if (
-            error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === "P2034" &&
-            attempt < 2
-          )
-            continue;
-          domainError(error);
-        }
-      }
-      throw new TRPCError({
-        code: "CONFLICT",
-        message: "A budget changed while joining. Try again.",
-      });
-    }),
+    .mutation(({ ctx, input }) =>
+      joinHousehold(ctx.db, ctx.userId, input.code, ctx.revision.observe),
+    ),
 
   suggest: protectedProcedure
     .input(z.object({ transactionIds: z.array(z.string()).max(100) }))
     .mutation(async ({ ctx, input }) => {
-      const member = await readWorkspace(ctx.db, ctx.userId);
-      if (!member) throw new TRPCError({ code: "NOT_FOUND" });
-      const { budget } = openBudget(member.workspace, ctx.userId);
+      const {
+        ledger: { budget },
+      } = await requireHousehold(ctx.db, ctx.userId, ctx.revision.observe);
       const transactions = budget.transactions.filter(
         (t) =>
           !t.removed &&
@@ -518,9 +389,10 @@ export const budgetRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const member = await readWorkspace(ctx.db, ctx.userId);
-      if (!member) throw new TRPCError({ code: "NOT_FOUND" });
-      const { budget } = openBudget(member.workspace, ctx.userId);
+      const {
+        household,
+        ledger: { budget },
+      } = await requireHousehold(ctx.db, ctx.userId, ctx.revision.observe);
       const account = budget.accounts.find((a) => a.id === input.accountId);
       if (!account)
         throw new TRPCError({
@@ -589,12 +461,17 @@ export const budgetRouter = createTRPCRouter({
               ...evidence,
               csvHash: commandHash(input.csv),
               attestedBy: ctx.userId,
-              revision: member.workspace.revision,
+              revision: household.revision,
             }),
             result: jsonValue(result),
           },
         });
-        return result;
+        return {
+          ...result,
+          revision: household.revision,
+          changeSet: null,
+          rebased: false as const,
+        };
       } catch (error) {
         domainError(error);
       }
@@ -634,7 +511,18 @@ export const budgetRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       setupBankAccounts(ctx.db, ctx.userId, input, ctx.submittedInput),
     ),
-  sync: protectedProcedure.mutation(({ ctx }) => syncBanks(ctx.db, ctx.userId)),
+  sync: protectedProcedure.mutation(async ({ ctx }) => {
+    const counts = await syncBanks(ctx.db, ctx.userId);
+    const household = await readHouseholdRevision(ctx.db, ctx.userId);
+    if (household) ctx.revision.observe(household.revision);
+    // Each connection's update is its own operation: the browser pulls.
+    return {
+      ...counts,
+      revision: household?.revision ?? 0,
+      changeSet: null,
+      rebased: false as const,
+    };
+  }),
   resolveImport: submittedInputProcedure
     .input(
       z.object({
