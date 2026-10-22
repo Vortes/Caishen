@@ -5,6 +5,7 @@ import type {
   Category,
   Loan,
   Obligation,
+  PayeeMemory,
   Reimbursement,
   Settlement,
   SharedCategory,
@@ -21,6 +22,7 @@ import {
   memberRows,
   openingObligationRows,
   partnerFactRows,
+  payeeMemoryRows,
   reimbursementRows,
   settlementRows,
   sharedCategoryRows,
@@ -48,6 +50,11 @@ export class Changes {
   // Partner facts per viewer when a part they derive from was first touched.
   private readonly facts = new Map<string, WireRow[]>();
   private readonly positions = new WeakMap<object, Map<string, number>>();
+  // Each touched transaction as it was when first touched.
+  private readonly edited = new Map<
+    string,
+    { budget: Budget; id: string; before?: Transaction }
+  >();
 
   constructor(private readonly state: AccountingState) {}
 
@@ -201,6 +208,16 @@ export class Changes {
   }
 
   private touchTransaction(budget: Budget, id: string): void {
+    const key = `${budget.userId} ${id}`;
+    if (!this.edited.has(key)) {
+      const index = this.position(budget.transactions, id, (item) => item.id);
+      this.edited.set(key, {
+        budget,
+        id,
+        before:
+          index < 0 ? undefined : structuredClone(budget.transactions[index]),
+      });
+    }
     this.touchFacts(budget);
     this.item(
       `transaction ${budget.userId} ${id}`,
@@ -225,6 +242,26 @@ export class Changes {
     );
     if (index < 0) budget.transactions.push(transaction);
     else budget.transactions[index] = transaction;
+  }
+
+  /** The budget's transactions this command touched, before and now. */
+  transactionEdits(
+    budget: Budget,
+  ): { before?: Transaction; after?: Transaction }[] {
+    return [...this.edited.values()]
+      .filter((edit) => edit.budget === budget)
+      .map(({ id, before }) => {
+        const index = this.position(budget.transactions, id, (item) => item.id);
+        return { before, after: budget.transactions[index] };
+      });
+  }
+
+  /** The payee memory, whose entry for this payee key the caller sets. */
+  payeeMemory(budget: Budget, key: string): Record<string, PayeeMemory> {
+    this.touch(`payee ${budget.userId} ${key}`, () =>
+      payeeMemoryRows(budget.userId, key, budget.payeeMemory?.[key]),
+    );
+    return (budget.payeeMemory ??= {});
   }
 
   /** A loan with its rates and payments. */
