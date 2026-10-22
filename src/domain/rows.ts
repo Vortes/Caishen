@@ -194,6 +194,14 @@ const budgetTables = new Set<TableName>([
 ]);
 
 /**
+ * The partner whose personal budget a row belongs to, or null for the
+ * household's rows (members and everything shared) and partner facts.
+ */
+export function rowOwner(row: Pick<WireRow, "table" | "id">): string | null {
+  return budgetTables.has(row.table) ? rowKeyParts(row.id)[0]! : null;
+}
+
+/**
  * Whether a partner's browser holds the row: their own budget's rows, the
  * household's shared rows, and the partner facts derived for them.
  */
