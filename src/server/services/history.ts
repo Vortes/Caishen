@@ -198,10 +198,14 @@ export async function changeHistory(
     id: input.operationId,
     targetOperationId: entry.operationId,
   };
-  return executeCommand(
+  const result = await executeCommand(
     db,
     actorId,
-    { command, submitted: command, baseRevision: input.expectedRevision },
+    { command, submitted: command, baseRevision: household.revision },
     observe,
   );
+  return {
+    ...result,
+    rebased: result.revision !== input.expectedRevision + 1,
+  };
 }

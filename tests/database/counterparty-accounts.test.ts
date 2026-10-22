@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import nextEnv from "@next/env";
 import {
+  addMember,
   createBook,
   execute,
   executeWithChanges,
@@ -466,4 +467,85 @@ void test("a legacy budget can undo its previous user change before pulling with
   assert.ok(
     state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
+});
+
+void test("a legacy household can undo a shared change before pulling and retain both members' People accounts", async () => {
+  const ari = await member("Ari");
+  const bea = await member("Bea");
+  let book = addMember(
+    createBook(ari.userId, "Ari", month),
+    bea.userId,
+    "Bea",
+    month,
+  );
+  book = execute(book, ari.userId, {
+    type: "category.add",
+    id: randomUUID(),
+    categoryId: "food",
+    name: "Food",
+  });
+  const workspaceId = await createHousehold(db, book);
+  workspaceIds.push(workspaceId);
+  const command = {
+    type: "shared.create" as const,
+    id: randomUUID(),
+    sharedCategoryId: "food",
+    participants: [ari.userId, bea.userId],
+    weights: { [ari.userId]: 1, [bea.userId]: 1 },
+    categoryIds: { [ari.userId]: "food", [bea.userId]: "food" },
+  };
+  const legacy = executeWithChanges(book, ari.userId, command);
+  await writeChangeSet(db, {
+    workspaceId,
+    baseRevision: 1,
+    changeSet: legacy.changeSet,
+    operation: {
+      actorId: ari.userId,
+      source: "user",
+      type: command.type,
+      inputHash: "legacy-fixture",
+      command,
+    },
+  });
+  const before = await bea.api.budget.state({ month });
+  assert.equal(before.revision, 2);
+  assert.deepEqual(
+    before.view?.budget.categories.map((category) => category.id),
+    ["food"],
+  );
+  const input = {
+    direction: "undo" as const,
+    expectedRevision: 2,
+    operationId: randomUUID(),
+  };
+
+  const saved = await ari.api.budget.changeHistory(input);
+  assert.equal(saved.revision, 4);
+  assert.equal(saved.rebased, true);
+  assert.deepEqual(await ari.api.budget.changeHistory(input), {
+    ...saved,
+    rebased: false,
+  });
+  for (const who of [ari, bea]) {
+    const state = await who.api.budget.state({ month });
+    assert.equal(state.revision, 4);
+    assert.deepEqual(state.view?.sharedCategories, []);
+    assert.deepEqual(
+      state.view?.accounts.map((account) => account.kind).sort(),
+      ["partner", "reimbursements"],
+    );
+    assert.deepEqual(
+      state.view?.budget.categories
+        .filter((category) => category.counterpartyAccountId)
+        .map((category) => category.counterpartyAccountId)
+        .sort(),
+      ["counterparty:partner", "counterparty:reimbursements"],
+    );
+    assert.deepEqual(
+      state.view?.budget.categories
+        .filter((category) => !category.counterpartyAccountId)
+        .map((category) => category.id),
+      who === ari ? ["food"] : [],
+    );
+  }
 });
