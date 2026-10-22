@@ -5,7 +5,10 @@ import { composeChangeSets } from "~/domain/change-sets";
 import { executeWithChanges, type Budget, type Command } from "~/domain/engine";
 import type { ChangeSet } from "~/domain/rows";
 import type { AccountingState } from "~/domain/shared-ledger";
-import { rememberedCategory } from "~/domain/payee-memory";
+import {
+  rememberedCategory,
+  rememberedCounterpartyShare,
+} from "~/domain/payee-memory";
 import { READY_TO_ASSIGN } from "~/domain/transfers";
 import { prepareUserCommand } from "~/domain/user-command";
 import { Prisma } from "~/generated/prisma";
@@ -1321,6 +1324,11 @@ function rememberedImport(
   const payee = (fact.merchantName ?? fact.name).slice(0, 240);
   const categoryId = rememberedCategory(budget, { payee, accountId, amount });
   if (!categoryId) return undefined;
+  const counterpartyShare = rememberedCounterpartyShare(budget, {
+    payee,
+    accountId,
+    amount,
+  });
   const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
   const twin = budget.transactions.some(
     (transaction) =>
@@ -1343,6 +1351,7 @@ function rememberedImport(
     payee,
     status: fact.pending ? "pending" : "posted",
     ...(categoryId === READY_TO_ASSIGN ? {} : { categoryId }),
+    ...(counterpartyShare ? { counterpartyShare } : {}),
     providerId: fact.providerTransactionId,
   };
 }
