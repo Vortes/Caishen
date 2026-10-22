@@ -1,0 +1,570 @@
+/* The shared costs prototype's own pieces. Everything else comes from the
+   app shell's modules; only semantic tokens here. */
+
+/* ---------- Shell ---------- */
+
+.headerMonth {
+  margin-left: 8px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.toolbarHint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.sectionLabel {
+  margin: 0;
+  cursor: default;
+}
+.sectionTotal {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+/* Holds the toast region clear of the prototype's harness strip: a
+   transformed box is what a fixed child positions against. */
+.toastLayer {
+  position: fixed;
+  z-index: 50;
+  inset: 0 0 72px;
+  transform: translateZ(0);
+  pointer-events: none;
+}
+
+/* ---------- Share ---------- */
+
+.shareIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.shareWho {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shareAmount {
+  flex: none;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.shareSlot {
+  display: flex;
+  min-width: 0;
+  pointer-events: auto;
+}
+/* The Share cell is a quiet control over the row. Empty, it shows only
+   while the row is pointed at or focused, so unshared rows stay calm. */
+.shareButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: var(--size-control-xs);
+  margin-left: -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  transition:
+    background-color 150ms,
+    color 150ms,
+    opacity 150ms;
+}
+.shareButton:hover,
+.shareButton[data-state="open"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.shareButton[data-empty] {
+  color: var(--text-tertiary);
+  opacity: 0;
+}
+[data-shareable]:hover .shareButton[data-empty],
+.shareButton[data-empty]:focus-visible,
+.shareButton[data-empty][data-state="open"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .shareButton[data-empty] {
+    opacity: 1;
+  }
+}
+.categoryCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.inlineShare {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+.shareOptions {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+.shareOption {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.shareOption:hover,
+.shareOption:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.shareOption[aria-pressed="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.optionDetail {
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.optionKey {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: var(--type-caption);
+}
+@media (hover: none) {
+  .optionKey {
+    display: none;
+  }
+}
+.popoverHint {
+  margin: 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.shareForm label {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareFormRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.shareFormRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.shareFormField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shareFormField[data-narrow] {
+  flex: 0 0 104px;
+}
+.shareFormActions {
+  display: flex;
+  justify-content: flex-end;
+}
+.formHint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  line-height: 1.45;
+}
+
+/* The editor variant's share: a line of its own under the line's fields. */
+.shareBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 2px var(--space-row-x) 12px var(--row-gutter);
+}
+.shareBarLabel {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareBarNote {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.shareBarField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 200px;
+}
+.shareBarField label {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareBarField > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- Register editor ---------- */
+
+.editorLine + .editorLine {
+  border-top: 1px solid var(--border-subtle);
+}
+.staticCell {
+  justify-content: center;
+  height: calc(
+    var(--size-control) + (var(--size-row-lg) - var(--size-control)) / 2
+  );
+}
+.staticCell[data-numeric] {
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.shareWell {
+  width: calc(100% + 8px);
+  margin-left: -8px;
+  padding-left: 7px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shareWell[data-state="open"] {
+  border-color: var(--focus-ring);
+}
+.inflow {
+  color: var(--money-positive);
+}
+.lineRemove {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: calc((var(--size-row-lg) - var(--size-control-xs)) / 2);
+}
+.editorError {
+  padding: 0 var(--space-row-x) 8px var(--row-gutter);
+  color: var(--danger-text);
+  font-size: var(--type-small);
+}
+.editorNote {
+  max-width: 72ch;
+  margin: 0;
+  padding: 0 var(--space-row-x) 12px var(--row-gutter);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+.footerHint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* ---------- Partner ledger ---------- */
+
+.owed {
+  font-size: var(--type-figure);
+  letter-spacing: -0.02em;
+}
+.envelopeFigure[data-state="funded"] {
+  color: var(--status-funded);
+}
+.envelopeFigure[data-state="overspent"] {
+  color: var(--status-overspent);
+}
+.envelopeFigure[data-state="credit"] {
+  color: var(--status-credit);
+}
+.privateNote {
+  margin: 0 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.requestStrip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 14px 20px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.requestTrack {
+  position: relative;
+  flex: none;
+  width: 120px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-selected);
+}
+.requestTrack > span {
+  position: absolute;
+  inset: 0;
+  background: var(--text-secondary);
+  transform-origin: left;
+  transition: transform 260ms var(--ease-panel);
+}
+.ledger {
+  padding-top: 6px;
+}
+.paidBy {
+  flex: none;
+  font-size: var(--type-small);
+}
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 24px;
+  margin: 2px 0 10px var(--row-gutter);
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+}
+@container (max-width: 760px) {
+  .detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.detailMain {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 0;
+}
+.facts > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.facts dt {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.facts dd {
+  margin: 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.source > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.detailActions {
+  display: flex;
+  gap: 8px;
+}
+.detailFields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.detailField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+}
+.detailField > label {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.readOnly {
+  margin: 0;
+}
+.shareEdit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shareEdit > :first-child {
+  flex: 0 1 140px;
+  min-width: 96px;
+}
+.history {
+  min-width: 0;
+}
+.history h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.history ol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--border-subtle);
+  list-style: none;
+}
+.history li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--type-small);
+  line-height: 1.45;
+}
+
+.popoverBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 0;
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+.popoverBody p {
+  margin: 0;
+}
+.fieldPair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.fieldPair > :first-child {
+  padding-right: 4px;
+}
+.fieldPair > :last-child {
+  padding-left: 4px;
+}
+.evenButton {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  font: inherit;
+  cursor: pointer;
+}
+.evenButton > :first-child {
+  color: var(--text-primary);
+}
+.evenAmount {
+  font-variant-numeric: tabular-nums;
+}
+/* The shell's choice field draws its own well. */
+.choiceWell {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Plan ---------- */
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.linkButton:hover {
+  text-decoration-color: currentColor;
+}
+.cardHeading {
+  margin: 0 2px 6px;
+  font-size: var(--type-small);
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.propertyTotal {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  font-weight: 500;
+}
+.cardNote {
+  margin: 10px 2px 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+.equation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 2px;
+}
+.equation > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.equation dt {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.equation dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* The operators sit on the figures' line. */
+.equation > div:has(> dd:empty) dt {
+  padding-bottom: 2px;
+  font-size: var(--type-title);
+}
+.equation > [data-total] dd {
+  color: var(--text-primary);
+}
+.equation dd[data-state="funded"] {
+  color: var(--status-funded);
+}
+.equation dd[data-state="overspent"] {
+  color: var(--status-overspent);
+}
+.equation dd[data-state="credit"] {
+  color: var(--status-credit);
+}
+.floatForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px;
+}
+.floatForm > label {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
