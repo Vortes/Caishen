@@ -219,13 +219,20 @@ void test(
             errors: {},
             reviews: {},
           }),
-          accountMappings: {},
+          accountMappings: {
+            "fixture-provider-checking": {
+              accountId: "bob-checking",
+              startDate: "2026-10-01",
+            },
+          },
         },
       });
 
       const ownInbox = await state();
       const otherInbox = await bob.budget.state({ month: "2026-10" });
-      assert.equal(ownInbox.imports.length, 4);
+      // Alice's bank account isn't in her budget yet, so none of its
+      // activity is up for review.
+      assert.equal(ownInbox.imports.length, 0);
       assert.equal(otherInbox.imports.length, 1);
       // The app shell reads the same connections and inbox beside its rows.
       for (const [caller, inbox] of [
@@ -250,18 +257,6 @@ void test(
       assert.ok(
         !JSON.stringify(otherInbox).includes("fixture-bob-token-never-return"),
       );
-
-      const matchConflict = ownInbox.imports.find(
-        (item) => item.logicalId === conflict.id,
-      );
-      assert.ok(matchConflict);
-      assert.equal(
-        matchConflict.needsMatchReview,
-        true,
-        "a status-only identity conflict must reopen a previously resolved import",
-      );
-      assert.match(matchConflict.error!, /conflicting provider identity/);
-      assert.equal(matchConflict.reviewEvidence.length, 1);
 
       await assert.rejects(
         () =>
@@ -330,6 +325,18 @@ void test(
       assert.ok(
         !mappedState.imports.some((item) => item.logicalId === preopening.id),
       );
+      const matchConflict = mappedState.imports.find(
+        (item) => item.logicalId === conflict.id,
+      );
+      assert.ok(matchConflict);
+      assert.equal(
+        matchConflict.needsMatchReview,
+        true,
+        "a status-only identity conflict must reopen a previously resolved import",
+      );
+      assert.match(matchConflict.error!, /conflicting provider identity/);
+      assert.equal(matchConflict.reviewEvidence.length, 1);
+
       await assert.rejects(
         () =>
           alice.budget.resolveImport({
