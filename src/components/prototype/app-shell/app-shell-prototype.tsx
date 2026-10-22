@@ -96,7 +96,7 @@ function isTyping(target: EventTarget | null) {
 
 export function AppShellPrototype({
   data,
-  loadingMonth,
+  progress,
   onMonthChange,
   moveMoney,
   categoryAdder,
@@ -107,7 +107,9 @@ export function AppShellPrototype({
   overlays,
 }: {
   data: ShellData;
-  loadingMonth: boolean;
+  // What the budget is doing in the background (saving, updating), shown
+  // as the header's progress line; null when it's settled.
+  progress: string | null;
   onMonthChange: (month: string) => void;
   moveMoney: MoveMoney;
   categoryAdder: CategoryAdder;
@@ -570,11 +572,9 @@ export function AppShellPrototype({
                       }}
                     />
                   )}
-                  {loadingMonth && !settingsOpen && (
+                  {progress && !settingsOpen && (
                     <div className={styles.monthLoading} role="status">
-                      <span className="sr-only">
-                        Loading {data.month.label}
-                      </span>
+                      <span className="sr-only">{progress}</span>
                     </div>
                   )}
                 </header>
@@ -657,9 +657,7 @@ export function AppShellPrototype({
                             aria-label={phone ? "Add transaction" : undefined}
                             data-transaction-opener="new"
                             disabled={
-                              Boolean(entry.session) ||
-                              entry.busy ||
-                              !accounts.length
+                              Boolean(entry.session) || !accounts.length
                             }
                             onClick={() =>
                               entry.start({ accountId: screen.accountId })

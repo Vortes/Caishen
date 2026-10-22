@@ -23,21 +23,24 @@ type Transaction = View["budget"]["transactions"][number];
 export type DraftField = keyof TransactionDraft;
 
 // What the live workspace lends the shell for saving transactions: the
-// budget on screen and the production command path.
+// budget on screen and its command path. A save shows at once and goes to
+// the server in the background; each returns why it can't apply, or null
+// once it's on its way, and calls `refused` if the server turns it down.
 export type TransactionSaver = {
   view: View;
   imports: BankImport[];
-  // A save, a month load, or a failed refresh is in the way.
-  busy: boolean;
-  // Why a save can't be sent right now, or null.
-  blocked: () => string | null;
-  // Sends the command against the revision on screen; settles with the save.
-  save: (command: Command, summary: string) => Promise<void>;
+  save: (
+    command: Command,
+    summary: string,
+    refused?: () => void,
+  ) => string | null;
+  // A bank import is saved by the server; it changes once the server has it.
   saveImport: (
     item: BankImport,
     command: Command,
     summary: string,
-  ) => Promise<void>;
+    refused?: () => void,
+  ) => string | null;
   // Holds the undo shortcut while the editor is open.
   holdOpen: () => () => void;
 };
@@ -95,13 +98,9 @@ export function useTransactionEntryController({
 }) {
   const { view, holdOpen } = saver;
   const [session, setSession] = useState<TransactionSession | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [request, setRequest] = useState<FocusRequest | null>(null);
   const handled = useRef(0);
-  // Synchronous, so a second press can't send before the first re-renders.
-  const saving = useRef(false);
-  // The last command sent for this draft. A retry of the same draft sends
-  // the same command id, so a save that reached the server isn't repeated.
+  // The command built for this draft, kept while the draft is unchanged.
   const attempt = useRef<{ fingerprint: string; command: Command } | null>(
     null,
   );
@@ -137,12 +136,10 @@ export function useTransactionEntryController({
     setSession((current) => (current ? { ...current, ...next } : current));
 
   // Once the editor is gone, focus goes back to what opened it, or to the
-  // same action where it now renders. Openers stay disabled until the save
-  // settles, which can be a render after the editor closes, so the return
-  // waits for that.
+  // same action where it now renders.
   const returning = useRef(false);
   useEffect(() => {
-    if (open || !returning.current || saver.busy) return;
+    if (open || !returning.current) return;
     returning.current = false;
     const target = opener.current;
     opener.current = null;
@@ -171,10 +168,9 @@ export function useTransactionEntryController({
     (next ?? document.getElementById("prototype-content"))?.focus({
       preventScroll: true,
     });
-  }, [open, saver.busy]);
+  }, [open]);
 
   const close = (restore = true) => {
-    if (saving.current) return;
     setSession(null);
     attempt.current = null;
     returning.current = restore;
@@ -182,7 +178,7 @@ export function useTransactionEntryController({
   };
 
   // Opens a new transaction, or an existing one by id. Refused while another
-  // editor is open or a change is still saving.
+  // editor is open.
   const start = ({
     transactionId,
     accountId,
@@ -192,7 +188,7 @@ export function useTransactionEntryController({
     accountId?: string | null;
     field?: DraftField;
   }) => {
-    if (session || saver.busy || !view.accounts.length) return false;
+    if (session || !view.accounts.length) return false;
     const transaction = transactionId
       ? view.budget.transactions.find(
           (item) => item.id === transactionId && !item.removed,
@@ -275,14 +271,8 @@ export function useTransactionEntryController({
     });
   };
 
-  const submit = async (another: boolean) => {
-    if (!session || saving.current || removed) return;
-    const reason = saver.blocked();
-    if (reason) {
-      patch({ error: reason });
-      focus("error");
-      return;
-    }
+  const submit = (another: boolean) => {
+    if (!session || removed) return;
     const { draft, initial, entityId } = session;
     let command: Command;
     try {
@@ -341,60 +331,64 @@ export function useTransactionEntryController({
       return;
     }
 
-    saving.current = true;
-    setSubmitting(true);
-    patch({ fields: {}, error: "" });
     const payee = draft.payee.trim();
-    try {
-      const summary = session.rowId ? `Saved ${payee}` : `Added ${payee}`;
-      if (session.imported)
-        await saver.saveImport(session.imported, command, summary);
-      else await saver.save(command, summary);
-      attempt.current = null;
-      saving.current = false;
-      if (another && !session.rowId) {
-        const next = {
-          ...createTransactionDraft(
-            view,
-            view.month,
-            undefined,
-            draft.accountId,
-          ),
-          date: draft.date,
-          status: draft.status,
-        };
-        setSession((current) =>
-          current
-            ? {
-                ...current,
-                key: newId(),
-                entityId: newId(),
-                draft: next,
-                pristine: next,
-                fields: {},
-                error: "",
-                calendarOpen: false,
-              }
-            : current,
-        );
-        focus("payee", true);
-      } else close();
-    } catch {
-      patch({
-        error: "Not saved. Your changes are still here, so you can try again.",
-      });
+    const summary = session.rowId ? `Saved ${payee}` : `Added ${payee}`;
+    // The editor closes as the change shows. If the server turns it down,
+    // the draft comes back with what went wrong, unless another editor is
+    // open by then.
+    const sent = session;
+    const refused = () => {
+      setSession(
+        (current) =>
+          current ?? {
+            ...sent,
+            key: newId(),
+            fields: {},
+            error:
+              "Not saved. Your changes are still here, so you can try again.",
+            calendarOpen: false,
+          },
+      );
       focus("error");
-    } finally {
-      saving.current = false;
-      setSubmitting(false);
+    };
+    const blocked = session.imported
+      ? saver.saveImport(session.imported, command, summary, refused)
+      : saver.save(command, summary, refused);
+    if (blocked) {
+      patch({ fields: {}, error: blocked });
+      focus("error");
+      return;
     }
+    attempt.current = null;
+    if (another && !session.rowId) {
+      const next = {
+        ...createTransactionDraft(view, view.month, undefined, draft.accountId),
+        date: draft.date,
+        status: draft.status,
+      };
+      setSession((current) =>
+        current
+          ? {
+              ...current,
+              key: newId(),
+              entityId: newId(),
+              draft: next,
+              pristine: next,
+              fields: {},
+              error: "",
+              calendarOpen: false,
+            }
+          : current,
+      );
+      focus("payee", true);
+    } else close();
   };
 
   // Leaving the register would hide unsaved work, so it waits for Save or
   // Cancel. An untouched editor just closes. Returns whether to stay.
   const holdForDraft = () => {
     if (!session) return false;
-    if (dirty || submitting || saving.current) {
+    if (dirty) {
       patch({ error: "Save or cancel this transaction first." });
       reveal();
       focus("error");
@@ -407,17 +401,13 @@ export function useTransactionEntryController({
   return {
     view,
     holdOpen,
-    addAccount: async (command: Extract<Command, { type: "account.add" }>) => {
-      const reason = saver.blocked();
-      if (reason) throw new Error(reason);
-      await saver.save(command, `Added ${command.name}`);
-    },
-    busy: saver.busy,
+    // Returns why the account can't be added, or null once it's on its way.
+    addAccount: (command: Extract<Command, { type: "account.add" }>) =>
+      saver.save(command, `Added ${command.name}`),
     session,
     latest,
     removed,
     dirty,
-    submitting,
     start,
     change,
     setCalendarOpen: (calendarOpen: boolean) => patch({ calendarOpen }),

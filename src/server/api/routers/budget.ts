@@ -34,6 +34,7 @@ import {
   executeCommand,
   openHousehold,
   requireHousehold,
+  type Database,
 } from "~/server/services/household";
 import { changeHistory, historySummary } from "~/server/services/history";
 import {
@@ -70,25 +71,58 @@ const evidenceAlert =
       { issues: zodIssues(error) },
     ]);
 
+// A user's bank connections as the app reads them with their imports.
+const savedBankConnections = (db: Database, userId: string) =>
+  db.bankConnection.findMany({
+    where: { clerkUserId: userId },
+    select: {
+      id: true,
+      clerkUserId: true,
+      itemId: true,
+      lastSyncedAt: true,
+      lastAttemptAt: true,
+      error: true,
+      accountMappings: true,
+      imports: true,
+    },
+  });
+
 export const budgetRouter = createTRPCRouter({
+  // What the app shell shows beside the rows it syncs (ADR 0006): whether
+  // the budget can be read, and the bank connections with their inbox.
+  overview: protectedProcedure.query(async ({ ctx }) => {
+    const [opened, savedConnections] = await Promise.all([
+      openHousehold(ctx.db, ctx.userId, ctx.revision.observe),
+      savedBankConnections(ctx.db, ctx.userId),
+    ]);
+    const services = integrationStatus(process.env);
+    if (opened?.ledger.status !== "ready")
+      return {
+        // A budget that can't be read shows a maintenance message in place
+        // of the plan, never partial numbers.
+        status: opened ? ("maintenance" as const) : ("new" as const),
+        services,
+        connections: [],
+        imports: [],
+      };
+    const imports = readImportStates(opened.household.rows, ctx.userId);
+    const banks = savedConnections.map((connection) =>
+      readBankConnection(connection, imports),
+    );
+    return {
+      status: "ready" as const,
+      services,
+      connections: banks.map(bankConnectionView),
+      imports: bankInboxItems(banks, opened.ledger.budget),
+    };
+  }),
+
   state: protectedProcedure
     .input(z.object({ month }))
     .query(async ({ ctx, input }) => {
       const [opened, savedConnections, evidence] = await Promise.all([
         openHousehold(ctx.db, ctx.userId, ctx.revision.observe),
-        ctx.db.bankConnection.findMany({
-          where: { clerkUserId: ctx.userId },
-          select: {
-            id: true,
-            clerkUserId: true,
-            itemId: true,
-            lastSyncedAt: true,
-            lastAttemptAt: true,
-            error: true,
-            accountMappings: true,
-            imports: true,
-          },
-        }),
+        savedBankConnections(ctx.db, ctx.userId),
         ctx.db.reviewEvidence.findMany({
           where: { clerkUserId: ctx.userId },
           orderBy: { createdAt: "desc" },

@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Command } from "~/domain/engine";
-import { renderShell, stateFixture } from "./shell-harness";
+import { renderShell } from "./shell-harness";
 
 const card: Command = {
   type: "account.add",
@@ -22,9 +22,7 @@ const reserve: Command = {
 };
 
 test("the payment row omits the pay-in-full shortfall label", async () => {
-  await renderShell({
-    read: () => stateFixture({ seedCommands: [card, reserve] }),
-  });
+  await renderShell({ seedCommands: [card, reserve] });
   const row = await screen.findByRole("button", {
     name: /^Chase Sapphire payment/,
   });
@@ -59,7 +57,7 @@ test.each([
   "payment rows $description have no funding progress graphic",
   async ({ target, fundingLabel }) => {
     const seedCommands = target ? [card, reserve, target] : [card, reserve];
-    await renderShell({ read: () => stateFixture({ seedCommands }) });
+    await renderShell({ seedCommands });
     const row = await screen.findByRole("button", {
       name: /^Chase Sapphire payment/,
     });
@@ -68,17 +66,13 @@ test.each([
 );
 
 test("spending categories keep their funding progress graphic", async () => {
-  await renderShell({
-    read: () => stateFixture({ seedCommands: [card, reserve] }),
-  });
+  await renderShell({ seedCommands: [card, reserve] });
   const row = await screen.findByRole("button", { name: /^Gifts/ });
   expect(within(row).queryByRole("img", { name: "Funded" })).not.toBeNull();
 });
 
 test("the Underfunded view includes a card whose reserve is short of its balance", async () => {
-  const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: [card, reserve] }),
-  });
+  const shell = await renderShell({ seedCommands: [card, reserve] });
   const views = screen.getByRole("group", { name: "Plan views" });
   await shell.user.click(
     within(views).getByRole("button", { name: /^Underfunded/ }),

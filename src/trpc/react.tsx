@@ -1,14 +1,14 @@
 "use client";
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchStreamLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import { type inferRouterInputs, type inferRouterOutputs } from "@trpc/server";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import SuperJSON from "superjson";
 
 import { type AppRouter } from "~/server/api/root";
+import { deleteStoredBudgets } from "~/components/sync/indexed-db";
+import { appLinks } from "./links";
 import { createQueryClient } from "./query-client";
 
 export const api = createTRPCReact<AppRouter>();
@@ -18,7 +18,11 @@ export type RouterInputs = inferRouterInputs<AppRouter>;
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 export function TRPCReactProvider(props: { children: React.ReactNode }) {
-  const { userId } = useAuth();
+  const { isLoaded, userId } = useAuth();
+  // However the user signed out, the budget this browser kept goes too.
+  useEffect(() => {
+    if (isLoaded && !userId) void deleteStoredBudgets();
+  }, [isLoaded, userId]);
   return (
     <IdentityTRPCProvider key={userId ?? "signed-out"}>
       {props.children}
@@ -31,17 +35,7 @@ function IdentityTRPCProvider(props: { children: React.ReactNode }) {
 
   const [trpcClient] = useState(() =>
     api.createClient({
-      links: [
-        httpBatchStreamLink({
-          transformer: SuperJSON,
-          url: getBaseUrl() + "/api/trpc",
-          headers: () => {
-            const headers = new Headers();
-            headers.set("x-trpc-source", "nextjs-react");
-            return headers;
-          },
-        }),
-      ],
+      links: appLinks({ url: getBaseUrl() + "/api/trpc" }),
     }),
   );
 

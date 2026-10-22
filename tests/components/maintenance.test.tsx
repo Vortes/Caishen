@@ -1,23 +1,26 @@
 import { focusManager } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
+import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
-import type { State } from "~/components/budget/types";
-import { renderShell, stateFixture } from "./shell-harness";
-
-const maintenance: State = {
-  status: "maintenance",
-  view: null,
-  revision: 7,
-  history: { undo: null, redo: null },
-  services: [],
-  connections: [],
-  evidence: [],
-  imports: [],
-};
+import { readyOverview, refocus, renderShell } from "./shell-harness";
 
 test("a budget the server can't read shows maintenance in place of the plan, then the plan once it reads again", async () => {
-  let current: State = maintenance;
-  const { read } = await renderShell({ read: () => current, plan: false });
+  let readable = false;
+  const { overview } = await renderShell({
+    overview: () =>
+      readable
+        ? readyOverview()
+        : { status: "maintenance", services: [], connections: [], imports: [] },
+    pull: (input, server) => {
+      if (!readable)
+        throw new TRPCError({
+          code: "SERVICE_UNAVAILABLE",
+          message: "Your plan is under maintenance.",
+        });
+      return server.pull("owner", input);
+    },
+    plan: false,
+  });
 
   const title = await screen.findByText("We’re doing some maintenance.");
   expect(title.closest("[role=status]")?.textContent).toBe(
@@ -26,10 +29,33 @@ test("a budget the server can't read shows maintenance in place of the plan, the
   expect(screen.queryByRole("heading", { name: "Plan" })).toBeNull();
   expect(screen.queryByRole("button")).toBeNull();
 
-  current = stateFixture();
+  readable = true;
   focusManager.setFocused(false);
   focusManager.setFocused(true);
+  await refocus();
   await screen.findByRole("heading", { name: "Plan" });
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(overview).toHaveBeenCalledTimes(2);
   focusManager.setFocused(undefined);
+});
+
+test("someone without a budget is sent to create one", async () => {
+  await renderShell({
+    overview: () => ({
+      status: "new",
+      services: [],
+      connections: [],
+      imports: [],
+    }),
+    pull: () => {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Create your personal budget first.",
+      });
+    },
+    plan: false,
+  });
+  await screen.findByText("You don’t have a budget yet.");
+  expect(
+    screen.getByRole("link", { name: "Create one in Caishen" }),
+  ).toBeTruthy();
 });

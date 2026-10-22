@@ -1,34 +1,47 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { deferred, openPurchase, renderShell } from "./shell-harness";
+import { SyncError } from "~/components/sync/transport";
+import {
+  deferred,
+  findToast,
+  openPurchase,
+  renderShell,
+} from "./shell-harness";
 
-test("an outstanding save blocks repeated submission and retains the draft on failure", async () => {
-  const pending = deferred<{ revision: number }>();
-  const shell = await renderShell({ execute: () => pending.promise });
+test("a save closes the editor at once, and a draft the server refuses comes back", async () => {
+  const gate = deferred<void>();
+  const shell = await renderShell({
+    execute: async (input, server) => {
+      await gate.promise;
+      throw new SyncError(
+        "rejected",
+        "This account was closed on another device.",
+        server.revision,
+      );
+    },
+  });
   const form = await openPurchase(shell.user);
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(within(form).getByRole("button", { name: "Saving…" })).toHaveProperty(
-    "disabled",
-    true,
-  );
+  expect(screen.queryByRole("form", { name: "New transaction" })).toBeNull();
+  expect(screen.getByText("Market")).toBeTruthy();
+  gate.resolve();
+
+  await findToast("This account was closed on another device.");
+  const restored = await screen.findByRole("form", {
+    name: "New transaction",
+  });
   expect(
-    within(form).getByRole("button", { name: "Save and add another" }),
-  ).toHaveProperty("disabled", true);
-  fireEvent.submit(form);
-  await shell.user.keyboard("{Enter}");
-  expect(shell.execute).toHaveBeenCalledTimes(1);
-  pending.reject(new Error("Save refused"));
-  await screen.findByText(
-    "Not saved. Your changes are still here, so you can try again.",
-  );
-  expect(within(form).getByLabelText("Payee", { exact: true })).toHaveProperty(
-    "value",
-    "Market",
-  );
+    within(restored).getByText(
+      "Not saved. Your changes are still here, so you can try again.",
+    ),
+  ).toBeTruthy();
   expect(
-    within(form).getByLabelText("Outflow", { exact: true }),
+    within(restored).getByLabelText("Payee", { exact: true }),
+  ).toHaveProperty("value", "Market");
+  expect(
+    within(restored).getByLabelText("Outflow", { exact: true }),
   ).toHaveProperty("value", "12.50");
+  expect(shell.execute).toHaveBeenCalledTimes(1);
 });
 
 test("a dirty transaction holds shell navigation until canceled; a pristine editor can leave", async () => {

@@ -61,14 +61,13 @@ export async function fillPurchase(
 }
 
 export async function saved(page: Page) {
-  // Enabled only after the mutation succeeds and the fresh budget arrives.
+  // The confirmation, with Undo, shows once the server has the change.
   await expect(
     notifications(page).getByRole("button", { name: "Undo", exact: true }),
   ).toBeEnabled();
 }
 
 export async function editAssigned(page: Page, category: string) {
-  await expect(assigned(page, category)).not.toHaveAttribute("aria-disabled");
   await assigned(page, category).click();
   return page.getByRole("textbox", { name: `Assigned amount for ${category}` });
 }
@@ -83,14 +82,8 @@ export async function showMonth(page: Page, month: string) {
       .getByRole("button", { name: navigation.direction, exact: true })
       .click();
     await expect(picker).not.toHaveText(previous);
-    await expect(
-      page.getByRole("status").filter({ hasText: /^Loading / }),
-    ).toHaveCount(0);
   }
   await expect(picker).toHaveText(navigation.label);
-  await expect(
-    page.getByRole("status").filter({ hasText: /^Loading / }),
-  ).toHaveCount(0);
 }
 
 export async function reloadBudget(page: Page, budget: TestBudget) {

@@ -44,7 +44,7 @@ type Control = DraftField | "error";
 function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const entry = useTransactionEntry();
   const session = entry.session!;
-  const { view, submitting, removed } = entry;
+  const { view, removed } = entry;
   const { draft, fields, initial } = session;
   const editing = Boolean(session.rowId);
   const formId = useId();
@@ -236,7 +236,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         placeholder={name === "outflow" ? "Outflow" : "Inflow"}
         autoComplete="off"
         spellCheck={false}
-        readOnly={submitting}
         aria-invalid={Boolean(fields[name]) || undefined}
         aria-describedby={described(name)}
         value={draft[name]}
@@ -273,7 +272,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       inputRef={register("date")}
       invalid={Boolean(fields.date)}
       describedBy={described("date")}
-      readOnly={submitting}
       onOpenChange={entry.setCalendarOpen}
       onChange={(date) => entry.change({ date })}
       onPicked={() => advance("payee")}
@@ -313,7 +311,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       inputRef={register("payee")}
       invalid={Boolean(fields.payee)}
       describedBy={described("payee")}
-      readOnly={submitting}
       onChange={(payee) =>
         entry.change({
           payee,
@@ -392,7 +389,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           inputRef={register("categoryId")}
           invalid={Boolean(fields.categoryId)}
           describedBy={described("categoryId")}
-          readOnly={submitting}
           onChange={(categoryId) => entry.change({ categoryId })}
           onPicked={afterCategory}
           // A loan's payment or a shared expense takes a category that
@@ -417,7 +413,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       invalid={Boolean(fields.accountId)}
       describedBy={described("accountId")}
       disabled={editing}
-      readOnly={submitting}
       onChange={(accountId) =>
         entry.change({
           accountId,
@@ -452,25 +447,20 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   );
   const actions = (
     <div className={styles.actions}>
-      <Button size="sm" disabled={submitting} onClick={entry.cancel}>
+      <Button size="sm" onClick={entry.cancel}>
         Cancel
       </Button>
       {!editing && (
         <Button
           size="sm"
-          disabled={removed || submitting}
+          disabled={removed}
           onClick={() => void entry.submit(true)}
         >
           Save and add another
         </Button>
       )}
-      <Button
-        variant="primary"
-        size="sm"
-        type="submit"
-        disabled={removed || submitting}
-      >
-        {submitting ? "Saving…" : "Save"}
+      <Button variant="primary" size="sm" type="submit" disabled={removed}>
+        Save
       </Button>
     </div>
   );
@@ -493,7 +483,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           event.stopPropagation();
         if (event.key !== "Escape") return;
         event.stopPropagation();
-        if (event.defaultPrevented || submitting) return;
+        if (event.defaultPrevented) return;
         event.preventDefault();
         entry.cancel();
       }}
@@ -537,7 +527,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
                 inputMode="decimal"
                 value={draft.interest}
                 placeholder="0.00"
-                readOnly={submitting}
                 aria-invalid={Boolean(fields.interest) || undefined}
                 aria-describedby={described("interest")}
                 onChange={(event) =>

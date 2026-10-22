@@ -90,7 +90,7 @@ export function usePlaidLink() {
             connectionId: result.id,
           }));
           await operations.current.sync.mutateAsync();
-          await operations.current.utils.budget.state.invalidate();
+          await operations.current.utils.budget.invalidate();
           if (generation.current === current)
             setState((value) => ({
               ...value,
@@ -102,7 +102,7 @@ export function usePlaidLink() {
             }));
         } catch (error) {
           if (saved) {
-            await operations.current.utils.budget.state
+            await operations.current.utils.budget
               .invalidate()
               .catch(() => undefined);
           }
@@ -259,7 +259,7 @@ export function usePlaidLink() {
     }));
     try {
       await operations.current.sync.mutateAsync();
-      await operations.current.utils.budget.state.invalidate();
+      await operations.current.utils.budget.invalidate();
       if (generation.current === current)
         setState((value) => ({
           ...value,

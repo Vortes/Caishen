@@ -3,6 +3,7 @@ import { type NextRequest } from "next/server";
 
 import { env } from "~/env";
 import { appRouter } from "~/server/api/root";
+import { revisionResponseMeta } from "~/server/api/revision-header";
 import { createTRPCContext } from "~/server/api/trpc";
 
 /**
@@ -21,12 +22,7 @@ const handler = (req: NextRequest) =>
     req,
     router: appRouter,
     createContext: () => createContext(req),
-    // Streamed responses send headers before any procedure ran; the sync
-    // layer's link doesn't stream.
-    responseMeta: ({ ctx, eagerGeneration }) =>
-      !eagerGeneration && ctx?.revision.value !== undefined
-        ? { headers: { "x-caishen-revision": String(ctx.revision.value) } }
-        : {},
+    responseMeta: revisionResponseMeta,
     onError:
       env.NODE_ENV === "development"
         ? ({ path, error }) => {

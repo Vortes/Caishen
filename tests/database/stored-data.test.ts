@@ -139,6 +139,9 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     const owner = await alerts(() => alice.budget.state({ month }));
     assert.equal(owner.result.status, "maintenance");
     assert.equal(owner.result.view, null);
+    const overview = await alerts(() => alice.budget.overview());
+    assert.equal(overview.result.status, "maintenance");
+    assert.deepEqual(overview.result.imports, []);
     assert.equal(owner.lines.length, 1);
     assert.deepEqual(
       {
@@ -192,6 +195,7 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     // unreadable budget.
     const partner = await bob.budget.state({ month });
     assert.equal(partner.status, "ready");
+    assert.equal((await bob.budget.overview()).status, "ready");
     assert.equal(partner.view?.budget.userId, b);
     assert.equal(
       partner.view?.accounts.find((account) => account.id === `${b}-bank`)

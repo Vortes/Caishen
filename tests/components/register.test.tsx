@@ -1,7 +1,14 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Command } from "~/domain/engine";
-import { deferred, renderShell, stateFixture } from "./shell-harness";
+import { SyncError } from "~/components/sync/transport";
+import {
+  findToast,
+  readyOverview,
+  renderShell,
+  sent,
+  type Overview,
+} from "./shell-harness";
 
 const purchase = (
   transactionId = "purchase",
@@ -23,14 +30,18 @@ const row = (payee: string) =>
     "button",
     { name: new RegExp(payee) },
   );
+const findRow = (payee: string) =>
+  within(screen.getByRole("group", { name: "Transactions" })).findByRole(
+    "button",
+    { name: new RegExp(payee) },
+  );
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
 
 test("only newly checked rows get an entry marker when selecting all", async () => {
-  const state = stateFixture({
+  const shell = await renderShell({
     seedCommands: [purchase(), purchase("coffee")],
   });
-  const shell = await renderShell({ read: () => state });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   const market = row("Market").parentElement!;
   const coffee = row("Coffee").parentElement!;
@@ -55,8 +66,7 @@ test("only newly checked rows get an entry marker when selecting all", async () 
 });
 
 test("keyboard selection skips motion until the next pointer interaction", async () => {
-  const state = stateFixture({ seedCommands: [purchase()] });
-  const shell = await renderShell({ read: () => state });
+  const shell = await renderShell({ seedCommands: [purchase()] });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   const register = screen.getByRole("group", { name: "Transactions" });
   const market = row("Market");
@@ -77,12 +87,8 @@ test("keyboard selection skips motion until the next pointer interaction", async
 test.each(["pending", "posted"] as const)(
   "a first click selects a %s purchase, a second edits its field, and the keyboard action corrects the same transaction",
   async (status) => {
-    const state = stateFixture({ seedCommands: [{ ...purchase(), status }] });
     const shell = await renderShell({
-      read: () => state,
-      execute: () => {
-        throw new Error("Hold the draft");
-      },
+      seedCommands: [{ ...purchase(), status }],
     });
     await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
     await shell.user.click(
@@ -104,7 +110,7 @@ test.each(["pending", "posted"] as const)(
     );
     await shell.user.click(editor().getByRole("button", { name: "Save" }));
     await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-    expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
+    expect(sent(shell.execute)[0]).toMatchObject({
       type: "transaction.upsert",
       transactionId: "purchase",
       amount: -1875,
@@ -155,8 +161,7 @@ test.each([
               date: "2026-10-01",
             },
           ];
-    const state = stateFixture({ seedCommands });
-    state.imports = [
+    let imports: Overview["imports"] = [
       {
         connectionId: "bank",
         logicalId: "imported-coffee",
@@ -178,10 +183,26 @@ test.each([
         quarantined: false,
       },
     ];
-    const pending = deferred<{ resolved: boolean }>();
+    // The first save is refused; the next one resolves the import.
+    let refuse = true;
     const shell = await renderShell({
-      read: () => state,
-      resolveImport: () => pending.promise,
+      seedCommands,
+      overview: () => readyOverview({ imports }),
+      resolveImport: (input, server) => {
+        if (refuse) {
+          refuse = false;
+          throw new SyncError("rejected", "Your bank changed this import.");
+        }
+        imports = [];
+        return {
+          ...server.execute("owner", {
+            command: input.command!,
+            baseRevision: input.expectedRevision,
+            clientId: "import",
+          }),
+          resolved: true,
+        };
+      },
     });
     await shell.user.click(
       within(
@@ -220,10 +241,6 @@ test.each([
     );
     await shell.user.click(editor().getByRole("button", { name: "Save" }));
     await waitFor(() => expect(shell.resolveImport).toHaveBeenCalledTimes(1));
-    expect(editor().getByRole("button", { name: "Saving…" })).toHaveProperty(
-      "disabled",
-      true,
-    );
     expect(shell.execute).not.toHaveBeenCalled();
     expect(shell.resolveImport.mock.calls[0]![0]).toMatchObject({
       connectionId: "bank",
@@ -238,7 +255,7 @@ test.each([
         status,
       },
     });
-    pending.reject(new Error("Save refused"));
+    await findToast("Your bank changed this import.");
     await screen.findByText(
       "Not saved. Your changes are still here, so you can try again.",
     );
@@ -246,22 +263,12 @@ test.each([
       "value",
       "Neighborhood cafe",
     );
-    const input = shell.resolveImport.mock.calls[0]![0];
-    shell.read.mockReturnValue(
-      stateFixture({ seedCommands: [...seedCommands, input.command!] }),
-    );
-    shell.resolveImport.mockResolvedValueOnce({ resolved: true });
     await shell.user.click(editor().getByRole("button", { name: "Save" }));
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("form", { name: "Edit transaction" }),
-      ).toBeNull(),
-    );
-    expect(shell.resolveImport.mock.calls[1]![0].command!.id).toBe(
-      input.command!.id,
-    );
+    expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
+    await findToast("Saved Neighborhood cafe");
+    expect(shell.resolveImport).toHaveBeenCalledTimes(2);
     expect(
-      within(row("Neighborhood cafe")).getByLabelText(
+      within(await findRow("Neighborhood cafe")).getByLabelText(
         status === "pending" ? "Pending" : "Cleared",
       ),
     ).toBeTruthy();
@@ -299,13 +306,7 @@ const cardSeeds: Command[] = [
 ];
 
 test("payment payees exclude the current account and a receiving-side edit submits the existing payment", async () => {
-  const state = stateFixture({ seedCommands: cardSeeds });
-  const shell = await renderShell({
-    read: () => state,
-    execute: () => {
-      throw new Error("Hold the draft");
-    },
-  });
+  const shell = await renderShell({ seedCommands: cardSeeds });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
@@ -335,7 +336,7 @@ test("payment payees exclude the current account and a receiving-side edit submi
   );
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
+  expect(sent(shell.execute)[0]).toMatchObject({
     type: "transaction.save",
     transactionId: "card-payment:card",
     accountId: "visa",
@@ -345,9 +346,7 @@ test("payment payees exclude the current account and a receiving-side edit submi
 });
 
 test("a payment link selects its counterpart without opening an editor or offering categorization", async () => {
-  const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: cardSeeds }),
-  });
+  const shell = await renderShell({ seedCommands: cardSeeds });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   await shell.user.click(screen.getByRole("link", { name: "View in Visa" }));
   expect(screen.getByRole("heading", { name: "Visa" })).toBeTruthy();
@@ -376,17 +375,13 @@ test("a payment link selects its counterpart without opening an editor or offeri
   expect(shell.execute).not.toHaveBeenCalled();
 });
 
-test("categorization submits both selected purchases and holds the form until the save completes", async () => {
+test("categorization applies to both selected purchases at once", async () => {
   const seeds: Command[] = [
     purchase(),
     purchase("coffee", false),
     { type: "category.add", id: "food", categoryId: "food", name: "Food" },
   ];
-  const pending = deferred<{ revision: number }>();
-  const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: seeds }),
-    execute: () => pending.promise,
-  });
+  const shell = await renderShell({ seedCommands: seeds });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   await shell.user.click(row("Market"));
   const actions = within(
@@ -406,12 +401,13 @@ test("categorization submits both selected purchases and holds the form until th
     "Food{Enter}",
   );
   await shell.user.click(within(form).getByRole("button", { name: "Apply" }));
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(within(form).getByRole("button", { name: "Saving…" })).toHaveProperty(
-    "disabled",
-    true,
-  );
-  const command = shell.execute.mock.calls[0]![0].command;
+  expect(
+    screen.queryByRole("form", { name: "Categorize transactions" }),
+  ).toBeNull();
+  await waitFor(() => expect(row("Market").textContent).toContain("Food"));
+  expect(row("Coffee").textContent).toContain("Food");
+  await findToast("Categorized 2 transactions");
+  const command = sent(shell.execute)[0];
   expect(command).toMatchObject({
     type: "transaction.categorize.batch",
     categoryId: "food",
@@ -421,37 +417,11 @@ test("categorization submits both selected purchases and holds the form until th
     expect.arrayContaining(["purchase", "coffee"]),
   );
   expect(command).toHaveProperty("transactionIds.length", 2);
-  shell.read.mockReturnValue(
-    stateFixture({
-      revision: 6,
-      seedCommands: [
-        ...seeds,
-        {
-          type: "transaction.categorize.batch",
-          id: "categorized",
-          categoryId: "food",
-          transactionIds: ["purchase", "coffee"],
-        },
-      ],
-    }),
-  );
-  pending.resolve({ revision: 6 });
-  await waitFor(() =>
-    expect(
-      screen.queryByRole("form", { name: "Categorize transactions" }),
-    ).toBeNull(),
-  );
-  expect(row("Market").textContent).toContain("Food");
-  expect(row("Coffee").textContent).toContain("Food");
 });
 
 test("Reject submits only the unreviewed purchase in a mixed selection", async () => {
   const shell = await renderShell({
-    read: () =>
-      stateFixture({ seedCommands: [purchase(), purchase("coffee", false)] }),
-    execute: () => {
-      throw new Error("Hold the selection");
-    },
+    seedCommands: [purchase(), purchase("coffee", false)],
   });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   await shell.user.click(row("Market"));
@@ -460,7 +430,7 @@ test("Reject submits only the unreviewed purchase in a mixed selection", async (
   );
   await shell.user.click(screen.getByRole("button", { name: "Reject" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
+  expect(sent(shell.execute)[0]).toMatchObject({
     type: "transaction.reject",
     transactionIds: ["coffee"],
   });
@@ -489,12 +459,7 @@ test("editing a brokerage transfer from the tracking register retains its requir
       payee: "Transfer from Checking",
     },
   ];
-  const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: seeds }),
-    execute: () => {
-      throw new Error("Hold the draft");
-    },
-  });
+  const shell = await renderShell({ seedCommands: seeds });
   await shell.user.click(screen.getByRole("button", { name: /^Brokerage/ }));
   await shell.user.click(row("Transfer from Checking"));
   await shell.user.keyboard("e");
@@ -509,7 +474,7 @@ test("editing a brokerage transfer from the tracking register retains its requir
   );
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
+  expect(sent(shell.execute)[0]).toMatchObject({
     type: "transaction.save",
     transactionId: "tracking",
     accountId: "brokerage",
@@ -550,12 +515,7 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
       interest: 1000,
     },
   ];
-  const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: seeds }),
-    execute: () => {
-      throw new Error("Hold the draft");
-    },
-  });
+  const shell = await renderShell({ seedCommands: seeds });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   await shell.user.click(row("Payment to Student loan"));
   await shell.user.keyboard("e");
@@ -572,7 +532,7 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
   await shell.user.type(interest, "12");
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
+  expect(sent(shell.execute)[0]).toMatchObject({
     type: "transaction.save",
     transactionId: "loan-payment:payment",
     loanId: "loan",
@@ -582,11 +542,7 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
 });
 
 test("adding a brokerage account sends tracking type and its entered opening balance", async () => {
-  const shell = await renderShell({
-    execute: () => {
-      throw new Error("Hold the account");
-    },
-  });
+  const shell = await renderShell();
   await shell.user.click(screen.getByRole("button", { name: "Add account" }));
   const form = within(screen.getByRole("form", { name: "Add account" }));
   await shell.user.type(
@@ -600,7 +556,7 @@ test("adding a brokerage account sends tracking type and its entered opening bal
   await shell.user.type(form.getByLabelText("Opening balance ($)"), "25000");
   await shell.user.click(form.getByRole("button", { name: "Add account" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
+  expect(sent(shell.execute)[0]).toMatchObject({
     type: "account.add",
     name: "Fidelity brokerage",
     kind: "tracking",
@@ -622,10 +578,16 @@ test("choosing and removing a transfer payee changes category requirements witho
     },
     purchase("purchase", false),
   ];
+  // The server turns the first save down, so the draft comes back.
+  let first = true;
   const shell = await renderShell({
-    read: () => stateFixture({ seedCommands: seeds }),
-    execute: () => {
-      throw new Error("Hold the draft");
+    seedCommands: seeds,
+    execute: (input, server) => {
+      if (first) {
+        first = false;
+        throw new SyncError("rejected", "Try that again.", server.revision);
+      }
+      return server.execute("owner", input);
     },
   });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
@@ -643,7 +605,7 @@ test("choosing and removing a transfer payee changes category requirements witho
   await screen.findByText(
     "Not saved. Your changes are still here, so you can try again.",
   );
-  expect(shell.execute.mock.calls[0]![0].command).toMatchObject({
+  expect(sent(shell.execute)[0]).toMatchObject({
     type: "transaction.save",
     transactionId: "purchase",
     transferAccountId: "savings",
@@ -662,7 +624,7 @@ test("choosing and removing a transfer payee changes category requirements witho
   );
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(2));
-  expect(shell.execute.mock.calls[1]![0].command).toMatchObject({
+  expect(sent(shell.execute)[1]).toMatchObject({
     type: "transaction.upsert",
     transactionId: "purchase",
     payee: "Merchant purchase",

@@ -227,6 +227,17 @@ void test(
       const otherInbox = await bob.budget.state({ month: "2026-10" });
       assert.equal(ownInbox.imports.length, 4);
       assert.equal(otherInbox.imports.length, 1);
+      // The app shell reads the same connections and inbox beside its rows.
+      for (const [caller, inbox] of [
+        [alice, ownInbox],
+        [bob, otherInbox],
+      ] as const) {
+        const overview = await caller.budget.overview();
+        assert.equal(overview.status, "ready");
+        assert.deepEqual(overview.imports, inbox.imports);
+        assert.deepEqual(overview.connections, inbox.connections);
+        assert.deepEqual(overview.services, inbox.services);
+      }
       assert.ok(
         !JSON.stringify(ownInbox).includes("Bob private fixture merchant"),
       );

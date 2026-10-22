@@ -1,6 +1,5 @@
 "use client";
 
-import { useIsMutating } from "@tanstack/react-query";
 import {
   CircleAlertIcon,
   CircleCheckIcon,
@@ -11,6 +10,8 @@ import {
 import { Popover } from "radix-ui";
 import { createContext, useContext, useEffect, useId, useState } from "react";
 import { newId } from "~/components/budget/format";
+import { useBudgetSelector } from "~/components/sync/hooks";
+import type { BudgetSnapshot } from "~/components/sync/budget-store";
 import { isTransfer } from "~/domain/transfers";
 import type { Command } from "~/domain/engine";
 import { Button } from "~/components/ui/button";
@@ -31,14 +32,12 @@ export function approveCommand(transactionIds: string[]): Command {
 }
 
 export type TransactionReview = {
-  // Sends one transaction.approve for these transactions through the shared
-  // command path. Ignored while another change saves, a month loads, or the
-  // budget couldn't refresh.
+  // Sends one transaction.approve for these transactions; it shows at once
+  // and saves in the background.
   approve: (transactionIds: string[]) => void;
   reject: (transactionIds: string[]) => void;
-  categorize: (transactionIds: string[], categoryId: string) => Promise<void>;
-  // True while one of those applies, so review controls stay disabled.
-  busy: boolean;
+  // Returns why the category can't apply, or null once it's on its way.
+  categorize: (transactionIds: string[], categoryId: string) => string | null;
 };
 
 const TransactionReviewContext = createContext<TransactionReview | null>(null);
@@ -52,11 +51,13 @@ function useTransactionReview() {
   return value;
 }
 
+const saved = (snapshot: BudgetSnapshot) => snapshot.pending.length === 0;
+
 // The selection on screen is what's checked among the rows showing.
 // Once nothing is saving, checked rows that are no longer showing
 // are dropped, so a row that comes back later doesn't return selected.
-// While an approval saves they're kept: if it fails, the rows it hid come
-// back still selected for another try.
+// While an approval saves they're kept: if the server refuses it, the rows
+// it hid come back still selected for another try.
 export function useReviewSelection({
   rows,
   checked,
@@ -66,7 +67,7 @@ export function useReviewSelection({
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
 }) {
-  const idle = useIsMutating() === 0;
+  const idle = useBudgetSelector(saved);
   const selectable = rows.filter(
     (item) => item.source === "budget" || item.editableImport,
   );
@@ -126,7 +127,7 @@ export function SelectionIsland({
   const entry = useTransactionEntry();
   if (!selected.length) return null;
   const overLimit = approvable.length > APPROVE_LIMIT;
-  const busy = review.busy || Boolean(entry.session);
+  const busy = Boolean(entry.session);
   return (
     <div className={styles.islandSlot}>
       <div
@@ -201,7 +202,6 @@ function CategorizeAction({
   const id = useId();
   const [open, setOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const transactions = view.budget.transactions.filter(
@@ -226,28 +226,20 @@ function CategorizeAction({
         isTransfer(item) ||
         ["purchase", "income", "refund"].includes(item.kind),
     );
-  const submit = async () => {
-    if (!categoryId || saving || disabled) return;
-    setSaving(true);
-    setError("");
-    try {
-      await review.categorize(
-        selected.map((item) => item.id),
-        categoryId,
-      );
-      setOpen(false);
-    } catch {
-      setError("Couldn’t save the category. Try again.");
-    } finally {
-      setSaving(false);
-    }
+  const submit = () => {
+    if (!categoryId || disabled) return;
+    const blocked = review.categorize(
+      selected.map((item) => item.id),
+      categoryId,
+    );
+    if (blocked) setError(blocked);
+    else setOpen(false);
   };
   if (!open && (disabled || !available || !options.length)) return null;
   return (
     <Popover.Root
       open={open}
       onOpenChange={(next) => {
-        if (saving) return;
         if (next) {
           setCategoryId("");
           setError("");
@@ -256,7 +248,7 @@ function CategorizeAction({
       }}
     >
       <Popover.Trigger asChild>
-        <Button size="sm" disabled={disabled || saving}>
+        <Button size="sm" disabled={disabled}>
           <TagsIcon aria-hidden />
           Categorize
         </Button>
@@ -268,19 +260,13 @@ function CategorizeAction({
           align="end"
           sideOffset={8}
           collisionPadding={12}
-          onInteractOutside={(event) => {
-            if (saving) event.preventDefault();
-          }}
-          onEscapeKeyDown={(event) => {
-            if (saving) event.preventDefault();
-          }}
         >
           <form
             className={styles.categoryForm}
             aria-label="Categorize transactions"
             onSubmit={(event) => {
               event.preventDefault();
-              void submit();
+              submit();
             }}
           >
             <label htmlFor={id}>Category</label>
@@ -291,7 +277,6 @@ function CategorizeAction({
               options={options}
               wide={false}
               placeholder="Choose a category"
-              readOnly={saving}
               onChange={setCategoryId}
             />
             {error && (
@@ -301,20 +286,16 @@ function CategorizeAction({
               </p>
             )}
             <div className={styles.actions}>
-              <Button
-                size="sm"
-                disabled={saving}
-                onClick={() => setOpen(false)}
-              >
+              <Button size="sm" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
               <Button
                 size="sm"
                 variant="primary"
                 type="submit"
-                disabled={saving || !categoryId || disabled}
+                disabled={!categoryId || disabled}
               >
-                {saving ? "Saving…" : "Apply"}
+                Apply
               </Button>
             </div>
           </form>
