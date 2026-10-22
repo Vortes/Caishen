@@ -43,6 +43,8 @@ export const tableNames = [
   "loanPayment",
   "reimbursement",
   "reimbursementReceipt",
+  // Standing rules, which are no longer kept: stored rows still read, and
+  // the engine leaves them out of every budget.
   "rule",
   "bankImport",
   "sharedCategory",
@@ -104,7 +106,13 @@ export type TableData = {
   reimbursement: Owned & Sorted & Omit<Reimbursement, "receipts">;
   reimbursementReceipt: Owned &
     Sorted & { reimbursementId: string } & Reimbursement["receipts"][number];
-  rule: Owned & Sorted & Budget["rules"][number];
+  rule: Owned &
+    Sorted & {
+      id: string;
+      fromCategoryId: string;
+      toCategoryId: string;
+      enabled: boolean;
+    };
   // One bank connection's import state for one logical bank transaction,
   // written by the server, never by the engine. The server validates the
   // parts it holds (src/server/services/bank-import-rows.ts).
@@ -451,16 +459,6 @@ export function reimbursementRows(
   ];
 }
 
-export function ruleRows(budget: Budget): WireRow[] {
-  return budget.rules.map((rule, sort) =>
-    row("rule", rowKey(budget.userId, rule.id), {
-      ...rule,
-      userId: budget.userId,
-      sort,
-    }),
-  );
-}
-
 export function sharedCategoryRows(shared: SharedCategory[]): WireRow[] {
   return shared.map((category, sort) =>
     row("sharedCategory", rowKey(category.id), { ...category, sort }),
@@ -596,7 +594,6 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
     ...budget.reimbursements.flatMap((claim, index) =>
       reimbursementRows(userId, claim, index),
     ),
-    ...ruleRows(budget),
   ];
 }
 
@@ -832,7 +829,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   const receipts = groupBy(data.reimbursementReceipt, (receipt) =>
     childKey(receipt.userId, receipt.reimbursementId),
   );
-  const rules = groupBy(data.rule, owner);
   const settings = new Map(
     data.budgetSettings.map((item) => [item.userId, item]),
   );
@@ -910,9 +906,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
           (receipt) => without(receipt, ["userId", "reimbursementId", "sort"]),
         ),
       })),
-      rules: (rules.get(userId) ?? []).map((rule) =>
-        without(rule, ["userId", "sort"]),
-      ),
       settings: {
         timezone: setting.timezone,
         emailEnabled: setting.emailEnabled,

@@ -12,6 +12,7 @@ import {
   splitAmount,
   type Book,
   type Command,
+  type CommandSource,
 } from "../../src/domain/engine";
 
 const month = "2026-10";
@@ -23,7 +24,7 @@ function fixture(cash = 500_000) {
   const run = (
     command: WithoutId<Command>,
     actor = "alan",
-    source: "user" | "agent" = "user",
+    source: CommandSource = "user",
   ) => {
     book = execute(
       book,
@@ -2032,48 +2033,10 @@ void test("card targets are paired, cannot snooze, and existing debt can be fund
   );
 });
 
-void test("agent overspending coverage requires the user's exact enabled standing rule", () => {
+void test("only the user covers overspending", () => {
   const setup = fixture();
   setup.run({ type: "category.add", categoryId: "dining", name: "Dining" });
   setup.run({ type: "assign", categoryId: "dining", month, amount: 5000 });
-  assert.throws(
-    () =>
-      setup.run(
-        {
-          type: "cover",
-          fromCategoryId: "dining",
-          toCategoryId: "food",
-          month,
-          amount: 1000,
-        },
-        "alan",
-        "agent",
-      ),
-    /explicit standing rule/,
-  );
-  setup.run({
-    type: "rule.set",
-    ruleId: "grocery-rule",
-    fromCategoryId: "dining",
-    toCategoryId: "food",
-    enabled: true,
-  });
-  assert.throws(
-    () =>
-      setup.run(
-        {
-          type: "cover",
-          fromCategoryId: "dining",
-          toCategoryId: "food",
-          month,
-          amount: 1000,
-          ruleId: "grocery-rule",
-        },
-        "alan",
-        "agent",
-      ),
-    /existing overspending/,
-  );
   setup.run({
     type: "transaction.upsert",
     transactionId: "overspent-food",
@@ -2083,27 +2046,23 @@ void test("agent overspending coverage requires the user's exact enabled standin
     payee: "Groceries",
     categoryId: "food",
   });
-  setup.run(
-    {
-      type: "cover",
-      fromCategoryId: "dining",
-      toCategoryId: "food",
-      month,
-      amount: 1000,
-      ruleId: "grocery-rule",
-    },
-    "alan",
-    "agent",
-  );
+  const cover = {
+    type: "cover",
+    fromCategoryId: "dining",
+    toCategoryId: "food",
+    month,
+    amount: 1000,
+  } as const;
+  for (const source of ["agent", "provider"] as const)
+    assert.throws(
+      () => setup.run(cover, "alan", source),
+      /requires a user action/,
+    );
+  setup.run(cover);
   assert.equal(
     setup.view().categories.find((category) => category.id === "food")
       ?.available,
     0,
-  );
-  assert.equal(
-    setup.view().categories.find((category) => category.id === "dining")
-      ?.available,
-    4000,
   );
 });
 

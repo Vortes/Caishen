@@ -104,12 +104,8 @@ A credit applied to a credit-card account that reduces the amount owed, rather t
 Spending that exceeds the money available in a budget category.
 
 **Overspending coverage**:
-Moving budgeted money from another category to cover overspending. Choosing the source is a manual decision unless an applicable standing rule has been explicitly established.
+Moving budgeted money from another category to cover overspending. Choosing the source is always the user's decision.
 _Avoid_: Recategorization
 
 **Monthly rollover**:
 The transition to a new budget month: positive available category balances carry forward, uncovered cash overspending reduces the next month's Ready to Assign, and uncovered credit spending remains debt requiring funding. Outstanding reimbursements and shared obligations persist independently of these envelope calculations.
-
-**Standing rule**:
-An explicit, ongoing instruction from a user authorizing how a recurring budgeting decision should be handled, such as covering grocery overspending from dining out.
-_Avoid_: Inferred preference

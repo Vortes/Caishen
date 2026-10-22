@@ -220,15 +220,6 @@ export const commandSchema = z.discriminatedUnion("type", [
     toCategoryId: identifier,
     month: monthSchema,
     amount: positiveCents,
-    ruleId: identifier.optional(),
-  }),
-  z.object({
-    type: z.literal("rule.set"),
-    id: identifier,
-    ruleId: identifier,
-    fromCategoryId: identifier,
-    toCategoryId: identifier,
-    enabled: z.boolean(),
   }),
   z.object({
     type: z.literal("target.set"),
@@ -540,12 +531,6 @@ export type Budget = {
   assignments: Assignment[];
   loans: Loan[];
   reimbursements: Reimbursement[];
-  rules: {
-    id: string;
-    fromCategoryId: string;
-    toCategoryId: string;
-    enabled: boolean;
-  }[];
   settings: { timezone: string; emailEnabled: boolean; emailHour: number };
   expectedIncome: Record<string, number>;
 };
@@ -727,14 +712,6 @@ export const budgetShape = z.object({
           amount: positiveCents,
         }),
       ),
-    }),
-  ),
-  rules: z.array(
-    z.object({
-      id: storedIdentifier,
-      fromCategoryId: storedIdentifier,
-      toCategoryId: storedIdentifier,
-      enabled: z.boolean(),
     }),
   ),
   settings: z.object({
@@ -959,7 +936,6 @@ export function createBook(userId: string, name: string, month: string): Book {
         assignments: [],
         loans: [],
         reimbursements: [],
-        rules: [],
         settings: {
           timezone: "America/Los_Angeles",
           emailEnabled: true,
@@ -2967,7 +2943,7 @@ function executeAccountingState<T extends AccountingState>(
     "assign",
     "assign.set",
     "assign.batch",
-    "rule.set",
+    "cover",
     "target.set",
     "target.snooze",
     "shared.create",
@@ -3197,24 +3173,7 @@ function applyCommand(
         fail("Choose a different source category");
       getCategory(budget, command.fromCategoryId);
       getCategory(budget, command.toCategoryId);
-      if (
-        source !== "user" &&
-        !budget.rules.some(
-          (rule) =>
-            rule.id === command.ruleId &&
-            rule.enabled &&
-            rule.fromCategoryId === command.fromCategoryId &&
-            rule.toCategoryId === command.toCategoryId,
-        )
-      )
-        fail("Agent coverage requires an explicit standing rule");
       const state = materialize(book, actorId, command.month);
-      if (
-        source !== "user" &&
-        command.amount >
-          Math.max(0, -state.categories.get(command.toCategoryId)!.available)
-      )
-        fail("A standing rule may only cover existing overspending");
       if (
         state.categories.get(command.fromCategoryId)!.available < command.amount
       )
@@ -3235,19 +3194,6 @@ function applyCommand(
         command.amount,
         `${command.id}:to`,
       );
-      break;
-    }
-    case "rule.set": {
-      getCategory(budget, command.fromCategoryId);
-      getCategory(budget, command.toCategoryId);
-      changes.rules(budget);
-      budget.rules = budget.rules.filter((rule) => rule.id !== command.ruleId);
-      budget.rules.push({
-        id: command.ruleId,
-        fromCategoryId: command.fromCategoryId,
-        toCategoryId: command.toCategoryId,
-        enabled: command.enabled,
-      });
       break;
     }
     case "target.set": {
