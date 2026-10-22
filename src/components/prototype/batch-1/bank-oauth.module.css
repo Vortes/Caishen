@@ -1,0 +1,88 @@
+/* Over the app: the bank dialog's surface and scrim (banks.module.css),
+   without its entrance animation since the page opens with it. The scrim's
+   raw value matches the shell's until an --overlay token exists. */
+.overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: oklch(0 0 0 / 0.4);
+}
+:global([data-theme="light"]) .overlay {
+  background: oklch(0.2 0.01 var(--hue) / 0.2);
+}
+.dialog {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  padding: var(--space-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  transform: translate(-50%, -50%);
+}
+.dialog:focus-visible {
+  outline: none;
+}
+.pageCard {
+  max-width: 480px;
+}
+.progress {
+  width: 100%;
+  margin-top: 4px;
+}
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-card);
+}
+.setupHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.setupList {
+  margin: 0 calc(var(--space-card) * -1);
+  padding: 0 var(--space-card);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  list-style: none;
+}
+.setupList li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+.setupRow {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--size-row-lg);
+  cursor: pointer;
+}
+.setupRow[data-disabled] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+.setupName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  min-width: 0;
+  padding: 6px 0;
+}
+.mask {
+  color: var(--text-tertiary);
+}
+.reason {
+  flex-basis: 100%;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.balance {
+  font-variant-numeric: tabular-nums;
+}

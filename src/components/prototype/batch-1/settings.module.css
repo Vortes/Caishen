@@ -1,0 +1,331 @@
+/* Settings additions. Rows, cards, and the page column come from the app
+   shell's settings classes; these are only what the new rows need. */
+
+.frame a {
+  color: inherit;
+  text-decoration: none;
+}
+@media (max-width: 760px) {
+  .frame aside {
+    display: none;
+  }
+}
+
+.expandRow {
+  display: flex;
+  flex-direction: column;
+}
+.inlineForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.passwordFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.codeInput {
+  max-width: 160px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2em;
+}
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  cursor: pointer;
+}
+.settingSelect {
+  flex: none;
+  width: auto;
+  max-width: 50%;
+}
+.rowIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Connected accounts */
+.methods {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.methodList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.method {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--size-row-lg);
+}
+.method + .method {
+  border-top: 1px solid var(--border-subtle);
+}
+.methodText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.mark {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--text-secondary);
+}
+
+/* Delete account */
+.consequences {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+
+/* Partner */
+.partnerAvatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-selected);
+  font-weight: 600;
+}
+.joinForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.joinRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-inset);
+}
+
+/* Notifications */
+.nextEmail {
+  margin: 14px calc(var(--space-card) * -1) calc(var(--space-card) * -1);
+  padding: 10px var(--space-card);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  background: var(--surface-group);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+/* The email, in the light theme, as a mail app shows it. */
+.email {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+.emailMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.emailMeta strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.emailSubject {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.emailBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.emailBody p,
+.emailFooter {
+  margin: 0;
+}
+.emailFooter {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.emailLink {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.email[data-theme="light"] .emailLink {
+  color: var(--accent-solid);
+}
+
+/* ---------- Clerk's UserProfile stand-in ---------- */
+
+.clerk {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+}
+.clerkNav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 20px 12px;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-group);
+}
+.clerkTitle {
+  padding: 0 8px;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.clerkSubtitle {
+  margin-bottom: 14px;
+  padding: 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.clerkTab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-sm);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.clerkTab:hover {
+  background: var(--surface-hover);
+}
+.clerkTab[aria-current="page"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.clerkSecured {
+  margin-top: auto;
+  padding: 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-caption);
+}
+.clerkBody {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+}
+.clerkHeading {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.clerkLine {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.clerkLabel {
+  font-weight: 500;
+}
+.clerkValues {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.clerkValue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+.clerkLink,
+.clerkDanger {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 500;
+  cursor: pointer;
+}
+.clerkDanger {
+  color: var(--danger-text);
+}
+.clerkOverlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: oklch(0 0 0 / 0.4);
+}
+.clerkModal {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  width: min(820px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+}
+.clerkModal:focus-visible {
+  outline: none;
+}
+.clerkClose {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  right: 10px;
+}
+@media (max-width: 640px) {
+  .clerk {
+    grid-template-columns: 1fr;
+  }
+  .clerkNav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .clerkSubtitle,
+  .clerkSecured {
+    display: none;
+  }
+  .clerkLine {
+    grid-template-columns: 1fr;
+  }
+}

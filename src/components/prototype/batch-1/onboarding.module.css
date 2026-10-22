@@ -1,0 +1,432 @@
+.frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 56px;
+  padding: 0 20px;
+}
+.brandLink {
+  text-decoration: none;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.account > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 32px 16px 160px;
+}
+
+/* Where the user is in the guided steps. Plain text, not a progress bar:
+   four steps read at a glance. */
+.stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  list-style: none;
+}
+.stepper li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stepper li[data-state="current"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.stepper li[data-state="done"] {
+  color: var(--text-secondary);
+}
+.stepper li[data-state="done"] > svg {
+  color: var(--feedback-success);
+}
+.stepNumber {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.step,
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+}
+.stepIntro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.title {
+  font-size: var(--type-figure);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  text-wrap: balance;
+  outline: none;
+}
+.lede {
+  color: var(--text-secondary);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.stepFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-inset);
+  margin-top: 10px;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.divider {
+  height: 1px;
+  margin: 14px calc(var(--space-card) * -1);
+  background: var(--border-subtle);
+}
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+}
+.switchText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.switchLabel {
+  font-weight: 500;
+}
+.currency {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* Partner code */
+.codeHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.codeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px var(--space-inset);
+  margin-top: 14px;
+}
+.codeError {
+  grid-column: 1 / -1;
+}
+.invitedBy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.invitedBy:first-child {
+  margin-top: 0;
+}
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.inviteCode {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.inviteCode code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Categories */
+.categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+}
+.questions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.questionLabel {
+  font-weight: 500;
+}
+.answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 24px;
+}
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.groupName {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.checkList {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.checkList[data-rows] {
+  margin-top: 8px;
+}
+.checkList[data-rows] li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  cursor: pointer;
+}
+.addRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-inset);
+}
+@media (max-width: 520px) {
+  .groups {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Accounts */
+.accounts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+}
+.accountList {
+  display: flex;
+  flex-direction: column;
+  margin: -6px 0;
+  padding: 0;
+  list-style: none;
+}
+.accountRow,
+.bankRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--size-row-lg);
+}
+.accountRow + .accountRow {
+  border-top: 1px solid var(--border-subtle);
+}
+.bankRow {
+  cursor: pointer;
+}
+.bankRow[data-disabled] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+.done {
+  flex: none;
+  color: var(--feedback-success);
+}
+.todo {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.amount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.mask {
+  color: var(--text-tertiary);
+}
+.bankHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.connect {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.connectIcon {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+}
+.bankProgress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.bankNote {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.manual {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.manualFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.amountInput {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 520px) {
+  .manualFields {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Ready */
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.figure strong {
+  color: var(--money-positive);
+  font-size: var(--type-figure);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.figure strong[data-empty] {
+  color: var(--text-primary);
+}
+.summaryText {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.summaryText + .summaryText {
+  margin-top: 6px;
+}
+
+/* Checklist */
+.checklist {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  list-style: none;
+}
+.checklistItem + .checklistItem {
+  border-top: 1px solid var(--border-subtle);
+}
+.checklistRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+.checklistRow:hover {
+  background: var(--surface-hover);
+}
+.chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  transition: transform 150ms var(--ease-panel);
+}
+.chevron[data-open] {
+  transform: rotate(90deg);
+}
+.checklistBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+  padding: 4px 0 var(--space-card);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}

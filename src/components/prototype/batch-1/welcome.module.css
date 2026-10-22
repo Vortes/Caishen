@@ -1,0 +1,315 @@
+/* curate.is. The type stays on the app's scale: the headline is the
+   figure step, so the landing reads as the same calm product. */
+
+.headline {
+  font-size: var(--type-figure);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.title {
+  font-size: var(--type-title);
+  font-weight: 600;
+  text-wrap: balance;
+}
+.lede {
+  max-width: 52ch;
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.signedIn {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.policies {
+  display: flex;
+  gap: 16px;
+  font-size: var(--type-small);
+}
+
+/* ---------- Shows the product ---------- */
+
+.product {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+.siteHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 1040px;
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-inset);
+}
+.productMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 56px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 72px 24px 80px;
+}
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 560px;
+}
+
+/* The plan, as a picture: a panel like the app's main panel. */
+.glimpse {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--space-inset) var(--space-inset);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-card);
+  user-select: none;
+  pointer-events: none;
+}
+.glimpseHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--size-header);
+  margin: 0 calc(var(--space-inset) * -1);
+  padding: 0 calc(var(--space-inset) + 8px);
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 500;
+}
+.glimpseMonth {
+  color: var(--text-secondary);
+}
+.glimpseReady {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.glimpseReady strong {
+  color: var(--money-positive);
+  font-size: var(--type-body);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.glimpseColumns,
+.glimpseRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px 112px;
+  align-items: center;
+  gap: 16px;
+  padding: 0 var(--space-row-x);
+}
+.glimpseColumns {
+  height: var(--size-row-md);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.glimpseColumns span + span,
+.glimpseAmount,
+.glimpseAvailable {
+  justify-self: end;
+}
+.glimpseRow {
+  min-height: var(--size-row-lg);
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+.glimpseAmount {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.promises {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px;
+}
+.promise {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.promise > svg {
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+}
+.promise h2 {
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+.promise p {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.siteFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 24px 24px 96px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+@media (max-width: 760px) {
+  .productMain {
+    gap: 40px;
+    padding-top: 40px;
+  }
+  .promises {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .glimpseColumns,
+  .glimpseRow {
+    grid-template-columns: minmax(0, 1fr) 96px;
+  }
+  .glimpseColumns span:nth-child(2),
+  .glimpseAmount {
+    display: none;
+  }
+  .glimpseReady > span {
+    display: none;
+  }
+}
+
+/* ---------- Tells the story ---------- */
+
+.story {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-gutter);
+  height: 100%;
+  padding: var(--space-gutter);
+}
+.storyPanel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 40px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-panel);
+}
+.storyCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.storyFoot {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.storyMain {
+  display: flex;
+  align-items: center;
+  overflow-y: auto;
+  padding: 40px;
+}
+.storyColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 440px;
+}
+.storyIntro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--border-subtle);
+  list-style: none;
+}
+.facts li {
+  display: flex;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.facts li > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+}
+.facts strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+@media (max-width: 760px) {
+  .story {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    overflow-y: auto;
+  }
+  .storyPanel {
+    gap: 40px;
+    padding: 24px;
+  }
+  .storyFoot {
+    display: none;
+  }
+  .storyMain {
+    align-items: flex-start;
+    padding: 24px 16px 140px;
+  }
+}
+
+/* ---------- Just the door ---------- */
+
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: 100dvh;
+  padding: 24px 16px 120px;
+}
+.gateCard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 380px;
+  padding: 24px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-card);
+}

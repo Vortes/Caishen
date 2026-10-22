@@ -1,0 +1,82 @@
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 16px 96px;
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.title {
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.lede {
+  max-width: 62ch;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.rowText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rowTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+.where {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 400;
+}
+.covers {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.variants {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+@media (max-width: 560px) {
+  .header,
+  .row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -1,0 +1,19 @@
+/* Navigation that can't work yet reads quieter than usual, so the message
+   is the one thing to read. */
+.dimNav span {
+  color: var(--text-tertiary);
+}
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.message p {
+  margin: 0;
+  text-wrap: pretty;
+}
+.loaded {
+  margin: 96px auto;
+  color: var(--text-tertiary);
+  text-align: center;
+}
