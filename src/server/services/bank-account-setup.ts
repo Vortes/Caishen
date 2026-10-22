@@ -2,7 +2,11 @@ import { z } from "zod";
 
 import { type BankAccount } from "~/server/integrations/plaid";
 import { type StoredImport } from "~/server/integrations/transactions";
-import { dateSchema, usdToCents } from "~/server/integrations/validation";
+import {
+  centsSchema,
+  dateSchema,
+  usdToCents,
+} from "~/server/integrations/validation";
 import { commandHash } from "./safety";
 
 export const bankMappingsSchema = z.record(
@@ -32,9 +36,17 @@ export const setupBankAccountsSchema = z.object({
       z.object({
         providerAccountId: z.string().min(1).max(256),
         name: z.string().trim().min(1).max(120),
-        expectedBalance: z.number().finite(),
+        expectedBalance: z.number().finite().nullable(),
         existingAccountId: z.string().min(1).max(256).optional(),
         startDate: dateSchema.optional(),
+        loan: z
+          .object({
+            principal: centsSchema.nonnegative(),
+            annualRateBps: z.number().int().min(0).max(100000),
+            minimumPayment: centsSchema.positive(),
+            variable: z.boolean(),
+          })
+          .optional(),
       }),
     )
     .min(1)

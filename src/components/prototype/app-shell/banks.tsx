@@ -29,6 +29,7 @@ import type {
   BankSetupState,
   ServerRunner,
 } from "~/components/banks/bank-account-setup";
+import { LoanSetupFields } from "~/components/banks/loan-setup-fields";
 import { loadPlaid } from "~/components/banks/plaid-link-sdk";
 import { usePlaidLink } from "~/components/banks/use-plaid-link";
 import type { State } from "~/components/budget/types";
@@ -45,7 +46,7 @@ type Notify = (message: string, tone?: "neutral" | "attention") => void;
 const bankName = (connection: Connection | undefined) =>
   connection?.institutionName ?? "your bank";
 
-// Accounts the setup form could add to Cash or Credit right now.
+// Accounts the setup form supports, including loans with lender-entered terms.
 function addableAccounts(connection: Connection) {
   const mappings = bankAccountMappings(connection.accountMappings);
   return connection.accounts.filter(
@@ -373,19 +374,17 @@ export function BankItem({
               ? `${outside} more not added`
               : `${outside} ${outside === 1 ? "account" : "accounts"} not added`}
           </span>
-          {addable && (
-            <Button
-              size="sm"
-              variant="quiet"
-              disabled={banks.busy}
-              onClick={() => {
-                onAction();
-                banks.setUp(connection.id);
-              }}
-            >
-              Add accounts
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="quiet"
+            disabled={banks.busy}
+            onClick={() => {
+              onAction();
+              banks.setUp(connection.id);
+            }}
+          >
+            {addable ? "Add accounts" : "Review accounts"}
+          </Button>
         </div>
       )}
     </li>
@@ -618,7 +617,7 @@ function SetupForm({
   });
   locked.current = form.locked;
   const { busy } = form;
-  // Accounts Cash and Credit can't hold (retirement, loans) fold into one
+  // Unsupported accounts (such as retirement accounts) fold into one
   // line at the end, so the ones the user can add lead.
   const unsupported = form.rows.filter(
     (row) => !row.addedAs && row.type.reason,
@@ -646,8 +645,8 @@ function SetupForm({
           Add {bankName(connection)} to your budget
         </Dialog.Title>
         <p className={styles.description}>
-          Checking and savings go in Cash, credit cards in Credit. Each starts
-          at the bank’s current balance.
+          Checking and savings go in Cash, credit cards in Credit, and loans in
+          Loans. Review opening balances and loan terms before adding.
         </p>
       </div>
       <div className={styles.body}>
@@ -763,7 +762,11 @@ function SetupForm({
                               })
                             }
                           >
-                            <option value="">New account</option>
+                            <option value="">
+                              {account.type === "loan"
+                                ? "New loan"
+                                : "New account"}
+                            </option>
                             {existingAccounts.map((existing) => (
                               <option key={existing.id} value={existing.id}>
                                 {existing.name}
@@ -771,6 +774,19 @@ function SetupForm({
                             ))}
                           </select>
                         </div>
+                      )}
+                      {account.type === "loan" && !draft.existingAccountId && (
+                        <LoanSetupFields
+                          id={fieldId}
+                          currentBalance={account.currentBalance}
+                          draft={draft}
+                          busy={busy}
+                          fieldError={fieldError}
+                          errorId={`${fieldId}-hint`}
+                          onChange={(next) =>
+                            form.change(account.accountId, next)
+                          }
+                        />
                       )}
                       {(fieldError ?? hint) && (
                         <p

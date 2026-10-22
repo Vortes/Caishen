@@ -484,6 +484,12 @@
 .fields > .field:only-child {
   grid-column: 1 / -1;
 }
+.loanFields {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-inset);
+}
 .field {
   display: flex;
   flex-direction: column;

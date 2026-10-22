@@ -56,7 +56,7 @@ export function BankImportReview({
           ! {error}
         </p>
       )}
-      {item.quarantined ? null : !item.accountId ? (
+      {item.quarantined || item.loanId ? null : !item.accountId ? (
         <form
           className="stack"
           onSubmit={(event) => {

@@ -12,7 +12,12 @@ import {
   WalletCardsIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { observable } from "@trpc/server/observable";
 import type { State } from "~/components/budget/types";
+import { createBook, projectBook } from "~/domain/engine";
+import { api } from "~/trpc/react";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { Toast, ToastRegion } from "~/components/ui/toast";
@@ -20,6 +25,7 @@ import { TooltipProvider } from "~/components/ui/tooltip";
 import {
   BankConnectionsProvider,
   BanksPopover,
+  BankDialog,
   type BankConnections,
 } from "../app-shell/banks";
 import banks from "../app-shell/banks.module.css";
@@ -36,7 +42,7 @@ function account(
   mask: string,
   type: string,
   subtype: string,
-  balance: number,
+  balance: number | null,
 ): Connection["accounts"][number] {
   return {
     accountId: id,
@@ -190,20 +196,125 @@ const scenarios = {
   one: { label: "One bank", connections: [chase], available: true },
   none: { label: "No banks", connections: [], available: true },
   off: { label: "Plaid not set up", connections: [], available: false },
+  empty: {
+    label: "Empty Amex cards",
+    connections: [
+      connection(
+        "empty-amex",
+        "American Express",
+        [
+          account(
+            "everyday",
+            "Amex EveryDay",
+            "1004",
+            "credit",
+            "credit card",
+            0,
+          ),
+          account(
+            "blue-cash",
+            "Blue Cash Preferred",
+            "2001",
+            "credit",
+            "credit card",
+            0,
+          ),
+        ],
+        [],
+      ),
+    ],
+    available: true,
+  },
+  loan: {
+    label: "Loan setup",
+    connections: [
+      connection(
+        "discover",
+        "Discover",
+        [
+          account(
+            "discover-loan",
+            "Discover personal loan",
+            "3460",
+            "loan",
+            "consumer",
+            null,
+          ),
+        ],
+        [],
+      ),
+    ],
+    available: true,
+  },
 } satisfies Record<
   string,
   { label: string; connections: Connection[]; available: boolean }
 >;
 type Scenario = keyof typeof scenarios;
 
-export function BankConnectPrototype() {
+export function BankConnectPrototype({
+  initialScenario,
+  theme = "dark",
+}: {
+  initialScenario?: string;
+  theme?: "dark" | "light";
+}) {
+  const [queryClient] = useState(() => new QueryClient());
+  const [client] = useState(() =>
+    api.createClient({
+      links: [
+        () => () =>
+          observable((observer) => {
+            observer.next({
+              result: {
+                data: {
+                  imported: 0,
+                  updated: 0,
+                  revision: 0,
+                  changeSet: null,
+                  rebased: false,
+                },
+              },
+            });
+            observer.complete();
+          }),
+      ],
+    }),
+  );
+  return (
+    <QueryClientProvider client={queryClient}>
+      <api.Provider client={client} queryClient={queryClient}>
+        <BankConnectStates initialScenario={initialScenario} theme={theme} />
+      </api.Provider>
+    </QueryClientProvider>
+  );
+}
+
+function BankConnectStates({
+  initialScenario,
+  theme,
+}: {
+  initialScenario?: string;
+  theme: "dark" | "light";
+}) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
-  const [scenario, setScenario] = useState<Scenario>("mixed");
+  const [scenario, setScenario] = useState<Scenario>(
+    initialScenario && Object.hasOwn(scenarios, initialScenario)
+      ? (initialScenario as Scenario)
+      : "mixed",
+  );
   // Bumped by Reset and the scenarios, so the footer re-mounts closed.
   const [mount, setMount] = useState(0);
   const [plaid, setPlaid] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ id: number; text: string } | null>(
     null,
+  );
+  const [setupId, setSetupId] = useState<string | null>(
+    initialScenario === "loan"
+      ? "discover"
+      : initialScenario === "empty"
+        ? "empty-amex"
+        : null,
   );
 
   const { connections, available } = scenarios[scenario];
@@ -214,27 +325,42 @@ export function BankConnectPrototype() {
     plaidOpen: plaid !== null,
     busy: false,
     reconnecting: undefined,
-    view: null,
-    state: {} as State,
+    view: setupId
+      ? {
+          type: "setup" as const,
+          connection: connections.find((item) => item.id === setupId)!,
+        }
+      : null,
+    state: {
+      revision: 0,
+      services: [],
+      connections,
+      view: projectBook(
+        createBook("preview", "Bank setup preview", "2026-10"),
+        "preview",
+        "2026-10",
+      ),
+    },
     notify: (text: string) => setNotice({ id: Date.now(), text }),
     // Account setup needs the server; this prototype never saves.
-    runOnServer: () => Promise.resolve(),
+    runOnServer: () =>
+      Promise.reject(
+        new TRPCClientError(
+          "This preview doesn’t save accounts. Use the live app to add them.",
+        ),
+      ),
     start: (connectionId?: string) =>
       setPlaid(
         connections.find((item) => item.id === connectionId)?.institutionName ??
           "",
       ),
-    setUp: (connectionId: string) =>
-      setNotice({
-        id: Date.now(),
-        text: `In the live app, this opens account setup for ${connections.find((item) => item.id === connectionId)?.institutionName}`,
-      }),
+    setUp: (connectionId: string) => setSetupId(connectionId),
     retrySync: () => undefined,
-    close: () => undefined,
+    close: () => setSetupId(null),
   } satisfies BankConnections;
 
   return (
-    <div ref={setRoot} className={shell.root} data-theme="dark">
+    <div ref={setRoot} className={shell.root} data-theme={theme}>
       <TooltipProvider container={root}>
         <BankConnectionsProvider value={context}>
           <div className={styles.sidebar}>
@@ -285,6 +411,7 @@ export function BankConnectPrototype() {
           {plaid !== null && (
             <MockPlaid bank={plaid} onClose={() => setPlaid(null)} />
           )}
+          <BankDialog />
 
           <ToastRegion>
             {notice && (
@@ -305,6 +432,7 @@ export function BankConnectPrototype() {
             data-active={key === scenario || undefined}
             onClick={() => {
               setScenario(key);
+              setSetupId(null);
               setMount((value) => value + 1);
             }}
           >
@@ -317,6 +445,7 @@ export function BankConnectPrototype() {
           className={styles.control}
           onClick={() => {
             setScenario("mixed");
+            setSetupId(null);
             setPlaid(null);
             setNotice(null);
             setMount((value) => value + 1);

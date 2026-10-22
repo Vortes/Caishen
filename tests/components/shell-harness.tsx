@@ -61,6 +61,7 @@ export function budgetFixture({
 
 export type Overview = RouterOutputs["budget"]["overview"];
 type ImportInput = RouterInputs["budget"]["resolveImport"];
+type SetupInput = RouterInputs["budget"]["setupBankAccounts"];
 type Answer<T> = T | Promise<T>;
 type Executed = ReturnType<FakeServer["execute"]>;
 
@@ -97,6 +98,11 @@ export async function renderShell(
       input: ImportInput,
       server: FakeServer,
     ) => Answer<Executed & { resolved: true }>;
+    setupBankAccounts?: (
+      input: SetupInput,
+      server: FakeServer,
+    ) => Answer<Executed & { accountIds: string[] }>;
+    sync?: (server: FakeServer) => Answer<RouterOutputs["budget"]["sync"]>;
     // Whether to wait for the plan; off for screens shown in its place.
     plan?: boolean;
   } = {},
@@ -140,6 +146,21 @@ export async function renderShell(
             : server.pull("owner", input as PullInput),
         "budget.resolveImport": (input) =>
           resolveImport(input as ImportInput, server),
+        "budget.sync": () =>
+          options.sync
+            ? options.sync(server)
+            : {
+                imported: 0,
+                updated: 0,
+                revision: server.revision,
+                changeSet: null,
+                rebased: false,
+              },
+        "budget.setupBankAccounts": (input) => {
+          if (!options.setupBankAccounts)
+            throw new Error("Unexpected bank setup");
+          return options.setupBankAccounts(input as SetupInput, server);
+        },
       }),
     }),
   });

@@ -4,6 +4,7 @@ import {
   accountBalance,
   available,
   openRegister,
+  saved,
   transactionRow,
   transactions,
 } from "./shell-controls";
@@ -33,6 +34,7 @@ test("editing a purchase corrects the same saved transaction without duplication
   await form.getByLabel("Outflow", { exact: true }).fill("18.75");
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form).toHaveCount(0);
+  await saved(page);
 
   await reloadBudget(page, budget);
   await expect(available(page, budget.category)).toHaveText("$181.25");
