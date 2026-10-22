@@ -1,0 +1,15 @@
+{
+  "id": "sample-to-savings",
+  "accountId": "checking",
+  "date": "2026-10-14",
+  "amount": -50000,
+  "payee": "Transfer to Demo · Discover savings",
+  "status": "posted",
+  "expenseMonth": "2026-10",
+  "revision": 2,
+  "reviewed": true,
+  "kind": "transfer",
+  "linkedId": "sample-23",
+  "userId": "alex",
+  "sort": 103
+}

@@ -1,0 +1,9 @@
+{
+  "id": "opening-rent",
+  "sharedCategoryId": "rent",
+  "debtorId": "alex",
+  "creditorId": "jordan",
+  "amount": 17500,
+  "opening": true,
+  "sort": 0
+}

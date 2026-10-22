@@ -1,0 +1,16 @@
+{
+  "id": "dev-seed:84:payment",
+  "accountId": "checking",
+  "date": "2026-08-12",
+  "amount": -32000,
+  "payee": "Nelnet student loan",
+  "status": "posted",
+  "categoryId": "student-payment",
+  "expenseMonth": "2026-08",
+  "revision": 1,
+  "reviewed": true,
+  "kind": "loan-payment",
+  "linkedId": "dev-seed:84",
+  "userId": "alex",
+  "sort": 22
+}

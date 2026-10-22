@@ -1,0 +1,10 @@
+{
+  "cadence": "card-payoff",
+  "behavior": "contribution",
+  "amount": 18000,
+  "startMonth": "2026-08",
+  "dueDate": "2027-02-28",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "card:discover"
+}

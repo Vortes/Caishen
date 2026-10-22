@@ -1,0 +1,12 @@
+{
+  "cadence": "custom",
+  "behavior": "refill",
+  "amount": 18000,
+  "startMonth": "2026-08",
+  "dueDate": "2026-11-30",
+  "repeatEvery": 12,
+  "repeatUnit": "months",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "registration"
+}

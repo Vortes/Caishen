@@ -1,0 +1,17 @@
+{
+  "viewerId": "alex",
+  "kind": "purchase",
+  "sort": 24,
+  "id": "rent-2026-08",
+  "payerId": "jordan",
+  "sharedCategoryId": "rent",
+  "date": "2026-08-02",
+  "expenseMonth": "2026-08",
+  "amount": -260000,
+  "payee": "Parkside Apartments · rent",
+  "status": "posted",
+  "shares": {
+    "alex": 130000,
+    "jordan": 130000
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "revision": 2,
+  "amount": -6500,
+  "status": "pending",
+  "date": "2026-10-16",
+  "payee": "OpenTable · restaurant authorization",
+  "operationId": "sample-undo",
+  "reason": "undone",
+  "userId": "alex",
+  "transactionId": "pending-dining",
+  "sequence": 1
+}

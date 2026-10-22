@@ -1,0 +1,15 @@
+{
+  "id": "dev-seed:134:cash",
+  "accountId": "checking",
+  "date": "2026-08-27",
+  "amount": -35000,
+  "payee": "Credit card payment",
+  "status": "posted",
+  "expenseMonth": "2026-08",
+  "revision": 1,
+  "reviewed": true,
+  "kind": "card-payment",
+  "linkedId": "dev-seed:134",
+  "userId": "alex",
+  "sort": 27
+}

@@ -22,7 +22,11 @@ model CrudItem {
 model Workspace {
   id               String            @id @default(cuid())
   revision         Int               @default(0)
-  book             Json
+  // Browsers holding an older revision download every row again: the
+  // household changed shape or rows were removed outright (ADR 0006).
+  resetRevision    Int               @default(0)
+  // Before rows (ADR 0006); kept only for the one-time copy into rows.
+  book             Json?
   history          Json              @default("{}")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -79,10 +83,10 @@ model PartnerInvite {
 }
 
 model BankConnection {
-  id              String       @id @default(cuid())
+  id              String    @id @default(cuid())
   clerkUserId     String
-  user            User         @relation(fields: [clerkUserId], references: [clerkUserId], onDelete: Restrict)
-  itemId          String       @unique
+  user            User      @relation(fields: [clerkUserId], references: [clerkUserId], onDelete: Restrict)
+  itemId          String    @unique
   encryptedToken  String
   cursor          String?
   imports         Json
@@ -90,9 +94,8 @@ model BankConnection {
   lastSyncedAt    DateTime?
   lastAttemptAt   DateTime?
   error           String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  importRows      BankImport[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([clerkUserId])
 }
@@ -487,7 +490,9 @@ model Rule {
 
 // One bank connection's import state for one logical bank transaction: its
 // stored import, how it was resolved, its error, and its review evidence.
-// The connection's own details stay on BankConnection.
+// The connection's own details stay on BankConnection. Not tied to the
+// connection row: removing a connection first marks its imports deleted,
+// and those deleted rows stay so browsers learn of the removal.
 model BankImport {
   workspaceId  String
   userId       String
@@ -499,9 +504,8 @@ model BankImport {
   reviews      Json?
   sort         Int
   revision     Int
-  deleted      Boolean        @default(false)
-  member       Member         @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
-  connection   BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  deleted      Boolean @default(false)
+  member       Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
 
   @@id([workspaceId, userId, connectionId, logicalId])
   @@index([workspaceId, revision])

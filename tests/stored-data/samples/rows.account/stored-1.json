@@ -1,0 +1,9 @@
+{
+  "id": "checking",
+  "name": "Demo · Chase Total Checking",
+  "kind": "cash",
+  "openingBalance": 850000,
+  "date": "2026-08-01",
+  "userId": "alex",
+  "sort": 0
+}

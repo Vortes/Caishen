@@ -1,0 +1,15 @@
+{
+  "id": "pending-dining",
+  "accountId": "amex",
+  "date": "2026-10-16",
+  "amount": -6500,
+  "payee": "OpenTable · restaurant authorization",
+  "status": "pending",
+  "categoryId": "dining",
+  "expenseMonth": "2026-10",
+  "revision": 2,
+  "reviewed": true,
+  "kind": "purchase",
+  "userId": "alex",
+  "sort": 95
+}

@@ -1,0 +1,9 @@
+{
+  "cadence": "loan",
+  "behavior": "contribution",
+  "amount": 32000,
+  "startMonth": "2026-08",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "student-payment"
+}

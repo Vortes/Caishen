@@ -1,0 +1,15 @@
+{
+  "id": "sample-interest-adjustment",
+  "accountId": "savings",
+  "date": "2026-10-17",
+  "amount": 1234,
+  "payee": "Reconciliation balance adjustment",
+  "status": "posted",
+  "expenseMonth": "2026-10",
+  "revision": 1,
+  "reviewed": true,
+  "kind": "adjustment",
+  "reconciled": true,
+  "userId": "alex",
+  "sort": 105
+}

@@ -1,0 +1,10 @@
+{
+  "cadence": "custom",
+  "behavior": "balance",
+  "amount": 500000,
+  "startMonth": "2026-08",
+  "dueDate": "2027-08-01",
+  "snoozedMonths": [],
+  "userId": "alex",
+  "categoryId": "emergency"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "card:amex",
+  "name": "Demo · American Express payment",
+  "group": "Credit card payments",
+  "pairedAccountId": "amex",
+  "userId": "alex",
+  "sort": 0
+}

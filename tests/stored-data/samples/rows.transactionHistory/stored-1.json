@@ -1,0 +1,12 @@
+{
+  "revision": 1,
+  "amount": 325000,
+  "status": "posted",
+  "date": "2026-08-01",
+  "payee": "Cedar Labs · payroll",
+  "operationId": "dev-seed:44",
+  "reason": "created",
+  "userId": "alex",
+  "transactionId": "salary-2026-08-1",
+  "sequence": 0
+}

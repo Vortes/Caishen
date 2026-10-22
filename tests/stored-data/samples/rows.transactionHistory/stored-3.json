@@ -1,0 +1,12 @@
+{
+  "revision": 2,
+  "amount": -8640,
+  "status": "posted",
+  "date": "2026-10-09",
+  "payee": "Burma Superstar",
+  "operationId": "dev-seed:324",
+  "reason": "updated",
+  "userId": "alex",
+  "transactionId": "restaurant-updated",
+  "sequence": 1
+}
