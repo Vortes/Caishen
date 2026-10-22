@@ -65,16 +65,24 @@ export function createBudgetClient(options: BudgetClientOptions): BudgetClient {
     pull: (revision) => controller.request(revision),
   });
 
+  // Storage changes one at a time, in the order the store made them.
   let writes = Promise.resolve();
-  const unsubscribeCommits = store.onCommit((commit) => {
-    if (commit.source === "storage") return;
+  const queueStorage = (change: (storage: Persistence) => Promise<void>) => {
     writes = writes
-      .then(async () => (await persistence).write(commit))
+      .then(async () => change(await persistence))
       .catch((error: unknown) => {
         // Storage only saves a download; the rows stay correct in memory.
         console.error("Couldn't store budget rows", error);
       });
+  };
+  const unsubscribeCommits = store.onCommit((commit) => {
+    if (commit.source !== "storage")
+      queueStorage((storage) => storage.write(commit));
   });
+  // A budget the server no longer has must not show again from storage.
+  const unsubscribeNoBudget = store.onNoBudget(() =>
+    queueStorage((storage) => storage.clear()),
+  );
   const unsubscribeHints = signal.subscribe((hint) => {
     controller.hint(hint);
     // The server answered something, so a waiting send can go now.
@@ -124,6 +132,7 @@ export function createBudgetClient(options: BudgetClientOptions): BudgetClient {
     },
     dispose: () => {
       unsubscribeCommits();
+      unsubscribeNoBudget();
       unsubscribeHints();
       sender.stop();
       controller.stop();

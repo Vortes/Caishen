@@ -102,6 +102,16 @@ export class IndexedDbPersistence implements Persistence {
     await Promise.all([...writes, tx.done]);
   }
 
+  async clear(): Promise<void> {
+    if (this.closed) return;
+    const tx = this.db.transaction(["rows", "meta"], "readwrite");
+    await Promise.all([
+      tx.objectStore("rows").clear(),
+      tx.objectStore("meta").clear(),
+      tx.done,
+    ]);
+  }
+
   close() {
     if (this.closed) return;
     this.closed = true;

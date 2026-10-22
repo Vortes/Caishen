@@ -120,6 +120,43 @@ test("two tabs share one database and hear each other's confirmed changes", asyn
   expect((await stored())?.revision).toBe(3);
 });
 
+test("a budget the server no longer has is wiped from storage, so no tab shows it again", async () => {
+  const server = new FakeServer(household());
+  const first = tab(server);
+  await first.client.ready;
+  first.client.run(assign("a1", "food", 10_000), { summary: "Assigned" });
+  await first.client.idle();
+  expect((await stored())?.revision).toBe(1);
+
+  // Their budget is gone on the server (they left the household).
+  server.withoutBudget.add("alex");
+  first.client.signal.emit();
+  await first.client.idle();
+  expect(first.store.getSnapshot().status).toBe("empty");
+  expect(await stored()).toBeNull();
+
+  // A tab opened later doesn't show the old rows while it asks.
+  const second = tab(server);
+  second.connection.holding = true;
+  await vi.waitFor(() => expect(second.connection.held).toHaveLength(1));
+  expect(second.store.getSnapshot()).toMatchObject({
+    status: "loading",
+    revision: null,
+  });
+  second.connection.holding = false;
+  second.connection.releaseAll();
+  await second.client.ready;
+  expect(second.store.getSnapshot().status).toBe("empty");
+
+  // A budget made again starts from everything, whatever its revision.
+  server.withoutBudget.delete("alex");
+  second.client.signal.emit();
+  await second.client.idle();
+  expect(server.pulls.at(-1)!.input.since).toBeNull();
+  expect(second.store.getSnapshot().status).toBe("ready");
+  expect((await stored())?.revision).toBe(server.revision);
+});
+
 test("storage never moves backward and takes every row when it is behind", async () => {
   const server = new FakeServer(household());
   const all = rowsIn(server.rows);
