@@ -20,6 +20,7 @@ import {
 import { personalSpendingEntries } from "./spending";
 import { canonicalJson } from "./canonical-json";
 import { Changes } from "./changes";
+import { rememberCategorizations } from "./payee-memory";
 import { foldAssignments, type ChangeSet } from "./rows";
 
 const identifier = z.string().min(1).max(160);
@@ -3134,6 +3135,13 @@ function executeAccountingState<T extends AccountingState>(
   const changes = new Changes(book);
   applyCommand(book, budget, command, source, changes);
   ensureNoCounterpartyEntries(budget);
+  if (source === "user")
+    rememberCategorizations(
+      budget,
+      changes,
+      command.type === "transaction.categorize" ||
+        command.type === "transaction.categorize.batch",
+    );
   if (
     [
       "transaction.upsert",

@@ -285,7 +285,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   // Touch keeps focus where it is, so a keyboard doesn't open over the form.
   const advance = (to: DraftField) => {
     if (!window.matchMedia("(pointer: fine)").matches) return;
-    controls.current[to]?.focus({ preventScroll: true });
+    entry.focus(to);
   };
   const todayKey = today(view.budget.settings.timezone);
   const dateControl = (
@@ -381,7 +381,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       },
       { lineId: newId(), categoryId: "", outflow: "", inflow: "" },
     ];
-    entry.change({ categoryId: "", lines });
+    entry.change({ categoryId: "", lines }, true);
     return lines;
   };
   // The lines a split started with, until the editor shows them.
@@ -390,7 +390,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const chooseCategory = (categoryId: string) => {
     if (categoryId === SPLIT) {
       if (!split) splitLines.current = startSplit();
-    } else entry.change({ categoryId, lines: [] });
+    } else entry.chooseCategory(categoryId);
   };
   const changeLine = (lineId: string, next: Partial<DraftLine>) =>
     entry.change({

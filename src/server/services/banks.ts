@@ -5,13 +5,18 @@ import { composeChangeSets } from "~/domain/change-sets";
 import { executeWithChanges, type Budget, type Command } from "~/domain/engine";
 import type { ChangeSet } from "~/domain/rows";
 import type { AccountingState } from "~/domain/shared-ledger";
+import { rememberedCategory } from "~/domain/payee-memory";
+import { READY_TO_ASSIGN } from "~/domain/transfers";
 import { prepareUserCommand } from "~/domain/user-command";
 import { Prisma } from "~/generated/prisma";
 import {
   bankAccountSchema,
   createPlaidClient,
 } from "~/server/integrations/plaid";
-import { applyTransactionSync } from "~/server/integrations/transactions";
+import {
+  applyTransactionSync,
+  type StoredImport,
+} from "~/server/integrations/transactions";
 import { usdToCents } from "~/server/integrations/validation";
 import {
   findOperation,
@@ -1163,10 +1168,32 @@ async function applyBankUpdate(
       !mapped ||
       opened.ledger.budget.loans.some((loan) => loan.id === mapped.accountId) ||
       eligibility !== "eligible" ||
-      record.matchStatus !== "confirmed" ||
-      !resolution?.transactionId
+      record.matchStatus !== "confirmed"
     )
       continue;
+    if (!resolution) {
+      const remembered = rememberedImport(
+        budgetOf(book, userId),
+        mapped.accountId,
+        record,
+        `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
+      );
+      if (!remembered) continue;
+      try {
+        const result = executeWithChanges(book, userId, remembered, "provider");
+        book = result.book;
+        changeSets.push(result.changeSet);
+        operations.push(remembered);
+        state.resolved[record.id] = {
+          fingerprint: fingerprint(record),
+          transactionId: remembered.transactionId,
+        };
+      } catch {
+        // Left in the inbox for the user, as an import with no memory is.
+      }
+      continue;
+    }
+    if (!resolution.transactionId) continue;
     const transaction = budgetOf(book, userId).transactions.find(
       (t) => t.id === resolution.transactionId,
     );
@@ -1274,6 +1301,55 @@ async function applyBankUpdate(
     updated: operations.length,
   };
 }
+
+/**
+ * The transaction a new bank import becomes when its payee is remembered
+ * (src/domain/payee-memory.ts): categorized as the user last categorized
+ * the payee, and unreviewed. Nothing when the payee has no memory that fits,
+ * or when a transaction entered by hand may be this purchase: that import
+ * waits in the inbox, so the purchase is never counted twice.
+ */
+function rememberedImport(
+  budget: Budget,
+  accountId: string,
+  record: StoredImport,
+  operationId: string,
+): Extract<Command, { type: "transaction.upsert" }> | undefined {
+  if (record.removed) return undefined;
+  const fact = record.current;
+  const amount = -fact.amountCents;
+  const payee = (fact.merchantName ?? fact.name).slice(0, 240);
+  const categoryId = rememberedCategory(budget, { payee, accountId, amount });
+  if (!categoryId) return undefined;
+  const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
+  const twin = budget.transactions.some(
+    (transaction) =>
+      !transaction.removed &&
+      transaction.accountId === accountId &&
+      (transaction.providerId === fact.providerTransactionId ||
+        (!transaction.providerId &&
+          transaction.amount === amount &&
+          Math.abs(day(transaction.date) - day(fact.date)) <=
+            MANUAL_MATCH_DAYS)),
+  );
+  if (twin) return undefined;
+  return {
+    type: "transaction.upsert",
+    id: operationId,
+    transactionId: randomUUID(),
+    accountId,
+    date: fact.date,
+    amount,
+    payee,
+    status: fact.pending ? "pending" : "posted",
+    ...(categoryId === READY_TO_ASSIGN ? {} : { categoryId }),
+    providerId: fact.providerTransactionId,
+  };
+}
+
+// How far apart a bank import and a transaction entered by hand can be
+// dated and still be the same purchase, as in YNAB's matching.
+const MANUAL_MATCH_DAYS = 10;
 
 const budgetOf = (state: AccountingState, userId: string): Budget =>
   "budgets" in state ? state.budgets[userId]! : state.budget;

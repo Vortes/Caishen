@@ -1,4 +1,5 @@
 import type { State, View } from "~/components/budget/types";
+import { rememberedCategory } from "~/domain/payee-memory";
 import { createTransactionDraft, READY_TO_ASSIGN } from "./transaction-draft";
 
 export type BankImport = State["imports"][number];
@@ -13,6 +14,23 @@ export function canEditImport(item: BankImport) {
   );
 }
 
+/**
+ * The category a waiting bank import takes: the one it already has, else
+ * what its payee's memory prefills (READY_TO_ASSIGN for Ready to Assign).
+ */
+export function importCategory(view: View, item: BankImport) {
+  return (
+    item.categoryId ??
+    (item.accountId
+      ? rememberedCategory(view.budget, {
+          payee: item.payee,
+          accountId: item.accountId,
+          amount: item.amount,
+        })
+      : undefined)
+  );
+}
+
 export function createImportDraft(view: View, item: BankImport) {
   return {
     ...createTransactionDraft(
@@ -23,7 +41,8 @@ export function createImportDraft(view: View, item: BankImport) {
     ),
     date: item.date,
     payee: item.payee,
-    categoryId: item.categoryId ?? (item.amount > 0 ? READY_TO_ASSIGN : ""),
+    categoryId:
+      importCategory(view, item) ?? (item.amount > 0 ? READY_TO_ASSIGN : ""),
     outflow: item.amount < 0 ? (-item.amount / 100).toFixed(2) : "",
     inflow: item.amount > 0 ? (item.amount / 100).toFixed(2) : "",
     status: item.pending ? ("pending" as const) : ("posted" as const),
