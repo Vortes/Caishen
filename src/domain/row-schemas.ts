@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   budgetShape,
   householdSchema,
+  payeeMemorySchema,
   storedIdentifier,
   targetSchema,
   transactionHistorySchema,
@@ -57,7 +58,7 @@ export const rowDataSchemas = {
     amount: cents.nonnegative(),
   }),
   transaction: transactionSchema
-    .omit({ history: true, shares: true, splitWeights: true })
+    .omit({ history: true, shares: true, splitWeights: true, lines: true })
     .extend({ ...owned, ...sort }),
   transactionShare: z.object({
     ...owned,
@@ -65,6 +66,11 @@ export const rowDataSchemas = {
     participantId: storedIdentifier,
     share: cents.nonnegative().optional(),
     weight: cents.nonnegative().optional(),
+  }),
+  transactionLine: element(transactionSchema.shape.lines.unwrap()).extend({
+    ...owned,
+    ...sort,
+    transactionId: storedIdentifier,
   }),
   transactionHistory: transactionHistorySchema.extend({
     ...owned,
@@ -143,6 +149,10 @@ export const rowDataSchemas = {
       ...sort,
     }),
   ]),
+  payeeMemory: payeeMemorySchema.extend({
+    ...owned,
+    payeeKey: storedIdentifier,
+  }),
 } satisfies Record<TableName, z.ZodTypeAny>;
 
 /** Why a live row's data doesn't read, or null when it does. */

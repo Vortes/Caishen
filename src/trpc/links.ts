@@ -9,6 +9,7 @@ import { observable } from "@trpc/server/observable";
 import SuperJSON from "superjson";
 import { RevisionSignal } from "~/components/sync/revision-signal";
 import type { AppRouter } from "~/server/api/root";
+import { CLIENT_FORMAT, CLIENT_FORMAT_HEADER } from "~/domain/client-format";
 
 // How the browser talks to the API. The sync layer's calls go one request
 // each, so the household revision header (ADR 0006) on each answer is that
@@ -67,7 +68,10 @@ export function appLinks({
     transformer: SuperJSON,
     url,
     fetch,
-    headers: () => ({ "x-trpc-source": "nextjs-react" }),
+    headers: () => ({
+      "x-trpc-source": "nextjs-react",
+      [CLIENT_FORMAT_HEADER]: String(CLIENT_FORMAT),
+    }),
   };
   return [
     revisionLink,

@@ -132,6 +132,8 @@ const transactionInput = {
   amount: cents,
   payee: z.string().min(1).max(240),
   categoryId: identifier.optional(),
+  // This release reads saved lines but does not accept split creation.
+  lines: z.never().optional(),
   status: z.enum(["pending", "posted"]).default("posted"),
   expenseMonth: monthSchema.optional(),
   sharedCategoryId: identifier.optional(),
@@ -426,7 +428,9 @@ type ParsedCommand = z.output<typeof commandSchema>;
 export type Account = {
   id: string;
   name: string;
-  kind: "cash" | "credit" | "tracking";
+  // Partner and reimbursements are the counterparty accounts: what the
+  // partner, or anyone else, owes you (positive) or you owe them.
+  kind: "cash" | "credit" | "tracking" | "partner" | "reimbursements";
   openingBalance: number;
   date: string;
   // The last time the cleared balance was confirmed against the bank's.
@@ -439,6 +443,8 @@ export type Category = {
   target?: Target;
   pairedAccountId?: string;
   pairedLoanId?: string;
+  // The counterparty account this paired envelope holds the cash of.
+  counterpartyAccountId?: string;
 };
 export type TransactionHistory = {
   revision: number;
@@ -457,6 +463,11 @@ export type TransactionHistory = {
     | "redone";
   combinedId?: string;
 };
+export type TransactionLine = {
+  id: string;
+  categoryId: string;
+  amount: number;
+};
 export type Transaction = {
   id: string;
   accountId: string;
@@ -465,6 +476,7 @@ export type Transaction = {
   payee: string;
   status: "pending" | "posted";
   categoryId?: string;
+  lines?: TransactionLine[];
   expenseMonth: string;
   sharedCategoryId?: string;
   shares?: Record<string, number>;
@@ -517,6 +529,15 @@ export type Reimbursement = {
   kind: "cash" | "statement-credit";
   receipts: { id: string; date: string; amount: number }[];
 };
+// A payee's most recent categorization, which prefills its new imports and
+// entries (src/domain/payee-memory.ts). It names a budget category or Ready
+// to Assign.
+export type PayeeMemory = {
+  // The payee as it was written when last categorized.
+  payee: string;
+  kind: "category" | "readyToAssign";
+  categoryId?: string;
+};
 export type Budget = {
   userId: string;
   name: string;
@@ -533,6 +554,8 @@ export type Budget = {
   reimbursements: Reimbursement[];
   settings: { timezone: string; emailEnabled: boolean; emailHour: number };
   expectedIncome: Record<string, number>;
+  // By payee key; absent until a payee is first categorized.
+  payeeMemory?: Record<string, PayeeMemory>;
 };
 export type SharedCategory = {
   id: string;
@@ -615,6 +638,11 @@ export const transactionSchema = z.object({
   payee: z.string(),
   status: z.enum(["pending", "posted"]),
   categoryId: storedIdentifier.optional(),
+  lines: z.array(z.object({
+    id: storedIdentifier,
+    categoryId: storedIdentifier,
+    amount: cents,
+  })).optional(),
   expenseMonth: monthSchema,
   sharedCategoryId: storedIdentifier.optional(),
   shares: z.record(nonnegativeCents).optional(),
@@ -663,6 +691,11 @@ const loanSchema = z.object({
     }),
   ),
 });
+export const payeeMemorySchema = z.object({
+  payee: z.string(),
+  kind: z.enum(["category", "readyToAssign"]),
+  categoryId: storedIdentifier.optional(),
+});
 export const budgetShape = z.object({
   userId: storedIdentifier,
   name: z.string(),
@@ -671,7 +704,7 @@ export const budgetShape = z.object({
     z.object({
       id: storedIdentifier,
       name: z.string(),
-      kind: z.enum(["cash", "credit", "tracking"]),
+      kind: z.enum(["cash", "credit", "tracking", "partner", "reimbursements"]),
       openingBalance: cents,
       date: daySchema,
       reconciled: z.object({ date: daySchema, balance: cents }).optional(),
@@ -686,6 +719,7 @@ export const budgetShape = z.object({
       target: targetSchema.optional(),
       pairedAccountId: storedIdentifier.optional(),
       pairedLoanId: storedIdentifier.optional(),
+      counterpartyAccountId: storedIdentifier.optional(),
     }),
   ),
   transactions: z.array(transactionSchema),
@@ -720,6 +754,7 @@ export const budgetShape = z.object({
     emailHour: z.number().int().min(0).max(23),
   }),
   expectedIncome: z.record(monthSchema, nonnegativeCents).default({}),
+  payeeMemory: z.record(storedIdentifier, payeeMemorySchema).optional(),
 });
 // One partner's stored personal budget, with the checks that need only that
 // budget, so one partner's budget can be read without the other's.
@@ -761,10 +796,17 @@ export function budgetReferenceIssues(
       (transaction) =>
         !transaction.removed &&
         (!accounts.has(transaction.accountId) ||
-          (transaction.categoryId && !categories.has(transaction.categoryId))),
+          categoryLines(transaction).some(line => !categories.has(line.categoryId))),
     )
   )
     issues.push("Invalid transaction reference");
+  if (budget.transactions.some(transaction => transaction.lines && (
+    transaction.lines.length < 2 ||
+    transaction.categoryId !== undefined ||
+    new Set(transaction.lines.map(line => line.id)).size !== transaction.lines.length ||
+    transaction.lines.some(line => !line.amount) ||
+    transaction.lines.reduce((total, line) => total + line.amount, 0) !== transaction.amount
+  ))) issues.push("Invalid stored transaction lines");
   if (
     budget.assignments.some(
       (assignment) => !categories.has(assignment.categoryId),
@@ -1031,6 +1073,36 @@ export function splitAmount(
 }
 
 const active = (transaction: Transaction): boolean => !transaction.removed;
+
+function rescaleLines(
+  lines: TransactionLine[],
+  amount: number,
+): TransactionLine[] | undefined {
+  const total = sum(lines.map((line) => line.amount));
+  if (total === amount) return lines;
+  if (!total) return undefined;
+  const scaled = lines.map((line) => ({
+    ...line,
+    amount: Math.round((line.amount * amount) / total),
+  }));
+  const largest = scaled.reduce((a, b) =>
+    Math.abs(b.amount) > Math.abs(a.amount) ? b : a,
+  );
+  largest.amount = safe(
+    largest.amount + amount - sum(scaled.map((line) => line.amount)),
+  );
+  return scaled.every((line) => line.amount) ? scaled : undefined;
+}
+
+
+export function categoryLines(
+  transaction: Pick<Transaction, "categoryId" | "lines" | "amount">,
+): { categoryId: string; amount: number }[] {
+  if (transaction.lines) return transaction.lines;
+  return transaction.categoryId
+    ? [{ categoryId: transaction.categoryId, amount: transaction.amount }]
+    : [];
+}
 function sharedAccess(
   book: AccountingState,
   actorId: string,
@@ -1496,28 +1568,22 @@ function replay(
       if (transaction.kind === "reimbursement" || transaction.kind === "income")
         continue;
       if (transaction.kind === "settlement") continue;
-      if (!transaction.categoryId) continue;
-      const state = categories.get(transaction.categoryId)!;
-      state.activity = safe(state.activity + transaction.amount);
-      state.available = safe(state.available + transaction.amount);
-      if (account.kind === "cash") {
-        state.cashActivity = safe(state.cashActivity + transaction.amount);
-        cashByCategory.set(
-          transaction.categoryId,
-          safe(
-            (cashByCategory.get(transaction.categoryId) ?? 0) +
-              transaction.amount,
-          ),
-        );
-      } else {
-        const cards =
-          creditByCategory.get(transaction.categoryId) ??
-          new Map<string, number>();
-        cards.set(
-          account.id,
-          safe((cards.get(account.id) ?? 0) - transaction.amount),
-        );
-        creditByCategory.set(transaction.categoryId, cards);
+      for (const { categoryId, amount } of categoryLines(transaction)) {
+        const state = categories.get(categoryId)!;
+        state.activity = safe(state.activity + amount);
+        state.available = safe(state.available + amount);
+        if (account.kind === "cash") {
+          state.cashActivity = safe(state.cashActivity + amount);
+          cashByCategory.set(
+            categoryId,
+            safe((cashByCategory.get(categoryId) ?? 0) + amount),
+          );
+        } else {
+          const cards =
+            creditByCategory.get(categoryId) ?? new Map<string, number>();
+          cards.set(account.id, safe((cards.get(account.id) ?? 0) - amount));
+          creditByCategory.set(categoryId, cards);
+        }
       }
     }
     for (const settlement of rows.settlements) {
@@ -3273,13 +3339,16 @@ function applyCommand(
           break;
         fail("Stale transaction revision requires review");
       }
-      const categoryId = command.categoryId ?? existing?.categoryId;
+      const lines = command.categoryId || !existing?.lines
+        ? undefined
+        : rescaleLines(existing.lines, command.amount);
+      const categoryId = lines ? undefined : command.categoryId ?? existing?.categoryId;
       if (
         account.kind === "tracking" &&
         (categoryId || command.sharedCategoryId || existing?.sharedCategoryId)
       )
         fail("Tracking activity does not use budget categories");
-      if (account.kind === "credit" && command.amount > 0 && !categoryId)
+      if (account.kind === "credit" && command.amount > 0 && !categoryId && !lines)
         fail("Use a card payment or posted statement credit for card inflows");
       if (categoryId) {
         const category = getCategory(budget, categoryId);
@@ -3345,6 +3414,7 @@ function applyCommand(
         payee: command.payee,
         status: command.status,
         categoryId,
+        lines,
         expenseMonth,
         sharedCategoryId,
         shares,
@@ -3356,7 +3426,7 @@ function applyCommand(
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
         kind:
-          command.amount < 0 ? "purchase" : categoryId ? "refund" : "income",
+          command.amount < 0 ? "purchase" : categoryId || lines ? "refund" : "income",
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
@@ -3473,7 +3543,7 @@ function applyCommand(
         const transaction = getTransaction(budget, id);
         if (
           transaction.amount < 0 &&
-          !transaction.categoryId &&
+          !categoryLines(transaction).length &&
           transaction.kind === "purchase" &&
           getAccount(budget, transaction.accountId).kind !== "tracking"
         )
@@ -3557,6 +3627,7 @@ function applyCommand(
       )
         fail("Change the shared expense classification explicitly");
       changes.transaction(budget, transaction).categoryId = category.id;
+      delete transaction.lines;
       if (transaction.amount > 0) transaction.kind = "refund";
       transaction.reviewed = source === "user";
       transaction.history.push({

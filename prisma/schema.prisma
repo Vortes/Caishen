@@ -173,6 +173,7 @@ model Member {
   rules        Rule[]
   bankImports  BankImport[]
   partnerFacts PartnerFact[]
+  payees       PayeeMemory[]
 
   @@id([workspaceId, userId])
   @@index([workspaceId, revision])
@@ -226,19 +227,21 @@ model CategoryGroup {
 }
 
 model Category {
-  workspaceId     String
-  userId          String
-  id              String
-  name            String
-  group           String
-  pairedAccountId String?
-  pairedLoanId    String?
-  sort            Int
-  revision        Int
-  deleted         Boolean      @default(false)
-  member          Member       @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
-  target          Target?
-  assignments     Assignment[]
+  workspaceId           String
+  userId                String
+  id                    String
+  name                  String
+  group                 String
+  pairedAccountId       String?
+  pairedLoanId          String?
+  // A paired envelope: the counterparty account whose cash it holds.
+  counterpartyAccountId String?
+  sort                  Int
+  revision              Int
+  deleted               Boolean      @default(false)
+  member                Member       @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  target                Target?
+  assignments           Assignment[]
 
   @@id([workspaceId, userId, id])
   @@index([workspaceId, revision])
@@ -322,6 +325,7 @@ model Transaction {
   member              Member               @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
   shares              TransactionShare[]
   history             TransactionHistory[]
+  lines               TransactionLine[]
 
   @@id([workspaceId, userId, id])
   @@index([workspaceId, revision])
@@ -361,6 +365,23 @@ model TransactionHistory {
   transaction         Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
 
   @@id([workspaceId, userId, transactionId, sequence])
+  @@index([workspaceId, revision])
+}
+
+// One line of a split transaction: part of its amount in one category.
+model TransactionLine {
+  workspaceId   String
+  userId        String
+  transactionId String
+  id            String
+  categoryId    String
+  amount        BigInt
+  sort          Int
+  revision      Int
+  deleted       Boolean     @default(false)
+  transaction   Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
+
+  @@id([workspaceId, userId, transactionId, id])
   @@index([workspaceId, revision])
 }
 
@@ -609,4 +630,20 @@ model Operation {
   @@index([workspaceId, revision])
   @@index([workspaceId, actorId, revision])
   @@index([createdAt])
+}
+
+// A payee's most recent categorization, by its normalized payee key.
+model PayeeMemory {
+  workspaceId String
+  userId      String
+  payeeKey    String
+  payee       String
+  kind        String
+  categoryId  String?
+  revision    Int
+  deleted     Boolean @default(false)
+  member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, payeeKey])
+  @@index([workspaceId, revision])
 }

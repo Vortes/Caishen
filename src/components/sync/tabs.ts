@@ -1,11 +1,12 @@
 import type { BudgetStore } from "./budget-store";
+import { CLIENT_FORMAT } from "~/domain/client-format";
 import type { RevisionHint, RevisionSignal } from "./revision-signal";
 
 // The signed-in user's tabs tell each other what the server confirmed.
 // Each tab keeps its own pending commands and undo history; a tab that hears
 // of the next revision applies its change set, and one further behind pulls.
 
-export const tabChannelName = (userId: string) => `caishen:${userId}`;
+export const tabChannelName = (userId: string) => `caishen:${CLIENT_FORMAT}:${userId}`;
 
 type TabMessage = Required<Pick<RevisionHint, "revision">> &
   Pick<RevisionHint, "changeSet">;

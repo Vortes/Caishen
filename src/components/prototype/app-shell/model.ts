@@ -67,7 +67,7 @@ type CategoryGroup = { id: string; name: string; categories: Category[] };
 export type Account = {
   id: string;
   name: string;
-  kind: "cash" | "credit" | "tracking";
+  kind: "cash" | "credit" | "tracking" | "partner" | "reimbursements";
   balance: number;
   pending: number;
   // Today's cleared balance, whatever month is showing: what reconciling

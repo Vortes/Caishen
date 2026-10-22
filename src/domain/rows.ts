@@ -6,12 +6,14 @@ import type {
   Category,
   Loan,
   Obligation,
+  PayeeMemory,
   Reimbursement,
   Settlement,
   SharedCategory,
   Target,
   Transaction,
   TransactionHistory,
+  TransactionLine,
 } from "./engine";
 import {
   deriveObligations,
@@ -52,6 +54,8 @@ export const tableNames = [
   "settlement",
   "settlementAllocation",
   "partnerFact",
+  "transactionLine",
+  "payeeMemory",
 ] as const;
 export type TableName = (typeof tableNames)[number];
 
@@ -85,7 +89,7 @@ export type TableData = {
   expectedIncome: Owned & { month: string; amount: number };
   transaction: Owned &
     Sorted &
-    Omit<Transaction, "history" | "shares" | "splitWeights">;
+    Omit<Transaction, "history" | "shares" | "splitWeights" | "lines">;
   transactionShare: Owned & {
     transactionId: string;
     participantId: string;
@@ -134,6 +138,9 @@ export type TableData = {
     sequence: number;
   } & Settlement["allocations"][number];
   partnerFact: PartnerFact;
+  // One line of a split transaction, in the transaction's order.
+  transactionLine: Owned & Sorted & { transactionId: string } & TransactionLine;
+  payeeMemory: Owned & { payeeKey: string } & PayeeMemory;
 };
 
 /**
@@ -192,6 +199,7 @@ const budgetTables = new Set<TableName>([
   "transaction",
   "transactionShare",
   "transactionHistory",
+  "transactionLine",
   "loan",
   "loanRate",
   "loanPayment",
@@ -199,6 +207,7 @@ const budgetTables = new Set<TableName>([
   "reimbursementReceipt",
   "rule",
   "bankImport",
+  "payeeMemory",
 ]);
 
 /**
@@ -369,6 +378,16 @@ export function expectedIncomeRows(
     : [row("expectedIncome", rowKey(userId, month), { userId, month, amount })];
 }
 
+export function payeeMemoryRows(
+  userId: string,
+  payeeKey: string,
+  memory: PayeeMemory | undefined,
+): WireRow[] {
+  return memory
+    ? [row("payeeMemory", rowKey(userId, payeeKey), { ...memory, userId, payeeKey })]
+    : [];
+}
+
 export function transactionRows(
   userId: string,
   transaction: Transaction,
@@ -377,7 +396,7 @@ export function transactionRows(
   const id = transaction.id;
   const rows = [
     row("transaction", rowKey(userId, id), {
-      ...without(transaction, ["history", "shares", "splitWeights"]),
+      ...without(transaction, ["history", "shares", "splitWeights", "lines"]),
       userId,
       sort,
     }),
@@ -398,6 +417,16 @@ export function transactionRows(
         weight: transaction.splitWeights?.[participantId],
       }),
     );
+  transaction.lines?.forEach((line, sort) =>
+    rows.push(
+      row("transactionLine", rowKey(userId, id, line.id), {
+        ...line,
+        userId,
+        transactionId: id,
+        sort,
+      }),
+    ),
+  );
   transaction.history.forEach((entry, sequence) =>
     rows.push(
       row("transactionHistory", rowKey(userId, id, String(sequence)), {
@@ -594,6 +623,9 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
     ...budget.reimbursements.flatMap((claim, index) =>
       reimbursementRows(userId, claim, index),
     ),
+    ...Object.entries(budget.payeeMemory ?? {}).flatMap(([key, memory]) =>
+      payeeMemoryRows(userId, key, memory),
+    ),
   ];
 }
 
@@ -602,6 +634,7 @@ const parents: Partial<Record<TableName, [TableName, number]>> = {
   target: ["category", 2],
   transactionShare: ["transaction", 2],
   transactionHistory: ["transaction", 2],
+  transactionLine: ["transaction", 2],
   loanRate: ["loan", 2],
   loanPayment: ["loan", 2],
   reimbursementReceipt: ["reimbursement", 2],
@@ -813,6 +846,10 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   const shares = groupBy(data.transactionShare, (share) =>
     childKey(share.userId, share.transactionId),
   );
+  const lines = groupBy(
+    [...data.transactionLine].sort((a, b) => a.sort - b.sort),
+    (line) => childKey(line.userId, line.transactionId),
+  );
   const history = groupBy(
     [...data.transactionHistory].sort((a, b) => a.sequence - b.sequence),
     (entry) => childKey(entry.userId, entry.transactionId),
@@ -832,6 +869,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   const settings = new Map(
     data.budgetSettings.map((item) => [item.userId, item]),
   );
+  const memory = groupBy(data.payeeMemory, owner);
   const names = new Map(data.member.map((member) => [member.userId, member]));
   return userIds.map((userId): Budget => {
     const setting =
@@ -844,6 +882,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       .map((group) => group.name);
     const record = (values: Record<string, number> | undefined) =>
       values && Object.keys(values).length ? values : undefined;
+    const payees = memory.get(userId);
     return {
       userId,
       name: names.get(userId)?.name ?? "",
@@ -876,8 +915,16 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
           );
         const shared = values("share");
         const weights = values("weight");
+        const split = lines.get(key);
         return {
           ...without(transaction, ["userId", "sort"]),
+          ...(split
+            ? {
+                lines: split.map((line) =>
+                  without(line, ["userId", "transactionId", "sort"]),
+                ),
+              }
+            : {}),
           ...(shared ? { shares: shared } : {}),
           ...(weights ? { splitWeights: weights } : {}),
           history: (history.get(key) ?? []).map((entry) =>
@@ -914,6 +961,9 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       expectedIncome: Object.fromEntries(
         (income.get(userId) ?? []).map((item) => [item.month, item.amount]),
       ),
+      ...(payees ? {
+        payeeMemory: Object.fromEntries(payees.map(item => [item.payeeKey, without(item, ["userId", "payeeKey"])])),
+      } : {}),
     };
   });
 }

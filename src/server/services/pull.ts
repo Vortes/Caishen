@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Prisma } from "~/generated/prisma";
 import { rowIssues } from "~/domain/row-schemas";
 import { tableNames, type WireRow } from "~/domain/rows";
+import { MINIMUM_CLIENT_FORMAT } from "~/domain/client-format";
 import {
   confirmedOperationIds,
   pullRows,
@@ -20,7 +21,7 @@ import { budgetMaintenance, reportUnreadable } from "./stored-data";
  * told to reload (staleClient). Raise it when browsers that hold rows in
  * the old format could no longer read what the server sends.
  */
-export const MINIMUM_CLIENT_FORMAT = 1;
+export { MINIMUM_CLIENT_FORMAT } from "~/domain/client-format";
 
 export const PULL_PAGE_ROWS = 4_000;
 
