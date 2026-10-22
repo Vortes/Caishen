@@ -1,4 +1,5 @@
 import {
+  READY_TO_ASSIGN,
   registerPayee,
   isTransfer,
   transferCounterparts,
@@ -24,6 +25,7 @@ export { isCounterparty };
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import {
   canEditImport,
+  importCategory,
   importRowId,
 } from "~/components/transactions/import-draft";
 import { describeTarget } from "./target-draft";
@@ -186,6 +188,25 @@ function importReviewReason(item: State["imports"][number]) {
   if (item.needsMatchReview) return "Check that this matches the right entry";
   if (!item.pending) return "Imported from your bank";
   return undefined;
+}
+
+// A waiting import's category: its own, or what its payee's memory
+// prefills, which reads like any other.
+function importCategoryLabel(
+  view: View,
+  item: State["imports"][number],
+  categoryName: Map<string, string>,
+) {
+  const categoryId = importCategory(view, item);
+  const label =
+    categoryId === READY_TO_ASSIGN
+      ? transactionCategory("income", item.amount)
+      : categoryId
+        ? (item.categoryName ?? categoryName.get(categoryId))
+        : undefined;
+  return label
+    ? { categoryId, categoryLabel: label, needsCategory: false }
+    : { categoryLabel: "Needs category", needsCategory: true };
 }
 
 const historyReason: Record<
@@ -495,8 +516,7 @@ export function toShellData(
       editableImport: canEditImport(item),
       needsReview: bankImportNeedsReview(item),
       reviewReason: importReviewReason(item),
-      categoryLabel: item.categoryName ?? "Needs category",
-      needsCategory: !item.categoryName,
+      ...importCategoryLabel(view, item, categoryName),
       categoryNotNeeded: false,
       shared: false,
       history: [],

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { newId } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import {
+  READY_TO_ASSIGN,
   TransactionDraftError,
   assertTransactionDraftCurrent,
   buildTransactionDraftCommand,
@@ -14,6 +15,7 @@ import {
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
 import type { Command } from "~/domain/engine";
+import { rememberedCategory } from "~/domain/payee-memory";
 import {
   canEditImport,
   createImportDraft,
@@ -61,6 +63,9 @@ export type TransactionSession = {
   error: string;
   // The date's calendar, open from the start on a new transaction.
   calendarOpen: boolean;
+  // Until the user chooses a category, a new transaction's category follows
+  // its payee's memory; this is what it has when the payee has none.
+  unremembered?: string;
 };
 
 type FocusTarget = DraftField | "calendar" | "error";
@@ -91,6 +96,15 @@ const screenOrder = (draft: TransactionDraft): DraftField[] => [
   "remaining",
   "interest",
 ];
+
+// The draft's signed amount once one is entered: inflow positive.
+function draftAmount(draft: TransactionDraft) {
+  const inflow = Number.parseFloat(draft.inflow);
+  if (draft.inflow.trim() && inflow) return inflow;
+  const outflow = Number.parseFloat(draft.outflow);
+  if (draft.outflow.trim() && outflow) return -outflow;
+  return undefined;
+}
 
 export function canEditTransaction(transaction: Transaction) {
   return editableKinds.includes(transaction.kind);
@@ -221,6 +235,15 @@ export function useTransactionEntryController({
           transaction,
           accountId ?? undefined,
         );
+    const unremembered = transaction
+      ? undefined
+      : imported
+        ? imported.categoryId
+          ? undefined
+          : imported.amount > 0
+            ? READY_TO_ASSIGN
+            : ""
+        : draft.categoryId;
     const editField =
       draft.transferAccountId ||
       draft.loanId ||
@@ -247,6 +270,7 @@ export function useTransactionEntryController({
       fields: {},
       error: "",
       calendarOpen: field === "date" || (!transactionId && Boolean(accountId)),
+      unremembered,
     });
     reveal();
     // A new transaction starts on its first column. In one account's
@@ -261,7 +285,7 @@ export function useTransactionEntryController({
   };
 
   // Correcting a field clears its error; the rest wait for the next save.
-  const change = (next: Partial<TransactionDraft>) => {
+  const change = (next: Partial<TransactionDraft>, chosen = false) => {
     setSession((current) => {
       if (!current) return current;
       const fields = { ...current.fields };
@@ -287,12 +311,23 @@ export function useTransactionEntryController({
             }
         }
       }
-      return {
-        ...current,
-        draft: { ...current.draft, ...next },
-        fields,
-        error: "",
-      };
+      const draft = { ...current.draft, ...next };
+      const unremembered = chosen ? undefined : current.unremembered;
+      if (
+        unremembered !== undefined &&
+        !draft.lines.length &&
+        !draft.transferAccountId &&
+        !draft.loanId &&
+        ["payee", "accountId", "outflow", "inflow"].some((key) => key in next)
+      )
+        draft.categoryId =
+          rememberedCategory(view.budget, {
+            payee: draft.payee,
+            accountId: draft.accountId,
+            amount: draftAmount(draft),
+          }) ?? unremembered;
+      return { ...current, draft, fields, error: "", unremembered };
+
     });
   };
 
@@ -391,6 +426,7 @@ export function useTransactionEntryController({
         date: draft.date,
         status: draft.status,
       };
+      const unremembered = next.categoryId;
       setSession((current) =>
         current
           ? {
@@ -402,6 +438,7 @@ export function useTransactionEntryController({
               fields: {},
               error: "",
               calendarOpen: false,
+              unremembered,
             }
           : current,
       );
@@ -435,6 +472,10 @@ export function useTransactionEntryController({
     dirty,
     start,
     change,
+    // The user's own choice of category, which the payee's memory then
+    // leaves alone.
+    chooseCategory: (categoryId: string) =>
+      change({ categoryId, lines: [] }, true),
     setCalendarOpen: (calendarOpen: boolean) => patch({ calendarOpen }),
     submit,
     cancel: () => close(),
