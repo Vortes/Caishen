@@ -609,11 +609,18 @@ export function RegisterView({
           onClick={(event) => {
             // A pointer click; Enter and Space click with no position.
             if (isChecked && checked.length === 1 && event.detail > 0) {
-              const column = columnAt(
-                event.currentTarget,
-                event.clientX,
-                item.categoryNotNeeded ? "category" : undefined,
-              );
+              const skip = item.categoryNotNeeded ? "category" : undefined;
+              // The cell clicked, or the column nearest the pointer when the
+              // click lands between cells.
+              const clicked =
+                event.target instanceof Element
+                  ? event.target.closest<HTMLElement>("[data-column]")?.dataset
+                      .column
+                  : undefined;
+              const column =
+                clicked && clicked in registerEditFields && clicked !== skip
+                  ? clicked
+                  : columnAt(event.currentTarget, event.clientX, skip);
               if (column) {
                 entry.start({
                   transactionId: item.id,
