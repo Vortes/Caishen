@@ -57,6 +57,8 @@ const commandLabels = {
   "partner.settle": "Record settlement",
   "partner.request": "Ask partner to pay",
   "partner.settlement.confirm": "Confirm settlement",
+  "partner.record": "Record shared purchase",
+  "partner.match": "Match bank import",
   "card.payment": "Record card payment",
   "card.credit": "Record statement credit",
   "loan.add": "Add loan",

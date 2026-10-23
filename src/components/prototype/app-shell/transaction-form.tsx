@@ -26,7 +26,9 @@ import type { CounterpartyShare } from "~/domain/engine";
 import { proportionalRefundLines } from "~/domain/linked-refunds";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
+import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
+import { PartnerMatches } from "./partner-match";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -104,6 +106,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   });
 
   const account = view.accounts.find((item) => item.id === draft.accountId);
+  const matches = session.imported ? partnerMatchesOf(session.imported) : [];
   const destinations = paymentPayees(view, draft);
   const destination = destinations.find((item) =>
     item.accountId
@@ -642,9 +645,19 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           Save and add another
         </Button>
       )}
-      <Button variant="primary" size="sm" type="submit" disabled={removed}>
-        Save
-      </Button>
+      {matches.length ? (
+        <Button
+          size="sm"
+          disabled={removed}
+          onClick={() => entry.submit(false)}
+        >
+          Save as new
+        </Button>
+      ) : (
+        <Button variant="primary" size="sm" type="submit" disabled={removed}>
+          Save
+        </Button>
+      )}
     </div>
   );
 
@@ -825,7 +838,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        void entry.submit(false);
+        // Enter matches an import to the one purchase it may be; with
+        // several, the payer picks one.
+        const [only] = matches;
+        if (only && matches.length === 1) entry.matchImport(only);
+        else if (matches.length)
+          event.currentTarget
+            .querySelector<HTMLElement>("[data-partner-match]")
+            ?.focus();
+        else void entry.submit(false);
       }}
       onKeyDown={(event) => {
         // The register moves its selection with the arrow keys; inside the
@@ -962,6 +983,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           </p>
         </div>
       )}
+      {matches.length > 0 && <PartnerMatches matches={matches} />}
       <div className={styles.rowFooter}>
         {refundOf ? (
           <span className={shareStyles.footerHint}>

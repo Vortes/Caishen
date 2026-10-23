@@ -32,6 +32,8 @@ export function prepareUserCommand(
     "counterparty.receive",
     "partner.edit",
     "partner.request",
+    "partner.record",
+    "partner.match",
     "loan.payment",
     "account.add",
   ].includes(command.type);
@@ -51,6 +53,8 @@ export function prepareUserCommand(
     command.type === "counterparty.receive" ||
     command.type === "partner.edit" ||
     command.type === "partner.settlement.confirm" ||
+    command.type === "partner.record" ||
+    command.type === "partner.match" ||
     command.type === "transaction.merge" ||
     command.type === "transaction.remove" ||
     command.type === "transaction.reject" ||

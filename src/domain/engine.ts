@@ -29,7 +29,11 @@ import {
 } from "./shared-ledger";
 import { personalSpendingEntries } from "./spending";
 import {
+  awaitingImport,
   entryCounts,
+  lineFacts,
+  matchEntry,
+  partnerLines,
   mirroredChange,
   mirroredEntries,
   partnerAccountOf,
@@ -210,6 +214,38 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: identifier,
     entryId: identifier,
     categoryId: identifier.nullable(),
+  }),
+  // A shared purchase recorded before its payer's bank import arrives, by
+  // either partner, and the payer's import matched to it once it does.
+  z.object({
+    type: z.literal("partner.record"),
+    id: identifier,
+    recordedAt: z.string().datetime().optional(),
+    entryId: identifier,
+    payerId: identifier,
+    date: daySchema,
+    payee: z.string().trim().min(1).max(240),
+    // The total paid, without its sign.
+    amount: positiveCents,
+    // The part of the partner who didn't pay.
+    share: positiveCents,
+    // The recorder's category for their part.
+    categoryId: identifier.optional(),
+  }),
+  z.object({
+    type: z.literal("partner.match"),
+    id: identifier,
+    recordedAt: z.string().datetime().optional(),
+    entryId: identifier,
+    transactionId: identifier,
+    accountId: identifier,
+    date: daySchema,
+    // The import's signed amount, which must be the entry's.
+    amount: cents,
+    status: z.enum(["pending", "posted"]),
+    providerId: identifier.optional(),
+    // The payer's category for their part; their side's when absent.
+    categoryId: identifier.optional(),
   }),
   z.object({
     type: z.literal("partner.edit"),
@@ -1893,6 +1929,9 @@ function replay(
     budget.categories.find(
       (item) => item.counterpartyAccountId === partnerAccount.id,
     );
+  // What the viewer's own recorded purchases, still waiting for their
+  // import, add to the Partner account so far.
+  let unpaidPartnerEntries = 0;
   for (
     let cursor = budget.startMonth;
     cursor <= month;
@@ -2070,12 +2109,20 @@ function replay(
     }
     // The partner's purchases: what the viewer owes for them moves their
     // Partner account, and their paired envelope holds it. Their side's
-    // category, once chosen, spends the share as cash.
+    // category, once chosen, spends the share as cash. The viewer's own
+    // purchases still waiting for their import move only the account: no
+    // account of theirs has paid them yet, so the envelope lacks nothing
+    // for them and no category spends. What the partner pays toward them
+    // before the import stays in the envelope for that payment.
     for (const entry of rows.mirrored) {
       if (!partnerAccount || !entryCounts(entry, cutoff)) continue;
       const change = mirroredChange(entry, userId);
       const counterparty = accounts.get(partnerAccount.id)!;
       counterparty.balance = safe(counterparty.balance + change);
+      if (entry.payerId === userId) {
+        unpaidPartnerEntries = safe(unpaidPartnerEntries + change);
+        continue;
+      }
       const categoryId = sideCategory(budget, entry.id);
       for (const [id, amount] of [
         [categoryId, change],
@@ -2348,8 +2395,13 @@ function replay(
           )
           .map((item) => item.amount),
       );
+      // The viewer's purchases still waiting for their import are owed to
+      // them but not yet paid by them, so the envelope holds against the
+      // rest of the account.
+      const unpaid =
+        category.id === partnerEnvelope?.id ? unpaidPartnerEntries : 0;
       state.available = safe(
-        float - accounts.get(category.counterpartyAccountId)!.balance,
+        float - accounts.get(category.counterpartyAccountId)!.balance + unpaid,
       );
       // Whatever the envelope lacks beyond its unfunded card credit was paid
       // in cash. It stays cash overspending until repaid or covered, since the
@@ -3803,6 +3855,101 @@ function recomputeLinkedRefunds(
   }
 }
 
+// One partner's category for their side of an entry, which their payee
+// memory then remembers for the payee.
+function categorizeSide(
+  budget: Budget,
+  entry: PartnerEntry,
+  categoryId: string,
+  source: CommandSource,
+  changes: Changes,
+): void {
+  const category = getCategory(budget, categoryId);
+  if (!spendingCategory(category))
+    fail("Choose a spending category for your share");
+  changes.partnerSide(budget, entry.id)[entry.id] = {
+    categoryId: category.id,
+  };
+  const key = payeeKey(entry.payee);
+  const remembered = budget.payeeMemory?.[key];
+  if (
+    source === "user" &&
+    key &&
+    (remembered?.kind !== "category" ||
+      remembered.categoryId !== category.id ||
+      remembered.payee !== entry.payee)
+  )
+    changes.payeeMemory(budget, key)[key] = {
+      ...(remembered?.counterpartyShare
+        ? { counterpartyShare: remembered.counterpartyShare }
+        : {}),
+      payee: entry.payee,
+      kind: "category",
+      categoryId: category.id,
+    };
+}
+
+// The payer's bank import of a purchase recorded before it arrived: it
+// becomes their transaction, sharing the entry's share with their Partner
+// account, and the entry's source from then on. The entry keeps its id,
+// history, and the other partner's side; the payer's own side becomes the
+// transaction's category.
+function matchPartnerImport(
+  book: AccountingState,
+  budget: Budget,
+  command: Extract<ParsedCommand, { type: "partner.match" }>,
+  source: CommandSource,
+  changes: Changes,
+): void {
+  const entry = partnerEntry(book, command.entryId);
+  if (entry.payerId !== budget.userId)
+    fail("Only the partner who paid can match their bank import");
+  if (!awaitingImport(entry))
+    fail("This shared entry is already matched to a bank import");
+  if (command.amount !== entry.amount)
+    fail("A bank import matches a recorded purchase of the same amount");
+  if (budget.transactions.some((item) => item.id === command.transactionId))
+    fail("This transaction ID already exists");
+  const partner = partnerAccountOf(budget);
+  if (!partner) fail("Link your partner's budget first");
+  const categoryId =
+    command.categoryId ?? budget.partnerSides?.[entry.id]?.categoryId;
+  if (!categoryId) fail("Choose a category for your part of it");
+  applyCommand(
+    book,
+    budget,
+    {
+      type: "transaction.upsert",
+      id: command.id,
+      recordedAt: command.recordedAt,
+      transactionId: command.transactionId,
+      accountId: command.accountId,
+      date: command.date,
+      amount: entry.amount,
+      // The name it was recorded under, which both ledgers already show.
+      payee: entry.payee,
+      status: command.status,
+      categoryId,
+      counterpartyShare: { accountId: partner!.id, amount: entry.share },
+      providerId: command.providerId,
+      reviewed: false,
+    },
+    source,
+    changes,
+  );
+  const transaction = getTransaction(budget, command.transactionId);
+  const [line] = partnerLines(budget, transaction);
+  matchEntry(changes, entry, lineFacts(budget.userId, transaction, line!), {
+    actorId: budget.userId,
+    operationId: command.id,
+    at: command.recordedAt,
+  });
+  if (budget.partnerSides?.[entry.id]) {
+    const sides = changes.partnerSide(budget, entry.id);
+    delete sides[entry.id];
+  }
+}
+
 function partnerEntry(book: AccountingState, entryId: string): PartnerEntry {
   const entry = book.partnerEntries?.find((item) => item.id === entryId);
   if (!entry || entry.removed) fail("This shared entry was removed");
@@ -4019,36 +4166,55 @@ function applyCommand(
   switch (command.type) {
     case "partner.categorize": {
       const entry = partnerEntry(book, command.entryId);
-      if (entry.payerId === actorId)
+      if (entry.payerId === actorId && !awaitingImport(entry))
         fail("Categorize your own purchase on its transaction");
       if (command.categoryId === null) {
         const sides = changes.partnerSide(budget, entry.id);
         delete sides[entry.id];
         break;
       }
-      const category = getCategory(budget, command.categoryId);
-      if (!spendingCategory(category))
-        fail("Choose a spending category for your share");
-      changes.partnerSide(budget, entry.id)[entry.id] = {
-        categoryId: category.id,
+      categorizeSide(budget, entry, command.categoryId, source, changes);
+      break;
+    }
+    case "partner.record": {
+      const partner = partnerAccountOf(budget);
+      if (!partner) fail("Link your partner's budget first");
+      const members = isPersonalLedger(book)
+        ? book.members.map((member) => member.userId)
+        : Object.keys(book.budgets);
+      if (!members.includes(command.payerId))
+        fail("Choose you or your partner as who paid");
+      if (book.partnerEntries?.some((entry) => entry.id === command.entryId))
+        fail("This shared entry already exists");
+      if (command.share > command.amount)
+        fail("A share can't be more than the shared amount");
+      if (source === "user" && !command.recordedAt)
+        fail("Recorded purchases require their recorded time");
+      requireDate(budget, command.date);
+      const entry: PartnerEntry = {
+        id: command.entryId,
+        payerId: command.payerId,
+        date: command.date,
+        payee: command.payee,
+        status: "posted",
+        amount: -command.amount,
+        share: command.share,
+        history: [
+          {
+            actorId,
+            operationId: command.id,
+            ...(command.recordedAt ? { at: command.recordedAt } : {}),
+            reason: "recorded",
+          },
+        ],
       };
-      const key = payeeKey(entry.payee);
-      const remembered = budget.payeeMemory?.[key];
-      if (
-        source === "user" &&
-        key &&
-        (remembered?.kind !== "category" ||
-          remembered.categoryId !== category.id ||
-          remembered.payee !== entry.payee)
-      )
-        changes.payeeMemory(budget, key)[key] = {
-          ...(remembered?.counterpartyShare
-            ? { counterpartyShare: remembered.counterpartyShare }
-            : {}),
-          payee: entry.payee,
-          kind: "category",
-          categoryId: category.id,
-        };
+      changes.addPartnerEntry(entry);
+      if (command.categoryId)
+        categorizeSide(budget, entry, command.categoryId, source, changes);
+      break;
+    }
+    case "partner.match": {
+      matchPartnerImport(book, budget, command, source, changes);
       break;
     }
     case "partner.edit": {

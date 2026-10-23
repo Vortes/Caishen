@@ -24,9 +24,11 @@ import {
   createImportDraft,
   importRowId,
   type BankImport,
+  type PartnerImportMatch,
 } from "~/components/transactions/import-draft";
 
 type Transaction = View["budget"]["transactions"][number];
+
 export type DraftField = DraftFieldKey;
 
 // What the live workspace lends the shell for saving transactions: the
@@ -459,24 +461,7 @@ export function useTransactionEntryController({
 
     const payee = draft.payee.trim();
     const summary = session.rowId ? `Saved ${payee}` : `Added ${payee}`;
-    // The editor closes as the change shows. If the server turns it down,
-    // the draft comes back with what went wrong, unless another editor is
-    // open by then.
-    const sent = session;
-    const refused = () => {
-      setSession(
-        (current) =>
-          current ?? {
-            ...sent,
-            key: newId(),
-            fields: {},
-            error:
-              "Not saved. Your changes are still here, so you can try again.",
-            calendarOpen: false,
-          },
-      );
-      focus("error");
-    };
+    const refused = reopenOnRefusal(session);
     const blocked = session.imported
       ? saver.saveImport(session.imported, command, summary, refused)
       : saver.save(command, summary, refused);
@@ -510,6 +495,65 @@ export function useTransactionEntryController({
       );
       focus("payee", true);
     } else close();
+  };
+
+  // The editor closes as the change shows. If the server turns it down,
+  // the draft comes back with what went wrong, unless another editor is
+  // open by then.
+  const reopenOnRefusal = (sent: TransactionSession) => () => {
+    setSession(
+      (current) =>
+        current ?? {
+          ...sent,
+          key: newId(),
+          fields: {},
+          error:
+            "Not saved. Your changes are still here, so you can try again.",
+          calendarOpen: false,
+        },
+    );
+    focus("error");
+  };
+
+  // Saves the open bank import as the purchase a partner recorded before
+  // it arrived, with the category the editor shows for the payer's part.
+  const matchImport = (match: PartnerImportMatch) => {
+    const imported = session?.imported;
+    if (!session || !imported?.accountId || removed) return;
+    const categoryId = session.draft.lines.length
+      ? ""
+      : session.draft.categoryId || (match.categoryId ?? "");
+    if (!categoryId || categoryId === READY_TO_ASSIGN) {
+      patch({
+        fields: { categoryId: "Choose a category for your part of it." },
+        error: "",
+      });
+      focus("categoryId");
+      return;
+    }
+    const blocked = saver.saveImport(
+      imported,
+      {
+        type: "partner.match",
+        id: newId(),
+        recordedAt: new Date().toISOString(),
+        entryId: match.entryId,
+        transactionId: session.entityId,
+        accountId: imported.accountId,
+        date: imported.date,
+        amount: imported.amount,
+        status: imported.pending ? "pending" : "posted",
+        categoryId,
+      },
+      `Matched your import to ${match.payee}`,
+      reopenOnRefusal(session),
+    );
+    if (blocked) {
+      patch({ fields: {}, error: blocked });
+      focus("error");
+      return;
+    }
+    close();
   };
 
   // Leaving the register would hide unsaved work, so it waits for Save or
@@ -585,6 +629,7 @@ export function useTransactionEntryController({
       change({ categoryId, lines: [] }, true),
     setCalendarOpen: (calendarOpen: boolean) => patch({ calendarOpen }),
     submit,
+    matchImport,
     cancel: () => close(),
     holdForDraft,
     // The pending focus move, taken once by whichever editor is showing.
