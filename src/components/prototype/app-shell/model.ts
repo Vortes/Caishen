@@ -129,6 +129,7 @@ export type Transaction = {
   forMonth?: string;
   shared: boolean;
   shareLabel?: string;
+  shareable?: boolean;
   history: {
     reason: string;
     amount: number;

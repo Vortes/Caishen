@@ -619,7 +619,8 @@ export function RegisterView({
             if (event.detail > 0 && window.getSelection()?.toString()) return;
             if (
               event.target instanceof Element &&
-              event.target.closest('[data-column="share"]')
+              event.target.closest('[data-column="share"]') &&
+              item.shareable !== false
             ) {
               entry.start({
                 transactionId: item.id,
@@ -698,7 +699,7 @@ export function RegisterView({
             className={`${styles.truncate} ${styles.muted}`}
             data-column="share"
           >
-            {item.shareLabel ?? "Share"}
+            {item.shareable === false ? "—" : (item.shareLabel ?? "Share")}
           </span>
           <span
             className={styles.numeric}
