@@ -1,3 +1,4 @@
+import { rowsIn } from "~/domain/change-sets";
 import {
   createBook,
   withCounterpartyAccounts,
@@ -92,6 +93,14 @@ export async function deletePersonalBudget(db: Database, userId: string) {
   book.audit = [];
   await removePersonalData(db, userId, {
     ...opened.household,
-    rows: bookToRows(withCounterpartyAccounts(book)),
+    rows: [
+      ...bookToRows(withCounterpartyAccounts(book)),
+      ...rowsIn(opened.household.rows).filter(
+        (row) =>
+          row.table === "bankImport" &&
+          !row.deleted &&
+          row.data?.userId !== userId,
+      ),
+    ],
   });
 }
