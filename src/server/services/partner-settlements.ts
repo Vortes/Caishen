@@ -8,7 +8,10 @@ import {
   type Budget,
   type Command,
 } from "~/domain/engine";
-import { settlementLegId } from "~/domain/partner-settlements";
+import {
+  isRejectedSettlementImport,
+  settlementLegId,
+} from "~/domain/partner-settlements";
 import type { ChangeSet } from "~/domain/rows";
 import type { AccountingState } from "~/domain/shared-ledger";
 import {
@@ -121,6 +124,13 @@ async function settleOnce(db: Database, userId: string) {
       const paid = match.paid as Candidate;
       const received = match.received as Candidate;
       const settlementId = `settlement-${digest([paid.key, received.key])}`;
+      // A rejected pair keeps its stable ID so later syncs leave it in review.
+      if (
+        book.partnerSettlements?.some(
+          (item) => item.id === settlementId && item.removed,
+        )
+      )
+        continue;
       try {
         run(
           {
@@ -263,6 +273,7 @@ function unrecorded(
       record.current.pending ||
       record.matchStatus !== "confirmed" ||
       state.resolved[record.id] ||
+      isRejectedSettlementImport(budget, record.providerTransactionIds) ||
       bankImportEligibility(mapping, record) !== "eligible" ||
       budget.transactions.some(
         (transaction) =>

@@ -451,6 +451,11 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     recordedAt: "2026-01-21T12:00:00Z",
   });
   alex({
+    type: "partner.settlement.reject",
+    settlementId: "market-settlement",
+    recordedAt: "2026-01-21T13:00:00Z",
+  });
+  alex({
     ...purchase("work-supplies", -2_000, "food"),
     recordedAt: "2026-01-22T12:00:00Z",
     date: "2026-01-22",

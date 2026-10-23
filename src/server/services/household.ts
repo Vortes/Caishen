@@ -3,6 +3,7 @@ import {
   applyChangeSet,
   changeSetVisibleTo,
   changesOnlyBudgetOf,
+  composeChangeSets,
   executeRevert,
   rowsIn,
   toRowSet,
@@ -14,6 +15,7 @@ import {
   type LedgerCommand,
 } from "~/domain/engine";
 import {
+  rowKey,
   rowKeyParts,
   rowOwner,
   rowVisibleTo,
@@ -30,6 +32,7 @@ import {
 } from "~/server/storage/households";
 import { findOperation, RevisionConflictError } from "~/server/storage/rows";
 import { bankMappingsSchema } from "./bank-account-setup";
+import { bankImportColumnSchemas } from "./bank-import-rows";
 import { addCounterpartyAccounts } from "./household-operations";
 import { matchesSavedOperation, operationHash } from "./safety";
 import { refusal } from "./sync-refusal";
@@ -204,19 +207,55 @@ async function commandChangeSet(
   // which a personal ledger doesn't hold.
   if (
     ledger.personal &&
-    command.type === "partner.edit" &&
-    ledger.state.partnerEntries?.some(
-      (entry) => entry.id === command.entryId && entry.payerId !== actorId,
-    )
+    (command.type === "partner.settlement.reject" ||
+      (command.type === "partner.edit" &&
+        ledger.state.partnerEntries?.some(
+          (entry) => entry.id === command.entryId && entry.payerId !== actorId,
+        )))
   )
     throw new AccountingError(PARTNER_MAINTENANCE_MESSAGE);
-  return executeWithChanges(
+  const result = executeWithChanges(
     ledger.state,
     actorId,
     prepareUserCommand(ledger.budget, command),
     "user",
     submitted,
-  ).changeSet;
+  );
+  if (command.type !== "partner.settlement.reject") return result.changeSet;
+  const removedLegs = new Set(
+    result.changeSet.after.flatMap((row) =>
+      row.table === "transaction" &&
+      row.data?.removed &&
+      row.data.partnerSettlementId === command.settlementId
+        ? [row.id]
+        : [],
+    ),
+  );
+  const before = [];
+  const after = [];
+  for (const row of household.rows.get("bankImport")?.values() ?? []) {
+    if (row.table !== "bankImport" || row.deleted || !row.data?.resolved)
+      continue;
+    const resolved = bankImportColumnSchemas.resolved.parse(row.data.resolved);
+    if (
+      !resolved.transactionId ||
+      !removedLegs.has(rowKey(row.data.userId, resolved.transactionId))
+    )
+      continue;
+    const data = { ...row.data };
+    delete data.resolved;
+    before.push(row);
+    after.push({ ...row, data });
+  }
+  return composeChangeSets(command.id, [
+    result.changeSet,
+    {
+      operationId: command.id,
+      revision: 0,
+      before,
+      after,
+    },
+  ]);
 }
 
 /**
