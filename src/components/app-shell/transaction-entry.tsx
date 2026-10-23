@@ -50,7 +50,7 @@ export type TransactionSaver = {
     summary: string,
     refused?: () => void,
   ) => string | null;
-  // A bank import is saved by the server; it changes once the server has it.
+  // Previews supported commands while the server checks the bank record.
   saveImport: (
     item: BankImport,
     command: Command,
@@ -59,7 +59,8 @@ export type TransactionSaver = {
   ) => string | null;
   saveShares: (
     changes: PreparedTransactionShare[],
-  ) => Promise<{ savedIds: string[]; error?: string }>;
+    refused: (rowId: string) => void,
+  ) => { queuedIds: string[]; error?: string };
   // Holds the undo shortcut while the editor is open.
   holdOpen: () => () => void;
 };
@@ -702,18 +703,19 @@ export function useTransactionEntryController({
     holdOpen,
     saveCommand: saver.save,
     saveShare,
-    shareSelection: async (
+    shareSelection: (
       ids: string[],
       choice: ShareChoice,
       categoryId: string,
+      refused: (rowId: string) => void,
     ) => {
       if (session)
         return {
-          savedIds: [],
+          queuedIds: [],
           error: "Save or cancel the open transaction first.",
         };
       try {
-        return await saver.saveShares(
+        return saver.saveShares(
           prepareTransactionShares(
             view,
             saver.imports,
@@ -721,10 +723,11 @@ export function useTransactionEntryController({
             choice,
             categoryId,
           ),
+          refused,
         );
       } catch (failure) {
         return {
-          savedIds: [],
+          queuedIds: [],
           error:
             failure instanceof Error
               ? failure.message

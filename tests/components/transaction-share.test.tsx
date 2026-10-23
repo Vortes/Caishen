@@ -1,9 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { addMember, withCounterpartyAccounts } from "~/domain/engine";
 import { SyncError } from "~/components/sync/transport";
 import {
   budgetFixture,
+  deferred,
   findToast,
   findTransactionRow,
   readyOverview,
@@ -38,6 +39,205 @@ function bankImport(
     ...extra,
   };
 }
+
+test("sharing previews the whole selection before the server answers and restores only a refused import", async () => {
+  const sending = deferred<void>();
+  let refuse = true;
+  let imports = [
+    bankImport("coffee", "Imported coffee", { amount: -2501 }),
+    bankImport("lunch", "Imported lunch", { amount: -1501 }),
+  ];
+  const { user } = await renderShell({
+    book: withCounterpartyAccounts(
+      budgetFixture({
+        seedCommands: [
+          {
+            type: "transaction.upsert",
+            id: "market",
+            transactionId: "market",
+            accountId: "checking",
+            date: "2026-10-12",
+            payee: "Market",
+            amount: -1000,
+            status: "posted",
+          },
+        ],
+      }),
+    ),
+    overview: () => readyOverview({ imports }),
+    execute: async (input, server) => {
+      await sending.promise;
+      return server.execute("owner", input);
+    },
+    resolveImport: (input, server) => {
+      if (input.logicalId === "coffee" && refuse) {
+        refuse = false;
+        throw new SyncError(
+          "rejected",
+          "Your bank updated Imported coffee. Reopen Share before saving.",
+        );
+      }
+      const result = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = imports.filter((item) => item.logicalId !== input.logicalId);
+      return { ...result, resolved: true };
+    },
+  });
+  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  for (const payee of ["Market", "Imported coffee", "Imported lunch"])
+    await user.click(screen.getByRole("checkbox", { name: `Select ${payee}` }));
+  await user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Share" }),
+  );
+  await user.click(screen.getByRole("button", { name: /Someone else owes/ }));
+  await user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await user.click(
+    screen.getByRole("button", { name: "Share 3 transactions" }),
+  );
+  expect(screen.queryByRole("form", { name: "Share transactions" })).toBeNull();
+  for (const [payee, amount] of [
+    ["Market", "$10.00"],
+    ["Imported coffee", "$25.01"],
+    ["Imported lunch", "$15.01"],
+  ]) {
+    expect(
+      screen.getByRole("button", {
+        name: `Mom's share of ${payee}: ${amount}. Change`,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole("checkbox", { name: `Select ${payee}` }),
+    ).toHaveLength(1);
+  }
+  expect(
+    screen.queryByRole("toolbar", { name: "Selected transactions" }),
+  ).toBeNull();
+  await act(async () => sending.resolve());
+  await findToast(/Your bank updated Imported coffee/);
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", {
+        name: "Mom's share of Imported coffee: $25.01. Change",
+      }),
+    ).toBeNull(),
+  );
+  expect(
+    screen
+      .getByRole("checkbox", { name: "Select Imported coffee" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(
+    screen
+      .getByRole("checkbox", { name: "Select Imported lunch" })
+      .getAttribute("aria-checked"),
+  ).toBe("false");
+  expect(
+    screen.getByRole("button", {
+      name: "Mom's share of Market: $10.00. Change",
+    }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("button", {
+      name: "Mom's share of Imported lunch: $15.01. Change",
+    }),
+  ).toBeTruthy();
+  await user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Share" }),
+  );
+  await user.click(screen.getByRole("button", { name: /Someone else owes/ }));
+  await user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await user.click(screen.getByRole("button", { name: "Share 1 transaction" }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", {
+        name: "Mom's share of Imported coffee: $25.01. Change",
+      }),
+    ).toBeTruthy(),
+  );
+  await user.click(
+    within(
+      screen.getByRole("navigation", { name: "Budget navigation" }),
+    ).getByRole("button", { name: /^Reimbursements/ }),
+  );
+  expect(screen.getByText("$50.02", { selector: "dd" })).toBeTruthy();
+});
+
+test("a rejected import also rolls back edits made to its preview instead of creating an unlinked purchase", async () => {
+  const sending = deferred<void>();
+  const { user } = await renderShell({
+    book: withCounterpartyAccounts(budgetFixture()),
+    overview: () =>
+      readyOverview({ imports: [bankImport("coffee", "Imported coffee")] }),
+    resolveImport: async () => {
+      await sending.promise;
+      throw new SyncError(
+        "rejected",
+        "The bank changed Imported coffee. Review it before saving.",
+      );
+    },
+  });
+  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  await user.click(
+    screen.getByRole("button", { name: "Share Imported coffee" }),
+  );
+  await user.click(screen.getByRole("button", { name: /Someone else owes/ }));
+  await user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await user.click(screen.getByRole("button", { name: "Apply" }));
+  let form = within(screen.getByRole("form", { name: "Edit transaction" }));
+  await user.click(form.getByRole("button", { name: "Save" }));
+  expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
+  await user.click(
+    screen.getByRole("button", {
+      name: "Mom's share of Imported coffee: $25.00. Change",
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: /Just mine/ }));
+  form = within(screen.getByRole("form", { name: "Edit transaction" }));
+  await user.clear(form.getByLabelText("Payee", { exact: true }));
+  await user.type(
+    form.getByLabelText("Payee", { exact: true }),
+    "Personal copy",
+  );
+  await user.type(
+    form.getByRole("combobox", { name: "Category" }),
+    "Gifts{Enter}",
+  );
+  await user.click(form.getByRole("button", { name: "Save" }));
+  expect(
+    screen.getByRole("checkbox", { name: "Select Personal copy" }),
+  ).toBeTruthy();
+  await act(async () => sending.resolve());
+  await findToast(/The bank changed Imported coffee/);
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("checkbox", { name: "Select Personal copy" }),
+    ).toBeNull(),
+  );
+  const recovered = within(
+    screen.getByRole("form", { name: "Edit transaction" }),
+  );
+  expect(
+    recovered.getByLabelText("Payee", { exact: true }).getAttribute("value"),
+  ).toBe("Imported coffee");
+  await user.click(recovered.getByRole("button", { name: "Cancel" }));
+  expect(
+    screen.getAllByRole("checkbox", { name: "Select Imported coffee" }),
+  ).toHaveLength(1);
+  expect(
+    within(await findTransactionRow("Imported coffee")).getByText(
+      "Needs category",
+    ),
+  ).toBeTruthy();
+});
 
 test("the island fully reimburses unequal imports to someone else without requiring a purpose category", async () => {
   let imports = [
@@ -226,7 +426,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
   );
   const alert = await screen.findByRole("alert");
   expect(alert.textContent).toContain("Your bank updated this transaction");
-  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("form", { name: "Share transactions" })).toBeNull();
   expect(
     screen
       .getByRole("checkbox", { name: "Select Imported coffee" })
