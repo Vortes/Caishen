@@ -20,8 +20,10 @@ test("People holds the Reimbursements account in the sidebar and leads the plan 
     sidebar().getByRole("button", { name: /^Reimbursements/ }),
   ).toBeTruthy();
 
+  // The column header's toggle opens and folds every group.
   const groups = plan()
     .getAllByRole("button", { expanded: true })
+    .filter((button) => button.getAttribute("aria-label") === null)
     .map((button) => button.textContent);
   expect(groups[0]).toMatch(/^People/);
   expect(

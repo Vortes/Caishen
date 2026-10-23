@@ -25,6 +25,7 @@ import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import { TargetEditor, useTargetEditing } from "./target-editor";
 import type { Screen } from "./sidebar";
+import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import { FundingRing } from "./views";
 import styles from "./shell.module.css";
 
@@ -32,23 +33,33 @@ export function Inspector({
   screen,
   selectedId,
   checked,
+  view,
 }: {
   screen: Screen;
   selectedId: string | null;
   checked: string[];
+  view: PlanViewId | null;
 }) {
   const { categories, loans, readyToAssign } = useShellData();
   if (screen.type === "plan") {
     // The plan's selection is its checked rows: one shows that category,
-    // several show their combined details.
+    // several show their combined details, and every category the plan
+    // shows leaves only Auto-Assign over them.
     const category =
       checked.length === 1
         ? categories.find((item) => item.id === checked[0])
         : undefined;
+    const showing = view ? categories.filter(viewOf(view).matches) : categories;
+    const everything =
+      showing.length > 1 && showing.every((item) => checked.includes(item.id));
     return (
       <>
         <RtaCard amount={readyToAssign} />
-        {checked.length > 1 ? (
+        {everything ? (
+          <SelectionAutoAssign
+            categories={categories.filter((item) => checked.includes(item.id))}
+          />
+        ) : checked.length > 1 ? (
           <CheckedDetails ids={checked} />
         ) : category ? (
           <CategoryDetails key={category.id} category={category} />
@@ -284,17 +295,23 @@ function CheckedDetails({ ids }: { ids: string[] }) {
           {money(sum(categories, (item) => item.carryover))}
         </Property>
       </Card>
-      <Card>
-        <Tabs defaultValue="auto-assign">
-          <TabsList aria-label="Selection details">
-            <TabsTrigger value="auto-assign">Auto-Assign</TabsTrigger>
-          </TabsList>
-          <TabsContent value="auto-assign">
-            <AutoAssign scope={categories} />
-          </TabsContent>
-        </Tabs>
-      </Card>
+      <SelectionAutoAssign categories={categories} />
     </>
+  );
+}
+
+function SelectionAutoAssign({ categories }: { categories: Category[] }) {
+  return (
+    <Card>
+      <Tabs defaultValue="auto-assign">
+        <TabsList aria-label="Selection details">
+          <TabsTrigger value="auto-assign">Auto-Assign</TabsTrigger>
+        </TabsList>
+        <TabsContent value="auto-assign">
+          <AutoAssign scope={categories} />
+        </TabsContent>
+      </Tabs>
+    </Card>
   );
 }
 

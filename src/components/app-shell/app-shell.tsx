@@ -874,6 +874,7 @@ export function AppShell({
                                   screen={screen}
                                   selectedId={selectedId}
                                   checked={checked}
+                                  view={settings.planView}
                                 />
                               )}
                             </div>

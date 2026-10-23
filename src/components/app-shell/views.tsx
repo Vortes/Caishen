@@ -35,12 +35,16 @@ import {
   type Funding,
   type Transaction,
 } from "./model";
+import { motion, MotionConfig } from "motion/react";
+import { newId } from "~/components/budget/format";
 import {
   AddToGroupButton,
   FirstGroupButton,
   isSystemGroup,
+  useAddCategory,
   type Added,
 } from "./add-category";
+import { EASE, SETTLE_MS, useGroupDrag } from "./group-drag";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -128,14 +132,6 @@ export function PlanView({
     target.focus({ preventScroll: true });
     target.scrollIntoView({ block: "center" });
   }, [reveal, revealGroup, closed]);
-  if (!shell.groups.length) {
-    return (
-      <Empty title="Give every dollar a job." action={<FirstGroupButton />}>
-        Start with a category group, like Bills, then add the categories that go
-        in it.
-      </Empty>
-    );
-  }
   // A view keeps only its categories, and only the groups that still have
   // some; group totals add up what's showing.
   const focus = view ? viewOf(view) : null;
@@ -147,6 +143,36 @@ export function PlanView({
         }))
         .filter((group) => group.categories.length)
     : shell.groups;
+  const { add } = useAddCategory();
+  const reorder = useGroupDrag({
+    ids: groups.map((group) => group.id),
+    enabled: groups.length > 1,
+    onDrop: (order, id, done) => {
+      // A view hides some groups; they keep their places around the ones
+      // showing.
+      const showing = new Set(order);
+      let next = 0;
+      const names = shell.groups.map((group) =>
+        showing.has(group.id) ? order[next++]! : group.id,
+      );
+      const blocked = add(
+        { type: "group.reorder", id: newId(), names },
+        // A group's id is its name.
+        `Moved ${id}`,
+        done,
+      );
+      if (blocked) done();
+    },
+  });
+  const byId = new Map(groups.map((group) => [group.id, group]));
+  if (!shell.groups.length) {
+    return (
+      <Empty title="Give every dollar a job." action={<FirstGroupButton />}>
+        Start with a category group, like Bills, then add the categories that go
+        in it.
+      </Empty>
+    );
+  }
   if (focus && !groups.length) {
     return (
       <Empty title={focus.empty.title} icon={CheckIcon} done>
@@ -154,176 +180,301 @@ export function PlanView({
       </Empty>
     );
   }
+  const totals = (group: (typeof groups)[number]) => {
+    const sum = (pick: (category: Category) => number) =>
+      group.categories.reduce((total, item) => total + pick(item), 0);
+    return (
+      <>
+        <span className={styles.numeric} data-optional>
+          {money(sum((item) => item.assigned))}
+        </span>
+        <span className={styles.numeric} data-optional>
+          {money(sum((item) => item.activity))}
+        </span>
+        <span className={styles.numeric}>
+          {money(sum((item) => item.available))}
+        </span>
+      </>
+    );
+  };
+  const dragged = reorder.drag && byId.get(reorder.drag.id);
+  // The column header's controls cover every group showing.
+  const everyId = groups.flatMap((group) =>
+    group.categories.map((item) => item.id),
+  );
+  const checkedCount = everyId.filter((id) => checked.includes(id)).length;
+  const anyOpen = groups.some(
+    (group) => group.categories.length > 0 && !closed.includes(group.id),
+  );
   return (
-    <div
-      className={`${styles.list} ${selectionStyles.list}`}
-      {...selectionStyle.listProps}
-      role="group"
-      aria-label="Categories"
-      data-selecting={checked.length > 0 || undefined}
-      onKeyDown={(event) => {
-        // x toggles the focused row's checkbox, like Linear.
-        const id =
-          document.activeElement instanceof HTMLElement
-            ? document.activeElement.dataset.id
-            : undefined;
-        if (event.key === "x" && id) {
-          event.preventDefault();
-          onCheck([id], !checked.includes(id));
-          return;
-        }
-        moveSelection(event);
-      }}
-    >
-      <div className={`${styles.columns} ${styles.columnHeader}`} aria-hidden>
-        <span>Category</span>
-        <span className={styles.numeric} data-optional>
-          Assigned
-        </span>
-        <span className={styles.numeric} data-optional>
-          Activity
-        </span>
-        <span className={styles.numeric}>Available</span>
-      </div>
-      {groups.map((group) => {
-        const ids = group.categories.map((item) => item.id);
-        // A group with no categories stays folded; its header's + adds one.
-        const open = ids.length > 0 && !closed.includes(group.id);
-        const sum = (pick: (category: Category) => number) =>
-          group.categories.reduce((total, item) => total + pick(item), 0);
-        const count = ids.filter((id) => checked.includes(id)).length;
-        return (
-          <div key={group.id}>
-            <div className={styles.rowWrap}>
-              {ids.length > 0 && (
-                <RowCheckbox
-                  label={`Select ${group.name}`}
-                  state={
-                    count === 0 ? false : count === ids.length ? true : "mixed"
-                  }
-                  onChange={() => onCheck(ids, count < ids.length)}
-                />
-              )}
-              {/* The whole header toggles the group for the pointer; the
-                  name is the button, so the + beside it can be one too. */}
-              <div
-                className={`${styles.columns} ${styles.groupRow}`}
-                onClick={(event) => {
-                  if (!(event.target as Element).closest("button"))
-                    toggle(group.id);
-                }}
-              >
-                <span className={styles.groupName}>
-                  <button
-                    type="button"
-                    className={styles.groupToggle}
-                    aria-expanded={open}
-                    data-group-toggle={group.name}
-                    onClick={() => toggle(group.id)}
-                  >
-                    <ChevronDownIcon
-                      size={12}
-                      strokeWidth={2.5}
-                      className={styles.groupCaret}
-                      aria-hidden
-                    />
-                    <span className={styles.truncate}>{group.name}</span>
-                    <span className={styles.groupCount}>
-                      {group.categories.length}
-                    </span>
-                  </button>
-                  {!isSystemGroup(group) && (
-                    <span className={styles.groupAdd}>
-                      <AddToGroupButton group={group.name} />
-                    </span>
-                  )}
-                </span>
-                <span className={styles.numeric} data-optional>
-                  {money(sum((item) => item.assigned))}
-                </span>
-                <span className={styles.numeric} data-optional>
-                  {money(sum((item) => item.activity))}
-                </span>
-                <span className={styles.numeric}>
-                  {money(sum((item) => item.available))}
-                </span>
-              </div>
-            </div>
-            {open &&
-              group.categories.map((category) => {
-                const isChecked = checked.includes(category.id);
-                return (
-                  <div
-                    key={category.id}
-                    className={`${styles.rowWrap} ${selectionStyles.row}`}
-                    {...selectionStyle.rowProps(category.id)}
-                  >
+    <MotionConfig reducedMotion="user">
+      <div
+        ref={reorder.listRef}
+        className={`${styles.list} ${styles.planList} ${selectionStyles.list}`}
+        {...selectionStyle.listProps}
+        role="group"
+        aria-label="Categories"
+        data-selecting={checked.length > 0 || undefined}
+        data-dragging={reorder.drag ? true : undefined}
+        data-settling={reorder.settling || undefined}
+        onKeyDown={(event) => {
+          const focused =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+          // Alt+Up and Alt+Down move the focused group.
+          const groupName = focused?.dataset.groupToggle;
+          if (
+            event.altKey &&
+            groupName &&
+            (event.key === "ArrowUp" || event.key === "ArrowDown")
+          ) {
+            event.preventDefault();
+            reorder.nudge(groupName, event.key === "ArrowUp" ? -1 : 1);
+            requestAnimationFrame(() =>
+              document
+                .querySelector<HTMLElement>(
+                  `[data-group-toggle="${CSS.escape(groupName)}"]`,
+                )
+                ?.focus(),
+            );
+            return;
+          }
+          // x toggles the focused row's checkbox, like Linear.
+          const id = focused?.dataset.id;
+          if (event.key === "x" && id) {
+            event.preventDefault();
+            onCheck([id], !checked.includes(id));
+            return;
+          }
+          moveSelection(event);
+        }}
+      >
+        <div className={`${styles.columns} ${styles.columnHeader}`}>
+          {everyId.length > 0 && (
+            <RowCheckbox
+              label="Select all categories"
+              state={
+                checkedCount === 0
+                  ? false
+                  : checkedCount === everyId.length
+                    ? true
+                    : "mixed"
+              }
+              onChange={() => onCheck(everyId, checkedCount < everyId.length)}
+            />
+          )}
+          <span className={styles.groupName}>
+            <button
+              type="button"
+              className={styles.groupToggle}
+              aria-expanded={anyOpen}
+              aria-label={anyOpen ? "Collapse all groups" : "Expand all groups"}
+              onClick={() =>
+                setClosed(anyOpen ? shell.groups.map((group) => group.id) : [])
+              }
+            >
+              <ChevronDownIcon
+                size={12}
+                strokeWidth={2.5}
+                className={styles.groupCaret}
+                aria-hidden
+              />
+              <span aria-hidden>Category</span>
+            </button>
+          </span>
+          <span className={styles.numeric} data-optional aria-hidden>
+            Assigned
+          </span>
+          <span className={styles.numeric} data-optional aria-hidden>
+            Activity
+          </span>
+          <span className={styles.numeric} aria-hidden>
+            Available
+          </span>
+        </div>
+        {reorder.order.map((groupId) => {
+          const group = byId.get(groupId);
+          if (!group) return null;
+          const ids = group.categories.map((item) => item.id);
+          // A group with no categories stays folded; its header's + adds one.
+          // Every group folds while one is dragged.
+          const open =
+            ids.length > 0 && !closed.includes(group.id) && !reorder.drag;
+          const count = ids.filter((id) => checked.includes(id)).length;
+          return (
+            <motion.div
+              key={group.id}
+              data-group-slot
+              layout={reorder.animating ? "position" : false}
+              transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
+            >
+              {reorder.drag?.id === group.id ? (
+                <div className={styles.dropSlot} aria-hidden />
+              ) : (
+                <div
+                  className={styles.rowWrap}
+                  onPointerDown={(event) => reorder.start(event, group.id)}
+                >
+                  {ids.length > 0 && (
                     <RowCheckbox
-                      label={`Select ${category.name}`}
-                      state={isChecked}
-                      onChange={() => onCheck([category.id], !isChecked)}
-                    />
-                    <button
-                      type="button"
-                      data-row
-                      data-id={category.id}
-                      className={`${styles.columns} ${styles.row}`}
-                      aria-current={
-                        checked.length === 1 && checked[0] === category.id
-                          ? "true"
-                          : undefined
+                      label={`Select ${group.name}`}
+                      state={
+                        count === 0
+                          ? false
+                          : count === ids.length
+                            ? true
+                            : "mixed"
                       }
-                      onClick={() => onSelect(category.id)}
-                    >
-                      <span className={styles.rowName}>
-                        <FundingBar category={category}>
-                          <span className={styles.truncate}>
-                            {category.name}
-                          </span>
-                        </FundingBar>
-                      </span>
-                      <span
-                        className={`${styles.numeric} ${styles.muted}`}
-                        data-optional
-                        aria-hidden
-                      >
-                        <span className={moveStyles.placeholder}>
-                          {money(category.assigned)}
-                        </span>
-                      </span>
-                      <span
-                        className={`${styles.numeric} ${styles.muted}`}
-                        data-optional
-                      >
-                        {money(category.activity)}
-                      </span>
-                      <span className={styles.numeric} aria-hidden>
-                        <span className={moveStyles.placeholder}>
-                          <AvailablePill category={category} />
-                        </span>
-                      </span>
-                    </button>
-                    <AssignedCell category={category} />
-                    <MoveMoneyPopover category={category} align="end">
+                      onChange={() => onCheck(ids, count < ids.length)}
+                    />
+                  )}
+                  {/* The whole header toggles the group for the pointer; the
+                    name is the button, so the + beside it can be one too. */}
+                  <div
+                    className={`${styles.columns} ${styles.groupRow}`}
+                    onClick={(event) => {
+                      if (!(event.target as Element).closest("button"))
+                        toggle(group.id);
+                    }}
+                  >
+                    <span className={styles.groupName}>
                       <button
                         type="button"
-                        className={moveStyles.pillButton}
-                        aria-label={`${money(category.available)} available in ${category.name}. ${
-                          category.available < 0
-                            ? "Cover overspending"
-                            : "Move money"
-                        }`}
+                        className={styles.groupToggle}
+                        aria-expanded={open}
+                        aria-keyshortcuts={
+                          reorder.enabled
+                            ? "Alt+ArrowUp Alt+ArrowDown"
+                            : undefined
+                        }
+                        data-group-toggle={group.name}
+                        onClick={() => toggle(group.id)}
                       >
-                        <AvailablePill category={category} />
+                        <ChevronDownIcon
+                          size={12}
+                          strokeWidth={2.5}
+                          className={styles.groupCaret}
+                          aria-hidden
+                        />
+                        <span className={styles.truncate}>{group.name}</span>
+                        <span className={styles.groupCount}>
+                          {group.categories.length}
+                        </span>
                       </button>
-                    </MoveMoneyPopover>
+                      {!isSystemGroup(group) && (
+                        <span className={styles.groupAdd} data-no-drag>
+                          <AddToGroupButton group={group.name} />
+                        </span>
+                      )}
+                    </span>
+                    {totals(group)}
                   </div>
-                );
-              })}
-          </div>
-        );
-      })}
-    </div>
+                </div>
+              )}
+              {open &&
+                group.categories.map((category) => {
+                  const isChecked = checked.includes(category.id);
+                  return (
+                    <div
+                      key={category.id}
+                      className={`${styles.rowWrap} ${selectionStyles.row}`}
+                      {...selectionStyle.rowProps(category.id)}
+                    >
+                      <RowCheckbox
+                        label={`Select ${category.name}`}
+                        state={isChecked}
+                        onChange={() => onCheck([category.id], !isChecked)}
+                      />
+                      <button
+                        type="button"
+                        data-row
+                        data-id={category.id}
+                        className={`${styles.columns} ${styles.row}`}
+                        aria-current={
+                          checked.length === 1 && checked[0] === category.id
+                            ? "true"
+                            : undefined
+                        }
+                        onClick={() => onSelect(category.id)}
+                      >
+                        <span className={styles.rowName}>
+                          <FundingBar category={category}>
+                            <span className={styles.truncate}>
+                              {category.name}
+                            </span>
+                          </FundingBar>
+                        </span>
+                        <span
+                          className={`${styles.numeric} ${styles.muted}`}
+                          data-optional
+                          aria-hidden
+                        >
+                          <span className={moveStyles.placeholder}>
+                            {money(category.assigned)}
+                          </span>
+                        </span>
+                        <span
+                          className={`${styles.numeric} ${styles.muted}`}
+                          data-optional
+                        >
+                          {money(category.activity)}
+                        </span>
+                        <span className={styles.numeric} aria-hidden>
+                          <span className={moveStyles.placeholder}>
+                            <AvailablePill category={category} />
+                          </span>
+                        </span>
+                      </button>
+                      <AssignedCell category={category} />
+                      <MoveMoneyPopover category={category} align="end">
+                        <button
+                          type="button"
+                          className={moveStyles.pillButton}
+                          aria-label={`${money(category.available)} available in ${category.name}. ${
+                            category.available < 0
+                              ? "Cover overspending"
+                              : "Move money"
+                          }`}
+                        >
+                          <AvailablePill category={category} />
+                        </button>
+                      </MoveMoneyPopover>
+                    </div>
+                  );
+                })}
+            </motion.div>
+          );
+        })}
+        {dragged && (
+          <motion.div
+            className={styles.groupGhost}
+            style={{ y: reorder.y }}
+            initial={{ scale: 1 }}
+            animate={{ scale: 1.01 }}
+            transition={{ duration: 0.15, ease: EASE }}
+            aria-hidden
+          >
+            <div className={`${styles.columns} ${styles.groupRow}`}>
+              <span className={styles.groupName}>
+                <span className={styles.groupToggle}>
+                  <ChevronDownIcon
+                    size={12}
+                    strokeWidth={2.5}
+                    className={styles.groupCaret}
+                  />
+                  <span className={styles.truncate}>{dragged.name}</span>
+                  <span className={styles.groupCount}>
+                    {dragged.categories.length}
+                  </span>
+                </span>
+              </span>
+              {totals(dragged)}
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </MotionConfig>
   );
 }
 

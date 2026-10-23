@@ -335,6 +335,13 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: identifier,
     name: z.string().trim().min(1).max(120),
   }),
+  // The plan's group order, top first. Groups it leaves out, like one added
+  // since, keep their place after the ones it names.
+  z.object({
+    type: z.literal("group.reorder"),
+    id: identifier,
+    names: z.array(z.string().max(120)).max(500),
+  }),
   z.object({
     type: z.literal("category.add"),
     id: identifier,
@@ -661,9 +668,10 @@ export type Budget = {
   name: string;
   startMonth: string;
   accounts: Account[];
-  // Category groups added with group.add, newest first, including ones with
-  // no categories yet. They lead the plan; a category names its group, and
-  // groups known only through their categories follow in category order.
+  // Category groups in plan order, including ones with no categories yet:
+  // group.add puts a new one first, and group.reorder sets the order. They
+  // lead the plan; a category names its group, and groups known only
+  // through their categories follow in category order.
   groups?: string[];
   categories: Category[];
   transactions: Transaction[];
@@ -3106,6 +3114,7 @@ function executeAccountingState<T extends AccountingState>(
     "account.add",
     "account.reconcile",
     "group.add",
+    "group.reorder",
     "category.add",
     "category.import",
     "settings.update",
@@ -3778,6 +3787,23 @@ function applyCommand(
         fail("Category group already exists");
       changes.groups(budget);
       budget.groups = [command.name, ...(budget.groups ?? [])];
+      break;
+    }
+    case "group.reorder": {
+      const current = [
+        ...new Set([
+          ...(budget.groups ?? []),
+          ...budget.categories.map((c) => c.group),
+        ]),
+      ];
+      const named = [...new Set(command.names)].filter((name) =>
+        current.includes(name),
+      );
+      changes.groups(budget);
+      budget.groups = [
+        ...named,
+        ...current.filter((name) => !named.includes(name)),
+      ];
       break;
     }
     case "category.add": {
