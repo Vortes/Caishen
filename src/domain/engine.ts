@@ -3987,9 +3987,15 @@ function applyCommand(
               ? { counterpartyShare: line.counterpartyShare }
               : {}),
           }))
-        : command.categoryId || !existing?.lines
-          ? undefined
-          : rescaleLines(existing.lines, command.amount);
+        : command.categoryId && existing?.lines?.some(line => line.counterpartyShare) && command.counterpartyShare === undefined && !refundOfTransactionId
+          ? (() => {
+              const preserved = rescaleLines(existing.lines!, command.amount)
+                ?? fail("Edit the split lines to keep their counterparty shares when changing this amount");
+              return preserved.map(line => ({...line, categoryId: command.categoryId!}));
+            })()
+          : command.categoryId || !existing?.lines
+            ? undefined
+            : rescaleLines(existing.lines, command.amount);
       const categoryId = lines
         ? undefined
         : (command.categoryId ?? existing?.categoryId);
@@ -4384,13 +4390,8 @@ function applyCommand(
         fail("Tracking activity does not use budget categories");
       const category = getCategory(budget, command.categoryId);
       refusePairedEnvelope(category);
-      if (
-        transaction.refundOfTransactionId ||
-        transaction.lines?.some((line) => line.counterpartyShare)
-      )
-        fail(
-          "Edit the transaction to change linked refund or shared split categories",
-        );
+      if (transaction.refundOfTransactionId)
+        fail("Edit the original purchase to change linked refund categories");
       if (category.pairedAccountId || category.pairedLoanId)
         fail("Payment categories cannot categorize purchases");
       if (
@@ -4400,8 +4401,14 @@ function applyCommand(
         ] !== category.id
       )
         fail("Change the shared expense classification explicitly");
-      changes.transaction(budget, transaction).categoryId = category.id;
-      delete transaction.lines;
+      changes.transaction(budget, transaction);
+      if (transaction.lines?.some(line => line.counterpartyShare)) {
+        transaction.lines = transaction.lines.map(line => ({...line, categoryId: category.id}));
+        delete transaction.categoryId;
+      } else {
+        transaction.categoryId = category.id;
+        delete transaction.lines;
+      }
       if (transaction.amount > 0) transaction.kind = "refund";
       transaction.reviewed = source === "user";
       transaction.history.push({
