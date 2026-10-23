@@ -1,8 +1,13 @@
+import {
+  classifyRegisterEntry,
+  linkedRefundShareMessage,
+  splitPurchaseAmountMessage,
+  purposeCategoryMessage,
+} from "./register-entry";
 import { z } from "zod";
 import {
   transactionActionIssue,
   transactionEditOperation,
-  transactionShareMode,
   TRANSACTION_ACTION_LIMIT,
 } from "./transaction-actions";
 import {
@@ -1160,9 +1165,7 @@ function ensureNoCounterpartyEntries(budget: Budget): void {
         !transaction.removed && counterpartyIds.has(transaction.accountId),
     )
   )
-    fail(
-      "Entries on Partner and Reimbursements come from shares and settlements, not from the register",
-    );
+    fail("Entries on Partner and Reimbursements come from shares and settlements, not from the register");
 }
 
 // The items in the order the ids name them. They trade places among
@@ -3392,6 +3395,17 @@ function editPartnerEntry(
     : book.budgets[entry.payerId];
   const sourceLine = entry.source;
   if (!payer || !sourceLine) {
+    if (sourceLine) {
+      if (sourceLine.linkedRefund) fail(linkedRefundShareMessage);
+      if (
+        sourceLine.onSplitPurchase &&
+        command.amount !== undefined &&
+        amount !== entry.amount
+      )
+        fail(splitPurchaseAmountMessage);
+      if (share < Math.abs(amount) && !sourceLine.hasPurposeCategory)
+        fail(purposeCategoryMessage);
+    }
     writeEntry(
       book,
       changes,
@@ -3417,12 +3431,12 @@ function editPartnerEntry(
   );
   if (transaction.removed || !line?.counterpartyShare)
     fail("This shared entry was removed");
-  const shareMode = transactionShareMode(payer, transaction);
-  if (shareMode === "read")
-    fail("A linked refund's share follows its purchase. Change the purchase");
-  if (shareMode !== "edit") fail("Shares apply to purchases and refunds");
+  const shareMode = classifyRegisterEntry(payer, transaction).capabilities
+    .share;
+  if (shareMode.mode === "read") fail(shareMode.reason);
+  if (shareMode.mode !== "edit") fail("Shares apply to purchases and refunds");
   if (transaction.lines && amount !== line!.amount)
-    fail("Change a split purchase's amounts on the purchase itself");
+    fail(splitPurchaseAmountMessage);
   const date = command.date ?? transaction.date;
   requireDate(payer, date);
   const counterpartyShare = { ...line!.counterpartyShare!, amount: share };
@@ -4184,7 +4198,7 @@ function applyCommand(
           ? undefined
           : (command.categoryId ?? existing?.categoryId);
       if (!lines && !categoryId && !fullyShared && existing?.counterpartyShare)
-        fail("Choose a purpose category for your part of it");
+        fail(purposeCategoryMessage);
       if (lines) {
         if (account.kind === "tracking")
           fail("Tracking activity does not use budget categories");
@@ -4194,8 +4208,7 @@ function applyCommand(
           if (!line.amount) fail("Enter an amount on every split line");
           validateShare(line.amount, line.counterpartyShare);
           if (!line.categoryId) {
-            if (!isFullShare(line))
-              fail("Choose a purpose category for your part of it");
+            if (!isFullShare(line)) fail(purposeCategoryMessage);
             continue;
           }
           const category = getCategory(budget, line.categoryId);

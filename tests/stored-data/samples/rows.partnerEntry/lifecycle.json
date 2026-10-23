@@ -3,10 +3,13 @@
   "payerId": "jordan",
   "source": {
     "transactionId": "rent-2026-08",
-    "lineId": "rent-2026-08"
+    "lineId": "rent-2026-08",
+    "hasPurposeCategory": true,
+    "onSplitPurchase": false,
+    "linkedRefund": false
   },
   "date": "2026-08-02",
-  "payee": "Parkside Apartments · rent",
+  "payee": "Parkside Apartments \u00b7 rent",
   "status": "pending",
   "amount": -260000,
   "share": 130000,

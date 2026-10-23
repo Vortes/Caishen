@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  classifyRegisterEntry,
+  linkedRefundShareMessage,
+} from "./register-entry";
 import type { Changes } from "./changes";
 import type { Budget, Transaction, TransactionLine } from "./engine";
 import { counterpartyLines, shareContribution } from "./counterparty";
@@ -73,7 +77,13 @@ export type PartnerEntryChange = {
 export type PartnerEntry = {
   id: string;
   payerId: string;
-  source?: { transactionId: string; lineId: string };
+  source?: {
+    transactionId: string;
+    lineId: string;
+    hasPurposeCategory: boolean;
+    onSplitPurchase: boolean;
+    linkedRefund: boolean;
+  };
   date: string;
   payee: string;
   status: "pending" | "posted";
@@ -119,7 +129,13 @@ export const partnerEntryObject = z.object({
   id: identifier,
   payerId: identifier,
   source: z
-    .object({ transactionId: identifier, lineId: identifier })
+    .object({
+      transactionId: identifier,
+      lineId: identifier,
+      hasPurposeCategory: z.boolean(),
+      onSplitPurchase: z.boolean(),
+      linkedRefund: z.boolean(),
+    })
     .optional(),
   date: day,
   payee: z.string(),
@@ -305,6 +321,7 @@ export type PartnerLedgerRow = {
   awaitingImport: boolean;
   // Who recorded it before the payer's import, when someone did.
   recordedBy?: string;
+  shareMode: { mode: "edit" } | { mode: "read"; reason: string };
   history: PartnerEntryChange[];
 };
 
@@ -354,10 +371,16 @@ export function partnerLedgerRows(
         method: settlement?.method,
         confirmed: settlement?.confirmed,
         awaitingImport: false,
+        shareMode: {
+          mode: "read",
+          reason: "Shares apply to purchases and refunds",
+        },
         history: [],
       });
       continue;
     }
+    const shareMode = classifyRegisterEntry(budget, transaction).capabilities
+      .share;
     for (const line of partnerLines(budget, transaction)) {
       const share = line.counterpartyShare!.amount;
       const entry = bySource.get(sourceKey(transaction.id, line.id));
@@ -380,6 +403,10 @@ export function partnerLedgerRows(
         lineId: line.id,
         entryId: entry?.id,
         awaitingImport: false,
+        shareMode:
+          shareMode.mode === "none"
+            ? { mode: "read", reason: "Shares apply to purchases and refunds" }
+            : shareMode,
         recordedBy: entry && recordedBy(entry),
         history: entry?.history ?? [],
       });
@@ -412,6 +439,9 @@ export function partnerLedgerRows(
       entryId: entry.id,
       awaitingImport: awaitingImport(entry),
       recordedBy: recordedBy(entry),
+      shareMode: entry.source?.linkedRefund
+        ? { mode: "read", reason: linkedRefundShareMessage }
+        : { mode: "edit" },
       history: entry.history,
     });
   }
@@ -459,7 +489,13 @@ export function lineFacts(
 ): EntryFacts {
   return {
     payerId,
-    source: { transactionId: transaction.id, lineId: line.id },
+    source: {
+      transactionId: transaction.id,
+      lineId: line.id,
+      hasPurposeCategory: Boolean(line.categoryId),
+      onSplitPurchase: Boolean(transaction.lines),
+      linkedRefund: Boolean(transaction.refundOfTransactionId),
+    },
     date: transaction.date,
     payee: transaction.payee,
     status: transaction.status,
@@ -500,7 +536,16 @@ export function writeEntry(
       ? []
       : [{ field, previous: entry[field], next: facts[field] }],
   );
-  if (!changed.length && !entry.removed) return;
+  const sourceChanged =
+    entry.source?.transactionId !== facts.source?.transactionId ||
+    entry.source?.lineId !== facts.source?.lineId ||
+    entry.source?.hasPurposeCategory !== facts.source?.hasPurposeCategory ||
+    entry.source?.onSplitPurchase !== facts.source?.onSplitPurchase ||
+    entry.source?.linkedRefund !== facts.source?.linkedRefund;
+  if (!changed.length && !entry.removed) {
+    if (sourceChanged) changes.partnerEntry(entry).source = facts.source;
+    return;
+  }
   const tracked = changes.partnerEntry(entry);
   Object.assign(tracked, facts);
   tracked.history.push({
