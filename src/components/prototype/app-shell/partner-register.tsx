@@ -238,8 +238,8 @@ function SettlementDetail({
           <div>
             <dt>
               {row.change >= 0
-                ? `${partnerName} owes you`
-                : `You owe ${partnerName}`}
+                ? `You paid ${partnerName}`
+                : `${partnerName} paid you`}
             </dt>
             <dd>{money(Math.abs(row.change))}</dd>
           </div>

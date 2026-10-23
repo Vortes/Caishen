@@ -3897,6 +3897,23 @@ function editPartnerEntry(
   changes.transaction(payer, saved).history.at(-1)!.actorId = budget.userId;
 }
 
+// One confirmation, by either partner, resolves both sides.
+function confirmSettlement(
+  changes: Changes,
+  settlement: PartnerSettlement,
+  write: { actorId: string; operationId: string; at?: string },
+): void {
+  if (settlement.confirmed) return;
+  const tracked = changes.partnerSettlement(settlement);
+  tracked.confirmed = true;
+  tracked.history.push({
+    actorId: write.actorId,
+    operationId: write.operationId,
+    ...(write.at ? { at: write.at } : {}),
+    reason: "confirmed",
+  });
+}
+
 // A payment between the partners, with both partners' legs: the payer's
 // out of a cash account, the recipient's into a cash account or credit
 // card. Only the household's whole book holds both budgets, so a partner's
@@ -4089,14 +4106,10 @@ function applyCommand(
         (item) => item.id === command.settlementId && !item.removed,
       );
       if (!settlement) fail("This settlement was removed");
-      if (settlement!.confirmed) break;
-      const tracked = changes.partnerSettlement(settlement!);
-      tracked.confirmed = true;
-      tracked.history.push({
+      confirmSettlement(changes, settlement!, {
         actorId,
         operationId: command.id,
-        ...(command.recordedAt ? { at: command.recordedAt } : {}),
-        reason: "confirmed",
+        at: command.recordedAt,
       });
       break;
     }
@@ -4814,6 +4827,15 @@ function applyCommand(
         changes.transaction(budget, transaction).reviewed = true;
         for (const counterpart of transferCounterparts(budget, transaction))
           changes.transaction(budget, counterpart).reviewed = true;
+        // Approving one partner's leg confirms the settlement for both.
+        const settlement = book.partnerSettlements?.find(
+          (item) => item.id === transaction.partnerSettlementId,
+        );
+        if (settlement && !settlement.removed)
+          confirmSettlement(changes, settlement, {
+            actorId,
+            operationId: command.id,
+          });
       }
       break;
     }
