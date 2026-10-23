@@ -860,7 +860,9 @@ export function RegisterView({
         <span data-column="status" />
       </div>
       {session && !inPlace && (
-        <TransactionEditor accountColumn={accountColumn} />
+        <div className={styles.editorDock}>
+          <TransactionEditor accountColumn={accountColumn} />
+        </div>
       )}
       {pending.length > 0 && (
         <div
