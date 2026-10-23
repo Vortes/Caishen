@@ -32,9 +32,17 @@ import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 //   side's category, once chosen, carries their share as cash-backed
 //   spending. Until then the entry is uncategorized and the money owed is
 //   held from Ready to Assign.
-// - An entry without a `source` is reserved for purchases one partner
-//   records for the other before the payer's bank import arrives (phase
-//   3b); readers already count such an entry for the partner who didn't pay.
+// - An entry without a `source` is a purchase recorded before the payer's
+//   bank import arrives (`partner.record`). It counts at once in both
+//   budgets: the non-payer's as above, and the payer's Partner account and
+//   paired envelope by the same change, held as credit rather than cash
+//   overspending, since no account of theirs has paid it yet. The payer's
+//   own part waits for the import; the category they chose for it, if they
+//   recorded it themselves, is their side until then.
+// - When the payer's import arrives it is matched to the entry
+//   (`partner.match`): the import becomes the payer's transaction with the
+//   entry's share, and the entry's `source` names it. The entry keeps its
+//   id, its history, and the non-payer's side.
 
 export const PARTNER_HISTORY_FIELDS = [
   "share",
@@ -48,7 +56,10 @@ export type PartnerEntryChange = {
   actorId: string;
   at?: string;
   operationId: string;
-  reason: "created" | "updated" | "removed" | "restored";
+  // "recorded": created before the payer's import, by whoever recorded it.
+  // "matched": linked to the payer's import, which is its source from then.
+  reason:
+    "created" | "recorded" | "matched" | "updated" | "removed" | "restored";
   changes?: {
     field: (typeof PARTNER_HISTORY_FIELDS)[number];
     previous: string | number;
@@ -82,7 +93,14 @@ export const partnerEntryChangeSchema = z.object({
   actorId: identifier,
   at: z.string().optional(),
   operationId: identifier,
-  reason: z.enum(["created", "updated", "removed", "restored"]),
+  reason: z.enum([
+    "created",
+    "recorded",
+    "matched",
+    "updated",
+    "removed",
+    "restored",
+  ]),
   changes: z
     .array(
       z.object({
@@ -175,14 +193,45 @@ export function mirroredChange(entry: PartnerEntry, viewerId: string): number {
   return entry.payerId === viewerId ? payerChange : -payerChange || 0;
 }
 
-/** The entries one partner's accounting takes from the other's purchases. */
+/** Whether an entry still waits for its payer's bank import. */
+export function awaitingImport(entry: PartnerEntry): boolean {
+  return !entry.source;
+}
+
+/**
+ * The entries one partner's accounting takes from the shared ledger: the
+ * other's purchases, and their own still waiting for their import.
+ */
 export function mirroredEntries(
   entries: PartnerEntry[] | undefined,
   viewerId: string,
 ): PartnerEntry[] {
   return (entries ?? []).filter(
-    (entry) => !entry.removed && entry.payerId !== viewerId,
+    (entry) =>
+      !entry.removed && (entry.payerId !== viewerId || awaitingImport(entry)),
   );
+}
+
+/** The key of a payer's line, for finding the entry it's the source of. */
+export const sourceKey = (transactionId: string, lineId: string) =>
+  `${transactionId}\u0000${lineId}`;
+
+/** The entry each source line is the source of. */
+export function entriesBySource(
+  entries: PartnerEntry[] | undefined,
+): Map<string, PartnerEntry> {
+  return new Map(
+    (entries ?? []).flatMap((entry) =>
+      entry.source
+        ? [[sourceKey(entry.source.transactionId, entry.source.lineId), entry]]
+        : [],
+    ),
+  );
+}
+
+/** Who recorded an entry before its payer's import, if anyone did. */
+export function recordedBy(entry: PartnerEntry): string | undefined {
+  return entry.history.find((change) => change.reason === "recorded")?.actorId;
 }
 
 /**
@@ -245,6 +294,10 @@ export type PartnerLedgerRow = {
   transactionId?: string;
   lineId?: string;
   entryId?: string;
+  // Recorded before the payer's import, which hasn't arrived yet.
+  awaitingImport: boolean;
+  // Who recorded it before the payer's import, when someone did.
+  recordedBy?: string;
   history: PartnerEntryChange[];
 };
 
@@ -262,7 +315,7 @@ export function partnerLedgerRows(
   const viewerId = budget.userId;
   const partner = partnerAccountOf(budget);
   if (!partner) return [];
-  const byId = new Map((entries ?? []).map((entry) => [entry.id, entry]));
+  const bySource = entriesBySource(entries);
   const rows: Omit<PartnerLedgerRow, "balance">[] = [];
   for (const transaction of budget.transactions) {
     if (
@@ -286,16 +339,18 @@ export function partnerLedgerRows(
         categoryId: undefined,
         needsCategory: false,
         transactionId: transaction.id,
+        awaitingImport: false,
         history: [],
       });
       continue;
     }
     for (const line of partnerLines(budget, transaction)) {
       const share = line.counterpartyShare!.amount;
-      const entryId = partnerEntryId(viewerId, transaction.id, line.id);
+      const entry = bySource.get(sourceKey(transaction.id, line.id));
       const shared = Math.abs(line.amount);
       rows.push({
-        id: entryId,
+        // A matched entry keeps the id it was recorded under.
+        id: entry?.id ?? partnerEntryId(viewerId, transaction.id, line.id),
         kind: line.amount > 0 ? "refund" : "purchase",
         date: transaction.date,
         payee: transaction.payee,
@@ -309,16 +364,20 @@ export function partnerLedgerRows(
         needsCategory: false,
         transactionId: transaction.id,
         lineId: line.id,
-        entryId: byId.has(entryId) ? entryId : undefined,
-        history: byId.get(entryId)?.history ?? [],
+        entryId: entry?.id,
+        awaitingImport: false,
+        recordedBy: entry && recordedBy(entry),
+        history: entry?.history ?? [],
       });
     }
   }
   for (const entry of mirroredEntries(entries, viewerId)) {
     if (!entryCounts(entry, cutoff)) continue;
+    const paid = entry.payerId === viewerId;
     const categoryId = sideCategory(budget, entry.id);
     const shared = Math.abs(entry.amount);
-    const needsCategory = !categoryId && entry.share > 0;
+    // The payer categorizes their part once their import arrives.
+    const needsCategory = !paid && !categoryId && entry.share > 0;
     rows.push({
       id: entry.id,
       kind: entry.amount > 0 ? "refund" : "purchase",
@@ -327,8 +386,8 @@ export function partnerLedgerRows(
       status: entry.status,
       payerId: entry.payerId,
       shared,
-      you: entry.share,
-      partner: shared - entry.share,
+      you: paid ? shared - entry.share : entry.share,
+      partner: paid ? entry.share : shared - entry.share,
       change: mirroredChange(entry, viewerId),
       categoryId,
       suggestedCategoryId: needsCategory
@@ -336,6 +395,8 @@ export function partnerLedgerRows(
         : undefined,
       needsCategory,
       entryId: entry.id,
+      awaitingImport: awaitingImport(entry),
+      recordedBy: recordedBy(entry),
       history: entry.history,
     });
   }
@@ -470,6 +531,7 @@ export function synchronizePartnerEntries(
   const budgets = isPersonalLedger(state)
     ? [state.budget]
     : Object.values(state.budgets);
+  const bySource = entriesBySource(state.partnerEntries);
   for (const budget of budgets) {
     if (!partnerAccountOf(budget)) continue;
     for (const { before, after } of changes.transactionEdits(budget)) {
@@ -477,7 +539,10 @@ export function synchronizePartnerEntries(
       const mirrored = new Set<string>();
       if (after && !after.removed)
         for (const line of partnerLines(budget, after)) {
-          const id = partnerEntryId(budget.userId, after.id, line.id);
+          // A matched entry keeps the id it was recorded under.
+          const id =
+            bySource.get(sourceKey(after.id, line.id))?.id ??
+            partnerEntryId(budget.userId, after.id, line.id);
           mirrored.add(id);
           writeEntry(
             state,
