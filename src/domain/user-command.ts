@@ -55,6 +55,7 @@ export function prepareUserCommand(
     command.type === "counterparty.receive" ||
     command.type === "partner.edit" ||
     command.type === "partner.settlement.confirm" ||
+    command.type === "partner.settlement.reject" ||
     command.type === "partner.record" ||
     command.type === "partner.match" ||
     command.type === "transaction.merge" ||

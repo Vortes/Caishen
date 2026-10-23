@@ -121,6 +121,13 @@ async function settleOnce(db: Database, userId: string) {
       const paid = match.paid as Candidate;
       const received = match.received as Candidate;
       const settlementId = `settlement-${digest([paid.key, received.key])}`;
+      // A rejected pair keeps its stable ID so later syncs leave it in review.
+      if (
+        book.partnerSettlements?.some(
+          (item) => item.id === settlementId && item.removed,
+        )
+      )
+        continue;
       try {
         run(
           {

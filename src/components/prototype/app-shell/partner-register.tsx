@@ -263,9 +263,10 @@ function SettlementDetail({
           {row.confirmed
             ? "Matched in both budgets"
             : "Imported in both budgets. Confirm it in either one."}
+          {" Reject a wrong match to review both bank imports separately."}
         </p>
-        {!row.confirmed && (
-          <div className={local.detailActions}>
+        <div className={local.detailActions}>
+          {!row.confirmed && (
             <Button
               size="sm"
               variant="primary"
@@ -284,8 +285,25 @@ function SettlementDetail({
             >
               Confirm settlement
             </Button>
-          </div>
-        )}
+          )}
+          <Button
+            size="sm"
+            onClick={() =>
+              setError(
+                saveCommand(
+                  {
+                    type: "partner.settlement.reject",
+                    id: newId(),
+                    settlementId: row.settlementId!,
+                  },
+                  "Match rejected. Both bank imports are back in review.",
+                ) ?? "",
+              )
+            }
+          >
+            Reject match
+          </Button>
+        </div>
         {error && <p className={moveStyles.error}>{error}</p>}
       </div>
     </div>
