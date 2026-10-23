@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   budgetShape,
-  householdSchema,
   payeeMemorySchema,
   storedIdentifier,
   targetSchema,
@@ -22,11 +21,9 @@ import type { TableName, WireRow } from "./rows";
 // What each row table's data holds, read as strictly as the engine reads
 // the same records (ADR 0006, "Stored data across code versions"). A stored
 // row that doesn't read takes only what depends on it out of service: its
-// owner's personal budget, or the household for shared rows. The stored
-// data tests record these shapes, which may only grow.
+// owner's personal budget, or the household for shared rows.
 
 const budget = budgetShape.shape;
-const household = householdSchema.shape;
 const element = <T extends z.ZodTypeAny>(array: z.ZodArray<T>) => array.element;
 const owned = { userId: storedIdentifier };
 const sort = { sort: z.number().int() };
@@ -34,18 +31,6 @@ const sequence = z.number().int().nonnegative();
 const cents = z.number().int().safe();
 
 const loan = element(budget.loans);
-const reimbursement = element(budget.reimbursements);
-const settlement = element(household.settlements);
-const purchase = transactionSchema.pick({
-  id: true,
-  amount: true,
-  date: true,
-  expenseMonth: true,
-  payee: true,
-  status: true,
-  shares: true,
-});
-
 export const rowDataSchemas = {
   member: z.object({ ...owned, ...sort, name: z.string() }),
   budgetSettings: budget.settings.extend({
@@ -67,15 +52,8 @@ export const rowDataSchemas = {
     amount: cents.nonnegative(),
   }),
   transaction: transactionSchema
-    .omit({ history: true, shares: true, splitWeights: true, lines: true })
+    .omit({ history: true, lines: true })
     .extend({ ...owned, ...sort }),
-  transactionShare: z.object({
-    ...owned,
-    transactionId: storedIdentifier,
-    participantId: storedIdentifier,
-    share: cents.nonnegative().optional(),
-    weight: cents.nonnegative().optional(),
-  }),
   transactionLine: element(transactionSchema.shape.lines.unwrap()).extend({
     ...owned,
     ...sort,
@@ -99,14 +77,6 @@ export const rowDataSchemas = {
     ...sort,
     loanId: storedIdentifier,
   }),
-  reimbursement: reimbursement
-    .omit({ receipts: true })
-    .extend({ ...owned, ...sort }),
-  reimbursementReceipt: element(reimbursement.shape.receipts).extend({
-    ...owned,
-    ...sort,
-    reimbursementId: storedIdentifier,
-  }),
   // Standing rules are no longer kept; their stored rows still read.
   rule: z.object({
     id: storedIdentifier,
@@ -128,36 +98,6 @@ export const rowDataSchemas = {
     error: z.string().optional(),
     reviews: z.array(z.unknown()).optional(),
   }),
-  sharedCategory: element(household.sharedCategories).extend(sort),
-  obligation: element(household.obligations).extend(sort),
-  settlement: settlement.omit({ allocations: true }).extend(sort),
-  settlementAllocation: element(settlement.shape.allocations).extend({
-    settlementId: storedIdentifier,
-    sequence,
-  }),
-  partnerFact: z.discriminatedUnion("kind", [
-    purchase.extend({
-      viewerId: storedIdentifier,
-      kind: z.literal("purchase"),
-      ...sort,
-      payerId: storedIdentifier,
-      sharedCategoryId: storedIdentifier,
-    }),
-    z.object({
-      viewerId: storedIdentifier,
-      kind: z.literal("receipt"),
-      settlementId: storedIdentifier,
-      date: transactionSchema.shape.date,
-    }),
-    z.object({
-      viewerId: storedIdentifier,
-      kind: z.literal("activity"),
-      // Empty when the browser rebuilt it from a personal ledger.
-      payerId: z.string(),
-      sharedCategoryId: storedIdentifier,
-      ...sort,
-    }),
-  ]),
   payeeMemory: payeeMemorySchema.extend({
     ...owned,
     payeeKey: storedIdentifier,

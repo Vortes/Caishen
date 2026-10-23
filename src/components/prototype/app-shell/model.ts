@@ -65,8 +65,6 @@ export type Category = {
   // A paired envelope's counterparty account: available is the float set
   // aside minus what the account says is owed to you.
   pairs?: { accountId: string; name: string; balance: number };
-  reserved: number;
-  spendable: number;
   autoAssign: AutoAssignCategory;
 };
 
@@ -366,8 +364,6 @@ export function toShellData(
         name: displayName(pair),
         balance: pair.balance,
       },
-      reserved: item.reserved,
-      spendable: item.spendable,
       autoAssign: item,
     };
   });

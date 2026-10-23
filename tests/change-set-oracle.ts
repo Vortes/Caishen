@@ -22,7 +22,6 @@ import {
   type WireRow,
 } from "../src/domain/rows";
 import {
-  deriveObligations,
   isPersonalLedger,
   type AccountingState,
 } from "../src/domain/shared-ledger";
@@ -43,7 +42,7 @@ function rowsOf(state: AccountingState, fresh: boolean): WireRow[] {
 }
 
 // What rows hold of a book: everything but the audit, with assignments
-// folded and generated obligations derived.
+// folded.
 export function storedBook(book: Book): Book {
   return {
     ...book,
@@ -53,7 +52,6 @@ export function storedBook(book: Book): Book {
         { ...budget, assignments: foldAssignments(budget.assignments) },
       ]),
     ),
-    obligations: deriveObligations(book),
     audit: [],
   };
 }

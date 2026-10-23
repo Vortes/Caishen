@@ -169,14 +169,6 @@ void test("rejected commands leave the original cache untouched", () => {
     },
     { type: "settings.update", id: "bad-timezone", timezone: "Invalid/Zone" },
     { type: "income.expect", id: "bad-amount", month, amount: -1 },
-    {
-      type: "shared.create",
-      id: "needs-partner",
-      sharedCategoryId: "shared-food",
-      participants: ["alan", "partner"],
-      weights: { alan: 1, partner: 1 },
-      categoryIds: { alan: "food", partner: "partner-food" },
-    },
   ];
   for (const command of rejected)
     assert.equal(optimisticState(before, command, now), before, command.id);
@@ -241,13 +233,6 @@ function household() {
   const setup = fixture();
   setup.book = addMember(setup.book, "partner", "Partner", month);
   setup.run({
-    type: "shared.create",
-    sharedCategoryId: "shared-food",
-    participants: ["alan", "partner"],
-    weights: { alan: 1, partner: 1 },
-    categoryIds: { alan: "food", partner: "partner-food" },
-  });
-  setup.run({
     type: "transaction.upsert",
     transactionId: "purchase",
     accountId: "checking",
@@ -255,7 +240,6 @@ function household() {
     amount: -1000,
     payee: "Shared grocery",
     categoryId: "food",
-    sharedCategoryId: "shared-food",
     reviewed: false,
   });
   return setup;
@@ -290,10 +274,8 @@ void test("shared budget metadata updates retain private projection and authorit
     },
     now,
   );
-  assert.equal(updated.view!.sharedStatement, before.view!.sharedStatement);
   assert.equal(updated.view!.categories, before.view!.categories);
   assert.equal(updated.view!.accounts, before.view!.accounts);
-  assert.equal(updated.view!.settlement, before.view!.settlement);
   assert.equal(updated.view!.budget.settings, before.view!.budget.settings);
 });
 
@@ -327,12 +309,11 @@ void test("connected budgets preview personal financial commands with the shared
     month,
     amount: 1000,
   });
-  const removed = expectProjection(setup.book, {
+  expectProjection(setup.book, {
     type: "transaction.remove",
     id: "remove-shared",
     transactionId: "purchase",
   });
-  assert.equal(removed.view.settlement.owedToYou, 0);
 });
 
 void test("invalid connected-budget requests leave the original state untouched", () => {

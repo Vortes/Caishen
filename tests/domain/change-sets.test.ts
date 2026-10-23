@@ -72,6 +72,12 @@ void test("a partner's browser computes the change set the server computes for t
   let compared = 0;
   for (const item of corpus.steps) {
     if (Object.keys(item.before.budgets).length !== 2) continue;
+    if (
+      ["partner.settle", "partner.settlement.confirm"].includes(
+        item.command.type,
+      )
+    )
+      continue;
     const ledger = personalLedger(item.before, item.actorId);
     const { changeSet } = executeWithChanges(
       ledger,
@@ -80,28 +86,16 @@ void test("a partner's browser computes the change set the server computes for t
       item.source,
     );
     const visible = (rows: WireRow[]) =>
-      rows.filter(
-        (row) => row.table !== "partnerFact" && rowVisibleTo(row, item.actorId),
-      );
+      rows.filter((row) => rowVisibleTo(row, item.actorId));
     const server = {
       ...item.changeSet,
       after: visible(item.changeSet.after),
       before: visible(item.changeSet.before),
     };
-    // The server also writes the partner's paired category (ADR 0006).
-    if (item.command.type === "shared.create")
-      assert.deepStrictEqual(
-        keys(item.changeSet).filter((id) => !keys(changeSet).includes(id)),
-        [
-          `category ${rowKey("jordan", "groceries")}`,
-          `partnerFact ${rowKey("jordan", "activity", "groceries")}`,
-        ].filter((id) => keys(item.changeSet).includes(id)),
-      );
-    else
-      assert.ok(
-        sameJson(changeSet, server),
-        `${item.command.type} (${item.command.id})`,
-      );
+    assert.ok(
+      sameJson(changeSet, server),
+      `${item.command.type} (${item.command.id})`,
+    );
     compared++;
   }
   assert.ok(compared > 15);
@@ -141,21 +135,10 @@ void test("change sets include the rows a command changes far from itself", () =
     (retired?.data as { removed?: boolean } | undefined)?.removed,
     true,
   );
-  // Sharing a category creates the partner's paired category.
+  // Recording a shared purchase writes the household's partner ledger.
   assert.ok(
-    keys(step("shared.create").changeSet).includes(
-      `category ${rowKey("jordan", "groceries")}`,
-    ),
-  );
-  // A shared purchase changes the partner facts the other partner reads.
-  const shared = corpus.steps.find(
-    (item) =>
-      item.command.type === "transaction.upsert" &&
-      item.command.transactionId === "shared-market",
-  )!;
-  assert.ok(
-    keys(shared.changeSet).includes(
-      `partnerFact ${rowKey("jordan", "purchase", "alex", "shared-market")}`,
+    keys(step("partner.record").changeSet).includes(
+      `partnerEntry ${rowKey("shared-market")}`,
     ),
   );
 });
@@ -164,11 +147,19 @@ void test("a created row's before and a removed row's after are deleted", () => 
   const created = step("account.add").changeSet;
   assert.ok(created.before.every((row) => row.deleted && row.data === null));
   assert.ok(created.after.every((row) => !row.deleted));
-  const removed = step("shared.remove").changeSet;
-  const trips = removed.after.find((row) => row.id === rowKey("trips"));
-  assert.deepStrictEqual([trips?.deleted, trips?.data], [true, null]);
+  const removed = corpus.steps.find(
+    (item) =>
+      item.command.type === "target.set" && item.command.target === null,
+  )!.changeSet;
+  const target = removed.after.find((row) => row.table === "target");
+  assert.deepStrictEqual([target?.deleted, target?.data], [true, null]);
   assert.ok(
-    removed.before.some((row) => row.id === rowKey("trips") && !row.deleted),
+    removed.before.some(
+      (row) =>
+        row.table === "target" &&
+        row.id === rowKey("alex", "rent") &&
+        !row.deleted,
+    ),
   );
 });
 

@@ -5,11 +5,7 @@ import type {
   Budget,
   Category,
   Loan,
-  Obligation,
   PayeeMemory,
-  Reimbursement,
-  Settlement,
-  SharedCategory,
   Target,
   Transaction,
   TransactionHistory,
@@ -17,19 +13,14 @@ import type {
 } from "./engine";
 import type { PartnerEntry, PartnerSide } from "./partner-ledger";
 import type { PartnerRequest, PartnerSettlement } from "./partner-settlements";
-import {
-  deriveObligations,
-  settlementReceiptDate,
-  type PersonalLedger,
-  type SharedPurchaseFact,
-} from "./shared-ledger";
+import type { PersonalLedger } from "./shared-ledger";
 
 // Personal budgets and household data stored as rows (ADR 0006). The engine
 // still runs over an in-memory Book or personal ledger; this module maps
 // between that and rows, both ways, so the server and the browser hold the
 // same rows and build the same ledger from them.
 
-/** Every row table. A closed set that only grows. */
+/** Every row table. */
 export const tableNames = [
   "member",
   "budgetSettings",
@@ -40,22 +31,14 @@ export const tableNames = [
   "assignment",
   "expectedIncome",
   "transaction",
-  "transactionShare",
   "transactionHistory",
   "loan",
   "loanRate",
   "loanPayment",
-  "reimbursement",
-  "reimbursementReceipt",
   // Standing rules, which are no longer kept: stored rows still read, and
   // the engine leaves them out of every budget.
   "rule",
   "bankImport",
-  "sharedCategory",
-  "obligation",
-  "settlement",
-  "settlementAllocation",
-  "partnerFact",
   "transactionLine",
   "payeeMemory",
   "partnerEntry",
@@ -64,20 +47,6 @@ export const tableNames = [
   "partnerRequest",
 ] as const;
 export type TableName = (typeof tableNames)[number];
-
-// The partner's data a personal ledger's numbers use, derived from the
-// partner's transactions and settlements for one viewer
-// (src/domain/shared-ledger.ts).
-export type PartnerFact = { viewerId: string } & (
-  | ({ kind: "purchase"; sort: number } & SharedPurchaseFact)
-  | { kind: "receipt"; settlementId: string; date: string }
-  | {
-      kind: "activity";
-      payerId: string;
-      sharedCategoryId: string;
-      sort: number;
-    }
-);
 
 // `userId` is the owner of the personal budget the row belongs to. `sort`
 // orders a collection: the order items were added shows in projections.
@@ -93,15 +62,7 @@ export type TableData = {
   target: Owned & { categoryId: string } & Target;
   assignment: Owned & Sorted & Assignment;
   expectedIncome: Owned & { month: string; amount: number };
-  transaction: Owned &
-    Sorted &
-    Omit<Transaction, "history" | "shares" | "splitWeights" | "lines">;
-  transactionShare: Owned & {
-    transactionId: string;
-    participantId: string;
-    share?: number;
-    weight?: number;
-  };
+  transaction: Owned & Sorted & Omit<Transaction, "history" | "lines">;
   // Keyed by position, not revision: combining records repeats revisions.
   transactionHistory: Owned & {
     transactionId: string;
@@ -113,9 +74,6 @@ export type TableData = {
     sequence: number;
   } & Loan["rates"][number];
   loanPayment: Owned & Sorted & { loanId: string } & Loan["payments"][number];
-  reimbursement: Owned & Sorted & Omit<Reimbursement, "receipts">;
-  reimbursementReceipt: Owned &
-    Sorted & { reimbursementId: string } & Reimbursement["receipts"][number];
   rule: Owned &
     Sorted & {
       id: string;
@@ -135,15 +93,6 @@ export type TableData = {
       error?: string;
       reviews?: unknown[];
     };
-  sharedCategory: Sorted & SharedCategory;
-  // Opening shared balances only; generated obligations are derived.
-  obligation: Sorted & Obligation;
-  settlement: Sorted & Omit<Settlement, "allocations">;
-  settlementAllocation: {
-    settlementId: string;
-    sequence: number;
-  } & Settlement["allocations"][number];
-  partnerFact: PartnerFact;
   // One line of a split transaction, in the transaction's order.
   transactionLine: Owned & Sorted & { transactionId: string } & TransactionLine;
   payeeMemory: Owned & { payeeKey: string } & PayeeMemory;
@@ -187,7 +136,7 @@ export type ChangeSet = {
 export type RowSet = ReadonlyMap<TableName, ReadonlyMap<string, WireRow>>;
 
 // A row id joins its key's parts with "/". Budget rows start with the
-// budget owner's id and partner facts with the viewer's.
+// budget owner's id.
 export function rowKey(...parts: string[]): string {
   return parts
     .map((part) => part.replaceAll("%", "%25").replaceAll("/", "%2F"))
@@ -210,14 +159,11 @@ const budgetTables = new Set<TableName>([
   "assignment",
   "expectedIncome",
   "transaction",
-  "transactionShare",
   "transactionHistory",
   "transactionLine",
   "loan",
   "loanRate",
   "loanPayment",
-  "reimbursement",
-  "reimbursementReceipt",
   "rule",
   "bankImport",
   "payeeMemory",
@@ -226,21 +172,21 @@ const budgetTables = new Set<TableName>([
 
 /**
  * The partner whose personal budget a row belongs to, or null for the
- * household's rows (members and everything shared) and partner facts.
+ * household's rows (members and everything shared).
  */
 export function rowOwner(row: Pick<WireRow, "table" | "id">): string | null {
   return budgetTables.has(row.table) ? rowKeyParts(row.id)[0]! : null;
 }
 
 /**
- * Whether a partner's browser holds the row: their own budget's rows, the
- * household's shared rows, and the partner facts derived for them.
+ * Whether a partner's browser holds the row: their own budget's rows and
+ * the household's shared rows.
  */
 export function rowVisibleTo(
   row: Pick<WireRow, "table" | "id">,
   viewerId: string,
 ): boolean {
-  return budgetTables.has(row.table) || row.table === "partnerFact"
+  return budgetTables.has(row.table)
     ? rowKeyParts(row.id)[0] === viewerId
     : true;
 }
@@ -464,27 +410,11 @@ export function transactionRows(
   const id = transaction.id;
   const rows = [
     row("transaction", rowKey(userId, id), {
-      ...without(transaction, ["history", "shares", "splitWeights", "lines"]),
+      ...without(transaction, ["history", "lines"]),
       userId,
       sort,
     }),
   ];
-  const participants = [
-    ...new Set([
-      ...Object.keys(transaction.shares ?? {}),
-      ...Object.keys(transaction.splitWeights ?? {}),
-    ]),
-  ].sort();
-  for (const participantId of participants)
-    rows.push(
-      row("transactionShare", rowKey(userId, id, participantId), {
-        userId,
-        transactionId: id,
-        participantId,
-        share: transaction.shares?.[participantId],
-        weight: transaction.splitWeights?.[participantId],
-      }),
-    );
   transaction.lines?.forEach((line, sort) =>
     rows.push(
       row("transactionLine", rowKey(userId, id, line.id), {
@@ -534,139 +464,6 @@ export function loanRows(userId: string, loan: Loan, sort: number): WireRow[] {
   ];
 }
 
-export function reimbursementRows(
-  userId: string,
-  claim: Reimbursement,
-  sort: number,
-): WireRow[] {
-  return [
-    row("reimbursement", rowKey(userId, claim.id), {
-      ...without(claim, ["receipts"]),
-      userId,
-      sort,
-    }),
-    ...claim.receipts.map((receipt, index) =>
-      row("reimbursementReceipt", rowKey(userId, claim.id, receipt.id), {
-        ...receipt,
-        userId,
-        reimbursementId: claim.id,
-        sort: index,
-      }),
-    ),
-  ];
-}
-
-export function sharedCategoryRows(shared: SharedCategory[]): WireRow[] {
-  return shared.map((category, sort) =>
-    row("sharedCategory", rowKey(category.id), { ...category, sort }),
-  );
-}
-
-export function openingObligationRows(obligations: Obligation[]): WireRow[] {
-  return obligations
-    .filter((obligation) => obligation.opening)
-    .map((obligation, sort) =>
-      row("obligation", rowKey(obligation.id), { ...obligation, sort }),
-    );
-}
-
-export function settlementRows(
-  settlement: Settlement,
-  sort: number,
-): WireRow[] {
-  return [
-    row("settlement", rowKey(settlement.id), {
-      ...without(settlement, ["allocations"]),
-      sort,
-    }),
-    ...settlement.allocations.map((allocation, sequence) =>
-      row("settlementAllocation", rowKey(settlement.id, String(sequence)), {
-        ...allocation,
-        settlementId: settlement.id,
-        sequence,
-      }),
-    ),
-  ];
-}
-
-/**
- * The partner facts one viewer's personal ledger needs, derived from the
- * other partners' budgets as projectSharedLedger derives them: their shared
- * purchases, when they received settlements, and which shared categories
- * they have activity in.
- */
-export function partnerFactRows(book: Book, viewerId: string): WireRow[] {
-  const sharedIds = new Set(
-    book.sharedCategories
-      .filter((category) => category.participants.includes(viewerId))
-      .map((category) => category.id),
-  );
-  const rows: WireRow[] = [];
-  const active = new Set<string>();
-  for (const budget of Object.values(book.budgets)) {
-    if (budget.userId === viewerId) continue;
-    budget.transactions.forEach((transaction, sort) => {
-      const sharedCategoryId = transaction.sharedCategoryId;
-      if (!sharedCategoryId || !sharedIds.has(sharedCategoryId)) return;
-      if (!active.has(sharedCategoryId)) {
-        active.add(sharedCategoryId);
-        rows.push(
-          row("partnerFact", rowKey(viewerId, "activity", sharedCategoryId), {
-            viewerId,
-            kind: "activity",
-            payerId: budget.userId,
-            sharedCategoryId,
-            sort,
-          }),
-        );
-      }
-      if (transaction.removed || !transaction.shares || transaction.amount >= 0)
-        return;
-      rows.push(
-        row(
-          "partnerFact",
-          rowKey(viewerId, "purchase", budget.userId, transaction.id),
-          {
-            viewerId,
-            kind: "purchase",
-            sort,
-            id: transaction.id,
-            payerId: budget.userId,
-            sharedCategoryId,
-            date: transaction.date,
-            expenseMonth: transaction.expenseMonth,
-            amount: transaction.amount,
-            payee: transaction.payee,
-            status: transaction.status,
-            shares: transaction.shares,
-          },
-        ),
-      );
-    });
-  }
-  for (const settlement of book.settlements) {
-    if (settlement.recipientId === viewerId || settlement.payerId !== viewerId)
-      continue;
-    const recipient = Object.hasOwn(book.budgets, settlement.recipientId)
-      ? book.budgets[settlement.recipientId]
-      : undefined;
-    const date =
-      settlement.amount === 0
-        ? settlement.date
-        : recipient && settlementReceiptDate(recipient, settlement.id);
-    if (date)
-      rows.push(
-        row("partnerFact", rowKey(viewerId, "receipt", settlement.id), {
-          viewerId,
-          kind: "receipt",
-          settlementId: settlement.id,
-          date,
-        }),
-      );
-  }
-  return rows;
-}
-
 function budgetRows(budget: Budget, sort: number): WireRow[] {
   const userId = budget.userId;
   return [
@@ -688,9 +485,6 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
       transactionRows(userId, transaction, index),
     ),
     ...budget.loans.flatMap((loan, index) => loanRows(userId, loan, index)),
-    ...budget.reimbursements.flatMap((claim, index) =>
-      reimbursementRows(userId, claim, index),
-    ),
     ...Object.entries(budget.payeeMemory ?? {}).flatMap(([key, memory]) =>
       payeeMemoryRows(userId, key, memory),
     ),
@@ -703,13 +497,10 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
 // Each child table's parent, and the parts of a child's key that name it.
 const parents: Partial<Record<TableName, [TableName, number]>> = {
   target: ["category", 2],
-  transactionShare: ["transaction", 2],
   transactionHistory: ["transaction", 2],
   transactionLine: ["transaction", 2],
   loanRate: ["loan", 2],
   loanPayment: ["loan", 2],
-  reimbursementReceipt: ["reimbursement", 2],
-  settlementAllocation: ["settlement", 1],
 };
 
 /** Child rows whose parent row is missing or deleted. */
@@ -757,14 +548,13 @@ export function tombstone(
   row: Pick<WireRow, "table" | "id">,
   revision = 0,
 ): WireRow {
-  // Too many tables for TypeScript to match the union member by member.
   return {
     table: row.table,
     id: row.id,
     revision,
     deleted: true,
     data: null,
-  } as WireRow;
+  };
 }
 
 /**
@@ -815,12 +605,6 @@ export function bookToRows(book: Book): WireRow[] {
   const members = Object.values(book.budgets);
   return unique([
     ...members.flatMap((budget, sort) => budgetRows(budget, sort)),
-    ...sharedCategoryRows(book.sharedCategories),
-    ...openingObligationRows(book.obligations),
-    ...book.settlements.flatMap((settlement, sort) =>
-      settlementRows(settlement, sort),
-    ),
-    ...members.flatMap((budget) => partnerFactRows(book, budget.userId)),
     ...(book.partnerEntries ?? []).map(partnerEntryRow),
     ...settlingUpRows(book),
   ]);
@@ -828,7 +612,7 @@ export function bookToRows(book: Book): WireRow[] {
 
 /**
  * The rows one partner's browser holds for a personal ledger: their budget,
- * the household's shared rows, and their partner facts.
+ * and the household's shared rows.
  */
 export function personalLedgerToRows(ledger: PersonalLedger): WireRow[] {
   const userId = ledger.budget.userId;
@@ -843,36 +627,6 @@ export function personalLedgerToRows(ledger: PersonalLedger): WireRow[] {
       row("member", rowKey(member.userId), {
         userId: member.userId,
         name: member.userId === userId ? ledger.budget.name : member.name,
-        sort,
-      }),
-    ),
-    ...sharedCategoryRows(ledger.sharedCategories),
-    ...openingObligationRows(ledger.obligations),
-    ...ledger.settlements.flatMap((settlement, sort) =>
-      settlementRows(settlement, sort),
-    ),
-    ...ledger.partnerPurchases.map((purchase, sort) =>
-      row(
-        "partnerFact",
-        rowKey(userId, "purchase", purchase.payerId, purchase.id),
-        { ...purchase, viewerId: userId, kind: "purchase", sort },
-      ),
-    ),
-    ...Object.entries(ledger.partnerReceiptDates).map(([settlementId, date]) =>
-      row("partnerFact", rowKey(userId, "receipt", settlementId), {
-        viewerId: userId,
-        kind: "receipt",
-        settlementId,
-        date,
-      }),
-    ),
-    ...ledger.partnerActivityCategoryIds.map((sharedCategoryId, sort) =>
-      row("partnerFact", rowKey(userId, "activity", sharedCategoryId), {
-        viewerId: userId,
-        kind: "activity",
-        // The ledger doesn't say which partner the activity came from.
-        payerId: "",
-        sharedCategoryId,
         sort,
       }),
     ),
@@ -922,9 +676,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   const assignments = groupBy(data.assignment, owner);
   const income = groupBy(data.expectedIncome, owner);
   const transactions = groupBy(data.transaction, owner);
-  const shares = groupBy(data.transactionShare, (share) =>
-    childKey(share.userId, share.transactionId),
-  );
   const lines = groupBy(
     [...data.transactionLine].sort((a, b) => a.sort - b.sort),
     (line) => childKey(line.userId, line.transactionId),
@@ -941,10 +692,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   const payments = groupBy(data.loanPayment, (payment) =>
     childKey(payment.userId, payment.loanId),
   );
-  const claims = groupBy(data.reimbursement, owner);
-  const receipts = groupBy(data.reimbursementReceipt, (receipt) =>
-    childKey(receipt.userId, receipt.reimbursementId),
-  );
   const settings = new Map(
     data.budgetSettings.map((item) => [item.userId, item]),
   );
@@ -960,8 +707,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
     const groupNames = (groups.get(userId) ?? [])
       .reverse()
       .map((group) => group.name);
-    const record = (values: Record<string, number> | undefined) =>
-      values && Object.keys(values).length ? values : undefined;
     const payees = memory.get(userId);
     const partnerSides = sides.get(userId);
     return {
@@ -983,19 +728,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       }),
       transactions: (transactions.get(userId) ?? []).map((transaction) => {
         const key = childKey(userId, transaction.id);
-        const parts = shares.get(key) ?? [];
-        const values = (field: "share" | "weight") =>
-          record(
-            Object.fromEntries(
-              parts.flatMap((part) =>
-                part[field] === undefined
-                  ? []
-                  : [[part.participantId, part[field]]],
-              ),
-            ),
-          );
-        const shared = values("share");
-        const weights = values("weight");
         const split = lines.get(key);
         return {
           ...without(transaction, ["userId", "sort"]),
@@ -1006,8 +738,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
                 ),
               }
             : {}),
-          ...(shared ? { shares: shared } : {}),
-          ...(weights ? { splitWeights: weights } : {}),
           history: (history.get(key) ?? []).map((entry) =>
             without(entry, ["userId", "transactionId", "sequence"]),
           ),
@@ -1028,12 +758,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
           ),
         };
       }),
-      reimbursements: (claims.get(userId) ?? []).map((claim) => ({
-        ...without(claim, ["userId", "sort"]),
-        receipts: (receipts.get(childKey(userId, claim.id)) ?? []).map(
-          (receipt) => without(receipt, ["userId", "reimbursementId", "sort"]),
-        ),
-      })),
       settings: {
         timezone: setting.timezone,
         emailEnabled: setting.emailEnabled,
@@ -1064,19 +788,6 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
         : {}),
     };
   });
-}
-
-function settlementsFrom(data: Tables): Settlement[] {
-  const allocations = groupBy(
-    [...data.settlementAllocation].sort((a, b) => a.sequence - b.sequence),
-    (allocation) => allocation.settlementId,
-  );
-  return data.settlement.map((settlement) => ({
-    ...without(settlement, ["sort"]),
-    allocations: (allocations.get(settlement.id) ?? []).map((allocation) =>
-      without(allocation, ["settlementId", "sequence"]),
-    ),
-  }));
 }
 
 // The partner ledger's entries, when the household has any.
@@ -1114,9 +825,8 @@ function settlingUpFrom(data: Tables): {
 }
 
 /**
- * The household a set of rows holds. Generated obligations are derived from
- * the shared purchases; the audit is empty, since operations are recorded
- * outside the rows.
+ * The household a set of rows holds. The audit is empty, since operations
+ * are recorded outside the rows.
  */
 export function rowsToBook(rows: Iterable<WireRow>): Book {
   const data = tables(rows);
@@ -1124,24 +834,15 @@ export function rowsToBook(rows: Iterable<WireRow>): Book {
     data,
     data.member.map((member) => member.userId),
   );
-  const book: Book = {
+  return {
     version: 1,
     budgets: Object.fromEntries(
       budgets.map((budget) => [budget.userId, budget]),
     ),
-    sharedCategories: data.sharedCategory.map((category) =>
-      without(category, ["sort"]),
-    ),
-    obligations: data.obligation.map((obligation) =>
-      without(obligation, ["sort"]),
-    ),
-    settlements: settlementsFrom(data),
     audit: [],
     ...partnerEntriesFrom(data),
     ...settlingUpFrom(data),
   };
-  book.obligations = deriveObligations(book);
-  return book;
 }
 
 /**
@@ -1154,20 +855,7 @@ export function rowsToPersonalLedger(
 ): PersonalLedger {
   const data = tables([...rows].filter((item) => rowVisibleTo(item, viewerId)));
   const [budget] = budgetsFrom(data, [viewerId]);
-  const memberSort = new Map(
-    data.member.map((member) => [member.userId, member.sort]),
-  );
-  const facts = data.partnerFact.filter((fact) => fact.viewerId === viewerId);
-  const ordered = <T extends { payerId: string; sort: number }>(items: T[]) =>
-    items.sort(
-      (a, b) =>
-        (memberSort.get(a.payerId) ?? 0) - (memberSort.get(b.payerId) ?? 0) ||
-        a.sort - b.sort,
-    );
-  const sharedCategories = data.sharedCategory
-    .filter((category) => category.participants.includes(viewerId))
-    .map((category) => without(category, ["sort"]));
-  const ledger: PersonalLedger = {
+  return {
     kind: "personal",
     version: 1,
     budget: budget!,
@@ -1175,45 +863,8 @@ export function rowsToPersonalLedger(
       userId: member.userId,
       name: member.name,
     })),
-    sharedCategories,
-    obligations: data.obligation.map((obligation) =>
-      without(obligation, ["sort"]),
-    ),
-    settlements: settlementsFrom(data),
-    partnerPurchases: ordered(
-      facts.flatMap((fact) => (fact.kind === "purchase" ? [fact] : [])),
-    ).map((fact) => without(fact, ["viewerId", "kind", "sort"])),
-    partnerReceiptDates: Object.fromEntries(
-      facts.flatMap((fact) =>
-        fact.kind === "receipt" ? [[fact.settlementId, fact.date]] : [],
-      ),
-    ),
-    partnerActivityCategoryIds: ordered(
-      facts.flatMap((fact) => (fact.kind === "activity" ? [fact] : [])),
-    ).map((fact) => fact.sharedCategoryId),
     audit: [],
     ...partnerEntriesFrom(data),
     ...settlingUpFrom(data),
   };
-  // What the viewer's numbers use, as projectSharedLedger selects it.
-  const sharedIds = new Set(sharedCategories.map((category) => category.id));
-  const obligations = deriveObligations(ledger).filter(
-    (obligation) =>
-      sharedIds.has(obligation.sharedCategoryId) &&
-      (obligation.debtorId === viewerId || obligation.creditorId === viewerId),
-  );
-  const obligationIds = new Set(obligations.map((obligation) => obligation.id));
-  ledger.obligations = obligations;
-  ledger.settlements = ledger.settlements
-    .filter(
-      (settlement) =>
-        settlement.payerId === viewerId || settlement.recipientId === viewerId,
-    )
-    .map((settlement) => ({
-      ...settlement,
-      allocations: settlement.allocations.filter((allocation) =>
-        obligationIds.has(allocation.obligationId),
-      ),
-    }));
-  return ledger;
 }

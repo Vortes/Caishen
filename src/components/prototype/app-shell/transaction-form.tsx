@@ -126,18 +126,10 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     account?.kind === "tracking"
       ? Boolean(draft.outflow)
       : Boolean(draft.inflow);
-  // An expense recorded under a retired shared category keeps its paired
-  // category.
-  const shared = view.sharedCategories.find(
-    (item) => item.id === session.initial?.sharedCategoryId,
-  );
-  // A purchase or refund can split; a transfer, loan payment, tracked
-  // activity, or legacy shared expense can't.
+  // A purchase or refund can split; a transfer, loan payment, or tracked
+  // activity can't.
   const splittable =
-    !draft.transferAccountId &&
-    !draft.loanId &&
-    account?.kind !== "tracking" &&
-    !shared;
+    !draft.transferAccountId && !draft.loanId && account?.kind !== "tracking";
   const split = draft.lines.length > 0;
   const remaining = split ? splitRemaining(draft) : undefined;
   // A purchase or refund on a cash or card account can carry a share.
@@ -145,7 +137,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     !categoryNotNeeded &&
     !draft.transferAccountId &&
     !draft.loanId &&
-    !shared &&
     (account?.kind === "cash" || account?.kind === "credit");
   // The share a new transaction took from its payee's memory, until the
   // user picks one.
@@ -203,8 +194,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       (category) =>
         !category.pairedAccountId &&
         !category.counterpartyAccountId &&
-        (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId) &&
-        (!shared || shared.categoryIds[view.budget.userId] === category.id),
+        (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId),
     )
     .map((category) => ({
       value: category.id,
@@ -224,8 +214,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           !boundary &&
           initial !== undefined &&
           !isTransfer(initial) &&
-          initial?.kind !== "loan-payment") ||
-        Boolean(shared),
+          initial?.kind !== "loan-payment"),
     },
     ...spendingOptions,
   ];
@@ -577,12 +566,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           describedBy={described("categoryId")}
           onChange={chooseCategory}
           onPicked={afterCategory}
-          // A loan's payment or a shared expense takes a category that
-          // already exists.
+          // A loan's payment takes a category that already exists.
           onCreate={
-            loan || shared
-              ? undefined
-              : { noun: "category", create: setCreating }
+            loan ? undefined : { noun: "category", create: setCreating }
           }
         />
       </div>

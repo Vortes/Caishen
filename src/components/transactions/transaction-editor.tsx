@@ -75,11 +75,6 @@ export function TransactionEditor({
   const selectedAccount = view.accounts.find(
     (account) => account.id === draft.accountId,
   );
-  // An expense recorded under a retired shared category keeps its paired
-  // category.
-  const selectedShared = view.sharedCategories.find(
-    (category) => category.id === initialTransaction?.sharedCategoryId,
-  );
   const accountOptions = useMemo<TransactionChoiceOption[]>(
     () =>
       view.accounts.map((account) => ({
@@ -96,17 +91,10 @@ export function TransactionEditor({
       group: "Inflow",
       disabled:
         selectedAccount?.kind === "credit" ||
-        Boolean(initialTransaction?.categoryId) ||
-        Boolean(selectedShared),
+        Boolean(initialTransaction?.categoryId),
     },
     ...view.categories
-      .filter(
-        (category) =>
-          !category.pairedAccountId &&
-          !category.pairedLoanId &&
-          (!selectedShared ||
-            selectedShared.categoryIds[view.budget.userId] === category.id),
-      )
+      .filter((category) => !category.pairedAccountId && !category.pairedLoanId)
       .map((category) => ({
         value: category.id,
         label: category.name,

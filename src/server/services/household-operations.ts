@@ -4,7 +4,6 @@ import { composeChangeSets, rowsIn } from "~/domain/change-sets";
 import {
   createBook,
   budgetReferenceIssues,
-  sharedCategoryReferencesValid,
   execute,
   executeWithChanges,
   mergeBooks,
@@ -421,12 +420,7 @@ export async function setOnboardingCategories(
     (category) =>
       !category.id.startsWith("setup:") || selected.has(category.id),
   );
-  if (
-    budgetReferenceIssues(budget).length ||
-    !sharedCategoryReferencesValid(book.sharedCategories, (id) =>
-      book.budgets[id]?.categories.map((category) => category.id),
-    )
-  )
+  if (budgetReferenceIssues(budget).length)
     throw refusal(
       "rejected",
       "A category you removed is already used by your budget. Keep it selected, or manage it from the plan.",

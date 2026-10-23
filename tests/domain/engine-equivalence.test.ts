@@ -3,27 +3,19 @@ import test from "node:test";
 import {
   execute,
   materialize,
-  outstanding,
   projectBook,
   type Book,
   type Command,
 } from "../../src/domain/engine";
 import { foldAssignments } from "../../src/domain/rows";
-import { projectSharedLedger } from "../../src/domain/shared-ledger";
-import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 import { monthAfter, syntheticBook } from "./fixtures/synthetic-book";
-import {
-  referenceAssign,
-  referenceMaterialize,
-  referenceOutstanding,
-  referenceReceiptDate,
-  referenceSynchronizeObligations,
-} from "./reference/engine";
+import { referenceAssign, referenceMaterialize } from "./reference/engine";
 
 // The engine indexes rows by month and replays every later month once. These
 // tests hold it to the straightforward implementation in ./reference, which
-// filters every list for every month, on the development seed and on
-// generated books full of cross-month edge cases.
+// filters every list for every month, on generated personal activity with
+// cross-month edge cases. Partner and counterparty activity use the current
+// command corpus; they did not exist in this reference engine.
 
 type Outcome = { value: unknown } | { error: string };
 function outcome(run: () => unknown): Outcome {
@@ -36,10 +28,12 @@ function outcome(run: () => unknown): Outcome {
   }
 }
 
-const seed = buildDevelopmentSeed({
-  userId: "alex",
-  partnerId: "jordan",
-  asOf: "2026-10-21",
+const standardBook = syntheticBook({
+  seed: 5,
+  startMonth: "2025-11",
+  months: 12,
+  transactionsPerMonth: 15,
+  assignmentsPerMonth: 8,
 });
 const edgeBooks = [1, 2, 3, 4].map((value) =>
   syntheticBook({
@@ -66,7 +60,7 @@ function broken(book: Book): Book {
   return copy;
 }
 const books: [string, Book][] = [
-  ["development seed", seed.book],
+  ["personal activity", standardBook],
   ...edgeBooks.map((book, index): [string, Book] => [
     `edge ${index + 1}`,
     book,
@@ -214,93 +208,12 @@ void test("assignments pass and fail exactly as when each later month was replay
     assert.ok(seen.get(result), `no case produced "${result}"`);
 });
 
-void test("settlement balances, receipts, and obligation checks match the reference", () => {
-  for (const [name, book] of books.slice(0, -1)) {
-    const cutoffs = [
-      undefined,
-      ...monthsOf(book, "alex").map((month) => `${month}-10`),
-    ];
-    for (const obligation of book.obligations)
-      for (const cutoff of cutoffs)
-        assert.equal(
-          outstanding(book, obligation, cutoff),
-          referenceOutstanding(book, obligation, cutoff),
-          `${name}, ${obligation.id}, ${cutoff}`,
-        );
-    for (const userId of Object.keys(book.budgets))
-      assert.deepStrictEqual(
-        projectSharedLedger(book, userId).partnerReceiptDates,
-        Object.fromEntries(
-          book.settlements.flatMap((settlement) => {
-            if (
-              settlement.payerId !== userId ||
-              settlement.recipientId === userId
-            )
-              return [];
-            const date = referenceReceiptDate(book, settlement);
-            return date ? [[settlement.id, date]] : [];
-          }),
-        ),
-        `${name}, ${userId}`,
-      );
-    const corrections: [string, (book: Book) => void][] = [
-      ["unchanged", () => undefined],
-      [
-        "settled expense removed",
-        (copy) => {
-          copy.settlements[0]!.allocations[0]!.obligationId = "missing";
-        },
-      ],
-      [
-        "settled expense moved later",
-        (copy) => {
-          const id = copy.settlements
-            .flatMap((settlement) => settlement.allocations)
-            .find((allocation) =>
-              allocation.obligationId.startsWith("shared:"),
-            )!.obligationId;
-          const [, payerId, transactionId] = id.split(":");
-          copy.budgets[payerId!]!.transactions.find(
-            (transaction) => transaction.id === transactionId,
-          )!.date = "2099-12-31";
-        },
-      ],
-      [
-        "settled expense reduced",
-        (copy) => {
-          copy.settlements.at(-1)!.allocations.at(-1)!.amount += 1_000_000;
-        },
-      ],
-    ];
-    for (const [label, correct] of corrections) {
-      if (!book.settlements.length) continue;
-      const copy = structuredClone(book);
-      correct(copy);
-      const expected = outcome(() => {
-        const synchronized = structuredClone(copy);
-        referenceSynchronizeObligations(synchronized);
-        return synchronized.obligations;
-      });
-      const actual = outcome(
-        () =>
-          execute(copy, "alex", {
-            type: "income.expect",
-            id: "equivalence-sync",
-            month: copy.budgets.alex!.startMonth,
-            amount: 1,
-          }).obligations,
-      );
-      assert.deepStrictEqual(actual, expected, `${name}, ${label}`);
-    }
-  }
-});
-
-void test("projections match across the whole development seed", () => {
-  for (const userId of [seed.userId, seed.partnerId])
-    for (const month of monthsOf(seed.book, userId)) {
-      const view = outcome(() => projectBook(seed.book, userId, month));
+void test("personal projections match the reference replay", () => {
+  for (const userId of Object.keys(standardBook.budgets))
+    for (const month of monthsOf(standardBook, userId)) {
+      const view = outcome(() => projectBook(standardBook, userId, month));
       const reference = outcome(() =>
-        referenceMaterialize(seed.book, userId, month),
+        referenceMaterialize(standardBook, userId, month),
       );
       if ("error" in reference) {
         assert.deepStrictEqual(view, reference);
@@ -322,7 +235,6 @@ void test("projections match across the whole development seed", () => {
             opening: category.opening,
             cashOverspending: category.cashOverspending,
             cashActivity: category.cashActivity,
-            settlementActivity: category.settlementActivity,
           },
           calculated.categories.get(category.id),
         );

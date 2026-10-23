@@ -1,3 +1,4 @@
+import { rowsIn } from "~/domain/change-sets";
 import {
   createBook,
   withCounterpartyAccounts,
@@ -60,24 +61,11 @@ export async function deletePersonalBudget(db: Database, userId: string) {
     book.budgets[userId]!.startMonth,
   ).budgets[userId]!;
   removed.settings.emailEnabled = false;
-  for (const shared of book.sharedCategories) {
-    shared.archived = true;
-    removed.categories.push({
-      id: shared.categoryIds[userId]!,
-      name: "Shared category",
-      group: "Shared",
-    });
-  }
-  const settlementIds = new Set(
-    book.settlements.map((settlement) => settlement.id),
+  // Keep only the settlement facts already visible to the surviving partner.
+  const legs = original.budgets[userId]!.transactions.filter(
+    (transaction) => !transaction.removed && transaction.partnerSettlementId,
   );
-  const sharedRecords = original.budgets[userId]!.transactions.filter(
-    (transaction) =>
-      !transaction.removed &&
-      (Boolean(transaction.sharedCategoryId) ||
-        (transaction.linkedId && settlementIds.has(transaction.linkedId))),
-  );
-  if (sharedRecords.length) {
+  if (legs.length) {
     removed.accounts.push({
       id: "retained-shared-records",
       name: "Shared activity",
@@ -85,24 +73,19 @@ export async function deletePersonalBudget(db: Database, userId: string) {
       openingBalance: 0,
       date: `${removed.startMonth}-01`,
     });
-    removed.transactions = sharedRecords.map((transaction) => ({
+    removed.transactions = legs.map((transaction) => ({
       id: transaction.id,
       accountId: "retained-shared-records",
       date: transaction.date,
+      expenseMonth: transaction.date.slice(0, 7),
       amount: transaction.amount,
-      payee: transaction.payee,
+      payee: "Partner settlement",
       status: transaction.status,
-      categoryId: transaction.sharedCategoryId
-        ? transaction.categoryId
-        : undefined,
-      expenseMonth: transaction.expenseMonth,
-      sharedCategoryId: transaction.sharedCategoryId,
-      shares: transaction.shares,
-      splitWeights: transaction.splitWeights,
       revision: transaction.revision,
       reviewed: transaction.reviewed,
       kind: transaction.kind,
-      linkedId: transaction.linkedId,
+      linkedCounterpartyAccountId: transaction.linkedCounterpartyAccountId,
+      partnerSettlementId: transaction.partnerSettlementId,
       history: [],
     }));
   }
@@ -110,6 +93,14 @@ export async function deletePersonalBudget(db: Database, userId: string) {
   book.audit = [];
   await removePersonalData(db, userId, {
     ...opened.household,
-    rows: bookToRows(withCounterpartyAccounts(book)),
+    rows: [
+      ...bookToRows(withCounterpartyAccounts(book)),
+      ...rowsIn(opened.household.rows).filter(
+        (row) =>
+          row.table === "bankImport" &&
+          !row.deleted &&
+          row.data?.userId !== userId,
+      ),
+    ],
   });
 }

@@ -193,14 +193,6 @@ void test("deleting a personal budget erases private data and freezes the partne
     });
   }
   await run(owner.api, {
-    type: "shared.create",
-    id: randomUUID(),
-    sharedCategoryId: "food",
-    participants: [owner.id, partner.id],
-    weights: { [owner.id]: 1, [partner.id]: 1 },
-    categoryIds: { [owner.id]: "food", [partner.id]: "food" },
-  });
-  await run(owner.api, {
     type: "transaction.upsert",
     id: randomUUID(),
     transactionId: "shared-shop",
@@ -209,20 +201,26 @@ void test("deleting a personal budget erases private data and freezes the partne
     date: "2026-10-02",
     payee: "Market",
     categoryId: "food",
-    sharedCategoryId: "food",
+    counterpartyShare: { accountId: "counterparty:partner", amount: 5_000 },
   });
   const before = await partner.api.budget.state({ month });
-  assert.equal(before.view?.settlement.youOwe, 5_000);
+  assert.equal(
+    before.view?.accounts.find((account) => account.kind === "partner")
+      ?.balance,
+    -5_000,
+  );
   await db.user.update({
     where: { clerkUserId: owner.id },
     data: { active: false, deletedAt: new Date() },
   });
   await deletePersonalBudget(db, owner.id);
   const after = await partner.api.budget.state({ month });
-  assert.equal(after.view?.settlement.youOwe, 5_000);
+  assert.equal(
+    after.view?.accounts.find((account) => account.kind === "partner")?.balance,
+    -5_000,
+  );
   assert.equal(after.view?.cash, before.view?.cash);
   assert.equal(after.view?.personalSpending, before.view?.personalSpending);
-  assert.equal(after.view?.sharedCategories[0]?.archived, true);
   assert.ok(!JSON.stringify(after).includes("Private budget"));
   await assert.rejects(() => owner.api.budget.state({ month }), {
     code: "FORBIDDEN",
@@ -238,13 +236,17 @@ void test("deleting a personal budget erases private data and freezes the partne
     categoryId: "food",
   });
   assert.equal(
-    (await partner.api.budget.state({ month })).view?.settlement.youOwe,
-    5_000,
+    (await partner.api.budget.state({ month })).view?.accounts.find(
+      (account) => account.kind === "partner",
+    )?.balance,
+    -5_000,
   );
   await deletePersonalBudget(db, owner.id);
   assert.equal(
-    (await partner.api.budget.state({ month })).view?.settlement.youOwe,
-    5_000,
+    (await partner.api.budget.state({ month })).view?.accounts.find(
+      (account) => account.kind === "partner",
+    )?.balance,
+    -5_000,
   );
   await assert.rejects(
     () =>
@@ -253,11 +255,11 @@ void test("deleting a personal budget erases private data and freezes the partne
         id: randomUUID(),
         transactionId: "new-shared-shop",
         accountId: "checking",
-        amount: -2_000,
+        amount: -10_000,
         date: "2026-10-03",
         payee: "Market",
         categoryId: "food",
-        sharedCategoryId: "food",
+        counterpartyShare: { accountId: "counterparty:partner", amount: 5_000 },
       }),
     { message: /frozen/ },
   );

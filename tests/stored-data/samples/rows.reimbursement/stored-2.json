@@ -1,9 +1,0 @@
-{
-  "id": "amex-offer",
-  "transactionId": "amex-offer-purchase",
-  "name": "Amex offer · REI",
-  "amount": 2500,
-  "kind": "statement-credit",
-  "userId": "alex",
-  "sort": 2
-}

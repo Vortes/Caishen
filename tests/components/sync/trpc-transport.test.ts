@@ -37,7 +37,7 @@ const food = (id: string, amount: number) => ({
 });
 
 test("the browser's build names the format the server checks", () => {
-  expect(clientBuild).toMatch(/^6:./);
+  expect(clientBuild).toMatch(/^7:./);
 });
 
 test("executes and pulls over the sync contract, and every answer reports the household revision", async () => {

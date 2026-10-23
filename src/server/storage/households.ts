@@ -1,11 +1,6 @@
-import { applyChangeSet, rowsIn, toRowSet } from "~/domain/change-sets";
 import { TRPCError } from "@trpc/server";
-import {
-  budgetReferenceIssues,
-  sharedCategoryReferencesValid,
-  type Book,
-  type Budget,
-} from "~/domain/engine";
+import { applyChangeSet, rowsIn, toRowSet } from "~/domain/change-sets";
+import { budgetReferenceIssues, type Book, type Budget } from "~/domain/engine";
 import { rowIssues } from "~/domain/row-schemas";
 import {
   rowKeyParts,
@@ -41,9 +36,7 @@ export type StoredDataIssue = StoredIssue;
 
 /** A part of the household that can't be read, and why. */
 export type StoredDataFailure = (
-  | { part: "household" }
-  | { part: "budget"; ownerId: string }
-  | { part: "partner-facts"; viewerId: string }
+  { part: "household" } | { part: "budget"; ownerId: string }
 ) & { issues: StoredDataIssue[] };
 
 export type Household = {
@@ -235,20 +228,18 @@ export async function writeOperation(
   },
   cache: HouseholdCache = households,
 ): Promise<{ revision: number; changeSet: ChangeSet; household: Household }> {
-  const frozen = rowsIn(household.rows).some(
-    (row) => row.table === "sharedCategory" && row.data?.archived,
+  const changesSharedBalances = input.changeSet.after.some((row) =>
+    ["partnerEntry", "partnerSettlement", "partnerRequest"].includes(row.table),
+  );
+  const members = [...(household.rows.get("member")?.values() ?? [])].filter(
+    (row) => !row.deleted,
   );
   if (
-    frozen &&
-    input.changeSet.after.some((row) =>
-      [
-        "sharedCategory",
-        "obligation",
-        "settlement",
-        "settlementAllocation",
-        "partnerFact",
-      ].includes(row.table),
-    )
+    changesSharedBalances &&
+    members.length > 1 &&
+    (await db.workspaceMember.count({
+      where: { workspaceId: household.workspaceId },
+    })) < members.length
   )
     throw new TRPCError({
       code: "BAD_REQUEST",
@@ -298,12 +289,6 @@ function failureOf(row: UnreadableRow): StoredDataFailure {
   }));
   const owner = rowOwner(row);
   if (owner) return { part: "budget", ownerId: owner, issues };
-  if (row.table === "partnerFact")
-    return {
-      part: "partner-facts",
-      viewerId: rowKeyParts(row.id)[0]!,
-      issues,
-    };
   return { part: "household", issues };
 }
 
@@ -391,30 +376,6 @@ function readParts(household: Household): Parts {
       });
     } else budgets.set(ownerId, budget);
   }
-  // Each shared category names a category in each readable participant's
-  // budget. An unreadable budget's owner is already under maintenance.
-  const shared = tableRows(household, "sharedCategory").map(
-    (row) => row.data as Book["sharedCategories"][number],
-  );
-  if (
-    !sharedCategoryReferencesValid(
-      shared.map((category) => ({
-        ...category,
-        participants: category.participants.filter((id) => !failed.has(id)),
-      })),
-      (id) => budgets.get(id)?.categories.map((category) => category.id),
-    )
-  )
-    failures.push({
-      part: "household",
-      issues: [
-        {
-          path: ["sharedCategory"],
-          code: "custom",
-          message: "Invalid shared category reference",
-        },
-      ],
-    });
   const parts: Parts = {
     memberIds,
     failures: mergeFailures(failures),
@@ -442,8 +403,7 @@ export function householdLedger(
     failures.some(
       (failure) =>
         failure.part === "household" ||
-        (failure.part === "budget" && failure.ownerId === viewerId) ||
-        (failure.part === "partner-facts" && failure.viewerId === viewerId),
+        (failure.part === "budget" && failure.ownerId === viewerId),
     )
   )
     ledger = { status: "maintenance", failures };

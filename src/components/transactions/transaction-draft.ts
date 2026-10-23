@@ -231,8 +231,6 @@ export function buildTransactionDraftCommand({
   const payee = draft.payee.trim();
   const expenseMonth = draft.expenseMonth.trim();
   const categoryId = draft.categoryId.trim();
-  // An expense recorded under a retired shared category keeps it.
-  const sharedCategoryId = transaction?.sharedCategoryId;
   const outflowText = draft.outflow.trim();
   const inflowText = draft.inflow.trim();
   const transfer = Boolean(draft.transferAccountId || draft.loanId);
@@ -366,7 +364,7 @@ export function buildTransactionDraftCommand({
     counterpartyShare?: ReturnType<typeof shareInput>;
   }[] = [];
   if (split) {
-    if (transfer || account?.kind === "tracking" || sharedCategoryId)
+    if (transfer || account?.kind === "tracking")
       fields.categoryId = "Only a purchase or refund can be split.";
     for (const line of draft.lines) {
       const category = view.categories.find(
@@ -426,19 +424,6 @@ export function buildTransactionDraftCommand({
       fields.categoryId =
         "An existing category cannot be cleared. Choose a category.";
   }
-  if (transfer && sharedCategoryId)
-    fields.payee =
-      "An expense in a retired shared category can't become a transfer.";
-
-  const shared = view.sharedCategories.find(
-    (item) => item.id === sharedCategoryId,
-  );
-  if (shared && shared.categoryIds[view.budget.userId] !== categoryId)
-    fields.categoryId =
-      "This expense belongs to a retired shared category, so its category can't change.";
-  if (sharedCategoryId && inflowText)
-    fields.inflow =
-      "Shared merchant refunds need manual investigation in this version.";
 
   const counterpartyShare = shareInput(
     draft.counterpartyShare,

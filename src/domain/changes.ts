@@ -19,7 +19,6 @@ import {
   loanRows,
   memberRows,
   partnerEntryRow,
-  partnerFactRows,
   partnerRequestRow,
   partnerSettlementRow,
   partnerSideRows,
@@ -45,8 +44,6 @@ export class Changes {
   // Each touched part's current rows, and its rows when first touched.
   private readonly parts = new Map<string, () => WireRow[]>();
   private readonly before = new Map<string, WireRow[]>();
-  // Partner facts per viewer when a part they derive from was first touched.
-  private readonly facts = new Map<string, WireRow[]>();
   private readonly positions = new WeakMap<object, Map<string, number>>();
   // Each touched transaction as it was when first touched.
   private readonly edited = new Map<
@@ -60,17 +57,6 @@ export class Changes {
     if (this.parts.has(key)) return;
     this.parts.set(key, rows);
     this.before.set(key, rows());
-  }
-
-  // Partner facts derive from each budget's transactions, the settlements,
-  // and the shared categories; only the household's whole book holds the
-  // partner's side, so a personal ledger's change sets never include them.
-  private touchFacts(changedBudget?: Budget): void {
-    const state = this.state;
-    if (isPersonalLedger(state)) return;
-    for (const viewerId of Object.keys(state.budgets))
-      if (viewerId !== changedBudget?.userId && !this.facts.has(viewerId))
-        this.facts.set(viewerId, partnerFactRows(state, viewerId));
   }
 
   // An item's position in its collection, which is its sort.
@@ -216,7 +202,6 @@ export class Changes {
           index < 0 ? undefined : structuredClone(budget.transactions[index]),
       });
     }
-    this.touchFacts(budget);
     this.item(
       `transaction ${budget.userId} ${id}`,
       () => budget.transactions,
@@ -346,10 +331,6 @@ export class Changes {
       changeSet.after.push(...changes.after);
     };
     for (const [key, rows] of this.parts) add(this.before.get(key)!, rows());
-    const state = this.state;
-    if (!isPersonalLedger(state))
-      for (const [viewerId, before] of this.facts)
-        add(before, partnerFactRows(state, viewerId));
     return changeSet;
   }
 }

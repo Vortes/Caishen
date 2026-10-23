@@ -1,14 +1,11 @@
 import {
   bookSchema,
-  splitAmount,
   type Account,
   type Assignment,
   type Audit,
   type Book,
   type Budget,
   type Category,
-  type Obligation,
-  type Settlement,
   type Target,
   type Transaction,
 } from "../../../src/domain/engine";
@@ -189,10 +186,7 @@ export function syntheticBook(options: SyntheticOptions): Book {
       sequence: audit.length + 1,
       fingerprint: JSON.stringify(payload),
     });
-  const obligations: Obligation[] = [];
-  const settlements: Settlement[] = [];
   const budgets: Record<string, Budget> = {};
-  const sharedPurchases = new Map<string, Transaction[]>();
 
   for (const userId of MEMBERS) {
     const later = (count: number) => `${monthAfter(startMonth, count)}-01`;
@@ -302,7 +296,6 @@ export function syntheticBook(options: SyntheticOptions): Book {
       ["amex", 0],
       ["visa", 0],
     ]);
-    const shared: Transaction[] = [];
     months.forEach((month, monthIndex) => {
       const day = (value: number) =>
         `${month}-${String(value).padStart(2, "0")}`;
@@ -381,16 +374,8 @@ export function syntheticBook(options: SyntheticOptions): Book {
           categoryId,
           expenseMonth,
           kind,
-          ...(isShared
-            ? {
-                sharedCategoryId: "home",
-                shares: splitAmount(-amount, { alex: 1, jordan: 1 }),
-                splitWeights: { alex: 1, jordan: 1 },
-              }
-            : {}),
           ...(edge && rng.chance(0.01) ? { removed: true } : {}),
         });
-        if (isShared && !transaction.removed) shared.push(transaction);
         if (
           accountId !== "checking" &&
           !transaction.removed &&
@@ -510,7 +495,6 @@ export function syntheticBook(options: SyntheticOptions): Book {
           transactions[index]!,
         ];
       }
-    sharedPurchases.set(userId, shared);
     budgets[userId] = {
       userId,
       name: `${userId} budget`,
@@ -520,7 +504,6 @@ export function syntheticBook(options: SyntheticOptions): Book {
       transactions,
       assignments,
       loans: [],
-      reimbursements: [],
       settings: {
         timezone: "America/Los_Angeles",
         emailEnabled: true,
@@ -530,154 +513,9 @@ export function syntheticBook(options: SyntheticOptions): Book {
     };
   }
 
-  for (const [payerId, purchases] of sharedPurchases)
-    for (const purchase of purchases)
-      for (const [debtorId, amount] of Object.entries(purchase.shares!))
-        if (debtorId !== payerId && amount > 0)
-          obligations.push({
-            id: `shared:${payerId}:${purchase.id}:${debtorId}`,
-            sharedCategoryId: "home",
-            debtorId,
-            creditorId: payerId,
-            amount,
-            expenseMonth: purchase.expenseMonth,
-            transactionId: purchase.id,
-            payerId,
-            payee: purchase.payee,
-            date: purchase.date,
-            opening: false,
-          });
-
-  const settledAmounts = new Map<string, number>();
-  // Each month after the first, whoever owes more on balance settles what
-  // they owed through the previous month, offsetting what the other owed.
-  months.slice(1).forEach((month, index) => {
-    const date = `${month}-03`;
-    const settled = (obligation: Obligation) =>
-      settledAmounts.get(obligation.id) ?? 0;
-    const open = obligations
-      .filter((obligation) => obligation.date! < `${month}-01`)
-      .map((obligation) => ({
-        obligation,
-        remaining: obligation.amount - settled(obligation),
-      }))
-      .filter((item) => item.remaining > 0);
-    const owedBy = (debtorId: string) =>
-      open.filter((item) => item.obligation.debtorId === debtorId);
-    const total = (items: typeof open) =>
-      items.reduce((amount, item) => amount + item.remaining, 0);
-    const [payerId, recipientId] =
-      total(owedBy("jordan")) >= total(owedBy("alex"))
-        ? ["jordan", "alex"]
-        : ["alex", "jordan"];
-    const owed = owedBy(payerId);
-    const owing = owedBy(recipientId);
-    const offset = total(owing);
-    const debt = total(owed);
-    if (!debt) return;
-    const allocations: Settlement["allocations"] = [];
-    let offsetLeft = offset;
-    for (const item of owed) {
-      const offsetAmount = Math.min(offsetLeft, item.remaining);
-      offsetLeft -= offsetAmount;
-      if (offsetAmount)
-        allocations.push({
-          obligationId: item.obligation.id,
-          amount: offsetAmount,
-          kind: "offset",
-        });
-      if (item.remaining - offsetAmount)
-        allocations.push({
-          obligationId: item.obligation.id,
-          amount: item.remaining - offsetAmount,
-          kind: "payment",
-        });
-    }
-    for (const item of owing)
-      allocations.push({
-        obligationId: item.obligation.id,
-        amount: item.remaining,
-        kind: "offset",
-      });
-    for (const allocation of allocations)
-      settledAmounts.set(
-        allocation.obligationId,
-        (settledAmounts.get(allocation.obligationId) ?? 0) + allocation.amount,
-      );
-    const id = `settlement-${index}`;
-    const amount = debt - offset;
-    settlements.push({
-      id,
-      payerId,
-      recipientId,
-      date,
-      amount,
-      received: true,
-      allocations,
-    });
-    const payer = budgets[payerId]!;
-    const recipient = budgets[recipientId]!;
-    const history = (transaction: Omit<Transaction, "history">) => ({
-      ...transaction,
-      history: [
-        {
-          revision: 1,
-          amount: transaction.amount,
-          status: transaction.status,
-          date: transaction.date,
-          payee: transaction.payee,
-          operationId: transaction.id,
-          reason: "created" as const,
-        },
-      ],
-    });
-    if (amount) {
-      payer.transactions.push(
-        history({
-          id: `${id}:payment`,
-          accountId: "checking",
-          date,
-          amount: -amount,
-          payee: `Settlement with ${recipientId}`,
-          status: "posted",
-          expenseMonth: month,
-          kind: "settlement",
-          linkedId: id,
-          revision: 1,
-          reviewed: true,
-        }),
-      );
-      recipient.transactions.push(
-        history({
-          id: `${id}:receipt`,
-          accountId: "checking",
-          date: `${month}-04`,
-          amount,
-          payee: "Shared settlement received",
-          status: "posted",
-          expenseMonth: month,
-          kind: "reimbursement",
-          linkedId: id,
-          revision: 1,
-          reviewed: true,
-        }),
-      );
-    }
-  });
-
   return bookSchema.parse({
     version: 1,
     budgets,
-    sharedCategories: [
-      {
-        id: "home",
-        participants: [...MEMBERS],
-        weights: { alex: 1, jordan: 1 },
-        categoryIds: { alex: "shared-home", jordan: "shared-home" },
-      },
-    ],
-    obligations,
-    settlements,
     audit,
   });
 }

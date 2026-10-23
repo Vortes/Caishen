@@ -1060,15 +1060,6 @@
           "status": "posted",
           "categoryId": "utilities",
           "expenseMonth": "2026-08",
-          "sharedCategoryId": "utilities",
-          "shares": {
-            "alex": 9471,
-            "jordan": 9471
-          },
-          "splitWeights": {
-            "alex": 1,
-            "jordan": 1
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -1102,15 +1093,6 @@
           "status": "posted",
           "categoryId": "groceries",
           "expenseMonth": "2026-08",
-          "sharedCategoryId": "groceries",
-          "shares": {
-            "alex": 4938,
-            "jordan": 7408
-          },
-          "splitWeights": {
-            "alex": 2,
-            "jordan": 3
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -1132,30 +1114,6 @@
               "payee": "Trader Joe’s",
               "operationId": "sample-undo",
               "reason": "undone"
-            }
-          ]
-        },
-        {
-          "id": "dev-seed:132:payment",
-          "accountId": "checking",
-          "date": "2026-08-20",
-          "amount": -133621,
-          "payee": "Settlement with Demo · Jordan’s budget",
-          "status": "posted",
-          "expenseMonth": "2026-08",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "settlement",
-          "linkedId": "settlement-2026-08",
-          "history": [
-            {
-              "revision": 1,
-              "amount": -133621,
-              "status": "posted",
-              "date": "2026-08-20",
-              "payee": "Settlement with Demo · Jordan’s budget",
-              "operationId": "dev-seed:132",
-              "reason": "created"
             }
           ]
         },
@@ -1990,15 +1948,6 @@
           "status": "posted",
           "categoryId": "utilities",
           "expenseMonth": "2026-09",
-          "sharedCategoryId": "utilities",
-          "shares": {
-            "alex": 9471,
-            "jordan": 9471
-          },
-          "splitWeights": {
-            "alex": 1,
-            "jordan": 1
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -2032,15 +1981,6 @@
           "status": "posted",
           "categoryId": "groceries",
           "expenseMonth": "2026-09",
-          "sharedCategoryId": "groceries",
-          "shares": {
-            "alex": 4938,
-            "jordan": 7408
-          },
-          "splitWeights": {
-            "alex": 2,
-            "jordan": 3
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -2062,30 +2002,6 @@
               "payee": "Trader Joe’s",
               "operationId": "sample-undo",
               "reason": "undone"
-            }
-          ]
-        },
-        {
-          "id": "dev-seed:224:payment",
-          "accountId": "checking",
-          "date": "2026-09-20",
-          "amount": -116121,
-          "payee": "Settlement with Demo · Jordan’s budget",
-          "status": "posted",
-          "expenseMonth": "2026-09",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "settlement",
-          "linkedId": "settlement-2026-09",
-          "history": [
-            {
-              "revision": 1,
-              "amount": -116121,
-              "status": "posted",
-              "date": "2026-09-20",
-              "payee": "Settlement with Demo · Jordan’s budget",
-              "operationId": "dev-seed:224",
-              "reason": "created"
             }
           ]
         },
@@ -2755,15 +2671,6 @@
           "status": "posted",
           "categoryId": "groceries",
           "expenseMonth": "2026-10",
-          "sharedCategoryId": "groceries",
-          "shares": {
-            "alex": 11200,
-            "jordan": 16800
-          },
-          "splitWeights": {
-            "alex": 2,
-            "jordan": 3
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -2797,15 +2704,6 @@
           "status": "posted",
           "categoryId": "utilities",
           "expenseMonth": "2026-10",
-          "sharedCategoryId": "utilities",
-          "shares": {
-            "alex": 11365,
-            "jordan": 7577
-          },
-          "splitWeights": {
-            "alex": 60,
-            "jordan": 40
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -2839,15 +2737,6 @@
           "status": "posted",
           "categoryId": "groceries",
           "expenseMonth": "2026-10",
-          "sharedCategoryId": "groceries",
-          "shares": {
-            "alex": 4938,
-            "jordan": 7408
-          },
-          "splitWeights": {
-            "alex": 2,
-            "jordan": 3
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -2906,30 +2795,6 @@
           ]
         },
         {
-          "id": "dev-seed:313:receipt",
-          "accountId": "checking",
-          "date": "2026-10-10",
-          "amount": 20000,
-          "payee": "Cedar Labs · conference hotel",
-          "status": "posted",
-          "expenseMonth": "2026-10",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "reimbursement",
-          "linkedId": "work-hotel",
-          "history": [
-            {
-              "revision": 1,
-              "amount": 20000,
-              "status": "posted",
-              "date": "2026-10-10",
-              "payee": "Cedar Labs · conference hotel",
-              "operationId": "dev-seed:313",
-              "reason": "created"
-            }
-          ]
-        },
-        {
           "id": "work-train",
           "accountId": "checking",
           "date": "2026-10-07",
@@ -2959,30 +2824,6 @@
               "payee": "Amtrak · client visit",
               "operationId": "sample-undo",
               "reason": "undone"
-            }
-          ]
-        },
-        {
-          "id": "dev-seed:316:receipt",
-          "accountId": "checking",
-          "date": "2026-10-11",
-          "amount": 8500,
-          "payee": "Cedar Labs · client travel",
-          "status": "posted",
-          "expenseMonth": "2026-10",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "reimbursement",
-          "linkedId": "work-train",
-          "history": [
-            {
-              "revision": 1,
-              "amount": 8500,
-              "status": "posted",
-              "date": "2026-10-11",
-              "payee": "Cedar Labs · client travel",
-              "operationId": "dev-seed:316",
-              "reason": "created"
             }
           ]
         },
@@ -3439,30 +3280,6 @@
               "payee": "Cedar Labs · pending payroll",
               "operationId": "sample-undo",
               "reason": "undone"
-            }
-          ]
-        },
-        {
-          "id": "dev-seed:340:payment",
-          "accountId": "checking",
-          "date": "2026-10-16",
-          "amount": -25000,
-          "payee": "Settlement with Demo · Jordan’s budget",
-          "status": "posted",
-          "expenseMonth": "2026-10",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "settlement",
-          "linkedId": "current-partial-settlement",
-          "history": [
-            {
-              "revision": 1,
-              "amount": -25000,
-              "status": "posted",
-              "date": "2026-10-16",
-              "payee": "Settlement with Demo · Jordan’s budget",
-              "operationId": "dev-seed:340",
-              "reason": "created"
             }
           ]
         },
@@ -4326,58 +4143,6 @@
               "interest": 6375
             }
           ]
-        }
-      ],
-      "reimbursements": [
-        {
-          "id": "work-hotel",
-          "transactionId": "conference-hotel",
-          "name": "Cedar Labs · conference hotel",
-          "amount": 48000,
-          "kind": "cash",
-          "receipts": [
-            {
-              "id": "dev-seed:313",
-              "date": "2026-10-10",
-              "amount": 20000
-            }
-          ]
-        },
-        {
-          "id": "work-train",
-          "transactionId": "work-train",
-          "name": "Cedar Labs · client travel",
-          "amount": 8500,
-          "kind": "cash",
-          "receipts": [
-            {
-              "id": "dev-seed:316",
-              "date": "2026-10-11",
-              "amount": 8500
-            }
-          ]
-        },
-        {
-          "id": "amex-offer",
-          "transactionId": "amex-offer-purchase",
-          "name": "Amex offer · REI",
-          "amount": 2500,
-          "kind": "statement-credit",
-          "receipts": [
-            {
-              "id": "dev-seed:319",
-              "date": "2026-10-12",
-              "amount": 1000
-            }
-          ]
-        },
-        {
-          "id": "sample-card-offer",
-          "transactionId": "sample-headphones",
-          "name": "Card offer",
-          "amount": 3000,
-          "kind": "statement-credit",
-          "receipts": []
         }
       ],
       "rules": [
@@ -5403,15 +5168,6 @@
           "status": "posted",
           "categoryId": "rent",
           "expenseMonth": "2026-08",
-          "sharedCategoryId": "rent",
-          "shares": {
-            "alex": 130000,
-            "jordan": 130000
-          },
-          "splitWeights": {
-            "alex": 1,
-            "jordan": 1
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -5445,15 +5201,6 @@
           "status": "posted",
           "categoryId": "groceries",
           "expenseMonth": "2026-08",
-          "sharedCategoryId": "groceries",
-          "shares": {
-            "alex": 3000,
-            "jordan": 5793
-          },
-          "splitWeights": {
-            "alex": 3000,
-            "jordan": 5793
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -5475,30 +5222,6 @@
               "payee": "Whole Foods Market",
               "operationId": "sample-undo",
               "reason": "undone"
-            }
-          ]
-        },
-        {
-          "id": "dev-seed:133:receipt",
-          "accountId": "checking",
-          "date": "2026-08-21",
-          "amount": 133621,
-          "payee": "Shared settlement received",
-          "status": "posted",
-          "expenseMonth": "2026-08",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "reimbursement",
-          "linkedId": "settlement-2026-08",
-          "history": [
-            {
-              "revision": 1,
-              "amount": 133621,
-              "status": "posted",
-              "date": "2026-08-21",
-              "payee": "Shared settlement received",
-              "operationId": "dev-seed:133",
-              "reason": "created"
             }
           ]
         },
@@ -6332,15 +6055,6 @@
           "status": "posted",
           "categoryId": "rent",
           "expenseMonth": "2026-09",
-          "sharedCategoryId": "rent",
-          "shares": {
-            "alex": 130000,
-            "jordan": 130000
-          },
-          "splitWeights": {
-            "alex": 1,
-            "jordan": 1
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -6374,15 +6088,6 @@
           "status": "posted",
           "categoryId": "groceries",
           "expenseMonth": "2026-09",
-          "sharedCategoryId": "groceries",
-          "shares": {
-            "alex": 3000,
-            "jordan": 5793
-          },
-          "splitWeights": {
-            "alex": 3000,
-            "jordan": 5793
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -6404,30 +6109,6 @@
               "payee": "Whole Foods Market",
               "operationId": "sample-undo",
               "reason": "undone"
-            }
-          ]
-        },
-        {
-          "id": "dev-seed:225:receipt",
-          "accountId": "checking",
-          "date": "2026-09-21",
-          "amount": 116121,
-          "payee": "Shared settlement received",
-          "status": "posted",
-          "expenseMonth": "2026-09",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "reimbursement",
-          "linkedId": "settlement-2026-09",
-          "history": [
-            {
-              "revision": 1,
-              "amount": 116121,
-              "status": "posted",
-              "date": "2026-09-21",
-              "payee": "Shared settlement received",
-              "operationId": "dev-seed:225",
-              "reason": "created"
             }
           ]
         },
@@ -7088,30 +6769,6 @@
           ]
         },
         {
-          "id": "dev-seed:304:payment",
-          "accountId": "checking",
-          "date": "2026-10-01",
-          "amount": -12000,
-          "payee": "Settlement with Demo · Alex’s budget",
-          "status": "posted",
-          "expenseMonth": "2026-10",
-          "revision": 1,
-          "reviewed": true,
-          "kind": "settlement",
-          "linkedId": "partner-payment-awaiting-receipt",
-          "history": [
-            {
-              "revision": 1,
-              "amount": -12000,
-              "status": "posted",
-              "date": "2026-10-01",
-              "payee": "Settlement with Demo · Alex’s budget",
-              "operationId": "dev-seed:304",
-              "reason": "created"
-            }
-          ]
-        },
-        {
           "id": "rent-2026-10",
           "accountId": "checking",
           "date": "2026-10-02",
@@ -7120,15 +6777,6 @@
           "status": "posted",
           "categoryId": "rent",
           "expenseMonth": "2026-10",
-          "sharedCategoryId": "rent",
-          "shares": {
-            "alex": 130000,
-            "jordan": 130000
-          },
-          "splitWeights": {
-            "alex": 1,
-            "jordan": 1
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -7162,15 +6810,6 @@
           "status": "posted",
           "categoryId": "groceries",
           "expenseMonth": "2026-10",
-          "sharedCategoryId": "groceries",
-          "shares": {
-            "alex": 3000,
-            "jordan": 5793
-          },
-          "splitWeights": {
-            "alex": 3000,
-            "jordan": 5793
-          },
           "revision": 2,
           "reviewed": true,
           "kind": "purchase",
@@ -7640,7 +7279,6 @@
           ]
         }
       ],
-      "reimbursements": [],
       "rules": [
         {
           "id": "dining-from-emergency",
@@ -7663,380 +7301,6 @@
       "expectedIncome": {}
     }
   },
-  "sharedCategories": [
-    {
-      "archived": true,
-      "id": "rent",
-      "participants": [
-        "alex",
-        "jordan"
-      ],
-      "weights": {
-        "alex": 1,
-        "jordan": 1
-      },
-      "categoryIds": {
-        "alex": "rent",
-        "jordan": "rent"
-      }
-    },
-    {
-      "id": "utilities",
-      "participants": [
-        "alex",
-        "jordan"
-      ],
-      "weights": {
-        "alex": 60,
-        "jordan": 40
-      },
-      "categoryIds": {
-        "alex": "utilities",
-        "jordan": "utilities"
-      }
-    },
-    {
-      "id": "groceries",
-      "participants": [
-        "alex",
-        "jordan"
-      ],
-      "weights": {
-        "alex": 2,
-        "jordan": 3
-      },
-      "categoryIds": {
-        "alex": "groceries",
-        "jordan": "groceries"
-      }
-    },
-    {
-      "id": "weekend",
-      "participants": [
-        "alex",
-        "jordan"
-      ],
-      "weights": {
-        "alex": 1,
-        "jordan": 1
-      },
-      "categoryIds": {
-        "alex": "weekend",
-        "jordan": "weekend"
-      }
-    }
-  ],
-  "obligations": [
-    {
-      "id": "opening-rent",
-      "sharedCategoryId": "rent",
-      "debtorId": "alex",
-      "creditorId": "jordan",
-      "amount": 17500,
-      "opening": true
-    },
-    {
-      "id": "shared:alex:utilities-2026-08:jordan",
-      "sharedCategoryId": "utilities",
-      "debtorId": "jordan",
-      "creditorId": "alex",
-      "amount": 9471,
-      "expenseMonth": "2026-08",
-      "transactionId": "utilities-2026-08",
-      "payerId": "alex",
-      "payee": "Sonic · internet & utilities",
-      "date": "2026-08-03",
-      "opening": false
-    },
-    {
-      "id": "shared:alex:groceries-a-2026-08:jordan",
-      "sharedCategoryId": "groceries",
-      "debtorId": "jordan",
-      "creditorId": "alex",
-      "amount": 7408,
-      "expenseMonth": "2026-08",
-      "transactionId": "groceries-a-2026-08",
-      "payerId": "alex",
-      "payee": "Trader Joe’s",
-      "date": "2026-08-04",
-      "opening": false
-    },
-    {
-      "id": "shared:alex:utilities-2026-09:jordan",
-      "sharedCategoryId": "utilities",
-      "debtorId": "jordan",
-      "creditorId": "alex",
-      "amount": 9471,
-      "expenseMonth": "2026-09",
-      "transactionId": "utilities-2026-09",
-      "payerId": "alex",
-      "payee": "Sonic · internet & utilities",
-      "date": "2026-09-03",
-      "opening": false
-    },
-    {
-      "id": "shared:alex:groceries-a-2026-09:jordan",
-      "sharedCategoryId": "groceries",
-      "debtorId": "jordan",
-      "creditorId": "alex",
-      "amount": 7408,
-      "expenseMonth": "2026-09",
-      "transactionId": "groceries-a-2026-09",
-      "payerId": "alex",
-      "payee": "Trader Joe’s",
-      "date": "2026-09-04",
-      "opening": false
-    },
-    {
-      "id": "shared:alex:household-stock-up:jordan",
-      "sharedCategoryId": "groceries",
-      "debtorId": "jordan",
-      "creditorId": "alex",
-      "amount": 16800,
-      "expenseMonth": "2026-10",
-      "transactionId": "household-stock-up",
-      "payerId": "alex",
-      "payee": "Costco · household stock-up",
-      "date": "2026-10-01",
-      "opening": false
-    },
-    {
-      "id": "shared:alex:utilities-2026-10:jordan",
-      "sharedCategoryId": "utilities",
-      "debtorId": "jordan",
-      "creditorId": "alex",
-      "amount": 7577,
-      "expenseMonth": "2026-10",
-      "transactionId": "utilities-2026-10",
-      "payerId": "alex",
-      "payee": "Sonic · internet & utilities",
-      "date": "2026-10-03",
-      "opening": false
-    },
-    {
-      "id": "shared:alex:groceries-a-2026-10:jordan",
-      "sharedCategoryId": "groceries",
-      "debtorId": "jordan",
-      "creditorId": "alex",
-      "amount": 7408,
-      "expenseMonth": "2026-10",
-      "transactionId": "groceries-a-2026-10",
-      "payerId": "alex",
-      "payee": "Trader Joe’s",
-      "date": "2026-10-04",
-      "opening": false
-    },
-    {
-      "id": "shared:jordan:rent-2026-08:alex",
-      "sharedCategoryId": "rent",
-      "debtorId": "alex",
-      "creditorId": "jordan",
-      "amount": 130000,
-      "expenseMonth": "2026-08",
-      "transactionId": "rent-2026-08",
-      "payerId": "jordan",
-      "payee": "Parkside Apartments · rent",
-      "date": "2026-08-02",
-      "opening": false
-    },
-    {
-      "id": "shared:jordan:groceries-b-2026-08:alex",
-      "sharedCategoryId": "groceries",
-      "debtorId": "alex",
-      "creditorId": "jordan",
-      "amount": 3000,
-      "expenseMonth": "2026-08",
-      "transactionId": "groceries-b-2026-08",
-      "payerId": "jordan",
-      "payee": "Whole Foods Market",
-      "date": "2026-08-05",
-      "opening": false
-    },
-    {
-      "id": "shared:jordan:rent-2026-09:alex",
-      "sharedCategoryId": "rent",
-      "debtorId": "alex",
-      "creditorId": "jordan",
-      "amount": 130000,
-      "expenseMonth": "2026-09",
-      "transactionId": "rent-2026-09",
-      "payerId": "jordan",
-      "payee": "Parkside Apartments · rent",
-      "date": "2026-09-02",
-      "opening": false
-    },
-    {
-      "id": "shared:jordan:groceries-b-2026-09:alex",
-      "sharedCategoryId": "groceries",
-      "debtorId": "alex",
-      "creditorId": "jordan",
-      "amount": 3000,
-      "expenseMonth": "2026-09",
-      "transactionId": "groceries-b-2026-09",
-      "payerId": "jordan",
-      "payee": "Whole Foods Market",
-      "date": "2026-09-05",
-      "opening": false
-    },
-    {
-      "id": "shared:jordan:rent-2026-10:alex",
-      "sharedCategoryId": "rent",
-      "debtorId": "alex",
-      "creditorId": "jordan",
-      "amount": 130000,
-      "expenseMonth": "2026-10",
-      "transactionId": "rent-2026-10",
-      "payerId": "jordan",
-      "payee": "Parkside Apartments · rent",
-      "date": "2026-10-02",
-      "opening": false
-    },
-    {
-      "id": "shared:jordan:groceries-b-2026-10:alex",
-      "sharedCategoryId": "groceries",
-      "debtorId": "alex",
-      "creditorId": "jordan",
-      "amount": 3000,
-      "expenseMonth": "2026-10",
-      "transactionId": "groceries-b-2026-10",
-      "payerId": "jordan",
-      "payee": "Whole Foods Market",
-      "date": "2026-10-05",
-      "opening": false
-    }
-  ],
-  "settlements": [
-    {
-      "id": "settlement-2026-08",
-      "payerId": "alex",
-      "recipientId": "jordan",
-      "date": "2026-08-20",
-      "amount": 133621,
-      "received": true,
-      "allocations": [
-        {
-          "obligationId": "opening-rent",
-          "amount": 16879,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "opening-rent",
-          "amount": 621,
-          "kind": "payment"
-        },
-        {
-          "obligationId": "shared:jordan:groceries-b-2026-08:alex",
-          "amount": 3000,
-          "kind": "payment"
-        },
-        {
-          "obligationId": "shared:jordan:rent-2026-08:alex",
-          "amount": 130000,
-          "kind": "payment"
-        },
-        {
-          "obligationId": "shared:alex:groceries-a-2026-08:jordan",
-          "amount": 7408,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:alex:utilities-2026-08:jordan",
-          "amount": 9471,
-          "kind": "offset"
-        }
-      ]
-    },
-    {
-      "id": "settlement-2026-09",
-      "payerId": "alex",
-      "recipientId": "jordan",
-      "date": "2026-09-20",
-      "amount": 116121,
-      "received": true,
-      "allocations": [
-        {
-          "obligationId": "shared:jordan:groceries-b-2026-09:alex",
-          "amount": 3000,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:jordan:rent-2026-09:alex",
-          "amount": 13879,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:jordan:rent-2026-09:alex",
-          "amount": 116121,
-          "kind": "payment"
-        },
-        {
-          "obligationId": "shared:alex:groceries-a-2026-09:jordan",
-          "amount": 7408,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:alex:utilities-2026-09:jordan",
-          "amount": 9471,
-          "kind": "offset"
-        }
-      ]
-    },
-    {
-      "id": "partner-payment-awaiting-receipt",
-      "payerId": "jordan",
-      "recipientId": "alex",
-      "date": "2026-10-01",
-      "amount": 12000,
-      "received": false,
-      "allocations": [
-        {
-          "obligationId": "shared:alex:household-stock-up:jordan",
-          "amount": 12000,
-          "kind": "payment"
-        }
-      ]
-    },
-    {
-      "id": "current-partial-settlement",
-      "payerId": "alex",
-      "recipientId": "jordan",
-      "date": "2026-10-16",
-      "amount": 25000,
-      "received": false,
-      "allocations": [
-        {
-          "obligationId": "shared:jordan:groceries-b-2026-10:alex",
-          "amount": 3000,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:jordan:rent-2026-10:alex",
-          "amount": 16785,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:jordan:rent-2026-10:alex",
-          "amount": 25000,
-          "kind": "payment"
-        },
-        {
-          "obligationId": "shared:alex:groceries-a-2026-10:jordan",
-          "amount": 7408,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:alex:household-stock-up:jordan",
-          "amount": 4800,
-          "kind": "offset"
-        },
-        {
-          "obligationId": "shared:alex:utilities-2026-10:jordan",
-          "amount": 7577,
-          "kind": "offset"
-        }
-      ]
-    }
-  ],
   "audit": [
     {
       "id": "dev-seed:1",

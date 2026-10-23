@@ -55,9 +55,6 @@ export function AvailableSection({
           ["Assigned this month", category.assigned],
           ["Cash spending", category.cashActivity],
           ["Credit spending", category.creditActivity],
-          ...(category.settlementActivity
-            ? ([["Partner settlement", category.settlementActivity]] as Row[])
-            : []),
         ]
       : [
           ["Left over from last month", total("opening")],
@@ -182,22 +179,6 @@ export function AvailableSection({
             </Button>
           </MoveMoneyPopover>
         )
-      )}
-      {category && category.reserved > 0 && (
-        <dl className="inspector-values inspector-values-split">
-          <div>
-            <dt>For your partner</dt>
-            <dd>
-              <Amount value={category.reserved} />
-            </dd>
-          </div>
-          <div>
-            <dt>Spendable</dt>
-            <dd>
-              <Amount value={category.spendable} />
-            </dd>
-          </div>
-        </dl>
       )}
       {!selected.length && (
         <dl className="inspector-values inspector-values-split">

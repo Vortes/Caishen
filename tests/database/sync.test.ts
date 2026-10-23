@@ -221,7 +221,7 @@ void test("a retried operation answers with its first result, even after its cha
   });
 });
 
-void test("joining resets every browser, and partners see only their own rows of a shared change", async () => {
+void test("joining resets every browser, and partners see only their own rows", async () => {
   const before = await pullAll(jordan.api, null);
   const { code } = await alex.api.budget.invite();
   const joined = await jordan.api.budget.join({ code });
@@ -254,30 +254,8 @@ void test("joining resets every browser, and partners see only their own rows of
       },
       revision,
     ));
-  const shared = await execute(
-    alex,
-    {
-      type: "shared.create",
-      id: randomUUID(),
-      sharedCategoryId: "food",
-      participants: [alexId, jordanId],
-      weights: { [alexId]: 1, [jordanId]: 1 },
-      categoryIds: { [alexId]: "food", [jordanId]: "food" },
-    },
-    revision,
-  );
-  // The shared category is everyone's; Jordan's category row is Jordan's.
-  assert.ok(
-    shared.changeSet!.after.some((row) => row.table === "sharedCategory"),
-  );
-  assert.ok(shared.changeSet!.after.every((row) => rowVisibleTo(row, alexId)));
-  const jordanSees = await pullAll(jordan.api, revision);
-  assert.ok(jordanSees.rows.some((row) => row.table === "sharedCategory"));
-  assert.ok(jordanSees.rows.every((row) => rowVisibleTo(row, jordanId)));
-  assert.deepEqual(jordanSees.confirmedOperationIds, []);
 
-  // Alex's shared purchase reaches Jordan as a partner fact, never as
-  // Alex's transaction.
+  // Alex's purchase never reaches Jordan's browser.
   await execute(
     alex,
     {
@@ -289,7 +267,7 @@ void test("joining resets every browser, and partners see only their own rows of
       openingBalance: 100_000,
       date: `${month}-01`,
     },
-    shared.revision,
+    revision,
   );
   const latest = (await readHouseholdRevision(db, alexId))!.revision;
   const purchase = await execute(
@@ -303,34 +281,25 @@ void test("joining resets every browser, and partners see only their own rows of
       amount: -4_000,
       payee: "Market",
       categoryId: "food",
-      sharedCategoryId: "food",
     },
     latest,
   );
-  const facts = await pullAll(jordan.api, shared.revision);
-  assert.ok(
-    facts.rows.some(
-      (row) =>
-        row.table === "partnerFact" &&
-        row.id === rowKey(jordanId, "purchase", alexId, "groceries"),
-    ),
-  );
+  const facts = await pullAll(jordan.api, revision);
   assert.ok(!facts.rows.some((row) => row.table === "transaction"));
   // Alex's payee memory stays in Alex's browser.
   const remembered = (rows: WireRow[]) =>
     rows.filter((row) => row.table === "payeeMemory").map((row) => row.id);
-  assert.deepEqual(
-    remembered((await pullAll(alex.api, shared.revision)).rows),
-    [rowKey(alexId, "market")],
-  );
+  assert.deepEqual(remembered((await pullAll(alex.api, revision)).rows), [
+    rowKey(alexId, "market"),
+  ]);
   assert.deepEqual(remembered(facts.rows), []);
   assert.ok(
     purchase.changeSet!.after.every((row) => rowVisibleTo(row, alexId)),
-    "Alex's answer leaves out the fact derived for Jordan",
+    "Alex's answer holds only Alex's rows",
   );
 });
 
-void test("a command made against an older revision runs again when it changes only the actor's budget, and is a conflict otherwise", async () => {
+void test("a command made against an older revision runs again when it changes only the actor's budget", async () => {
   const base = (await readHouseholdRevision(db, alexId))!.revision;
   // Jordan changes something first.
   await execute(
@@ -345,27 +314,10 @@ void test("a command made against an older revision runs again when it changes o
   );
   assert.equal(own.rebased, true);
   assert.equal(own.revision, base + 2);
-  const conflict = await refusalOf(
-    execute(
-      alex,
-      {
-        type: "shared.rule",
-        id: randomUUID(),
-        sharedCategoryId: "food",
-        weights: { [alexId]: 2, [jordanId]: 1 },
-      },
-      base,
-    ),
-  );
-  assert.deepEqual(conflict && { ...conflict, message: undefined }, {
-    kind: "conflict",
-    revision: own.revision,
-    message: undefined,
-  });
 });
 
-void test("undo restores what an operation changed, in any order, and is refused once a partner changed it again", async () => {
-  let revision = (await readHouseholdRevision(db, alexId))!.revision;
+void test("undo restores what an operation changed, in any order", async () => {
+  const revision = (await readHouseholdRevision(db, alexId))!.revision;
   const first = await execute(
     alex,
     { type: "income.expect", id: randomUUID(), month: "2026-11", amount: 100 },
@@ -390,54 +342,6 @@ void test("undo restores what an operation changed, in any order, and is refused
   assert.deepEqual(
     undoFirst.changeSet!.after.map((row) => [row.table, row.deleted]),
     [["expectedIncome", true]],
-  );
-  revision = undoFirst.revision;
-
-  // A partner's later change to a shared row blocks undoing Alex's.
-  const rule = await execute(
-    alex,
-    {
-      type: "shared.rule",
-      id: randomUUID(),
-      sharedCategoryId: "food",
-      weights: { [alexId]: 3, [jordanId]: 1 },
-    },
-    revision,
-  );
-  const partner = await execute(
-    jordan,
-    {
-      type: "shared.rule",
-      id: randomUUID(),
-      sharedCategoryId: "food",
-      weights: { [alexId]: 1, [jordanId]: 3 },
-    },
-    rule.revision,
-  );
-  assert.deepEqual(
-    await refusalOf(undo(rule.changeSet!.operationId, partner.revision)),
-    {
-      kind: "revertRefused",
-      revision: partner.revision,
-      message: "This changed again since, so it can't be undone",
-    },
-  );
-  // Only the operation's own member can undo it.
-  assert.equal(
-    (
-      await refusalOf(
-        execute(
-          jordan,
-          {
-            type: "revert",
-            id: randomUUID(),
-            targetOperationId: rule.changeSet!.operationId,
-          },
-          partner.revision,
-        ),
-      )
-    )?.kind,
-    "revertRefused",
   );
 });
 

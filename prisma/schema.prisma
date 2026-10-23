@@ -31,10 +31,6 @@ model Workspace {
   invites            PartnerInvite[]
   // Rows (ADR 0006). Read and written only through src/server/storage.
   budgetMembers      Member[]
-  sharedCategories   SharedCategory[]
-  obligations        Obligation[]
-  settlements        Settlement[]
-  partnerFacts       PartnerFact[]
   partnerEntries     PartnerEntry[]
   partnerSettlements PartnerSettlement[]
   partnerRequests    PartnerRequest[]
@@ -174,10 +170,8 @@ model Member {
   income       ExpectedIncome[]
   transactions Transaction[]
   loans        Loan[]
-  claims       Reimbursement[]
   rules        Rule[]
   bankImports  BankImport[]
-  partnerFacts PartnerFact[]
   payees       PayeeMemory[]
   partnerSides PartnerEntrySide[]
 
@@ -316,7 +310,6 @@ model Transaction {
   status                      String
   categoryId                  String?
   expenseMonth                String
-  sharedCategoryId            String?
   providerId                  String?
   // The transaction's own revision, which its history entries record.
   transactionRevision         Int
@@ -334,26 +327,10 @@ model Transaction {
   revision                    Int
   deleted                     Boolean              @default(false)
   member                      Member               @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
-  shares                      TransactionShare[]
   history                     TransactionHistory[]
   lines                       TransactionLine[]
 
   @@id([workspaceId, userId, id])
-  @@index([workspaceId, revision])
-}
-
-model TransactionShare {
-  workspaceId   String
-  userId        String
-  transactionId String
-  participantId String
-  share         BigInt?
-  weight        BigInt?
-  revision      Int
-  deleted       Boolean     @default(false)
-  transaction   Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
-
-  @@id([workspaceId, userId, transactionId, participantId])
   @@index([workspaceId, revision])
 }
 
@@ -452,40 +429,6 @@ model LoanPayment {
   @@index([workspaceId, revision])
 }
 
-model Reimbursement {
-  workspaceId   String
-  userId        String
-  id            String
-  transactionId String
-  name          String
-  amount        BigInt
-  kind          String
-  sort          Int
-  revision      Int
-  deleted       Boolean                @default(false)
-  member        Member                 @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
-  receipts      ReimbursementReceipt[]
-
-  @@id([workspaceId, userId, id])
-  @@index([workspaceId, revision])
-}
-
-model ReimbursementReceipt {
-  workspaceId     String
-  userId          String
-  reimbursementId String
-  id              String
-  date            String
-  amount          BigInt
-  sort            Int
-  revision        Int
-  deleted         Boolean       @default(false)
-  reimbursement   Reimbursement @relation(fields: [workspaceId, userId, reimbursementId], references: [workspaceId, userId, id], onDelete: Cascade)
-
-  @@id([workspaceId, userId, reimbursementId, id])
-  @@index([workspaceId, revision])
-}
-
 model Rule {
   workspaceId    String
   userId         String
@@ -524,105 +467,6 @@ model BankImport {
   @@id([workspaceId, userId, connectionId, logicalId])
   @@index([workspaceId, revision])
   @@index([connectionId])
-}
-
-model SharedCategory {
-  workspaceId  String
-  id           String
-  participants String[]
-  weights      Json
-  categoryIds  Json
-  archived     Boolean?
-  sort         Int
-  revision     Int
-  deleted      Boolean   @default(false)
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@id([workspaceId, id])
-  @@index([workspaceId, revision])
-}
-
-// Opening shared balances only; generated obligations are derived.
-model Obligation {
-  workspaceId      String
-  id               String
-  sharedCategoryId String
-  debtorId         String
-  creditorId       String
-  amount           BigInt
-  expenseMonth     String?
-  transactionId    String?
-  payerId          String?
-  payee            String?
-  date             String?
-  opening          Boolean
-  sort             Int
-  revision         Int
-  deleted          Boolean   @default(false)
-  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@id([workspaceId, id])
-  @@index([workspaceId, revision])
-}
-
-model Settlement {
-  workspaceId String
-  id          String
-  payerId     String
-  recipientId String
-  date        String
-  amount      BigInt
-  received    Boolean
-  sort        Int
-  revision    Int
-  deleted     Boolean                @default(false)
-  workspace   Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  allocations SettlementAllocation[]
-
-  @@id([workspaceId, id])
-  @@index([workspaceId, revision])
-}
-
-model SettlementAllocation {
-  workspaceId  String
-  settlementId String
-  sequence     Int
-  obligationId String
-  amount       BigInt
-  kind         String
-  revision     Int
-  deleted      Boolean    @default(false)
-  settlement   Settlement @relation(fields: [workspaceId, settlementId], references: [workspaceId, id], onDelete: Cascade)
-
-  @@id([workspaceId, settlementId, sequence])
-  @@index([workspaceId, revision])
-}
-
-// What one partner's ledger uses of the other partner's budget, derived by
-// the server. Its kinds key differently, so it is keyed by its row id.
-model PartnerFact {
-  workspaceId      String
-  key              String
-  viewerId         String
-  kind             String
-  payerId          String?
-  sharedCategoryId String?
-  settlementId     String?
-  transactionId    String?
-  date             String?
-  expenseMonth     String?
-  amount           BigInt?
-  payee            String?
-  status           String?
-  shares           Json?
-  sort             Int?
-  revision         Int
-  deleted          Boolean   @default(false)
-  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  viewer           Member    @relation(fields: [workspaceId, viewerId], references: [workspaceId, userId], onDelete: Cascade)
-
-  @@id([workspaceId, key])
-  @@index([workspaceId, revision])
 }
 
 // Every operation applied to a household. The command and its change set
