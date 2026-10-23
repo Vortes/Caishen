@@ -1,0 +1,271 @@
+/* The Welcome page may go past the app's design system: a display size
+   above 24px, its own violet-tinted surfaces, and a solid primary button,
+   as the legacy page had. Color comes from the same hue as the app's
+   tokens (--hue) and the brand tile, so it still reads as Caishen. */
+
+.welcome {
+  --welcome-story: oklch(0.205 0.04 var(--hue));
+  --welcome-form: oklch(0.14 0.028 var(--hue));
+  --welcome-line: oklch(0.27 0.03 var(--hue));
+  --welcome-text: oklch(0.96 0.012 var(--hue));
+  --welcome-muted: oklch(0.78 0.03 var(--hue));
+  --welcome-quiet: oklch(0.66 0.03 var(--hue));
+  --welcome-accent: oklch(0.8 0.1 var(--hue));
+  --welcome-button: oklch(0.58 0.19 var(--hue));
+  --welcome-button-hover: oklch(0.54 0.2 var(--hue));
+  --welcome-control: oklch(0.25 0.035 var(--hue));
+  --welcome-control-hover: oklch(0.29 0.04 var(--hue));
+  --welcome-mark: oklch(0.235 0.05 var(--hue));
+  --headline-size: clamp(56px, 6.4vw, 96px);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100dvh;
+  background: var(--welcome-form);
+  color: var(--welcome-text);
+  font-synthesis: none;
+}
+:global([data-theme="light"]) .welcome {
+  --welcome-story: oklch(0.945 0.022 var(--hue));
+  --welcome-form: oklch(0.99 0.004 var(--hue));
+  --welcome-line: oklch(0.89 0.018 var(--hue));
+  --welcome-text: oklch(0.2 0.03 var(--hue));
+  --welcome-muted: oklch(0.42 0.03 var(--hue));
+  --welcome-quiet: oklch(0.52 0.03 var(--hue));
+  --welcome-accent: oklch(0.5 0.17 var(--hue));
+  --welcome-button: oklch(0.55 0.2 var(--hue));
+  --welcome-button-hover: oklch(0.5 0.2 var(--hue));
+  --welcome-control: oklch(0.93 0.018 var(--hue));
+  --welcome-control-hover: oklch(0.9 0.022 var(--hue));
+  --welcome-mark: oklch(0.915 0.032 var(--hue));
+}
+
+/* ---------- The story ---------- */
+
+.story {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  overflow: hidden;
+  padding: 56px 60px;
+  border-right: 1px solid var(--welcome-line);
+}
+.story > :not(.pinwheel) {
+  position: relative;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+.wordmark > svg {
+  width: 28px;
+  height: 28px;
+}
+.period {
+  color: var(--welcome-accent);
+}
+/* The intro runs over the pinwheel's upper blades on purpose; the mark is
+   faint enough that the text keeps its contrast. */
+.storyCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.headline {
+  font-size: var(--headline-size);
+  font-weight: 700;
+  letter-spacing: -0.055em;
+  line-height: 0.96;
+}
+.intro {
+  max-width: 34ch;
+  color: var(--welcome-muted);
+  font-size: 18px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.storyFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--welcome-muted);
+  font-size: 13px;
+}
+
+/* The pinwheel from the brand mark, drawn one step off the panel's color
+   and cropped by the edge, with the panel shading darker toward it. */
+.story {
+  background: linear-gradient(
+    to bottom,
+    var(--welcome-story),
+    color-mix(in oklch, var(--welcome-story) 70%, var(--welcome-form))
+  );
+}
+.pinwheel {
+  position: absolute;
+  right: -22%;
+  bottom: -26%;
+  width: 92%;
+  fill: var(--welcome-mark);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------- The way in ---------- */
+
+.form {
+  display: flex;
+  align-items: center;
+  padding: 56px 88px;
+}
+.column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 548px;
+}
+.eyebrow {
+  margin-bottom: 14px;
+  color: var(--welcome-accent);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.title {
+  margin-bottom: 14px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.lede {
+  max-width: 48ch;
+  margin-bottom: 32px;
+  color: var(--welcome-muted);
+  font-size: 16px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.primary,
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background-color 150ms,
+    transform 100ms;
+}
+.primary {
+  background: var(--welcome-button);
+  color: white;
+}
+.primary:hover {
+  background: var(--welcome-button-hover);
+}
+.secondary {
+  background: var(--welcome-control);
+  color: var(--welcome-text);
+}
+.secondary:hover {
+  background: var(--welcome-control-hover);
+}
+.primary:active,
+.secondary:active {
+  transform: scale(0.985);
+}
+.primary:focus-visible,
+.secondary:focus-visible,
+.policies a:focus-visible {
+  outline: 2px solid var(--welcome-accent);
+  outline-offset: 2px;
+}
+.policies {
+  display: flex;
+  gap: 20px;
+  margin-top: 20px;
+  font-size: 14px;
+}
+.policies a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--welcome-text);
+  text-decoration: underline;
+  text-decoration-color: var(--welcome-quiet);
+  text-decoration-thickness: from-font;
+  text-underline-offset: 4px;
+}
+.policies a:hover {
+  text-decoration-color: currentColor;
+}
+
+@media (max-width: 980px) {
+  .form {
+    padding: 48px 40px;
+  }
+  .story {
+    padding: 48px 40px;
+  }
+}
+
+/* Phones: the story becomes the top of one column. */
+@media (max-width: 720px) {
+  .welcome {
+    --headline-size: 58px;
+    grid-template-columns: 1fr;
+  }
+  .story {
+    gap: 40px;
+    padding: 28px 20px 36px;
+    border-right: 0;
+    border-bottom: 1px solid var(--welcome-line);
+  }
+  .storyFoot {
+    display: none;
+  }
+  .intro {
+    font-size: 16px;
+  }
+  .form {
+    align-items: flex-start;
+    padding: 36px 20px 140px;
+  }
+  .title {
+    font-size: 26px;
+  }
+  /* Only a sliver of one blade fits below the copy, which doesn't read as
+     the pinwheel. */
+  .pinwheel {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary,
+  .secondary {
+    transition: none;
+  }
+  .primary:active,
+  .secondary:active {
+    transform: none;
+  }
+}

@@ -57,6 +57,7 @@ import {
   type TransactionReview,
 } from "./transaction-review";
 import { useHistoryShortcuts } from "./use-history-shortcuts";
+import { BudgetLoadError } from "~/components/entry/load-error";
 
 type Overview = RouterOutputs["budget"]["overview"];
 
@@ -159,6 +160,7 @@ function LiveBudget({
   skeleton: ReactNode;
 }) {
   const snapshot = useBudgetSelector(whole);
+  const [retrying, setRetrying] = useState(false);
   // Bank connections, their inbox, and Reflect's spending are read beside
   // the rows; they follow the budget's revision.
   const utils = api.useUtils();
@@ -193,16 +195,23 @@ function LiveBudget({
     return (
       <Status icon={<InfoIcon size={18} />}>
         <strong>You don’t have a budget yet.</strong>
-        <a href="/">Create one in Caishen</a>, then come back.
+        <a href="/welcome">Create one in Caishen</a>, then come back.
       </Status>
     );
   if (snapshot.status !== "ready") {
+    if (retrying) return skeleton;
     if (snapshot.refreshFailed || (overviewError && !overview))
       return (
-        <Status icon={<InfoIcon size={18} />}>
-          <strong>Your budget couldn’t load.</strong>
-          {overviewError ?? "Check your connection, then reload the page."}
-        </Status>
+        <BudgetLoadError
+          error={overviewError}
+          onRetry={() => {
+            setRetrying(true);
+            void Promise.all([
+              client.refresh(),
+              utils.budget.overview.invalidate(),
+            ]).finally(() => setRetrying(false));
+          }}
+        />
       );
     return skeleton;
   }
@@ -458,6 +467,17 @@ function LiveWorkspace({
               run(
                 { type: "settings.update", id: newId(), name },
                 `Renamed your budget to ${name}`,
+              )
+            }
+            joinBlocked={
+              snapshot.pending.length
+                ? "Wait for your changes to finish saving before connecting budgets."
+                : undefined
+            }
+            updatePreferences={(change) =>
+              run(
+                { type: "settings.update", id: newId(), ...change },
+                "Preferences saved",
               )
             }
             overlays={

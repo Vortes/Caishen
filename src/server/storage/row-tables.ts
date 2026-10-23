@@ -344,6 +344,7 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       texts("participants"),
       json("weights"),
       json("categoryIds"),
+      bool("archived", true),
       sort,
     ],
   },

@@ -1,6 +1,6 @@
 import { verifyClerkRequest, ClerkWebhookError } from "~/server/clerk-webhook";
 import { db } from "~/server/db";
-import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
+import { deletePersonalBudget } from "~/server/services/account-deletion";
 import {
   syncClerkUserEvent,
   ClerkUserEventValidationError,
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       return Response.json({ received: true, ignored: true });
     const synced = await syncClerkUserEvent(db, messageId, event);
     if (event.type === "user.deleted")
-      await cancelScheduledDailyReviews(db, synced.clerkUserId);
+      await deletePersonalBudget(db, synced.clerkUserId);
     return Response.json({ received: true });
   } catch (error) {
     if (error instanceof ClerkWebhookError)

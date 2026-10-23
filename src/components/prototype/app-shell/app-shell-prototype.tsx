@@ -79,6 +79,7 @@ import {
   type SettingsPage,
 } from "./settings-pages";
 import styles from "./shell.module.css";
+import type { UpdatePreferences } from "~/components/entry/profile-preferences";
 
 const settingsTitles: Record<SettingsPage, string> = {
   profile: "Profile",
@@ -102,6 +103,8 @@ export function AppShellPrototype({
   transactionSaver,
   targetEditing,
   renameBudget,
+  updatePreferences,
+  joinBlocked,
   reconciling,
   overlays,
 }: {
@@ -113,6 +116,8 @@ export function AppShellPrototype({
   targetEditing: TargetEditing;
   // Returns why the rename can't run yet, or null once it's sent.
   renameBudget: (name: string) => string | null;
+  updatePreferences?: UpdatePreferences;
+  joinBlocked?: string;
   reconciling: Reconciling;
   // Dialogs and the ToastRegion, rendered inside the themed root.
   overlays: ReactNode;
@@ -583,9 +588,12 @@ export function AppShellPrototype({
                       tabIndex={-1}
                     >
                       {settingsPage === "partner" ? (
-                        <PartnerSettings />
+                        <PartnerSettings blocked={joinBlocked} />
                       ) : settingsPage === "profile" ? (
-                        <ProfileSettings onRename={renameBudget} />
+                        <ProfileSettings
+                          onRename={renameBudget}
+                          onUpdate={updatePreferences}
+                        />
                       ) : (
                         <AppearanceSettings
                           settings={settings}

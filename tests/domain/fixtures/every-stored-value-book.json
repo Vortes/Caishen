@@ -7665,6 +7665,7 @@
   },
   "sharedCategories": [
     {
+      "archived": true,
       "id": "rent",
       "participants": [
         "alex",
