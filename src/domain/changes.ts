@@ -11,6 +11,7 @@ import type {
   SharedCategory,
   Transaction,
 } from "./engine";
+import type { PartnerEntry } from "./partner-ledger";
 import {
   accountRow,
   assignmentRow,
@@ -21,7 +22,9 @@ import {
   loanRows,
   memberRows,
   openingObligationRows,
+  partnerEntryRow,
   partnerFactRows,
+  partnerSideRows,
   payeeMemoryRows,
   reimbursementRows,
   settlementRows,
@@ -262,6 +265,33 @@ export class Changes {
       payeeMemoryRows(budget.userId, key, budget.payeeMemory?.[key]),
     );
     return (budget.payeeMemory ??= {});
+  }
+
+  /** One partner's private sides of partner ledger entries. */
+  partnerSide(
+    budget: Budget,
+    entryId: string,
+  ): NonNullable<Budget["partnerSides"]> {
+    this.touch(`partner side ${budget.userId} ${entryId}`, () =>
+      partnerSideRows(budget.userId, entryId, budget.partnerSides?.[entryId]),
+    );
+    return (budget.partnerSides ??= {});
+  }
+
+  /** A partner ledger entry, which both partners' browsers hold. */
+  partnerEntry(entry: PartnerEntry): PartnerEntry {
+    this.item(
+      `partner entry ${entry.id}`,
+      () => this.state.partnerEntries ?? [],
+      entry.id,
+      (item, sort) => [partnerEntryRow(item, sort)],
+    );
+    return entry;
+  }
+
+  addPartnerEntry(entry: PartnerEntry): void {
+    this.partnerEntry(entry);
+    (this.state.partnerEntries ??= []).push(entry);
   }
 
   /** A loan with its rates and payments. */

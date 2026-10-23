@@ -52,6 +52,8 @@ const commandLabels = {
   "reimbursement.expect": "Add reimbursement",
   "reimbursement.receive": "Receive reimbursement",
   "counterparty.receive": "Receive repayment",
+  "partner.categorize": "Categorize shared entry",
+  "partner.edit": "Change shared entry",
   "card.payment": "Record card payment",
   "card.credit": "Record statement credit",
   "loan.add": "Add loan",

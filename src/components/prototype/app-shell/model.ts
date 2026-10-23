@@ -82,6 +82,8 @@ export type Account = {
   cleared: number;
   // The last time it matched the bank's.
   reconciled?: { date: string; balance: number };
+  // Entries wait for the user: the partner's purchases still to categorize.
+  toReview?: boolean;
   connection?: {
     institution: string;
     synced: string;
@@ -437,6 +439,9 @@ export function toShellData(
         .reduce((sum, entry) => sum + entry.amount, 0),
       cleared: item.cleared,
       reconciled: item.reconciled,
+      toReview:
+        item.kind === "partner" &&
+        view.partnerLedger.some((row) => row.needsCategory),
       connection: connection && {
         institution: connection.institutionName ?? "Connected bank",
         synced: syncedLabel(connection.lastSyncedAt, connection.error),

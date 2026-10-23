@@ -39,12 +39,15 @@ import {
   partnerSideIssues,
   partnerSideSchema,
   sideCategory,
+  spendingCategory,
+  synchronizePartnerEntries,
+  writeEntry,
   type PartnerEntry,
   type PartnerSide,
 } from "./partner-ledger";
 import { canonicalJson } from "./canonical-json";
 import { Changes } from "./changes";
-import { rememberCategorizations } from "./payee-memory";
+import { payeeKey, rememberCategorizations } from "./payee-memory";
 import { foldAssignments, type ChangeSet } from "./rows";
 
 const identifier = z.string().min(1).max(160);
@@ -189,6 +192,26 @@ const transactionInput = {
 };
 
 export const commandSchema = z.discriminatedUnion("type", [
+  // The partner ledger (src/domain/partner-ledger.ts): the category of your
+  // side of your partner's purchase, and changes to a shared entry, which
+  // either partner may make.
+  z.object({
+    type: z.literal("partner.categorize"),
+    id: identifier,
+    entryId: identifier,
+    categoryId: identifier.nullable(),
+  }),
+  z.object({
+    type: z.literal("partner.edit"),
+    id: identifier,
+    entryId: identifier,
+    recordedAt: z.string().datetime().optional(),
+    share: nonnegativeCents.optional(),
+    // The shared amount, without its sign.
+    amount: positiveCents.optional(),
+    date: daySchema.optional(),
+    payee: z.string().trim().min(1).max(240).optional(),
+  }),
   z.object({
     type: z.literal("counterparty.receive"),
     id: identifier,
@@ -3613,6 +3636,11 @@ function executeAccountingState<T extends AccountingState>(
   const budget = ownBudget(book, actorId);
   const changes = new Changes(book);
   applyCommand(book, budget, command, source, changes);
+  synchronizePartnerEntries(book, changes, {
+    actorId,
+    operationId: command.id,
+    at: "recordedAt" in command ? command.recordedAt : undefined,
+  });
   ensureNoCounterpartyEntries(budget);
   if (source === "user")
     rememberCategorizations(
@@ -3695,6 +3723,115 @@ function recomputeLinkedRefunds(
   }
 }
 
+function partnerEntry(book: AccountingState, entryId: string): PartnerEntry {
+  const entry = book.partnerEntries?.find((item) => item.id === entryId);
+  if (!entry || entry.removed) fail("This shared entry was removed");
+  return entry!;
+}
+
+// A change to a shared entry, from either partner. It changes the payer's
+// transaction line, and the entry follows it. A partner's browser holds
+// only the entry, so there it changes the entry alone, as the server's
+// result will.
+function editPartnerEntry(
+  book: AccountingState,
+  budget: Budget,
+  command: Extract<ParsedCommand, { type: "partner.edit" }>,
+  source: CommandSource,
+  changes: Changes,
+): void {
+  const entry = partnerEntry(book, command.entryId);
+  const amount =
+    command.amount === undefined
+      ? entry.amount
+      : Math.sign(entry.amount) * command.amount;
+  const share = command.share ?? Math.min(entry.share, Math.abs(amount));
+  if (share > Math.abs(amount))
+    fail("A share can't be more than the shared amount");
+  if (source === "user" && !command.recordedAt)
+    fail("Share edits require their recorded time");
+  const payer = isPersonalLedger(book)
+    ? book.budget.userId === entry.payerId
+      ? book.budget
+      : undefined
+    : book.budgets[entry.payerId];
+  const sourceLine = entry.source;
+  if (!payer || !sourceLine) {
+    writeEntry(
+      book,
+      changes,
+      entry.id,
+      {
+        ...entry,
+        amount,
+        share,
+        date: command.date ?? entry.date,
+        payee: command.payee ?? entry.payee,
+      },
+      {
+        actorId: budget.userId,
+        operationId: command.id,
+        at: command.recordedAt,
+      },
+    );
+    return;
+  }
+  const transaction = getTransaction(payer, sourceLine.transactionId);
+  const line = counterpartyLines(transaction).find(
+    (item) => item.id === sourceLine.lineId,
+  );
+  if (transaction.removed || !line?.counterpartyShare)
+    fail("This shared entry was removed");
+  if (transaction.refundOfTransactionId)
+    fail("A linked refund's share follows its purchase. Change the purchase");
+  if (transaction.lines && amount !== line!.amount)
+    fail("Change a split purchase's amounts on the purchase itself");
+  const date = command.date ?? transaction.date;
+  requireDate(payer, date);
+  const counterpartyShare = { ...line!.counterpartyShare!, amount: share };
+  applyCommand(
+    book,
+    payer,
+    {
+      type: "transaction.upsert",
+      id: command.id,
+      recordedAt: command.recordedAt,
+      transactionId: transaction.id,
+      accountId: transaction.accountId,
+      date,
+      amount: transaction.lines ? transaction.amount : amount,
+      payee: command.payee ?? transaction.payee,
+      status: transaction.status,
+      expenseMonth:
+        transaction.expenseMonth === monthOf(transaction.date)
+          ? monthOf(date)
+          : transaction.expenseMonth,
+      providerId: transaction.providerId,
+      revision: transaction.revision + 1,
+      reviewed: transaction.reviewed,
+      ...(transaction.lines
+        ? {
+            lines: transaction.lines.map((item) => ({
+              lineId: item.id,
+              categoryId: item.categoryId,
+              amount: item.amount,
+              counterpartyShare:
+                item.id === line!.id
+                  ? counterpartyShare
+                  : (item.counterpartyShare ?? null),
+            })),
+          }
+        : { categoryId: transaction.categoryId, counterpartyShare }),
+    },
+    source,
+    changes,
+  );
+  ensureSupportedCardBalances(payer);
+  // The payer's history names who made the change.
+  const saved = getTransaction(payer, transaction.id);
+  changes.transaction(payer, saved).history.at(-1)!.actorId = budget.userId;
+}
+
 function applyCommand(
   book: AccountingState,
   budget: Budget,
@@ -3705,6 +3842,44 @@ function applyCommand(
 ): void {
   const actorId = budget.userId;
   switch (command.type) {
+    case "partner.categorize": {
+      const entry = partnerEntry(book, command.entryId);
+      if (entry.payerId === actorId)
+        fail("Categorize your own purchase on its transaction");
+      if (command.categoryId === null) {
+        const sides = changes.partnerSide(budget, entry.id);
+        delete sides[entry.id];
+        break;
+      }
+      const category = getCategory(budget, command.categoryId);
+      if (!spendingCategory(category))
+        fail("Choose a spending category for your share");
+      changes.partnerSide(budget, entry.id)[entry.id] = {
+        categoryId: category.id,
+      };
+      const key = payeeKey(entry.payee);
+      const remembered = budget.payeeMemory?.[key];
+      if (
+        source === "user" &&
+        key &&
+        (remembered?.kind !== "category" ||
+          remembered.categoryId !== category.id ||
+          remembered.payee !== entry.payee)
+      )
+        changes.payeeMemory(budget, key)[key] = {
+          ...(remembered?.counterpartyShare
+            ? { counterpartyShare: remembered.counterpartyShare }
+            : {}),
+          payee: entry.payee,
+          kind: "category",
+          categoryId: category.id,
+        };
+      break;
+    }
+    case "partner.edit": {
+      editPartnerEntry(book, budget, command, source, changes);
+      break;
+    }
     case "counterparty.receive": {
       requireDate(budget, command.date);
       requireCash(budget, command.cashAccountId, command.date);
@@ -3715,6 +3890,12 @@ function applyCommand(
       );
       if (!isCounterparty(counterparty))
         fail("Choose Partner or Reimbursements");
+      // A partner's payment changes both budgets' ledger, which a
+      // one-sided repayment can't keep mirrored.
+      if (counterparty.kind === "partner")
+        fail(
+          "Payments between partners are recorded as settlements, which aren't available yet",
+        );
       if (counterparty.kind === "reimbursements" && !command.counterpartyName)
         fail("Name the person or organization making the reimbursement");
       if (source === "user" && !command.recordedAt)

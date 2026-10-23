@@ -366,9 +366,8 @@ function ShareEditor({
       {error && <p className={moveStyles.error}>{error}</p>}
       <p className={styles.formHint}>
         {share.counterpartyName
-          ? "Tracked in your Reimbursements account. Only you see it."
-          : "Only you see this share."}{" "}
-        Changes stay in the entry&rsquo;s history.
+          ? "Tracked in your Reimbursements account. Only you see it. Changes stay in the entry’s history."
+          : "Changes apply to both budgets at once and stay in the entry’s history."}
       </p>
     </form>
   );

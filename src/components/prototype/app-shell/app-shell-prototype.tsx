@@ -51,6 +51,7 @@ import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
 import { SettingsNav, Sidebar, type Screen } from "./sidebar";
 import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
+import { PartnerRegister } from "./partner-register";
 import {
   ReimbursementFilters,
   ReimbursementsRegister,
@@ -785,7 +786,13 @@ export function AppShellPrototype({
                         )}
                         {screen.type === "register" && (
                           <>
-                            {account?.kind === "reimbursements" ? (
+                            {account?.kind === "partner" ? (
+                              <PartnerRegister
+                                key={account.id}
+                                account={account}
+                                query={query}
+                              />
+                            ) : account?.kind === "reimbursements" ? (
                               <ReimbursementsRegister
                                 key={account.id}
                                 account={account}

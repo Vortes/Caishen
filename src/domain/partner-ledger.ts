@@ -1,7 +1,9 @@
 import { z } from "zod";
+import type { Changes } from "./changes";
 import type { Budget, Transaction, TransactionLine } from "./engine";
 import { counterpartyLines, shareContribution } from "./counterparty";
 import { payeeKey } from "./payee-memory";
+import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 
 // The partner ledger: the one ledger both partners' budgets share (shared
 // costs phase 3). Each partner's Partner account shows it with the opposite
@@ -359,4 +361,139 @@ function rememberedSpendingCategory(
     (item) => item.id === memory.categoryId,
   );
   return category && spendingCategory(category) ? category.id : undefined;
+}
+
+// Writing the ledger: entries follow their source lines.
+
+type EntryFacts = Pick<
+  PartnerEntry,
+  "payerId" | "source" | "date" | "payee" | "status" | "amount" | "share"
+>;
+export type LedgerWrite = {
+  actorId: string;
+  operationId: string;
+  at?: string;
+};
+
+/** The ledger facts of a payer's shared line: all an entry may hold. */
+export function lineFacts(
+  payerId: string,
+  transaction: Transaction,
+  line: TransactionLine,
+): EntryFacts {
+  return {
+    payerId,
+    source: { transactionId: transaction.id, lineId: line.id },
+    date: transaction.date,
+    payee: transaction.payee,
+    status: transaction.status,
+    amount: line.amount,
+    share: line.counterpartyShare!.amount,
+  };
+}
+
+/**
+ * Writes an entry's facts, recording what changed in its history. A new
+ * entry is created only when it shares something: a line shared with the
+ * partner at $0.00 stays private until it has been shared.
+ */
+export function writeEntry(
+  state: AccountingState,
+  changes: Changes,
+  id: string,
+  facts: EntryFacts,
+  write: LedgerWrite,
+): void {
+  const entry = state.partnerEntries?.find((item) => item.id === id);
+  const stamp = {
+    actorId: write.actorId,
+    operationId: write.operationId,
+    ...(write.at ? { at: write.at } : {}),
+  };
+  if (!entry) {
+    if (!facts.share) return;
+    changes.addPartnerEntry({
+      id,
+      ...facts,
+      history: [{ ...stamp, reason: "created" }],
+    });
+    return;
+  }
+  const changed = PARTNER_HISTORY_FIELDS.flatMap((field) =>
+    entry[field] === facts[field]
+      ? []
+      : [{ field, previous: entry[field], next: facts[field] }],
+  );
+  if (!changed.length && !entry.removed) return;
+  const tracked = changes.partnerEntry(entry);
+  Object.assign(tracked, facts);
+  tracked.history.push({
+    ...stamp,
+    reason: tracked.removed ? "restored" : "updated",
+    ...(changed.length ? { changes: changed } : {}),
+  });
+  delete tracked.removed;
+}
+
+function removeEntry(
+  changes: Changes,
+  entry: PartnerEntry,
+  write: LedgerWrite,
+): void {
+  if (entry.removed) return;
+  const tracked = changes.partnerEntry(entry);
+  tracked.removed = true;
+  tracked.history.push({
+    actorId: write.actorId,
+    operationId: write.operationId,
+    ...(write.at ? { at: write.at } : {}),
+    reason: "removed",
+  });
+}
+
+/**
+ * Keeps the entries mirrored from the transactions a command touched equal
+ * to their source lines. Runs after every command, so whatever changes a
+ * shared line (an edit, a removal, a bank update, a refund) updates both
+ * partners' ledgers. A personal ledger holds only its owner's budget, so
+ * it mirrors only that budget's lines.
+ */
+export function synchronizePartnerEntries(
+  state: AccountingState,
+  changes: Changes,
+  write: LedgerWrite,
+): void {
+  const partnered = isPersonalLedger(state)
+    ? state.members.length === 2
+    : Object.keys(state.budgets).length === 2;
+  if (!partnered) return;
+  const budgets = isPersonalLedger(state)
+    ? [state.budget]
+    : Object.values(state.budgets);
+  for (const budget of budgets) {
+    if (!partnerAccountOf(budget)) continue;
+    for (const { before, after } of changes.transactionEdits(budget)) {
+      const transactionId = (after ?? before)!.id;
+      const mirrored = new Set<string>();
+      if (after && !after.removed)
+        for (const line of partnerLines(budget, after)) {
+          const id = partnerEntryId(budget.userId, after.id, line.id);
+          mirrored.add(id);
+          writeEntry(
+            state,
+            changes,
+            id,
+            lineFacts(budget.userId, after, line),
+            write,
+          );
+        }
+      for (const entry of state.partnerEntries ?? [])
+        if (
+          entry.payerId === budget.userId &&
+          entry.source?.transactionId === transactionId &&
+          !mirrored.has(entry.id)
+        )
+          removeEntry(changes, entry, write);
+    }
+  }
 }
