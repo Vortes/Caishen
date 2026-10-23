@@ -47,6 +47,7 @@ function transactionActionIssue(
   if (!account) return "Account access denied";
   switch (action) {
     case "edit":
+      if (!directAccountKinds[account.kind]) return directEntryAccountMessage;
       return transactionEditOperation(transaction)
         ? null
         : "This kind of transaction cannot be edited in the register";
@@ -334,4 +335,24 @@ export function classifyRegisterEntry(
       link: unavailable,
     },
   };
+}
+
+export const directEntryAccountMessage =
+  "Entries on Partner and Reimbursements come from shares and settlements, not from the register";
+export const accountKindLabels: Record<Account["kind"], string> = {
+  cash: "Cash",
+  credit: "Credit",
+  tracking: "Tracking",
+  partner: "Partner",
+  reimbursements: "Reimbursements",
+};
+const directAccountKinds: Record<Account["kind"], boolean> = {
+  cash: true,
+  credit: true,
+  tracking: true,
+  partner: false,
+  reimbursements: false,
+};
+export function directEntryAccounts<T extends Account>(accounts: T[]): T[] {
+  return accounts.filter((account) => directAccountKinds[account.kind]);
 }

@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  directEntryAccounts,
+  accountKindLabels,
+} from "~/domain/register-entry";
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon, XIcon } from "lucide-react";
 import {
@@ -179,15 +183,10 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   })();
   const accountOptions = useMemo<ChoiceOption[]>(
     () =>
-      view.accounts.map((item) => ({
+      directEntryAccounts(view.accounts).map((item) => ({
         value: item.id,
         label: item.name,
-        group:
-          item.kind === "credit"
-            ? "Credit"
-            : item.kind === "tracking"
-              ? "Tracking"
-              : "Cash",
+        group: accountKindLabels[item.kind],
       })),
     [view.accounts],
   );

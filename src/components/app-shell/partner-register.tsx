@@ -359,9 +359,9 @@ export function PartnerRegister({
       </div>
       {rows.map((row) => {
         const selected = selectedId === row.id;
-        const settlement = row.kind === "settlement";
+        const settlement = Boolean(row.settlementId);
         const unconfirmed = row.confirmed === false;
-        const opens = row.kind !== "repayment";
+        const opens = Boolean(row.entryId ?? row.lineId ?? row.settlementId);
         const paidBy =
           row.kind === "repayment" || settlement
             ? null
@@ -639,56 +639,65 @@ function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
             <SideCategory row={row} id={`${id}-category`} />
           )}
         </div>
-        <form
-          className={share.detailField}
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault();
-            const cents = parseCents(text);
-            if (cents === null) return setError("Enter an amount, like 24.50.");
-            if (cents > row.shared)
-              return setError(`A share can be at most ${money(row.shared)}.`);
-            apply(cents);
-          }}
-        >
-          <label htmlFor={`${id}-share`}>{shareLabel}</label>
-          <div className={share.shareEdit}>
-            <AmountWell
-              id={`${id}-share`}
-              value={text}
-              invalid={Boolean(error)}
-              onChange={(value) => {
-                setText(value);
-                if (error) setError("");
-              }}
-            />
-            <Button size="sm" type="submit">
-              Update
-            </Button>
-            <Button
-              size="sm"
-              variant="quiet"
-              onClick={() => apply(halfOf(row.shared))}
-            >
-              Split evenly
-            </Button>
-            {paid && (
+        {row.shareMode.mode === "read" ? (
+          <div className={share.detailField}>
+            <span>{shareLabel}</span>
+            <p className={local.readOnly}>{money(theirShare)}</p>
+            <p className={share.formHint}>{row.shareMode.reason}</p>
+          </div>
+        ) : (
+          <form
+            className={share.detailField}
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              const cents = parseCents(text);
+              if (cents === null)
+                return setError("Enter an amount, like 24.50.");
+              if (cents > row.shared)
+                return setError(`A share can be at most ${money(row.shared)}.`);
+              apply(cents);
+            }}
+          >
+            <label htmlFor={`${id}-share`}>{shareLabel}</label>
+            <div className={share.shareEdit}>
+              <AmountWell
+                id={`${id}-share`}
+                value={text}
+                invalid={Boolean(error)}
+                onChange={(value) => {
+                  setText(value);
+                  if (error) setError("");
+                }}
+              />
+              <Button size="sm" type="submit">
+                Update
+              </Button>
               <Button
                 size="sm"
                 variant="quiet"
-                disabled={theirShare === 0}
-                onClick={() => apply(0)}
+                onClick={() => apply(halfOf(row.shared))}
               >
-                Write off
+                Split evenly
               </Button>
-            )}
-          </div>
-          {error && <p className={moveStyles.error}>{error}</p>}
-          <p className={share.formHint}>
-            Changes apply to both budgets at once and stay in the entry&rsquo;s
-            history.
-          </p>
-        </form>
+              {paid && (
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  disabled={theirShare === 0}
+                  onClick={() => apply(0)}
+                >
+                  Write off
+                </Button>
+              )}
+            </div>
+            {error && <p className={moveStyles.error}>{error}</p>}
+            <p className={share.formHint}>
+              Changes apply to both budgets at once and stay in the
+              entry&rsquo;s history.
+            </p>
+          </form>
+        )}
       </div>
       {row.history.length > 0 && (
         <div className={share.history}>

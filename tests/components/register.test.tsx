@@ -1,8 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import type { Command } from "~/domain/engine";
+import {
+  addMember,
+  withCounterpartyAccounts,
+  type Command,
+} from "~/domain/engine";
 import { SyncError } from "~/components/sync/transport";
 import {
+  budgetFixture,
   findToast,
   findTransactionRow as findRow,
   readyOverview,
@@ -572,4 +577,25 @@ test("choosing and removing a transfer payee changes category requirements witho
   expect(
     within(screen.getByRole("button", { name: /^Savings/ })).getByText("$0.00"),
   ).toBeTruthy();
+});
+
+test("F3: the new transaction account picker excludes Partner and Reimbursements", async () => {
+  const book = withCounterpartyAccounts(
+    addMember(budgetFixture(), "partner", "Anna", "2026-10"),
+  );
+  const shell = await renderShell({
+    book,
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await shell.user.click(screen.getByRole("button", { name: "All accounts" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Add transaction" }),
+  );
+  await shell.user.keyboard("{Escape}");
+  const form = within(screen.getByRole("form", { name: "New transaction" }));
+  await shell.user.click(form.getByRole("combobox", { name: "Account" }));
+  expect(screen.getByRole("option", { name: /Checking/ })).toBeTruthy();
+  expect(
+    screen.queryByRole("option", { name: /Partner|Anna|Reimbursements/ }),
+  ).toBeNull();
 });

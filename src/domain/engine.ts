@@ -1,5 +1,6 @@
 import {
   classifyRegisterEntry,
+  directEntryAccountMessage,
   linkedRefundShareMessage,
   splitPurchaseAmountMessage,
   purposeCategoryMessage,
@@ -1165,7 +1166,7 @@ function ensureNoCounterpartyEntries(budget: Budget): void {
         !transaction.removed && counterpartyIds.has(transaction.accountId),
     )
   )
-    fail("Entries on Partner and Reimbursements come from shares and settlements, not from the register");
+    fail(directEntryAccountMessage);
 }
 
 // The items in the order the ids name them. They trade places among

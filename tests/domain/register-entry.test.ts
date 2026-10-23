@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { execute } from "../../src/domain/engine";
-import { classifyRegisterEntry } from "../../src/domain/register-entry";
+import {
+  addMember,
+  createBook,
+  execute,
+  withCounterpartyAccounts,
+} from "../../src/domain/engine";
+import {
+  classifyRegisterEntry,
+  directEntryAccounts,
+} from "../../src/domain/register-entry";
 import { buildCommandCorpus } from "./fixtures/command-corpus";
 
 void test("register entries name every transaction shape and its register edit capability", () => {
@@ -47,4 +55,47 @@ void test("register entries name every transaction shape and its register edit c
     "statement-credit",
     "transfer",
   ]);
+});
+
+void test("F3: direct entry accounts include cash, credit and tracking but exclude both counterparties", () => {
+  let book = withCounterpartyAccounts(
+    addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
+  );
+  for (const kind of ["cash", "credit", "tracking"] as const)
+    book = execute(book, "a", {
+      type: "account.add",
+      id: kind,
+      accountId: kind,
+      name: kind,
+      kind,
+      openingBalance: 0,
+    });
+  const budget = book.budgets.a!;
+  assert.deepEqual(
+    directEntryAccounts(budget.accounts).map((account) => account.kind),
+    ["cash", "credit", "tracking"],
+  );
+});
+
+void test("F3: an existing counterparty entry cannot be edited as a direct transaction", () => {
+  const book = withCounterpartyAccounts(createBook("a", "A", "2026-10"));
+  const budget = book.budgets.a!;
+  const entry = classifyRegisterEntry(budget, {
+    id: "direct",
+    accountId: "counterparty:reimbursements",
+    date: "2026-10-10",
+    amount: -100,
+    payee: "Sam",
+    status: "posted",
+    expenseMonth: "2026-10",
+    kind: "purchase",
+    revision: 1,
+    reviewed: false,
+    history: [],
+  });
+  assert.deepEqual(entry.capabilities.edit, {
+    ok: false,
+    reason:
+      "Entries on Partner and Reimbursements come from shares and settlements, not from the register",
+  });
 });

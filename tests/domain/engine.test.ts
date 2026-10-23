@@ -2235,3 +2235,29 @@ void test("an agent cannot add a category group", () => {
     /requires a user action/,
   );
 });
+
+void test("direct register entries on either counterparty account use the account picker's refusal", () => {
+  const book = withCounterpartyAccounts(
+    addMember(fixture().book, "anna", "Anna", month),
+  );
+  for (const accountId of [
+    "counterparty:partner",
+    "counterparty:reimbursements",
+  ])
+    assert.throws(
+      () =>
+        execute(book, "alan", {
+          type: "transaction.upsert",
+          id: "direct",
+          transactionId: "direct",
+          accountId,
+          date,
+          amount: -1000,
+          payee: "Direct entry",
+        }),
+      {
+        message:
+          "Entries on Partner and Reimbursements come from shares and settlements, not from the register",
+      },
+    );
+});
