@@ -463,6 +463,11 @@ export function toShellData(
         !item.categoryId &&
         !item.lines &&
         account.kind !== "tracking";
+      // A repayment moves money out of a counterparty account, like a
+      // transfer, rather than earning it.
+      const repaidFrom =
+        item.linkedCounterpartyAccountId &&
+        counterparty.get(item.linkedCounterpartyAccountId);
       const shareNames = [
         ...new Set(
           (item.lines ?? [item])
@@ -509,7 +514,9 @@ export function toShellData(
                 : ((item.categoryId && categoryName.get(item.categoryId)) ??
                   (boundary
                     ? "Inflow: Ready to Assign"
-                    : transactionCategory(item.kind, item.amount))),
+                    : repaidFrom
+                      ? `Transfer: ${displayName(repaidFrom)}`
+                      : transactionCategory(item.kind, item.amount))),
         needsCategory,
         categoryNotNeeded,
         forMonth:

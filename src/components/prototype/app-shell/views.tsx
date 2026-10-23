@@ -43,7 +43,6 @@ import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
-import { CounterpartyRegister } from "./reimbursements-register";
 import { ShareCell, ShareDetail } from "./share-detail";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
@@ -58,7 +57,7 @@ import styles from "./shell.module.css";
 import reviewStyles from "./transaction-review.module.css";
 
 // Arrow keys move the selection through the rows of a list, like Linear's j/k.
-function moveSelection(event: KeyboardEvent<HTMLElement>) {
+export function moveSelection(event: KeyboardEvent<HTMLElement>) {
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
   const rows = [
     ...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-row]"),
@@ -559,9 +558,17 @@ export function RegisterView({
   const counterparty = accounts.find(
     (entry) => entry.id === accountId && isCounterparty(entry),
   );
-  if (counterparty)
-    return <CounterpartyRegister account={counterparty} query={query} />;
   if (!rows.length && !session) {
+    // A counterparty account's entries come from shares and settlements,
+    // so its empty register says what will fill it.
+    if (counterparty && !search)
+      return (
+        <Empty title="Nothing owed yet." icon={UsersIcon}>
+          {counterparty.kind === "partner"
+            ? `When you and ${counterparty.name} share a cost, what one of you owes the other shows here.`
+            : "When you pay for someone, what they owe you shows here. Its envelope in People can set money aside to cover it."}
+        </Empty>
+      );
     return search ? (
       <Empty title={`No transactions match “${search}”.`} icon={SearchIcon}>
         Search looks at payees, categories, and amounts in every month.
@@ -860,7 +867,7 @@ export function RegisterView({
   );
 }
 
-function Empty({
+export function Empty({
   title,
   icon: Icon = LandmarkIcon,
   done = false,
