@@ -1,16 +1,7 @@
 import type { View } from "~/components/budget/types";
-import {
-  bankImportActionIssue,
-  transactionActionIssue,
-  transactionShareMode,
-} from "~/domain/transaction-actions";
+import { classifyRegisterEntry } from "~/domain/register-entry";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
-import { READY_TO_ASSIGN } from "~/domain/transfers";
-import {
-  importCategory,
-  partnerMatchesOf,
-  type BankImport,
-} from "./import-draft";
+import { importCategory, type BankImport } from "./import-draft";
 
 type Transaction = View["budget"]["transactions"][number];
 
@@ -62,54 +53,36 @@ export function transactionActions(
   view: View,
   item: Transaction | BankImport,
 ): TransactionActions {
-  const account = view.accounts.find(
-    (account) => account.id === item.accountId,
+  const entry = classifyRegisterEntry(
+    view.budget,
+    "kind" in item ? item : { ...item, categoryId: importCategory(view, item) },
   );
-  const shareAccount = account?.kind === "cash" || account?.kind === "credit";
-  if (!("kind" in item)) {
-    const editable =
-      bankImportActionIssue(view.budget, item, "record") === null;
-    const categoryId = importCategory(view, item);
+  const capabilities = entry.capabilities;
+  if (entry.origin === "import") {
     return {
-      select: editable,
-      edit: editable ? "transaction" : null,
+      select: capabilities.record.ok,
+      edit: capabilities.record.ok ? "transaction" : null,
       approve: false,
       reject: false,
       categorize: false,
       refund: false,
       share:
-        editable &&
-        shareAccount &&
-        !item.loanId &&
-        !item.error &&
-        !item.needsMatchReview &&
-        !partnerMatchesOf(item).length &&
-        (item.amount < 0 ||
-          (item.amount > 0 &&
-            Boolean(categoryId) &&
-            categoryId !== READY_TO_ASSIGN))
-          ? "edit"
-          : null,
+        capabilities.share.mode === "none" ? null : capabilities.share.mode,
     };
   }
-  const active = !item.removed;
-  const needsReview = transactionNeedsReview(view, item);
   return {
-    select: active,
-    edit: !active
+    select: !entry.transaction.removed,
+    edit: entry.transaction.removed
       ? null
-      : item.linkedCounterpartyAccountId
+      : entry.transaction.linkedCounterpartyAccountId
         ? "repayment"
-        : transactionActionIssue(view.budget, item, "edit") === null
+        : capabilities.edit.ok
           ? "transaction"
           : null,
-    approve:
-      needsReview &&
-      transactionActionIssue(view.budget, item, "approve") === null,
-    reject: transactionActionIssue(view.budget, item, "reject") === null,
-    categorize:
-      transactionActionIssue(view.budget, item, "categorize") === null,
-    refund: transactionActionIssue(view.budget, item, "refund") === null,
-    share: transactionShareMode(view.budget, item),
+    approve: transactionNeedsReview(view, item) && capabilities.approve.ok,
+    reject: capabilities.reject.ok,
+    categorize: capabilities.categorize.ok,
+    refund: capabilities.refund.ok,
+    share: capabilities.share.mode === "none" ? null : capabilities.share.mode,
   };
 }
