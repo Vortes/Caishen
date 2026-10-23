@@ -1,16 +1,12 @@
 import {
   classifyRegisterEntry,
+  TRANSACTION_ACTION_LIMIT,
   directEntryAccountMessage,
   linkedRefundShareMessage,
   splitPurchaseAmountMessage,
   purposeCategoryMessage,
 } from "./register-entry";
 import { z } from "zod";
-import {
-  transactionActionIssue,
-  transactionEditOperation,
-  TRANSACTION_ACTION_LIMIT,
-} from "./transaction-actions";
 import {
   linkedRefundIssues,
   proportionalRefundLines,
@@ -2647,8 +2643,9 @@ function saveRegisterTransaction(
     (item) => item.id === command.transactionId,
   );
   if (existing) {
-    const issue = transactionActionIssue(budget, existing, "edit");
-    if (issue) fail(issue);
+    const capability = classifyRegisterEntry(budget, existing).capabilities
+      .edit;
+    if (!capability.ok) fail(capability.reason);
   }
   if (
     existing &&
@@ -3242,6 +3239,7 @@ function recomputeLinkedRefunds(
       changes.transaction(budget, refund).removed = true;
   for (const refund of refunds) {
     if (refund.id === savedRefundId) continue;
+    changes.transaction(budget, refund).removed = false;
     applyCommand(
       book,
       budget,
@@ -4038,11 +4036,16 @@ function applyCommand(
       const existing = budget.transactions.find(
         (transaction) => transaction.id === command.transactionId,
       );
-      if (
-        existing &&
-        transactionEditOperation(existing) !== "transaction.upsert"
-      )
-        fail("Use the dedicated operation for transfers and repayments");
+      if (existing) {
+        const entry = classifyRegisterEntry(budget, existing);
+        if (!entry.capabilities.edit.ok) fail(entry.capabilities.edit.reason);
+        switch (entry.shape.kind) {
+          case "transfer":
+          case "card-payment":
+          case "loan-payment":
+            fail("Use the dedicated operation for transfers and repayments");
+        }
+      }
       if (existing && existing.accountId !== command.accountId)
         fail("A transaction cannot move between accounts");
       if (existing) ensureReconciledUnchanged(existing, command);
@@ -4075,8 +4078,9 @@ function applyCommand(
         const original = getTransaction(budget, refundOfTransactionId);
         if (original.id === command.transactionId)
           fail("Link refunds to an original purchase");
-        const issue = transactionActionIssue(budget, original, "refund");
-        if (issue) fail(issue);
+        const capability = classifyRegisterEntry(budget, original).capabilities
+          .refund;
+        if (!capability.ok) fail(capability.reason);
         if (command.amount <= 0 || command.date < original.date)
           fail("A linked refund must be an inflow on or after its purchase");
         const siblings = budget.transactions.filter(
@@ -4395,8 +4399,9 @@ function applyCommand(
       const rejected = new Map<string, Transaction>();
       for (const id of command.transactionIds) {
         const transaction = getTransaction(budget, id);
-        const issue = transactionActionIssue(budget, transaction, "reject");
-        if (issue) fail(issue);
+        const capability = classifyRegisterEntry(budget, transaction)
+          .capabilities.reject;
+        if (!capability.ok) fail(capability.reason);
         const counterparts = transferCounterparts(budget, transaction);
         for (const item of [transaction, ...counterparts]) {
           rejected.set(item.id, item);
@@ -4445,8 +4450,9 @@ function applyCommand(
     case "transaction.approve": {
       for (const id of command.transactionIds) {
         const transaction = getTransaction(budget, id);
-        const issue = transactionActionIssue(budget, transaction, "approve");
-        if (issue) fail(issue);
+        const capability = classifyRegisterEntry(budget, transaction)
+          .capabilities.approve;
+        if (!capability.ok) fail(capability.reason);
         changes.transaction(budget, transaction).reviewed = true;
         for (const counterpart of transferCounterparts(budget, transaction))
           changes.transaction(budget, counterpart).reviewed = true;
@@ -4490,8 +4496,9 @@ function applyCommand(
     }
     case "transaction.categorize": {
       const transaction = getTransaction(budget, command.transactionId);
-      const issue = transactionActionIssue(budget, transaction, "categorize");
-      if (issue) fail(issue);
+      const capability = classifyRegisterEntry(budget, transaction).capabilities
+        .categorize;
+      if (!capability.ok) fail(capability.reason);
       if (isTransfer(transaction)) {
         const counterparts = transferCounterparts(budget, transaction);
         const category = getCategory(budget, command.categoryId);

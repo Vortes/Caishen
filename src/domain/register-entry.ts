@@ -6,6 +6,8 @@ import {
   transferNeedsCategory,
 } from "./transfers";
 
+export const TRANSACTION_ACTION_LIMIT = 500;
+
 type Action = "edit" | "approve" | "reject" | "categorize" | "refund";
 
 type RegisterBudget = Pick<Budget, "accounts" | "loans" | "transactions">;
@@ -199,6 +201,14 @@ export type ImportEligibility =
   | "opening_snapshot_changed"
   | "loan_activity"
   | "unmapped";
+type RegisterTransactionInput = Pick<
+  Transaction,
+  "id" | "accountId" | "date" | "amount" | "payee"
+> &
+  Partial<
+    Omit<Transaction, "id" | "accountId" | "date" | "amount" | "payee">
+  > & { transferAccountId?: string; loanId?: string };
+
 export type RegisterEntry =
   | {
       origin: "transaction";
@@ -206,6 +216,16 @@ export type RegisterEntry =
       transaction: Transaction;
       account: Account;
       capabilities: Capabilities;
+      fields: {
+        category: "purpose" | "none" | "boundary" | "linked" | "payment";
+        split: boolean;
+        needsCategory: boolean;
+        clearCategory: boolean;
+        readyToAssign: boolean;
+        budgetAmount: number;
+        budgetSide: "here" | "other";
+        loanPayment: boolean;
+      };
     }
   | {
       origin: "import";
@@ -229,9 +249,22 @@ const unavailable: Capability = {
 
 export function classifyRegisterEntry(
   budget: RegisterBudget,
-  item: Transaction | BankInboxItem,
+  item: RegisterTransactionInput,
+): Extract<RegisterEntry, { origin: "transaction" }>;
+export function classifyRegisterEntry(
+  budget: RegisterBudget,
+  item: BankInboxItem,
+): Extract<RegisterEntry, { origin: "import" }>;
+export function classifyRegisterEntry(
+  budget: RegisterBudget,
+  item: RegisterTransactionInput | BankInboxItem,
+): RegisterEntry;
+export function classifyRegisterEntry(
+  budget: RegisterBudget,
+  input: RegisterTransactionInput | BankInboxItem,
 ): RegisterEntry {
-  if (!("kind" in item)) {
+  if ("quarantined" in input) {
+    const item = input;
     const record = capability(bankImportActionIssue(budget, item, "record"));
     const account = budget.accounts.find(
       (account) => account.id === item.accountId,
@@ -264,9 +297,48 @@ export function classifyRegisterEntry(
     };
   }
   const account = budget.accounts.find(
-    (account) => account.id === item.accountId,
+    (account) => account.id === input.accountId,
   );
   if (!account) throw new Error("Account access denied");
+  const destination =
+    "transferAccountId" in input
+      ? budget.accounts.find(
+          (account) => account.id === input.transferAccountId,
+        )
+      : undefined;
+  const loan = budget.loans.find(
+    (loan) =>
+      ("loanId" in input && loan.id === input.loanId) ||
+      loan.payments.some((payment) => payment.id === input.linkedId),
+  );
+  const sending = input.amount < 0 ? account : destination;
+  const receiving = input.amount < 0 ? destination : account;
+  const item: Transaction = {
+    ...input,
+    kind:
+      input.kind ??
+      (loan
+        ? "loan-payment"
+        : destination
+          ? sending?.kind === "cash" && receiving?.kind === "credit"
+            ? "card-payment"
+            : "transfer"
+          : input.amount < 0
+            ? "purchase"
+            : input.categoryId ||
+                input.lines ||
+                input.counterpartyShare ||
+                input.refundOfTransactionId
+              ? "refund"
+              : account.kind === "credit"
+                ? "statement-credit"
+                : "income"),
+    status: input.status ?? "posted",
+    revision: input.revision ?? 1,
+    history: input.history ?? [],
+    reviewed: input.reviewed ?? false,
+    expenseMonth: input.expenseMonth ?? input.date.slice(0, 7),
+  };
   const lines = counterpartyLines(item);
   const totalShare = lines.reduce(
     (total, line) => total + (line.counterpartyShare?.amount ?? 0),
@@ -300,15 +372,29 @@ export function classifyRegisterEntry(
     case "loan-payment":
       shape = {
         kind: item.kind,
-        loan:
-          budget.loans.find((loan) =>
-            loan.payments.some((payment) => payment.id === item.linkedId),
-          ) ?? null,
+        loan: loan ?? null,
       };
       break;
     default:
       shape = { kind: item.kind };
   }
+  const counterpart = "counterpart" in shape ? shape.counterpart : null;
+  const other =
+    destination ??
+    budget.accounts.find((account) => account.id === counterpart?.accountId);
+  const boundary = Boolean(other && transferNeedsCategory(account, other));
+  const category = item.refundOfTransactionId
+    ? "linked"
+    : isTransfer(item)
+      ? boundary
+        ? "boundary"
+        : "none"
+      : item.kind === "loan-payment"
+        ? "payment"
+        : account.kind === "tracking" ||
+            (item.kind === "adjustment" && account.kind !== "cash")
+          ? "none"
+          : "purpose";
   const edit = transactionActionIssue(budget, item, "edit");
   const shareMode = transactionShareMode(budget, item);
   return {
@@ -316,6 +402,24 @@ export function classifyRegisterEntry(
     transaction: item,
     account,
     shape,
+    fields: {
+      category,
+      split:
+        (item.kind === "purchase" || item.kind === "refund") &&
+        category === "purpose",
+      needsCategory:
+        item.kind === "purchase" &&
+        share === "none" &&
+        !item.categoryId &&
+        !item.lines &&
+        account.kind !== "tracking",
+      clearCategory:
+        isTransfer(item) || item.kind === "loan-payment" || !item.categoryId,
+      readyToAssign: boundary || account.kind !== "credit",
+      budgetAmount: account.kind === "tracking" ? -item.amount : item.amount,
+      budgetSide: account.kind === "tracking" ? "other" : "here",
+      loanPayment: account.kind === "cash",
+    },
     capabilities: {
       edit: edit
         ? { ok: false, reason: edit }

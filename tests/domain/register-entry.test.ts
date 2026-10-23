@@ -99,3 +99,38 @@ void test("F3: an existing counterparty entry cannot be edited as a direct trans
       "Entries on Partner and Reimbursements come from shares and settlements, not from the register",
   });
 });
+
+void test("register classification supplies category and split field rules for prospective entries", () => {
+  let book = createBook("a", "A", "2026-10");
+  for (const kind of ["cash", "tracking"] as const)
+    book = execute(book, "a", {
+      type: "account.add",
+      id: kind,
+      accountId: kind,
+      name: kind,
+      kind,
+      openingBalance: 0,
+    });
+  const budget = book.budgets.a!;
+  const input = {
+    id: "draft",
+    accountId: "cash",
+    date: "2026-10-10",
+    amount: -100,
+    payee: "Draft",
+    status: "posted" as const,
+  };
+  const entry = classifyRegisterEntry(budget, input);
+  assert.equal(entry.origin, "transaction");
+  if (entry.origin !== "transaction") return;
+  assert.equal(entry.fields.category, "purpose");
+  assert.equal(entry.fields.split, true);
+  const transfer = classifyRegisterEntry(budget, {
+    ...input,
+    transferAccountId: "tracking",
+  });
+  assert.equal(transfer.origin, "transaction");
+  if (transfer.origin !== "transaction") return;
+  assert.equal(transfer.fields.category, "boundary");
+  assert.equal(transfer.fields.split, false);
+});

@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  classifyRegisterEntry,
   directEntryAccounts,
   accountKindLabels,
 } from "~/domain/register-entry";
+import { transferNeedsCategory } from "~/domain/transfers";
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon, XIcon } from "lucide-react";
 import {
@@ -14,7 +16,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { isTransfer, transferNeedsCategory } from "~/domain/transfers";
 import { newId, today } from "~/components/budget/format";
 import {
   READY_TO_ASSIGN,
@@ -120,30 +121,34 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       : item.loanId === draft.loanId,
   );
   const loan = view.budget.loans.find((item) => item.id === draft.loanId);
-  const other = view.accounts.find(
-    (item) => item.id === draft.transferAccountId,
-  );
-  const boundary = Boolean(
-    account && other && transferNeedsCategory(account, other),
-  );
-  const categoryNotNeeded =
-    Boolean(other && !boundary) || (account?.kind === "tracking" && !other);
-  const budgetInflow =
-    account?.kind === "tracking"
-      ? Boolean(draft.outflow)
-      : Boolean(draft.inflow);
-  // A purchase or refund can split; a transfer, loan payment, or tracked
-  // activity can't.
-  const splittable =
-    !draft.transferAccountId && !draft.loanId && account?.kind !== "tracking";
+  const draftCents = draftAmount(draft) ?? 0;
+  const draftEntry = account
+    ? classifyRegisterEntry(view.budget, {
+        id: initial?.id ?? session.key,
+        accountId: account.id,
+        date: draft.date,
+        payee: draft.payee,
+        amount: draftCents === 0 ? (draft.inflow ? 1 : -1) : draftCents,
+        status: draft.status,
+        transferAccountId: draft.transferAccountId || undefined,
+        loanId: draft.loanId || undefined,
+        categoryId:
+          draft.categoryId === READY_TO_ASSIGN
+            ? undefined
+            : draft.categoryId || undefined,
+        refundOfTransactionId: draft.refundOfTransactionId,
+      })
+    : undefined;
+  const initialEntry = initial
+    ? classifyRegisterEntry(view.budget, initial)
+    : undefined;
+  const boundary = draftEntry?.fields.category === "boundary";
+  const categoryNotNeeded = draftEntry?.fields.category === "none";
+  const budgetInflow = (draftEntry?.fields.budgetAmount ?? 0) > 0;
+  const splittable = draftEntry?.fields.split ?? false;
   const split = draft.lines.length > 0;
   const remaining = split ? splitRemaining(draft) : undefined;
-  // A purchase or refund on a cash or card account can carry a share.
-  const shareable =
-    !categoryNotNeeded &&
-    !draft.transferAccountId &&
-    !draft.loanId &&
-    (account?.kind === "cash" || account?.kind === "credit");
+  const shareable = draftEntry?.capabilities.share.mode !== "none";
   // The share a new transaction took from its payee's memory, until the
   // user picks one.
   const remembered =
@@ -152,10 +157,12 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       : undefined;
   // A linked refund's share follows its purchase, in proportion to what's
   // refunded so far.
-  const refundOf = draft.refundOfTransactionId
-    ? view.budget.transactions.find(
-        (item) => item.id === draft.refundOfTransactionId,
-      )
+  const linkedTo =
+    draftEntry && "linkedTo" in draftEntry.shape
+      ? draftEntry.shape.linkedTo
+      : null;
+  const refundOf = linkedTo
+    ? view.budget.transactions.find((item) => item.id === linkedTo)
     : undefined;
   const refundShares = (() => {
     const refunded = draftAmount(draft);
@@ -164,7 +171,12 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       .filter(
         (item) =>
           !item.removed &&
-          item.refundOfTransactionId === refundOf.id &&
+          (() => {
+            const entry = classifyRegisterEntry(view.budget, item);
+            return (
+              "linkedTo" in entry.shape && entry.shape.linkedTo === refundOf.id
+            );
+          })() &&
           item.id !== session.initial?.id,
       )
       .reduce((sum, item) => sum + item.amount, 0);
@@ -210,12 +222,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       group: "Inflow",
       amount: view.readyToAssign,
       disabled:
-        (boundary ? !budgetInflow : account?.kind === "credit") ||
+        (boundary ? !budgetInflow : !draftEntry?.fields.readyToAssign) ||
         (Boolean(initial?.categoryId) &&
           !boundary &&
           initial !== undefined &&
-          !isTransfer(initial) &&
-          initial?.kind !== "loan-payment"),
+          !initialEntry?.fields.clearCategory),
     },
     ...spendingOptions,
   ];
@@ -513,10 +524,10 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const afterSingleCategory = (categoryId: string) =>
     advance(
       categoryId === READY_TO_ASSIGN
-        ? account?.kind === "tracking" && boundary
+        ? draftEntry?.fields.budgetSide === "other" && boundary
           ? "outflow"
           : "inflow"
-        : account?.kind === "tracking" && boundary && draft.inflow
+        : draftEntry?.fields.budgetSide === "other" && boundary && draft.inflow
           ? "inflow"
           : "outflow",
     );
