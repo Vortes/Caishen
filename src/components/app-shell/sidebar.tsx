@@ -81,6 +81,7 @@ export function Sidebar({
           id: account.id,
           label: account.name,
           value: account.balance,
+          toReview: account.toReview,
           warning: Boolean(account.connection?.needsAttention),
           current:
             screen.type === "register" && screen.accountId === account.id,
@@ -97,6 +98,7 @@ export function Sidebar({
           id: account.id,
           label: account.name,
           value: account.balance,
+          toReview: account.toReview,
           warning: Boolean(account.connection?.needsAttention),
           current:
             screen.type === "register" && screen.accountId === account.id,
@@ -113,6 +115,7 @@ export function Sidebar({
           id: account.id,
           label: account.name,
           value: account.balance,
+          toReview: account.toReview,
           warning: false,
           current:
             screen.type === "register" && screen.accountId === account.id,
@@ -133,8 +136,8 @@ export function Sidebar({
           id: account.id,
           label: account.name,
           value: account.balance,
-          warning: false,
           toReview: account.toReview,
+          warning: false,
           current:
             screen.type === "register" && screen.accountId === account.id,
           go: () => onNavigate({ type: "register", accountId: account.id }),
@@ -528,6 +531,15 @@ function NavButton({
       {...rest}
       type="button"
       className={styles.navItem}
+      aria-label={value === undefined ? label : `${label} ${money(value)}`}
+      aria-description={
+        [
+          warning && "Connection needs attention",
+          toReview && "Transactions to review",
+        ]
+          .filter(Boolean)
+          .join(". ") || undefined
+      }
       aria-current={current ? "page" : undefined}
     >
       <NavContents
