@@ -1,9 +1,6 @@
 import { z } from "zod";
-import {
-  counterpartyLines,
-  counterpartyRegisterEntries,
-  shareContribution,
-} from "./counterparty";
+import { linkedRefundIssues } from "./linked-refunds";
+import { counterpartyLines, counterpartyRegisterEntries, shareContribution } from "./counterparty";
 export { counterpartyRegisterEntries } from "./counterparty";
 import {
   isTransfer,
@@ -939,7 +936,7 @@ export function budgetReferenceIssues(
     )
   )
     issues.push("Invalid assignment reference");
-  return issues;
+  return [...issues, ...linkedRefundIssues(budget)];
 }
 // The stored data both partners share: shared categories, what they owe each
 // other, their settlements, and the command audit.
