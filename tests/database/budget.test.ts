@@ -58,16 +58,6 @@ function purchase(amount: number) {
     reviewed: false,
   };
 }
-const statement = {
-  accountId: "alice-bank",
-  periodStart: "2026-10-01",
-  cutoff: "2026-10-31",
-  openingBalanceCents: 500_000,
-  closingBalanceCents: 490_000,
-  csv: "Date,Description,Amount\n2026-10-02,Private merchant,-100.00",
-  verified: true,
-};
-
 void test("a signed-out request cannot read a budget", async () => {
   const db = new PrismaClient();
   try {
@@ -192,7 +182,7 @@ void test("the API refuses future deposits and opening balances", async (t) => {
   );
   assert.equal((await alice.state()).view!.cash, 500_000);
 });
-void test("another user's private accounts, purchases and suggestions are inaccessible", async (t) => {
+void test("another user's private accounts and purchases are inaccessible", async (t) => {
   const { alice, bob, eve } = await purchaseFixture(t);
   assert.equal(
     (await bob.state()).view!.accounts.filter(
@@ -201,10 +191,6 @@ void test("another user's private accounts, purchases and suggestions are inacce
     0,
   );
   await assert.rejects(bob.run({ ...purchase(-100), transactionId: "stolen" }));
-  await assert.rejects(
-    bob.api.budget.suggest({ transactionIds: ["secret-purchase"] }),
-    { code: "NOT_FOUND" },
-  );
   const { code } = await alice.api.budget.invite();
   await bob.api.budget.join({ code });
   const shared = await bob.state();
@@ -295,42 +281,4 @@ void test("concurrent personal changes both persist in a joined household", asyn
         (category) => category.id === `concurrent-${index}`,
       ),
     );
-});
-void test("matching statement evidence persists and becomes stale after a purchase correction", async (t) => {
-  const { alice } = await purchaseFixture(t);
-  assert.equal(
-    (await alice.api.budget.reconcile(statement)).status,
-    "reconciled",
-  );
-  const saved = await alice.state();
-  assert.equal(saved.evidence[0]!.result.status, "reconciled");
-  assert.ok(!("evidence" in saved.evidence[0]!));
-  await alice.run(purchase(-9_000));
-  const stale = await alice.state();
-  assert.equal(stale.evidence[0]!.result.status, "insufficient_evidence");
-  assert.match(stale.evidence[0]!.result.reasons[0]!, /ledger changed/);
-});
-void test("a statement discrepancy creates no invented cash adjustment", async (t) => {
-  const { alice } = await purchaseFixture(t);
-  const result = await alice.api.budget.reconcile({
-    ...statement,
-    closingBalanceCents: 489_900,
-    csv: "Date,Description,Amount\n2026-10-02,Private merchant,-101.00",
-  });
-  assert.equal(result.status, "discrepancy");
-  assert.equal((await alice.state()).view!.cash, 490_000);
-});
-void test("statement comparisons require verified evidence and remain private", async (t) => {
-  const { alice, bob } = await purchaseFixture(t);
-  const { code } = await alice.api.budget.invite();
-  await bob.api.budget.join({ code });
-  await assert.rejects(bob.api.budget.reconcile(statement), {
-    code: "NOT_FOUND",
-  });
-  assert.equal(
-    (await alice.api.budget.reconcile({ ...statement, verified: false }))
-      .status,
-    "insufficient_evidence",
-  );
-  assert.equal((await bob.state()).evidence.length, 0);
 });

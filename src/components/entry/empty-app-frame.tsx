@@ -10,8 +10,8 @@ import {
 import { useState, type ReactNode } from "react";
 import { IconButton } from "~/components/ui/icon-button";
 import { TooltipProvider } from "~/components/ui/tooltip";
-import { useSavedSettings } from "~/components/prototype/app-shell/settings";
-import shell from "~/components/prototype/app-shell/shell.module.css";
+import { useSavedSettings } from "~/components/app-shell/settings";
+import shell from "~/components/app-shell/shell.module.css";
 import styles from "./load-error.module.css";
 export function EmptyAppFrame({ children }: { children: ReactNode }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);

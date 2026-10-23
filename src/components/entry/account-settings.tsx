@@ -9,8 +9,8 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
-import { useShellData } from "~/components/prototype/app-shell/shell-data";
-import shell from "~/components/prototype/app-shell/shell.module.css";
+import { useShellData } from "~/components/app-shell/shell-data";
+import shell from "~/components/app-shell/shell.module.css";
 import batch from "./entry.module.css";
 import styles from "./settings.module.css";
 

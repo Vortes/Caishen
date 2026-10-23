@@ -1,0 +1,109 @@
+.popover {
+  z-index: 60;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  transform-origin: var(--radix-popover-content-transform-origin);
+  animation: popover-in 150ms var(--ease-panel);
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popover {
+    animation: none;
+  }
+}
+
+.monthTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.monthTrigger > svg {
+  color: var(--text-tertiary);
+}
+.monthTrigger[data-state="open"] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.monthGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 248px;
+  padding: 8px;
+}
+.yearRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.yearLabel {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+/* Month cells follow the date calendar: today is a quiet fill, the month on
+   screen is the accent. */
+.monthCell {
+  height: var(--size-control);
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.monthCell:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.monthCell[data-today] {
+  background: var(--surface-selected);
+}
+.monthCell[aria-current="date"] {
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
+}
+.monthCell:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.monthCell:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.pickerFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (pointer: coarse) {
+  .monthCell {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .monthCell {
+    transition: none;
+  }
+}

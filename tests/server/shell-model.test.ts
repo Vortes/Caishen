@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { toShellData } from "../../src/components/prototype/app-shell/model";
-import { viewOf } from "../../src/components/prototype/app-shell/plan-view";
+import { toShellData } from "../../src/components/app-shell/model";
+import { viewOf } from "../../src/components/app-shell/plan-view";
 import {
   createBook,
   execute,

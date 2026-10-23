@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { TRPCError } from "@trpc/server";
 import type userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import type { Command, Target } from "~/domain/engine";
-import { renderShell, sent } from "./shell-harness";
+import { findToast, renderShell, sent } from "./shell-harness";
 
 type User = ReturnType<typeof userEvent.setup>;
 
@@ -278,4 +279,82 @@ test("Escape from a field closes the editor without saving", async () => {
     screen.getByRole("button", { name: "Create target" }),
   );
   expect(shell.execute).not.toHaveBeenCalled();
+});
+
+test("snoozing a target survives reopening the budget and can be turned off", async () => {
+  const shell = await renderShell({ seedCommands: [giftsTarget] });
+  await select(shell.user, "Gifts");
+  await shell.user.click(
+    screen.getByRole("switch", { name: /Snooze for October/ }),
+  );
+  await screen.findByText("Snoozed for October");
+  await shell.reload();
+  await select(shell.user, "Gifts");
+  expect(
+    screen
+      .getByRole("switch", { name: /Snooze for October/ })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  await shell.user.click(
+    screen.getByRole("switch", { name: /Snooze for October/ }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("Snoozed for October")).toBeNull(),
+  );
+});
+
+test("the month grid jumps across years while target snoozing stays in the current month", async () => {
+  const shell = await renderShell({ seedCommands: [giftsTarget] });
+  await select(shell.user, "Gifts");
+  await shell.user.click(
+    screen.getByRole("button", { name: "October 2026, choose a month" }),
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "September 2026" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  await shell.user.click(screen.getByRole("button", { name: "Next year" }));
+  await shell.user.click(screen.getByRole("button", { name: "February 2027" }));
+  expect(
+    screen.getByRole("button", { name: "February 2027, choose a month" }),
+  ).toBeTruthy();
+  expect(
+    screen
+      .getByRole("switch", { name: /Snooze for February/ })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  await shell.user.click(
+    screen.getByRole("button", { name: "February 2027, choose a month" }),
+  );
+  await shell.user.click(screen.getByRole("button", { name: "This month" }));
+  expect(
+    screen
+      .getByRole("switch", { name: /Snooze for October/ })
+      .hasAttribute("disabled"),
+  ).toBe(false);
+});
+
+test("a refused snooze shows the reason and restores the unsnoozed target", async () => {
+  const shell = await renderShell({
+    seedCommands: [giftsTarget],
+    execute: () => {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "This target changed. Refresh before snoozing.",
+      });
+    },
+  });
+  await select(shell.user, "Gifts");
+  await shell.user.click(
+    screen.getByRole("switch", { name: /Snooze for October/ }),
+  );
+  await findToast("This target changed. Refresh before snoozing.");
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole("switch", { name: /Snooze for October/ })
+        .getAttribute("aria-checked"),
+    ).toBe("false"),
+  );
 });

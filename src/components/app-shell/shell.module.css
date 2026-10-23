@@ -1,0 +1,1893 @@
+.root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+  padding: var(--space-gutter);
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  line-height: 1.4;
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
+}
+/* A Monkeytype palette sets five raw colors inline (--mt-*). Its background
+   becomes the panel, and the rest of the surface ladder steps from it by the
+   same lightness offsets as the default dark theme. Status green and amber
+   keep their money meaning, so only red follows the palette. */
+.root[data-palette] {
+  --surface-panel: var(--mt-bg);
+  --surface-app: oklch(from var(--mt-bg) calc(l - 0.028) c h);
+  --control-bg: oklch(from var(--mt-bg) calc(l + 0.022) c h);
+  --surface-group: oklch(from var(--mt-bg) calc(l + 0.014) c h);
+  --surface-raised: oklch(from var(--mt-bg) calc(l + 0.027) c h);
+  --surface-hover: oklch(from var(--mt-bg) calc(l + 0.044) c h);
+  --control-bg-hover: oklch(from var(--mt-bg) calc(l + 0.054) c h);
+  --border-subtle: oklch(from var(--mt-bg) calc(l + 0.062) c h);
+  --surface-selected: oklch(from var(--mt-bg) calc(l + 0.067) c h);
+  --border-card: oklch(from var(--mt-bg) calc(l + 0.072) c h);
+  --control-border: oklch(from var(--mt-bg) calc(l + 0.082) c h);
+  --control-bg-active: oklch(from var(--mt-bg) calc(l + 0.112) c h);
+  --border-strong: oklch(from var(--mt-bg) calc(l + 0.162) c h);
+  --control-border-active: var(--border-strong);
+  --border-edge-lit: oklch(from var(--mt-bg) calc(l + 0.38) c h);
+  --text-primary: var(--mt-text);
+  --text-secondary: color-mix(in oklch, var(--mt-text) 55%, var(--mt-sub));
+  --text-tertiary: var(--mt-sub);
+  --accent-solid: var(--mt-main);
+  --text-on-accent: var(--mt-bg);
+  --focus-ring: var(--mt-main);
+  --status-overspent: var(--mt-error);
+  --status-overspent-bg: oklch(from var(--mt-error) 0.42 calc(c * 0.7) h / 0.4);
+  --money-negative: var(--mt-error);
+}
+.root[data-switching] *,
+.root[data-switching] *::after {
+  transition: none !important;
+}
+.root[data-theme="light"] .scrim {
+  background: oklch(0.2 0.01 var(--hue) / 0.2);
+}
+.root :where(button) {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  transition: none;
+}
+.root :focus-visible {
+  outline: 2px solid var(--accent-solid);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+:global(html[data-resizing]) .root,
+:global(html[data-resizing]) .root * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.skipLink {
+  position: absolute;
+  z-index: 100;
+  top: 12px;
+  left: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
+  transform: translateY(-200%);
+}
+.skipLink:focus-visible {
+  transform: none;
+}
+
+/* ---------- Sidebar ---------- */
+
+/* The slot's width animates; its content keeps a fixed width and hugs the
+   right edge, so closing slides the content out to the left. */
+.sidebar {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  overflow: hidden;
+  height: 100%;
+}
+.root[data-ready] .sidebar,
+.root[data-ready] .inspector {
+  transition: width var(--duration-panel) var(--ease-panel);
+}
+.root[data-dragging] .sidebar,
+.root[data-dragging] .inspector {
+  transition: none;
+}
+.sidebarInner {
+  flex: none;
+  height: 100%;
+  padding-right: var(--space-gutter);
+}
+.sidebarNav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+/* The budget menu's fill hugs its name, like Linear's; the toggle keeps
+   the far end. */
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  height: var(--size-sidebar-header);
+  margin-bottom: 8px;
+}
+.switcher {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-control);
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  font-weight: 500;
+}
+.switcher:hover,
+.switcher[data-state="open"] {
+  background: var(--surface-hover);
+}
+.switcher > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--size-badge);
+  height: var(--size-badge);
+  overflow: hidden;
+  border-radius: 50%;
+  background: oklch(0.6 0.15 30);
+  color: white;
+  font-size: var(--type-caption);
+  font-weight: 600;
+}
+.avatar[data-size="large"] {
+  width: 48px;
+  height: 48px;
+  font-size: var(--type-title);
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.switcherName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebarScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.navItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-md);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+}
+.navItem:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.navItem[aria-current="page"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.navIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.navItem[aria-current="page"] .navIcon {
+  color: var(--text-secondary);
+}
+.navLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.navValue,
+.sectionTotal {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.warningDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--feedback-attention);
+}
+.navSection {
+  display: flex;
+  flex-direction: column;
+}
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--size-control-xs);
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+  text-align: left;
+}
+.sectionHeading:hover {
+  color: var(--text-secondary);
+}
+.sectionCaret {
+  flex: none;
+  margin-left: 2px;
+  transition: transform 200ms var(--ease-panel);
+}
+.sectionHeading[aria-expanded="false"] .sectionCaret {
+  transform: rotate(-90deg);
+}
+/* Opening and closing animate the section's height through a 0fr/1fr grid
+   track while its rows fade. Closing is quicker and fades first, so rows
+   never visibly get cut off. */
+.sectionBody {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 220ms var(--ease-panel),
+    opacity 220ms var(--ease-panel);
+}
+.sectionBody[data-open="false"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms var(--ease-panel),
+    opacity 120ms ease-out;
+}
+.sectionBody > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.sectionBody > div > * {
+  margin-top: 2px;
+}
+/* Rows inside a section sit indented under its heading, like Linear's
+   nested items. */
+.nested .navItem {
+  padding-left: 20px;
+}
+.sectionTotal {
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.sectionHeading:hover .sectionTotal,
+.sectionHeading:focus-visible .sectionTotal {
+  opacity: 1;
+}
+.sidebarFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding-top: 8px;
+}
+/* ---------- Main panel ---------- */
+
+.main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-panel);
+}
+.header {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-header);
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+/* Reserves room for the sidebar toggle only while the sidebar is closed. */
+.toggleSlot {
+  display: grid;
+  grid-template-columns: 0fr;
+  margin-right: -8px;
+  opacity: 0;
+  transition:
+    grid-template-columns var(--duration-panel) var(--ease-panel),
+    margin-right var(--duration-panel) var(--ease-panel),
+    opacity 150ms;
+}
+.toggleSlot > div {
+  min-width: 0;
+  overflow: hidden;
+}
+.toggleSlot[data-show] {
+  grid-template-columns: 1fr;
+  margin-right: 0;
+  margin-left: -4px;
+  opacity: 1;
+}
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.headerTitle {
+  margin: 0;
+  font-size: var(--type-body);
+  font-weight: 500;
+  letter-spacing: inherit;
+  white-space: nowrap;
+}
+.crumb {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.crumbSeparator {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.reportTabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+.reportTab {
+  height: var(--size-control-sm);
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.reportTab:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+.reportTab[aria-selected="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.monthNav {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+.monthButton {
+  height: var(--size-control-sm);
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.monthButton:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--size-toolbar);
+  padding: 0 10px 0 20px;
+}
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+/* An account's toolbar holds more than one row's worth on a phone, so its
+   search and filters wrap to a line of their own. */
+.toolbar[data-wrap] {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  height: auto;
+  min-height: var(--size-toolbar);
+  padding-block: 12px;
+}
+.toolbar[data-wrap] .toolbarActions {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* ---------- Account ---------- */
+
+/* The balance equation sits above the toolbar, aligned with its left edge. */
+.accountSummary {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 10px 4px 20px;
+}
+.balances {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 16px;
+  margin: 0;
+}
+.balances > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.balances dt {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.balances dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.balances > [data-total] dd {
+  color: var(--text-primary);
+}
+/* Sits on the figures' line, not the captions'. */
+.balanceOperator {
+  padding-bottom: 20px;
+  color: var(--text-tertiary);
+  font-size: var(--type-title);
+}
+.summaryActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.reconciledLabel {
+  margin-right: 6px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+/* A filled well like the move-money search, at the toolbar's button height. */
+.toolbarSearch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 240px;
+  min-width: 0;
+  height: var(--size-control-xs);
+  padding: 0 2px 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font-size: var(--type-small);
+  cursor: text;
+  transition: border-color 150ms;
+}
+.toolbarSearch:focus-within {
+  border-color: var(--focus-ring);
+}
+.toolbarSearch input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.toolbarSearch input::-webkit-search-cancel-button {
+  display: none;
+}
+.toolbarSearch input::placeholder {
+  color: var(--text-tertiary);
+}
+.root .toolbarSearch input:focus-visible {
+  outline: none;
+}
+.searchIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.searchKey {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--type-caption);
+}
+@media (pointer: coarse) {
+  .toolbarSearch input {
+    font-size: 16px;
+  }
+}
+/* ---------- Ready to Assign ---------- */
+
+.rtaCard {
+  --tone: var(--money-positive);
+}
+.rtaCard[data-state="zero"] {
+  --tone: var(--text-secondary);
+}
+.rtaCard[data-state="over"] {
+  --tone: var(--money-negative);
+}
+
+/* On Plan, Ready to Assign leads the inspector as its own card. */
+/* Sets the tone for the figure and button inside the Card. */
+.rtaCard {
+  display: contents;
+}
+.rtaCardLabel {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+/* The same figure step as the other inspector cards (.figure): one card's
+   headline, not the page's. */
+.rtaCard strong {
+  color: var(--tone);
+  font-size: var(--type-figure);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.rtaCard p {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+/* A column, so the primary button spans the card. */
+.rtaAction {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.monthButton:disabled {
+  background: transparent;
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  transform: none;
+}
+
+/* The plan's focused views: one row of chips that scrolls sideways when the
+   panel is too narrow to hold them. */
+.views {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.chipCount {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+[aria-pressed="true"] > .chipCount {
+  color: var(--text-secondary);
+}
+/* Overspent's count takes the funding state of what it lists: overspent with
+   cash overspending, credit when it's all on a card. */
+.chipCount[data-state="overspent"] {
+  color: var(--status-overspent);
+}
+.chipCount[data-state="credit"] {
+  color: var(--status-credit);
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  container-type: inline-size;
+  outline: none;
+}
+
+/* ---------- Controls: Linear-style filled pills ---------- */
+
+/* ---------- Resize handles ---------- */
+
+.handle {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.handle[data-side="left"] {
+  left: calc(var(--space-gutter) * -1 - 2px);
+}
+.handle[data-side="right"] {
+  left: 0;
+}
+/* Linear-style resize affordance: a 1px beam that stops short of the ends
+   and fades out toward them. The short delay keeps it quiet when the cursor
+   just passes by; it stays lit while dragging. */
+.handle::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: var(--border-edge-lit);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 20%,
+    black 80%,
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+/* Sidebar: on the main panel's left border. */
+.handle[data-side="left"]::after {
+  left: calc(var(--space-gutter) + 2px);
+}
+/* Details: down the middle of the gap before the cards. */
+.handle[data-side="right"]::after {
+  left: 6px;
+}
+.handle:hover::after,
+.handle:focus-visible::after,
+.handle[data-active]::after {
+  opacity: 1;
+  transition: opacity 320ms var(--ease-panel) 100ms;
+}
+.root .handle:focus-visible {
+  outline: none;
+}
+
+/* ---------- Inspector ---------- */
+
+.inspectorSlot {
+  position: relative;
+  flex: none;
+  display: flex;
+}
+.inspector {
+  display: flex;
+  justify-content: flex-start;
+  overflow: hidden;
+  height: 100%;
+}
+.inspectorInner {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+  height: 100%;
+  padding: 0 var(--space-inset) var(--space-inset) 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+/* The last card runs to the bottom of the panel, like Linear's. */
+.inspectorInner > :last-child {
+  flex: 1;
+}
+.cardTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 2px 6px;
+}
+.cardTitle p {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--size-control-xs);
+}
+.cardTitleRow h2 {
+  flex: 1;
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.titleIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 2px 2px;
+}
+.figure strong {
+  font-size: var(--type-figure);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.figure span {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.cardActions {
+  display: flex;
+  gap: 8px;
+  padding-top: 10px;
+}
+.figure[data-state="funded"] strong {
+  color: var(--status-funded);
+}
+.figure[data-state="underfunded"] span {
+  color: var(--status-underfunded);
+}
+.figure[data-state="overspent"] strong,
+.figure[data-state="overspent"] span {
+  color: var(--status-overspent);
+}
+.figure[data-state="credit"] strong,
+.figure[data-state="credit"] span {
+  color: var(--status-credit);
+}
+.property {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  min-height: var(--size-row-sm);
+}
+.propertyLabel {
+  padding-left: 2px;
+  color: var(--text-tertiary);
+}
+.propertyValue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: var(--size-control-sm);
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.propertyValue:hover {
+  background: var(--surface-hover);
+}
+.propertyValue > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.tabBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tabEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 2px;
+  color: var(--text-tertiary);
+  text-wrap: pretty;
+}
+.tabEmptyTitle {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.tabEmpty p {
+  margin: 0 0 4px;
+  max-width: 52ch;
+}
+.tabActions {
+  display: flex;
+  padding-top: 8px;
+}
+.actionList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.actionItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--size-row-sm);
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+}
+.actionItem > span:nth-last-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.actionItem:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+button.actionItem:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.autoAssignError {
+  padding: 6px 6px 2px;
+}
+.actionItem > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 2px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.meterTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface-hover);
+}
+.meterTrack > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--status-funded);
+  transform-origin: left;
+}
+.meter[data-state="underfunded"] .meterTrack > span {
+  background: var(--status-underfunded);
+}
+.meter[data-state="overspent"] .meterTrack > span {
+  background: var(--status-overspent);
+}
+.meter[data-state="overspent"] {
+  color: var(--status-overspent);
+}
+.meter[data-state="credit"] .meterTrack > span {
+  background: var(--status-credit);
+}
+.meter[data-state="snoozed"] .meterTrack > span {
+  background: var(--text-tertiary);
+}
+
+/* ---------- Lists ---------- */
+
+/* Rows sit inset from the panel edge with a wide left padding that holds
+   the checkbox, keeping row controls clear of the strip at the window edge
+   that opens the collapsed sidebar. */
+.list {
+  /* The left padding that holds a row's checkbox, 10px in from the row's
+     edge like the column header's. */
+  --row-gutter: 34px;
+  padding: 0 8px 72px;
+}
+.columns,
+.txColumns,
+.loanColumns {
+  display: grid;
+  align-items: center;
+  column-gap: 16px;
+  width: 100%;
+  padding: 0 var(--space-row-x) 0 var(--row-gutter);
+}
+.columns {
+  grid-template-columns: minmax(0, 1fr) 104px 104px 116px;
+}
+.txColumns {
+  grid-template-columns: var(--tx-columns);
+  /* Wide enough for the editor's wells to reach past their columns and
+     still sit 8px apart. */
+  column-gap: 16px;
+}
+/* The register's columns, shared by its headers, rows, and entry row so a
+   new transaction's fields sit under the columns they fill. The last column
+   holds the bank status. */
+.register {
+  /* A register row's review dot follows the checkbox: 6px past it, and 6px
+     before the row's text. */
+  --row-gutter: 42px;
+  --tx-columns: 8.25rem minmax(0, 1.3fr) minmax(0, 1fr) 10.5rem 6.5rem 6.5rem
+    16px;
+}
+.register[data-accounts] {
+  --tx-columns: minmax(0, 0.8fr) 8.25rem minmax(0, 1.2fr) minmax(0, 1fr) 10.5rem
+    6.5rem 6.5rem 16px;
+}
+.register .txColumns > [data-narrow] {
+  display: none;
+}
+.statusCell {
+  display: flex;
+  justify-content: center;
+}
+.loanColumns {
+  grid-template-columns: minmax(0, 1fr) 80px 96px 128px;
+}
+@container (max-width: 560px) {
+  .list [data-optional] {
+    display: none;
+  }
+  .columns {
+    grid-template-columns: minmax(0, 1fr) 116px;
+  }
+  .loanColumns {
+    grid-template-columns: minmax(0, 1fr) 128px;
+  }
+}
+@container (max-width: 760px) {
+  .register [data-optional] {
+    display: none;
+  }
+  .register,
+  .register[data-accounts] {
+    --tx-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto 16px;
+  }
+  .register .row > [data-column="share"],
+  .register .columnHeader > [data-column="share"],
+  .register .txColumns > [data-wide],
+  .register [data-row] > [data-empty] {
+    display: none;
+  }
+  .register .txColumns > [data-narrow] {
+    display: block;
+  }
+}
+.columnHeader {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  height: var(--size-row-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.groupRow,
+.dayRow {
+  height: var(--size-row-lg);
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface-group);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  font-weight: 500;
+  text-align: left;
+}
+.groupRow:hover {
+  color: var(--text-primary);
+}
+.groupRow .numeric {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.dayRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--space-row-x) 0 var(--row-gutter);
+}
+.groupName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.groupCaret {
+  color: var(--text-tertiary);
+  transition: transform 150ms var(--ease-panel);
+}
+/* Rotated, the chevron keeps its box's center, but a > carries its weight
+   on the open side and reads as sitting left, away from the name. A pixel
+   toward the point centers it. */
+.groupRow[aria-expanded="false"] .groupCaret,
+.groupToggle[aria-expanded="false"] .groupCaret {
+  transform: translateX(1px) rotate(-90deg);
+}
+/* The group's name toggles it; the + to add a category sits beside it. */
+.groupRow:has(.groupToggle) {
+  cursor: pointer;
+}
+.groupToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 30px;
+  /* Room for the focus ring, without moving the name off the column. */
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.groupAdd {
+  display: flex;
+  flex: none;
+  margin-left: -4px;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.rowWrap:hover .groupAdd,
+.groupAdd:focus-within,
+.groupAdd:has([data-state="open"]) {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .groupAdd {
+    opacity: 1;
+  }
+}
+.groupCount {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.row {
+  height: var(--size-row-lg);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.row:hover {
+  background: var(--surface-hover);
+}
+.row[aria-current="true"] {
+  background: var(--surface-selected);
+}
+/* Pending rows sit one text step back from cleared ones, in a single tone:
+   the bank hasn't settled them, so their amounts may still change. A
+   pending inflow isn't in the balance yet, so it isn't green either. */
+.row[data-pending],
+.row[data-pending] .numeric[data-inflow] {
+  color: var(--text-secondary);
+}
+/* The register's rules, under its column header and its pending rows, run
+   past the list's inset to the panel's edges, like the panel header's. The
+   border stays, transparent, so the rows keep their place. */
+.register .columnHeader {
+  border-bottom-color: transparent;
+}
+.register .columnHeader::after,
+.pendingGroup::after {
+  content: "";
+  position: absolute;
+  right: -8px;
+  bottom: -1px;
+  left: -8px;
+  height: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+}
+/* The pending heading and rows, set apart from the cleared ones below. Each
+   rule has the same 8px on both sides. */
+.pendingHeader {
+  width: 100%;
+  margin: 0;
+}
+.pendingHeader:not(:last-child) {
+  margin-bottom: var(--space-inset);
+}
+.pendingGroup {
+  position: relative;
+  margin-bottom: var(--space-inset);
+  padding-block: var(--space-inset);
+  border-bottom: 1px solid transparent;
+}
+.root .row:focus-visible,
+.root .groupRow:focus-visible,
+.root .groupToggle:focus-visible {
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.rowWrap {
+  position: relative;
+}
+/* The checkbox overlays the row, so hover is tracked on the wrapper to keep
+   the row highlighted while the pointer is on the checkbox. */
+.rowWrap:has(> .row):hover {
+  background: var(--surface-hover);
+}
+.rowWrap:has(> .row[aria-current="true"]) {
+  background: var(--surface-selected);
+}
+.rowWrap > .row,
+.rowWrap:hover > .row,
+.rowWrap > .row[aria-current="true"] {
+  background: transparent;
+}
+.rowWrap:hover > .groupRow {
+  color: var(--text-primary);
+}
+.checkboxSlot {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  cursor: pointer;
+  opacity: 0;
+}
+.rowWrap:hover .checkboxSlot,
+.columnHeader:hover .checkboxSlot,
+.list[data-selecting] .checkboxSlot,
+.checkboxSlot:focus-within,
+.checkboxSlot:has([data-state="checked"]),
+.checkboxSlot:has([data-state="indeterminate"]) {
+  opacity: 1;
+}
+.rowName {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.rowName[data-jump] {
+  padding-right: 32px;
+}
+.rowActions {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.counterpartAction {
+  grid-column: 2;
+  justify-self: end;
+  pointer-events: auto;
+}
+.register[data-accounts] .counterpartAction {
+  grid-column: 3;
+}
+.actionAmountSizer {
+  display: none;
+  visibility: hidden;
+}
+@container (max-width: 760px) {
+  .register .counterpartAction,
+  .register[data-accounts] .counterpartAction {
+    grid-column: 1;
+  }
+  .actionAmountSizer {
+    display: block;
+    grid-column: 3;
+  }
+}
+@container (max-width: 480px) {
+  .register,
+  .register[data-accounts] {
+    --tx-columns: minmax(0, 1fr) auto 16px;
+  }
+  .register .columnHeader > [data-column="category"] {
+    display: none;
+  }
+  .register .row {
+    height: auto;
+    min-height: var(--size-row-lg);
+    padding-block: var(--space-inset);
+    row-gap: 2px;
+  }
+  .register .row > [data-column="payee"] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .register .row > [data-column="category"] {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: var(--type-small);
+  }
+  .register .row > [data-narrow] {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+  .register .row > [data-column="status"] {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
+  .register .actionAmountSizer {
+    grid-column: 2;
+  }
+}
+@media (max-width: 560px) {
+  .root[data-has-selection] .controls {
+    bottom: calc(var(--size-row-lg) * 2 + var(--space-card));
+  }
+}
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.numeric {
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.numeric[data-inflow] {
+  color: var(--money-positive);
+}
+.muted {
+  color: var(--text-secondary);
+}
+.faint {
+  color: var(--text-tertiary);
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  height: var(--size-pill);
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pill[data-state="funded"] {
+  background: var(--status-funded-bg);
+  color: var(--status-funded);
+}
+.pill[data-state="underfunded"] {
+  background: var(--status-underfunded-bg);
+  color: var(--status-underfunded);
+}
+.pill[data-state="credit"] {
+  background: var(--status-credit-bg);
+  color: var(--status-credit);
+}
+.pill[data-state="overspent"] {
+  background: var(--status-overspent-bg);
+  color: var(--status-overspent);
+}
+.ring {
+  flex: none;
+}
+.ringTrack {
+  fill: none;
+  stroke: var(--text-tertiary);
+  stroke-width: 1.5;
+}
+.ring[data-state="underfunded"] .ringTrack {
+  stroke: var(--status-underfunded);
+}
+.ringArc {
+  fill: none;
+  stroke: var(--status-underfunded);
+}
+.ringFill {
+  fill: var(--status-funded);
+}
+.ring[data-state="overspent"] .ringFill {
+  fill: var(--status-overspent);
+}
+/* Overspending that went on a card is debt, not missing cash: amber, like
+   YNAB's yellow, instead of red. */
+.ring[data-state="credit"] .ringFill {
+  fill: var(--status-credit);
+}
+.ringSnooze {
+  fill: none;
+  stroke: var(--text-tertiary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.ringMark {
+  fill: none;
+  stroke: var(--surface-panel);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.statusIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.statusIcon[data-status="posted"] {
+  color: var(--feedback-success);
+}
+.reviewDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: -12px;
+  margin-right: -4px;
+  border-radius: 50%;
+}
+.reviewDot[data-on] {
+  background: var(--text-secondary);
+}
+.reviewDot[data-inline],
+.actionItem .reviewDot {
+  margin: 0;
+}
+.empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 360px;
+  margin: 96px auto;
+  color: var(--text-tertiary);
+}
+.empty > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+}
+/* Green only when the empty state means something is finished. */
+.empty[data-tone="done"] > svg {
+  color: var(--feedback-success);
+}
+.emptyBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.empty strong {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.empty a {
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.empty > .spin {
+  color: var(--text-tertiary);
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.inlineIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.navEmpty {
+  margin: 0;
+  padding: 4px 8px 4px 20px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+/* ---------- Collapsed sidebar peek ---------- */
+
+/* Floats below the header so the breadcrumb and sidebar button stay usable.
+   Slides in from past the window edge; leaves faster than it arrives. */
+.peek {
+  position: absolute;
+  z-index: 40;
+  top: calc(var(--space-gutter) + var(--size-header) + 8px);
+  bottom: calc(var(--space-gutter) + 6px);
+  left: calc(var(--space-gutter) + 4px);
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-peek);
+  background: var(--surface-app);
+  box-shadow: var(--shadow-drawer);
+  visibility: hidden;
+  transform: translateX(calc(-100% - var(--space-gutter) - 8px));
+  transition:
+    transform 180ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s 180ms;
+}
+.peek[data-open] {
+  visibility: visible;
+  transform: none;
+  transition:
+    transform 260ms var(--ease-panel),
+    visibility 0s;
+}
+.peek .sidebarHeader {
+  height: var(--size-control);
+}
+.peekScrim {
+  position: absolute;
+  z-index: 35;
+  top: calc(var(--space-gutter) + var(--size-header) + 1px);
+  right: var(--space-gutter);
+  bottom: var(--space-gutter);
+  left: var(--space-gutter);
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: oklch(0 0 0 / 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-in;
+}
+.peekScrim[data-open] {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 260ms var(--ease-panel);
+}
+.root[data-theme="light"] .peekScrim {
+  background: oklch(0.2 0.01 var(--hue) / 0.14);
+}
+/* While collapsed the left edge opens the peek, so it shows no resize beam. */
+.root[data-peekable] .handle[data-side="left"]::after {
+  display: none;
+}
+/* A wider hot zone, since the cursor is usually flung to the window edge. */
+.root[data-peekable] .handle[data-side="left"] {
+  width: 18px;
+}
+
+/* ---------- Narrow screens: panels float over content ---------- */
+
+.root[data-narrow] .sidebar {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  padding: var(--space-gutter) 0 var(--space-gutter) var(--space-gutter);
+  background: var(--surface-app);
+}
+.root[data-narrow] .sidebar[data-open] {
+  box-shadow:
+    0 0 0 1px var(--border-subtle),
+    var(--shadow-drawer);
+}
+.root[data-narrow] .inspectorSlot {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface-panel);
+}
+.root[data-narrow] .handle {
+  display: none;
+}
+.scrim {
+  position: absolute;
+  z-index: 15;
+  inset: 0;
+  background: oklch(0 0 0 / 0.4);
+}
+
+/* ---------- Profile menu ---------- */
+
+/* Grows from the budget name it drops from; the exit is quicker and only
+   fades and shrinks, since attention has already moved on. */
+.menu {
+  z-index: 60;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  will-change: transform, opacity;
+}
+.menu[data-state="open"] {
+  animation: menu-in 180ms var(--ease-panel);
+}
+.menu[data-state="closed"] {
+  animation: menu-out 120ms ease-in forwards;
+}
+.menu[data-instant] {
+  animation: none;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+@keyframes menu-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+/* The highlight follows the pointer and arrow keys instantly. */
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-sm);
+  padding: 0 8px;
+  border-radius: var(--radius-row);
+  outline: none;
+  cursor: default;
+  user-select: none;
+}
+.menuItem > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.menuItem[data-highlighted] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.root .menuItem:focus-visible {
+  outline: none;
+}
+.menuSeparator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--border-subtle);
+}
+
+/* ---------- Settings ---------- */
+
+/* Linear-style: one centered column of sections, each a heading over a card
+   of rows with the label first and the control at the row's end. */
+.settingsPage {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+.settingsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settingsHeadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settingsHeading {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+  letter-spacing: inherit;
+}
+.settingsIntro {
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settingText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settingLabel {
+  font-weight: 500;
+}
+.settingLead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.settingActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.settingDivider {
+  height: 1px;
+  margin: 14px calc(var(--space-card) * -1);
+  background: var(--border-subtle);
+}
+/* A form field isn't in the system yet; this follows the toolbar search. */
+.settingInput {
+  flex: 0 1 240px;
+  min-width: 0;
+  height: var(--size-control);
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  outline: none;
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+  transition: border-color 150ms;
+}
+.settingInput:hover {
+  border-color: var(--border-strong);
+}
+.settingInput[aria-invalid="true"] {
+  border-color: var(--feedback-attention);
+}
+.root .settingInput:focus-visible {
+  outline: none;
+  border-color: var(--focus-ring);
+}
+@media (pointer: coarse) {
+  .settingInput {
+    font-size: 16px;
+  }
+}
+.settingError {
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+}
+.inviteCode {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.inviteCode code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--type-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settingHint {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.navHeading {
+  display: flex;
+  align-items: center;
+  height: var(--size-control-xs);
+  margin: 0;
+  padding: 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.themeGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.themeGroupLabel {
+  margin: 0 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 8px;
+}
+/* A tile is drawn in its own palette. Its border comes from the current
+   theme, so a palette close to the panel's color still has an edge. */
+.themeTile {
+  position: relative;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-row);
+  transition:
+    border-color 150ms,
+    scale 100ms ease-out;
+}
+.themeTile:has(.themeOption:active) {
+  scale: 0.98;
+}
+.themeTile:hover {
+  border-color: var(--border-strong);
+}
+.themeTile[data-selected] {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--text-primary);
+}
+.themeOption {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: 64px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  text-align: left;
+}
+.themeName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 20px;
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.themeDots {
+  display: flex;
+  gap: 4px;
+}
+.themeDots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.themeHeart {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+/* Unsaved hearts appear faintly on the tile you point at; saved ones stay. */
+.themeTile:hover .themeHeart,
+.themeHeart:focus-visible {
+  opacity: 0.55;
+}
+.themeTile .themeHeart:hover,
+.themeHeart[aria-pressed="true"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .themeHeart {
+    opacity: 0.55;
+  }
+}
+/* 44px to a finger without growing the drawn heart. */
+@media (pointer: coarse) {
+  .themeHeart::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    --duration-panel: 0ms;
+  }
+  .root *,
+  .root *::after {
+    transition-duration: 0ms !important;
+  }
+  .empty > .spin,
+  .menu[data-state] {
+    animation: none;
+  }
+}
+
+.register [data-row] [data-column] {
+  user-select: text;
+}
+
+
+.snoozeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 10px 2px 2px;
+  border-top: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+.snoozeRow[data-disabled] {
+  cursor: default;
+}
+.snoozeText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.snoozeLabel {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.snoozeRow[data-disabled] .snoozeLabel {
+  color: var(--text-secondary);
+}
+.snoozeHint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}

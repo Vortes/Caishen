@@ -11,13 +11,8 @@ import {
 } from "../../src/server/dev/development-database";
 import {
   buildDevelopmentSeed,
-  buildSeedStatements,
   developmentToday,
 } from "../../src/server/dev/seed-scenarios";
-import {
-  parseStatementCsv,
-  savedReconciliationResult,
-} from "../../src/server/integrations/reconciliation";
 
 const options = { userId: "alex", partnerId: "jordan", asOf: "2026-10-17" };
 function seedFixture() {
@@ -180,36 +175,6 @@ void test("seed dates work at month/year boundaries and never create future acti
       }),
     /valid/,
   );
-});
-
-void test("statement fixtures include valid matching evidence and unexplained charges without adjustments", () => {
-  const seed = buildDevelopmentSeed({
-    userId: "alex",
-    partnerId: "jordan",
-    asOf: "2026-10-17",
-  });
-  const before = structuredClone(seed.book);
-  const statements = buildSeedStatements(seed);
-  assert.equal(statements.length, 6);
-  for (const statement of statements) {
-    assert.deepEqual(
-      parseStatementCsv(statement.csv),
-      statement.evidence.activity,
-    );
-    assert.equal(
-      statement.result.status,
-      statement.accountId === "checking" ? "discrepancy" : "reconciled",
-    );
-    assert.equal(
-      statement.result.differenceCents,
-      statement.accountId === "checking" ? -3499 : 0,
-    );
-    assert.equal(
-      savedReconciliationResult(statement.result, { revision: 1 }, 2).status,
-      "insufficient_evidence",
-    );
-  }
-  assert.deepEqual(seed.book, before);
 });
 
 void test("seeding rejects production, lookalike endpoints, and live auth keys", () => {

@@ -17,7 +17,6 @@ import {
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { writeChangeSet } from "../../src/server/storage/rows";
-import { importCategories } from "../../src/server/services/household-operations";
 import { jsonValue } from "../../src/server/services/safety";
 import { createBankConnection, createHousehold } from "./fixtures";
 import {
@@ -241,17 +240,22 @@ void test("a legacy budget's first direct command creates its paired envelopes b
   );
 });
 
-void test("a legacy budget's first server category import upgrades its accounts without invalidating the request revision", async () => {
+void test("a legacy budget's first category import upgrades its accounts without invalidating the request revision", async () => {
   const robin = await member("Robin");
   workspaceIds.push(
     await createHousehold(db, createBook(robin.userId, "Robin", month)),
   );
 
-  const saved = await importCategories(db, robin.userId, {
-    expectedRevision: 1,
-    categories: [
-      { categoryId: "groceries", name: "Groceries", group: "Everyday" },
-    ],
+  const saved = await robin.api.budget.execute({
+    clientId: "test",
+    baseRevision: 1,
+    command: {
+      type: "category.import",
+      id: randomUUID(),
+      categories: [
+        { categoryId: "groceries", name: "Groceries", group: "Everyday" },
+      ],
+    },
   });
   const state = await robin.api.budget.state({ month });
   assert.ok(
@@ -449,14 +453,18 @@ void test("a legacy budget can undo its previous user change before pulling with
     },
   });
   const input = {
-    direction: "undo" as const,
-    expectedRevision: 2,
-    operationId: randomUUID(),
+    clientId: "test",
+    baseRevision: 2,
+    command: {
+      type: "revert" as const,
+      id: randomUUID(),
+      targetOperationId: command.id,
+    },
   };
 
-  const saved = await noa.api.budget.changeHistory(input);
+  const saved = await noa.api.budget.execute(input);
   assert.equal(saved.revision, 4);
-  assert.deepEqual(await noa.api.budget.changeHistory(input), {
+  assert.deepEqual(await noa.api.budget.execute(input), {
     ...saved,
     rebased: false,
   });

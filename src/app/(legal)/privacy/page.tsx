@@ -13,7 +13,7 @@ export default function PrivacyPage() {
     <>
       <header>
         <h1>Privacy policy</h1>
-        <p>Last updated October 17, 2026</p>
+        <p>Last updated October 23, 2026</p>
         <p>
           Caishen, available at curate.is, helps you manage a personal budget,
           track shared expenses, and review your transactions. This policy
@@ -86,13 +86,6 @@ export default function PrivacyPage() {
           <li>
             Plaid handles bank connections and the financial information you
             authorize. Bank connection tokens stored by Caishen are encrypted.
-          </li>
-          <li>
-            OpenRouter and the selected AI model provider process category names
-            and transaction identifiers, dates, merchants, and amounts when you
-            request AI category suggestions. Review suggestions before accepting
-            them. Provider retention and processing practices also apply to
-            these requests.
           </li>
           <li>
             Resend processes your email address and daily review message when

@@ -5,7 +5,7 @@
 ```
 What is loading?
  ├── The app shell's first load, before the budget arrives
- │    → ShellSkeleton (prototype/app-shell/shell-skeleton.tsx). Every
+ │    → ShellSkeleton (app-shell/shell-skeleton.tsx). Every
  │      screen's data comes with the budget, so no screen needs its own
  ├── A screen or panel whose data loads separately from the budget,
  │    with nothing on it yet and a known layout, like Reflect's report

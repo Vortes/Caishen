@@ -1,6 +1,6 @@
 /* The Welcome page may go past the app's design system: a display size
    above 24px, its own violet-tinted surfaces, and a solid primary button,
-   as the legacy page had. Color comes from the same hue as the app's
+   for the welcome page. Color comes from the same hue as the app's
    tokens (--hue) and the brand tile, so it still reads as Caishen. */
 
 .welcome {

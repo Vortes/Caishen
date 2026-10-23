@@ -24,6 +24,23 @@ import { createBankConnection, createHousehold } from "./fixtures";
 
 assertDevelopmentDatabase(process.env);
 
+const readyBank = {
+  transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+  accounts: [
+    {
+      accountId: "fixture-provider-checking",
+      name: "Fixture checking",
+      officialName: null,
+      mask: null,
+      type: "depository",
+      subtype: "checking",
+      currentBalance: 1000,
+      availableBalance: null,
+      currency: "USD",
+    },
+  ],
+};
+
 const fixtureFingerprint = (record: StoredImport) =>
   commandHash({
     current: record.current,
@@ -182,9 +199,11 @@ void test(
         data: {
           id: aliceConnectionId,
           clerkUserId: aliceId,
+          lastSyncedAt: new Date(),
           itemId: `fixture-item-${randomUUID()}`,
           encryptedToken: "fixture-only-no-provider-token",
           imports: jsonValue({
+            ...readyBank,
             records: [preopening, exact, pendingIncome, conflict],
             resolved: {
               [conflict.id]: {
@@ -261,16 +280,6 @@ void test(
 
       await assert.rejects(
         () =>
-          bob.budget.mapBankAccount({
-            connectionId: aliceConnectionId,
-            providerAccountId: "fixture-provider-checking",
-            accountId: "bob-checking",
-            startDate: "2026-10-02",
-          }),
-        { code: "NOT_FOUND" },
-      );
-      await assert.rejects(
-        () =>
           bob.budget.resolveImport({
             connectionId: aliceConnectionId,
             logicalId: exact.id,
@@ -279,50 +288,24 @@ void test(
           }),
         { code: "NOT_FOUND" },
       );
-      await assert.rejects(
-        () =>
-          alice.budget.mapBankAccount({
-            connectionId: aliceConnectionId,
-            providerAccountId: "fixture-provider-checking",
-            accountId: "bob-checking",
-            startDate: "2026-10-02",
-          }),
-        { code: "NOT_FOUND" },
-      );
-      for (const startDate of ["2026-09-30", "2026-10-01"]) {
-        await assert.rejects(
-          () =>
-            alice.budget.mapBankAccount({
-              connectionId: aliceConnectionId,
-              providerAccountId: "fixture-provider-checking",
-              accountId: "alice-checking",
-              startDate,
-            }),
-          { code: "BAD_REQUEST" },
-        );
-      }
-      const mapped = await alice.budget.mapBankAccount({
+      const mapped = await alice.budget.setupBankAccounts({
         connectionId: aliceConnectionId,
-        providerAccountId: "fixture-provider-checking",
-        accountId: "alice-checking",
-        startDate: "2026-10-02",
-      });
-      // The inbox changes, so browsers learn of a new revision.
-      assert.equal(mapped.mapped, true);
-      assert.deepEqual(mapped.changeSet?.after, []);
-      await assert.rejects(
-        () =>
-          alice.budget.mapBankAccount({
-            connectionId: aliceConnectionId,
-            providerAccountId: "second-provider-account",
-            accountId: "alice-checking",
+        operationId: randomUUID(),
+        expectedRevision: ownInbox.revision,
+        accounts: [
+          {
+            providerAccountId: "fixture-provider-checking",
+            name: "Fixture checking",
+            expectedBalance: 1000,
+            existingAccountId: "alice-checking",
             startDate: "2026-10-02",
-          }),
-        { code: "BAD_REQUEST" },
-      );
+          },
+        ],
+      });
+      assert.deepEqual(mapped.accountIds, ["alice-checking"]);
+      assert.deepEqual(mapped.changeSet?.after, []);
       const mappedState = await state();
       assert.equal(mappedState.revision, ownInbox.revision + 1);
-      assert.deepEqual(mappedState.history, { undo: null, redo: null });
       assert.ok(
         !mappedState.imports.some((item) => item.logicalId === preopening.id),
       );
@@ -374,7 +357,6 @@ void test(
       });
       const linkedState = await state();
       assert.equal(linkedState.revision, mappedState.revision + 1);
-      assert.deepEqual(linkedState.history, { undo: null, redo: null });
       assert.equal(
         linkedState.view!.budget.transactions.length,
         transactionCount,
@@ -473,7 +455,13 @@ void test(
           clerkUserId: userId,
           itemId: `fixture-item-${randomUUID()}`,
           encryptedToken: "fixture-no-provider-token",
-          imports: jsonValue({ records: [record], resolved: {}, errors: {} }),
+          lastSyncedAt: new Date(),
+          imports: jsonValue({
+            ...readyBank,
+            records: [record],
+            resolved: {},
+            errors: {},
+          }),
           accountMappings: {},
         },
       });
@@ -492,36 +480,22 @@ void test(
           date: "2026-10-01",
         },
       });
-      assert.equal(
-        (await api.budget.state({ month: "2026-10" })).history.undo,
-        "Add account",
-      );
-      await api.budget.mapBankAccount({
+      await api.budget.setupBankAccounts({
         connectionId,
-        providerAccountId: "fixture-provider-checking",
-        accountId: "mapped-account",
-        startDate: "2026-10-02",
+        operationId: randomUUID(),
+        expectedRevision: start + 1,
+        accounts: [
+          {
+            providerAccountId: "fixture-provider-checking",
+            name: "Mapped checking",
+            expectedBalance: 1000,
+            existingAccountId: "mapped-account",
+            startDate: "2026-10-02",
+          },
+        ],
       });
       let state = await api.budget.state({ month: "2026-10" });
       assert.equal(state.revision, start + 2);
-      assert.deepEqual(state.history, { undo: null, redo: null });
-      await assert.rejects(
-        api.budget.changeHistory({
-          direction: "undo",
-          operationId: randomUUID(),
-          expectedRevision: start + 1,
-        }),
-        { code: "CONFLICT" },
-      );
-      await assert.rejects(
-        api.budget.changeHistory({
-          direction: "undo",
-          operationId: randomUUID(),
-          expectedRevision: start + 2,
-        }),
-        { code: "BAD_REQUEST" },
-      );
-      // Undo from the browser's own history is refused too.
       await assert.rejects(
         api.budget.execute({
           clientId: "test",
@@ -540,12 +514,13 @@ void test(
         ),
       );
 
+      const saveTransaction = randomUUID();
       await api.budget.execute({
         clientId: "test",
         baseRevision: state.revision,
         command: {
           type: "transaction.upsert",
-          id: randomUUID(),
+          id: saveTransaction,
           transactionId: "linked-transaction",
           accountId: "mapped-account",
           date: record.current.date,
@@ -555,7 +530,6 @@ void test(
         },
       });
       state = await api.budget.state({ month: "2026-10" });
-      assert.equal(state.history.undo, "Save transaction");
       await api.budget.resolveImport({
         connectionId,
         logicalId: record.id,
@@ -564,14 +538,17 @@ void test(
       });
       const linked = await api.budget.state({ month: "2026-10" });
       assert.equal(linked.revision, state.revision + 1);
-      assert.deepEqual(linked.history, { undo: null, redo: null });
       await assert.rejects(
-        api.budget.changeHistory({
-          direction: "undo",
-          operationId: randomUUID(),
-          expectedRevision: linked.revision,
+        api.budget.execute({
+          clientId: "test",
+          baseRevision: linked.revision,
+          command: {
+            type: "revert",
+            id: randomUUID(),
+            targetOperationId: saveTransaction,
+          },
         }),
-        { code: "BAD_REQUEST" },
+        { code: "CONFLICT", message: /bank connection uses it/ },
       );
       assert.ok(
         linked.view!.budget.transactions.some(
@@ -617,7 +594,13 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
             clerkUserId: userId,
             itemId: `fixture-item-${randomUUID()}`,
             encryptedToken: "fixture-no-provider-token",
-            imports: jsonValue({ records: [record], resolved: {}, errors: {} }),
+            lastSyncedAt: new Date(),
+            imports: jsonValue({
+              ...readyBank,
+              records: [record],
+              resolved: {},
+              errors: {},
+            }),
             accountMappings:
               boundary === "mapping"
                 ? {}
@@ -629,6 +612,7 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
                   },
           },
         });
+        const originalOperation = randomUUID();
         const { revision: expected } = await api.budget.execute({
           clientId: "test",
           baseRevision: (await api.budget.state({ month: "2026-10" })).revision,
@@ -636,7 +620,7 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
             boundary === "mapping"
               ? {
                   type: "account.add",
-                  id: randomUUID(),
+                  id: originalOperation,
                   accountId,
                   name: "Race checking",
                   kind: "cash",
@@ -645,7 +629,7 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
                 }
               : {
                   type: "transaction.upsert",
-                  id: randomUUID(),
+                  id: originalOperation,
                   transactionId: "race-transaction",
                   accountId,
                   amount: -record.current.amountCents,
@@ -684,11 +668,19 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
         });
         const results = await Promise.allSettled([
           boundary === "mapping"
-            ? racer.budget.mapBankAccount({
+            ? racer.budget.setupBankAccounts({
                 connectionId,
-                providerAccountId: "fixture-provider-checking",
-                accountId,
-                startDate: "2026-10-02",
+                operationId: randomUUID(),
+                expectedRevision: expected,
+                accounts: [
+                  {
+                    providerAccountId: "fixture-provider-checking",
+                    name: "Race checking",
+                    expectedBalance: 1000,
+                    existingAccountId: accountId,
+                    startDate: "2026-10-02",
+                  },
+                ],
               })
             : racer.budget.resolveImport({
                 connectionId,
@@ -696,10 +688,14 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
                 existingTransactionId: "race-transaction",
                 expectedRevision: expected,
               }),
-          racer.budget.changeHistory({
-            direction: "undo",
-            expectedRevision: expected,
-            operationId: randomUUID(),
+          racer.budget.execute({
+            clientId: "test",
+            baseRevision: expected,
+            command: {
+              type: "revert",
+              id: randomUUID(),
+              targetOperationId: originalOperation,
+            },
           }),
         ]);
         assert.equal(reads, 2);

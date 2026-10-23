@@ -19,7 +19,7 @@ Five steps: 12, 13, 14, 16, 24. Nothing in between, nothing larger.
 
 A screen's own title sits in the panel header at `--type-body`, weight 500,
 like "Plan" or "Accounts › Checking". It is never larger: the chrome stays
-quiet so the money is what stands out. A standalone prototype page without
+quiet so the money is what stands out. A standalone page without
 the shell uses `--type-title` for its title.
 
 Weights: 400 for text, 500 for controls and labels, 600 for titles and

@@ -186,10 +186,14 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
       maintenance,
     );
     await assert.rejects(
-      alice.budget.changeHistory({
-        direction: "undo",
-        expectedRevision: owner.result.revision,
-        operationId: randomUUID(),
+      alice.budget.execute({
+        clientId: "test",
+        baseRevision: owner.result.revision,
+        command: {
+          type: "revert",
+          id: randomUUID(),
+          targetOperationId: "newer-release",
+        },
       }),
       maintenance,
     );
@@ -205,20 +209,25 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
         ?.balance,
       97500,
     );
+    const addCategory = randomUUID();
     const saved = await bob.budget.execute({
       clientId: "test",
       baseRevision: partner.revision,
       command: {
         type: "category.add",
-        id: randomUUID(),
+        id: addCategory,
         categoryId: "travel",
         name: "Travel",
       },
     });
-    const undone = await bob.budget.changeHistory({
-      direction: "undo",
-      expectedRevision: saved.revision,
-      operationId: randomUUID(),
+    const undone = await bob.budget.execute({
+      clientId: "test",
+      baseRevision: saved.revision,
+      command: {
+        type: "revert",
+        id: randomUUID(),
+        targetOperationId: addCategory,
+      },
     });
     assert.equal(undone.revision, saved.revision + 1);
     assert.deepEqual(

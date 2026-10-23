@@ -1,6 +1,6 @@
 "use client";
 
-import styles from "~/components/prototype/app-shell/banks.module.css";
+import styles from "~/components/app-shell/banks.module.css";
 
 type LoanDraft = {
   loanBalance: string;
