@@ -12,6 +12,7 @@ import type {
   Transaction,
 } from "./engine";
 import type { PartnerEntry } from "./partner-ledger";
+import type { PartnerSettlement } from "./partner-settlements";
 import {
   accountRow,
   assignmentRow,
@@ -24,6 +25,7 @@ import {
   openingObligationRows,
   partnerEntryRow,
   partnerFactRows,
+  partnerSettlementRow,
   partnerSideRows,
   payeeMemoryRows,
   reimbursementRows,
@@ -292,6 +294,22 @@ export class Changes {
   addPartnerEntry(entry: PartnerEntry): void {
     this.partnerEntry(entry);
     (this.state.partnerEntries ??= []).push(entry);
+  }
+
+  /** A settlement between the partners, which both browsers hold. */
+  partnerSettlement(settlement: PartnerSettlement): PartnerSettlement {
+    this.item(
+      `partner settlement ${settlement.id}`,
+      () => this.state.partnerSettlements ?? [],
+      settlement.id,
+      (item, sort) => [partnerSettlementRow(item, sort)],
+    );
+    return settlement;
+  }
+
+  addPartnerSettlement(settlement: PartnerSettlement): void {
+    this.partnerSettlement(settlement);
+    (this.state.partnerSettlements ??= []).push(settlement);
   }
 
   /** A loan with its rates and payments. */

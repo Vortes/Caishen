@@ -1,3 +1,4 @@
+import { isRejectedSettlementImport } from "~/domain/partner-settlements";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -51,6 +52,7 @@ import {
   type OperationResult,
 } from "./household";
 import { commandHash, domainError, jsonValue, operationHash } from "./safety";
+import { settleFromImports } from "./partner-settlements";
 import {
   budgetMaintenance,
   CONNECTION_MAINTENANCE_MESSAGE,
@@ -1059,7 +1061,10 @@ export async function syncBanks(db: Database, userId: string) {
       domainError(error);
     }
   }
-  return { imported, updated };
+  // Payments between people that the update brought in, recognized as
+  // transfers to and from the counterparty accounts.
+  const { settled, repaid } = await settleFromImports(db, userId);
+  return { imported, updated: updated + settled + repaid };
 }
 
 type PlaidClient = ReturnType<typeof client>;
@@ -1205,6 +1210,13 @@ async function applyBankUpdate(
     )
       continue;
     if (!resolution) {
+      if (
+        isRejectedSettlementImport(
+          budgetOf(book, userId),
+          record.providerTransactionIds,
+        )
+      )
+        continue;
       // A purchase a partner recorded first is matched, or waits to be.
       const partnerImport = partnerImports.get(record.id);
       if (partnerImport === "wait") continue;

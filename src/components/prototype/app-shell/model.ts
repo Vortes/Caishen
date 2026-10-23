@@ -23,6 +23,7 @@ import { isCounterparty, type Target } from "~/domain/engine";
 
 export { isCounterparty };
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
+import { namesPerson } from "~/lib/settlement-recognition";
 import {
   canEditImport,
   importCategory,
@@ -133,9 +134,13 @@ export type Transaction = {
   shared: boolean;
   // Who owes a share of it, for search.
   shareLabel?: string;
-  // Money someone paid back: who, and the counterparty account it moved out
-  // of.
-  repayment?: { from: string; account: string };
+  // Money someone paid back, or a payment between the partners: who, the
+  // counterparty account it moved, and the settlement it is one leg of.
+  repayment?: {
+    from: string;
+    account: string;
+    settlementId?: string;
+  };
   history: { reason: string; amount: number }[];
 };
 
@@ -281,6 +286,8 @@ export function toShellData(
   const displayName = (account: { kind: string; name: string }) =>
     (account.kind === "partner" ? state.partnerFirstName : undefined) ??
     account.name;
+  const partnerAccount = view.accounts.find((item) => item.kind === "partner");
+  const partnerName = partnerAccount && displayName(partnerAccount);
   const counterparty = new Map(
     view.accounts
       .filter(
@@ -418,6 +425,11 @@ export function toShellData(
   }
 
   const active = view.budget.transactions.filter((item) => !item.removed);
+  const confirmed = new Set(
+    view.partnerSettlements
+      .filter((settlement) => settlement.confirmed)
+      .map((settlement) => settlement.id),
+  );
   const accounts = view.accounts.map((item): Account => {
     const connection = state.connections.find((entry) =>
       Object.values(
@@ -444,7 +456,9 @@ export function toShellData(
       reconciled: item.reconciled,
       toReview:
         item.kind === "partner" &&
-        view.partnerLedger.some((row) => row.needsCategory),
+        view.partnerLedger.some(
+          (row) => row.needsCategory || row.confirmed === false,
+        ),
       connection: connection && {
         institution: connection.institutionName ?? "Connected bank",
         synced: syncedLabel(connection.lastSyncedAt, connection.error),
@@ -512,7 +526,13 @@ export function toShellData(
                 date: counterpart.date,
               }
             : undefined,
-        needsReview: !item.reviewed,
+        // A settlement leg waits until either partner confirms it.
+        needsReview:
+          !item.reviewed ||
+          Boolean(
+            item.partnerSettlementId &&
+            !confirmed.has(item.partnerSettlementId),
+          ),
         categoryId: item.categoryId,
         categoryLabel: categoryNotNeeded
           ? "Category not needed"
@@ -541,6 +561,7 @@ export function toShellData(
           ? {
               from: item.counterpartyName ?? displayName(repaidFrom),
               account: displayName(repaidFrom),
+              settlementId: item.partnerSettlementId,
             }
           : undefined,
         history: item.history.map((entry) => ({
@@ -562,6 +583,19 @@ export function toShellData(
       needsReview: bankImportNeedsReview(item),
       reviewReason: importReviewReason(item),
       ...importCategoryLabel(view, item, categoryName),
+      // Money to or from the partner waits for the partner's import of it,
+      // then both become one settlement.
+      ...(partnerName &&
+      item.accountId &&
+      !item.transactionId &&
+      !importCategory(view, item) &&
+      namesPerson(item.payee, partnerName)
+        ? {
+            categoryLabel: `Transfer: ${partnerName}`,
+            needsCategory: false,
+            reviewReason: `Waiting for ${partnerName}’s import to match`,
+          }
+        : {}),
       categoryNotNeeded: false,
       shared: false,
       history: [],

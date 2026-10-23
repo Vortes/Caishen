@@ -53,6 +53,7 @@ import {
   activeSettlements,
   isSettlementLeg,
   openRequest,
+  settlementLegId,
   partnerRequestSchema,
   partnerSettlementSchema,
   settlementLegIssues,
@@ -258,6 +259,40 @@ export const commandSchema = z.discriminatedUnion("type", [
     date: daySchema.optional(),
     payee: z.string().trim().min(1).max(240).optional(),
   }),
+  // Settling up (src/domain/partner-settlements.ts): a payment between the
+  // partners, recorded with both partners' legs at once, and its
+  // confirmation, which either partner gives for both.
+  z.object({
+    type: z.literal("partner.settle"),
+    id: identifier,
+    settlementId: identifier,
+    method: z.string().trim().min(1).max(120),
+    legs: z
+      .array(
+        z.object({
+          userId: identifier,
+          accountId: identifier,
+          date: daySchema,
+          // Signed as the leg's account records it.
+          amount: cents.refine((value) => value !== 0),
+          payee: z.string().trim().min(1).max(240),
+          providerId: identifier.optional(),
+        }),
+      )
+      .length(2),
+  }),
+  z.object({
+    type: z.literal("partner.settlement.confirm"),
+    id: identifier,
+    settlementId: identifier,
+    recordedAt: z.string().datetime().optional(),
+  }),
+  z.object({
+    type: z.literal("partner.settlement.reject"),
+    id: identifier,
+    settlementId: identifier,
+    recordedAt: z.string().datetime().optional(),
+  }),
   z.object({
     type: z.literal("counterparty.receive"),
     id: identifier,
@@ -267,6 +302,10 @@ export const commandSchema = z.discriminatedUnion("type", [
     amount: positiveCents,
     counterpartyName: z.string().trim().min(1).max(240).optional(),
     recordedAt: z.string().datetime().optional(),
+    // A repayment recognized in a bank import: the bank's name for it and
+    // its transaction, waiting for the user's review.
+    payee: z.string().trim().min(1).max(240).optional(),
+    providerId: identifier.optional(),
   }),
   z.object({
     type: z.literal("account.add"),
@@ -3711,6 +3750,7 @@ function executeAccountingState<T extends AccountingState>(
     "loan.rate",
     "transaction.approve",
     "transaction.reject",
+    "partner.settlement.reject",
   ];
   if (source !== "user" && userOnly.includes(command.type))
     fail("This decision requires a user action");
@@ -4013,6 +4053,101 @@ function editPartnerEntry(
   changes.transaction(payer, saved).history.at(-1)!.actorId = budget.userId;
 }
 
+// One confirmation, by either partner, resolves both sides.
+function confirmSettlement(
+  changes: Changes,
+  settlement: PartnerSettlement,
+  write: { actorId: string; operationId: string; at?: string },
+): void {
+  if (settlement.confirmed) return;
+  const tracked = changes.partnerSettlement(settlement);
+  tracked.confirmed = true;
+  tracked.history.push({
+    actorId: write.actorId,
+    operationId: write.operationId,
+    ...(write.at ? { at: write.at } : {}),
+    reason: "confirmed",
+  });
+}
+
+// A payment between the partners, with both partners' legs: the payer's
+// out of a cash account, the recipient's into a cash account or credit
+// card. Only the household's whole book holds both budgets, so a partner's
+// browser can't record one.
+function recordSettlement(
+  book: AccountingState,
+  actor: Budget,
+  command: Extract<ParsedCommand, { type: "partner.settle" }>,
+  changes: Changes,
+): void {
+  if (isPersonalLedger(book))
+    return fail("A settlement is recorded in both partners' budgets at once");
+  const members = Object.keys(book.budgets);
+  const [paid, received] = [...command.legs].sort(
+    (a, b) => a.amount - b.amount,
+  );
+  if (
+    members.length !== 2 ||
+    paid!.amount >= 0 ||
+    received!.amount !== -paid!.amount ||
+    paid!.userId === received!.userId ||
+    !members.includes(paid!.userId) ||
+    !members.includes(received!.userId) ||
+    !command.legs.some((leg) => leg.userId === actor.userId)
+  )
+    fail(
+      "A settlement is one partner's payment out and the other's matching payment in",
+    );
+  if (book.partnerSettlements?.some((item) => item.id === command.settlementId))
+    fail("Settlement ID already exists");
+  for (const leg of command.legs) {
+    const budget = book.budgets[leg.userId]!;
+    requireDate(budget, leg.date);
+    const account = accountAtDate(budget, leg.accountId, leg.date);
+    if (
+      account.kind !== "cash" &&
+      !(account.kind === "credit" && leg.amount > 0)
+    )
+      fail(
+        "A settlement leaves a cash account and arrives in a cash account or credit card",
+      );
+    const partner =
+      partnerAccountOf(budget) ?? fail("Both budgets need a Partner account");
+    if (
+      leg.providerId &&
+      budget.transactions.some(
+        (transaction) =>
+          active(transaction) && transaction.providerId === leg.providerId,
+      )
+    )
+      fail("Provider transaction already exists");
+    appendTransaction(changes, budget, command.id, {
+      id: settlementLegId(command.settlementId, leg.userId),
+      accountId: account.id,
+      date: leg.date,
+      amount: leg.amount,
+      payee: leg.payee,
+      status: "posted",
+      expenseMonth: monthOf(leg.date),
+      kind: "reimbursement",
+      linkedCounterpartyAccountId: partner.id,
+      partnerSettlementId: command.settlementId,
+      ...(leg.providerId ? { providerId: leg.providerId } : {}),
+    });
+  }
+  changes.addPartnerSettlement({
+    id: command.settlementId,
+    payerId: paid!.userId,
+    date: paid!.date,
+    amount: received!.amount,
+    method: command.method,
+    confirmed: false,
+    history: [
+      { actorId: actor.userId, operationId: command.id, reason: "matched" },
+    ],
+  });
+}
+
 function applyCommand(
   book: AccountingState,
   budget: Budget,
@@ -4094,8 +4229,17 @@ function applyCommand(
       // one-sided repayment can't keep mirrored.
       if (counterparty.kind === "partner")
         fail(
-          "Payments between partners are recorded as settlements, which aren't available yet",
+          "Payments between partners come from both partners' bank imports, matched into one settlement",
         );
+      if (
+        command.providerId &&
+        budget.transactions.some(
+          (transaction) =>
+            active(transaction) &&
+            transaction.providerId === command.providerId,
+        )
+      )
+        fail("Provider transaction already exists");
       if (counterparty.kind === "reimbursements" && !command.counterpartyName)
         fail("Name the person or organization making the reimbursement");
       if (source === "user" && !command.recordedAt)
@@ -4114,16 +4258,71 @@ function applyCommand(
         accountId: command.cashAccountId,
         date: command.date,
         amount: command.amount,
-        payee: command.counterpartyName ?? counterparty.name,
+        payee: command.payee ?? command.counterpartyName ?? counterparty.name,
         status: "posted",
         expenseMonth: monthOf(command.date),
         kind: "reimbursement",
         linkedCounterpartyAccountId: counterparty.id,
         counterpartyName: command.counterpartyName,
+        ...(command.providerId ? { providerId: command.providerId } : {}),
       });
       const receipt = getTransaction(budget, `${command.id}:receipt`);
+      receipt.reviewed = source === "user";
       receipt.history[0]!.actorId = actorId;
       receipt.history[0]!.at = command.recordedAt;
+      break;
+    }
+    case "partner.settle": {
+      recordSettlement(book, budget, command, changes);
+      break;
+    }
+    case "partner.settlement.reject": {
+      const settlement = book.partnerSettlements?.find(
+        (item) => item.id === command.settlementId && !item.removed,
+      );
+      if (!settlement) fail("This settlement was removed");
+      const budgets = isPersonalLedger(book)
+        ? [budget]
+        : Object.values(book.budgets);
+      for (const owner of budgets) {
+        const leg = owner.transactions.find(
+          (item) =>
+            item.partnerSettlementId === command.settlementId && !item.removed,
+        );
+        if (!leg) fail("This settlement's bank transaction is missing");
+        changes.transaction(owner, leg!).removed = true;
+        leg!.history.push({
+          revision: ++leg!.revision,
+          reason: "removed",
+          amount: leg!.amount,
+          date: leg!.date,
+          payee: leg!.payee,
+          status: leg!.status,
+          operationId: command.id,
+          actorId,
+          ...(command.recordedAt ? { at: command.recordedAt } : {}),
+        });
+      }
+      const tracked = changes.partnerSettlement(settlement!);
+      tracked.removed = true;
+      tracked.history.push({
+        actorId,
+        operationId: command.id,
+        ...(command.recordedAt ? { at: command.recordedAt } : {}),
+        reason: "removed",
+      });
+      break;
+    }
+    case "partner.settlement.confirm": {
+      const settlement = book.partnerSettlements?.find(
+        (item) => item.id === command.settlementId && !item.removed,
+      );
+      if (!settlement) fail("This settlement was removed");
+      confirmSettlement(changes, settlement!, {
+        actorId,
+        operationId: command.id,
+        at: command.recordedAt,
+      });
       break;
     }
     case "account.add": {
@@ -4840,6 +5039,15 @@ function applyCommand(
         changes.transaction(budget, transaction).reviewed = true;
         for (const counterpart of transferCounterparts(budget, transaction))
           changes.transaction(budget, counterpart).reviewed = true;
+        // Approving one partner's leg confirms the settlement for both.
+        const settlement = book.partnerSettlements?.find(
+          (item) => item.id === transaction.partnerSettlementId,
+        );
+        if (settlement && !settlement.removed)
+          confirmSettlement(changes, settlement, {
+            actorId,
+            operationId: command.id,
+          });
       }
       break;
     }

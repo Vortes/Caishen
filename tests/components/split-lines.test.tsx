@@ -1,7 +1,12 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Command } from "~/domain/engine";
-import { renderShell, sent } from "./shell-harness";
+import {
+  findToast,
+  findTransactionRow,
+  renderShell,
+  transactionRow,
+} from "./shell-harness";
 
 // Splitting a transaction across categories in the register's editor.
 
@@ -19,9 +24,6 @@ const categories: Command[] = [
     name: "Household",
   },
 ];
-const register = () =>
-  within(screen.getByRole("group", { name: "Transactions" }));
-
 async function newTransaction(shell: Awaited<ReturnType<typeof renderShell>>) {
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
   await shell.user.click(
@@ -49,20 +51,7 @@ test("a Costco receipt splits across Groceries and Household, and the register s
     "Costco",
   );
   await shell.user.click(form.getByRole("combobox", { name: "Category" }));
-  const categoryList = screen.getByRole("listbox", { name: "Category" });
-  expect(
-    within(categoryList).queryByRole("option", { name: "Split" }),
-  ).toBeNull();
-  const splitButton = screen.getByRole("button", {
-    name: "Split",
-  });
-  expect(categoryList.contains(splitButton)).toBe(false);
-  expect(
-    within(screen.getByRole("dialog", { name: "Category" })).getByRole(
-      "separator",
-    ),
-  ).toBeTruthy();
-  await shell.user.click(splitButton);
+  await shell.user.click(screen.getByRole("button", { name: "Split" }));
   await shell.user.type(form.getByLabelText("Outflow", { exact: true }), "200");
 
   await choose(
@@ -85,20 +74,30 @@ test("a Costco receipt splits across Groceries and Household, and the register s
   expect(form.getByText("Remaining $0.00")).toBeTruthy();
   await shell.user.click(form.getByRole("button", { name: "Save" }));
 
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  const [command] = sent(shell.execute);
-  expect(command).toMatchObject({
-    type: "transaction.upsert",
-    amount: -20_000,
-    payee: "Costco",
-    categoryId: undefined,
-    lines: [
-      { categoryId: "groceries", amount: -15_000 },
-      { categoryId: "household", amount: -5_000 },
-    ],
-  });
-  const row = register().getByRole("button", { name: /Costco/ });
-  expect(within(row).getByText("Split (2)")).toBeTruthy();
+  await findToast("Added Costco");
+  const saved = within(await findTransactionRow("Costco"));
+  expect(saved.getByText("Split (2)", { exact: true })).toBeTruthy();
+  expect(saved.getByText("$200.00", { exact: true })).toBeTruthy();
+  await shell.user.keyboard("{Escape}");
+  await shell.user.click(transactionRow("Costco"));
+  await shell.user.keyboard("e");
+  const reopened = within(
+    screen.getByRole("form", { name: "Edit transaction" }),
+  );
+  expect(
+    reopened.getByRole("combobox", { name: "Line 1 category" }),
+  ).toHaveProperty("value", "Groceries");
+  expect(reopened.getByLabelText("Line 1 outflow")).toHaveProperty(
+    "value",
+    "150.00",
+  );
+  expect(
+    reopened.getByRole("combobox", { name: "Line 2 category" }),
+  ).toHaveProperty("value", "Household");
+  expect(reopened.getByLabelText("Line 2 outflow")).toHaveProperty(
+    "value",
+    "50.00",
+  );
 });
 
 const costcoSplit: Command = {
@@ -136,7 +135,7 @@ test("a saved split opens with its lines, and removing one leaves a single-categ
     seedCommands: [...categories, costcoSplit],
   });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
-  await shell.user.click(register().getByRole("button", { name: /Costco/ }));
+  await shell.user.click(transactionRow("Costco"));
   await shell.user.keyboard("e");
   const form = within(screen.getByRole("form", { name: "Edit transaction" }));
   expect(form.getByRole("combobox", { name: "Category" })).toHaveProperty(
@@ -158,14 +157,24 @@ test("a saved split opens with its lines, and removing one leaves a single-categ
     "Household",
   );
   await shell.user.click(form.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.upsert",
-    transactionId: "costco",
-    amount: -20_000,
-    categoryId: "household",
-  });
-  expect(sent(shell.execute)[0]).not.toHaveProperty("lines");
+  await findToast("Saved Costco");
+  const saved = within(await findTransactionRow("Costco"));
+  expect(saved.getByText("Household", { exact: true })).toBeTruthy();
+  expect(saved.getByText("$200.00", { exact: true })).toBeTruthy();
+  expect(saved.queryByText("Split (2)")).toBeNull();
+  await shell.user.keyboard("{Escape}");
+  await shell.user.click(transactionRow("Costco"));
+  await shell.user.keyboard("e");
+  const reopened = within(
+    screen.getByRole("form", { name: "Edit transaction" }),
+  );
+  expect(reopened.getByRole("combobox", { name: "Category" })).toHaveProperty(
+    "value",
+    "Household",
+  );
+  expect(
+    reopened.queryByRole("combobox", { name: "Line 1 category" }),
+  ).toBeNull();
 });
 
 test("a split that leaves part of the amount unsplit doesn't save, and Add line takes what's left", async () => {
@@ -173,7 +182,7 @@ test("a split that leaves part of the amount unsplit doesn't save, and Add line 
     seedCommands: [...categories, costcoSplit],
   });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
-  await shell.user.click(register().getByRole("button", { name: /Costco/ }));
+  await shell.user.click(transactionRow("Costco"));
   await shell.user.keyboard("e");
   const form = within(screen.getByRole("form", { name: "Edit transaction" }));
   await shell.user.clear(form.getByLabelText("Outflow", { exact: true }));
@@ -185,7 +194,11 @@ test("a split that leaves part of the amount unsplit doesn't save, and Add line 
       "Split the whole amount: the lines must add up to the total.",
     ),
   ).toBeTruthy();
-  expect(shell.execute).not.toHaveBeenCalled();
+  expect(
+    within(screen.getByRole("button", { name: /^Checking/ })).getByText(
+      "$800.00",
+    ),
+  ).toBeTruthy();
 
   await shell.user.click(form.getByRole("button", { name: "Add line" }));
   expect(form.getByRole("combobox", { name: "Line 3 category" })).toBe(
@@ -203,13 +216,29 @@ test("a split that leaves part of the amount unsplit doesn't save, and Add line 
   ).toBeNull();
   await shell.user.keyboard("Groceries{Enter}");
   await shell.user.click(form.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(sent(shell.execute)[0]).toMatchObject({
-    amount: -23_000,
-    lines: [
-      { lineId: "food", categoryId: "groceries", amount: -15_000 },
-      { lineId: "paper", categoryId: "household", amount: -5_000 },
-      { categoryId: "groceries", amount: -3_000 },
-    ],
-  });
+  await findToast("Saved Costco");
+  const saved = within(await findTransactionRow("Costco"));
+  expect(saved.getByText("Split (3)", { exact: true })).toBeTruthy();
+  expect(saved.getByText("$230.00", { exact: true })).toBeTruthy();
+  await shell.user.keyboard("{Escape}");
+  await shell.user.click(transactionRow("Costco"));
+  await shell.user.keyboard("e");
+  const reopened = within(
+    screen.getByRole("form", { name: "Edit transaction" }),
+  );
+  expect(reopened.getByLabelText("Line 1 outflow")).toHaveProperty(
+    "value",
+    "150.00",
+  );
+  expect(reopened.getByLabelText("Line 2 outflow")).toHaveProperty(
+    "value",
+    "50.00",
+  );
+  expect(
+    reopened.getByRole("combobox", { name: "Line 3 category" }),
+  ).toHaveProperty("value", "Groceries");
+  expect(reopened.getByLabelText("Line 3 outflow")).toHaveProperty(
+    "value",
+    "30.00",
+  );
 });

@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { renderShell } from "./shell-harness";
+import { renderShell, transactionRow } from "./shell-harness";
 
 async function openRegister() {
   const { user } = await renderShell({
@@ -187,7 +187,7 @@ test("the keyboard shortcut toggles the focused transaction and its selection to
   const transactions = within(
     screen.getByRole("group", { name: "Transactions" }),
   );
-  await user.click(transactions.getByRole("button", { name: /Market/ }));
+  await user.click(transactionRow("Market"));
   expect(
     transactions.getByRole("checkbox", {
       name: "Select Market",

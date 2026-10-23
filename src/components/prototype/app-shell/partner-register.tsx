@@ -72,10 +72,11 @@ export function PartnerRegister({
   const name = (id: string | undefined) =>
     view.categories.find((item) => item.id === id)?.name;
   const search = query.trim().toLowerCase();
+  const payee = (row: Row) => settlementPayee(row, view, account.name);
   const rows = view.partnerLedger.filter(
     (row) =>
       !search ||
-      [row.payee, name(row.categoryId), money(row.shared), money(row.change)]
+      [payee(row), name(row.categoryId), money(row.shared), money(row.change)]
         .join(" ")
         .toLowerCase()
         .includes(search),
@@ -113,8 +114,11 @@ export function PartnerRegister({
       </div>
       {rows.map((row) => {
         const selected = selectedId === row.id;
+        const settlement = row.kind === "settlement";
+        const unconfirmed = row.confirmed === false;
+        const opens = row.kind !== "repayment";
         const paidBy =
-          row.kind === "repayment"
+          row.kind === "repayment" || settlement
             ? null
             : row.payerId === view.budget.userId
               ? "You paid"
@@ -130,7 +134,7 @@ export function PartnerRegister({
               data-row
               className={`${styles.txColumns} ${styles.row}`}
               aria-current={selected ? "true" : undefined}
-              aria-expanded={row.kind === "repayment" ? undefined : selected}
+              aria-expanded={opens ? selected : undefined}
               onClick={(event) => {
                 // Finishing a text selection in the row doesn't click it.
                 if (event.detail > 0 && window.getSelection()?.toString())
@@ -141,10 +145,12 @@ export function PartnerRegister({
               <span className={styles.rowName} data-optional>
                 <span
                   className={styles.reviewDot}
-                  data-on={row.needsCategory ? "" : undefined}
+                  data-on={row.needsCategory || unconfirmed ? "" : undefined}
                 >
-                  {row.needsCategory && (
-                    <span className="sr-only">Needs a category</span>
+                  {(row.needsCategory || unconfirmed) && (
+                    <span className="sr-only">
+                      {unconfirmed ? "Needs confirming" : "Needs a category"}
+                    </span>
                   )}
                 </span>
                 <span className={`${styles.truncate} ${styles.muted}`}>
@@ -152,7 +158,7 @@ export function PartnerRegister({
                 </span>
               </span>
               <span className={styles.rowName}>
-                <span className={styles.truncate}>{row.payee}</span>
+                <span className={styles.truncate}>{payee(row)}</span>
                 {paidBy && (
                   <span className={`${local.paidBy} ${styles.faint}`}>
                     {paidBy}
@@ -170,6 +176,12 @@ export function PartnerRegister({
               <span className={styles.truncate}>
                 {row.needsCategory ? (
                   <Tag tone="attention">Needs category</Tag>
+                ) : settlement ? (
+                  unconfirmed ? (
+                    <Tag tone="attention">Confirm</Tag>
+                  ) : (
+                    <span className={styles.faint}>Settlement</span>
+                  )
                 ) : row.awaitingImport && row.payerId === view.budget.userId ? (
                   <span className={styles.faint}>Waiting for your import</span>
                 ) : row.kind === "repayment" ? (
@@ -186,7 +198,7 @@ export function PartnerRegister({
                 className={`${styles.numeric} ${styles.faint}`}
                 data-optional
               >
-                {row.kind === "repayment" ? "" : money(row.shared)}
+                {opens && !settlement ? money(row.shared) : ""}
               </span>
               <span className={styles.numeric}>{money(row.change, true)}</span>
               <span className={`${styles.numeric} ${styles.muted}`}>
@@ -194,7 +206,10 @@ export function PartnerRegister({
               </span>
               <span />
             </button>
-            {selected && row.kind !== "repayment" && (
+            {selected && settlement && (
+              <SettlementDetail row={row} partnerName={account.name} />
+            )}
+            {selected && opens && !settlement && (
               <EntryDetail
                 key={`${row.id}-${row.partner}-${row.you}`}
                 row={row}
@@ -204,6 +219,93 @@ export function PartnerRegister({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// How a settlement reads in either budget: how it was sent, and to or from
+// whom.
+function settlementPayee(row: Row, view: View, partnerName: string) {
+  if (row.kind !== "settlement") return row.payee;
+  const sent = row.payerId === view.budget.userId;
+  return `${row.method} ${sent ? "to" : "from"} ${partnerName}`;
+}
+
+// A settlement, opened: what it moved, how both budgets recognized it, and
+// the one confirmation that resolves both sides.
+function SettlementDetail({
+  row,
+  partnerName,
+}: {
+  row: Row;
+  partnerName: string;
+}) {
+  const { saveCommand } = useTransactionEntry();
+  const [error, setError] = useState("");
+  return (
+    <div
+      className={share.detail}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <div className={share.detailMain}>
+        <dl className={share.facts}>
+          <div>
+            <dt>
+              {row.change >= 0
+                ? `You paid ${partnerName}`
+                : `${partnerName} paid you`}
+            </dt>
+            <dd>{money(Math.abs(row.change))}</dd>
+          </div>
+        </dl>
+        <p className={local.source}>
+          <LinkIcon size={13} aria-hidden />
+          {row.confirmed
+            ? "Matched in both budgets"
+            : "Imported in both budgets. Confirm it in either one."}
+          {" Reject a wrong match to review both bank imports separately."}
+        </p>
+        <div className={local.detailActions}>
+          {!row.confirmed && (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() =>
+                setError(
+                  saveCommand(
+                    {
+                      type: "partner.settlement.confirm",
+                      id: newId(),
+                      settlementId: row.settlementId!,
+                    },
+                    `Confirmed. ${partnerName}’s side is confirmed too.`,
+                  ) ?? "",
+                )
+              }
+            >
+              Confirm settlement
+            </Button>
+          )}
+          <Button
+            size="sm"
+            onClick={() =>
+              setError(
+                saveCommand(
+                  {
+                    type: "partner.settlement.reject",
+                    id: newId(),
+                    settlementId: row.settlementId!,
+                  },
+                  "Match rejected. Both bank imports are back in review.",
+                ) ?? "",
+              )
+            }
+          >
+            Reject match
+          </Button>
+        </div>
+        {error && <p className={moveStyles.error}>{error}</p>}
+      </div>
     </div>
   );
 }

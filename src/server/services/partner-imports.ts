@@ -6,8 +6,9 @@ import {
   planPartnerMatches,
   type ImportFacts,
 } from "~/domain/partner-import-match";
-import { recordedBy } from "~/domain/partner-ledger";
+import { partnerAccountOf, recordedBy } from "~/domain/partner-ledger";
 import type { AccountingState } from "~/domain/shared-ledger";
+import { maySettleOut, namesPerson } from "~/lib/settlement-recognition";
 import type { StoredImport } from "~/server/integrations/transactions";
 import { bankImportEligibility, type BankMapping } from "./bank-account-setup";
 
@@ -15,6 +16,13 @@ import { bankImportEligibility, type BankMapping } from "./bank-account-setup";
 // (src/domain/partner-import-match.ts): a certain match is made as the
 // import arrives; any other possible match waits in the inbox for the payer
 // to confirm, rather than importing a second copy of the purchase.
+//
+// Settlements (src/server/services/partner-settlements.ts) run after the
+// bank update and only take imports still unresolved, so an import is
+// either matched here or settled there, never both. An import that may be
+// a payment to the partner is never matched here without the payer's
+// confirmation: it waits, so the partner's import of the same payment can
+// make it a settlement first.
 
 type PartnerMatchCommand = Extract<Command, { type: "partner.match" }>;
 
@@ -56,12 +64,24 @@ export function planPartnerImports(
     budget,
     waiting.map(({ record, facts }) => ({ id: record.id, facts })),
   );
+  const partner = partnerAccountOf(budget);
   const decided = new Map<string, PartnerMatchCommand | "wait">();
   for (const { record, facts } of waiting) {
     const entry = plan.get(record.id);
     if (!entry) continue;
+    const kind = budget.accounts.find(
+      (account) => account.id === facts.accountId,
+    )?.kind;
+    const settlement =
+      (kind === "cash" || kind === "credit") &&
+      maySettleOut(
+        { accountKind: kind, amount: facts.amount, text: facts.payee },
+        !!partner && namesPerson(facts.payee, partner.name),
+      );
     const categoryId =
-      entry === "confirm" ? undefined : payerCategory(budget, entry, facts);
+      entry === "confirm" || settlement
+        ? undefined
+        : payerCategory(budget, entry, facts);
     decided.set(
       record.id,
       entry === "confirm" || !categoryId

@@ -1,7 +1,14 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Command } from "~/domain/engine";
-import { readyOverview, renderShell, type Overview } from "./shell-harness";
+import {
+  findToast,
+  findTransactionRow,
+  readyOverview,
+  renderShell,
+  transactionRow as row,
+  type Overview,
+} from "./shell-harness";
 
 // Trader Joe's, categorized as Gifts once by the owner.
 const categorized: Command = {
@@ -41,10 +48,6 @@ const bankImport = (
   quarantined: false,
 });
 
-const register = () =>
-  within(screen.getByRole("group", { name: "Transactions" }));
-const row = (payee: string) =>
-  register().getByRole("button", { name: new RegExp(payee) });
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
 
@@ -134,9 +137,17 @@ test("picking a remembered payee selects its whole category label for acceptance
 
   await shell.user.tab();
   expect(document.activeElement).toBe(
+    form.getByLabelText("Share", { exact: true }),
+  );
+  await shell.user.tab();
+  expect(document.activeElement).toBe(
     form.getByLabelText("Outflow", { exact: true }),
   );
   expect(category).toHaveProperty("value", "Gifts");
+  await shell.user.tab({ shift: true });
+  expect(document.activeElement).toBe(
+    form.getByLabelText("Share", { exact: true }),
+  );
   await shell.user.tab({ shift: true });
   await shell.user.keyboard("Household");
   expect(category).toHaveProperty("value", "Household");
@@ -145,6 +156,14 @@ test("picking a remembered payee selects its whole category label for acceptance
   expect(document.activeElement).toBe(
     form.getByLabelText("Outflow", { exact: true }),
   );
+  await shell.user.keyboard("31.50{Enter}");
+  await findToast(/^Added Trader Joe/);
+  expect(
+    within(screen.getByRole("group", { name: "Transactions" })).getByRole(
+      "button",
+      { name: /Trader Joe.*Household.*\$31\.50/ },
+    ),
+  ).toBeTruthy();
 });
 
 test("a payee with no memory prefills nothing, and a category you choose stays when the payee changes", async () => {
@@ -196,6 +215,13 @@ test("editing a transaction never takes a remembered category", async () => {
     "value",
     "Household",
   );
+  await shell.user.click(editor().getByRole("button", { name: "Save" }));
+  await findToast("Saved Trader Joe's");
+  expect(
+    within(await findTransactionRow("Trader Joe's")).getByText("Household", {
+      exact: true,
+    }),
+  ).toBeTruthy();
 });
 
 test("Ready to Assign prefills only while the money comes in", async () => {

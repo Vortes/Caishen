@@ -56,6 +56,10 @@
   flex: none;
   color: var(--text-tertiary);
 }
+.detailActions {
+  display: flex;
+  gap: 8px;
+}
 
 .fieldPair {
   display: grid;
