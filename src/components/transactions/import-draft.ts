@@ -8,6 +8,12 @@ export function importRowId(item: BankImport) {
   return `bank:${JSON.stringify([item.connectionId, item.logicalId])}`;
 }
 
+/** The purchases a partner recorded that a waiting import may be. */
+export function partnerMatchesOf(item: BankImport) {
+  return ("partnerMatches" in item ? item.partnerMatches : undefined) ?? [];
+}
+export type PartnerImportMatch = ReturnType<typeof partnerMatchesOf>[number];
+
 export function canEditImport(item: BankImport) {
   return Boolean(
     item.accountId && !item.removed && !item.transactionId && !item.quarantined,
