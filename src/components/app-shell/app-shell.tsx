@@ -949,6 +949,8 @@ function HeaderTitle({
   screen: Screen;
   accountName?: string;
 }) {
+  if (screen.type === "plan") return <h1 className="sr-only">Plan</h1>;
+
   return (
     <div className={styles.titleGroup}>
       {screen.type === "register" && accountName && (
@@ -962,13 +964,11 @@ function HeaderTitle({
         </>
       )}
       <h1 className={styles.headerTitle}>
-        {screen.type === "plan"
-          ? "Plan"
-          : screen.type === "reflect"
-            ? "Reflect"
-            : screen.type === "loans"
-              ? "Loans"
-              : (accountName ?? "All accounts")}
+        {screen.type === "reflect"
+          ? "Reflect"
+          : screen.type === "loans"
+            ? "Loans"
+            : (accountName ?? "All accounts")}
       </h1>
     </div>
   );

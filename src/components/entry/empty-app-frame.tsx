@@ -68,11 +68,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       </aside>
       <div className={shell.main}>
         <div className={shell.panel}>
-          <header className={shell.header} aria-hidden inert>
-            <div className={shell.titleGroup}>
-              <span className={shell.headerTitle}>Plan</span>
-            </div>
-          </header>
+          <header className={shell.header} aria-hidden inert />
           <div className={styles.panelBody}>{children}</div>
         </div>
       </div>

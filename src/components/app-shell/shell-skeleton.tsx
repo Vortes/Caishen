@@ -150,9 +150,6 @@ export function ShellSkeleton({
                   </IconButton>
                 </div>
               </div>
-              <div className={styles.titleGroup}>
-                <h1 className={styles.headerTitle}>Plan</h1>
-              </div>
               <div className={styles.monthNav}>
                 <IconButton label="Previous month">
                   <ChevronLeftIcon aria-hidden />
