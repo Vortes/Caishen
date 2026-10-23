@@ -2103,19 +2103,16 @@ function replay(
     // The partner's purchases: what the viewer owes for them moves their
     // Partner account, and their paired envelope holds it. Their side's
     // category, once chosen, spends the share as cash. The viewer's own
-    // purchases still waiting for their import move the account and the
-    // envelope alike, but no account of theirs has paid them yet, so the
-    // envelope holds them as credit and no category spends.
+    // purchases still waiting for their import move only the account: no
+    // account of theirs has paid them yet, so the envelope lacks nothing
+    // for them and no category spends. What the partner pays toward them
+    // before the import stays in the envelope for that payment.
     for (const entry of rows.mirrored) {
       if (!partnerAccount || !entryCounts(entry, cutoff)) continue;
       const change = mirroredChange(entry, userId);
       const counterparty = accounts.get(partnerAccount.id)!;
       counterparty.balance = safe(counterparty.balance + change);
       if (entry.payerId === userId) {
-        if (!partnerEnvelope) continue;
-        const state = categories.get(partnerEnvelope.id)!;
-        state.activity = safe(state.activity - change);
-        state.available = safe(state.available - change);
         unpaidPartnerEntries = safe(unpaidPartnerEntries + change);
         continue;
       }
@@ -2391,23 +2388,23 @@ function replay(
           )
           .map((item) => item.amount),
       );
+      // The viewer's purchases still waiting for their import are owed to
+      // them but not yet paid by them, so the envelope holds against the
+      // rest of the account.
+      const unpaid =
+        category.id === partnerEnvelope?.id ? unpaidPartnerEntries : 0;
       state.available = safe(
-        float - accounts.get(category.counterpartyAccountId)!.balance,
+        float - accounts.get(category.counterpartyAccountId)!.balance + unpaid,
       );
-      // Whatever the envelope lacks beyond its unfunded card credit and the
-      // purchases still waiting for their import was paid in cash. It stays cash overspending until repaid or covered, since the
+      // Whatever the envelope lacks beyond its unfunded card credit was paid
+      // in cash. It stays cash overspending until repaid or covered, since the
       // envelope never clips and a repayment never reaches Ready to Assign.
       const cardCredit = sum(
         [...carriedCounterpartyCredit]
           .filter(([key]) => creditCategory(key) === category.id)
           .flatMap(([, cards]) => [...cards.values()]),
       );
-      const unpaid =
-        category.id === partnerEnvelope?.id ? unpaidPartnerEntries : 0;
-      state.cashOverspending = Math.max(
-        0,
-        safe(-state.available - cardCredit - unpaid),
-      );
+      state.cashOverspending = Math.max(0, safe(-state.available - cardCredit));
     }
     snapshots.set(
       cursor,
