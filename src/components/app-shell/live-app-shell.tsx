@@ -353,7 +353,7 @@ function LiveWorkspace({
     return () => setOpenPopovers((count) => count - 1);
   }, []);
   const banks = useBankConnections({
-    state: { services, connections, view, revision: snapshot.revision ?? 0 },
+    state: { services, connections, view },
     notify,
     holdOpen,
     runOnServer: runInForm,

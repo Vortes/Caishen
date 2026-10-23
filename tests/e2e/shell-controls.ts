@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import type { TestBudget } from "./shell-fixture";
-import { monthLabelPattern, monthNavigation } from "./calendar";
+import { monthNavigation } from "./calendar";
 
 export const available = (page: Page, category: string) =>
   page.getByRole("button", { name: new RegExp(`available in ${category}\\.`) });
@@ -71,7 +71,7 @@ export async function editAssigned(page: Page, category: string) {
 }
 
 export async function showMonth(page: Page, month: string) {
-  const picker = page.getByRole("button", { name: monthLabelPattern });
+  const picker = page.getByRole("button", { name: /, choose a month$/ });
   await expect(picker).toBeVisible();
   const navigation = monthNavigation((await picker.innerText()).trim(), month);
   for (let step = 0; step < navigation.steps; step++) {
