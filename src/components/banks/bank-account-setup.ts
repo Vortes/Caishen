@@ -8,7 +8,7 @@ import { api } from "~/trpc/react";
 type Connection = State["connections"][number];
 
 /** What the setup form reads of the budget. */
-export type BankSetupState = Pick<State, "connections" | "view" | "revision">;
+export type BankSetupState = Pick<State, "connections" | "view">;
 
 /**
  * Sends an operation only the server can apply behind the budget's pending
@@ -97,7 +97,7 @@ export function useBankAccountSetupForm({
   state: BankSetupState;
   connection: Connection;
   onSaved: (added: number) => void;
-  runOnServer?: ServerRunner;
+  runOnServer: ServerRunner;
 }) {
   const utils = api.useUtils();
   const save = api.budget.setupBankAccounts.useMutation();
@@ -361,35 +361,17 @@ export function useBankAccountSetupForm({
           expectedRevision,
           accounts,
         });
-      if (runOnServer)
-        await runOnServer(
-          operationId,
-          send,
-          `Added ${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}`,
-        );
-      else await send(state.revision);
+      await runOnServer(
+        operationId,
+        send,
+        `Added ${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}`,
+      );
       await utils.budget.invalidate();
       onSaved(accounts.length);
     } catch (failure) {
       // The budget client only gives up on a save the server refused.
-      if (runOnServer) {
-        submittedAccounts.current = null;
-        setOperationId(crypto.randomUUID());
-      } else if (
-        failure &&
-        typeof failure === "object" &&
-        "data" in failure &&
-        failure.data &&
-        typeof failure.data === "object" &&
-        "code" in failure.data &&
-        (failure.data.code === "CONFLICT" ||
-          failure.data.code === "BAD_REQUEST" ||
-          failure.data.code === "PRECONDITION_FAILED")
-      ) {
-        submittedAccounts.current = null;
-        setOperationId(crypto.randomUUID());
-        if (failure.data.code === "PRECONDITION_FAILED") setRefreshed(false);
-      }
+      submittedAccounts.current = null;
+      setOperationId(crypto.randomUUID());
       setError(
         failure instanceof Error
           ? failure.message

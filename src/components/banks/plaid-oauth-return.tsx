@@ -37,7 +37,6 @@ export function PlaidOAuthReturn() {
     state: budget.data ?? {
       connections: [],
       view: null,
-      revision: 0,
       services: [],
     },
     notify: setNotice,

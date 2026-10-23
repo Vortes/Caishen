@@ -3,32 +3,11 @@
 
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--foreground);
   --color-popover: var(--card);
   --color-popover-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
   --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --text-caption: var(--font-size-caption);
-  --text-ui: var(--font-size-ui);
-  --text-body: var(--font-size-body);
-  --text-body-lg: var(--font-size-body-lg);
-  --text-heading-sm: var(--font-size-heading-sm);
-  --text-heading: var(--font-size-heading);
-  --text-heading-lg: var(--font-size-heading-lg);
-  --text-display: var(--font-size-display);
 }
 
 :root {
@@ -39,31 +18,12 @@
   --muted: #1c1d33;
   --muted-foreground: #b0b1c8;
   --primary: #6d60ee;
-  --primary-foreground: #fff;
-  --secondary: #292a49;
-  --secondary-foreground: #f0efff;
-  --accent: #242349;
-  --accent-foreground: #f0efff;
-  --destructive: #ff727e;
   --border: #28293e;
-  --input: #42445e;
   --ring: #aaa4ff;
-  --sidebar: #111226;
-  --selected: #222046;
-  --success: #b4e27b;
-  --success-bg: #294914;
-  --warning: #f0cd66;
-  --warning-bg: #4b3b17;
-  --error-bg: #482330;
-  --radius: 0.4rem;
-  --font-size-caption: 0.8125rem;
-  --font-size-ui: 0.875rem;
   --font-size-body: 1rem;
   --font-size-body-lg: 1.125rem;
   --font-size-heading-sm: 1.25rem;
   --font-size-heading: 1.5rem;
-  --font-size-heading-lg: 2rem;
-  --font-size-display: clamp(2.5rem, 4.5vw, 4rem);
   font-synthesis: none;
 }
 

@@ -99,7 +99,7 @@
 
 @media (pointer: coarse) {
   .monthCell {
-    min-height: 44px;
+    min-height: var(--size-row-lg);
   }
 }
 @media (prefers-reduced-motion: reduce) {

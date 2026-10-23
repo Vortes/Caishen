@@ -69,7 +69,6 @@ export function Onboarding() {
     state: state.data ?? {
       connections: [],
       view: null,
-      revision: 0,
       services: [],
     },
     notify: (message) => setNotice(message),
