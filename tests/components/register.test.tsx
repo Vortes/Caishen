@@ -245,12 +245,15 @@ const cardSeeds: Command[] = [
     month: "2026-10",
   },
   {
-    type: "card.payment",
+    type: "transaction.upsert",
+    transactionId: `${"card-payment"}:cash`,
     id: "card-payment",
-    cashAccountId: "checking",
-    cardAccountId: "visa",
     date: "2026-10-10",
-    amount: 5000,
+    accountId: "checking",
+    transferAccountId: "visa",
+    amount: -5000,
+    payee: "Credit card payment",
+    status: "posted",
   },
 ];
 
@@ -287,7 +290,7 @@ test("payment payees exclude the current account and a receiving-side edit submi
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
     type: "transaction.upsert",
-    transactionId: "card-payment:card",
+    transactionId: "card-payment:counterpart",
     accountId: "visa",
     transferAccountId: "checking",
     amount: 6001,
@@ -448,13 +451,16 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
       amount: 10000,
     },
     {
-      type: "loan.payment",
+      type: "transaction.upsert",
+      transactionId: `${"loan-payment"}:payment`,
       id: "loan-payment",
       loanId: "loan",
-      accountId: "checking",
       date: "2026-10-10",
-      principal: 4000,
       interest: 1000,
+      accountId: "checking",
+      amount: -(4000 + 1000),
+      payee: "Loan payment",
+      status: "posted",
     },
   ];
   const shell = await renderShell({ seedCommands: seeds });

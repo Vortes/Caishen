@@ -225,6 +225,7 @@ export type RegisterEntry =
         budgetAmount: number;
         budgetSide: "here" | "other";
         loanPayment: boolean;
+        repayment: boolean;
       };
     }
   | {
@@ -419,6 +420,7 @@ export function classifyRegisterEntry(
       budgetAmount: account.kind === "tracking" ? -item.amount : item.amount,
       budgetSide: account.kind === "tracking" ? "other" : "here",
       loanPayment: account.kind === "cash",
+      repayment: Boolean(item.linkedCounterpartyAccountId),
     },
     capabilities: {
       edit: edit

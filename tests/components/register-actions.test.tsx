@@ -331,7 +331,7 @@ test.each([
         },
         { type: "category.add", id: "food", categoryId: "food", name: "Food" },
         {
-          type: "transaction.save",
+          type: "transaction.upsert",
           id: "transfer",
           transactionId: "transfer",
           accountId: "checking",

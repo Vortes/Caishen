@@ -67,18 +67,19 @@ export function transactionActions(
       categorize: false,
       refund: false,
       share:
-        capabilities.share.mode === "none" ? null : capabilities.share.mode,
+        capabilities.link.ok && capabilities.share.mode !== "none"
+          ? capabilities.share.mode
+          : null,
     };
   }
+  const edit = entry.fields.repayment
+    ? "repayment"
+    : capabilities.edit.ok
+      ? "transaction"
+      : null;
   return {
     select: !entry.transaction.removed,
-    edit: entry.transaction.removed
-      ? null
-      : entry.transaction.linkedCounterpartyAccountId
-        ? "repayment"
-        : capabilities.edit.ok
-          ? "transaction"
-          : null,
+    edit: entry.transaction.removed ? null : edit,
     approve: transactionNeedsReview(view, item) && capabilities.approve.ok,
     reject: capabilities.reject.ok,
     categorize: capabilities.categorize.ok,

@@ -434,14 +434,6 @@ export const commandSchema = z.discriminatedUnion("type", [
     interest: nonnegativeCents.optional(),
   }),
   z.object({
-    type: z.literal("transaction.save"),
-    id: identifier,
-    ...transactionInput,
-    transferAccountId: identifier.optional(),
-    loanId: identifier.optional(),
-    interest: nonnegativeCents.optional(),
-  }),
-  z.object({
     type: z.literal("transaction.remove"),
     recordedAt: z.string().datetime().optional(),
     id: identifier,
@@ -479,22 +471,6 @@ export const commandSchema = z.discriminatedUnion("type", [
     transactionId: identifier,
     duplicateId: identifier,
   }),
-  z.object({
-    type: z.literal("card.payment"),
-    id: identifier,
-    cashAccountId: identifier,
-    cardAccountId: identifier,
-    date: daySchema,
-    amount: positiveCents,
-  }),
-  z.object({
-    type: z.literal("card.credit"),
-    id: identifier,
-    accountId: identifier,
-    date: daySchema,
-    amount: positiveCents,
-    posted: z.boolean().default(true),
-  }),
   // Loans in sidebar order, like account.reorder.
   z.object({
     type: z.literal("loan.reorder"),
@@ -519,15 +495,6 @@ export const commandSchema = z.discriminatedUnion("type", [
     loanId: identifier,
     annualRateBps: z.number().int().min(0).max(100000),
     effectiveDate: daySchema,
-  }),
-  z.object({
-    type: z.literal("loan.payment"),
-    id: identifier,
-    loanId: identifier,
-    accountId: identifier,
-    date: daySchema,
-    principal: nonnegativeCents,
-    interest: nonnegativeCents,
   }),
   z.object({
     type: z.literal("income.expect"),
@@ -2633,280 +2600,6 @@ function validateCardPayment(
     fail("Card payment requires cash already received by its payment date");
 }
 
-function saveRegisterTransaction(
-  book: AccountingState,
-  budget: Budget,
-  command: Extract<
-    ParsedCommand,
-    { type: "transaction.save" | "transaction.upsert" }
-  >,
-  source: CommandSource,
-  changes: Changes,
-) {
-  requireDate(budget, command.date);
-  const account = accountAtDate(budget, command.accountId, command.date);
-  const existing = budget.transactions.find(
-    (item) => item.id === command.transactionId,
-  );
-  if (existing) {
-    const capability = classifyRegisterEntry(budget, existing).capabilities
-      .edit;
-    if (!capability.ok) fail(capability.reason);
-  }
-  if (
-    existing &&
-    (command.accountId !== existing.accountId ||
-      command.revision !== existing.revision + 1)
-  )
-    fail("This transaction changed. Reopen it before saving");
-  if (existing) ensureReconciledUnchanged(existing, command);
-  if (command.transferAccountId && command.loanId)
-    fail("Choose one payment or transfer destination");
-  if (
-    command.providerId &&
-    budget.transactions.some(
-      (item) =>
-        active(item) &&
-        item.id !== command.transactionId &&
-        item.providerId === command.providerId,
-    )
-  )
-    fail("Provider transaction already exists");
-  if (
-    (command.transferAccountId || command.loanId) &&
-    existing &&
-    budget.transactions.some(
-      (item) => active(item) && item.refundOfTransactionId === existing.id,
-    )
-  )
-    fail("Resolve linked refunds before converting their purchase");
-  const paired =
-    existing && (isTransfer(existing) || existing.kind === "loan-payment");
-  if (!paired && !command.transferAccountId && !command.loanId) {
-    applyCommand(
-      book,
-      budget,
-      { ...command, type: "transaction.upsert" },
-      source,
-      changes,
-    );
-    return;
-  }
-  if (command.lines) fail("A transfer cannot be split");
-  if (
-    command.counterpartyShare ||
-    existing?.counterpartyShare ||
-    existing?.lines?.some((line) => line.counterpartyShare) ||
-    command.refundOfTransactionId ||
-    existing?.refundOfTransactionId
-  )
-    fail(
-      "Resolve counterparty shares and linked refunds before converting to a transfer",
-    );
-  if (!command.amount) fail("Enter a nonzero amount");
-  const counterparts = existing ? transferCounterparts(budget, existing) : [];
-  if (existing && isTransfer(existing) && counterparts.length !== 1)
-    fail("The other side of this transfer is missing or ambiguous");
-  const previous = existing ? structuredClone(existing) : undefined;
-  const otherPrevious = counterparts[0]
-    ? structuredClone(counterparts[0])
-    : undefined;
-  // Exclude the old facts while checking the replacement's cash, reserve and debt.
-  if (existing) changes.transaction(budget, existing).removed = true;
-  for (const item of counterparts)
-    changes.transaction(budget, item).removed = true;
-  if (existing?.kind === "loan-payment") {
-    const loan =
-      budget.loans.find((item) =>
-        item.payments.some((payment) => payment.id === existing.linkedId),
-      ) ?? fail("The confirmed loan payment could not be found");
-    changes.loan(budget, loan).payments = loan.payments.filter(
-      (payment) => payment.id !== existing.linkedId,
-    );
-  }
-  const write = (
-    facts: Omit<Transaction, "revision" | "history" | "reviewed">,
-    before?: Transaction,
-  ) => {
-    const revision = (before?.revision ?? 0) + 1;
-    const saved: Transaction = {
-      ...facts,
-      reconciled: before?.reconciled,
-      revision,
-      reviewed:
-        source === "user"
-          ? (previous?.reviewed ?? command.reviewed ?? true)
-          : false,
-      history: [
-        ...(before?.history ?? []),
-        {
-          revision,
-          amount: facts.amount,
-          status: facts.status,
-          date: facts.date,
-          payee: facts.payee,
-          operationId: command.id,
-          reason: before ? "updated" : "created",
-        },
-      ],
-    };
-    if (!before && budget.transactions.some((item) => item.id === facts.id))
-      fail("Transaction ID already exists");
-    changes.putTransaction(budget, saved);
-  };
-  const base = {
-    id: command.transactionId,
-    accountId: account.id,
-    date: command.date,
-    amount: command.amount,
-    payee: command.payee,
-    status: command.status,
-    expenseMonth: command.expenseMonth ?? monthOf(command.date),
-    providerId: previous?.providerId ?? command.providerId,
-  };
-  const linkedId = paired ? previous!.linkedId! : command.id;
-  let retainedCounterpart: string | undefined;
-  if (command.transferAccountId) {
-    if (command.transferAccountId === account.id)
-      fail("Choose a different account");
-    const other = accountAtDate(
-      budget,
-      command.transferAccountId,
-      command.date,
-    );
-    let categoryId: string | undefined;
-    if (transferNeedsCategory(account, other)) {
-      const budgetAmount =
-        account.kind === "tracking" ? -command.amount : command.amount;
-      if (command.categoryId === READY_TO_ASSIGN) {
-        if (budgetAmount < 0)
-          fail("Choose a spending category for money leaving the budget");
-      } else {
-        const category = getCategory(budget, command.categoryId ?? "");
-        refusePairedEnvelope(category);
-        if (category.pairedAccountId || category.pairedLoanId)
-          fail("Choose a spending category for this transfer");
-        categoryId = category.id;
-      }
-    }
-    const sending = command.amount < 0 ? account : other;
-    const receiving = command.amount < 0 ? other : account;
-    const kind =
-      sending.kind === "cash" && receiving.kind === "credit"
-        ? "card-payment"
-        : "transfer";
-    if (kind === "card-payment")
-      validateCardPayment(
-        book,
-        budget,
-        sending.id,
-        receiving.id,
-        command.date,
-        Math.abs(command.amount),
-      );
-    const reusable =
-      otherPrevious?.accountId === other.id ? otherPrevious : undefined;
-    if (reusable)
-      ensureReconciledUnchanged(reusable, {
-        amount: -command.amount,
-        status: command.status,
-      });
-    retainedCounterpart = reusable?.id ?? `${command.id}:counterpart`;
-    write(
-      {
-        ...base,
-        kind,
-        linkedId,
-        categoryId,
-        payee: transferPayee(account, other, command.amount),
-      },
-      previous,
-    );
-    write(
-      {
-        ...base,
-        id: retainedCounterpart,
-        accountId: other.id,
-        amount: -command.amount,
-        payee: transferPayee(other, account, -command.amount),
-        providerId: reusable?.providerId,
-        kind,
-        linkedId,
-        categoryId,
-      },
-      reusable,
-    );
-  } else if (command.loanId) {
-    requireCash(budget, account.id, command.date);
-    const loan =
-      budget.loans.find((item) => item.id === command.loanId) ??
-      fail("Loan access denied");
-    if (command.categoryId !== loan.categoryId)
-      fail("Choose the loan's payment category");
-    if (
-      command.amount >= 0 ||
-      command.interest === undefined ||
-      command.interest > -command.amount
-    )
-      fail("Enter the payment outflow and lender-confirmed interest");
-    if (command.status !== "posted")
-      fail("Loan payments require confirmed posted activity");
-    if (command.date < loan.rates[0]!.effectiveDate)
-      fail("Payment predates the loan");
-    const interest =
-      command.interest ?? fail("Enter lender-confirmed interest");
-    const principal = -command.amount - interest;
-    if (
-      principal >
-      loan.principal - sum(loan.payments.map((item) => item.principal))
-    )
-      fail("Confirmed principal exceeds the remaining loan balance");
-    changes.loan(budget, loan).payments.push({
-      id: linkedId,
-      date: command.date,
-      principal,
-      interest,
-    });
-    write(
-      {
-        ...base,
-        kind: "loan-payment",
-        linkedId,
-        categoryId: loan.categoryId,
-        payee: `Payment to ${loan.name}`,
-      },
-      previous,
-    );
-  } else {
-    // The edited side becomes the plain transaction. Its counterpart is retired.
-    if (existing) {
-      existing.removed = false;
-      existing.kind = "purchase";
-      delete existing.linkedId;
-      delete existing.categoryId;
-    }
-    applyCommand(
-      book,
-      budget,
-      { ...command, type: "transaction.upsert" },
-      source,
-      changes,
-    );
-  }
-  for (const item of counterparts) {
-    if (item.id === retainedCounterpart) continue;
-    item.history.push({
-      revision: ++item.revision,
-      amount: item.amount,
-      status: item.status,
-      date: item.date,
-      payee: item.payee,
-      operationId: command.id,
-      reason: "removed",
-    });
-  }
-}
-
 function appendTransaction(
   changes: Changes,
   budget: Budget,
@@ -3198,12 +2891,9 @@ function executeAccountingState<T extends AccountingState>(
   if (
     [
       "transaction.upsert",
-      "transaction.save",
       "transaction.remove",
       "transaction.reject",
       "transaction.merge",
-      "card.payment",
-      "card.credit",
     ].includes(command.type)
   )
     ensureSupportedCardBalances(budget);
@@ -3417,6 +3107,15 @@ function editPartnerEntry(
       entry.id,
       {
         ...entry,
+        ...(sourceLine
+          ? {
+              source: {
+                ...sourceLine,
+                hasPurposeCategory:
+                  sourceLine.hasPurposeCategory && share < Math.abs(amount),
+              },
+            }
+          : {}),
         amount,
         share,
         date: command.date ?? entry.date,
@@ -4032,10 +3731,6 @@ function applyCommand(
       if (command.snoozed) target.snoozedMonths.push(command.month);
       break;
     }
-    case "transaction.save": {
-      saveRegisterTransaction(book, budget, command, source, changes);
-      break;
-    }
     case "transaction.upsert": {
       requireDate(budget, command.date);
       const account = accountAtDate(budget, command.accountId, command.date);
@@ -4062,7 +3757,262 @@ function applyCommand(
         "counterpart" in entry.shape ||
         "loan" in entry.shape
       ) {
-        saveRegisterTransaction(book, budget, command, source, changes);
+        if (
+          existing &&
+          (command.accountId !== existing.accountId ||
+            command.revision !== existing.revision + 1)
+        )
+          fail("This transaction changed. Reopen it before saving");
+        if (existing) ensureReconciledUnchanged(existing, command);
+        if (command.transferAccountId && command.loanId)
+          fail("Choose one payment or transfer destination");
+        if (
+          command.providerId &&
+          budget.transactions.some(
+            (item) =>
+              active(item) &&
+              item.id !== command.transactionId &&
+              item.providerId === command.providerId,
+          )
+        )
+          fail("Provider transaction already exists");
+        if (
+          (command.transferAccountId || command.loanId) &&
+          existing &&
+          budget.transactions.some(
+            (item) =>
+              active(item) && item.refundOfTransactionId === existing.id,
+          )
+        )
+          fail("Resolve linked refunds before converting their purchase");
+        const paired =
+          existing &&
+          (isTransfer(existing) || existing.kind === "loan-payment");
+        if (command.lines) fail("A transfer cannot be split");
+        if (
+          command.counterpartyShare ||
+          existing?.counterpartyShare ||
+          existing?.lines?.some((line) => line.counterpartyShare) ||
+          command.refundOfTransactionId ||
+          existing?.refundOfTransactionId
+        )
+          fail(
+            "Resolve counterparty shares and linked refunds before converting to a transfer",
+          );
+        if (!command.amount) fail("Enter a nonzero amount");
+        const counterparts = existing
+          ? transferCounterparts(budget, existing)
+          : [];
+        if (
+          existing &&
+          "counterpart" in entry.shape &&
+          counterparts.length !== 1
+        )
+          fail("The other side of this transfer is missing or ambiguous");
+        const previous = existing ? structuredClone(existing) : undefined;
+        const otherPrevious = counterparts[0]
+          ? structuredClone(counterparts[0])
+          : undefined;
+        // Exclude the old facts while checking the replacement's cash, reserve and debt.
+        if (existing) changes.transaction(budget, existing).removed = true;
+        for (const item of counterparts)
+          changes.transaction(budget, item).removed = true;
+        if (existing?.kind === "loan-payment") {
+          const loan =
+            budget.loans.find((item) =>
+              item.payments.some((payment) => payment.id === existing.linkedId),
+            ) ?? fail("The confirmed loan payment could not be found");
+          changes.loan(budget, loan).payments = loan.payments.filter(
+            (payment) => payment.id !== existing.linkedId,
+          );
+        }
+        const write = (
+          facts: Omit<Transaction, "revision" | "history" | "reviewed">,
+          before?: Transaction,
+        ) => {
+          const revision = (before?.revision ?? 0) + 1;
+          const saved: Transaction = {
+            ...facts,
+            reconciled: before?.reconciled,
+            revision,
+            reviewed:
+              source === "user"
+                ? (previous?.reviewed ?? command.reviewed ?? true)
+                : false,
+            history: [
+              ...(before?.history ?? []),
+              {
+                revision,
+                amount: facts.amount,
+                status: facts.status,
+                date: facts.date,
+                payee: facts.payee,
+                operationId: command.id,
+                reason: before ? "updated" : "created",
+              },
+            ],
+          };
+          if (
+            !before &&
+            budget.transactions.some((item) => item.id === facts.id)
+          )
+            fail("Transaction ID already exists");
+          changes.putTransaction(budget, saved);
+        };
+        const base = {
+          id: command.transactionId,
+          accountId: account.id,
+          date: command.date,
+          amount: command.amount,
+          payee: command.payee,
+          status: command.status,
+          expenseMonth: command.expenseMonth ?? monthOf(command.date),
+          providerId: previous?.providerId ?? command.providerId,
+        };
+        const linkedId = paired ? previous!.linkedId! : command.id;
+        let retainedCounterpart: string | undefined;
+        if (command.transferAccountId) {
+          if (command.transferAccountId === account.id)
+            fail("Choose a different account");
+          const other = accountAtDate(
+            budget,
+            command.transferAccountId,
+            command.date,
+          );
+          let categoryId: string | undefined;
+          if (transferNeedsCategory(account, other)) {
+            const budgetAmount =
+              account.kind === "tracking" ? -command.amount : command.amount;
+            if (command.categoryId === READY_TO_ASSIGN) {
+              if (budgetAmount < 0)
+                fail("Choose a spending category for money leaving the budget");
+            } else {
+              const category = getCategory(budget, command.categoryId ?? "");
+              refusePairedEnvelope(category);
+              if (category.pairedAccountId || category.pairedLoanId)
+                fail("Choose a spending category for this transfer");
+              categoryId = category.id;
+            }
+          }
+          const sending = command.amount < 0 ? account : other;
+          const receiving = command.amount < 0 ? other : account;
+          const kind =
+            sending.kind === "cash" && receiving.kind === "credit"
+              ? "card-payment"
+              : "transfer";
+          if (kind === "card-payment")
+            validateCardPayment(
+              book,
+              budget,
+              sending.id,
+              receiving.id,
+              command.date,
+              Math.abs(command.amount),
+            );
+          const reusable =
+            otherPrevious?.accountId === other.id ? otherPrevious : undefined;
+          if (reusable)
+            ensureReconciledUnchanged(reusable, {
+              amount: -command.amount,
+              status: command.status,
+            });
+          retainedCounterpart = reusable?.id ?? `${command.id}:counterpart`;
+          write(
+            {
+              ...base,
+              kind,
+              linkedId,
+              categoryId,
+              payee: transferPayee(account, other, command.amount),
+            },
+            previous,
+          );
+          write(
+            {
+              ...base,
+              id: retainedCounterpart,
+              accountId: other.id,
+              amount: -command.amount,
+              payee: transferPayee(other, account, -command.amount),
+              providerId: reusable?.providerId,
+              kind,
+              linkedId,
+              categoryId,
+            },
+            reusable,
+          );
+        } else if (command.loanId) {
+          requireCash(budget, account.id, command.date);
+          const loan =
+            budget.loans.find((item) => item.id === command.loanId) ??
+            fail("Loan access denied");
+          if (
+            command.categoryId !== undefined &&
+            command.categoryId !== loan.categoryId
+          )
+            fail("Choose the loan's payment category");
+          if (
+            command.amount >= 0 ||
+            command.interest === undefined ||
+            command.interest > -command.amount
+          )
+            fail("Enter the payment outflow and lender-confirmed interest");
+          if (command.status !== "posted")
+            fail("Loan payments require confirmed posted activity");
+          if (command.date < loan.rates[0]!.effectiveDate)
+            fail("Payment predates the loan");
+          const interest =
+            command.interest ?? fail("Enter lender-confirmed interest");
+          const principal = -command.amount - interest;
+          if (
+            principal >
+            loan.principal - sum(loan.payments.map((item) => item.principal))
+          )
+            fail("Confirmed principal exceeds the remaining loan balance");
+          changes.loan(budget, loan).payments.push({
+            id: linkedId,
+            date: command.date,
+            principal,
+            interest,
+          });
+          write(
+            {
+              ...base,
+              kind: "loan-payment",
+              linkedId,
+              categoryId: loan.categoryId,
+              payee: `Payment to ${loan.name}`,
+            },
+            previous,
+          );
+        } else {
+          // The edited side becomes the plain transaction. Its counterpart is retired.
+          if (existing) {
+            existing.removed = false;
+            existing.kind = "purchase";
+            delete existing.linkedId;
+            delete existing.categoryId;
+          }
+          applyCommand(
+            book,
+            budget,
+            { ...command, type: "transaction.upsert" },
+            source,
+            changes,
+          );
+        }
+        for (const item of counterparts) {
+          if (item.id === retainedCounterpart) continue;
+          item.history.push({
+            revision: ++item.revision,
+            amount: item.amount,
+            status: item.status,
+            date: item.date,
+            payee: item.payee,
+            operationId: command.id,
+            reason: "removed",
+          });
+        }
         break;
       }
       if (existing && existing.accountId !== command.accountId)
@@ -4632,74 +4582,6 @@ function applyCommand(
       });
       break;
     }
-    case "card.payment": {
-      requireDate(budget, command.date);
-      validateCardPayment(
-        book,
-        budget,
-        command.cashAccountId,
-        command.cardAccountId,
-        command.date,
-        command.amount,
-      );
-      appendTransaction(changes, budget, command.id, {
-        id: `${command.id}:cash`,
-        accountId: command.cashAccountId,
-        date: command.date,
-        amount: -command.amount,
-        payee: "Credit card payment",
-        status: "posted",
-        expenseMonth: monthOf(command.date),
-        kind: "card-payment",
-        linkedId: command.id,
-      });
-      appendTransaction(changes, budget, command.id, {
-        id: `${command.id}:card`,
-        accountId: command.cardAccountId,
-        date: command.date,
-        amount: command.amount,
-        payee: "Credit card payment",
-        status: "posted",
-        expenseMonth: monthOf(command.date),
-        kind: "card-payment",
-        linkedId: command.id,
-      });
-      break;
-    }
-    case "card.credit": {
-      requireDate(budget, command.date);
-      if (
-        accountAtDate(budget, command.accountId, command.date).kind !== "credit"
-      )
-        fail("Select a credit-card account");
-      if (!command.posted) break;
-      const state = materialize(
-        book,
-        actorId,
-        monthOf(command.date),
-        command.date,
-      ).accounts.get(command.accountId)!;
-      const remaining = materialize(
-        book,
-        actorId,
-        monthOf(command.date),
-      ).accounts.get(command.accountId)!;
-      if (command.amount > Math.min(-state.balance, -remaining.balance))
-        fail(
-          "Credit exceeds card debt; positive card balances require bank evidence",
-        );
-      appendTransaction(changes, budget, command.id, {
-        id: `${command.id}:credit`,
-        accountId: command.accountId,
-        date: command.date,
-        amount: command.amount,
-        payee: "Posted statement credit",
-        status: "posted",
-        expenseMonth: monthOf(command.date),
-        kind: "statement-credit",
-      });
-      break;
-    }
     case "loan.add": {
       if (budget.loans.some((loan) => loan.id === command.loanId))
         fail("Loan ID already exists");
@@ -4754,39 +4636,6 @@ function applyCommand(
       changes.loan(budget, loan).rates.push({
         effectiveDate: command.effectiveDate,
         annualRateBps: command.annualRateBps,
-      });
-      break;
-    }
-    case "loan.payment": {
-      requireDate(budget, command.date);
-      requireCash(budget, command.accountId, command.date);
-      const loan =
-        budget.loans.find((item) => item.id === command.loanId) ??
-        fail("Loan access denied");
-      const amount = safe(command.principal + command.interest);
-      if (amount <= 0) fail("Payment must be positive");
-      if (
-        command.principal >
-        loan.principal - sum(loan.payments.map((payment) => payment.principal))
-      )
-        fail("Confirmed principal exceeds the remaining loan balance");
-      changes.loan(budget, loan).payments.push({
-        id: command.id,
-        date: command.date,
-        principal: command.principal,
-        interest: command.interest,
-      });
-      appendTransaction(changes, budget, command.id, {
-        id: `${command.id}:payment`,
-        accountId: command.accountId,
-        date: command.date,
-        amount: -amount,
-        payee: loan.name,
-        status: "posted",
-        expenseMonth: monthOf(command.date),
-        kind: "loan-payment",
-        categoryId: loan.categoryId,
-        linkedId: command.id,
       });
       break;
     }

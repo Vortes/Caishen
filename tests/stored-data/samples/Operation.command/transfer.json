@@ -1,0 +1,11 @@
+{
+  "type": "transaction.upsert",
+  "id": "transfer-operation",
+  "transactionId": "transfer",
+  "accountId": "checking",
+  "transferAccountId": "savings",
+  "date": "2026-10-10",
+  "amount": -2500,
+  "payee": "Transfer to Savings",
+  "status": "posted"
+}

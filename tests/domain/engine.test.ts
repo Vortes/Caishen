@@ -304,11 +304,14 @@ void test("funded card purchases reserve real cash and payment consumes reserve 
   );
   assert.equal(setup.view().readyToAssign, 80_000);
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "amex",
+    type: "transaction.upsert",
+    transactionId: `register-payment-1:2026-10-11`,
     date: "2026-10-11",
-    amount: 12_000,
+    accountId: "checking",
+    transferAccountId: "amex",
+    amount: -12_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   assert.equal(setup.view().cash, 88_000);
   assert.equal(
@@ -362,11 +365,14 @@ void test("unfunded card spending remains debt across rollover without reducing 
   const readyToAssign = setup.view().readyToAssign;
   const nextReadyToAssign = setup.view("alan", "2026-11").readyToAssign;
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-2:${date}`,
     date,
-    amount: 8000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -8000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const view = setup.view();
   const card = view.accounts.find((account) => account.id === "card");
@@ -407,16 +413,19 @@ void test("a card payment larger than the reserve is refused only beyond the car
     categoryId: "food",
   });
   const payment = {
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-3:${date}`,
     date,
+    accountId: "checking",
+    transferAccountId: "card",
+    payee: "Credit card payment",
+    status: "posted",
   } as const;
   assert.throws(
-    () => setup.run({ ...payment, amount: 5001 }),
+    () => setup.run({ ...payment, amount: -5001 }),
     /exceeds card debt/,
   );
-  setup.run({ ...payment, amount: 5000 });
+  setup.run({ ...payment, amount: -5000 });
   assert.equal(
     setup.view().accounts.find((account) => account.id === "card")?.balance,
     0,
@@ -443,11 +452,14 @@ void test("paying a card beyond its reserve leaves credit-overspent categories c
     categoryId: "food",
   });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-4:${date}`,
     date,
-    amount: 8000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -8000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const view = setup.view();
   const food = view.categories.find((category) => category.id === "food");
@@ -485,11 +497,14 @@ void test("paying a card beyond its reserve makes a paired envelope's card share
     recordedAt: "2026-10-10T12:00:00Z",
   });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-5:${date}`,
     date,
-    amount: 2000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -2000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const view = setup.view();
   assert.equal(
@@ -706,11 +721,13 @@ void test("expected card benefits do nothing; posted credits reduce debt and rel
     categoryId: "food",
   });
   setup.run({
-    type: "card.credit",
-    accountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-6:${date}`,
     date,
+    accountId: "card",
     amount: 15_000,
-    posted: false,
+    payee: "Posted statement credit",
+    status: false ? "posted" : "pending",
   });
   assert.equal(setup.view().readyToAssign, 80_000);
   assert.equal(
@@ -718,11 +735,13 @@ void test("expected card benefits do nothing; posted credits reduce debt and rel
     -30_000,
   );
   setup.run({
-    type: "card.credit",
-    accountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-7:${date}`,
     date,
+    accountId: "card",
     amount: 15_000,
-    posted: true,
+    payee: "Posted statement credit",
+    status: true ? "posted" : "pending",
   });
   assert.equal(
     setup.view().accounts.find((account) => account.id === "card")?.balance,
@@ -766,12 +785,15 @@ void test("$500 lender-confirmed payment with $80 interest reduces principal by 
   });
   const before = setup.view();
   setup.run({
-    type: "loan.payment",
+    type: "transaction.upsert",
+    transactionId: `register-payment-8:${date}:student`,
     loanId: "student",
-    accountId: "checking",
     date,
-    principal: 42_000,
     interest: 8000,
+    accountId: "checking",
+    amount: -(42_000 + 8000),
+    payee: "Loan payment",
+    status: "posted",
   });
   assert.equal(setup.view().cash, before.cash - 50_000);
   assert.equal(setup.view().loans[0]?.balance, 958_000);
@@ -1038,11 +1060,14 @@ void test("card balance and payment reserve break down into the month's movement
     categoryId: "food",
   });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-9:2026-10-20`,
     date: "2026-10-20",
-    amount: 15_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -15_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const card = setup.view().accounts.find((account) => account.id === "card")!;
   assert.deepEqual(
@@ -1348,11 +1373,14 @@ void test("cash spending after a funded card payment becomes cash overspending i
     categoryId: "food",
   });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-10:2026-10-02`,
     date: "2026-10-02",
-    amount: 10_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -10_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   setup.run({
     type: "transaction.upsert",
@@ -1392,11 +1420,14 @@ void test("a later charge on another card cannot take cash already consumed by a
     categoryId: "food",
   });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "b-card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-11:2026-10-02`,
     date: "2026-10-02",
-    amount: 10_000,
+    accountId: "checking",
+    transferAccountId: "b-card",
+    amount: -10_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   setup.run({
     type: "transaction.upsert",
@@ -1765,11 +1796,14 @@ void test("cash, reserves, and reported expenses conserve cents across varied fu
           .accounts.find((account) => account.id === "b-card")!;
         if (card.reserve > 0)
           setup.run({
-            type: "card.payment",
-            cashAccountId: "checking",
-            cardAccountId: "b-card",
+            type: "transaction.upsert",
+            transactionId: `reserve-payment:${seed}:${step}`,
             date,
-            amount: card.reserve,
+            accountId: "checking",
+            transferAccountId: "b-card",
+            amount: -card.reserve,
+            payee: "Credit card payment",
+            status: "posted",
           });
       }
       const view = setup.view();
@@ -1835,11 +1869,14 @@ void test("account activity cannot predate its confirmed opening balance", () =>
   assert.throws(
     () =>
       setup.run({
-        type: "card.payment",
-        cashAccountId: "checking",
-        cardAccountId: "later-card",
+        type: "transaction.upsert",
+        transactionId: `register-payment-12:2026-10-16`,
         date: "2026-10-16",
-        amount: 1000,
+        accountId: "checking",
+        transferAccountId: "later-card",
+        amount: -1000,
+        payee: "Credit card payment",
+        status: "posted",
       }),
     /confirmed opening/,
   );
@@ -1897,12 +1934,15 @@ void test("an agent cannot approve its own category suggestion and cannot recate
     effectiveDate: "2026-10-01",
   });
   setup.run({
-    type: "loan.payment",
+    type: "transaction.upsert",
+    transactionId: `register-payment-13:${date}:loan`,
     loanId: "loan",
-    accountId: "checking",
     date,
-    principal: 100,
     interest: 0,
+    accountId: "checking",
+    amount: -(100 + 0),
+    payee: "Loan payment",
+    status: "posted",
   });
   const paymentId = setup
     .view()
@@ -1951,11 +1991,14 @@ void test("a refund cannot release reserve already consumed by a recorded card p
     categoryId: "food",
   });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-14:2026-11-01`,
     date: "2026-11-01",
-    amount: 10_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -10_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   setup.run({
     type: "transaction.upsert",
@@ -2008,31 +2051,40 @@ void test("backdated card payments and credits cannot use purchases recorded lat
   assert.throws(
     () =>
       setup.run({
-        type: "card.payment",
-        cashAccountId: "checking",
-        cardAccountId: "card",
+        type: "transaction.upsert",
+        transactionId: `register-payment-15:2026-10-05`,
         date: "2026-10-05",
-        amount: 10_000,
+        accountId: "checking",
+        transferAccountId: "card",
+        amount: -10_000,
+        payee: "Credit card payment",
+        status: "posted",
       }),
     /exceeds card debt/,
   );
   assert.throws(
     () =>
       setup.run({
-        type: "card.credit",
-        accountId: "card",
+        type: "transaction.upsert",
+        transactionId: `register-payment-16:2026-10-05`,
         date: "2026-10-05",
+        accountId: "card",
         amount: 10_000,
+        payee: "Posted statement credit",
+        status: "posted",
       }),
     /exceeds card debt/,
   );
   assert.deepEqual(setup.book, before);
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-17:2026-10-21`,
     date: "2026-10-21",
-    amount: 10_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -10_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   assert.equal(setup.view().cash, 90_000);
   assert.equal(
@@ -2062,20 +2114,26 @@ void test("a backdated card payment cannot spend a later deposit used to fund it
   assert.throws(
     () =>
       setup.run({
-        type: "card.payment",
-        cashAccountId: "checking",
-        cardAccountId: "card",
+        type: "transaction.upsert",
+        transactionId: `register-payment-18:2026-10-05`,
         date: "2026-10-05",
-        amount: 10_000,
+        accountId: "checking",
+        transferAccountId: "card",
+        amount: -10_000,
+        payee: "Credit card payment",
+        status: "posted",
       }),
     /cash already received/,
   );
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-19:2026-10-20`,
     date: "2026-10-20",
-    amount: 10_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -10_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   assert.equal(setup.view().cash, 0);
   assert.equal(setup.view().readyToAssign, 0);
@@ -2092,30 +2150,39 @@ void test("backdating a credit or payment preserves later recorded card payments
   });
   setup.run({ type: "assign", categoryId: "card:card", month, amount: 10_000 });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-20:2026-10-20`,
     date: "2026-10-20",
-    amount: 10_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -10_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   assert.throws(
     () =>
       setup.run({
-        type: "card.credit",
-        accountId: "card",
+        type: "transaction.upsert",
+        transactionId: `register-payment-21:2026-10-05`,
         date: "2026-10-05",
+        accountId: "card",
         amount: 10_000,
+        payee: "Posted statement credit",
+        status: "posted",
       }),
     /exceeds card debt/,
   );
   assert.throws(
     () =>
       setup.run({
-        type: "card.payment",
-        cashAccountId: "checking",
-        cardAccountId: "card",
+        type: "transaction.upsert",
+        transactionId: `register-payment-22:2026-10-05`,
         date: "2026-10-05",
-        amount: 10_000,
+        accountId: "checking",
+        transferAccountId: "card",
+        amount: -10_000,
+        payee: "Credit card payment",
+        status: "posted",
       }),
     /exceeds card debt/,
   );
@@ -2146,26 +2213,35 @@ void test("earlier card corrections cannot invalidate a confirmed payment in a l
     payee: "Market",
   });
   setup.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-23:2026-11-05`,
     date: "2026-11-05",
-    amount: 10_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -10_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const before = structuredClone(setup.book);
   const corrections: WithoutId<Command>[] = [
     {
-      type: "card.credit",
-      accountId: "card",
+      type: "transaction.upsert",
+      transactionId: `register-payment-24:2026-10-15`,
       date: "2026-10-15",
+      accountId: "card",
       amount: 10_000,
+      payee: "Posted statement credit",
+      status: "posted",
     },
     {
-      type: "card.payment",
-      cashAccountId: "checking",
-      cardAccountId: "card",
+      type: "transaction.upsert",
+      transactionId: `register-payment-25:2026-10-15`,
       date: "2026-10-15",
-      amount: 10_000,
+      accountId: "checking",
+      transferAccountId: "card",
+      amount: -10_000,
+      payee: "Credit card payment",
+      status: "posted",
     },
     { type: "transaction.remove", transactionId: "expense" },
     {
@@ -2290,4 +2366,34 @@ void test("F5: register upsert loan payments cannot predate the first confirmed 
       }),
     { message: "Payment predates the loan" },
   );
+});
+
+void test("F5: the command schema rejects all four retired register payment commands", () => {
+  const retired = [
+    ["transaction", "save"],
+    ["loan", "payment"],
+    ["card", "payment"],
+    ["card", "credit"],
+  ];
+  for (const parts of retired) {
+    const input = {
+      type: parts.join("."),
+      id: "retired",
+      transactionId: "old",
+      accountId: "checking",
+      cashAccountId: "checking",
+      cardAccountId: "card",
+      loanId: "loan",
+      date,
+      amount: 1000,
+      principal: 1000,
+      interest: 0,
+      payee: "Old payment",
+    };
+    assert.equal(
+      commandSchema.safeParse(input).success,
+      false,
+      parts.join("."),
+    );
+  }
 });

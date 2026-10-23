@@ -5,6 +5,7 @@
 // Format 7 drops the retired shared-cost model's tables, so browsers holding
 // their rows start over.
 // Format 8 reads category-free full shares and share-only payee memory.
-export const CLIENT_FORMAT = 8;
-export const MINIMUM_CLIENT_FORMAT = 8;
+// Format 9 requires source line facts and the unified register command.
+export const CLIENT_FORMAT = 9;
+export const MINIMUM_CLIENT_FORMAT = 9;
 export const CLIENT_FORMAT_HEADER = "x-caishen-client-format";

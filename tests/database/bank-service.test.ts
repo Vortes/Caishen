@@ -385,7 +385,7 @@ void test("a pending bank import can become a paired transfer without becoming a
     expectedRevision: await h.revision(),
     command: {
       ...h.input.command,
-      type: "transaction.save",
+      type: "transaction.upsert",
       transferAccountId: "savings",
       categoryId: undefined,
     },

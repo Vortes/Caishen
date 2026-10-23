@@ -1484,13 +1484,8 @@ export async function resolveImport(
         const recordCapability = classifyRegisterEntry(budget, imported)
           .capabilities.record;
         if (!recordCapability.ok) throw new Error(recordCapability.reason);
-        if (
-          command?.type !== "transaction.upsert" &&
-          !(input.expectedFingerprint && command?.type === "transaction.save")
-        )
-          throw new Error(
-            "Record specialized payments or credits using their dedicated operation, then link the existing ledger record.",
-          );
+        if (command?.type !== "transaction.upsert")
+          throw new Error("Choose a transaction to record this bank activity.");
         if (
           budget.transactions.some((item) => item.id === command.transactionId)
         )

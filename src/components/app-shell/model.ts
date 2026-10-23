@@ -531,36 +531,42 @@ export function toShellData(
         })),
       };
     }),
-    ...state.imports.map((item): Transaction => ({
-      id: importRowId(item),
-      date: item.date,
-      payee: item.payee,
-      accountId: item.accountId,
-      amount: item.amount,
-      status: item.pending ? "pending" : "posted",
-      reconciled: false,
-      source: "bank",
-      actions: transactionActions(view, item),
-      needsReview: transactionNeedsReview(view, item),
-      reviewReason: importReviewReason(item),
-      ...importCategoryLabel(view, item, categoryName),
-      // Money to or from the partner waits for the partner's import of it,
-      // then both become one settlement.
-      ...(partnerName &&
-      item.accountId &&
-      !item.transactionId &&
-      !importCategory(view, item) &&
-      !importShare(view, item) &&
-      namesPerson(item.payee, partnerName)
-        ? {
-            categoryLabel: `Transfer: ${partnerName}`,
-            needsCategory: false,
-            reviewReason: `Waiting for ${partnerName}’s import to match`,
-          }
-        : {}),
-      categoryNotNeeded: false,
-      history: [],
-    })),
+    ...state.imports.map((item): Transaction => {
+      const entry = classifyRegisterEntry(view.budget, item);
+      return {
+        id: importRowId(item),
+        date: item.date,
+        payee: item.payee,
+        accountId: item.accountId,
+        amount: item.amount,
+        status: item.pending ? "pending" : "posted",
+        reconciled: false,
+        source: "bank",
+        actions: transactionActions(view, item),
+        needsReview: transactionNeedsReview(view, item),
+        reviewReason: entry.capabilities.record.ok
+          ? importReviewReason(item)
+          : entry.capabilities.record.reason,
+        ...importCategoryLabel(view, item, categoryName),
+        // Money to or from the partner waits for the partner's import of it,
+        // then both become one settlement.
+        ...(entry.capabilities.link.ok &&
+        partnerName &&
+        item.accountId &&
+        !item.transactionId &&
+        !importCategory(view, item) &&
+        !importShare(view, item) &&
+        namesPerson(item.payee, partnerName)
+          ? {
+              categoryLabel: `Transfer: ${partnerName}`,
+              needsCategory: false,
+              reviewReason: `Waiting for ${partnerName}’s import to match`,
+            }
+          : {}),
+        categoryNotNeeded: false,
+        history: [],
+      };
+    }),
   ].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
   const partner = partnerOf(view);

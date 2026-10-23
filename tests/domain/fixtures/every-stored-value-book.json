@@ -7967,22 +7967,6 @@
       "fingerprint": "{\"type\":\"transaction.upsert\",\"id\":\"dev-seed:83\",\"transactionId\":\"dinner-0-2026-08\",\"accountId\":\"amex\",\"date\":\"2026-08-09\",\"amount\":-8640,\"payee\":\"Nopa · dinner\",\"categoryId\":\"dining\",\"status\":\"posted\"}"
     },
     {
-      "id": "dev-seed:84",
-      "actorId": "alex",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 84,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:84\",\"loanId\":\"student\",\"accountId\":\"checking\",\"date\":\"2026-08-12\",\"principal\":19225,\"interest\":12775}"
-    },
-    {
-      "id": "dev-seed:85",
-      "actorId": "alex",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 85,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:85\",\"loanId\":\"personal\",\"accountId\":\"checking\",\"date\":\"2026-08-13\",\"principal\":18125,\"interest\":6375}"
-    },
-    {
       "id": "dev-seed:86",
       "actorId": "jordan",
       "source": "user",
@@ -8303,22 +8287,6 @@
       "fingerprint": "{\"type\":\"transaction.upsert\",\"id\":\"dev-seed:125\",\"transactionId\":\"dinner-1-2026-08\",\"accountId\":\"amex\",\"date\":\"2026-08-09\",\"amount\":-8640,\"payee\":\"Nopa · dinner\",\"categoryId\":\"dining\",\"status\":\"posted\"}"
     },
     {
-      "id": "dev-seed:126",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 126,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:126\",\"loanId\":\"student\",\"accountId\":\"checking\",\"date\":\"2026-08-12\",\"principal\":19225,\"interest\":12775}"
-    },
-    {
-      "id": "dev-seed:127",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 127,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:127\",\"loanId\":\"personal\",\"accountId\":\"checking\",\"date\":\"2026-08-13\",\"principal\":18125,\"interest\":6375}"
-    },
-    {
       "id": "dev-seed:128",
       "actorId": "jordan",
       "source": "user",
@@ -8365,22 +8333,6 @@
       "type": "settlement.receive",
       "sequence": 133,
       "fingerprint": "{\"type\":\"settlement.receive\",\"id\":\"dev-seed:133\",\"settlementId\":\"settlement-2026-08\",\"accountId\":\"checking\",\"date\":\"2026-08-21\"}"
-    },
-    {
-      "id": "dev-seed:134",
-      "actorId": "alex",
-      "source": "user",
-      "type": "card.payment",
-      "sequence": 134,
-      "fingerprint": "{\"type\":\"card.payment\",\"id\":\"dev-seed:134\",\"cashAccountId\":\"checking\",\"cardAccountId\":\"amex\",\"date\":\"2026-08-27\",\"amount\":35000}"
-    },
-    {
-      "id": "dev-seed:135",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "card.payment",
-      "sequence": 135,
-      "fingerprint": "{\"type\":\"card.payment\",\"id\":\"dev-seed:135\",\"cashAccountId\":\"checking\",\"cardAccountId\":\"amex\",\"date\":\"2026-08-27\",\"amount\":35000}"
     },
     {
       "id": "dev-seed:136",
@@ -8703,22 +8655,6 @@
       "fingerprint": "{\"type\":\"transaction.upsert\",\"id\":\"dev-seed:175\",\"transactionId\":\"dinner-0-2026-09\",\"accountId\":\"amex\",\"date\":\"2026-09-09\",\"amount\":-8640,\"payee\":\"Nopa · dinner\",\"categoryId\":\"dining\",\"status\":\"posted\"}"
     },
     {
-      "id": "dev-seed:176",
-      "actorId": "alex",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 176,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:176\",\"loanId\":\"student\",\"accountId\":\"checking\",\"date\":\"2026-09-12\",\"principal\":19225,\"interest\":12775}"
-    },
-    {
-      "id": "dev-seed:177",
-      "actorId": "alex",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 177,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:177\",\"loanId\":\"personal\",\"accountId\":\"checking\",\"date\":\"2026-09-13\",\"principal\":18125,\"interest\":6375}"
-    },
-    {
       "id": "dev-seed:178",
       "actorId": "jordan",
       "source": "user",
@@ -9039,22 +8975,6 @@
       "fingerprint": "{\"type\":\"transaction.upsert\",\"id\":\"dev-seed:217\",\"transactionId\":\"dinner-1-2026-09\",\"accountId\":\"amex\",\"date\":\"2026-09-09\",\"amount\":-8640,\"payee\":\"Nopa · dinner\",\"categoryId\":\"dining\",\"status\":\"posted\"}"
     },
     {
-      "id": "dev-seed:218",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 218,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:218\",\"loanId\":\"student\",\"accountId\":\"checking\",\"date\":\"2026-09-12\",\"principal\":19225,\"interest\":12775}"
-    },
-    {
-      "id": "dev-seed:219",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 219,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:219\",\"loanId\":\"personal\",\"accountId\":\"checking\",\"date\":\"2026-09-13\",\"principal\":18125,\"interest\":6375}"
-    },
-    {
       "id": "dev-seed:220",
       "actorId": "jordan",
       "source": "user",
@@ -9109,22 +9029,6 @@
       "type": "shared.rule",
       "sequence": 226,
       "fingerprint": "{\"type\":\"shared.rule\",\"id\":\"dev-seed:226\",\"sharedCategoryId\":\"utilities\",\"weights\":{\"alex\":60,\"jordan\":40}}"
-    },
-    {
-      "id": "dev-seed:227",
-      "actorId": "alex",
-      "source": "user",
-      "type": "card.payment",
-      "sequence": 227,
-      "fingerprint": "{\"type\":\"card.payment\",\"id\":\"dev-seed:227\",\"cashAccountId\":\"checking\",\"cardAccountId\":\"amex\",\"date\":\"2026-09-27\",\"amount\":35000}"
-    },
-    {
-      "id": "dev-seed:228",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "card.payment",
-      "sequence": 228,
-      "fingerprint": "{\"type\":\"card.payment\",\"id\":\"dev-seed:228\",\"cashAccountId\":\"checking\",\"cardAccountId\":\"amex\",\"date\":\"2026-09-27\",\"amount\":35000}"
     },
     {
       "id": "dev-seed:229",
@@ -9407,22 +9311,6 @@
       "fingerprint": "{\"type\":\"transaction.upsert\",\"id\":\"dev-seed:263\",\"transactionId\":\"dinner-0-2026-10\",\"accountId\":\"amex\",\"date\":\"2026-10-09\",\"amount\":-8640,\"payee\":\"Nopa · dinner\",\"categoryId\":\"dining\",\"status\":\"posted\"}"
     },
     {
-      "id": "dev-seed:264",
-      "actorId": "alex",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 264,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:264\",\"loanId\":\"student\",\"accountId\":\"checking\",\"date\":\"2026-10-12\",\"principal\":19225,\"interest\":12775}"
-    },
-    {
-      "id": "dev-seed:265",
-      "actorId": "alex",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 265,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:265\",\"loanId\":\"personal\",\"accountId\":\"checking\",\"date\":\"2026-10-13\",\"principal\":18125,\"interest\":6375}"
-    },
-    {
       "id": "dev-seed:266",
       "actorId": "jordan",
       "source": "user",
@@ -9703,22 +9591,6 @@
       "fingerprint": "{\"type\":\"transaction.upsert\",\"id\":\"dev-seed:300\",\"transactionId\":\"dinner-1-2026-10\",\"accountId\":\"amex\",\"date\":\"2026-10-09\",\"amount\":-8640,\"payee\":\"Nopa · dinner\",\"categoryId\":\"dining\",\"status\":\"posted\"}"
     },
     {
-      "id": "dev-seed:301",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 301,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:301\",\"loanId\":\"student\",\"accountId\":\"checking\",\"date\":\"2026-10-12\",\"principal\":19225,\"interest\":12775}"
-    },
-    {
-      "id": "dev-seed:302",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "loan.payment",
-      "sequence": 302,
-      "fingerprint": "{\"type\":\"loan.payment\",\"id\":\"dev-seed:302\",\"loanId\":\"personal\",\"accountId\":\"checking\",\"date\":\"2026-10-13\",\"principal\":18125,\"interest\":6375}"
-    },
-    {
       "id": "dev-seed:303",
       "actorId": "alex",
       "source": "user",
@@ -9845,14 +9717,6 @@
       "type": "reimbursement.expect",
       "sequence": 318,
       "fingerprint": "{\"type\":\"reimbursement.expect\",\"id\":\"dev-seed:318\",\"reimbursementId\":\"amex-offer\",\"transactionId\":\"amex-offer-purchase\",\"name\":\"Amex offer · REI\",\"amount\":2500,\"kind\":\"statement-credit\"}"
-    },
-    {
-      "id": "dev-seed:319",
-      "actorId": "alex",
-      "source": "user",
-      "type": "card.credit",
-      "sequence": 319,
-      "fingerprint": "{\"type\":\"card.credit\",\"id\":\"dev-seed:319\",\"accountId\":\"amex\",\"date\":\"2026-10-12\",\"amount\":1000,\"reimbursementId\":\"amex-offer\",\"posted\":true}"
     },
     {
       "id": "dev-seed:320",
@@ -10021,22 +9885,6 @@
       "type": "settlement.record",
       "sequence": 340,
       "fingerprint": "{\"type\":\"settlement.record\",\"id\":\"dev-seed:340\",\"settlementId\":\"current-partial-settlement\",\"otherUserId\":\"jordan\",\"date\":\"2026-10-16\",\"accountId\":\"checking\",\"amount\":25000}"
-    },
-    {
-      "id": "dev-seed:341",
-      "actorId": "alex",
-      "source": "user",
-      "type": "card.payment",
-      "sequence": 341,
-      "fingerprint": "{\"type\":\"card.payment\",\"id\":\"dev-seed:341\",\"cashAccountId\":\"checking\",\"cardAccountId\":\"amex\",\"date\":\"2026-10-17\",\"amount\":30000}"
-    },
-    {
-      "id": "dev-seed:342",
-      "actorId": "jordan",
-      "source": "user",
-      "type": "card.payment",
-      "sequence": 342,
-      "fingerprint": "{\"type\":\"card.payment\",\"id\":\"dev-seed:342\",\"cashAccountId\":\"checking\",\"cardAccountId\":\"amex\",\"date\":\"2026-10-17\",\"amount\":30000}"
     },
     {
       "id": "sample-1",
@@ -10213,14 +10061,6 @@
       "type": "reimbursement.expect",
       "sequence": 364,
       "fingerprint": "{\"type\":\"reimbursement.expect\",\"id\":\"sample-22\",\"reimbursementId\":\"sample-card-offer\",\"transactionId\":\"sample-headphones\",\"name\":\"Card offer\",\"amount\":3000,\"kind\":\"statement-credit\"}"
-    },
-    {
-      "id": "sample-23",
-      "actorId": "alex",
-      "source": "user",
-      "type": "transaction.save",
-      "sequence": 365,
-      "fingerprint": "{\"type\":\"transaction.save\",\"id\":\"sample-23\",\"transactionId\":\"sample-to-savings\",\"accountId\":\"checking\",\"date\":\"2026-10-14\",\"amount\":-50000,\"payee\":\"Transfer to savings\",\"status\":\"posted\",\"transferAccountId\":\"savings\"}"
     },
     {
       "id": "sample-24",

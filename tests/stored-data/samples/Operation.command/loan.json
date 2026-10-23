@@ -1,0 +1,12 @@
+{
+  "type": "transaction.upsert",
+  "id": "loan-operation",
+  "transactionId": "loan-payment",
+  "accountId": "checking",
+  "loanId": "car",
+  "interest": 500,
+  "date": "2026-10-10",
+  "amount": -5000,
+  "payee": "Payment to Car",
+  "status": "posted"
+}
