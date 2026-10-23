@@ -3987,11 +3987,20 @@ function applyCommand(
               ? { counterpartyShare: line.counterpartyShare }
               : {}),
           }))
-        : command.categoryId && existing?.lines?.some(line => line.counterpartyShare) && command.counterpartyShare === undefined && !refundOfTransactionId
+        : command.categoryId &&
+            existing?.lines?.some((line) => line.counterpartyShare) &&
+            command.counterpartyShare === undefined &&
+            !refundOfTransactionId
           ? (() => {
-              const preserved = rescaleLines(existing.lines!, command.amount)
-                ?? fail("Edit the split lines to keep their counterparty shares when changing this amount");
-              return preserved.map(line => ({...line, categoryId: command.categoryId!}));
+              const preserved =
+                rescaleLines(existing.lines, command.amount) ??
+                fail(
+                  "Edit the split lines to keep their counterparty shares when changing this amount",
+                );
+              return preserved.map((line) => ({
+                ...line,
+                categoryId: command.categoryId!,
+              }));
             })()
           : command.categoryId || !existing?.lines
             ? undefined
@@ -4402,8 +4411,11 @@ function applyCommand(
       )
         fail("Change the shared expense classification explicitly");
       changes.transaction(budget, transaction);
-      if (transaction.lines?.some(line => line.counterpartyShare)) {
-        transaction.lines = transaction.lines.map(line => ({...line, categoryId: category.id}));
+      if (transaction.lines?.some((line) => line.counterpartyShare)) {
+        transaction.lines = transaction.lines.map((line) => ({
+          ...line,
+          categoryId: category.id,
+        }));
         delete transaction.categoryId;
       } else {
         transaction.categoryId = category.id;
