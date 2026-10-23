@@ -1,0 +1,296 @@
+/* The Share column, its menu, and a shared entry's detail. Popover pieces
+   come from the move-money popover; only semantic tokens here. */
+
+.shareIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.shareWho {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shareAmount {
+  flex: none;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The register's Share cell sits over the row, in the Share column, so the
+   row stays one button and the cell is a control of its own. It is the
+   row's height, so an open detail under the row doesn't move it. */
+.shareActions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--size-row-lg);
+  pointer-events: none;
+}
+.shareSlot {
+  display: flex;
+  grid-column: 4;
+  min-width: 0;
+  pointer-events: auto;
+}
+.shareActions[data-accounts] .shareSlot {
+  grid-column: 5;
+}
+/* The Share cell is a quiet control over the row. Empty, it shows only
+   while the row is pointed at or focused, so unshared rows stay calm. */
+.shareButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: var(--size-control-xs);
+  margin-left: -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  transition:
+    background-color 150ms,
+    color 150ms,
+    opacity 150ms;
+}
+.shareButton:hover,
+.shareButton[data-state="open"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.shareButton[data-empty] {
+  color: var(--text-tertiary);
+  opacity: 0;
+}
+:hover > .shareActions .shareButton[data-empty],
+:focus-within > .shareActions .shareButton[data-empty],
+.shareButton[data-empty]:focus-visible,
+.shareButton[data-empty][data-state="open"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .shareButton[data-empty] {
+    opacity: 1;
+  }
+}
+/* A linked refund's share follows its purchase, so it reads, not acts. */
+.shareStatic {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: var(--size-control-xs);
+  color: var(--text-secondary);
+}
+@container (max-width: 760px) {
+  .shareActions {
+    display: none;
+  }
+}
+
+.shareOptions {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+.shareOption {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.shareOption:hover,
+.shareOption:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.shareOption[aria-pressed="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.optionDetail {
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.optionKey {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: var(--type-caption);
+}
+@media (hover: none) {
+  .optionKey {
+    display: none;
+  }
+}
+.popoverHint {
+  margin: 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.shareForm label {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareFormRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.shareFormRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.shareFormField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shareFormField[data-narrow] {
+  flex: 0 0 104px;
+}
+.shareFormActions {
+  display: flex;
+  justify-content: flex-end;
+}
+.formHint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  line-height: 1.45;
+}
+
+/* The editor's Share cell: a well that opens the same menu. */
+.shareWell {
+  width: calc(100% + 8px);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shareWell[data-state="open"] {
+  border-color: var(--focus-ring);
+}
+.shareWell[data-static] {
+  cursor: default;
+}
+.footerHint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+/* A shared entry, opened under its row: what's shared, the share itself,
+   and its history. */
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 24px;
+  margin: 2px 0 10px var(--row-gutter);
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+}
+@container (max-width: 760px) {
+  .detail {
+    grid-template-columns: minmax(0, 1fr);
+    margin-left: var(--space-row-x);
+  }
+}
+.detailMain {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 0;
+}
+.facts > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.facts dt {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.facts dd {
+  margin: 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.detailField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+}
+.detailField > label {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.shareEdit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shareEdit > :first-child {
+  flex: 0 1 140px;
+  min-width: 96px;
+}
+.history {
+  min-width: 0;
+}
+.history h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.history ol {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--border-subtle);
+  list-style: none;
+}
+.history li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--type-small);
+  line-height: 1.45;
+}
+@media (pointer: coarse) {
+  .shareForm input,
+  .detail input {
+    font-size: var(--type-title);
+  }
+}

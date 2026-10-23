@@ -56,11 +56,11 @@ export type TransactionDraft = {
 // A field that can be in error: one of the draft's, one of a split line's,
 // or what the split's lines leave unassigned.
 export type LineField =
-  `lines.${string}.${"categoryId" | "outflow" | "inflow"}`;
+  `lines.${string}.${"categoryId" | "counterpartyShare" | "outflow" | "inflow"}`;
 export type DraftFieldKey = keyof TransactionDraft | LineField | "remaining";
 export const lineField = (
   lineId: string,
-  field: "categoryId" | "outflow" | "inflow",
+  field: "categoryId" | "counterpartyShare" | "outflow" | "inflow",
 ): LineField => `lines.${lineId}.${field}`;
 
 export type TransactionDraftFields = Partial<Record<DraftFieldKey, string>>;
@@ -397,7 +397,7 @@ export function buildTransactionDraftCommand({
           counterpartyShare: shareInput(
             line.counterpartyShare,
             amount,
-            lineField(line.lineId, "outflow"),
+            lineField(line.lineId, "counterpartyShare"),
           ),
         });
     }
