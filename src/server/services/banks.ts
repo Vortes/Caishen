@@ -1,4 +1,5 @@
 import { isRejectedSettlementImport } from "~/domain/partner-settlements";
+import { MANUAL_MATCH_DAYS } from "~/domain/bank-import-balances";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -1308,10 +1309,6 @@ function rememberedImport(
     providerId: fact.providerTransactionId,
   };
 }
-
-// How far apart a bank import and a transaction entered by hand can be
-// dated and still be the same purchase, as in YNAB's matching.
-const MANUAL_MATCH_DAYS = 10;
 
 const budgetOf = (state: AccountingState, userId: string): Budget =>
   "budgets" in state ? state.budgets[userId]! : state.budget;

@@ -5,6 +5,7 @@ import nextEnv from "@next/env";
 
 import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
+import { toShellData } from "../../src/components/app-shell/model";
 import { PrismaClient } from "../../src/generated/prisma";
 import {
   execute,
@@ -173,6 +174,7 @@ async function harness() {
   const state = () => api.budget.state({ month: "2026-10" });
   return {
     db,
+    api,
     connection,
     state,
     details: async () =>
@@ -295,6 +297,78 @@ async function pendingImport() {
   };
   return { ...h, input, record };
 }
+
+void test("reviewing imported activity replaces its balance contribution without a reconciliation adjustment or a second charge", async () => {
+  const h = await linkedHarness();
+  const [record] = applyTransactionSync(
+    [],
+    { added: [importFact("unreviewed-purchase")], modified: [], removed: [] },
+    h.connection.id,
+  ).records;
+  await h.setImports({
+    records: [record!],
+    resolved: {},
+    errors: {},
+    reviews: {},
+  });
+  const before = await h.state();
+  assert.equal(
+    toShellData({ ...before, view: before.view! }).accounts.find(
+      ({ id }) => id === "cash",
+    )!.balance,
+    8_000,
+  );
+  assert.equal(before.imports.length, 1);
+  await assert.rejects(
+    h.api.budget.execute({
+      command: {
+        type: "account.reconcile",
+        id: randomUUID(),
+        accountId: "cash",
+        date: "2026-10-23",
+        balance: 8_000,
+        adjustmentId: randomUUID(),
+      },
+      baseRevision: before.revision,
+      clientId: "balance-test",
+    }),
+    /Review imported bank activity before reconciling/,
+  );
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record!.id,
+    expectedFingerprint: bankImportFingerprint(record!),
+    expectedRevision: before.revision,
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "reviewed-purchase",
+      accountId: "cash",
+      date: "2026-10-20",
+      amount: -2_000,
+      payee: "Coffee shop",
+      categoryId: "dining",
+      status: "posted",
+    },
+  });
+  const after = await h.state();
+  assert.equal(after.imports.length, 0);
+  assert.equal(after.view!.budget.transactions.length, 1);
+  assert.equal(
+    toShellData({ ...after, view: after.view! }).accounts.find(
+      ({ id }) => id === "cash",
+    )!.balance,
+    8_000,
+  );
+  assert.equal(
+    toShellData({
+      ...after,
+      view: after.view!,
+      imports: before.imports,
+    }).accounts.find(({ id }) => id === "cash")!.balance,
+    8_000,
+  );
+});
 
 void test("the register can edit pending bank activity without clearing it or changing the bank fact", async () => {
   const h = await pendingImport();
