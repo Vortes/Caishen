@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, UsersIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useId, useState, type ReactNode } from "react";
@@ -456,7 +457,7 @@ export function AmountWell({
         value={value}
         aria-invalid={invalid ? true : undefined}
         onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(groupAmountInput(event.target))}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import {
@@ -194,7 +195,9 @@ export function TargetEditor({
           aria-invalid={error?.field === "amount" || undefined}
           aria-describedby={describedBy("amount")}
           onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) => change({ amount: event.target.value })}
+          onChange={(event) =>
+            change({ amount: groupAmountInput(event.target) })
+          }
         />
       </div>
     </Field>

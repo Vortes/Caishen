@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useId, useRef, useState } from "react";
@@ -149,7 +150,7 @@ export function AccountEntry() {
                 inputMode="decimal"
                 placeholder="0.00"
                 required
-                onChange={(event) => setBalance(event.target.value)}
+                onChange={(event) => setBalance(groupAmountInput(event.target))}
               />
             </div>
             <div className={styles.field}>

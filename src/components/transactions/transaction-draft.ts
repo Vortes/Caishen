@@ -508,7 +508,8 @@ function isCalendarDate(value: string) {
   );
 }
 
-function parseAmount(value: string) {
+function parseAmount(text: string) {
+  const value = text.replace(/,/g, "");
   if (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(value)) return undefined;
   const [whole = "0", fraction = ""] = value.split(".");
   const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));

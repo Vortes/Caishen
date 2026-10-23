@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { ZapIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -237,7 +238,7 @@ function ManualForm({ onDone }: { onDone: () => void }) {
             }
             onFocus={(event) => event.currentTarget.select()}
             onChange={(event) => {
-              setAmount(event.target.value);
+              setAmount(groupAmountInput(event.target));
               setError(null);
             }}
           />
