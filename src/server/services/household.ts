@@ -248,6 +248,9 @@ async function commandChangeSet(
       );
     return reverted.changeSet;
   }
+  // A match needs the bank's facts, so it's made from the import itself.
+  if (command.type === "partner.match")
+    throw new AccountingError("Match a bank import from the import itself");
   // A change to the partner's shared purchase changes their transaction,
   // which a personal ledger doesn't hold.
   if (

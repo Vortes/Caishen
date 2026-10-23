@@ -8,6 +8,7 @@ import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
 import type { PartnerEntryChange } from "~/domain/partner-ledger";
 import { money, shortDay, type Account } from "./model";
+import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
 import { AmountWell, halfOf, parseCents } from "./share-field";
 import { useShellData } from "./shell-data";
@@ -52,6 +53,9 @@ export function PartnerSummary({ account }: { account: Account }) {
           </div>
         )}
       </dl>
+      <div className={styles.summaryActions}>
+        <RecordPurchase account={account} />
+      </div>
     </div>
   );
 }
@@ -160,6 +164,14 @@ export function PartnerRegister({
                     {paidBy}
                   </span>
                 )}
+                {row.awaitingImport && (
+                  <LinkIcon
+                    size={12}
+                    className={styles.inlineIcon}
+                    role="img"
+                    aria-label="Waiting for a bank import to match"
+                  />
+                )}
               </span>
               <span className={styles.truncate}>
                 {row.needsCategory ? (
@@ -170,6 +182,8 @@ export function PartnerRegister({
                   ) : (
                     <span className={styles.faint}>Settlement</span>
                   )
+                ) : row.awaitingImport && row.payerId === view.budget.userId ? (
+                  <span className={styles.faint}>Waiting for your import</span>
                 ) : row.kind === "repayment" ? (
                   <span className={styles.faint}>Repayment</span>
                 ) : row.you === 0 ? (
@@ -296,11 +310,11 @@ function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
       cents === 0
         ? `Wrote off the share of ${row.payee}. Both ledgers show $0.00 now.`
         : `${shareLabel} of ${row.payee} is ${money(cents)}. Both budgets updated.`;
-    // Your own purchase saves like its Share cell; your partner's goes
-    // through the shared entry, which changes their transaction.
-    const failure = paid
+    // Your own imported purchase saves like its Share cell; anything else
+    // goes through the shared entry, which changes the payer's transaction.
+    const failure = row.transactionId
       ? entry.saveShare(
-          row.transactionId!,
+          row.transactionId,
           row.lineId!,
           shareOf(view, row, cents),
           notice,
@@ -349,9 +363,10 @@ function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
             <dd>{money(Math.abs(row.change))}</dd>
           </div>
         </dl>
+        <Source row={row} partnerName={partnerName} />
         <div className={share.detailField}>
           <label htmlFor={`${id}-category`}>Your category</label>
-          {paid ? (
+          {paid && !row.awaitingImport ? (
             <p className={local.readOnly}>
               {view.categories.find((item) => item.id === row.categoryId)
                 ?.name ?? "No category"}
@@ -426,7 +441,13 @@ function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
                   {change.actorId === view.budget.userId ? "You" : partnerName}
                 </span>
                 <span>
-                  {describe(change, paid ? shareLabel : "your share")}
+                  {describe(change, {
+                    row,
+                    you: view.budget.userId,
+                    partnerName,
+                    shareLabel: paid ? shareLabel : "your share",
+                    account: accountOf(view, row),
+                  })}
                 </span>
               </li>
             ))}
@@ -468,11 +489,14 @@ function SideCategory({ row, id }: { row: Row; id: string }) {
         entryId: row.entryId!,
         categoryId,
       },
-      `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
+      paid
+        ? `Your import of ${row.payee} will go in ${label}. Only you see that.`
+        : `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
     );
     setError(failure ?? "");
   };
   const prefilled = row.needsCategory && Boolean(value);
+  const paid = row.payerId === view.budget.userId;
   return (
     <>
       <div className={local.categoryEdit}>
@@ -496,10 +520,19 @@ function SideCategory({ row, id }: { row: Row; id: string }) {
       </div>
       {error ? (
         <p className={moveStyles.error}>{error}</p>
+      ) : prefilled ? (
+        <p className={share.formHint}>
+          Filled in from {row.payee} last time. Only you see your category.
+        </p>
+      ) : paid && !row.categoryId && value ? (
+        <p className={share.formHint}>
+          Filled in from {row.payee} last time. Your import takes it when it
+          arrives, and only you see it.
+        </p>
       ) : (
-        prefilled && (
+        paid && (
           <p className={share.formHint}>
-            Filled in from {row.payee} last time. Only you see your category.
+            Your import takes this category when it arrives. Only you see it.
           </p>
         )
       )}
@@ -525,10 +558,81 @@ function day(view: View, at: string) {
   });
 }
 
+// The account the viewer paid a shared purchase from, when they did.
+function accountOf(view: View, row: Row) {
+  const transaction = view.budget.transactions.find(
+    (item) => item.id === row.transactionId,
+  );
+  return view.accounts.find((item) => item.id === transaction?.accountId);
+}
+
+// Where an entry's facts come from: the payer's bank import, or a partner
+// who recorded it before the import arrived.
+function Source({ row, partnerName }: { row: Row; partnerName: string }) {
+  const { view } = useTransactionEntry();
+  const you = view.budget.userId;
+  const paid = row.payerId === you;
+  const recorder = row.recordedBy === you ? "You" : partnerName;
+  const account = accountOf(view, row);
+  const transaction = view.budget.transactions.find(
+    (item) => item.id === row.transactionId,
+  );
+  const text = row.awaitingImport
+    ? `${recorder} recorded this. ${paid ? "Your" : `${partnerName}'s`} bank import will match it when it arrives.`
+    : row.recordedBy
+      ? `${recorder} recorded this first. Matched to ${paid ? `your ${account?.name ?? "bank"} import` : `${partnerName}'s bank import`}.`
+      : paid && transaction?.providerId && account
+        ? `From your ${account.name} import`
+        : undefined;
+  if (!text) return null;
+  return (
+    <p className={local.source}>
+      <LinkIcon size={13} aria-hidden />
+      {text}
+    </p>
+  );
+}
+
+// What an entry's amount and share were when it was recorded: its facts
+// now, with every later change undone.
+function recordedFacts(row: Row, you: string, from: number) {
+  const facts: Record<string, string | number> = {
+    amount: row.shared,
+    // The share is the part of the one who didn't pay.
+    share: row.payerId === you ? row.partner : row.you,
+  };
+  for (const change of row.history.slice(from + 1).reverse())
+    for (const { field, previous } of change.changes ?? [])
+      facts[field] = previous;
+  return {
+    amount: Math.abs(Number(facts.amount)),
+    share: Number(facts.share),
+  };
+}
+
 // One change to an entry, in words.
-function describe(change: PartnerEntryChange, shareLabel: string) {
+function describe(
+  change: PartnerEntryChange,
+  context: {
+    row: Row;
+    you: string;
+    partnerName: string;
+    shareLabel: string;
+    account?: { name: string };
+  },
+) {
+  const { row, you, partnerName, shareLabel } = context;
   if (change.reason === "created") return "Shared";
   if (change.reason === "removed") return "Removed from the ledger";
+  if (change.reason === "recorded") {
+    const { amount, share } = recordedFacts(
+      row,
+      you,
+      row.history.indexOf(change),
+    );
+    const paid = row.payerId === you;
+    return `Recorded: ${paid ? "You" : partnerName} paid ${money(amount)}, ${paid ? `${partnerName}'s` : "your"} share ${money(share)}`;
+  }
   const parts = (change.changes ?? []).map(({ field, previous, next }) => {
     if (field === "share")
       return Number(next) === 0
@@ -543,5 +647,12 @@ function describe(change: PartnerEntryChange, shareLabel: string) {
   });
   if (change.reason === "restored")
     return ["Shared again", ...parts].join(". ");
+  if (change.reason === "matched")
+    return [
+      row.payerId === you
+        ? `Matched to your ${context.account?.name ?? "bank"} import`
+        : `Matched to ${partnerName}'s bank import`,
+      ...parts,
+    ].join(". ");
   return parts.join(". ") || "Updated";
 }
