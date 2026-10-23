@@ -685,14 +685,12 @@ export function RegisterView({
         ? matches(item, search, accountName(item.accountId))
         : reviewOnly || item.date.startsWith(month.key)),
   );
-  // YNAB's pattern: pending transactions lead under one heading that
-  // collapses, set apart from the cleared ones below.
   const [pendingOpen, setPendingOpen] = useState(true);
-  const pending = rows.filter((item) => clearedState(item) === "pending");
-  const cleared = rows.filter((item) => clearedState(item) !== "pending");
+  const pending = rows.filter((item) => item.pendingImport);
+  const entered = rows.filter((item) => !item.pendingImport);
   // A collapsed heading's rows can't be selected.
   const selection = useReviewSelection({
-    rows: pendingOpen ? rows : cleared,
+    rows: pendingOpen ? rows : entered,
     checked,
     onCheck,
   });
@@ -700,7 +698,7 @@ export function RegisterView({
   // Shift-click checks, or clears, every row from the last one clicked to
   // this one, like YNAB and Gmail.
   const anchor = useRef<string | null>(null);
-  const order = [...(pendingOpen ? pending : []), ...cleared]
+  const order = [...(pendingOpen ? pending : []), ...entered]
     .filter((item) => item.actions.select)
     .map((item) => item.id);
   const checkTo = (id: string, value: boolean) => {
@@ -1110,7 +1108,7 @@ export function RegisterView({
             .map(row)}
         </div>
       )}
-      {cleared.map(row)}
+      {entered.map(row)}
       <SelectionIsland selection={selection} onCheck={onCheck} />
     </div>
   );

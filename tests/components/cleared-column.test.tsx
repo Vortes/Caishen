@@ -40,7 +40,7 @@ test("unclearing a posted purchase keeps it out of Pending and moves its amount 
   expect(summary("Working balance")).toBe("$957.90");
 });
 
-test("clearing a pending deposit takes it out of Pending and into the balance, and unclearing brings it back", async () => {
+test("clearing an entered pending deposit counts it in the balance, and unclearing brings back its clock", async () => {
   const shell = await renderShell({
     seedCommands: [
       {
@@ -56,7 +56,9 @@ test("clearing a pending deposit takes it out of Pending and into the balance, a
     ],
   });
   await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
-  expect(within(pendingSection()!).getByLabelText("Pending")).toBeTruthy();
+  expect(
+    within(transactionRow("Payroll")).getByLabelText("Pending"),
+  ).toBeTruthy();
   expect(summary("Working balance")).toBe("$1,000.00");
 
   await shell.user.click(screen.getByRole("button", { name: "Mark cleared" }));
@@ -64,7 +66,6 @@ test("clearing a pending deposit takes it out of Pending and into the balance, a
   expect(
     await within(transactionRow("Payroll")).findByLabelText("Cleared"),
   ).toBeTruthy();
-  expect(pendingSection()).toBeNull();
   expect(summary("Cleared")).toBe("$4,250.00");
   expect(summary("Working balance")).toBe("$4,250.00");
 
@@ -75,6 +76,5 @@ test("clearing a pending deposit takes it out of Pending and into the balance, a
   expect(
     await within(transactionRow("Payroll")).findByLabelText("Pending"),
   ).toBeTruthy();
-  expect(pendingSection()).not.toBeNull();
   expect(summary("Working balance")).toBe("$1,000.00");
 });

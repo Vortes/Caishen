@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { toShellData } from "../../src/components/app-shell/model";
+import {
+  toShellData,
+  type ShellSource,
+} from "../../src/components/app-shell/model";
 import { viewOf } from "../../src/components/app-shell/plan-view";
 import {
   createBook,
@@ -15,8 +18,8 @@ type Input = Command extends infer T
     ? Omit<T, "id">
     : never
   : never;
-function setup(cardBalance = 0) {
-  let book = createBook("owner", "Projection budget", month);
+function setup(cardBalance = 0, startMonth = month) {
+  let book = createBook("owner", "Projection budget", startMonth);
   let operation = 0;
   const run = (command: Input) => {
     book = execute(book, "owner", { ...command, id: `command-${++operation}` });
@@ -39,17 +42,246 @@ function setup(cardBalance = 0) {
   });
   for (const name of ["Gifts", "Dining", "Household", "Phone"])
     run({ type: "category.add", categoryId: name, name });
-  const data = (viewMonth = month, activeMonth = month) =>
+  const data = (
+    viewMonth = month,
+    activeMonth = month,
+    imports: ShellSource["imports"] = [],
+  ) =>
     toShellData(
       {
         view: projectBook(book, "owner", viewMonth, month),
         connections: [],
-        imports: [],
+        imports,
       },
       activeMonth,
     );
   return { run, data };
 }
+
+function bankImport(
+  patch: Partial<ShellSource["imports"][number]> = {},
+): ShellSource["imports"][number] {
+  return {
+    connectionId: "connection",
+    logicalId: "import",
+    fingerprint: "a".repeat(64),
+    providerAccountId: "provider-checking",
+    accountId: "checking",
+    transactionId: undefined,
+    categoryId: null,
+    date: "2026-10-20",
+    payee: "New merchant",
+    amount: -2_000,
+    pending: false,
+    removed: false,
+    needsMatchReview: false,
+    error: null,
+    history: [
+      {
+        kind: "added",
+        before: null,
+        after: {
+          provider: "plaid",
+          providerTransactionId: "provider-purchase",
+          providerAccountId: "provider-checking",
+          pendingTransactionId: null,
+          amountCents: 2_000,
+          currency: "USD",
+          date: "2026-10-20",
+          authorizedDate: null,
+          name: "New merchant",
+          merchantName: null,
+          pending: false,
+        },
+      },
+    ],
+    reviewEvidence: [],
+    quarantined: false,
+    ...patch,
+  };
+}
+
+void test("a bank purchase counts toward account balances while it waits for review", () => {
+  const { data } = setup();
+  const shell = data(month, month, [bankImport()]);
+  const checking = shell.accounts.find(({ id }) => id === "checking")!;
+  assert.equal(checking.balance, 98_000);
+  assert.equal(checking.cleared, 98_000);
+  assert.equal(shell.transactions[0]!.needsReview, true);
+  assert.equal(shell.transactions[0]!.source, "bank");
+});
+
+void test("card balances include unreviewed posted payments while untouched pending imports wait outside balances", () => {
+  const { data } = setup(-300_000);
+  const shell = data(month, month, [
+    bankImport({ logicalId: "payment", accountId: "card", amount: 200_000 }),
+    bankImport({
+      logicalId: "pending-purchase",
+      accountId: "card",
+      pending: true,
+    }),
+    bankImport({
+      logicalId: "pending-credit",
+      accountId: "card",
+      amount: 1_000,
+      pending: true,
+    }),
+  ]);
+  const card = shell.accounts.find(({ id }) => id === "card")!;
+  assert.equal(card.balance, -100_000);
+  assert.equal(card.cleared, -100_000);
+  assert.equal(card.uncleared, 0);
+});
+
+void test("already recorded activity and uncertain matches never count twice before the inbox refreshes", () => {
+  for (const providerId of [undefined, "provider-purchase"]) {
+    const { run, data } = setup();
+    run({
+      type: "transaction.upsert",
+      transactionId: "recorded",
+      accountId: "checking",
+      date: "2026-10-20",
+      amount: -2_000,
+      payee: "New merchant",
+      status: "posted",
+      providerId,
+    });
+    const imported = bankImport();
+    assert.equal(
+      data(month, month, [imported]).accounts.find(
+        ({ id }) => id === "checking",
+      )!.balance,
+      98_000,
+    );
+  }
+  const { data } = setup();
+  const possiblePartnerMatch = bankImport({
+    partnerMatches: [
+      {
+        entryId: "recorded-purchase",
+        date: "2026-10-20",
+        payee: "New merchant",
+        amount: 2_000,
+        share: 1_000,
+        payeesAlike: true,
+      },
+    ],
+  });
+  assert.equal(
+    data(month, month, [possiblePartnerMatch]).accounts.find(
+      ({ id }) => id === "checking",
+    )!.balance,
+    100_000,
+  );
+});
+
+void test("each account signals its own review work, while untouched pending imports have no review dot", () => {
+  const { run, data } = setup();
+  const pending = bankImport({ pending: true, accountId: "card" });
+  let shell = data(month, month, [bankImport(), pending]);
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "checking")!.toReview,
+    true,
+  );
+  assert.equal(shell.accounts.find(({ id }) => id === "card")!.toReview, false);
+  run({
+    type: "transaction.upsert",
+    transactionId: "card-purchase",
+    accountId: "card",
+    date: "2026-10-20",
+    amount: -3_000,
+    payee: "Market",
+    status: "posted",
+    categoryId: "Dining",
+    reviewed: false,
+  });
+  shell = data(month, month, [pending]);
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "checking")!.toReview,
+    false,
+  );
+  assert.equal(shell.accounts.find(({ id }) => id === "card")!.toReview, true);
+  run({ type: "transaction.approve", transactionIds: ["card-purchase"] });
+  shell = data(month, month, [pending]);
+  assert.equal(shell.accounts.find(({ id }) => id === "card")!.toReview, false);
+});
+
+void test("only untouched bank pending imports belong in the pending section, and entered purchases count once", () => {
+  const { run, data } = setup();
+  const pending = bankImport({ pending: true });
+  const before = data(month, month, [pending]);
+  assert.equal(before.transactions[0]!.pendingImport, true);
+  assert.equal(before.accounts[0]!.balance, 100_000);
+  run({
+    type: "transaction.upsert",
+    transactionId: "entered-pending",
+    accountId: "checking",
+    date: "2026-10-20",
+    amount: -2_000,
+    payee: "New merchant",
+    status: "pending",
+    categoryId: "Dining",
+    providerId: "provider-purchase",
+  });
+  const after = data();
+  assert.equal(Boolean(after.transactions[0]!.pendingImport), false);
+  assert.equal(after.accounts[0]!.balance, 98_000);
+  assert.equal(after.accounts[0]!.uncleared, -2_000);
+  const changed = data(month, month, [
+    bankImport({
+      pending: true,
+      transactionId: "entered-pending",
+      error: "Bank changed this purchase",
+    }),
+  ]);
+  assert.equal(
+    Boolean(
+      changed.transactions.find(({ source }) => source === "bank")!
+        .pendingImport,
+    ),
+    false,
+  );
+});
+
+void test("an entered purchase missing its category keeps its account review dot even after approval", () => {
+  const { run, data } = setup();
+  run({
+    type: "transaction.upsert",
+    transactionId: "uncategorized",
+    accountId: "checking",
+    date: "2026-10-20",
+    amount: -2_000,
+    payee: "New merchant",
+    status: "pending",
+    reviewed: true,
+  });
+  const shell = data();
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "checking")!.toReview,
+    true,
+  );
+  assert.equal(shell.transactions[0]!.needsReview, true);
+});
+
+void test("import balances respect the selected month while cleared balances include current activity", (t) => {
+  t.mock.timers.enable({
+    apis: ["Date"],
+    now: new Date("2026-10-23T12:00:00Z"),
+  });
+  const { data } = setup(0, "2026-09");
+  const past = data("2026-09", month, [bankImport()]).accounts.find(
+    ({ id }) => id === "checking",
+  )!;
+  assert.equal(past.balance, 0);
+  assert.equal(past.cleared, 98_000);
+  const futureImport = bankImport({ date: "2026-11-01" });
+  assert.equal(
+    data("2026-11", month, [futureImport]).accounts.find(
+      ({ id }) => id === "checking",
+    )!.balance,
+    100_000,
+  );
+});
 
 void test("a positive payment reserve below the working balance is underfunded", () => {
   const { run, data } = setup(-552_290);

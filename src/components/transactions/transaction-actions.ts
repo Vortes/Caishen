@@ -30,6 +30,12 @@ export function transactionNeedsReview(
   if (!("kind" in item)) return bankImportNeedsReview(item);
   return (
     !item.reviewed ||
+    (item.kind === "purchase" &&
+      !item.counterpartyShare &&
+      !item.categoryId &&
+      !item.lines &&
+      view.accounts.find((account) => account.id === item.accountId)?.kind !==
+        "tracking") ||
     Boolean(
       item.partnerSettlementId &&
       !view.partnerSettlements.some(

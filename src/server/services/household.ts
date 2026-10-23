@@ -22,6 +22,7 @@ import {
   type ChangeSet,
 } from "~/domain/rows";
 import { prepareUserCommand } from "~/domain/user-command";
+import { reviewImportsBeforeReconciliation } from "~/domain/bank-import-balances";
 import { Prisma, type PrismaClient } from "~/generated/prisma";
 import {
   households,
@@ -31,8 +32,12 @@ import {
   type HouseholdLedger,
 } from "~/server/storage/households";
 import { findOperation, RevisionConflictError } from "~/server/storage/rows";
-import { bankMappingsSchema } from "./bank-account-setup";
-import { bankImportColumnSchemas } from "./bank-import-rows";
+import {
+  bankImportEligibility,
+  bankImportFingerprint,
+  bankMappingsSchema,
+} from "./bank-account-setup";
+import { bankImportColumnSchemas, readImportStates } from "./bank-import-rows";
 import { addCounterpartyAccounts } from "./household-operations";
 import { matchesSavedOperation, operationHash } from "./safety";
 import { refusal } from "./sync-refusal";
@@ -203,6 +208,40 @@ async function commandChangeSet(
   // A match needs the bank's facts, so it's made from the import itself.
   if (command.type === "partner.match")
     throw new AccountingError("Match a bank import from the import itself");
+  if (command.type === "account.reconcile") {
+    const connections = await db.bankConnection.findMany({
+      where: { clerkUserId: actorId },
+      select: { id: true, accountMappings: true },
+    });
+    const imports = readImportStates(household.rows, actorId);
+    for (const connection of connections) {
+      const mappings = bankMappingsSchema.parse(connection.accountMappings);
+      if (
+        !Object.values(mappings).some(
+          (mapping) => mapping.accountId === command.accountId,
+        )
+      )
+        continue;
+      const state = imports.get(connection.id);
+      if (state === "unreadable")
+        throw new AccountingError(reviewImportsBeforeReconciliation);
+      if (
+        state?.records.some((record) => {
+          const mapping = mappings[record.current.providerAccountId];
+          const resolution = state.resolved[record.id];
+          return (
+            mapping?.accountId === command.accountId &&
+            !record.current.pending &&
+            !record.removed &&
+            bankImportEligibility(mapping, record) === "eligible" &&
+            !resolution?.transactionId &&
+            resolution?.fingerprint !== bankImportFingerprint(record)
+          );
+        })
+      )
+        throw new AccountingError(reviewImportsBeforeReconciliation);
+    }
+  }
   // A change to the partner's shared purchase changes their transaction,
   // which a personal ledger doesn't hold.
   if (
