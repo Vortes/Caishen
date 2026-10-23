@@ -138,6 +138,7 @@ export type Transaction = {
 
 export type ShellData = {
   budgetName: string;
+  preferences?: View["budget"]["settings"];
   month: {
     key: string;
     current: string;
@@ -291,7 +292,7 @@ export function toShellData(
     }),
   );
   const shares = new Map<string, number[]>();
-  for (const shared of view.sharedCategories) {
+  for (const shared of view.sharedCategories.filter((item) => !item.archived)) {
     const id = shared.categoryIds[userId];
     if (id)
       shares.set(id, [
@@ -563,6 +564,7 @@ export function toShellData(
   const todayKey = today(view.budget.settings.timezone);
   return {
     budgetName: view.budget.name,
+    preferences: view.budget.settings,
     month: {
       key: month,
       start: view.budget.startMonth,

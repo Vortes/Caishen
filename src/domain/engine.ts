@@ -625,6 +625,7 @@ export type Budget = {
 };
 export type SharedCategory = {
   id: string;
+  archived?: boolean;
   participants: string[];
   weights: Record<string, number>;
   categoryIds: Record<string, string>;
@@ -983,6 +984,7 @@ export const householdSchema = z.object({
       participants: z.array(storedIdentifier).length(2),
       weights: z.record(nonnegativeCents),
       categoryIds: z.record(storedIdentifier),
+      archived: z.boolean().optional(),
     }),
   ),
   obligations: z.array(

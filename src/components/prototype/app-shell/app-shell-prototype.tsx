@@ -29,8 +29,8 @@ import {
   type Added,
 } from "./add-category";
 import { AppearanceSettings } from "./appearance";
-import { PartnerSettings } from "./partner";
-import { ProfileSettings } from "./profile";
+import { PartnerSettings } from "~/components/settings/partner";
+import { ProfileSettings } from "~/components/settings/profile";
 import { Inspector } from "./inspector";
 import { findPalette, paletteVars } from "./palettes";
 import { isCounterparty, type ShellData } from "./model";
@@ -81,8 +81,9 @@ import {
   settingsPages,
   SHELL_PATH,
   type SettingsPage,
-} from "./settings-pages";
+} from "~/components/workspace/routes";
 import styles from "./shell.module.css";
+import type { UpdatePreferences } from "~/components/entry/profile-preferences";
 
 const settingsTitles: Record<SettingsPage, string> = {
   profile: "Profile",
@@ -106,6 +107,8 @@ export function AppShellPrototype({
   transactionSaver,
   targetEditing,
   renameBudget,
+  updatePreferences,
+  joinBlocked,
   reconciling,
   overlays,
 }: {
@@ -117,6 +120,8 @@ export function AppShellPrototype({
   targetEditing: TargetEditing;
   // Returns why the rename can't run yet, or null once it's sent.
   renameBudget: (name: string) => string | null;
+  updatePreferences?: UpdatePreferences;
+  joinBlocked?: string;
   reconciling: Reconciling;
   // Dialogs and the ToastRegion, rendered inside the themed root.
   overlays: ReactNode;
@@ -606,9 +611,12 @@ export function AppShellPrototype({
                       tabIndex={-1}
                     >
                       {settingsPage === "partner" ? (
-                        <PartnerSettings />
+                        <PartnerSettings blocked={joinBlocked} />
                       ) : settingsPage === "profile" ? (
-                        <ProfileSettings onRename={renameBudget} />
+                        <ProfileSettings
+                          onRename={renameBudget}
+                          onUpdate={updatePreferences}
+                        />
                       ) : (
                         <AppearanceSettings
                           settings={settings}

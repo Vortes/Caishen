@@ -493,7 +493,8 @@
         "from": "required",
         "message": "required",
         "scheduledAt": "optional",
-        "to": "required"
+        "to": "required",
+        "unsubscribeUrl": "optional"
       }
     },
     "$.from": {
@@ -519,6 +520,9 @@
       "type": "string"
     },
     "$.message.text": {
+      "type": "string"
+    },
+    "$.unsubscribeUrl": {
       "type": "string"
     }
   },
@@ -1641,7 +1645,8 @@
         "id": "required",
         "participants": "required",
         "sort": "required",
-        "weights": "required"
+        "weights": "required",
+        "archived": "optional"
       }
     },
     "$.id": {
@@ -1667,6 +1672,9 @@
     },
     "$.sort": {
       "type": "number"
+    },
+    "$.archived": {
+      "type": "boolean"
     }
   },
   "rows.obligation": {

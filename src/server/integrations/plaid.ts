@@ -209,6 +209,19 @@ export function createPlaidClient(
   }
 
   return {
+    async removeItem(accessToken: string): Promise<void> {
+      try {
+        await request("/item/remove", {
+          access_token: z.string().min(1).max(2048).parse(accessToken),
+        });
+      } catch (error) {
+        if (
+          !(error instanceof IntegrationError) ||
+          error.code !== "ITEM_NOT_FOUND"
+        )
+          throw error;
+      }
+    },
     async createLinkToken(
       clientUserId: string,
       accessToken?: string,

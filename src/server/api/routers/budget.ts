@@ -1,5 +1,12 @@
+import {
+  createPartnerInvite,
+  checkPartnerInvite,
+} from "~/server/services/partner-invites";
+import {
+  readEmailSubscription,
+  setEmailSubscription,
+} from "~/server/services/email-preferences";
 import { TRPCError } from "@trpc/server";
-import { randomBytes } from "node:crypto";
 import { z, type ZodError } from "zod";
 import {
   commandSchema,
@@ -10,6 +17,7 @@ import { personalSpendingEntries } from "~/domain/spending";
 import { budgetDay } from "~/domain/user-command";
 import {
   createTRPCRouter,
+  publicProcedure,
   protectedProcedure,
   submittedInputProcedure,
 } from "~/server/api/trpc";
@@ -29,6 +37,7 @@ import {
   importCategories,
   joinHousehold,
   onboard,
+  setOnboardingCategories,
 } from "~/server/services/household-operations";
 import {
   executeCommand,
@@ -104,6 +113,14 @@ async function partnerFirstName(
 }
 
 export const budgetRouter = createTRPCRouter({
+  emailSubscription: publicProcedure
+    .input(z.object({ token: z.string().max(2048) }))
+    .query(({ ctx, input }) => readEmailSubscription(ctx.db, input.token)),
+  setEmailSubscription: publicProcedure
+    .input(z.object({ token: z.string().max(2048), enabled: z.boolean() }))
+    .mutation(({ ctx, input }) =>
+      setEmailSubscription(ctx.db, input.token, input.enabled),
+    ),
   // What the app shell shows beside the rows it syncs (ADR 0006): whether
   // the budget can be read, and the bank connections with their inbox.
   overview: protectedProcedure.query(async ({ ctx }) => {
@@ -235,10 +252,31 @@ export const budgetRouter = createTRPCRouter({
         name: z.string().trim().min(1).max(120),
         month,
         timezone: z.string().max(100),
+        emailEnabled: z.boolean().optional(),
       }),
     )
     .mutation(({ ctx, input }) =>
       onboard(ctx.db, ctx.userId, input, ctx.revision.observe),
+    ),
+
+  setupCategories: protectedProcedure
+    .input(
+      z.object({
+        operationId: z.string().min(1).max(200),
+        expectedRevision: revision,
+        categories: z
+          .array(
+            z.object({
+              categoryId: z.string().startsWith("setup:").max(200),
+              name: z.string().trim().min(1).max(120),
+              group: z.string().max(120),
+            }),
+          )
+          .max(500),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      setOnboardingCategories(ctx.db, ctx.userId, input, ctx.revision.observe),
     ),
 
   execute: submittedInputProcedure
@@ -357,38 +395,18 @@ export const budgetRouter = createTRPCRouter({
       }
     }),
 
-  invite: protectedProcedure.mutation(async ({ ctx }) => {
-    const member = await ctx.db.workspaceMember.findUnique({
-      where: { clerkUserId: ctx.userId },
-    });
-    if (!member)
-      throw new TRPCError({
-        code: "NOT_FOUND",
-        message: "Create a budget before inviting your partner.",
-      });
-    const count = await ctx.db.workspaceMember.count({
-      where: { workspaceId: member.workspaceId },
-    });
-    if (count >= 2)
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Your partner is already connected.",
-      });
-    const code = randomBytes(24).toString("base64url");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await ctx.db.partnerInvite.create({
-      data: {
-        tokenHash: commandHash(code),
-        workspaceId: member.workspaceId,
-        createdBy: ctx.userId,
-        expiresAt,
-      },
-    });
-    return { code, expiresAt };
-  }),
+  invite: protectedProcedure.mutation(({ ctx }) =>
+    createPartnerInvite(ctx.db, ctx.userId),
+  ),
+
+  checkInvite: protectedProcedure
+    .input(z.object({ code: z.string().trim().min(8).max(100) }))
+    .mutation(({ ctx, input }) =>
+      checkPartnerInvite(ctx.db, ctx.userId, input.code),
+    ),
 
   join: protectedProcedure
-    .input(z.object({ code: z.string().trim().min(20).max(100) }))
+    .input(z.object({ code: z.string().trim().min(8).max(100) }))
     .mutation(({ ctx, input }) =>
       joinHousehold(ctx.db, ctx.userId, input.code, ctx.revision.observe),
     ),
