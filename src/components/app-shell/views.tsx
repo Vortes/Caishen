@@ -44,7 +44,7 @@ import {
   useAddCategory,
   type Added,
 } from "./add-category";
-import { EASE, SETTLE_MS, useGroupDrag } from "./group-drag";
+import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -144,7 +144,7 @@ export function PlanView({
         .filter((group) => group.categories.length)
     : shell.groups;
   const { add } = useAddCategory();
-  const reorder = useGroupDrag({
+  const reorder = useReorderDrag({
     ids: groups.map((group) => group.id),
     enabled: groups.length > 1,
     onDrop: (order, id, done) => {
@@ -305,7 +305,7 @@ export function PlanView({
           return (
             <motion.div
               key={group.id}
-              data-group-slot
+              data-reorder-slot
               layout={reorder.animating ? "position" : false}
               transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
             >

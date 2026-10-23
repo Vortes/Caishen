@@ -17,15 +17,24 @@ import {
   WalletCardsIcon,
   type LucideIcon,
 } from "lucide-react";
+import { MotionConfig, motion } from "motion/react";
 import { DropdownMenu } from "radix-ui";
-import { useRef, useState } from "react";
+import {
+  useRef,
+  useState,
+  type ComponentProps,
+  type KeyboardEvent,
+} from "react";
+import { newId } from "~/components/budget/format";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { AccountEntry } from "./account-entry";
+import { useAddCategory } from "./add-category";
 import { BanksPopover } from "./banks";
 import { money } from "./model";
 import { type SettingsPage } from "~/components/workspace/routes";
+import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
 import { useShellData } from "./shell-data";
 import { UserAvatar } from "./user-avatar";
 import styles from "./shell.module.css";
@@ -111,7 +120,7 @@ export function Sidebar({
         })),
     },
     {
-      // The counterparty accounts: the partner first, then Reimbursements.
+      // The counterparty accounts: the partner and Reimbursements.
       id: "people",
       label: "People",
       empty: undefined,
@@ -119,9 +128,6 @@ export function Sidebar({
         .filter(
           (account) =>
             account.kind === "partner" || account.kind === "reimbursements",
-        )
-        .sort((a, b) =>
-          a.kind === "partner" ? -1 : b.kind === "partner" ? 1 : 0,
         )
         .map((account) => ({
           id: account.id,
@@ -220,21 +226,10 @@ export function Sidebar({
               >
                 <div>
                   {section.items.length ? (
-                    <ul className={`${styles.navList} ${styles.nested}`}>
-                      {section.items.map((item) => (
-                        <NavItem
-                          key={item.id}
-                          label={item.label}
-                          value={item.value}
-                          warning={item.warning}
-                          toReview={
-                            "toReview" in item && item.toReview === true
-                          }
-                          current={item.current}
-                          onClick={item.go}
-                        />
-                      ))}
-                    </ul>
+                    <AccountList
+                      items={section.items}
+                      loans={section.id === "loans"}
+                    />
                   ) : (
                     <p className={styles.navEmpty}>{section.empty}</p>
                   )}
@@ -394,15 +389,113 @@ export function Caret() {
   );
 }
 
-function NavItem({
-  icon: Icon,
-  label,
-  current,
-  toReview,
-  value,
-  warning,
-  onClick,
-}: {
+type Item = {
+  id: string;
+  label: string;
+  value: number;
+  warning: boolean;
+  toReview?: boolean;
+  current: boolean;
+  go: () => void;
+};
+
+// A section's accounts or loans. Dragging one moves it within its section,
+// like the plan's groups, and Alt+Up and Alt+Down move the focused one.
+function AccountList({ items, loans }: { items: Item[]; loans: boolean }) {
+  const { add } = useAddCategory();
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const drag = useReorderDrag<HTMLUListElement>({
+    ids: items.map((item) => item.id),
+    enabled: items.length > 1,
+    onDrop: (order, id, done) => {
+      const blocked = add(
+        loans
+          ? { type: "loan.reorder", id: newId(), loanIds: order }
+          : { type: "account.reorder", id: newId(), accountIds: order },
+        `Moved ${byId.get(id)?.label ?? "account"}`,
+        done,
+      );
+      if (blocked) done();
+    },
+  });
+  const focusAccount = (id: string) =>
+    drag.listRef.current
+      ?.querySelector<HTMLElement>(`[data-account="${CSS.escape(id)}"]`)
+      ?.focus();
+  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    const id =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement.dataset.account
+        : undefined;
+    if (
+      !event.altKey ||
+      !id ||
+      (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+    )
+      return;
+    event.preventDefault();
+    drag.nudge(id, event.key === "ArrowUp" ? -1 : 1);
+    requestAnimationFrame(() => focusAccount(id));
+  };
+  const dragged = drag.drag && byId.get(drag.drag.id);
+  return (
+    <MotionConfig reducedMotion="user">
+      <ul
+        ref={drag.listRef}
+        className={`${styles.navList} ${styles.nested} ${styles.accountList}`}
+        data-dragging={drag.drag ? true : undefined}
+        onKeyDown={drag.enabled ? onKeyDown : undefined}
+      >
+        {drag.order.map((id) => {
+          const item = byId.get(id);
+          if (!item) return null;
+          return (
+            <motion.li
+              key={id}
+              data-reorder-slot
+              layout={drag.animating ? "position" : false}
+              transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
+            >
+              {drag.drag?.id === id ? (
+                <div className={styles.navDropSlot} aria-hidden />
+              ) : (
+                <NavButton
+                  label={item.label}
+                  value={item.value}
+                  warning={item.warning}
+                  toReview={item.toReview}
+                  current={item.current}
+                  onClick={item.go}
+                  data-account={id}
+                  aria-keyshortcuts={
+                    drag.enabled ? "Alt+ArrowUp Alt+ArrowDown" : undefined
+                  }
+                  onPointerDown={(event) => drag.start(event, id)}
+                />
+              )}
+            </motion.li>
+          );
+        })}
+        {dragged && (
+          <motion.li
+            className={styles.navGhost}
+            style={{ y: drag.y }}
+            initial={{ scale: 1 }}
+            animate={{ scale: 1.02 }}
+            transition={{ duration: 0.15, ease: EASE }}
+            aria-hidden
+          >
+            <div className={styles.navItem}>
+              <NavContents label={dragged.label} value={dragged.value} />
+            </div>
+          </motion.li>
+        )}
+      </ul>
+    </MotionConfig>
+  );
+}
+
+type NavProps = {
   icon?: LucideIcon;
   label: string;
   current: boolean;
@@ -411,42 +504,78 @@ function NavItem({
   value?: number;
   warning?: boolean;
   onClick: () => void;
-}) {
+};
+
+function NavItem(props: NavProps) {
   return (
     <li>
-      <button
-        type="button"
-        className={styles.navItem}
-        aria-current={current ? "page" : undefined}
-        onClick={onClick}
-      >
-        {Icon && <Icon size={14} className={styles.navIcon} aria-hidden />}
-        <span className={styles.navLabel}>{label}</span>
-        {warning && (
-          <span
-            className={styles.warningDot}
-            role="img"
-            aria-label="Connection needs attention"
-          />
-        )}
-        {value !== undefined && (
-          <span
-            className={styles.navValue}
-            data-negative={value < 0 || undefined}
-          >
-            {money(value)}
-          </span>
-        )}
-        {toReview && (
-          <span
-            className={styles.reviewDot}
-            data-on
-            data-inline
-            role="img"
-            aria-label="Transactions to review"
-          />
-        )}
-      </button>
+      <NavButton {...props} />
     </li>
+  );
+}
+
+function NavButton({
+  icon,
+  label,
+  current,
+  toReview,
+  value,
+  warning,
+  ...rest
+}: NavProps & Omit<ComponentProps<"button">, "value">) {
+  return (
+    <button
+      {...rest}
+      type="button"
+      className={styles.navItem}
+      aria-current={current ? "page" : undefined}
+    >
+      <NavContents
+        icon={icon}
+        label={label}
+        value={value}
+        warning={warning}
+        toReview={toReview}
+      />
+    </button>
+  );
+}
+
+function NavContents({
+  icon: Icon,
+  label,
+  toReview,
+  value,
+  warning,
+}: Omit<NavProps, "current" | "onClick">) {
+  return (
+    <>
+      {Icon && <Icon size={14} className={styles.navIcon} aria-hidden />}
+      <span className={styles.navLabel}>{label}</span>
+      {warning && (
+        <span
+          className={styles.warningDot}
+          role="img"
+          aria-label="Connection needs attention"
+        />
+      )}
+      {value !== undefined && (
+        <span
+          className={styles.navValue}
+          data-negative={value < 0 || undefined}
+        >
+          {money(value)}
+        </span>
+      )}
+      {toReview && (
+        <span
+          className={styles.reviewDot}
+          data-on
+          data-inline
+          role="img"
+          aria-label="Transactions to review"
+        />
+      )}
+    </>
   );
 }

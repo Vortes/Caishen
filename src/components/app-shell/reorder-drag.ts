@@ -8,24 +8,24 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-// Dragging a category group by its header, like YNAB's plan: every group
-// folds to its header, the grabbed one follows the pointer, and a gap opens
-// where it will land. On release it settles into the gap and the groups
-// open again.
+// Dragging a row to reorder its list, like YNAB's plan: the grabbed row
+// follows the pointer and a gap opens where it will land. On release it
+// settles into the gap. The plan drags category groups, each folded to its
+// header while one moves; the sidebar drags accounts within their section.
 
 // How far a press travels before it's a drag rather than a click.
 const THRESHOLD = 4;
 // Near the scroll area's top or bottom edge, the list scrolls by itself.
 const EDGE = 48;
 const EDGE_SPEED = 12;
-// How long the groups take to slide open again after a drop: --duration-panel.
+// How long rows take to slide into place after a drop: --duration-panel.
 export const SETTLE_MS = 260;
 // --ease-panel.
 export const EASE = [0.32, 0.72, 0, 1] as const;
 
 type Drag = { id: string; order: string[] };
 
-export function useGroupDrag({
+export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
   ids,
   enabled,
   onDrop,
@@ -35,12 +35,12 @@ export function useGroupDrag({
   // Saves the new order; calls done once it's saved or refused.
   onDrop: (order: string[], id: string, done: () => void) => void;
 }) {
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<List>(null);
   const y = useMotionValue(0);
   const reduced = useReducedMotion();
   const [drag, setDrag] = useState<Drag | null>(null);
-  // Pressed on a header: group positions animate from here, so the fold
-  // that starts a drag has its first frame measured.
+  // Pressed on a row: positions animate from here, so the fold that starts
+  // a plan drag has its first frame measured.
   const [armed, setArmed] = useState(false);
   const [settling, setSettling] = useState(false);
   // A dropped order, shown until the saved one arrives.
@@ -58,7 +58,7 @@ export function useGroupDrag({
 
   const start = (event: ReactPointerEvent<HTMLElement>, id: string) => {
     if (!enabled || drag || event.button !== 0) return;
-    // Touch scrolls the list; the checkbox and + keep their own clicks.
+    // Touch scrolls the list; a checkbox or + keeps its own clicks.
     if (event.pointerType === "touch") return;
     if ((event.target as Element).closest("label, [data-no-drag]")) return;
     const list = listRef.current;
@@ -71,10 +71,10 @@ export function useGroupDrag({
     let frame = 0;
     setArmed(true);
 
-    // Every group is folded to its header while dragging, so the slots are
-    // evenly spaced from the first.
+    // Every row is the same height while dragging, so the slots are evenly
+    // spaced from the first.
     const slots = () => {
-      const wraps = list.querySelectorAll<HTMLElement>("[data-group-slot]");
+      const wraps = list.querySelectorAll<HTMLElement>("[data-reorder-slot]");
       const first = wraps[0]?.offsetTop ?? 0;
       const pitch = wraps[1] ? wraps[1].offsetTop - first : 1;
       return { first, pitch };
@@ -130,7 +130,7 @@ export function useGroupDrag({
         setArmed(false);
         return;
       }
-      // The release would click the header and fold its group.
+      // The release would click the row it was dragged by.
       const swallow = (click: MouseEvent) => click.stopPropagation();
       window.addEventListener("click", swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener("click", swallow, true));
@@ -179,7 +179,7 @@ export function useGroupDrag({
     cleanup.current = stop;
   };
 
-  // Alt+Up and Alt+Down move a group one place, without motion.
+  // Alt+Up and Alt+Down move a row one place, without motion.
   const nudge = (id: string, by: -1 | 1) => {
     const from = ids.indexOf(id);
     const to = from + by;
@@ -195,7 +195,7 @@ export function useGroupDrag({
     y,
     drag,
     settling,
-    // Group positions animate only around a drag.
+    // Positions animate only around a drag.
     animating: armed || drag !== null || settling,
     order: drag?.order ?? held ?? ids,
     start,

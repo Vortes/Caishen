@@ -299,6 +299,43 @@
 .sectionTotal {
   margin-left: auto;
 }
+/* Dragging an account to reorder its section, like the plan's groups. The
+   dragged row follows the pointer; an outlined gap shows where it will
+   land. */
+.accountList {
+  position: relative;
+}
+.accountList[data-dragging],
+.accountList[data-dragging] * {
+  cursor: grabbing;
+}
+.accountList[data-dragging] [data-reorder-slot] {
+  pointer-events: none;
+}
+/* The section clips its rows to animate closed; the dragged row can leave
+   it. */
+.sectionBody > div:has(> .accountList[data-dragging]) {
+  overflow: visible;
+}
+.navDropSlot {
+  height: var(--size-row-md);
+  border-radius: var(--radius-row);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.navGhost {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  left: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+.navGhost .navItem {
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+  color: var(--text-primary);
+}
 .sidebarFooter {
   display: flex;
   align-items: center;
@@ -1134,7 +1171,7 @@ button.actionItem:disabled {
 .planList[data-dragging] * {
   cursor: grabbing;
 }
-.planList[data-dragging] [data-group-slot] {
+.planList[data-dragging] [data-reorder-slot] {
   pointer-events: none;
 }
 .dropSlot {
