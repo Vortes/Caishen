@@ -4,7 +4,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import nextEnv from "@next/env";
 import {
+  createBook,
   executeWithChanges,
+  projectBook,
+  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "../../src/domain/engine";
@@ -92,6 +95,59 @@ test.after(async () => {
     where: { clerkUserId: { in: [alexId, jordanId] } },
   });
   await db.$disconnect();
+});
+
+void test("a category-free reimbursement split survives database storage", async () => {
+  let book = withCounterpartyAccounts(createBook(alexId, "Alex", "2026-10"));
+  const commands: Command[] = [
+    {
+      type: "account.add",
+      id: "cash",
+      accountId: "cash",
+      name: "Checking",
+      kind: "cash",
+      openingBalance: 100_000,
+    },
+    {
+      type: "category.add",
+      id: "category",
+      categoryId: "dining",
+      name: "Dining",
+    },
+    {
+      type: "transaction.upsert",
+      id: "purchase",
+      transactionId: "dinner",
+      accountId: "cash",
+      date: "2026-10-05",
+      amount: -2_000,
+      payee: "Noodles Plus",
+      recordedAt: "2026-10-05T12:00:00Z",
+      lines: [
+        { lineId: "mine", categoryId: "dining", amount: -846 },
+        {
+          lineId: "mom",
+          amount: -1_154,
+          counterpartyShare: {
+            accountId: "counterparty:reimbursements",
+            counterpartyName: "Mom",
+            amount: 1_154,
+          },
+        },
+      ],
+    },
+  ];
+  for (const command of commands)
+    book = executeWithChanges(book, alexId, command).book;
+  const workspaceId = await household(book, 1);
+  const loaded = rowsToBook(await loadRows(db, workspaceId));
+  const view = projectBook(loaded, alexId, "2026-10");
+  assert.equal(view.budget.transactions[0]!.lines![1]!.categoryId, undefined);
+  assert.equal(view.personalSpending, 846);
+  assert.equal(
+    view.accounts.find((item) => item.kind === "reimbursements")!.balance,
+    1_154,
+  );
 });
 
 void test("the development seed and bank imports are stored whole, and each partner reads the rows they hold", async () => {

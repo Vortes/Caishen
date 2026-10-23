@@ -38,6 +38,7 @@ import {
   type ChoiceOption,
 } from "./transaction-fields";
 import { ShareLabel, ShareMenu, parseCents } from "./share-field";
+import { TransactionCategoryField } from "./transaction-category-field";
 import shell from "./shell.module.css";
 import shareStyles from "./share.module.css";
 import styles from "./transaction-entry.module.css";
@@ -431,10 +432,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   // The lines a split started with, until the editor shows them.
   const splitLines = useRef<DraftLine[] | null>(null);
   // Choosing one category ends a split.
-  const chooseCategory = (categoryId: string) => {
+  const chooseCategory = (
+    categoryId: string,
+    counterpartyShare?: DraftShare | null,
+  ) => {
     if (categoryId === SPLIT) {
       if (!split) splitLines.current = startSplit();
-    } else entry.chooseCategory(categoryId);
+    } else if (counterpartyShare !== undefined)
+      entry.change({ categoryId, counterpartyShare, lines: [] }, true);
+    else entry.chooseCategory(categoryId);
   };
   const changeLine = (lineId: string, next: Partial<DraftLine>) =>
     entry.change({
@@ -444,9 +450,14 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     });
   // A line's category takes what's left of the amount when the line has
   // none yet, so the last line usually needs no typing.
-  const chooseLineCategory = (line: DraftLine, categoryId: string) =>
+  const chooseLineCategory = (
+    line: DraftLine,
+    categoryId: string,
+    counterpartyShare?: DraftShare | null,
+  ) =>
     changeLine(line.lineId, {
       categoryId,
+      ...(counterpartyShare !== undefined ? { counterpartyShare } : {}),
       ...(!line.outflow.trim() && !line.inflow.trim() && remaining
         ? amountFields(remaining)
         : {}),
@@ -543,8 +554,12 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       }}
     >
       <div>
-        <ChoiceField
+        <TransactionCategoryField
           id={id("categoryId")}
+          amount={draftAmount(draft) ?? 0}
+          share={draft.counterpartyShare}
+          peopleEnabled={shareable && !split && !refundOf}
+          readOnly={Boolean(refundOf)}
           label="Category"
           value={split ? SPLIT : draft.categoryId}
           displayValue={split ? "Split" : undefined}
@@ -714,8 +729,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           lineId("categoryId"),
           "category",
           `Line ${number} category`,
-          <ChoiceField
+          <TransactionCategoryField
             id={id(lineId("categoryId"))}
+            amount={
+              line.outflow.trim() || line.inflow.trim()
+                ? (draftAmount(line) ?? 0)
+                : (remaining ?? 0)
+            }
+            share={line.counterpartyShare}
+            peopleEnabled={shareable && !refundOf}
             label={`Line ${number} category`}
             value={line.categoryId}
             options={spendingOptions}
@@ -723,7 +745,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             inputRef={register(lineId("categoryId"))}
             invalid={Boolean(fields[lineId("categoryId")])}
             describedBy={described(lineId("categoryId"))}
-            onChange={(categoryId) => chooseLineCategory(line, categoryId)}
+            onChange={(categoryId, share) =>
+              chooseLineCategory(line, categoryId, share)
+            }
             onPicked={() => {
               if (!window.matchMedia("(pointer: fine)").matches) return;
               focusNext.current = lineAmountField(line);

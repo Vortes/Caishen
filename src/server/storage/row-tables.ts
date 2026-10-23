@@ -231,7 +231,7 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       userId,
       text("transactionId"),
       text("id"),
-      text("categoryId"),
+      text("categoryId", true),
       cents("amount"),
       json("counterpartyShare", true),
       sort,

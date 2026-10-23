@@ -84,7 +84,9 @@ export function planPartnerImports(
         : payerCategory(budget, entry, facts);
     decided.set(
       record.id,
-      entry === "confirm" || !categoryId
+      entry === "confirm" ||
+        settlement ||
+        (!categoryId && entry.share !== Math.abs(entry.amount))
         ? "wait"
         : {
             type: "partner.match",

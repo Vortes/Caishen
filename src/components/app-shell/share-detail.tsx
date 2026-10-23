@@ -153,8 +153,7 @@ export function ShareCell({
       saved={line.counterpartyShare}
       onChange={(share) => {
         // Imports resolve through the editor, with the share already set.
-        // A saved purchase without a category uses the same path.
-        if (row.source === "bank" || !line.categoryId)
+        if (row.source === "bank")
           return entry.start({
             transactionId,
             field: line.categoryId ? "counterpartyShare" : "categoryId",

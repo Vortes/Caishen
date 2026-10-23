@@ -6,6 +6,7 @@ import type {
   Transaction,
 } from "./engine";
 import { READY_TO_ASSIGN } from "./transfers";
+import { isFullShare } from "./counterparty";
 
 // Payee memory, like YNAB's memorized payee category: the user's most recent
 // categorization of each payee prefills that payee's new bank imports and
@@ -77,8 +78,9 @@ export function rememberedCounterpartyShare(
   if (
     !account ||
     (account.kind !== "cash" && account.kind !== "credit") ||
-    memory?.kind !== "category" ||
-    !rememberedCategory(budget, { payee, accountId, amount }) ||
+    (memory?.kind !== "category" && memory?.kind !== "share") ||
+    (memory.kind === "category" &&
+      !rememberedCategory(budget, { payee, accountId, amount })) ||
     (amount !== undefined && amount >= 0)
   )
     return undefined;
@@ -97,7 +99,9 @@ export function rememberedCounterpartyShare(
     amount:
       amount === undefined
         ? share.amount
-        : Math.min(share.amount, Math.abs(amount)),
+        : memory.kind === "share"
+          ? Math.abs(amount)
+          : Math.min(share.amount, Math.abs(amount)),
   };
 }
 
@@ -125,6 +129,13 @@ function categorization(
     !key
   )
     return undefined;
+  if (isFullShare(transaction))
+    return {
+      key,
+      payee: transaction.payee,
+      kind: "share",
+      counterpartyShare: { ...transaction.counterpartyShare! },
+    };
   if (transaction.categoryId) {
     const category = budget.categories.find(
       (item) => item.id === transaction.categoryId,
