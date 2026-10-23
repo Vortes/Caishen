@@ -861,24 +861,78 @@ export function budgetReferenceIssues(
     )
   )
     issues.push("Invalid transaction reference");
-  const counterpartyAccount = (id: string) => budget.accounts.find(account => account.id === id && isCounterparty(account));
-  if (budget.transactions.some(transaction => !transaction.removed && (
-    (transaction.counterpartyShare && (!transaction.categoryId || transaction.lines !== undefined)) ||
-    (transaction.linkedCounterpartyAccountId && (!counterpartyAccount(transaction.linkedCounterpartyAccountId) || transaction.kind !== "reimbursement")) ||
-    counterpartyLines(transaction).some(line => line.counterpartyShare && (
-      !counterpartyAccount(line.counterpartyShare.accountId) ||
-      line.counterpartyShare.amount > Math.abs(line.amount) ||
-      !budget.categories.some(category => category.counterpartyAccountId === line.counterpartyShare!.accountId) ||
-      !["purchase", "refund"].includes(transaction.kind)
-    ))
-  ))) issues.push("Invalid counterparty share reference");
-  if (budget.transactions.some(transaction => transaction.lines && (
-    transaction.lines.length < 2 ||
-    transaction.categoryId !== undefined ||
-    new Set(transaction.lines.map(line => line.id)).size !== transaction.lines.length ||
-    transaction.lines.some(line => !line.amount) ||
-    transaction.lines.reduce((total, line) => total + line.amount, 0) !== transaction.amount
-  ))) issues.push("Invalid stored transaction lines");
+  const counterpartyAccount = (id: string) =>
+    budget.accounts.find(
+      (account) => account.id === id && isCounterparty(account),
+    );
+  const hasPairedEnvelope = (id: string) =>
+    budget.categories.some((category) => category.counterpartyAccountId === id);
+  for (const transaction of budget.transactions) {
+    if (transaction.removed) continue;
+    const source = budget.accounts.find(
+      (account) => account.id === transaction.accountId,
+    );
+    if (
+      transaction.counterpartyShare &&
+      (!transaction.categoryId || transaction.lines !== undefined)
+    )
+      issues.push("Invalid counterparty share reference");
+    if (transaction.linkedCounterpartyAccountId) {
+      const counterparty = counterpartyAccount(
+        transaction.linkedCounterpartyAccountId,
+      );
+      if (
+        !counterparty ||
+        !hasPairedEnvelope(counterparty.id) ||
+        transaction.kind !== "reimbursement" ||
+        transaction.amount <= 0 ||
+        source?.kind !== "cash" ||
+        transaction.categoryId ||
+        transaction.lines ||
+        transaction.counterpartyShare ||
+        (counterparty.kind === "reimbursements" &&
+          !transaction.counterpartyName?.trim())
+      )
+        issues.push("Invalid counterparty repayment reference");
+    }
+    for (const line of counterpartyLines(transaction)) {
+      const share = line.counterpartyShare;
+      if (!share) continue;
+      const counterparty = counterpartyAccount(share.accountId);
+      const category = budget.categories.find(
+        (item) => item.id === line.categoryId,
+      );
+      if (
+        !counterparty ||
+        !hasPairedEnvelope(share.accountId) ||
+        share.amount > Math.abs(line.amount) ||
+        (source?.kind !== "cash" && source?.kind !== "credit") ||
+        !category ||
+        category.counterpartyAccountId ||
+        category.pairedAccountId ||
+        category.pairedLoanId ||
+        !["purchase", "refund"].includes(transaction.kind) ||
+        transaction.sharedCategoryId ||
+        (counterparty.kind === "reimbursements" &&
+          !share.counterpartyName?.trim())
+      )
+        issues.push("Invalid counterparty share reference");
+    }
+  }
+  if (
+    budget.transactions.some(
+      (transaction) =>
+        transaction.lines &&
+        (transaction.lines.length < 2 ||
+          transaction.categoryId !== undefined ||
+          new Set(transaction.lines.map((line) => line.id)).size !==
+            transaction.lines.length ||
+          transaction.lines.some((line) => !line.amount) ||
+          transaction.lines.reduce((total, line) => total + line.amount, 0) !==
+            transaction.amount),
+    )
+  )
+    issues.push("Invalid stored transaction lines");
   if (
     budget.assignments.some(
       (assignment) => !categories.has(assignment.categoryId),
@@ -1674,8 +1728,18 @@ function replay(
       state.paymentsMade = 0;
       state.creditsReleased = 0;
     }
-    const creditByCategory = new Map([...carriedCounterpartyCredit].map(([categoryId, cards]) => [categoryId, new Map(cards)]));
-    const priorCounterpartyCredit = new Map([...carriedCounterpartyCredit].map(([categoryId, cards]) => [categoryId, sum([...cards.values()])]));
+    const creditByCategory = new Map(
+      [...carriedCounterpartyCredit].map(([categoryId, cards]) => [
+        categoryId,
+        new Map(cards),
+      ]),
+    );
+    const priorCounterpartyCredit = new Map(
+      [...carriedCounterpartyCredit].map(([categoryId, cards]) => [
+        categoryId,
+        sum([...cards.values()]),
+      ]),
+    );
     carriedCounterpartyCredit.clear();
     const cashByCategory = new Map<string, number>();
     const credits: Transaction[] = [];
@@ -1906,7 +1970,11 @@ function replay(
     for (const [categoryId, amount] of liquidity) {
       const state = categories.get(categoryId)!;
       const priorCashDeficit = index.category(categoryId).counterpartyAccountId
-        ? Math.max(0, -state.opening - (priorCounterpartyCredit.get(categoryId) ?? 0)) : 0;
+        ? Math.max(
+            0,
+            -state.opening - (priorCounterpartyCredit.get(categoryId) ?? 0),
+          )
+        : 0;
       state.cashOverspending = Math.max(0, -amount - priorCashDeficit);
     }
     for (const transfer of debtTransfers) {
@@ -1961,9 +2029,18 @@ function replay(
         state.activity = safe(state.available - state.opening - state.assigned);
       }
     for (const purchase of purchases) {
-      if (!purchase.remaining || !index.category(purchase.categoryId).counterpartyAccountId) continue;
-      const cards = carriedCounterpartyCredit.get(purchase.categoryId) ?? new Map<string, number>();
-      cards.set(purchase.cardId, safe((cards.get(purchase.cardId) ?? 0) + purchase.remaining));
+      if (
+        !purchase.remaining ||
+        !index.category(purchase.categoryId).counterpartyAccountId
+      )
+        continue;
+      const cards =
+        carriedCounterpartyCredit.get(purchase.categoryId) ??
+        new Map<string, number>();
+      cards.set(
+        purchase.cardId,
+        safe((cards.get(purchase.cardId) ?? 0) + purchase.remaining),
+      );
       carriedCounterpartyCredit.set(purchase.categoryId, cards);
     }
     for (const transfer of debtTransfers) {
@@ -1976,7 +2053,9 @@ function replay(
         remaining -= moved;
       }
     }
-    for (const account of budget.accounts.filter(item => item.kind === "credit")) {
+    for (const account of budget.accounts.filter(
+      (item) => item.kind === "credit",
+    )) {
       const state = accounts.get(account.id)!;
       let remainingDebt = Math.max(0, -state.balance - state.reserve);
       for (const cards of carriedCounterpartyCredit.values()) {
