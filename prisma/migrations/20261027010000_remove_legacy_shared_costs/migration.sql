@@ -1,0 +1,113 @@
+BEGIN;
+
+-- The format-7 server must be live before this drop. Refuse to discard
+-- any remaining legacy ledger; inspect and migrate it explicitly instead.
+LOCK TABLE "Obligation", "PartnerFact", "Reimbursement", "ReimbursementReceipt", "Settlement", "SettlementAllocation", "SharedCategory", "TransactionShare", "Transaction" IN ACCESS EXCLUSIVE MODE;
+DO $$
+BEGIN
+  IF EXISTS (
+      SELECT 1 FROM "Obligation"
+      UNION ALL
+      SELECT 1 FROM "PartnerFact"
+      UNION ALL
+      SELECT 1 FROM "Reimbursement"
+      UNION ALL
+      SELECT 1 FROM "ReimbursementReceipt"
+      UNION ALL
+      SELECT 1 FROM "Settlement"
+      UNION ALL
+      SELECT 1 FROM "SettlementAllocation"
+      UNION ALL
+      SELECT 1 FROM "SharedCategory"
+      UNION ALL
+      SELECT 1 FROM "TransactionShare"
+    ) OR EXISTS (
+      SELECT 1 FROM "Transaction"
+      WHERE NOT COALESCE("removed", false)
+        AND ("sharedCategoryId" IS NOT NULL OR "kind" = 'settlement')
+    ) THEN
+    RAISE EXCEPTION 'Legacy shared-cost data remains; refusing to drop it';
+  END IF;
+END $$;
+
+-- Removes the retired shared-cost model: shared categories, obligations,
+-- net settlements, expected reimbursements, and the partner facts derived
+-- from them (ADR 0007). Line shares, the partner ledger, and partner
+-- settlements replace them.
+
+-- Stored operations that wrote these records can no longer be undone or
+-- replayed: their change sets name tables this migration drops.
+UPDATE "Operation"
+SET "changeSet" = NULL, "command" = NULL
+WHERE "type" IN (
+    'shared.create', 'shared.rule', 'shared.remove', 'opening.add',
+    'settlement.record', 'settlement.receive',
+    'reimbursement.expect', 'reimbursement.receive'
+  )
+  OR "changeSet"::text ~ '"table": ?"(sharedCategory|obligation|settlement|settlementAllocation|reimbursement|reimbursementReceipt|transactionShare|partnerFact)"'
+  OR "changeSet"::text ~ '"kind": ?"settlement"'
+  OR "changeSet"::text ~ '"(sharedCategoryId|shares|splitWeights)":';
+
+-- Keep actual bank payments readable after their net-settlement records
+-- are removed. Like reimbursements, these payments move account balances
+-- without counting as another purchase.
+UPDATE "Transaction"
+SET "kind" = 'reimbursement', "linkedId" = NULL
+WHERE "kind" = 'settlement';
+
+-- DropForeignKey
+ALTER TABLE "Obligation" DROP CONSTRAINT "Obligation_workspaceId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "PartnerFact" DROP CONSTRAINT "PartnerFact_workspaceId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "PartnerFact" DROP CONSTRAINT "PartnerFact_workspaceId_viewerId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "Reimbursement" DROP CONSTRAINT "Reimbursement_workspaceId_userId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "ReimbursementReceipt" DROP CONSTRAINT "ReimbursementReceipt_workspaceId_userId_reimbursementId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "Settlement" DROP CONSTRAINT "Settlement_workspaceId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "SettlementAllocation" DROP CONSTRAINT "SettlementAllocation_workspaceId_settlementId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "SharedCategory" DROP CONSTRAINT "SharedCategory_workspaceId_fkey";
+
+-- DropForeignKey
+ALTER TABLE "TransactionShare" DROP CONSTRAINT "TransactionShare_workspaceId_userId_transactionId_fkey";
+
+-- AlterTable
+ALTER TABLE "Transaction" DROP COLUMN "sharedCategoryId";
+
+-- DropTable
+DROP TABLE "Obligation";
+
+-- DropTable
+DROP TABLE "PartnerFact";
+
+-- DropTable
+DROP TABLE "Reimbursement";
+
+-- DropTable
+DROP TABLE "ReimbursementReceipt";
+
+-- DropTable
+DROP TABLE "Settlement";
+
+-- DropTable
+DROP TABLE "SettlementAllocation";
+
+-- DropTable
+DROP TABLE "SharedCategory";
+
+-- DropTable
+DROP TABLE "TransactionShare";
+
+
+COMMIT;
