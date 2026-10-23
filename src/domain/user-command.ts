@@ -32,6 +32,7 @@ export function prepareUserCommand(
     "reimbursement.receive",
     "counterparty.receive",
     "partner.edit",
+    "partner.request",
     "loan.payment",
     "settlement.record",
     "settlement.receive",

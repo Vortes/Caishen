@@ -12,7 +12,7 @@ import type {
   Transaction,
 } from "./engine";
 import type { PartnerEntry } from "./partner-ledger";
-import type { PartnerSettlement } from "./partner-settlements";
+import type { PartnerRequest, PartnerSettlement } from "./partner-settlements";
 import {
   accountRow,
   assignmentRow,
@@ -25,6 +25,7 @@ import {
   openingObligationRows,
   partnerEntryRow,
   partnerFactRows,
+  partnerRequestRow,
   partnerSettlementRow,
   partnerSideRows,
   payeeMemoryRows,
@@ -310,6 +311,17 @@ export class Changes {
   addPartnerSettlement(settlement: PartnerSettlement): void {
     this.partnerSettlement(settlement);
     (this.state.partnerSettlements ??= []).push(settlement);
+  }
+
+  /** A request to pay, which both browsers hold. */
+  addPartnerRequest(request: PartnerRequest): void {
+    this.item(
+      `partner request ${request.id}`,
+      () => this.state.partnerRequests ?? [],
+      request.id,
+      (item, sort) => [partnerRequestRow(item, sort)],
+    );
+    (this.state.partnerRequests ??= []).push(request);
   }
 
   /** A loan with its rates and payments. */
