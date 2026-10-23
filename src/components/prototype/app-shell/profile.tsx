@@ -5,6 +5,11 @@ import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import {
+  ProfilePreferences,
+  type UpdatePreferences,
+} from "~/components/entry/profile-preferences";
+import { AccountSettings } from "~/components/entry/account-settings";
 import { PhotoCropDialog } from "./photo-crop-dialog";
 import { useShellData } from "./shell-data";
 import { UserAvatar } from "./user-avatar";
@@ -25,10 +30,13 @@ function errorMessage(error: unknown) {
 // the moment they change, like every other setting.
 export function ProfileSettings({
   onRename,
+  onUpdate,
 }: {
   // Returns why the rename can't run yet, or null once it's sent.
   onRename: (name: string) => string | null;
+  onUpdate?: UpdatePreferences;
 }) {
+  const { preferences } = useShellData();
   return (
     <div className={styles.settingsPage}>
       <section className={styles.settingsSection} aria-label="Profile">
@@ -38,6 +46,10 @@ export function ProfileSettings({
           <BudgetName onRename={onRename} />
         </Card>
       </section>
+      {preferences && onUpdate && (
+        <ProfilePreferences value={preferences} onChange={onUpdate} />
+      )}
+      <AccountSettings />
     </div>
   );
 }

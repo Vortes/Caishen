@@ -485,11 +485,17 @@ export function TransactionEditor({
                         >
                           Personal expense
                         </option>
-                        {view.sharedCategories.map((shared) => (
-                          <option key={shared.id} value={shared.id}>
-                            {shared.name}
-                          </option>
-                        ))}
+                        {view.sharedCategories
+                          .filter(
+                            (shared) =>
+                              !shared.archived ||
+                              shared.id === draft.sharedCategoryId,
+                          )
+                          .map((shared) => (
+                            <option key={shared.id} value={shared.id}>
+                              {shared.name}
+                            </option>
+                          ))}
                       </select>
                       <FieldError
                         id={`${formId}-sharedCategoryId-error`}

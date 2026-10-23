@@ -80,13 +80,21 @@ export function useBankConnections({
   notify,
   holdOpen,
   runOnServer,
+  resumeReturn = false,
 }: {
   state: BankSetupState & Pick<State, "services">;
   notify: Notify;
   holdOpen: () => () => void;
   runOnServer: ServerRunner;
+  resumeReturn?: boolean;
 }) {
   const link = usePlaidLink();
+  const { isLoaded, userId, resume, cancel } = link;
+  useEffect(() => {
+    if (!resumeReturn || !isLoaded || !userId) return;
+    void resume();
+    return cancel;
+  }, [resumeReturn, isLoaded, userId, resume, cancel]);
   const [setupId, setSetupId] = useState<string | null>(null);
   // The user closed the dialog for the flow that's running; reopen it for the
   // next one.
@@ -140,6 +148,8 @@ export function useBankConnections({
   useEffect(() => (showing ? holdOpen() : undefined), [showing, holdOpen]);
 
   return {
+    error: link.error,
+    saved: link.saved,
     connections: state.connections,
     available,
     // Getting Plaid ready: the link token and its script, before its window.
@@ -173,7 +183,10 @@ type DialogView =
   | { type: "elsewhere"; origin: string }
   | { type: "setup"; connection: Connection };
 
-export type BankConnections = ReturnType<typeof useBankConnections>;
+export type BankConnections = Omit<
+  ReturnType<typeof useBankConnections>,
+  "error" | "saved"
+> & { error?: string; saved?: boolean };
 
 const BankConnectionsContext = createContext<BankConnections | null>(null);
 

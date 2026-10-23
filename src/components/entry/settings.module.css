@@ -1,0 +1,213 @@
+/* Settings additions. Rows, cards, and the page column come from the app
+   shell's settings classes; these are only what the new rows need. */
+
+.frame a {
+  color: inherit;
+  text-decoration: none;
+}
+@media (max-width: 760px) {
+  .frame aside {
+    display: none;
+  }
+}
+
+.expandRow {
+  display: flex;
+  flex-direction: column;
+}
+.inlineForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.passwordFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.codeInput {
+  max-width: 160px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2em;
+}
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  cursor: pointer;
+}
+.settingSelect {
+  flex: none;
+  width: auto;
+  max-width: 50%;
+}
+.rowIcon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Connected accounts */
+.methods {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.methodList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.method {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--size-row-lg);
+}
+.method + .method {
+  border-top: 1px solid var(--border-subtle);
+}
+.methodText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.mark {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--text-secondary);
+}
+
+/* Delete account */
+.consequences {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+
+/* Partner */
+.partnerAvatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-selected);
+  font-weight: 600;
+}
+.joinForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.joinRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-inset);
+}
+
+/* Timezone and the daily email */
+.zoneHint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+}
+.nextEmail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px calc(var(--space-card) * -1) calc(var(--space-card) * -1);
+  padding: 6px 8px 6px var(--space-card);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  background: var(--surface-group);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+.previewChevron {
+  transition: transform 150ms var(--ease-panel);
+}
+.previewChevron[data-open] {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .previewChevron {
+    transition: none;
+  }
+}
+
+/* The email, in the light theme, as a mail app shows it. */
+.email {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  line-height: 1.5;
+}
+.emailMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.emailMeta strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.emailSubject {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.emailBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.emailBody p,
+.emailFooter {
+  margin: 0;
+}
+.emailFooter {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.emailLink {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.email[data-theme="light"] .emailLink {
+  color: var(--accent-solid);
+}
