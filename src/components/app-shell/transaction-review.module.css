@@ -91,6 +91,35 @@
 .categoryForm > .actions {
   justify-content: flex-end;
 }
+.shareConfirmation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--space-card);
+}
+.sharePopover {
+  width: min(var(--size-popover), calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+.shareConfirmation > strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.shareConfirmation > label {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.shareConfirmation > .actions {
+  justify-content: flex-end;
+}
+.shareSummary {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
 .error {
   display: flex;
   align-items: baseline;
@@ -124,7 +153,8 @@
 }
 @media (pointer: coarse) {
   .island,
-  .categoryPopover {
+  .categoryPopover,
+  .sharePopover {
     --size-control-xs: var(--size-row-lg);
     --size-control: var(--size-row-lg);
   }

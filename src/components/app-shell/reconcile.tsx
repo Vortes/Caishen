@@ -3,7 +3,6 @@
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, LandmarkIcon, WalletIcon } from "lucide-react";
 import { Popover } from "radix-ui";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
@@ -14,6 +13,7 @@ import { parseAmount } from "./move-money";
 import { useShellData } from "./shell-data";
 import moveStyles from "./move-money.module.css";
 import styles from "./reconcile.module.css";
+import { PopoverSteps } from "./popover-steps";
 
 export type Reconciling = {
   // Sends the reconciliation with a summary for its confirmation. Returns
@@ -78,11 +78,6 @@ export function ReconcilePopover({
 
 type Step = "ask" | "enter" | "result";
 
-// Steps cross-fade: the old one fades out quickly in place while the new one
-// rises 4px into view and the popover's height glides to fit, all within
-// about 200ms. Exits run faster than enters.
-const ENTER_EASE = [0.32, 0.72, 0, 1] as const;
-
 function ReconcileForm({
   account,
   reconcile,
@@ -103,18 +98,6 @@ function ReconcileForm({
   useEffect(() => {
     if (step === "result") resultRef.current?.focus({ preventScroll: true });
   }, [step]);
-  const reduced = useReducedMotion();
-  const [content, setContent] = useState<HTMLDivElement | null>(null);
-  const [height, setHeight] = useState<number | "auto">("auto");
-  useEffect(() => {
-    if (!content) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setHeight(entry!.borderBoxSize[0]!.blockSize),
-    );
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, [content]);
-
   const unlocked = transactions.filter(
     (item) =>
       item.accountId === account.id &&
@@ -152,75 +135,42 @@ function ReconcileForm({
   };
 
   return (
-    <motion.div
-      className={styles.frame}
-      initial={false}
-      animate={{ height }}
-      transition={
-        reduced ? { duration: 0 } : { duration: 0.2, ease: ENTER_EASE }
-      }
-    >
-      <div ref={setContent} className={styles.steps}>
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.form
-            key={step}
-            ref={step === "result" ? resultRef : undefined}
-            tabIndex={step === "result" ? -1 : undefined}
-            aria-label={step === "result" ? "Reconcile result" : undefined}
-            aria-describedby={step === "result" ? messageId : undefined}
-            className={styles.form}
-            initial={reduced ? false : { opacity: 0, y: 4 }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              transition: reduced
-                ? { duration: 0 }
-                : { duration: 0.18, ease: ENTER_EASE },
-            }}
-            exit={
-              reduced
-                ? {
-                    opacity: 0,
-                    pointerEvents: "none",
-                    transition: { duration: 0 },
-                  }
-                : {
-                    opacity: 0,
-                    pointerEvents: "none",
-                    transition: { duration: 0.12, ease: "easeIn" },
-                  }
-            }
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (step === "ask") finish(account.cleared);
-              else if (step === "enter") {
-                if (valid) go("result");
-              } else finish(bank);
-            }}
-          >
-            {step === "enter" ? (
-              <EnterBalance text={text} onChange={setText} valid={valid} />
-            ) : (
-              <Comparison
-                account={account}
-                bank={step === "result" ? bank : undefined}
-                difference={difference}
-                locks={locks}
-                error={error}
-                messageId={messageId}
-              />
-            )}
-            <Actions
-              step={step}
-              valid={valid}
-              adjust={step === "result" && difference !== 0}
-              onBack={() => go(step === "result" ? "enter" : "ask")}
-              onEnter={() => go("enter")}
-            />
-          </motion.form>
-        </AnimatePresence>
-      </div>
-    </motion.div>
+    <PopoverSteps step={step}>
+      <form
+        ref={step === "result" ? resultRef : undefined}
+        tabIndex={step === "result" ? -1 : undefined}
+        aria-label={step === "result" ? "Reconcile result" : undefined}
+        aria-describedby={step === "result" ? messageId : undefined}
+        className={styles.form}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (step === "ask") finish(account.cleared);
+          else if (step === "enter") {
+            if (valid) go("result");
+          } else finish(bank);
+        }}
+      >
+        {step === "enter" ? (
+          <EnterBalance text={text} onChange={setText} valid={valid} />
+        ) : (
+          <Comparison
+            account={account}
+            bank={step === "result" ? bank : undefined}
+            difference={difference}
+            locks={locks}
+            error={error}
+            messageId={messageId}
+          />
+        )}
+        <Actions
+          step={step}
+          valid={valid}
+          adjust={step === "result" && difference !== 0}
+          onBack={() => go(step === "result" ? "enter" : "ask")}
+          onEnter={() => go("enter")}
+        />
+      </form>
+    </PopoverSteps>
   );
 }
 

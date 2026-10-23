@@ -23,6 +23,7 @@ import shell from "./shell.module.css";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import styles from "./transaction-review.module.css";
+import { ShareSelection } from "./share-selection";
 
 // transaction.approve takes at most this many transactions at once.
 export const APPROVE_LIMIT = 500;
@@ -205,6 +206,11 @@ export function SelectionIsland({
               </Button>
             )}
           <CategorizeAction selected={selected} disabled={busy} />
+          <ShareSelection
+            selected={selected}
+            disabled={busy}
+            onCheck={onCheck}
+          />
         </div>
       </div>
     </div>

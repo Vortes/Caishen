@@ -172,6 +172,18 @@
   display: flex;
   justify-content: flex-end;
 }
+.shareForm .fullShare {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--size-row-sm);
+  color: var(--text-secondary);
+}
+@media (pointer: coarse) {
+  .shareForm .fullShare {
+    min-height: var(--size-row-lg);
+  }
+}
 .formHint {
   margin: 0;
   color: var(--text-tertiary);

@@ -16,6 +16,12 @@ import {
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
 import type { Command, CounterpartyShare } from "~/domain/engine";
+import { isFullShare } from "~/domain/counterparty";
+import {
+  prepareTransactionShares,
+  type ShareChoice,
+  type PreparedTransactionShare,
+} from "~/components/transactions/transaction-share";
 import {
   rememberedCategory,
   rememberedCounterpartyShare,
@@ -51,6 +57,9 @@ export type TransactionSaver = {
     summary: string,
     refused?: () => void,
   ) => string | null;
+  saveShares: (
+    changes: PreparedTransactionShare[],
+  ) => Promise<{ savedIds: string[]; error?: string }>;
   // Holds the undo shortcut while the editor is open.
   holdOpen: () => () => void;
 };
@@ -662,7 +671,10 @@ export function useTransactionEntryController({
     const draft = createTransactionDraft(view, view.month, transaction);
     const line =
       transaction.lines?.find((item) => item.id === lineId) ?? transaction;
-    if (!line.categoryId && share?.amount !== Math.abs(line.amount))
+    if (
+      !line.categoryId &&
+      !isFullShare({ amount: line.amount, counterpartyShare: share })
+    )
       return start({
         transactionId,
         field: draft.lines.length
@@ -702,6 +714,36 @@ export function useTransactionEntryController({
     holdOpen,
     saveCommand: saver.save,
     saveShare,
+    shareSelection: async (
+      ids: string[],
+      choice: ShareChoice,
+      categoryId: string,
+    ) => {
+      if (session)
+        return {
+          savedIds: [],
+          error: "Save or cancel the open transaction first.",
+        };
+      try {
+        return await saver.saveShares(
+          prepareTransactionShares(
+            view,
+            saver.imports,
+            ids,
+            choice,
+            categoryId,
+          ),
+        );
+      } catch (failure) {
+        return {
+          savedIds: [],
+          error:
+            failure instanceof Error
+              ? failure.message
+              : "These shares couldn't be saved. Try again.",
+        };
+      }
+    },
     // Returns why the account can't be added, or null once it's on its way.
     addAccount: (command: Extract<Command, { type: "account.add" }>) =>
       saver.save(command, `Added ${command.name}`),
