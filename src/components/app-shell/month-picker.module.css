@@ -24,10 +24,48 @@
 .monthTrigger {
   display: inline-flex;
   align-items: center;
+}
+.labelSlot {
+  display: inline-grid;
+  justify-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.labelSlot > * {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
 }
-.monthTrigger > svg {
+.labelGhost {
+  visibility: hidden;
+}
+.labelGhost::before {
+  content: attr(data-text);
+}
+.label > svg {
   color: var(--text-tertiary);
+}
+
+/* Today fades in after the arrows when you leave the current month. It sits
+   last in the row, so showing it moves nothing. */
+.today {
+  margin-left: 4px;
+  opacity: 0;
+  transform: translateX(-4px);
+  visibility: hidden;
+  transition:
+    opacity 100ms ease-in,
+    transform 100ms ease-in,
+    visibility 0s 100ms;
+}
+.today[data-shown] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition:
+    opacity 160ms var(--ease-panel),
+    transform 160ms var(--ease-panel),
+    visibility 0s;
 }
 .monthTrigger[data-state="open"] {
   background: var(--surface-hover);
@@ -103,7 +141,12 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .monthCell {
+  .monthCell,
+  .today,
+  .today[data-shown] {
     transition: none;
+  }
+  .today {
+    transform: none;
   }
 }
