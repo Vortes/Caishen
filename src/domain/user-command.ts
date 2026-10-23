@@ -30,6 +30,7 @@ export function prepareUserCommand(
     "card.payment",
     "card.credit",
     "reimbursement.receive",
+    "counterparty.receive",
     "loan.payment",
     "settlement.record",
     "settlement.receive",
@@ -45,6 +46,17 @@ export function prepareUserCommand(
     throw new AccountingError(
       "Record confirmed activity on or before today in your budget's timezone. Future activity cannot create or consume available cash.",
     );
+  if (
+    command.type === "transaction.save" ||
+    command.type === "transaction.upsert" ||
+    command.type === "counterparty.receive" ||
+    command.type === "transaction.merge" ||
+    command.type === "transaction.remove" ||
+    command.type === "transaction.reject" ||
+    command.type === "transaction.categorize" ||
+    command.type === "transaction.categorize.batch"
+  )
+    return { ...command, recordedAt: now.toISOString() };
   return command.type === "target.snooze"
     ? { ...command, currentMonth: today.slice(0, 7) }
     : command;

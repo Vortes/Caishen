@@ -51,6 +51,7 @@ const commandLabels = {
   "settlement.receive": "Receive settlement",
   "reimbursement.expect": "Add reimbursement",
   "reimbursement.receive": "Receive reimbursement",
+  "counterparty.receive": "Receive repayment",
   "card.payment": "Record card payment",
   "card.credit": "Record statement credit",
   "loan.add": "Add loan",

@@ -1,6 +1,14 @@
 import { z } from "zod";
-import { linkedRefundIssues } from "./linked-refunds";
-import { counterpartyLines, counterpartyRegisterEntries, shareContribution } from "./counterparty";
+import {
+  linkedRefundIssues,
+  proportionalRefundLines,
+  refundOrder,
+} from "./linked-refunds";
+import {
+  counterpartyLines,
+  counterpartyRegisterEntries,
+  shareContribution,
+} from "./counterparty";
 export { counterpartyRegisterEntries } from "./counterparty";
 import {
   isTransfer,
@@ -129,7 +137,15 @@ export const targetSchema = z
   });
 export type Target = z.infer<typeof targetSchema>;
 
+const shareInputSchema = z.object({
+  accountId: identifier,
+  amount: nonnegativeCents,
+  counterpartyName: z.string().trim().min(1).max(240).optional(),
+});
 const transactionInput = {
+  counterpartyShare: shareInputSchema.nullable().optional(),
+  refundOfTransactionId: identifier.optional(),
+  recordedAt: z.string().datetime().optional(),
   transactionId: identifier,
   accountId: identifier,
   date: daySchema,
@@ -140,7 +156,12 @@ const transactionInput = {
   // keeps a saved split, or a single category.
   lines: z
     .array(
-      z.object({ lineId: identifier, categoryId: identifier, amount: cents }),
+      z.object({
+        lineId: identifier,
+        categoryId: identifier,
+        amount: cents,
+        counterpartyShare: shareInputSchema.nullable().optional(),
+      }),
     )
     .min(2)
     .max(100)
@@ -155,6 +176,16 @@ const transactionInput = {
 };
 
 export const commandSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("counterparty.receive"),
+    id: identifier,
+    counterpartyAccountId: identifier,
+    cashAccountId: identifier,
+    date: daySchema,
+    amount: positiveCents,
+    counterpartyName: z.string().trim().min(1).max(240).optional(),
+    recordedAt: z.string().datetime().optional(),
+  }),
   z.object({
     type: z.literal("account.add"),
     id: identifier,
@@ -263,6 +294,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("transaction.remove"),
+    recordedAt: z.string().datetime().optional(),
     id: identifier,
     transactionId: identifier,
   }),
@@ -273,23 +305,27 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("transaction.reject"),
+    recordedAt: z.string().datetime().optional(),
     id: identifier,
     transactionIds: z.array(identifier).min(1).max(500),
   }),
   z.object({
     type: z.literal("transaction.categorize"),
+    recordedAt: z.string().datetime().optional(),
     id: identifier,
     transactionId: identifier,
     categoryId: identifier,
   }),
   z.object({
     type: z.literal("transaction.categorize.batch"),
+    recordedAt: z.string().datetime().optional(),
     id: identifier,
     transactionIds: z.array(identifier).min(1).max(500),
     categoryId: identifier,
   }),
   z.object({
     type: z.literal("transaction.merge"),
+    recordedAt: z.string().datetime().optional(),
     id: identifier,
     transactionId: identifier,
     duplicateId: identifier,
@@ -1293,6 +1329,16 @@ function rescaleLines(
   const scaled = lines.map((line) => ({
     ...line,
     amount: Math.round((line.amount * amount) / total),
+    ...(line.counterpartyShare
+      ? {
+          counterpartyShare: {
+            ...line.counterpartyShare,
+            amount: Math.round(
+              line.counterpartyShare.amount * Math.abs(amount / total),
+            ),
+          },
+        }
+      : {}),
   }));
   const largest = scaled.reduce((a, b) =>
     Math.abs(b.amount) > Math.abs(a.amount) ? b : a,
@@ -1300,6 +1346,12 @@ function rescaleLines(
   largest.amount = safe(
     largest.amount + amount - sum(scaled.map((line) => line.amount)),
   );
+  for (const line of scaled)
+    if (line.counterpartyShare)
+      line.counterpartyShare.amount = Math.min(
+        line.counterpartyShare.amount,
+        Math.abs(line.amount),
+      );
   return scaled.every((line) => line.amount) ? scaled : undefined;
 }
 
@@ -2874,6 +2926,14 @@ function saveRegisterTransaction(
     )
   )
     fail("Provider transaction already exists");
+  if (
+    (command.transferAccountId || command.loanId) &&
+    existing &&
+    budget.transactions.some(
+      (item) => active(item) && item.refundOfTransactionId === existing.id,
+    )
+  )
+    fail("Resolve linked refunds before converting their purchase");
   const paired =
     existing && (isTransfer(existing) || existing.kind === "loan-payment");
   if (!paired && !command.transferAccountId && !command.loanId) {
@@ -2887,6 +2947,16 @@ function saveRegisterTransaction(
     return;
   }
   if (command.lines) fail("A transfer cannot be split");
+  if (
+    command.counterpartyShare ||
+    existing?.counterpartyShare ||
+    existing?.lines?.some((line) => line.counterpartyShare) ||
+    command.refundOfTransactionId ||
+    existing?.refundOfTransactionId
+  )
+    fail(
+      "Resolve counterparty shares and linked refunds before converting to a transfer",
+    );
   if (existing?.sharedCategoryId || command.sharedCategoryId || command.shares)
     fail("Resolve the shared expense before converting it to a transfer");
   if (
@@ -3233,11 +3303,34 @@ export function checkRestoredLedger(state: AccountingState): void {
   for (const budget of budgets) ensureSupportedCardBalances(budget);
 }
 
+function isPostedLinkedCardRefund(
+  budget: Budget,
+  transaction: Transaction,
+): boolean {
+  if (
+    transaction.kind !== "refund" ||
+    transaction.amount <= 0 ||
+    transaction.status !== "posted" ||
+    !transaction.refundOfTransactionId
+  )
+    return false;
+  const original = budget.transactions.find(
+    (item) => active(item) && item.id === transaction.refundOfTransactionId,
+  );
+  return Boolean(
+    original?.kind === "purchase" &&
+    original.amount < 0 &&
+    original.accountId === transaction.accountId &&
+    original.date <= transaction.date,
+  );
+}
+
 function ensureSupportedCardBalances(budget: Budget): void {
   for (const account of budget.accounts.filter(
     (item) => item.kind === "credit",
   )) {
     const activity = new Map<string, number>();
+    const linkedCredits = new Map<string, number>();
     for (const transaction of budget.transactions.filter(
       (item) =>
         active(item) &&
@@ -3249,11 +3342,17 @@ function ensureSupportedCardBalances(budget: Budget): void {
         month,
         safe((activity.get(month) ?? 0) + transaction.amount),
       );
+      if (isPostedLinkedCardRefund(budget, transaction))
+        linkedCredits.set(
+          month,
+          safe((linkedCredits.get(month) ?? 0) + transaction.amount),
+        );
     }
     let balance = account.openingBalance;
     for (const month of [...activity.keys()].sort()) {
+      const priorCredit = Math.max(0, balance);
       balance = safe(balance + activity.get(month)!);
-      if (balance > 0)
+      if (balance > priorCredit + (linkedCredits.get(month) ?? 0))
         fail(
           "This change would create a positive card balance; investigate recorded credits and payments first",
         );
@@ -3419,15 +3518,106 @@ function executeAccountingState<T extends AccountingState>(
   return { book, changeSet: changes.changeSet(command.id) };
 }
 
+function recomputeLinkedRefunds(
+  book: AccountingState,
+  budget: Budget,
+  transactionId: string,
+  operationId: string,
+  recordedAt: string | undefined,
+  source: CommandSource,
+  changes: Changes,
+  savedRefundId?: string,
+): void {
+  const refunds = budget.transactions
+    .filter(
+      (item) => active(item) && item.refundOfTransactionId === transactionId,
+    )
+    .sort(refundOrder);
+  if (!refunds.length) return;
+  const original = getTransaction(budget, transactionId);
+  if (
+    original.kind !== "purchase" ||
+    sum(refunds.map((item) => item.amount)) > -original.amount
+  )
+    fail("The corrected purchase cannot be smaller than its linked refunds");
+  for (const refund of refunds)
+    if (refund.id !== savedRefundId)
+      changes.transaction(budget, refund).removed = true;
+  for (const refund of refunds) {
+    if (refund.id === savedRefundId) continue;
+    applyCommand(
+      book,
+      budget,
+      {
+        type: "transaction.upsert",
+        id: operationId,
+        transactionId: refund.id,
+        accountId: refund.accountId,
+        amount: refund.amount,
+        date: refund.date,
+        payee: refund.payee,
+        status: refund.status,
+        expenseMonth: refund.expenseMonth,
+        refundOfTransactionId: transactionId,
+        recordedAt,
+      },
+      source,
+      changes,
+      true,
+    );
+  }
+}
+
 function applyCommand(
   book: AccountingState,
   budget: Budget,
   command: ParsedCommand,
   source: CommandSource,
   changes: Changes,
+  reapplyingRefund = false,
 ): void {
   const actorId = budget.userId;
   switch (command.type) {
+    case "counterparty.receive": {
+      requireDate(budget, command.date);
+      requireCash(budget, command.cashAccountId, command.date);
+      const counterparty = accountAtDate(
+        budget,
+        command.counterpartyAccountId,
+        command.date,
+      );
+      if (!isCounterparty(counterparty))
+        fail("Choose Partner or Reimbursements");
+      if (counterparty.kind === "reimbursements" && !command.counterpartyName)
+        fail("Name the person or organization making the reimbursement");
+      if (source === "user" && !command.recordedAt)
+        fail("Repayments require their recorded time");
+      const outstanding = sum(
+        counterpartyRegisterEntries(budget, {
+          accountId: counterparty.id,
+          counterpartyName: command.counterpartyName,
+          cutoff: command.date,
+        }).map((entry) => entry.amount),
+      );
+      if (command.amount > outstanding)
+        fail("Receipt exceeds the outstanding counterparty balance");
+      appendTransaction(changes, budget, command.id, {
+        id: `${command.id}:receipt`,
+        accountId: command.cashAccountId,
+        date: command.date,
+        amount: command.amount,
+        payee: command.counterpartyName ?? counterparty.name,
+        status: "posted",
+        expenseMonth: monthOf(command.date),
+        kind: "reimbursement",
+        linkedCounterpartyAccountId: counterparty.id,
+        counterpartyName: command.counterpartyName,
+      });
+      const receipt = getTransaction(budget, `${command.id}:receipt`);
+      receipt.history[0]!.actorId = actorId;
+      receipt.history[0]!.at = command.recordedAt;
+      break;
+    }
     case "account.add": {
       if (budget.accounts.some((account) => account.id === command.accountId))
         fail("Account ID already exists");
@@ -3694,15 +3884,129 @@ function applyCommand(
           break;
         fail("Stale transaction revision requires review");
       }
+      const refundOfTransactionId =
+        command.refundOfTransactionId ?? existing?.refundOfTransactionId;
+      if (refundOfTransactionId) {
+        const original = getTransaction(budget, refundOfTransactionId);
+        if (
+          original.id === command.transactionId ||
+          original.kind !== "purchase" ||
+          original.amount >= 0
+        )
+          fail("Link refunds to an original purchase");
+        if (command.amount <= 0 || command.date < original.date)
+          fail("A linked refund must be an inflow on or after its purchase");
+        const siblings = budget.transactions.filter(
+          (item) =>
+            active(item) &&
+            item.id !== command.transactionId &&
+            item.refundOfTransactionId === original.id,
+        );
+        if (
+          sum(siblings.map((item) => item.amount)) + command.amount >
+          -original.amount
+        )
+          fail("Refunds exceed the original purchase");
+        const earlier = siblings.filter(
+          (item) =>
+            item.date < command.date ||
+            (item.date === command.date &&
+              item.id.localeCompare(command.transactionId) < 0),
+        );
+        const refundLines = proportionalRefundLines(
+          original,
+          sum(earlier.map((item) => item.amount)),
+          command.amount,
+        ).map((line) => ({
+          lineId: line.id,
+          categoryId: line.categoryId,
+          amount: line.amount,
+          counterpartyShare: line.counterpartyShare,
+        }));
+        if (!refundLines.length)
+          fail("The original purchase has no refundable category");
+        if (refundLines.length === 1) {
+          command.lines = undefined;
+          command.categoryId = refundLines[0]!.categoryId;
+          command.counterpartyShare = refundLines[0]!.counterpartyShare ?? null;
+        } else {
+          command.lines = refundLines;
+          command.categoryId = undefined;
+          command.counterpartyShare = undefined;
+        }
+      }
+      const counterpartyShare =
+        command.counterpartyShare === null
+          ? undefined
+          : (command.counterpartyShare ??
+            (command.lines
+              ? undefined
+              : existing?.counterpartyShare
+                ? {
+                    ...existing.counterpartyShare,
+                    amount: Math.min(
+                      existing.counterpartyShare.amount,
+                      Math.abs(command.amount),
+                    ),
+                  }
+                : undefined));
+      if (account.kind === "tracking" && counterpartyShare)
+        fail("Tracking activity cannot have a counterparty share");
+      const validateShare = (amount: number, share?: CounterpartyShare) => {
+        if (!share) return;
+        if (share.amount > Math.abs(amount))
+          fail("Counterparty share exceeds its line amount");
+        const account = getAccount(budget, share.accountId);
+        if (!isCounterparty(account))
+          fail("Choose Partner or Reimbursements for the share");
+        if (account.kind === "reimbursements" && !share.counterpartyName)
+          fail("Name the person or organization for this reimbursement");
+        if (
+          !budget.categories.some(
+            (item) => item.counterpartyAccountId === share.accountId,
+          )
+        )
+          fail("Counterparty paired envelope is missing");
+        if (command.sharedCategoryId || existing?.sharedCategoryId)
+          fail("Use line shares separately from legacy shared categories");
+      };
+      validateShare(command.amount, counterpartyShare);
+      if (
+        source === "user" &&
+        !command.recordedAt &&
+        (counterpartyShare ||
+          existing?.counterpartyShare ||
+          command.lines?.some((line) => line.counterpartyShare) ||
+          existing?.lines?.some((line) => line.counterpartyShare))
+      )
+        fail("Share edits require their recorded time");
       const lines = command.lines
         ? command.lines.map((line) => ({
             id: line.lineId,
             categoryId: line.categoryId,
             amount: line.amount,
+            ...(line.counterpartyShare
+              ? { counterpartyShare: line.counterpartyShare }
+              : {}),
           }))
-        : command.categoryId || !existing?.lines
-          ? undefined
-          : rescaleLines(existing.lines, command.amount);
+        : command.categoryId &&
+            existing?.lines?.some((line) => line.counterpartyShare) &&
+            command.counterpartyShare === undefined &&
+            !refundOfTransactionId
+          ? (() => {
+              const preserved =
+                rescaleLines(existing.lines, command.amount) ??
+                fail(
+                  "Edit the split lines to keep their counterparty shares when changing this amount",
+                );
+              return preserved.map((line) => ({
+                ...line,
+                categoryId: command.categoryId!,
+              }));
+            })()
+          : command.categoryId || !existing?.lines
+            ? undefined
+            : rescaleLines(existing.lines, command.amount);
       const categoryId = lines
         ? undefined
         : (command.categoryId ?? existing?.categoryId);
@@ -3715,6 +4019,7 @@ function applyCommand(
           fail("Each split line needs its own id");
         for (const line of lines) {
           if (!line.amount) fail("Enter an amount on every split line");
+          validateShare(line.amount, line.counterpartyShare);
           const category = getCategory(budget, line.categoryId);
           refusePairedEnvelope(category);
           if (category.pairedAccountId || category.pairedLoanId)
@@ -3735,6 +4040,8 @@ function applyCommand(
         !lines
       )
         fail("Use a card payment or posted statement credit for card inflows");
+      if (counterpartyShare && (!categoryId || lines))
+        fail("A counterparty share requires its own purpose category");
       if (categoryId) {
         const category = getCategory(budget, categoryId);
         refusePairedEnvelope(category);
@@ -3801,6 +4108,8 @@ function applyCommand(
         status: command.status,
         categoryId,
         lines,
+        counterpartyShare: lines ? undefined : counterpartyShare,
+        refundOfTransactionId,
         expenseMonth,
         sharedCategoryId,
         shares,
@@ -3828,13 +4137,57 @@ function applyCommand(
             payee: command.payee,
             operationId: command.id,
             reason: existing ? "updated" : "created",
+            ...(() => {
+              const before = existing ? counterpartyLines(existing) : [];
+              const after =
+                lines ??
+                (categoryId
+                  ? [
+                      {
+                        id: command.transactionId,
+                        categoryId,
+                        amount: command.amount,
+                        counterpartyShare,
+                      },
+                    ]
+                  : []);
+              const shareChanges = [
+                ...new Set([...before, ...after].map((line) => line.id)),
+              ].flatMap((lineId) => {
+                const previous =
+                  before.find((line) => line.id === lineId)
+                    ?.counterpartyShare ?? null;
+                const next =
+                  after.find((line) => line.id === lineId)?.counterpartyShare ??
+                  null;
+                return canonicalJson(previous) === canonicalJson(next)
+                  ? []
+                  : [{ lineId, previous, next }];
+              });
+              return shareChanges.length
+                ? { actorId, at: command.recordedAt, shareChanges }
+                : {};
+            })(),
           },
         ],
       };
       ensureNoClaimInvalidation(budget, transaction);
       changes.putTransaction(budget, transaction);
+      if (!reapplyingRefund)
+        recomputeLinkedRefunds(
+          book,
+          budget,
+          refundOfTransactionId ?? transaction.id,
+          command.id,
+          command.recordedAt,
+          source,
+          changes,
+          refundOfTransactionId ? transaction.id : undefined,
+        );
       if (
         account.kind === "credit" &&
+        command.amount > 0 &&
+        !isPostedLinkedCardRefund(budget, transaction) &&
         materialize(book, actorId, monthOf(command.date)).accounts.get(
           account.id,
         )!.balance > 0
@@ -3846,6 +4199,13 @@ function applyCommand(
     }
     case "transaction.remove": {
       const transaction = getTransaction(budget, command.transactionId);
+      if (
+        budget.transactions.some(
+          (item) =>
+            active(item) && item.refundOfTransactionId === transaction.id,
+        )
+      )
+        fail("Remove linked refunds before removing their purchase");
       if (
         !["purchase", "refund", "income", "adjustment"].includes(
           transaction.kind,
@@ -3870,12 +4230,29 @@ function applyCommand(
         operationId: command.id,
         reason: "removed",
       });
+      if (transaction.refundOfTransactionId)
+        recomputeLinkedRefunds(
+          book,
+          budget,
+          transaction.refundOfTransactionId,
+          command.id,
+          command.recordedAt,
+          source,
+          changes,
+        );
       break;
     }
     case "transaction.reject": {
       const rejected = new Map<string, Transaction>();
       for (const id of command.transactionIds) {
         const transaction = getTransaction(budget, id);
+        if (
+          budget.transactions.some(
+            (item) =>
+              active(item) && item.refundOfTransactionId === transaction.id,
+          )
+        )
+          fail("Remove linked refunds before rejecting their purchase");
         const counterparts = transferCounterparts(budget, transaction);
         if (isTransfer(transaction) && counterparts.length !== 1)
           fail("The other side of this transfer is missing or ambiguous");
@@ -3926,6 +4303,20 @@ function applyCommand(
           reason: "removed",
         });
       }
+      for (const sourceId of new Set(
+        [...rejected.values()].flatMap((item) =>
+          item.refundOfTransactionId ? [item.refundOfTransactionId] : [],
+        ),
+      ))
+        recomputeLinkedRefunds(
+          book,
+          budget,
+          sourceId,
+          command.id,
+          command.recordedAt,
+          source,
+          changes,
+        );
       break;
     }
     case "transaction.approve": {
@@ -3962,6 +4353,7 @@ function applyCommand(
             id: command.id,
             transactionId,
             categoryId: command.categoryId,
+            recordedAt: command.recordedAt,
           },
           source,
           changes,
@@ -4009,6 +4401,8 @@ function applyCommand(
         fail("Tracking activity does not use budget categories");
       const category = getCategory(budget, command.categoryId);
       refusePairedEnvelope(category);
+      if (transaction.refundOfTransactionId)
+        fail("Edit the original purchase to change linked refund categories");
       if (category.pairedAccountId || category.pairedLoanId)
         fail("Payment categories cannot categorize purchases");
       if (
@@ -4018,8 +4412,17 @@ function applyCommand(
         ] !== category.id
       )
         fail("Change the shared expense classification explicitly");
-      changes.transaction(budget, transaction).categoryId = category.id;
-      delete transaction.lines;
+      changes.transaction(budget, transaction);
+      if (transaction.lines?.some((line) => line.counterpartyShare)) {
+        transaction.lines = transaction.lines.map((line) => ({
+          ...line,
+          categoryId: category.id,
+        }));
+        delete transaction.categoryId;
+      } else {
+        transaction.categoryId = category.id;
+        delete transaction.lines;
+      }
       if (transaction.amount > 0) transaction.kind = "refund";
       transaction.reviewed = source === "user";
       transaction.history.push({
@@ -4031,6 +4434,15 @@ function applyCommand(
         operationId: command.id,
         reason: "categorized",
       });
+      recomputeLinkedRefunds(
+        book,
+        budget,
+        transaction.id,
+        command.id,
+        command.recordedAt,
+        source,
+        changes,
+      );
       break;
     }
     case "transaction.merge": {
@@ -4050,6 +4462,19 @@ function applyCommand(
         )
       )
         fail("Resolve linked claims before combining records");
+      for (const refund of budget.transactions.filter(
+        (item) => active(item) && item.refundOfTransactionId === duplicate.id,
+      ))
+        changes.transaction(budget, refund).refundOfTransactionId = target.id;
+      recomputeLinkedRefunds(
+        book,
+        budget,
+        target.id,
+        command.id,
+        command.recordedAt,
+        source,
+        changes,
+      );
       changes.transaction(budget, duplicate).removed = true;
       changes.transaction(budget, target).history.push(...duplicate.history, {
         revision: ++target.revision,

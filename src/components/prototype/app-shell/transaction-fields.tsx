@@ -281,6 +281,7 @@ export function ChoiceField({
       !event.shiftKey &&
       open &&
       footerAction &&
+      !selected &&
       !search
     ) {
       event.preventDefault();
@@ -288,7 +289,7 @@ export function ChoiceField({
     } else if (
       event.key === "Tab" &&
       open &&
-      search &&
+      (search.length > 0 || selected !== undefined) &&
       current &&
       current !== creatable
     ) {

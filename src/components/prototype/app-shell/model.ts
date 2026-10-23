@@ -128,7 +128,15 @@ export type Transaction = {
   categoryNotNeeded: boolean;
   forMonth?: string;
   shared: boolean;
-  history: { reason: string; amount: number }[];
+  shareLabel?: string;
+  shareable?: boolean;
+  history: {
+    reason: string;
+    amount: number;
+    actorId?: string;
+    at?: string;
+    shares?: string[];
+  }[];
 };
 
 export type ShellData = {
@@ -462,6 +470,27 @@ export function toShellData(
         !item.categoryId &&
         !item.lines &&
         account.kind !== "tracking";
+      const shareTotals = new Map<string, { name: string; amount: number }>();
+      const shares = item.lines?.length
+        ? item.lines.map((line) => line.counterpartyShare)
+        : [item.counterpartyShare];
+      for (const share of shares) {
+        if (!share?.amount) continue;
+        const key = JSON.stringify([
+          share.accountId,
+          share.counterpartyName ?? "",
+        ]);
+        const previous = shareTotals.get(key);
+        shareTotals.set(key, {
+          name:
+            share.counterpartyName ??
+            view.budget.accounts.find(
+              (account) => account.id === share.accountId,
+            )?.name ??
+            "Share",
+          amount: (previous?.amount ?? 0) + share.amount,
+        });
+      }
       return {
         id: item.id,
         date: item.date,
@@ -486,22 +515,44 @@ export function toShellData(
           ? "Category not needed"
           : needsCategory
             ? "Needs category"
-            : item.lines
-              ? `Split (${item.lines.length})`
-              : ((item.categoryId && categoryName.get(item.categoryId)) ??
-                (boundary
-                  ? "Inflow: Ready to Assign"
-                  : transactionCategory(item.kind, item.amount))),
+            : item.lines?.length === 1
+              ? (categoryName.get(item.lines[0]!.categoryId) ??
+                "Needs category")
+              : item.lines
+                ? `Split (${item.lines.length})`
+                : ((item.categoryId && categoryName.get(item.categoryId)) ??
+                  (boundary
+                    ? "Inflow: Ready to Assign"
+                    : transactionCategory(item.kind, item.amount))),
         needsCategory,
         categoryNotNeeded,
         forMonth:
           item.expenseMonth !== item.date.slice(0, 7)
             ? monthName(item.expenseMonth)
             : undefined,
-        shared: Boolean(item.sharedCategoryId),
+        shared:
+          Boolean(item.sharedCategoryId) ||
+          Boolean(item.counterpartyShare) ||
+          Boolean(item.lines?.some((line) => line.counterpartyShare)),
+        shareable:
+          ["purchase", "refund"].includes(item.kind) &&
+          account.kind !== "tracking",
+        shareLabel:
+          [...shareTotals.values()]
+            .map((share) => `${share.name} ${money(share.amount)}`)
+            .join(" · ") || undefined,
         history: item.history.map((entry) => ({
           reason: historyReason[entry.reason],
           amount: entry.amount,
+          actorId: entry.actorId,
+          at: entry.at,
+          shares: entry.shareChanges?.map((change) => {
+            const label = (share: typeof change.previous) =>
+              share
+                ? `${share.counterpartyName ?? view.budget.accounts.find((account) => account.id === share.accountId)?.name ?? "Share"} ${money(share.amount)}`
+                : "No share";
+            return `${label(change.previous)} → ${label(change.next)}`;
+          }),
         })),
       };
     }),
