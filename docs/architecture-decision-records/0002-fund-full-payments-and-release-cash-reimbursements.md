@@ -1,3 +1,7 @@
+---
+status: shared-cost and reimbursement parts superseded by ADR-0007
+---
+
 # Fund full payments and return cash reimbursements to Ready to Assign
 
 Envelopes allocate actual liquid cash: a shared category funds the full amount its owner pays or owes, with no separate reimbursement buffer and no assignable money created from expected repayments. A received cash reimbursement reduces the outstanding amount owed and returns to Ready to Assign rather than refilling the original category, while remaining distinct from new earnings in reports. This keeps allocation under the user's control and requires budget cash availability to remain separate from personal-share spending reports; it does not turn an expected reimbursement or a card statement credit into a cash deposit.

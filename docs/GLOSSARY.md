@@ -5,16 +5,16 @@ The language used to describe spending, categorization, and decisions about how 
 ## Language
 
 **Personal budget**:
-An individual's plan for their money and spending. Each partner has a separate personal budget, with unrelated personal spending kept private and shared-expense information visible as needed to verify settlement.
+An individual's plan for their money and spending. Each partner has a separate personal budget; only the partner ledger is visible to both, and everything else, including categories and Reimbursements, stays private.
 
 **Budget currency**:
-US dollars (USD), used for both personal budgets, their envelope allocations, and shared settlements in the first version.
+US dollars (USD), used for both personal budgets, their envelope allocations, and settlements in the first version.
 
 **Budget category (envelope)**:
-A purpose to which a person allocates actual liquid cash. Expected reimbursements do not increase the cash available to allocate or spend from an envelope.
+A purpose to which a person allocates actual liquid cash. Money owed to you does not increase the cash available to allocate or spend from an envelope.
 
 **Ready to Assign**:
-Actual cash available to allocate that is not currently assigned to an envelope. Received cash reimbursements return here for reassignment without being counted as new earnings in reports.
+Actual cash available to allocate that is not currently assigned to an envelope. Money owed to you never raises it, and repayments and settlements never move it; only assigning float lowers it on their account.
 _Avoid_: Income
 
 **Funding plan**:
@@ -32,18 +32,44 @@ An inspectable record of changes to a transaction, including amount updates and 
 **Categorization**:
 The assignment of spending to a budget category that describes its purpose.
 
-**Shared category**:
-A budget category with explicit participants and a rule defining each participant's share of its expenses, defaulting to equal shares with purchase-level exceptions. Each person funds the full amount they pay or owe from the relevant category, without a separate reimbursement buffer.
+**Counterparty**:
+A person or organization who owes you, or whom you owe, for part of what you paid: your partner, or anyone else, such as an employer or a friend.
 
-**Shared expense**:
-An expense whose personal shares are determined by a configured shared-category rule and reflected in both participants' budgets. Either partner can set or change the rule without the other's approval; the actual account transaction belongs to whoever paid, while the other participant's share is an obligation rather than an invented withdrawal.
+**Counterparty account**:
+An account in your budget that holds what one kind of counterparty owes you (positive) or you owe them (negative). Every budget has a Reimbursements account; a partnered budget also has a Partner account.
+_Avoid_: Obligation, receivable
+
+**Reimbursements account**:
+The private counterparty account for everyone except your partner. Each of its entries names the person or organization involved, and is filtered by them rather than given an account of its own.
+
+**Partner account**:
+The counterparty account for your partner, showing the partner ledger. Its balance is the opposite of the same account in your partner's budget.
+
+**Paired envelope**:
+The budget category that belongs to a counterparty account and holds its cash. Its available amount is its float minus the account's balance, and it never resets at monthly rollover.
+
+**Float**:
+Your own cash assigned to a paired envelope, set aside to front costs for a counterparty until they repay. Assigning float lowers Ready to Assign like any other assignment.
+
+**Share**:
+The part of a transaction line that a counterparty is responsible for. Half means exactly 50/50; any other amount is entered on the line, and there is no default split between partners.
+_Avoid_: Split rule, shared category, obligation
+
+**Purpose category**:
+The private budget category a line's spending belongs to, chosen by the person who recorded it regardless of any share.
+
+**Write-off**:
+Changing a share to zero, so the counterparty no longer owes it and the full line becomes your own spending. Every share change, including a write-off, is kept in the transaction history.
+
+**Linked refund**:
+A refund recorded against its original purchase, which returns each line's purpose category and share in proportion to the amount refunded.
 
 **Personal share**:
-The portion of an expense a person is responsible for, regardless of who paid the full charge.
+The portion of an expense a person is responsible for, regardless of who paid the full charge: the line amount minus any share.
 _Avoid_: Amount paid
 
 **Personal spending**:
-The cost attributable to an individual, including their personal shares of shared expenses. This is the default basis for personal spending reports; repayments settle amounts owed without counting as additional spending.
+The cost attributable to an individual: each line amount minus its share, plus their share of their partner's purchases. This is the default basis for personal spending reports; repayments and settlements are not spending.
 
 **Expense period**:
 The period to which an expense belongs for personal spending reports, independently of when payment or repayment occurs. Rent belongs to the month in which it is due.
@@ -67,20 +93,22 @@ Comparison of recorded account activity and cleared balances against financial-i
 **Unresolved discrepancy**:
 A difference between the recorded account and financial-institution records that remains unexplained after investigation, including statement comparison. It is surfaced for user input rather than silently removed through an invented adjustment; an account is reconciled only when its cleared balance matches the bank's at the same point in time.
 
-**Reimbursement**:
-Money expected or received from a person or organization in return for some or all of an expense, linked to that expense and its repayment source. An expected reimbursement is not available cash; a received cash reimbursement clears the corresponding amount owed and goes to Ready to Assign, rather than restoring the original category.
+**Partner ledger**:
+The one record of what the partners owe each other, held by both budgets: each shared purchase's date, payee, amount, who paid, and the other partner's share, plus settlements between them. It shares no category, no line without a share, no other account, and nothing from Reimbursements.
+
+**Partner's purchase**:
+A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and stays uncategorized, held from Ready to Assign, until you choose your own category for it.
 
 **Repayment**:
-An actual payment that settles some or all of an outstanding amount owed. Recording a repayment reduces that outstanding balance; producing a settlement report does not.
+Money a counterparty pays you back. It reduces what they owe and restores their paired envelope; it is never income and never goes to Ready to Assign.
+_Avoid_: Reimbursement received
 
-**Net settlement**:
-A recorded settlement that offsets the partners' obligations so the person who owes more pays only the difference. Cash reserved for obligations discharged by the offset returns to Ready to Assign; the offset is not a bank deposit.
+**Settlement**:
+A payment between the partners, such as a Venmo, Zelle, or bank transfer, or one partner paying the other's credit card. It is always recorded in both budgets at once, moves both Partner accounts, and never touches Ready to Assign; confirming it in either budget confirms it in both.
+_Avoid_: Net settlement
 
-**Settlement report**:
-A month-end calculation of shared expenses and the net amount the partners owe each other, derived from their categorized spending. The report describes what is owed; it is not a payment.
-
-**Opening shared balance**:
-An amount already owed between partners when they begin using the app, entered by shared category and who owes whom after any expense split has already been applied. These amounts are netted for settlement without splitting them again or creating available cash, new bank transactions, or new-period spending.
+**Request**:
+One partner asking the other to pay a stated amount on a given day. What has been paid toward it is every settlement from the other partner since that day, and it closes when that reaches the amount; it has no deadline and moves no money.
 
 **Credit card payment reserve**:
 Existing cash set aside to pay a credit card, including funded purchase amounts moved from their spending categories. Paying the card consumes this reserve and reduces bank cash and card debt, without creating another expense or returning that payment amount to Ready to Assign.
@@ -101,11 +129,11 @@ A comparison showing how an additional loan payment would affect a payoff foreca
 A credit applied to a credit-card account that reduces the amount owed, rather than depositing cash into a bank account. Once posted, it releases any existing payment reserve no longer needed to cover the remaining card balance into Ready to Assign.
 
 **Overspending**:
-Spending that exceeds the money available in a budget category.
+Spending that exceeds the money available in a budget category. In a paired envelope, only what you fronted in cash counts as cash overspending, and it stays visible until it is repaid or covered with float.
 
 **Overspending coverage**:
 Moving budgeted money from another category to cover overspending. Choosing the source is always the user's decision.
 _Avoid_: Recategorization
 
 **Monthly rollover**:
-The transition to a new budget month: positive available category balances carry forward, uncovered cash overspending reduces the next month's Ready to Assign, and uncovered credit spending remains debt requiring funding. Outstanding reimbursements and shared obligations persist independently of these envelope calculations.
+The transition to a new budget month: positive available category balances carry forward, uncovered cash overspending reduces the next month's Ready to Assign, and uncovered credit spending remains debt requiring funding. Paired envelopes carry forward unchanged, including any shortfall, so money owed to you never reaches Ready to Assign.
