@@ -1,4 +1,5 @@
 import { applyChangeSet, rowsIn, toRowSet } from "~/domain/change-sets";
+import { TRPCError } from "@trpc/server";
 import {
   budgetReferenceIssues,
   sharedCategoryReferencesValid,
@@ -234,6 +235,26 @@ export async function writeOperation(
   },
   cache: HouseholdCache = households,
 ): Promise<{ revision: number; changeSet: ChangeSet; household: Household }> {
+  const frozen = rowsIn(household.rows).some(
+    (row) => row.table === "sharedCategory" && row.data?.archived,
+  );
+  if (
+    frozen &&
+    input.changeSet.after.some((row) =>
+      [
+        "sharedCategory",
+        "obligation",
+        "settlement",
+        "settlementAllocation",
+        "partnerFact",
+      ].includes(row.table),
+    )
+  )
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Shared balances are frozen because your partner deleted their account. New spending stays in your personal budget.",
+    });
   for (const row of input.changeSet.after) {
     const issues = rowIssues(row);
     if (issues)

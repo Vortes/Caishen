@@ -273,8 +273,7 @@ svg {
   font-weight: 500;
 }
 .workspace-nav > button:hover,
-.sidebar-account:hover,
-.sidebar-footer button:hover {
+.sidebar-account:hover {
   background: var(--muted);
 }
 .workspace-nav > button[aria-current="page"] {
@@ -364,29 +363,6 @@ svg {
 .sidebar-account-actions button {
   width: 100%;
   font-size: var(--font-size-ui);
-}
-.sidebar-footer {
-  display: grid;
-  gap: 7px;
-  padding: 12px 5px 14px;
-  border-top: 1px solid var(--border);
-}
-.sidebar-footer > button {
-  justify-content: flex-start;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-ui);
-}
-.sidebar-user {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: var(--font-size-caption);
-  color: var(--muted-foreground);
-  padding: 3px 6px;
-}
-.sidebar-user .cl-avatarBox {
-  width: 26px;
-  height: 26px;
 }
 .mobile-sidebar-close,
 .mobile-topbar {
@@ -1241,15 +1217,6 @@ svg {
   width: auto;
   min-width: 0;
 }
-.partner-code,
-.partner-actions {
-  display: grid;
-  justify-items: start;
-  gap: 8px;
-}
-.partner-actions > button:first-child {
-  width: 100%;
-}
 .reconciliation-note {
   display: flex;
   align-items: center;
@@ -1295,12 +1262,6 @@ svg {
   align-content: start;
   min-width: 0;
 }
-.main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr);
-  gap: 20px;
-  align-items: start;
-}
 .two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1343,32 +1304,6 @@ svg {
   font-size: var(--font-size-body);
   line-height: 1.6;
 }
-.info-card {
-  padding: 22px;
-}
-.info-card h2 {
-  margin-bottom: 8px;
-}
-.info-card p {
-  font-size: var(--font-size-body);
-  color: var(--muted-foreground);
-  line-height: 1.5;
-}
-.info-card-icon {
-  display: inline-flex;
-  color: #bcb4ff;
-  margin-bottom: 13px;
-}
-.info-card > button {
-  margin-top: 16px;
-}
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #bfb8ff;
-  font-size: var(--font-size-caption);
-  font-weight: 600;
-}
 .heading-actions {
   display: flex;
   align-items: center;
@@ -1385,19 +1320,6 @@ svg {
   border-radius: 5px;
   color: #c3bcff;
   background: #272540;
-}
-.inline-code {
-  display: inline-block;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  font-size: var(--font-size-ui);
-  font-family: ui-monospace, monospace;
-  color: #e0daff;
-  background: #24213f;
-  border: 1px solid #4e4671;
-  border-radius: 4px;
-  padding: 9px 14px;
-  margin-top: 6px;
 }
 .loan-heading {
   display: flex;
@@ -1726,142 +1648,6 @@ input[type="checkbox"] {
   gap: 9px;
   margin-top: 4px;
 }
-.privacy-note {
-  display: flex;
-  align-items: start;
-  gap: 9px;
-  font-size: var(--font-size-body);
-  color: var(--muted-foreground);
-  line-height: 1.5;
-}
-.onboarding {
-  max-width: 610px;
-  min-height: 100dvh;
-  padding: 70px 30px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: start;
-  gap: 20px;
-}
-.onboarding h1 {
-  font-size: var(--font-size-heading-lg);
-  line-height: 1.2;
-}
-.onboarding > p:not(.eyebrow) {
-  color: var(--muted-foreground);
-  font-size: var(--font-size-body);
-}
-.onboarding form {
-  width: 100%;
-  padding: 24px;
-  margin: 5px 0;
-}
-.loading-view {
-  min-height: 100dvh;
-  max-width: 700px;
-  padding: 90px 35px;
-  margin: 0 auto;
-}
-.loading-view > p {
-  margin-top: 22px;
-  color: var(--muted-foreground);
-  font-size: var(--font-size-body);
-}
-.loading-workspace {
-  display: grid;
-  gap: 15px;
-  margin-top: 40px;
-}
-.skeleton {
-  height: 37px;
-  background: #24243a;
-  border-radius: 4px;
-}
-.skeleton:nth-child(2n) {
-  width: 80%;
-}
-.welcome {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  min-height: 100dvh;
-}
-.welcome-story {
-  background: #16152f;
-  border-right: 1px solid var(--border);
-  padding: 60px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 60px;
-}
-.welcome-story h1 {
-  font-size: var(--font-size-display);
-  line-height: 1.1;
-  letter-spacing: -0.055em;
-}
-.welcome-story .intro {
-  max-width: 38ch;
-  font-size: var(--font-size-body-lg);
-  color: #c0bdd6;
-  line-height: 1.5;
-  margin-top: 28px;
-}
-.welcome-foot {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: var(--font-size-caption);
-  color: var(--muted-foreground);
-}
-.welcome-form {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: start;
-  padding: 70px clamp(30px, 6vw, 110px);
-}
-.welcome-form h2 {
-  font-size: var(--font-size-heading-lg);
-  letter-spacing: -0.04em;
-  margin-top: 16px;
-}
-.welcome-form > p:not(.eyebrow) {
-  color: var(--muted-foreground);
-  font-size: var(--font-size-body);
-  line-height: 1.5;
-  margin-top: 16px;
-}
-.welcome-actions {
-  display: grid;
-  gap: 10px;
-  width: 100%;
-  margin-top: 30px;
-}
-.welcome-actions button {
-  width: 100%;
-  min-height: 43px;
-}
-.welcome-list {
-  list-style: none;
-  padding: 25px 0 0;
-  margin: 25px 0 0;
-  display: grid;
-  gap: 20px;
-  border-top: 1px solid var(--border);
-  width: 100%;
-}
-.welcome-list li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: var(--font-size-body);
-  color: var(--muted-foreground);
-}
-.welcome-list svg {
-  color: #b6adff;
-}
-
 .transaction-register {
   display: flex;
   flex-direction: column;
@@ -2522,9 +2308,6 @@ input[type="checkbox"] {
   .category-search input {
     font-size: var(--font-size-ui);
   }
-  .main-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 @media (max-width: 1090px) {
   .category-inspector {
@@ -2739,43 +2522,6 @@ input[type="checkbox"] {
     left: 50%;
     bottom: 35px;
     width: max-content;
-  }
-  .welcome {
-    grid-template-columns: 1fr;
-  }
-  .welcome-story {
-    padding: 30px;
-    gap: 32px;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .welcome-story h1 {
-    font-size: var(--font-size-display);
-  }
-  .welcome-story .intro {
-    font-size: var(--font-size-body-lg);
-    margin-top: 17px;
-  }
-  .welcome-foot {
-    display: none;
-  }
-  .welcome-form {
-    padding: 35px 30px;
-  }
-  .welcome-form h2 {
-    font-size: var(--font-size-heading-lg);
-  }
-  .welcome-form > p:not(.eyebrow) {
-    font-size: var(--font-size-body);
-  }
-  .onboarding {
-    padding: 40px 22px;
-  }
-  .onboarding h1 {
-    font-size: var(--font-size-heading-lg);
-  }
-  .onboarding form {
-    padding: 18px;
   }
   .register-header h1 {
     font-size: var(--font-size-heading);

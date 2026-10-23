@@ -126,6 +126,20 @@ export function isSettlementLeg(
   return transaction.partnerSettlementId !== undefined;
 }
 
+/** A rejected leg stays in review even when the bank updates its identity. */
+export function isRejectedSettlementImport(
+  budget: Pick<Budget, "transactions">,
+  providerIds: readonly string[],
+): boolean {
+  return budget.transactions.some(
+    (transaction) =>
+      transaction.removed &&
+      isSettlementLeg(transaction) &&
+      transaction.providerId !== undefined &&
+      providerIds.includes(transaction.providerId),
+  );
+}
+
 /**
  * Why a budget's settlement legs don't read: a leg must be a repayment
  * linked to the budget's Partner account, out of a cash account, or into a

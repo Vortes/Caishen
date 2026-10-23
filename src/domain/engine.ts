@@ -295,6 +295,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     recordedAt: z.string().datetime().optional(),
   }),
   z.object({
+    type: z.literal("partner.settlement.reject"),
+    id: identifier,
+    settlementId: identifier,
+    recordedAt: z.string().datetime().optional(),
+  }),
+  z.object({
     type: z.literal("counterparty.receive"),
     id: identifier,
     counterpartyAccountId: identifier,
@@ -775,6 +781,7 @@ export type Budget = {
 };
 export type SharedCategory = {
   id: string;
+  archived?: boolean;
   participants: string[];
   weights: Record<string, number>;
   categoryIds: Record<string, string>;
@@ -1150,6 +1157,7 @@ export const householdSchema = z.object({
       participants: z.array(storedIdentifier).length(2),
       weights: z.record(nonnegativeCents),
       categoryIds: z.record(storedIdentifier),
+      archived: z.boolean().optional(),
     }),
   ),
   obligations: z.array(
@@ -3757,6 +3765,7 @@ function executeAccountingState<T extends AccountingState>(
     "loan.rate",
     "transaction.approve",
     "transaction.reject",
+    "partner.settlement.reject",
   ];
   if (source !== "user" && userOnly.includes(command.type))
     fail("This decision requires a user action");
@@ -4294,6 +4303,43 @@ function applyCommand(
     }
     case "partner.settle": {
       recordSettlement(book, budget, command, changes);
+      break;
+    }
+    case "partner.settlement.reject": {
+      const settlement = book.partnerSettlements?.find(
+        (item) => item.id === command.settlementId && !item.removed,
+      );
+      if (!settlement) fail("This settlement was removed");
+      const budgets = isPersonalLedger(book)
+        ? [budget]
+        : Object.values(book.budgets);
+      for (const owner of budgets) {
+        const leg = owner.transactions.find(
+          (item) =>
+            item.partnerSettlementId === command.settlementId && !item.removed,
+        );
+        if (!leg) fail("This settlement's bank transaction is missing");
+        changes.transaction(owner, leg!).removed = true;
+        leg!.history.push({
+          revision: ++leg!.revision,
+          reason: "removed",
+          amount: leg!.amount,
+          date: leg!.date,
+          payee: leg!.payee,
+          status: leg!.status,
+          operationId: command.id,
+          actorId,
+          ...(command.recordedAt ? { at: command.recordedAt } : {}),
+        });
+      }
+      const tracked = changes.partnerSettlement(settlement!);
+      tracked.removed = true;
+      tracked.history.push({
+        actorId,
+        operationId: command.id,
+        ...(command.recordedAt ? { at: command.recordedAt } : {}),
+        reason: "removed",
+      });
       break;
     }
     case "partner.settlement.confirm": {

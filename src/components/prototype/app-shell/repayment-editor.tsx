@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { money, shortDay, type Transaction } from "./model";
@@ -27,6 +27,7 @@ export function RepaymentEditor({
   onClose: () => void;
 }) {
   const { saveCommand } = useTransactionEntry();
+  const [error, setError] = useState("");
   const { from, account, settlementId } = transaction.repayment;
   const paid = transaction.amount < 0;
   return (
@@ -95,12 +96,38 @@ export function RepaymentEditor({
         {settlementId
           ? `A transfer ${paid ? "to" : "from"} ${from}, recognized in both budgets by amount, date, and direction. It moves your ${account} account, not Ready to Assign. Confirming here confirms ${from}’s side too.`
           : `A transfer from your ${account} account: ${from} paid you back. It refills the ${account} envelope, not Ready to Assign.`}
+        {settlementId &&
+          " Reject a wrong match to review both bank imports separately."}
       </p>
+      {error && (
+        <p className={entry.formError} role="alert">
+          {error}
+        </p>
+      )}
       <div className={entry.rowFooter}>
         <div className={entry.actions}>
           <Button size="sm" onClick={onClose}>
             Cancel
           </Button>
+          {settlementId && (
+            <Button
+              size="sm"
+              onClick={() => {
+                const failure = saveCommand(
+                  {
+                    type: "partner.settlement.reject",
+                    id: newId(),
+                    settlementId,
+                  },
+                  "Match rejected. Both bank imports are back in review.",
+                );
+                if (failure) setError(failure);
+                else onClose();
+              }}
+            >
+              Reject match
+            </Button>
+          )}
           <Button size="sm" variant="primary" type="submit" autoFocus>
             Confirm transfer
           </Button>

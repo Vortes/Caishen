@@ -18,7 +18,6 @@ import { LoanForm } from "~/components/loans/loan-form";
 import { LoanPaymentForm } from "~/components/loans/loan-payment-form";
 import { LoanRateForm } from "~/components/loans/loan-rate-form";
 import { Amount, Dialog } from "~/components/shared";
-import { JoinBudgetForm } from "~/components/partner/join-budget-form";
 import { TransactionHistory } from "~/components/transactions/transaction-history";
 import type { Command } from "~/domain/engine";
 import { api, type RouterOutputs } from "~/trpc/react";
@@ -45,7 +44,6 @@ const dialogTitles: Record<Panel["type"], string> = {
   "loan-payment": "Record a lender payment",
   rate: "Update a confirmed loan rate",
   reconcile: "Reconcile a bank statement",
-  join: "Connect with your partner",
   history: "Transaction history",
 };
 
@@ -59,7 +57,6 @@ export type CommandDialogProps = {
   onClose: () => void;
   onError: (error: string) => void;
   onImport: (text: string) => void;
-  onJoin: (code: string) => void;
 };
 
 export function CommandDialog(props: CommandDialogProps) {
@@ -81,7 +78,6 @@ function CommandDialogContent({
   onClose,
   onError,
   onImport,
-  onJoin,
 }: CommandDialogProps) {
   const [operationId] = useState(newId);
   const [entityId] = useState(newId);
@@ -116,8 +112,6 @@ function CommandDialogContent({
     try {
       if (panel.type === "import") {
         onImport(fileText || text(data, "importText"));
-      } else if (panel.type === "join") {
-        onJoin(text(data, "code"));
       } else if (panel.type === "reconcile") {
         reconcile.mutate({
           accountId: text(data, "accountId"),
@@ -197,7 +191,6 @@ function CommandDialogContent({
         {panel.type === "import" && (
           <CategoryImportForm fileText={fileText} readFile={readFile} />
         )}
-        {panel.type === "join" && <JoinBudgetForm />}
         {panel.type === "card-payment" && (
           <CardPaymentForm
             view={view}
@@ -239,9 +232,7 @@ function CommandDialogContent({
                 ? "Compare statement"
                 : panel.type === "import"
                   ? "Import categories only"
-                  : panel.type === "join"
-                    ? "Connect budgets"
-                    : (saveLabels[panel.type] ?? "Save changes")}
+                  : (saveLabels[panel.type] ?? "Save changes")}
           </Button>
         )}
       </div>

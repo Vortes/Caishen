@@ -17,6 +17,7 @@ import { jsonValue } from "./safety";
 import type { Budget } from "~/domain/engine";
 import { openHousehold, type Database } from "./household";
 import { budgetMaintenance, reportUnreadable, zodIssues } from "./stored-data";
+import { emailPreferenceToken } from "./email-preferences";
 
 /**
  * A member's budget and their household's revision, or null when they have
@@ -105,10 +106,15 @@ async function preparePayload(
         ),
       )
     : null;
+  const unsubscribe = new URL("/email/unsubscribe", process.env.APP_BASE_URL);
+  unsubscribe.searchParams.set("token", emailPreferenceToken(userId));
   return dailyDeliveryPayloadSchema.parse({
     from: process.env.EMAIL_FROM,
     to: email,
     dedupeKey: target.dedupeKey,
+    unsubscribeUrl: unsubscribe
+      .toString()
+      .replace("/email/unsubscribe?", "/api/email/unsubscribe?"),
     ...(new Date(target.scheduledAt) > now
       ? { scheduledAt: target.scheduledAt }
       : {}),
@@ -117,6 +123,7 @@ async function preparePayload(
       inboxCount,
       latestSuccessfulSync: oldestSync,
       timeZone: budget.settings.timezone,
+      unsubscribeUrl: unsubscribe.toString(),
     }),
   });
 }

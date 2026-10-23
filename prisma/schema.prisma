@@ -122,6 +122,8 @@ model User {
   imageUrl        String?
   primaryEmail    String?
   active          Boolean             @default(true)
+  inviteChecks    Int                 @default(0)
+  inviteWindow    DateTime?
   clerkUpdatedAt  BigInt?
   deletedAt       DateTime?
   createdAt       DateTime            @default(now())
@@ -530,6 +532,7 @@ model SharedCategory {
   participants String[]
   weights      Json
   categoryIds  Json
+  archived     Boolean?
   sort         Int
   revision     Int
   deleted      Boolean   @default(false)

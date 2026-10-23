@@ -10,7 +10,7 @@ import { AutoAssignSection } from "~/components/budget/auto-assign-section";
 import { AvailableSection } from "~/components/budget/available-section";
 import { CostToBeMe } from "~/components/budget/cost-to-be-me";
 import { TargetSection } from "~/components/budget/target-section";
-import { PartnerInvite } from "~/components/partner/partner-invite";
+import { PartnerSettingsLink } from "~/components/partner/partner-invite";
 import { partnerOf } from "~/components/partner/partner";
 
 export function CategoryInspector({
@@ -133,7 +133,7 @@ export function CategoryInspector({
           </div>
         </section>
       )}
-      {!selected.length && !partner && <PartnerInvite open={open} />}
+      {!selected.length && !partner && <PartnerSettingsLink />}
       {state.evidence.length > 0 && !selected.length && (
         <section className="inspector-section">
           <h3>Reconciliation</h3>

@@ -19,6 +19,7 @@ export const dailyDeliveryPayloadSchema = z
       .max(256)
       .regex(/^[\x21-\x7e]+$/),
     scheduledAt: z.string().datetime().optional(),
+    unsubscribeUrl: z.string().url().optional(),
     message: z
       .object({
         subject: z
