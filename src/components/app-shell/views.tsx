@@ -740,9 +740,7 @@ export function RegisterView({
               />
             </span>
           </button>
-          {item.source === "budget" && (
-            <ShareCell transactionId={item.id} accountColumn={accountColumn} />
-          )}
+          <ShareCell row={item} accountColumn={accountColumn} />
           {item.counterpart && (
             <div className={`${styles.txColumns} ${styles.rowActions}`}>
               <span className={styles.counterpartAction}>
