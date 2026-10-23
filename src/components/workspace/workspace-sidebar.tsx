@@ -1,6 +1,7 @@
 "use client";
 
-import { UserButton } from "@clerk/nextjs";
+import Link from "next/link";
+import { settingsPages, SHELL_PATH } from "~/components/workspace/routes";
 import { useState } from "react";
 import {
   Dialog,
@@ -66,9 +67,11 @@ export function WorkspaceSidebar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={() => onNavigate("settings")}>
-              <Icon name="settings" size={16} />
-              Budget settings
+            <DropdownMenuItem asChild>
+              <Link href={settingsPages.profile}>
+                <Icon name="settings" size={16} />
+                Budget settings
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => open({ type: "import" })}>
               <Icon name="budget" size={16} />
@@ -215,29 +218,12 @@ export function WorkspaceSidebar({
             <Icon name="plus" size={14} />
             Add account
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onNavigate("settings")}
-          >
-            <Icon name="bank" size={14} />
-            Bank connections
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={`${SHELL_PATH}?account=all`}>
+              <Icon name="bank" size={14} />
+              Open accounts in Caishen
+            </Link>
           </Button>
-        </div>
-      </div>
-      <div className="sidebar-footer">
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-current={tab === "settings" ? "page" : undefined}
-          onClick={() => onNavigate("settings")}
-        >
-          <Icon name="settings" size={17} />
-          Settings
-        </Button>
-        <div className="sidebar-user">
-          <UserButton />
-          <span>Account & profile</span>
         </div>
       </div>
     </aside>

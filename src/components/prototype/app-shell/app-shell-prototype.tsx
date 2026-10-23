@@ -29,8 +29,8 @@ import {
   type Added,
 } from "./add-category";
 import { AppearanceSettings } from "./appearance";
-import { PartnerSettings } from "./partner";
-import { ProfileSettings } from "./profile";
+import { PartnerSettings } from "~/components/settings/partner";
+import { ProfileSettings } from "~/components/settings/profile";
 import { Inspector } from "./inspector";
 import { findPalette, paletteVars } from "./palettes";
 import { isCounterparty, type ShellData } from "./model";
@@ -82,7 +82,7 @@ import {
   settingsPages,
   SHELL_PATH,
   type SettingsPage,
-} from "./settings-pages";
+} from "~/components/workspace/routes";
 import styles from "./shell.module.css";
 import type { UpdatePreferences } from "~/components/entry/profile-preferences";
 

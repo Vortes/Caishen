@@ -1,5 +1,6 @@
 "use client";
 
+import { SHELL_PATH } from "~/components/workspace/routes";
 import {
   ArrowRightLeftIcon,
   CheckIcon,
@@ -751,7 +752,7 @@ export function RegisterView({
                   size="sm"
                 >
                   <a
-                    href={`/prototype/app-shell?${new URLSearchParams({
+                    href={`${SHELL_PATH}?${new URLSearchParams({
                       account: item.counterpart.accountId,
                       transaction: item.counterpart.id,
                       month: item.counterpart.date.slice(0, 7),

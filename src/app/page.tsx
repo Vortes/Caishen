@@ -1,18 +1,14 @@
-"use client";
-
-import { Show } from "@clerk/nextjs";
-import { BudgetApp } from "~/components/workspace/budget-app";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { Welcome } from "~/components/auth/welcome";
+import { appHref, type AppSearchParams } from "~/components/workspace/routes";
 
-export default function Home() {
-  return (
-    <>
-      <Show when="signed-out">
-        <Welcome />
-      </Show>
-      <Show when="signed-in">
-        <BudgetApp />
-      </Show>
-    </>
-  );
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<AppSearchParams>;
+}) {
+  const { userId } = await auth();
+  if (userId) redirect(appHref(await searchParams));
+  return <Welcome />;
 }

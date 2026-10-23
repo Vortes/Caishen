@@ -195,7 +195,7 @@ export function DesignSystem() {
                 </Button>
               ))}
             </div>
-            <a className={styles.back} href="/prototype/app-shell">
+            <a className={styles.back} href="/app">
               <ArrowLeftIcon size={14} aria-hidden />
               App shell
             </a>
