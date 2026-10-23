@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon, XIcon } from "lucide-react";
 import {
   useEffect,
@@ -314,7 +315,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         value={draft[name]}
         onFocus={(event) => event.currentTarget.select()}
         onChange={(event) => {
-          const value = event.target.value;
+          const value = groupAmountInput(event.target);
           // Outflow and inflow are one amount: typing in one clears the other.
           entry.change({
             [name]: value,
@@ -708,7 +709,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           value={line[name]}
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => {
-            const value = event.target.value;
+            const value = groupAmountInput(event.target);
             changeLine(line.lineId, {
               [name]: value,
               ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
@@ -981,7 +982,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
                 aria-invalid={Boolean(fields.interest) || undefined}
                 aria-describedby={described("interest")}
                 onChange={(event) =>
-                  entry.change({ interest: event.target.value })
+                  entry.change({ interest: groupAmountInput(event.target) })
                 }
               />
             </div>

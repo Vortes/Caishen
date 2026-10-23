@@ -23,6 +23,18 @@ export function moveMonth(month: string, delta: number) {
   date.setMonth(date.getMonth() + delta);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
+// Adds thousands separators to each number in a typed amount, including the
+// terms of sums like 600+1000; text with anything else is left as typed for
+// the parsers to judge.
+export function groupThousands(input: string) {
+  const plain = input.replace(/,/g, "");
+  if (!/^[-+\d.]*$/.test(plain)) return input;
+  return plain.replace(
+    /(^|[^.\d])(\d+)/g,
+    (_, before: string, whole: string) =>
+      before + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
+  );
+}
 export function money(data: FormData, key: string) {
   return parseMoney(text(data, key));
 }

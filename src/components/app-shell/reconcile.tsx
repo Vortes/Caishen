@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, LandmarkIcon, WalletIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -253,7 +254,7 @@ function EnterBalance({
           aria-describedby={hintId}
           aria-invalid={invalid || undefined}
           value={text}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(groupAmountInput(event.target))}
         />
       </span>
       <p

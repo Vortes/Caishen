@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { useAuth, useUser, useClerk } from "@clerk/nextjs";
 import { useCallback, useState } from "react";
 import { LandmarkIcon } from "lucide-react";
@@ -337,6 +338,9 @@ function ManualAccount({
           className={batch.input}
           name="balance"
           inputMode="decimal"
+          onChange={(event) => {
+            event.target.value = groupAmountInput(event.target);
+          }}
           placeholder="0.00"
           required
         />

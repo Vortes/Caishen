@@ -1239,6 +1239,11 @@ button.actionItem:disabled {
 .rowWrap {
   position: relative;
 }
+/* Each row isolates its own stacking, so the row whose Assigned field is
+   open rises above the rows below for the field's error to hang over them. */
+.rowWrap:has([data-editing]) {
+  z-index: 3;
+}
 /* The checkbox overlays the row, so hover is tracked on the wrapper to keep
    the row highlighted while the pointer is on the checkbox. */
 .rowWrap:has(> .row):hover {

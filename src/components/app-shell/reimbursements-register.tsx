@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useId, useRef, useState } from "react";
@@ -458,7 +459,7 @@ function RecordRepayment({
                     onFocus={(event) => event.currentTarget.select()}
                     aria-invalid={error?.field === "amount" || undefined}
                     onChange={(event) => {
-                      setAmount(event.target.value);
+                      setAmount(groupAmountInput(event.target));
                       if (error?.field === "amount") setError(null);
                     }}
                   />

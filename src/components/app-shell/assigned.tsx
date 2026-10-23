@@ -1,5 +1,6 @@
 "use client";
 
+import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon } from "lucide-react";
 import {
   createContext,
@@ -176,7 +177,7 @@ export function AssignedCell({ category }: { category: Category }) {
                 aria-describedby={editor.error ? errorId : undefined}
                 onFocus={(event) => event.currentTarget.select()}
                 onChange={(event) => {
-                  const draft = event.target.value;
+                  const draft = groupAmountInput(event.target);
                   setEditor((value) => value && { ...value, draft });
                 }}
                 onBlur={() => commit(false)}
