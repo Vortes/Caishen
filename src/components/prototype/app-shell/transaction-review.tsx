@@ -234,10 +234,7 @@ function CategorizeAction({
       (category) =>
         !category.pairedAccountId &&
         !category.pairedLoanId &&
-        !category.counterpartyAccountId &&
-        transactions.every(
-          (item) => !item.sharedCategoryId || item.categoryId === category.id,
-        ),
+        !category.counterpartyAccountId,
     )
     .map((category) => ({ value: category.id, label: category.name }));
   const available =

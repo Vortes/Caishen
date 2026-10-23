@@ -264,7 +264,7 @@ const importFact = (id: string, pending = false) =>
     name: "Coffee shop",
   });
 
-async function pendingImport() {
+async function linkedHarness() {
   const h = await harness();
   let book = execute(await h.book(), alice, {
     type: "account.add",
@@ -282,15 +282,20 @@ async function pendingImport() {
     name: "Dining",
   });
   await h.setBook(book);
+  await h.setMappings({
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
+  return h;
+}
+
+async function pendingImport() {
+  const h = await linkedHarness();
   const records = applyTransactionSync(
     [],
     { added: [importFact("pending-edit", true)], modified: [], removed: [] },
     h.connection.id,
   ).records;
   const record = records[0]!;
-  await h.setMappings({
-    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
-  });
   await h.setImports({ records, resolved: {}, errors: {}, reviews: {} });
   const input = {
     connectionId: h.connection.id,

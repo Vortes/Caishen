@@ -77,15 +77,12 @@ function everyRow(): WireRow[] {
     rows.push({ ...row, data: { ...row.data!, ...fields } } as WireRow);
   };
   extend("target", { cadence: "monthly", monthDay: 15 });
-  extend("transaction", { providerId: "plaid:item:transaction" });
-  // Fields only generated obligations, which are derived, have.
-  extend("obligation", {
-    date: "2026-10-01",
-    expenseMonth: "2026-10",
-    payee: "Grocer",
-    payerId: "alex",
-    transactionId: "groceries",
+  extend("transaction", {
+    providerId: "plaid:item:transaction",
+    refundOfTransactionId: "original-purchase",
   });
+  extend("partnerEntry", { removed: true });
+  extend("partnerSettlement", { removed: true });
   return rows;
 }
 

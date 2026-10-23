@@ -1,10 +1,5 @@
 import { applyChangeSet, rowsIn, toRowSet } from "~/domain/change-sets";
-import {
-  budgetReferenceIssues,
-  sharedCategoryReferencesValid,
-  type Book,
-  type Budget,
-} from "~/domain/engine";
+import { budgetReferenceIssues, type Book, type Budget } from "~/domain/engine";
 import { rowIssues } from "~/domain/row-schemas";
 import {
   rowKeyParts,
@@ -40,9 +35,7 @@ export type StoredDataIssue = StoredIssue;
 
 /** A part of the household that can't be read, and why. */
 export type StoredDataFailure = (
-  | { part: "household" }
-  | { part: "budget"; ownerId: string }
-  | { part: "partner-facts"; viewerId: string }
+  { part: "household" } | { part: "budget"; ownerId: string }
 ) & { issues: StoredDataIssue[] };
 
 export type Household = {
@@ -277,12 +270,6 @@ function failureOf(row: UnreadableRow): StoredDataFailure {
   }));
   const owner = rowOwner(row);
   if (owner) return { part: "budget", ownerId: owner, issues };
-  if (row.table === "partnerFact")
-    return {
-      part: "partner-facts",
-      viewerId: rowKeyParts(row.id)[0]!,
-      issues,
-    };
   return { part: "household", issues };
 }
 
@@ -370,30 +357,6 @@ function readParts(household: Household): Parts {
       });
     } else budgets.set(ownerId, budget);
   }
-  // Each shared category names a category in each readable participant's
-  // budget. An unreadable budget's owner is already under maintenance.
-  const shared = tableRows(household, "sharedCategory").map(
-    (row) => row.data as Book["sharedCategories"][number],
-  );
-  if (
-    !sharedCategoryReferencesValid(
-      shared.map((category) => ({
-        ...category,
-        participants: category.participants.filter((id) => !failed.has(id)),
-      })),
-      (id) => budgets.get(id)?.categories.map((category) => category.id),
-    )
-  )
-    failures.push({
-      part: "household",
-      issues: [
-        {
-          path: ["sharedCategory"],
-          code: "custom",
-          message: "Invalid shared category reference",
-        },
-      ],
-    });
   const parts: Parts = {
     memberIds,
     failures: mergeFailures(failures),
@@ -421,8 +384,7 @@ export function householdLedger(
     failures.some(
       (failure) =>
         failure.part === "household" ||
-        (failure.part === "budget" && failure.ownerId === viewerId) ||
-        (failure.part === "partner-facts" && failure.viewerId === viewerId),
+        (failure.part === "budget" && failure.ownerId === viewerId),
     )
   )
     ledger = { status: "maintenance", failures };

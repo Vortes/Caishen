@@ -1,0 +1,30 @@
+{
+  "id": "settlement-2026-08",
+  "payerId": "alex",
+  "date": "2026-08-20",
+  "amount": 117356,
+  "method": "Zelle",
+  "confirmed": true,
+  "history": [
+    {
+      "actorId": "alex",
+      "operationId": "settlement-0",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "matched"
+    },
+    {
+      "actorId": "alex",
+      "operationId": "settlement-1",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "confirmed"
+    },
+    {
+      "actorId": "alex",
+      "operationId": "settlement-2",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "removed"
+    }
+  ],
+  "sort": 0,
+  "removed": true
+}

@@ -42,13 +42,6 @@ function household() {
   );
   run({ type: "category.add", categoryId: "food", name: "Food" });
   run({ type: "category.add", categoryId: "rent", name: "Rent" });
-  run({
-    type: "shared.create",
-    sharedCategoryId: "shared-rent",
-    participants: ["alan", "partner"],
-    weights: { alan: 1, partner: 1 },
-    categoryIds: { alan: "rent", partner: "partner-rent" },
-  });
   return { run, entries: () => personalSpendingEntries(book, "alan") };
 }
 
@@ -94,28 +87,6 @@ void test("purchases count in full, and refunds in the same category net against
       },
     ],
   );
-});
-
-void test("shared expenses count only your share, including ones your partner paid", () => {
-  const setup = household();
-  setup.run(
-    {
-      type: "transaction.upsert",
-      transactionId: "rent",
-      accountId: "partner-cash",
-      date: "2026-10-01",
-      amount: -200_000,
-      payee: "Landlord",
-      categoryId: "partner-rent",
-      sharedCategoryId: "shared-rent",
-    },
-    "partner",
-  );
-  const [entry] = setup.entries();
-  assert.equal(entry?.amount, 100_000);
-  assert.equal(entry?.paidByYou, false);
-  assert.equal(entry?.categoryId, "rent");
-  assert.equal(entry?.accountId, undefined);
 });
 
 void test("only loan interest is spending, and income and removed purchases are not", () => {

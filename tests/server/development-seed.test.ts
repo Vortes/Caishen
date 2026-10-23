@@ -31,28 +31,6 @@ void test("development seeds are deterministic and preserve accounting and priva
   assert.ok(primary.accounts.some((account) => account.kind === "credit"));
   assert.equal(primary.budget.settings.emailEnabled, false);
   assert.equal(partner.budget.settings.emailEnabled, false);
-  assert.equal(primary.settlement.net, -partner.settlement.net);
-  assert.ok(primary.settlement.net > 25000);
-  assert.equal(primary.sharedStatement.balance, primary.settlement.net);
-  assert.equal(partner.sharedStatement.balance, partner.settlement.net);
-  assert.equal(primary.sharedStatement.repayments.length, 2);
-  assert.equal(partner.sharedStatement.awaitingYourConfirmation.length, 1);
-  assert.equal(primary.sharedStatement.awaitingYourConfirmation.length, 1);
-  assert.equal(
-    primary.reimbursements.find((claim) => claim.id === "work-hotel")
-      ?.outstanding,
-    28000,
-  );
-  assert.equal(
-    primary.reimbursements.find((claim) => claim.id === "work-train")
-      ?.outstanding,
-    0,
-  );
-  assert.equal(
-    primary.reimbursements.find((claim) => claim.id === "amex-offer")
-      ?.outstanding,
-    1500,
-  );
   assert.ok(
     primary.categories.find((category) => category.id === "health")!.available <
       0,
@@ -116,15 +94,8 @@ void test("development seeds are deterministic and preserve accounting and priva
         entry.type === "transaction.upsert" && entry.source === "agent",
     ),
   );
-  assert.deepEqual(
-    primary.sharedStatement.categories.find(
-      (category) => category.sharedCategoryId === "weekend",
-    )?.purchases,
-    [],
-  );
   assert.ok(!JSON.stringify(partner).includes("Cedar Labs · conference hotel"));
   const nextMonth = projectBook(seed.book, "alex", "2026-11");
-  assert.equal(nextMonth.settlement.net, primary.settlement.net);
   assert.ok(
     nextMonth.categories.find((category) => category.id === "emergency")!
       .available > 0,

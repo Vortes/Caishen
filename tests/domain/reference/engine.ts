@@ -1,6 +1,5 @@
-// The engine's month replay and settlement lookups as they were before rows
-// were indexed: every month filters the full transaction, assignment, and
-// settlement lists, and every assignment re-replays each later month. Kept
+// The engine's month replay as it was before rows were indexed: every
+// month filters the full transaction and assignment lists, and every assignment re-replays each later month. Kept
 // only as the reference the equivalence tests compare the engine against.
 import { z } from "zod";
 import {
@@ -10,14 +9,10 @@ import {
   type Budget,
   type Category,
   type Command,
-  type Obligation,
-  type Settlement,
-  type SharedCategory,
   type Transaction,
 } from "../../../src/domain/engine";
 import {
   isPersonalLedger,
-  ledgerSharedPurchases,
   type AccountingState,
 } from "../../../src/domain/shared-ledger";
 import { transferCounterparts } from "../../../src/domain/transfers";
@@ -59,19 +54,6 @@ const getCategory = (budget: Budget, id: string): Category =>
   budget.categories.find((category) => category.id === id) ??
   fail("Category access denied");
 const active = (transaction: Transaction): boolean => !transaction.removed;
-function sharedAccess(
-  book: AccountingState,
-  actorId: string,
-  sharedId: string,
-): SharedCategory {
-  const shared = book.sharedCategories.find(
-    (category) => category.id === sharedId,
-  );
-  return shared?.participants.includes(actorId)
-    ? shared
-    : fail("Shared category access denied");
-}
-
 type CategoryMonth = {
   assigned: number;
   activity: number;
@@ -79,7 +61,6 @@ type CategoryMonth = {
   opening: number;
   cashOverspending: number;
   cashActivity: number;
-  settlementActivity: number;
 };
 type AccountMonth = {
   balance: number;
@@ -138,7 +119,6 @@ export function referenceMaterialize(
         opening: 0,
         cashOverspending: 0,
         cashActivity: 0,
-        settlementActivity: 0,
       },
     ]),
   );
@@ -156,7 +136,6 @@ export function referenceMaterialize(
       state.activity = 0;
       state.cashOverspending = 0;
       state.cashActivity = 0;
-      state.settlementActivity = 0;
     }
     for (const account of budget.accounts.filter(
       (item) => monthOf(item.date) === cursor && item.date <= cutoff,
@@ -230,7 +209,6 @@ export function referenceMaterialize(
       }
       if (transaction.kind === "reimbursement" || transaction.kind === "income")
         continue;
-      if (transaction.kind === "settlement") continue;
       if (!transaction.categoryId) continue;
       const state = categories.get(transaction.categoryId)!;
       state.activity = safe(state.activity + transaction.amount);
@@ -255,33 +233,6 @@ export function referenceMaterialize(
         creditByCategory.set(transaction.categoryId, cards);
       }
     }
-    for (const settlement of book.settlements.filter(
-      (item) => monthOf(item.date) === cursor && item.date <= cutoff,
-    ))
-      for (const allocation of settlement.allocations) {
-        const obligation = book.obligations.find(
-          (item) => item.id === allocation.obligationId,
-        )!;
-        if (obligation.debtorId !== userId) continue;
-        const categoryId = sharedAccess(
-          book,
-          userId,
-          obligation.sharedCategoryId,
-        ).categoryIds[userId]!;
-        const state = categories.get(categoryId)!;
-        const consumed =
-          allocation.kind === "offset"
-            ? Math.min(allocation.amount, Math.max(0, state.available))
-            : allocation.amount;
-        state.activity = safe(state.activity - consumed);
-        state.available = safe(state.available - consumed);
-        state.settlementActivity = safe(state.settlementActivity - consumed);
-        if (allocation.kind === "payment")
-          cashByCategory.set(
-            categoryId,
-            safe((cashByCategory.get(categoryId) ?? 0) - consumed),
-          );
-      }
     const paymentNeeds = new Map<string, number>();
     for (const payment of payments)
       paymentNeeds.set(
@@ -461,90 +412,6 @@ export function referenceMaterialize(
     snapshots,
     startingBalances,
   };
-}
-
-export function referenceSynchronizeObligations(book: AccountingState): void {
-  const generated: Obligation[] = [];
-  for (const transaction of ledgerSharedPurchases(book))
-    for (const [debtorId, amount] of Object.entries(transaction.shares))
-      if (debtorId !== transaction.payerId && amount > 0)
-        generated.push({
-          id: `shared:${transaction.payerId}:${transaction.id}:${debtorId}`,
-          sharedCategoryId: transaction.sharedCategoryId,
-          debtorId,
-          creditorId: transaction.payerId,
-          amount,
-          expenseMonth: transaction.expenseMonth,
-          transactionId: transaction.id,
-          payerId: transaction.payerId,
-          payee: transaction.payee,
-          date: transaction.date,
-          opening: false,
-        });
-  const all = [
-    ...book.obligations.filter((obligation) => obligation.opening),
-    ...generated,
-  ];
-  for (const settlement of book.settlements)
-    for (const allocation of settlement.allocations) {
-      const obligation =
-        all.find((item) => item.id === allocation.obligationId) ??
-        fail(
-          "A settled expense cannot be removed; investigate the correction first",
-        );
-      if (obligation.date && obligation.date > settlement.date)
-        fail("A settled expense cannot move after its recorded settlement");
-      if (
-        sum(
-          book.settlements.flatMap((item) =>
-            item.allocations
-              .filter((part) => part.obligationId === obligation.id)
-              .map((part) => part.amount),
-          ),
-        ) > obligation.amount
-      )
-        fail("The corrected expense would invalidate a recorded settlement");
-    }
-  book.obligations = all;
-}
-
-export function referenceOutstanding(
-  book: AccountingState,
-  obligation: Obligation,
-  cutoff?: string,
-): number {
-  return safe(
-    obligation.amount -
-      sum(
-        book.settlements
-          .filter((settlement) => !cutoff || settlement.date <= cutoff)
-          .flatMap((settlement) =>
-            settlement.allocations
-              .filter((allocation) => allocation.obligationId === obligation.id)
-              .map((allocation) => allocation.amount),
-          ),
-      ),
-  );
-}
-
-export function referenceReceiptDate(
-  state: AccountingState,
-  settlement: Settlement,
-): string | undefined {
-  if (settlement.amount === 0) return settlement.date;
-  if (isPersonalLedger(state) && settlement.recipientId !== state.budget.userId)
-    return Object.hasOwn(state.partnerReceiptDates, settlement.id)
-      ? state.partnerReceiptDates[settlement.id]
-      : undefined;
-  const budget = isPersonalLedger(state)
-    ? state.budget
-    : state.budgets[settlement.recipientId];
-  return budget?.transactions.find(
-    (transaction) =>
-      !transaction.removed &&
-      transaction.kind === "reimbursement" &&
-      transaction.linkedId === settlement.id,
-  )?.date;
 }
 
 // The assign and assign.batch checks, applied to a copy of the book. Returns

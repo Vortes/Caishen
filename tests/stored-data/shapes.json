@@ -60,7 +60,9 @@
     },
     "$.records[].current.provider": {
       "type": "enum",
-      "values": ["plaid"]
+      "values": [
+        "plaid"
+      ]
     },
     "$.records[].current.providerTransactionId": {
       "type": "string"
@@ -77,7 +79,9 @@
     },
     "$.records[].current.currency": {
       "type": "enum",
-      "values": ["USD"]
+      "values": [
+        "USD"
+      ]
     },
     "$.records[].current.date": {
       "type": "string"
@@ -105,7 +109,10 @@
     },
     "$.records[].matchStatus": {
       "type": "enum",
-      "values": ["confirmed", "needs_review"]
+      "values": [
+        "confirmed",
+        "needs_review"
+      ]
     },
     "$.records[].history": {
       "type": "array"
@@ -120,7 +127,13 @@
     },
     "$.records[].history[].kind": {
       "type": "enum",
-      "values": ["added", "modified", "pending_posted", "removed", "restored"]
+      "values": [
+        "added",
+        "modified",
+        "pending_posted",
+        "removed",
+        "restored"
+      ]
     },
     "$.records[].history[].before": {
       "type": "object",
@@ -141,7 +154,9 @@
     },
     "$.records[].history[].before.provider": {
       "type": "enum",
-      "values": ["plaid"]
+      "values": [
+        "plaid"
+      ]
     },
     "$.records[].history[].before.providerTransactionId": {
       "type": "string"
@@ -158,7 +173,9 @@
     },
     "$.records[].history[].before.currency": {
       "type": "enum",
-      "values": ["USD"]
+      "values": [
+        "USD"
+      ]
     },
     "$.records[].history[].before.date": {
       "type": "string"
@@ -196,7 +213,9 @@
     },
     "$.records[].history[].after.provider": {
       "type": "enum",
-      "values": ["plaid"]
+      "values": [
+        "plaid"
+      ]
     },
     "$.records[].history[].after.providerTransactionId": {
       "type": "string"
@@ -213,7 +232,9 @@
     },
     "$.records[].history[].after.currency": {
       "type": "enum",
-      "values": ["USD"]
+      "values": [
+        "USD"
+      ]
     },
     "$.records[].history[].after.date": {
       "type": "string"
@@ -416,7 +437,11 @@
     },
     "$.status": {
       "type": "enum",
-      "values": ["discrepancy", "insufficient_evidence", "reconciled"]
+      "values": [
+        "discrepancy",
+        "insufficient_evidence",
+        "reconciled"
+      ]
     },
     "$.differenceCents": {
       "type": "number",
@@ -522,30 +547,6 @@
       "type": "string"
     }
   },
-  "SharedCategory.weights": {
-    "$": {
-      "type": "record"
-    },
-    "$.*": {
-      "type": "number"
-    }
-  },
-  "SharedCategory.categoryIds": {
-    "$": {
-      "type": "record"
-    },
-    "$.*": {
-      "type": "string"
-    }
-  },
-  "PartnerFact.shares": {
-    "$": {
-      "type": "record"
-    },
-    "$.*": {
-      "type": "number"
-    }
-  },
   "BankImport.record": {
     "$": {
       "type": "object",
@@ -590,7 +591,9 @@
     },
     "$.current.provider": {
       "type": "enum",
-      "values": ["plaid"]
+      "values": [
+        "plaid"
+      ]
     },
     "$.current.providerTransactionId": {
       "type": "string"
@@ -607,7 +610,9 @@
     },
     "$.current.currency": {
       "type": "enum",
-      "values": ["USD"]
+      "values": [
+        "USD"
+      ]
     },
     "$.current.date": {
       "type": "string"
@@ -635,7 +640,10 @@
     },
     "$.matchStatus": {
       "type": "enum",
-      "values": ["confirmed", "needs_review"]
+      "values": [
+        "confirmed",
+        "needs_review"
+      ]
     },
     "$.history": {
       "type": "array"
@@ -650,7 +658,13 @@
     },
     "$.history[].kind": {
       "type": "enum",
-      "values": ["added", "modified", "pending_posted", "removed", "restored"]
+      "values": [
+        "added",
+        "modified",
+        "pending_posted",
+        "removed",
+        "restored"
+      ]
     },
     "$.history[].before": {
       "type": "object",
@@ -671,7 +685,9 @@
     },
     "$.history[].before.provider": {
       "type": "enum",
-      "values": ["plaid"]
+      "values": [
+        "plaid"
+      ]
     },
     "$.history[].before.providerTransactionId": {
       "type": "string"
@@ -688,7 +704,9 @@
     },
     "$.history[].before.currency": {
       "type": "enum",
-      "values": ["USD"]
+      "values": [
+        "USD"
+      ]
     },
     "$.history[].before.date": {
       "type": "string"
@@ -726,7 +744,9 @@
     },
     "$.history[].after.provider": {
       "type": "enum",
-      "values": ["plaid"]
+      "values": [
+        "plaid"
+      ]
     },
     "$.history[].after.providerTransactionId": {
       "type": "string"
@@ -743,7 +763,9 @@
     },
     "$.history[].after.currency": {
       "type": "enum",
-      "values": ["USD"]
+      "values": [
+        "USD"
+      ]
     },
     "$.history[].after.date": {
       "type": "string"
@@ -845,19 +867,16 @@
         "loanPayment",
         "loanRate",
         "member",
-        "obligation",
-        "partnerFact",
-        "reimbursement",
-        "reimbursementReceipt",
+        "partnerEntry",
+        "partnerEntrySide",
+        "partnerRequest",
+        "partnerSettlement",
+        "payeeMemory",
         "rule",
-        "settlement",
-        "settlementAllocation",
-        "sharedCategory",
         "target",
         "transaction",
         "transactionHistory",
-        "transactionLine",
-        "transactionShare"
+        "transactionLine"
       ]
     },
     "$.after[].id": {
@@ -903,19 +922,16 @@
         "loanPayment",
         "loanRate",
         "member",
-        "obligation",
-        "partnerFact",
-        "reimbursement",
-        "reimbursementReceipt",
+        "partnerEntry",
+        "partnerEntrySide",
+        "partnerRequest",
+        "partnerSettlement",
+        "payeeMemory",
         "rule",
-        "settlement",
-        "settlementAllocation",
-        "sharedCategory",
         "target",
         "transaction",
         "transactionHistory",
-        "transactionLine",
-        "transactionShare"
+        "transactionLine"
       ]
     },
     "$.before[].id": {
@@ -933,6 +949,224 @@
     },
     "$.before[].data.*": {
       "type": "unknown"
+    }
+  },
+  "Transaction.counterpartyShare": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      },
+      "nullable": true
+    },
+    "$.accountId": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.counterpartyName": {
+      "type": "string"
+    }
+  },
+  "TransactionLine.counterpartyShare": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      },
+      "nullable": true
+    },
+    "$.accountId": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.counterpartyName": {
+      "type": "string"
+    }
+  },
+  "PayeeMemory.counterpartyShare": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      },
+      "nullable": true
+    },
+    "$.accountId": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.counterpartyName": {
+      "type": "string"
+    }
+  },
+  "TransactionHistory.shareChanges": {
+    "$": {
+      "type": "array",
+      "nullable": true
+    },
+    "$[]": {
+      "type": "object",
+      "fields": {
+        "lineId": "required",
+        "next": "required",
+        "previous": "required"
+      }
+    },
+    "$[].lineId": {
+      "type": "string"
+    },
+    "$[].previous": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      },
+      "nullable": true
+    },
+    "$[].previous.accountId": {
+      "type": "string"
+    },
+    "$[].previous.amount": {
+      "type": "number"
+    },
+    "$[].previous.counterpartyName": {
+      "type": "string"
+    },
+    "$[].next": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      },
+      "nullable": true
+    },
+    "$[].next.accountId": {
+      "type": "string"
+    },
+    "$[].next.amount": {
+      "type": "number"
+    },
+    "$[].next.counterpartyName": {
+      "type": "string"
+    }
+  },
+  "PartnerEntry.history": {
+    "$": {
+      "type": "array"
+    },
+    "$[]": {
+      "type": "object",
+      "fields": {
+        "actorId": "required",
+        "at": "optional",
+        "changes": "optional",
+        "operationId": "required",
+        "reason": "required"
+      }
+    },
+    "$[].actorId": {
+      "type": "string"
+    },
+    "$[].at": {
+      "type": "string"
+    },
+    "$[].operationId": {
+      "type": "string"
+    },
+    "$[].reason": {
+      "type": "enum",
+      "values": [
+        "created",
+        "matched",
+        "recorded",
+        "removed",
+        "restored",
+        "updated"
+      ]
+    },
+    "$[].changes": {
+      "type": "array"
+    },
+    "$[].changes[]": {
+      "type": "object",
+      "fields": {
+        "field": "required",
+        "next": "required",
+        "previous": "required"
+      }
+    },
+    "$[].changes[].field": {
+      "type": "enum",
+      "values": [
+        "amount",
+        "date",
+        "payee",
+        "share",
+        "status"
+      ]
+    },
+    "$[].changes[].previous": {
+      "type": "union"
+    },
+    "$[].changes[].previous|0": {
+      "type": "string"
+    },
+    "$[].changes[].previous|1": {
+      "type": "number"
+    },
+    "$[].changes[].next": {
+      "type": "union"
+    },
+    "$[].changes[].next|0": {
+      "type": "string"
+    },
+    "$[].changes[].next|1": {
+      "type": "number"
+    }
+  },
+  "PartnerSettlement.history": {
+    "$": {
+      "type": "array"
+    },
+    "$[]": {
+      "type": "object",
+      "fields": {
+        "actorId": "required",
+        "at": "optional",
+        "operationId": "required",
+        "reason": "required"
+      }
+    },
+    "$[].actorId": {
+      "type": "string"
+    },
+    "$[].at": {
+      "type": "string"
+    },
+    "$[].operationId": {
+      "type": "string"
+    },
+    "$[].reason": {
+      "type": "enum",
+      "values": [
+        "confirmed",
+        "matched",
+        "removed"
+      ]
     }
   },
   "rows.member": {
@@ -1003,7 +1237,13 @@
     },
     "$.kind": {
       "type": "enum",
-      "values": ["cash", "credit", "tracking"]
+      "values": [
+        "cash",
+        "credit",
+        "partner",
+        "reimbursements",
+        "tracking"
+      ]
     },
     "$.openingBalance": {
       "type": "number"
@@ -1054,6 +1294,7 @@
     "$": {
       "type": "object",
       "fields": {
+        "counterpartyAccountId": "optional",
         "group": "required",
         "id": "required",
         "name": "required",
@@ -1076,6 +1317,9 @@
       "type": "string"
     },
     "$.pairedLoanId": {
+      "type": "string"
+    },
+    "$.counterpartyAccountId": {
       "type": "string"
     },
     "$.userId": {
@@ -1131,7 +1375,11 @@
     },
     "$&1.behavior": {
       "type": "enum",
-      "values": ["balance", "contribution", "refill"]
+      "values": [
+        "balance",
+        "contribution",
+        "refill"
+      ]
     },
     "$&1.amount": {
       "type": "number"
@@ -1153,7 +1401,10 @@
     },
     "$&1.repeatUnit": {
       "type": "enum",
-      "values": ["months", "years"]
+      "values": [
+        "months",
+        "years"
+      ]
     },
     "$&1.snoozedMonths": {
       "type": "array"
@@ -1219,22 +1470,55 @@
         "accountId": "required",
         "amount": "required",
         "categoryId": "optional",
+        "counterpartyName": "optional",
+        "counterpartyShare": "optional",
         "date": "required",
         "expenseMonth": "required",
         "id": "required",
         "kind": "required",
+        "linkedCounterpartyAccountId": "optional",
         "linkedId": "optional",
+        "partnerSettlementId": "optional",
         "payee": "required",
         "providerId": "optional",
         "reconciled": "optional",
+        "refundOfTransactionId": "optional",
         "removed": "optional",
         "reviewed": "required",
         "revision": "required",
-        "sharedCategoryId": "optional",
         "sort": "required",
         "status": "required",
         "userId": "required"
       }
+    },
+    "$.counterpartyShare": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      }
+    },
+    "$.counterpartyShare.accountId": {
+      "type": "string"
+    },
+    "$.counterpartyShare.amount": {
+      "type": "number"
+    },
+    "$.counterpartyShare.counterpartyName": {
+      "type": "string"
+    },
+    "$.refundOfTransactionId": {
+      "type": "string"
+    },
+    "$.linkedCounterpartyAccountId": {
+      "type": "string"
+    },
+    "$.counterpartyName": {
+      "type": "string"
+    },
+    "$.partnerSettlementId": {
+      "type": "string"
     },
     "$.id": {
       "type": "string"
@@ -1253,15 +1537,15 @@
     },
     "$.status": {
       "type": "enum",
-      "values": ["pending", "posted"]
+      "values": [
+        "pending",
+        "posted"
+      ]
     },
     "$.categoryId": {
       "type": "string"
     },
     "$.expenseMonth": {
-      "type": "string"
-    },
-    "$.sharedCategoryId": {
       "type": "string"
     },
     "$.providerId": {
@@ -1283,7 +1567,6 @@
         "purchase",
         "refund",
         "reimbursement",
-        "settlement",
         "statement-credit",
         "transfer"
       ]
@@ -1304,38 +1587,13 @@
       "type": "number"
     }
   },
-  "rows.transactionShare": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "participantId": "required",
-        "share": "optional",
-        "transactionId": "required",
-        "userId": "required",
-        "weight": "optional"
-      }
-    },
-    "$.userId": {
-      "type": "string"
-    },
-    "$.transactionId": {
-      "type": "string"
-    },
-    "$.participantId": {
-      "type": "string"
-    },
-    "$.share": {
-      "type": "number"
-    },
-    "$.weight": {
-      "type": "number"
-    }
-  },
   "rows.transactionHistory": {
     "$": {
       "type": "object",
       "fields": {
+        "actorId": "optional",
         "amount": "required",
+        "at": "optional",
         "combinedId": "optional",
         "date": "required",
         "operationId": "required",
@@ -1343,10 +1601,67 @@
         "reason": "required",
         "revision": "required",
         "sequence": "required",
+        "shareChanges": "optional",
         "status": "required",
         "transactionId": "required",
         "userId": "required"
       }
+    },
+    "$.actorId": {
+      "type": "string"
+    },
+    "$.at": {
+      "type": "string"
+    },
+    "$.shareChanges": {
+      "type": "array"
+    },
+    "$.shareChanges[]": {
+      "type": "object",
+      "fields": {
+        "lineId": "required",
+        "next": "required",
+        "previous": "required"
+      }
+    },
+    "$.shareChanges[].lineId": {
+      "type": "string"
+    },
+    "$.shareChanges[].previous": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      },
+      "nullable": true
+    },
+    "$.shareChanges[].previous.accountId": {
+      "type": "string"
+    },
+    "$.shareChanges[].previous.amount": {
+      "type": "number"
+    },
+    "$.shareChanges[].previous.counterpartyName": {
+      "type": "string"
+    },
+    "$.shareChanges[].next": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      },
+      "nullable": true
+    },
+    "$.shareChanges[].next.accountId": {
+      "type": "string"
+    },
+    "$.shareChanges[].next.amount": {
+      "type": "number"
+    },
+    "$.shareChanges[].next.counterpartyName": {
+      "type": "string"
     },
     "$.revision": {
       "type": "number"
@@ -1356,7 +1671,10 @@
     },
     "$.status": {
       "type": "enum",
-      "values": ["pending", "posted"]
+      "values": [
+        "pending",
+        "posted"
+      ]
     },
     "$.date": {
       "type": "string"
@@ -1493,73 +1811,6 @@
       "type": "string"
     }
   },
-  "rows.reimbursement": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "amount": "required",
-        "id": "required",
-        "kind": "required",
-        "name": "required",
-        "sort": "required",
-        "transactionId": "required",
-        "userId": "required"
-      }
-    },
-    "$.id": {
-      "type": "string"
-    },
-    "$.transactionId": {
-      "type": "string"
-    },
-    "$.name": {
-      "type": "string"
-    },
-    "$.amount": {
-      "type": "number"
-    },
-    "$.kind": {
-      "type": "enum",
-      "values": ["cash", "statement-credit"]
-    },
-    "$.userId": {
-      "type": "string"
-    },
-    "$.sort": {
-      "type": "number"
-    }
-  },
-  "rows.reimbursementReceipt": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "amount": "required",
-        "date": "required",
-        "id": "required",
-        "reimbursementId": "required",
-        "sort": "required",
-        "userId": "required"
-      }
-    },
-    "$.id": {
-      "type": "string"
-    },
-    "$.date": {
-      "type": "string"
-    },
-    "$.amount": {
-      "type": "number"
-    },
-    "$.userId": {
-      "type": "string"
-    },
-    "$.sort": {
-      "type": "number"
-    },
-    "$.reimbursementId": {
-      "type": "string"
-    }
-  },
   "rows.rule": {
     "$": {
       "type": "object",
@@ -1633,282 +1884,35 @@
       "type": "unknown"
     }
   },
-  "rows.sharedCategory": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "categoryIds": "required",
-        "id": "required",
-        "participants": "required",
-        "sort": "required",
-        "weights": "required"
-      }
-    },
-    "$.id": {
-      "type": "string"
-    },
-    "$.participants": {
-      "type": "array"
-    },
-    "$.participants[]": {
-      "type": "string"
-    },
-    "$.weights": {
-      "type": "record"
-    },
-    "$.weights.*": {
-      "type": "number"
-    },
-    "$.categoryIds": {
-      "type": "record"
-    },
-    "$.categoryIds.*": {
-      "type": "string"
-    },
-    "$.sort": {
-      "type": "number"
-    }
-  },
-  "rows.obligation": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "amount": "required",
-        "creditorId": "required",
-        "date": "optional",
-        "debtorId": "required",
-        "expenseMonth": "optional",
-        "id": "required",
-        "opening": "required",
-        "payee": "optional",
-        "payerId": "optional",
-        "sharedCategoryId": "required",
-        "sort": "required",
-        "transactionId": "optional"
-      }
-    },
-    "$.id": {
-      "type": "string"
-    },
-    "$.sharedCategoryId": {
-      "type": "string"
-    },
-    "$.debtorId": {
-      "type": "string"
-    },
-    "$.creditorId": {
-      "type": "string"
-    },
-    "$.amount": {
-      "type": "number"
-    },
-    "$.expenseMonth": {
-      "type": "string"
-    },
-    "$.transactionId": {
-      "type": "string"
-    },
-    "$.payerId": {
-      "type": "string"
-    },
-    "$.payee": {
-      "type": "string"
-    },
-    "$.date": {
-      "type": "string"
-    },
-    "$.opening": {
-      "type": "boolean"
-    },
-    "$.sort": {
-      "type": "number"
-    }
-  },
-  "rows.settlement": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "amount": "required",
-        "date": "required",
-        "id": "required",
-        "payerId": "required",
-        "received": "required",
-        "recipientId": "required",
-        "sort": "required"
-      }
-    },
-    "$.id": {
-      "type": "string"
-    },
-    "$.payerId": {
-      "type": "string"
-    },
-    "$.recipientId": {
-      "type": "string"
-    },
-    "$.date": {
-      "type": "string"
-    },
-    "$.amount": {
-      "type": "number"
-    },
-    "$.received": {
-      "type": "boolean"
-    },
-    "$.sort": {
-      "type": "number"
-    }
-  },
-  "rows.settlementAllocation": {
-    "$": {
-      "type": "object",
-      "fields": {
-        "amount": "required",
-        "kind": "required",
-        "obligationId": "required",
-        "sequence": "required",
-        "settlementId": "required"
-      }
-    },
-    "$.obligationId": {
-      "type": "string"
-    },
-    "$.amount": {
-      "type": "number"
-    },
-    "$.kind": {
-      "type": "enum",
-      "values": ["offset", "payment"]
-    },
-    "$.settlementId": {
-      "type": "string"
-    },
-    "$.sequence": {
-      "type": "number"
-    }
-  },
-  "rows.partnerFact": {
-    "$": {
-      "type": "union"
-    },
-    "$|0": {
-      "type": "object",
-      "fields": {
-        "amount": "required",
-        "date": "required",
-        "expenseMonth": "required",
-        "id": "required",
-        "kind": "required",
-        "payee": "required",
-        "payerId": "required",
-        "sharedCategoryId": "required",
-        "shares": "optional",
-        "sort": "required",
-        "status": "required",
-        "viewerId": "required"
-      }
-    },
-    "$|0.id": {
-      "type": "string"
-    },
-    "$|0.amount": {
-      "type": "number"
-    },
-    "$|0.date": {
-      "type": "string"
-    },
-    "$|0.expenseMonth": {
-      "type": "string"
-    },
-    "$|0.payee": {
-      "type": "string"
-    },
-    "$|0.status": {
-      "type": "enum",
-      "values": ["pending", "posted"]
-    },
-    "$|0.shares": {
-      "type": "record"
-    },
-    "$|0.shares.*": {
-      "type": "number"
-    },
-    "$|0.viewerId": {
-      "type": "string"
-    },
-    "$|0.kind": {
-      "type": "enum",
-      "values": ["purchase"]
-    },
-    "$|0.sort": {
-      "type": "number"
-    },
-    "$|0.payerId": {
-      "type": "string"
-    },
-    "$|0.sharedCategoryId": {
-      "type": "string"
-    },
-    "$|1": {
-      "type": "object",
-      "fields": {
-        "date": "required",
-        "kind": "required",
-        "settlementId": "required",
-        "viewerId": "required"
-      }
-    },
-    "$|1.viewerId": {
-      "type": "string"
-    },
-    "$|1.kind": {
-      "type": "enum",
-      "values": ["receipt"]
-    },
-    "$|1.settlementId": {
-      "type": "string"
-    },
-    "$|1.date": {
-      "type": "string"
-    },
-    "$|2": {
-      "type": "object",
-      "fields": {
-        "kind": "required",
-        "payerId": "required",
-        "sharedCategoryId": "required",
-        "sort": "required",
-        "viewerId": "required"
-      }
-    },
-    "$|2.viewerId": {
-      "type": "string"
-    },
-    "$|2.kind": {
-      "type": "enum",
-      "values": ["activity"]
-    },
-    "$|2.payerId": {
-      "type": "string"
-    },
-    "$|2.sharedCategoryId": {
-      "type": "string"
-    },
-    "$|2.sort": {
-      "type": "number"
-    }
-  },
   "rows.transactionLine": {
     "$": {
       "type": "object",
       "fields": {
         "amount": "required",
         "categoryId": "required",
+        "counterpartyShare": "optional",
         "id": "required",
         "sort": "required",
         "transactionId": "required",
         "userId": "required"
       }
+    },
+    "$.counterpartyShare": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      }
+    },
+    "$.counterpartyShare.accountId": {
+      "type": "string"
+    },
+    "$.counterpartyShare.amount": {
+      "type": "number"
+    },
+    "$.counterpartyShare.counterpartyName": {
+      "type": "string"
     },
     "$.id": {
       "type": "string"
@@ -1927,6 +1931,304 @@
     },
     "$.transactionId": {
       "type": "string"
+    }
+  },
+  "rows.payeeMemory": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "categoryId": "optional",
+        "counterpartyShare": "optional",
+        "kind": "required",
+        "payee": "required",
+        "payeeKey": "required",
+        "userId": "required"
+      }
+    },
+    "$.counterpartyShare": {
+      "type": "object",
+      "fields": {
+        "accountId": "required",
+        "amount": "required",
+        "counterpartyName": "optional"
+      }
+    },
+    "$.counterpartyShare.accountId": {
+      "type": "string"
+    },
+    "$.counterpartyShare.amount": {
+      "type": "number"
+    },
+    "$.counterpartyShare.counterpartyName": {
+      "type": "string"
+    },
+    "$.payee": {
+      "type": "string"
+    },
+    "$.kind": {
+      "type": "enum",
+      "values": [
+        "category",
+        "readyToAssign"
+      ]
+    },
+    "$.categoryId": {
+      "type": "string"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.payeeKey": {
+      "type": "string"
+    }
+  },
+  "rows.partnerEntry": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "date": "required",
+        "history": "required",
+        "id": "required",
+        "payee": "required",
+        "payerId": "required",
+        "removed": "optional",
+        "share": "required",
+        "sort": "required",
+        "source": "optional",
+        "status": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.payerId": {
+      "type": "string"
+    },
+    "$.source": {
+      "type": "object",
+      "fields": {
+        "lineId": "required",
+        "transactionId": "required"
+      }
+    },
+    "$.source.transactionId": {
+      "type": "string"
+    },
+    "$.source.lineId": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.payee": {
+      "type": "string"
+    },
+    "$.status": {
+      "type": "enum",
+      "values": [
+        "pending",
+        "posted"
+      ]
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.share": {
+      "type": "number"
+    },
+    "$.removed": {
+      "type": "boolean"
+    },
+    "$.history": {
+      "type": "array"
+    },
+    "$.history[]": {
+      "type": "object",
+      "fields": {
+        "actorId": "required",
+        "at": "optional",
+        "changes": "optional",
+        "operationId": "required",
+        "reason": "required"
+      }
+    },
+    "$.history[].actorId": {
+      "type": "string"
+    },
+    "$.history[].at": {
+      "type": "string"
+    },
+    "$.history[].operationId": {
+      "type": "string"
+    },
+    "$.history[].reason": {
+      "type": "enum",
+      "values": [
+        "created",
+        "matched",
+        "recorded",
+        "removed",
+        "restored",
+        "updated"
+      ]
+    },
+    "$.history[].changes": {
+      "type": "array"
+    },
+    "$.history[].changes[]": {
+      "type": "object",
+      "fields": {
+        "field": "required",
+        "next": "required",
+        "previous": "required"
+      }
+    },
+    "$.history[].changes[].field": {
+      "type": "enum",
+      "values": [
+        "amount",
+        "date",
+        "payee",
+        "share",
+        "status"
+      ]
+    },
+    "$.history[].changes[].previous": {
+      "type": "union"
+    },
+    "$.history[].changes[].previous|0": {
+      "type": "string"
+    },
+    "$.history[].changes[].previous|1": {
+      "type": "number"
+    },
+    "$.history[].changes[].next": {
+      "type": "union"
+    },
+    "$.history[].changes[].next|0": {
+      "type": "string"
+    },
+    "$.history[].changes[].next|1": {
+      "type": "number"
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.partnerEntrySide": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "categoryId": "optional",
+        "entryId": "required",
+        "userId": "required"
+      }
+    },
+    "$.categoryId": {
+      "type": "string"
+    },
+    "$.userId": {
+      "type": "string"
+    },
+    "$.entryId": {
+      "type": "string"
+    }
+  },
+  "rows.partnerSettlement": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "confirmed": "required",
+        "date": "required",
+        "history": "required",
+        "id": "required",
+        "method": "required",
+        "payerId": "required",
+        "removed": "optional",
+        "sort": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.payerId": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.method": {
+      "type": "string"
+    },
+    "$.confirmed": {
+      "type": "boolean"
+    },
+    "$.removed": {
+      "type": "boolean"
+    },
+    "$.history": {
+      "type": "array"
+    },
+    "$.history[]": {
+      "type": "object",
+      "fields": {
+        "actorId": "required",
+        "at": "optional",
+        "operationId": "required",
+        "reason": "required"
+      }
+    },
+    "$.history[].actorId": {
+      "type": "string"
+    },
+    "$.history[].at": {
+      "type": "string"
+    },
+    "$.history[].operationId": {
+      "type": "string"
+    },
+    "$.history[].reason": {
+      "type": "enum",
+      "values": [
+        "confirmed",
+        "matched",
+        "removed"
+      ]
+    },
+    "$.sort": {
+      "type": "number"
+    }
+  },
+  "rows.partnerRequest": {
+    "$": {
+      "type": "object",
+      "fields": {
+        "amount": "required",
+        "date": "required",
+        "id": "required",
+        "requesterId": "required",
+        "sort": "required"
+      }
+    },
+    "$.id": {
+      "type": "string"
+    },
+    "$.requesterId": {
+      "type": "string"
+    },
+    "$.date": {
+      "type": "string"
+    },
+    "$.amount": {
+      "type": "number"
+    },
+    "$.sort": {
+      "type": "number"
     }
   }
 }

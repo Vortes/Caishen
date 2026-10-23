@@ -3,6 +3,7 @@ import {
   createBook,
   executeWithChanges,
   projectBook,
+  withCounterpartyAccounts,
   type Book,
   type Command,
   type CommandSource,
@@ -12,8 +13,8 @@ import type { ChangeSet } from "../../../src/domain/rows";
 // A two-partner household driven through every command type, including the
 // changes that reach far from the command: reconciling marks every cleared
 // row, editing a loan payment re-adds it under the same id, changing a
-// transfer's destination retires the old counterpart, and sharing a
-// category creates the partner's category.
+// transfer's destination retires the old counterpart, and partner entries
+// update both sides of the ledger.
 
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 export type CorpusStep = {
@@ -28,11 +29,8 @@ export type CorpusStep = {
 const start = "2026-01";
 
 export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
-  let book = addMember(
-    createBook("alex", "Alex", start),
-    "jordan",
-    "Jordan",
-    start,
+  let book = withCounterpartyAccounts(
+    addMember(createBook("alex", "Alex", start), "jordan", "Jordan", start),
   );
   const steps: CorpusStep[] = [];
   let sequence = 0;
@@ -201,9 +199,19 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
   // A receipt split across two categories.
   alex({
     ...purchase("warehouse", -9_000, "food"),
+    recordedAt: "2026-01-05T12:00:00Z",
     categoryId: undefined,
     lines: [
-      { lineId: "warehouse-food", categoryId: "food", amount: -6_000 },
+      {
+        lineId: "warehouse-food",
+        categoryId: "food",
+        amount: -6_000,
+        counterpartyShare: {
+          accountId: "counterparty:reimbursements",
+          amount: 1_000,
+          counterpartyName: "Employer",
+        },
+      },
       { lineId: "warehouse-fun", categoryId: "dining", amount: -3_000 },
     ],
   });
@@ -268,36 +276,6 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     date: "2026-01-21",
     amount: 500,
     posted: false,
-  });
-  alex({
-    type: "reimbursement.expect",
-    reimbursementId: "work-lunch",
-    transactionId: "groceries",
-    name: "Work lunch",
-    amount: 2_000,
-    kind: "cash",
-  });
-  alex({
-    type: "reimbursement.receive",
-    reimbursementId: "work-lunch",
-    accountId: "checking",
-    date: "2026-01-25",
-    amount: 1_500,
-  });
-  alex({
-    type: "reimbursement.expect",
-    reimbursementId: "card-perk",
-    transactionId: "cafe",
-    name: "Card perk",
-    amount: 1_000,
-    kind: "statement-credit",
-  });
-  alex({
-    type: "card.credit",
-    accountId: "visa",
-    date: "2026-01-22",
-    amount: 1_000,
-    reimbursementId: "card-perk",
   });
   alex({
     type: "loan.add",
@@ -398,7 +376,7 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     adjustmentId: "savings-interest",
   }));
 
-  // The partner and the shared household.
+  // The partner.
   jordan({
     type: "account.add",
     accountId: "checking",
@@ -408,79 +386,88 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
   });
   jordan({ type: "category.add", categoryId: "household", name: "Household" });
   alex({
-    type: "shared.create",
-    sharedCategoryId: "groceries",
-    participants: ["alex", "jordan"],
-    weights: { alex: 1, jordan: 1 },
-    categoryIds: { alex: "food", jordan: "groceries" },
+    type: "partner.record",
+    entryId: "shared-market",
+    recordedAt: "2026-01-20T12:00:00Z",
+    payerId: "alex",
+    date: "2026-01-20",
+    payee: "Market",
+    amount: 4_000,
+    share: 2_000,
+    categoryId: "food",
   });
-  alex({
-    type: "shared.create",
-    sharedCategoryId: "trips",
-    participants: ["alex", "jordan"],
-    weights: { alex: 1, jordan: 1 },
-    categoryIds: { alex: "travel", jordan: "household" },
-  });
-  jordan({ type: "shared.remove", sharedCategoryId: "trips" });
   jordan({
-    type: "shared.rule",
-    sharedCategoryId: "groceries",
-    weights: { alex: 2, jordan: 1 },
+    type: "partner.categorize",
+    entryId: "shared-market",
+    categoryId: "household",
   });
-  alex(
-    purchase("shared-market", -9_000, "food", {
-      sharedCategoryId: "groceries",
-      date: "2026-01-15",
-    }),
-  );
   jordan({
-    ...purchase("partner-market", -6_000, "groceries", {
-      sharedCategoryId: "groceries",
-      date: "2026-01-16",
-    }),
-    shares: { alex: 1_000, jordan: 5_000 },
+    type: "partner.edit",
+    entryId: "shared-market",
+    share: 1_500,
+    recordedAt: "2026-01-20T13:00:00Z",
   });
   alex({
-    type: "opening.add",
-    obligationId: "opening-groceries",
-    sharedCategoryId: "groceries",
-    debtorId: "jordan",
-    creditorId: "alex",
-    amount: 5_000,
-  });
-  jordan((current) => ({
-    type: "settlement.record",
-    settlementId: "settle-january",
-    otherUserId: "alex",
-    date: "2026-01-30",
+    type: "partner.match",
+    recordedAt: "2026-01-20T14:00:00Z",
+    entryId: "shared-market",
+    transactionId: "market-import",
     accountId: "checking",
-    amount: projectBook(current, "jordan", start).settlement.net,
-  }));
-  alex({
-    type: "settlement.receive",
-    settlementId: "settle-january",
-    accountId: "checking",
-    date: "2026-01-31",
+    date: "2026-01-20",
+    amount: -4_000,
+    status: "posted",
+    providerId: "market-bank-import",
   });
-  alex(
-    purchase("shared-dinner", -3_000, "food", {
-      sharedCategoryId: "groceries",
-      date: "2026-02-03",
-    }),
-  );
-  jordan(
-    purchase("partner-dinner", -6_000, "groceries", {
-      sharedCategoryId: "groceries",
-      date: "2026-02-04",
-    }),
-  );
-  // Offsetting what each owes the other moves no money.
   alex({
-    type: "settlement.record",
-    settlementId: "settle-offset",
-    otherUserId: "jordan",
-    date: "2026-02-05",
-    amount: 0,
+    type: "partner.request",
+    requestId: "market-request",
+    date: "2026-01-20",
+    amount: 1_500,
+  });
+  jordan({
+    type: "partner.settle",
+    settlementId: "market-settlement",
+    method: "Bank transfer",
+    legs: [
+      {
+        userId: "jordan",
+        accountId: "checking",
+        date: "2026-01-21",
+        amount: -1_500,
+        payee: "Alex",
+      },
+      {
+        userId: "alex",
+        accountId: "checking",
+        date: "2026-01-21",
+        amount: 1_500,
+        payee: "Jordan",
+      },
+    ],
+  });
+  alex({
+    type: "partner.settlement.confirm",
+    settlementId: "market-settlement",
+    recordedAt: "2026-01-21T12:00:00Z",
+  });
+  alex({
+    ...purchase("work-supplies", -2_000, "food"),
+    recordedAt: "2026-01-22T12:00:00Z",
+    date: "2026-01-22",
+    counterpartyShare: {
+      accountId: "counterparty:reimbursements",
+      amount: 1_000,
+      counterpartyName: "Employer",
+    },
+  });
+  alex({
+    type: "counterparty.receive",
+    recordedAt: "2026-01-23T12:00:00Z",
+    counterpartyAccountId: "counterparty:reimbursements",
+    cashAccountId: "checking",
+    date: "2026-01-23",
+    amount: 1_000,
+    counterpartyName: "Employer",
   });
   return { book, steps };
 }

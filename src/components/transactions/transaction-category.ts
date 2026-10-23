@@ -13,8 +13,6 @@ export function transactionCategory(kind: Transaction["kind"], amount: number) {
       return "Statement credit";
     case "reimbursement":
       return "Reimbursement";
-    case "settlement":
-      return "Partner repayment";
     // YNAB's reconciliation adjustments go straight to Ready to Assign.
     case "adjustment":
       return "Inflow: Ready to Assign";

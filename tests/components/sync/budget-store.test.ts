@@ -139,59 +139,6 @@ describe("BudgetStore", () => {
     expect(store.month(month)).toEqual(serverMonth(server));
   });
 
-  test("drops a command refused mid-queue and keeps the commands after it", async () => {
-    const { client, store, server, notices } = setup();
-    await client.ready;
-    const settled = vi.fn();
-    // Jordan changes the household just before the shared category arrives,
-    // so it can't be rebased.
-    server.onExecute = (input) => {
-      if (input.command.id === "share")
-        server.act("jordan", assign("jordan-1", "rent", 1_000));
-    };
-    client.run(assign("a1", "food", 10_000), { summary: "Assigned" });
-    client.run(
-      {
-        type: "shared.create",
-        id: "share",
-        sharedCategoryId: "groceries",
-        participants: ["alex", "jordan"],
-        weights: { alex: 1, jordan: 1 },
-        categoryIds: { alex: "dining", jordan: "dining" },
-      },
-      { summary: "Shared Dining", onSettled: settled },
-    );
-    client.run(assign("a3", "rent", 2_000), { summary: "Assigned" });
-    await published();
-    expect(store.getSnapshot().ledger!.sharedCategories).toHaveLength(1);
-
-    await client.idle();
-    expect(settled).toHaveBeenCalledExactlyOnceWith({
-      ok: false,
-      kind: "conflict",
-      message: "Your partner changed this budget at the same time",
-    });
-    expect(notices).toEqual([
-      {
-        kind: "refused",
-        operationId: "share",
-        summary: "Shared Dining",
-        reason: "conflict",
-        message: "Your partner changed this budget at the same time",
-      },
-    ]);
-    expect(server.executed.map((item) => item.input.command.id)).toEqual([
-      "a1",
-      "share",
-      "a3",
-    ]);
-    expect(store.getSnapshot()).toMatchObject({ revision: 3, pending: [] });
-    expect(store.getSnapshot().ledger!.sharedCategories).toEqual([]);
-    expect(assigned(store, "rent")).toBe(2_000);
-    expect(store.month(month)).toEqual(serverMonth(server));
-    expect(store.getSnapshot().undo?.operationId).toBe("a3");
-  });
-
   test("still sends a command that no longer applies here, and the server decides", async () => {
     const { client, store, server, connection } = setup();
     await client.ready;

@@ -26,7 +26,7 @@ type BudgetTransaction = View["budget"]["transactions"][number];
 type Who = (share: CounterpartyShare) => string;
 
 // A purchase or refund on a cash or card account can carry a share.
-// Transfers, loan payments, and legacy shared-category expenses can't.
+// Transfers and loan payments can't.
 export function canShare(view: View, transaction: BudgetTransaction) {
   const account = view.accounts.find(
     (item) => item.id === transaction.accountId,
@@ -35,7 +35,6 @@ export function canShare(view: View, transaction: BudgetTransaction) {
     !transaction.removed &&
     (transaction.kind === "purchase" || transaction.kind === "refund") &&
     !isTransfer(transaction) &&
-    !transaction.sharedCategoryId &&
     (account?.kind === "cash" || account?.kind === "credit")
   );
 }

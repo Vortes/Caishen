@@ -345,12 +345,6 @@ function CategoryDetails({ category }: { category: Category }) {
           </Property>
         )}
       </Card>
-      {category.reserved > 0 && (
-        <Card>
-          <Property label="Reserved">{money(category.reserved)}</Property>
-          <Property label="Spendable">{money(category.spendable)}</Property>
-        </Card>
-      )}
       <Card>
         <Tabs defaultValue="target">
           <TabsList aria-label="Category details">

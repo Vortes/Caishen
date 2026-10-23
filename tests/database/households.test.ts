@@ -82,13 +82,6 @@ function startingBook(): Book {
         name,
       });
   }
-  run(alex, {
-    type: "shared.create",
-    sharedCategoryId: "food",
-    participants: [alex, jordan],
-    weights: { [alex]: 1, [jordan]: 1 },
-    categoryIds: { [alex]: "food", [jordan]: "food" },
-  });
   for (const [index, amount] of [-2_500, -4_000, -1_250].entries())
     run(alex, {
       type: "transaction.upsert",
@@ -98,7 +91,6 @@ function startingBook(): Book {
       amount,
       payee: "Market",
       categoryId: "food",
-      sharedCategoryId: "food",
     });
   return book;
 }
@@ -330,18 +322,11 @@ void test("a budget that doesn't read puts only its owner's plan under maintenan
       },
     ],
   );
-  // Jordan's plan works from the rows Jordan's browser holds, including
-  // what Alex's shared spending means for them.
+  // Jordan's plan works from the rows Jordan's browser holds.
   const partner = householdLedger(after, jordan);
   assert.equal(partner.status, "ready");
   assert.ok(partner.status === "ready" && partner.personal);
   assert.equal(partner.status === "ready" && partner.budget.userId, jordan);
-  assert.equal(
-    partner.status === "ready" &&
-      "partnerPurchases" in partner.state &&
-      partner.state.partnerPurchases.length,
-    3,
-  );
 });
 
 void test("a pull pages through one revision in table and key order, and rows changed later come with the next pull", async () => {

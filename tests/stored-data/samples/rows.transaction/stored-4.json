@@ -8,8 +8,7 @@
   "expenseMonth": "2026-08",
   "revision": 1,
   "reviewed": true,
-  "kind": "settlement",
-  "linkedId": "settlement-2026-08",
+  "kind": "reimbursement",
   "userId": "alex",
   "sort": 26
 }

@@ -51,11 +51,9 @@ type Operation = {
 // that writes it can't be rebased onto a newer revision.
 const sharedTables = new Set([
   "member",
-  "sharedCategory",
-  "obligation",
-  "settlement",
-  "settlementAllocation",
-  "partnerFact",
+  "partnerEntry",
+  "partnerSettlement",
+  "partnerRequest",
 ]);
 
 type WithoutId<T> = T extends unknown ? Omit<T, "id"> : never;

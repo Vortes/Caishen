@@ -60,25 +60,3 @@ void test("snoozing uses the real local month and preserves the requested budget
   });
   assert.equal(command.currentMonth, "2026-11");
 });
-
-void test("future-dated shared payments and receipts cannot enter a cash preview", () => {
-  for (const command of [
-    {
-      type: "settlement.record",
-      id: "payment",
-      settlementId: "settlement",
-      otherUserId: "bob",
-      date: "2026-11-01",
-      accountId: "cash",
-      amount: 100,
-    },
-    {
-      type: "settlement.receive",
-      id: "receipt",
-      settlementId: "settlement",
-      date: "2026-11-01",
-      accountId: "cash",
-    },
-  ] satisfies Command[])
-    assert.throws(() => prepareUserCommand(budget, command, now));
-});
