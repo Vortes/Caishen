@@ -469,6 +469,27 @@ export function toShellData(
         !item.categoryId &&
         !item.lines &&
         account.kind !== "tracking";
+      const shareTotals = new Map<string, { name: string; amount: number }>();
+      const shares = item.lines?.length
+        ? item.lines.map((line) => line.counterpartyShare)
+        : [item.counterpartyShare];
+      for (const share of shares) {
+        if (!share || !share.amount) continue;
+        const key = JSON.stringify([
+          share.accountId,
+          share.counterpartyName ?? "",
+        ]);
+        const previous = shareTotals.get(key);
+        shareTotals.set(key, {
+          name:
+            share.counterpartyName ??
+            view.budget.accounts.find(
+              (account) => account.id === share.accountId,
+            )?.name ??
+            "Share",
+          amount: (previous?.amount ?? 0) + share.amount,
+        });
+      }
       return {
         id: item.id,
         date: item.date,
@@ -516,15 +537,8 @@ export function toShellData(
           ["purchase", "refund"].includes(item.kind) &&
           account.kind !== "tracking",
         shareLabel:
-          [
-            item.counterpartyShare,
-            ...(item.lines?.map((line) => line.counterpartyShare) ?? []),
-          ]
-            .filter((share) => Boolean(share))
-            .map(
-              (share) =>
-                `${share!.counterpartyName ?? view.budget.accounts.find((account) => account.id === share!.accountId)?.name ?? "Share"} ${money(share!.amount)}`,
-            )
+          [...shareTotals.values()]
+            .map((share) => `${share.name} ${money(share.amount)}`)
             .join(" · ") || undefined,
         history: item.history.map((entry) => ({
           reason: historyReason[entry.reason],

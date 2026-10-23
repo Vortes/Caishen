@@ -680,17 +680,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             }}
           />,
         )}
-        <div className={styles.cell} data-column="share">
-          <span className={styles.cellLabel}>Line {number} share</span>
-          <ShareField
-            id={`${formId}-share-${line.lineId}`}
-            value={line.counterpartyShare}
-            total={draftAmount(line) ?? 0}
-            onChange={(counterpartyShare) =>
-              changeLine(line.lineId, { counterpartyShare })
-            }
-          />
-        </div>
+
         {cell(
           lineId("outflow"),
           "outflow",
@@ -703,6 +693,17 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           `Line ${number} inflow`,
           lineAmount("inflow"),
         )}
+        <div className={styles.cell} data-column="share">
+          <span className={styles.cellLabel}>Line {number} share</span>
+          <ShareField
+            id={`${formId}-share-${line.lineId}`}
+            value={line.counterpartyShare}
+            total={draftAmount(line) ?? 0}
+            onChange={(counterpartyShare) =>
+              changeLine(line.lineId, { counterpartyShare })
+            }
+          />
+        </div>
         <div className={styles.removeLine} data-column="status">
           <IconButton
             label={`Remove line ${number}`}
@@ -758,6 +759,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         {cell("date", "date", "Date", dateControl)}
         {cell("payee", "payee", "Payee", payeeControl)}
         {cell("categoryId", "category", "Category", categoryControl)}
+
+        {cell("outflow", "outflow", "Outflow", amount("outflow"))}
+        {cell("inflow", "inflow", "Inflow", amount("inflow"))}
         <div className={styles.cell} data-column="share">
           <span className={styles.cellLabel}>Share</span>
           {split ? (
@@ -777,8 +781,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           )}
           {fieldError("counterpartyShare")}
         </div>
-        {cell("outflow", "outflow", "Outflow", amount("outflow"))}
-        {cell("inflow", "inflow", "Inflow", amount("inflow"))}
         <span data-column="status" aria-hidden />
         {amountError && (
           <p id={amountErrorId} className={styles.amountError}>
