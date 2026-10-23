@@ -7,7 +7,8 @@ test("the month picker crosses years and a target can be snoozed and resumed aft
 }) => {
   const gifts = page
     .getByRole("group", { name: "Categories", exact: true })
-    .getByRole("button", { name: /^Gifts / });
+    .getByRole("button", { name: /^Gifts / })
+    .getByText("Gifts", { exact: true });
   await gifts.click();
   await page
     .getByRole("button", { name: "Create target", exact: true })
