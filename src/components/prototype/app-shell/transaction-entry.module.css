@@ -524,6 +524,12 @@
   min-width: 0;
   padding-bottom: 6px;
 }
+.shareActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-inset);
+}
 .shareLabel {
   display: flex;
   flex-direction: column;

@@ -83,7 +83,7 @@ export function ShareField({
               />
             </div>
           </label>
-          <div>
+          <div className={styles.shareActions}>
             <Button
               variant="quiet"
               size="sm"
@@ -106,18 +106,20 @@ export function ShareField({
                 Their share will become $0. You take on this cost. Save the
                 transaction to apply it.
               </p>
-              <Button size="sm" onClick={() => setWriteoff(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  onChange({ ...value, amount: "0.00" });
-                  setWriteoff(false);
-                }}
-              >
-                Set share to $0
-              </Button>
+              <div className={styles.shareActions}>
+                <Button size="sm" onClick={() => setWriteoff(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    onChange({ ...value, amount: "0.00" });
+                    setWriteoff(false);
+                  }}
+                >
+                  Set share to $0
+                </Button>
+              </div>
             </div>
           )}
         </>
