@@ -370,8 +370,8 @@ export function toShellData(
     };
   });
 
-  // Groups added with group.add lead, newest first; the rest follow in the
-  // order their categories were added.
+  // The budget's ordered groups lead; the rest follow in the order their
+  // categories were added.
   const groups: CategoryGroup[] = (view.budget.groups ?? []).map((name) => ({
     id: name,
     name,
@@ -387,17 +387,19 @@ export function toShellData(
         categories: [category],
       });
   }
-  // People, which holds the paired envelopes, leads the plan.
-  const people = groups.findIndex((group) =>
+  // People, which holds the paired envelopes, leads the plan until it's
+  // been moved.
+  const people = groups.find((group) =>
     group.categories.some((category) => category.pairs),
   );
-  if (people > 0) groups.unshift(...groups.splice(people, 1));
+  if (people && !view.budget.groups?.includes(people.name))
+    groups.unshift(...groups.splice(groups.indexOf(people), 1));
   // The partner leads People, as in the sidebar.
-  if (people >= 0) {
+  if (people) {
     const isPartner = (category: Category) =>
       category.pairs !== undefined &&
       counterparty.get(category.pairs.accountId)?.kind === "partner";
-    groups[0]!.categories.sort(
+    people.categories.sort(
       (a, b) => Number(isPartner(b)) - Number(isPartner(a)),
     );
   }

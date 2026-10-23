@@ -385,6 +385,7 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     openingBalance: 400_000,
   });
   jordan({ type: "category.add", categoryId: "household", name: "Household" });
+  jordan({ type: "group.reorder", names: ["Everyday"] });
   alex({
     type: "partner.record",
     entryId: "shared-market",

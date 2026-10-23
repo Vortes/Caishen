@@ -45,7 +45,7 @@ const AddCategoryContext = createContext<AddCategory | null>(null);
 
 export const AddCategoryProvider = AddCategoryContext.Provider;
 
-function useAddCategory() {
+export function useAddCategory() {
   const value = useContext(AddCategoryContext);
   if (!value) throw new Error("useAddCategory needs an AddCategoryProvider.");
   return value;

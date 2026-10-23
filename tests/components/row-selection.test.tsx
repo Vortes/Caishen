@@ -44,6 +44,14 @@ test("category checkboxes add to the selection and remove only the unchecked cat
         categoryId: "groceries",
         name: "Groceries",
       },
+      // Selecting every category shows only Auto-Assign.
+      {
+        type: "category.add",
+        id: "rent",
+        categoryId: "rent",
+        name: "Rent",
+        group: "Bills",
+      },
     ],
   });
   const categories = within(screen.getByRole("group", { name: "Categories" }));
@@ -231,6 +239,14 @@ test("a category group's checkbox selects all of a partial selection and then cl
         categoryId: "groceries",
         name: "Groceries",
       },
+      // Selecting every category shows only Auto-Assign.
+      {
+        type: "category.add",
+        id: "rent",
+        categoryId: "rent",
+        name: "Rent",
+        group: "Bills",
+      },
     ],
   });
   const categories = within(screen.getByRole("group", { name: "Categories" }));
@@ -248,9 +264,10 @@ test("a category group's checkbox selects all of a partial selection and then cl
       checked: true,
     }),
   ).toBe(group);
-  expect(
-    categories.queryAllByRole("checkbox", { checked: false }),
-  ).toHaveLength(0);
+  for (const name of ["Select Gifts", "Select Groceries"])
+    expect(
+      categories.getByRole("checkbox", { name, checked: true }),
+    ).toBeTruthy();
   expect(screen.getByText("2 categories selected")).toBeTruthy();
 
   await user.click(group);
@@ -258,8 +275,10 @@ test("a category group's checkbox selects all of a partial selection and then cl
   expect(categories.queryAllByRole("checkbox", { checked: true })).toHaveLength(
     0,
   );
+  // Everyday and Bills, their three categories, and the column header's
+  // select-all.
   expect(categories.getAllByRole("checkbox", { checked: false })).toHaveLength(
-    3,
+    6,
   );
   expect(screen.queryByText("2 categories selected")).toBeNull();
 });
