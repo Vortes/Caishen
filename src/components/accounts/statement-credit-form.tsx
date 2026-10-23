@@ -7,20 +7,15 @@ import { EntityOptions } from "~/components/budget/form-options";
 
 export function StatementCreditForm({
   view,
-  claim,
   defaultAccountId,
 }: {
   view: View;
-  claim?: View["reimbursements"][number];
   defaultAccountId?: string;
 }) {
   const cards = view.accounts.filter((account) => account.kind === "credit");
-  const purchaseAccountId = view.budget.transactions.find(
-    (transaction) => transaction.id === claim?.transactionId,
-  )?.accountId;
-  const cardAccountId =
-    cards.find((account) => account.id === defaultAccountId)?.id ??
-    cards.find((account) => account.id === purchaseAccountId)?.id;
+  const cardAccountId = cards.find(
+    (account) => account.id === defaultAccountId,
+  )?.id;
   return (
     <>
       <SelectField
@@ -36,9 +31,6 @@ export function StatementCreditForm({
           label="Posted credit amount ($)"
           name="amount"
           inputMode="decimal"
-          defaultValue={
-            claim ? (claim.outstanding / 100).toFixed(2) : undefined
-          }
           required
         />
         <FormField

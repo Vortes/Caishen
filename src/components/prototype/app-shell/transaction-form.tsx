@@ -123,11 +123,13 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     account?.kind === "tracking"
       ? Boolean(draft.outflow)
       : Boolean(draft.inflow);
+  // An expense recorded under a retired shared category keeps its paired
+  // category.
   const shared = view.sharedCategories.find(
-    (item) => item.id === draft.sharedCategoryId,
+    (item) => item.id === session.initial?.sharedCategoryId,
   );
   // A purchase or refund can split; a transfer, loan payment, tracked
-  // activity, or shared expense can't.
+  // activity, or legacy shared expense can't.
   const splittable =
     !draft.transferAccountId &&
     !draft.loanId &&

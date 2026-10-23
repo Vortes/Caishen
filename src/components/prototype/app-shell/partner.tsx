@@ -25,9 +25,9 @@ export function PartnerSettings() {
     <div className={styles.settingsPage}>
       <section className={styles.settingsSection} aria-label="Partner">
         <p className={styles.settingsIntro}>
-          Split categories like rent with one partner. They see shared expenses,
-          allocations, and repayments; your other transactions and balances stay
-          private.
+          Share costs like rent with one partner. They see the purchases you
+          share with them and the payments between you; your categories, other
+          transactions, and balances stay private.
         </p>
         <Card>
           {partner ? (
