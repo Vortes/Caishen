@@ -10,8 +10,8 @@ import {
   isComplete,
   useLock,
 } from "~/components/entry/invite-code";
-import { useShellData } from "./shell-data";
-import styles from "./shell.module.css";
+import { useShellData } from "~/components/prototype/app-shell/shell-data";
+import styles from "~/components/prototype/app-shell/shell.module.css";
 import additions from "~/components/entry/settings.module.css";
 
 export function PartnerSettings({ blocked }: { blocked?: string } = {}) {

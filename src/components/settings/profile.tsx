@@ -10,10 +10,10 @@ import {
   type UpdatePreferences,
 } from "~/components/entry/profile-preferences";
 import { AccountSettings } from "~/components/entry/account-settings";
-import { PhotoCropDialog } from "./photo-crop-dialog";
-import { useShellData } from "./shell-data";
-import { UserAvatar } from "./user-avatar";
-import styles from "./shell.module.css";
+import { PhotoCropDialog } from "~/components/prototype/app-shell/photo-crop-dialog";
+import { useShellData } from "~/components/prototype/app-shell/shell-data";
+import { UserAvatar } from "~/components/prototype/app-shell/user-avatar";
+import styles from "~/components/prototype/app-shell/shell.module.css";
 
 // Clerk accepts these formats for a profile image.
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];

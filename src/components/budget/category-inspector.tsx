@@ -13,7 +13,7 @@ import { TargetSection } from "~/components/budget/target-section";
 import { ReimbursementsSection } from "~/components/reimbursements/reimbursements-section";
 import { SharedBalance } from "~/components/shared-expenses/shared-balance";
 import {
-  PartnerInvite,
+  PartnerSettingsLink,
   ShareCategory,
 } from "~/components/shared-expenses/share-category";
 import {
@@ -164,7 +164,7 @@ export function CategoryInspector({
         )}
       {!selected.length &&
         (!partner ? (
-          <PartnerInvite open={open} />
+          <PartnerSettingsLink />
         ) : view.sharedCategories.length ? (
           <SharedBalance view={view} open={open} />
         ) : (
