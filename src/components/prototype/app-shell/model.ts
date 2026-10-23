@@ -16,7 +16,7 @@ import {
   today,
 } from "~/components/budget/format";
 import type { State, View } from "~/components/budget/types";
-import { partnerOf, sharePercent } from "~/components/shared-expenses/split";
+import { partnerOf } from "~/components/partner/partner";
 import { transactionCategory } from "~/components/transactions/transaction-category";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import { isCounterparty, type Target } from "~/domain/engine";
@@ -67,7 +67,6 @@ export type Category = {
   pairs?: { accountId: string; name: string; balance: number };
   reserved: number;
   spendable: number;
-  sharePercents: number[];
   autoAssign: AutoAssignCategory;
 };
 
@@ -131,7 +130,6 @@ export type Transaction = {
   needsCategory: boolean;
   categoryNotNeeded: boolean;
   forMonth?: string;
-  shared: boolean;
   // Who owes a share of it, for search.
   shareLabel?: string;
   // Money someone paid back, or a payment between the partners: who, the
@@ -164,14 +162,7 @@ export type ShellData = {
   transactions: Transaction[];
   costToBeMe: number;
   expectedIncome: number | null;
-  partner?: { name: string; youOwe: number; owedToYou: number };
-  reimbursements: {
-    id: string;
-    name: string;
-    amount: number;
-    outstanding: number;
-    kind: "cash" | "statement-credit";
-  }[];
+  partner?: { name: string };
 };
 
 const relative = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
@@ -276,7 +267,6 @@ export function toShellData(
 ): ShellData {
   const view = state.view;
   const month = view.month;
-  const userId = view.budget.userId;
   const accountName = new Map(
     view.accounts.map((item) => [item.id, item.name]),
   );
@@ -303,15 +293,6 @@ export function toShellData(
       return [item.id, pair ? displayName(pair) : item.name];
     }),
   );
-  const shares = new Map<string, number[]>();
-  for (const shared of view.sharedCategories.filter((item) => !item.archived)) {
-    const id = shared.categoryIds[userId];
-    if (id)
-      shares.set(id, [
-        ...(shares.get(id) ?? []),
-        sharePercent(shared.weights, userId),
-      ]);
-  }
 
   const categories = view.categories.map((item): Category => {
     const card = item.pairedAccountId
@@ -387,7 +368,6 @@ export function toShellData(
       },
       reserved: item.reserved,
       spendable: item.spendable,
-      sharePercents: shares.get(item.id) ?? [],
       autoAssign: item,
     };
   });
@@ -555,7 +535,6 @@ export function toShellData(
           item.expenseMonth !== item.date.slice(0, 7)
             ? monthName(item.expenseMonth)
             : undefined,
-        shared: Boolean(item.sharedCategoryId),
         shareLabel: shareNames.join(" ") || undefined,
         repayment: repaidFrom
           ? {
@@ -597,7 +576,6 @@ export function toShellData(
           }
         : {}),
       categoryNotNeeded: false,
-      shared: false,
       history: [],
     })),
   ].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -644,18 +622,7 @@ export function toShellData(
     transactions,
     costToBeMe: view.costToBeMe,
     expectedIncome: view.expectedIncome,
-    partner: partner && {
-      name: partner.name,
-      youOwe: view.settlement.youOwe,
-      owedToYou: view.settlement.owedToYou,
-    },
-    reimbursements: view.reimbursements.map((item) => ({
-      id: item.id,
-      name: item.name,
-      amount: item.amount,
-      outstanding: item.outstanding,
-      kind: item.kind,
-    })),
+    partner: partner && { name: partner.name },
   };
 }
 

@@ -45,8 +45,6 @@ export type TransactionDraft = {
   inflow: string;
   status: "pending" | "posted";
   expenseMonth: string;
-  sharedCategoryId: string;
-  ownShare: string;
   counterpartyShare?: DraftShare | null;
   refundOfTransactionId?: string;
   // Two or more when the amount is split across categories; none otherwise.
@@ -155,8 +153,6 @@ export function createTransactionDraft(
         : "",
     status: transaction?.status ?? "posted",
     expenseMonth: transaction?.expenseMonth ?? month,
-    sharedCategoryId: transaction?.sharedCategoryId ?? "",
-    ownShare: "",
     counterpartyShare: (() => {
       const share =
         transaction?.counterpartyShare ??
@@ -235,10 +231,10 @@ export function buildTransactionDraftCommand({
   const payee = draft.payee.trim();
   const expenseMonth = draft.expenseMonth.trim();
   const categoryId = draft.categoryId.trim();
-  const sharedCategoryId = draft.sharedCategoryId.trim();
+  // An expense recorded under a retired shared category keeps it.
+  const sharedCategoryId = transaction?.sharedCategoryId;
   const outflowText = draft.outflow.trim();
   const inflowText = draft.inflow.trim();
-  const ownShareText = draft.ownShare.trim();
   const transfer = Boolean(draft.transferAccountId || draft.loanId);
   const loan = view.budget.loans.find((item) => item.id === draft.loanId);
   const other = view.accounts.find(
@@ -430,51 +426,19 @@ export function buildTransactionDraftCommand({
       fields.categoryId =
         "An existing category cannot be cleared. Choose a category.";
   }
-  if (transfer && (sharedCategoryId || transaction?.sharedCategoryId))
+  if (transfer && sharedCategoryId)
     fields.payee =
-      "Resolve the shared expense before converting it to a transfer.";
-  if (transaction?.sharedCategoryId && !sharedCategoryId)
-    fields.sharedCategoryId =
-      "An existing shared expense cannot be made personal here.";
+      "An expense in a retired shared category can't become a transfer.";
 
-  let shares: Record<string, number> | undefined;
   const shared = view.sharedCategories.find(
     (item) => item.id === sharedCategoryId,
   );
-  if (sharedCategoryId) {
-    if (!shared?.participants.includes(view.budget.userId))
-      fields.sharedCategoryId = "Choose one of your shared categories.";
-    else if (shared.categoryIds[view.budget.userId] !== categoryId)
-      fields.categoryId =
-        "Use the personal category paired with this shared expense.";
-    if (inflowText)
-      fields.sharedCategoryId =
-        "Shared merchant refunds need manual investigation in this version.";
-  } else if (ownShareText)
-    fields.ownShare = "Choose a shared category before overriding your share.";
-
-  if (ownShareText && sharedCategoryId) {
-    const ownShare = parseAmount(ownShareText);
-    if (ownShare === undefined)
-      fields.ownShare =
-        "Enter a nonnegative share with no more than two decimal places.";
-    else if (ownShare > outflow)
-      fields.ownShare = "Your share cannot exceed the full outflow.";
-    else if (shared) {
-      const others = shared.participants.filter(
-        (id) => id !== view.budget.userId,
-      );
-      const partnerId = others.length === 1 ? others[0] : undefined;
-      if (!partnerId)
-        fields.sharedCategoryId =
-          "Shared expenses require one connected partner.";
-      else
-        shares = {
-          [view.budget.userId]: ownShare,
-          [partnerId]: outflow - ownShare,
-        };
-    }
-  }
+  if (shared && shared.categoryIds[view.budget.userId] !== categoryId)
+    fields.categoryId =
+      "This expense belongs to a retired shared category, so its category can't change.";
+  if (sharedCategoryId && inflowText)
+    fields.inflow =
+      "Shared merchant refunds need manual investigation in this version.";
 
   const counterpartyShare = shareInput(
     draft.counterpartyShare,
@@ -518,8 +482,6 @@ export function buildTransactionDraftCommand({
     recordedAt: new Date().toISOString(),
     status: draft.status,
     expenseMonth: expenseMonth || undefined,
-    sharedCategoryId: sharedCategoryId || undefined,
-    shares,
     revision: transaction ? transaction.revision + 1 : undefined,
   };
 }

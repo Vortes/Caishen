@@ -4,11 +4,7 @@ import type {
   Budget,
   Category,
   Loan,
-  Obligation,
   PayeeMemory,
-  Reimbursement,
-  Settlement,
-  SharedCategory,
   Transaction,
 } from "./engine";
 import type { PartnerEntry } from "./partner-ledger";
@@ -22,16 +18,12 @@ import {
   groupRows,
   loanRows,
   memberRows,
-  openingObligationRows,
   partnerEntryRow,
   partnerFactRows,
   partnerRequestRow,
   partnerSettlementRow,
   partnerSideRows,
   payeeMemoryRows,
-  reimbursementRows,
-  settlementRows,
-  sharedCategoryRows,
   transactionRows,
   type ChangeSet,
   type WireRow,
@@ -338,56 +330,6 @@ export class Changes {
   addLoan(budget: Budget, loan: Loan): void {
     this.loan(budget, loan);
     budget.loans.push(loan);
-  }
-
-  /** A reimbursement claim with its receipts. */
-  reimbursement(budget: Budget, claim: Reimbursement): Reimbursement {
-    this.item(
-      `reimbursement ${budget.userId} ${claim.id}`,
-      () => budget.reimbursements,
-      claim.id,
-      (item, sort) => reimbursementRows(budget.userId, item, sort),
-    );
-    return claim;
-  }
-
-  addReimbursement(budget: Budget, claim: Reimbursement): void {
-    this.reimbursement(budget, claim);
-    budget.reimbursements.push(claim);
-  }
-
-  /** The shared categories, which the caller changes, adds, or removes. */
-  sharedCategories(): SharedCategory[] {
-    this.touchFacts();
-    this.touch("shared categories", () =>
-      sharedCategoryRows(this.state.sharedCategories),
-    );
-    return this.state.sharedCategories;
-  }
-
-  /** The opening shared balances, to which the caller adds. */
-  openingObligations(): Obligation[] {
-    this.touch("opening obligations", () =>
-      openingObligationRows(this.state.obligations),
-    );
-    return this.state.obligations;
-  }
-
-  /** A settlement with its allocations. */
-  settlement(settlement: Settlement): Settlement {
-    this.touchFacts();
-    this.item(
-      `settlement ${settlement.id}`,
-      () => this.state.settlements,
-      settlement.id,
-      (item, sort) => settlementRows(item, sort),
-    );
-    return settlement;
-  }
-
-  addSettlement(settlement: Settlement): void {
-    this.settlement(settlement);
-    this.state.settlements.push(settlement);
   }
 
   /** Every row the touched entities changed, with its prior content. */

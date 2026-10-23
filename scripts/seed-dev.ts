@@ -189,7 +189,10 @@ function summary(seed: ReturnType<typeof buildDevelopmentSeed>) {
         needsReview: view.budget.transactions.filter(
           (transaction) => !transaction.removed && !transaction.reviewed,
         ).length,
-        outstandingSharedCents: view.settlement.net,
+        // Positive: the partner owes this budget.
+        partnerBalanceCents: view.accounts.find(
+          (account) => account.kind === "partner",
+        )?.balance,
         overspentCategories: view.categories
           .filter((category) => category.available < 0)
           .map((category) => category.name),

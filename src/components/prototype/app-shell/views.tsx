@@ -279,13 +279,6 @@ export function PlanView({
                           <span className={styles.truncate}>
                             {category.name}
                           </span>
-                          {category.sharePercents.length > 0 && (
-                            <UsersIcon
-                              size={12}
-                              className={styles.inlineIcon}
-                              aria-label="Shared"
-                            />
-                          )}
                         </FundingBar>
                       </span>
                       <span
@@ -710,13 +703,6 @@ export function RegisterView({
               data-jump={Boolean(item.counterpart) || undefined}
             >
               <span className={styles.truncate}>{item.payee}</span>
-              {item.shared && (
-                <UsersIcon
-                  size={12}
-                  className={styles.inlineIcon}
-                  aria-label="Shared"
-                />
-              )}
             </span>
             <span className={styles.truncate} data-column="category">
               {item.needsCategory ? (

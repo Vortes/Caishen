@@ -10,17 +10,8 @@ import { AutoAssignSection } from "~/components/budget/auto-assign-section";
 import { AvailableSection } from "~/components/budget/available-section";
 import { CostToBeMe } from "~/components/budget/cost-to-be-me";
 import { TargetSection } from "~/components/budget/target-section";
-import { ReimbursementsSection } from "~/components/reimbursements/reimbursements-section";
-import { SharedBalance } from "~/components/shared-expenses/shared-balance";
-import {
-  PartnerSettingsLink,
-  ShareCategory,
-} from "~/components/shared-expenses/share-category";
-import {
-  partnerOf,
-  sharePercent,
-  sharedCategoryFor,
-} from "~/components/shared-expenses/split";
+import { PartnerSettingsLink } from "~/components/partner/partner-invite";
+import { partnerOf } from "~/components/partner/partner";
 
 export function CategoryInspector({
   view,
@@ -43,7 +34,6 @@ export function CategoryInspector({
 }) {
   const category = selected.length === 1 ? selected[0] : undefined;
   const partner = partnerOf(view);
-  const shared = category && sharedCategoryFor(view, category.id);
   const card = view.accounts.find(
     (account) => account.id === category?.pairedAccountId,
   );
@@ -74,18 +64,6 @@ export function CategoryInspector({
           </Button>
         )}
       </div>
-      {shared && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="shared-rule"
-          aria-label={`Edit ${shared.name} split`}
-          onClick={() => open({ type: "shared-category", id: shared.id })}
-        >
-          <Icon name="shared" size={13} />
-          Shared · you {sharePercent(shared.weights, view.budget.userId)}%
-        </Button>
-      )}
       {!selected.length && <CostToBeMe view={view} run={run} />}
       <AvailableSection view={view} selected={selected} busy={busy} run={run} />
       {category && (
@@ -155,27 +133,7 @@ export function CategoryInspector({
           </div>
         </section>
       )}
-      {category &&
-        partner &&
-        !shared &&
-        !category.pairedAccountId &&
-        !category.pairedLoanId && (
-          <ShareCategory category={category} open={open} />
-        )}
-      {!selected.length &&
-        (!partner ? (
-          <PartnerSettingsLink />
-        ) : view.sharedCategories.length ? (
-          <SharedBalance view={view} open={open} />
-        ) : (
-          <section className="inspector-section">
-            <h3>Partner</h3>
-            <p className="inspector-note">
-              Select a category like rent, then share it to split its purchases.
-            </p>
-          </section>
-        ))}
-      {!selected.length && <ReimbursementsSection view={view} open={open} />}
+      {!selected.length && !partner && <PartnerSettingsLink />}
       {state.evidence.length > 0 && !selected.length && (
         <section className="inspector-section">
           <h3>Reconciliation</h3>

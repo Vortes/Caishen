@@ -1,3 +1,7 @@
+---
+status: shared-cost and reimbursement parts superseded by ADR-0007
+---
+
 # Shared categories across separate personal budgets
 
 Each partner keeps a separate personal budget, with unrelated spending private and shared-expense details visible as needed to verify settlement. Explicit shared-category rules, defaulting to equal shares with purchase-level exceptions, determine personal shares and the amounts owed between partners; full payment amounts remain available separately, while personal spending reports default to each person's share. This preserves category-based budgeting while replacing manual shared-expense splitting and settlement calculations, at the cost of maintaining a distinction between personal cost, actual payments, and outstanding reimbursements.

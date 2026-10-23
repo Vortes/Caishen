@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import { formatMoney, newId } from "~/components/budget/format";
+import { newId } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Icon } from "~/components/shared";
 import { Button } from "~/components/ui-legacy/button";
@@ -75,8 +75,10 @@ export function TransactionEditor({
   const selectedAccount = view.accounts.find(
     (account) => account.id === draft.accountId,
   );
+  // An expense recorded under a retired shared category keeps its paired
+  // category.
   const selectedShared = view.sharedCategories.find(
-    (category) => category.id === draft.sharedCategoryId,
+    (category) => category.id === initialTransaction?.sharedCategoryId,
   );
   const accountOptions = useMemo<TransactionChoiceOption[]>(
     () =>
@@ -210,9 +212,7 @@ export function TransactionEditor({
         if (
           keys.some(
             (field) =>
-              ["expenseMonth", "sharedCategoryId", "ownShare"].includes(
-                field,
-              ) ||
+              field === "expenseMonth" ||
               (!showAccount && field === "accountId"),
           )
         )
@@ -438,94 +438,6 @@ export function TransactionEditor({
                     account ledger.
                   </p>
                 </div>
-                {view.sharedCategories.length > 0 && (
-                  <>
-                    <div className="transaction-editor-detail-field">
-                      <label htmlFor={`${formId}-sharedCategoryId`}>
-                        Shared category (optional)
-                      </label>
-                      <select
-                        ref={(node) => {
-                          controls.current.sharedCategoryId = node;
-                        }}
-                        id={`${formId}-sharedCategoryId`}
-                        name="sharedCategoryId"
-                        value={draft.sharedCategoryId}
-                        disabled={disabled}
-                        aria-invalid={
-                          Boolean(fields.sharedCategoryId) || undefined
-                        }
-                        aria-describedby={
-                          fields.sharedCategoryId
-                            ? `${formId}-sharedCategoryId-error`
-                            : undefined
-                        }
-                        onChange={(event) => {
-                          const shared = view.sharedCategories.find(
-                            (item) => item.id === event.target.value,
-                          );
-                          change({
-                            sharedCategoryId: event.target.value,
-                            ownShare: "",
-                            ...(shared
-                              ? {
-                                  categoryId:
-                                    shared.categoryIds[view.budget.userId] ??
-                                    "",
-                                }
-                              : {}),
-                          });
-                        }}
-                      >
-                        <option
-                          value=""
-                          disabled={Boolean(
-                            initialTransaction?.sharedCategoryId,
-                          )}
-                        >
-                          Personal expense
-                        </option>
-                        {view.sharedCategories
-                          .filter(
-                            (shared) =>
-                              !shared.archived ||
-                              shared.id === draft.sharedCategoryId,
-                          )
-                          .map((shared) => (
-                            <option key={shared.id} value={shared.id}>
-                              {shared.name}
-                            </option>
-                          ))}
-                      </select>
-                      <FieldError
-                        id={`${formId}-sharedCategoryId-error`}
-                        message={fields.sharedCategoryId}
-                      />
-                      <p className="field-hint">
-                        Shared expenses use their paired budget category.
-                      </p>
-                    </div>
-                    {draft.sharedCategoryId && (
-                      <div className="transaction-editor-detail-field">
-                        {input(
-                          "ownShare",
-                          "Your share override ($, optional)",
-                          {
-                            inputMode: "decimal",
-                            placeholder: "Use the category split",
-                          },
-                          true,
-                        )}
-                        <p className="field-hint">
-                          {initialTransaction?.shares?.[view.budget.userId] !==
-                          undefined
-                            ? `Original share ${formatMoney(initialTransaction.shares[view.budget.userId]!)}. Leave blank to keep the original split.`
-                            : "The rest belongs to your partner. Leave blank to use the category split."}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
               </div>
             </details>
             <div className="transaction-editor-actions">
