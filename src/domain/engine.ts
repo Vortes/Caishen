@@ -1741,6 +1741,7 @@ function replay(
     const cashByCategory = new Map<string, number>();
     const credits: Transaction[] = [];
     const payments: Transaction[] = [];
+    const positiveCardCreditSpent = new Set<string>();
     const debtTransfers: { from: string; to: string; amount: number }[] = [];
     for (const assignment of rows.assignments) {
       const state = categories.get(assignment.categoryId)!;
@@ -1757,6 +1758,12 @@ function replay(
       const account = index.account(transaction.accountId);
       if (transaction.status === "pending" && transaction.amount > 0) continue;
       const accountState = accounts.get(account.id)!;
+      if (
+        account.kind === "credit" &&
+        accountState.balance > 0 &&
+        transaction.amount < 0
+      )
+        positiveCardCreditSpent.add(account.id);
       accountState.balance = safe(accountState.balance + transaction.amount);
       if (transaction.amount < 0)
         accountState.outflows = safe(
@@ -2017,6 +2024,18 @@ function replay(
         state.creditsReleased + reserve - state.reserve,
       );
       state.reserve = reserve;
+    }
+    for (const account of budget.accounts.filter(
+      (item) => item.kind === "credit",
+    )) {
+      const state = accounts.get(account.id)!;
+      if (state.balance > 0 || positiveCardCreditSpent.has(account.id)) {
+        const reserve = Math.min(state.reserve, Math.max(0, -state.balance));
+        state.creditsReleased = safe(
+          state.creditsReleased + reserve - state.reserve,
+        );
+        state.reserve = reserve;
+      }
     }
     for (const category of budget.categories)
       if (category.pairedAccountId) {
