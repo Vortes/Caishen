@@ -128,15 +128,12 @@ export type Transaction = {
   categoryNotNeeded: boolean;
   forMonth?: string;
   shared: boolean;
+  // Who owes a share of it, for search.
   shareLabel?: string;
-  shareable?: boolean;
-  history: {
-    reason: string;
-    amount: number;
-    actorId?: string;
-    at?: string;
-    shares?: string[];
-  }[];
+  // Money someone paid back: who, and the counterparty account it moved out
+  // of.
+  repayment?: { from: string; account: string };
+  history: { reason: string; amount: number }[];
 };
 
 export type ShellData = {
@@ -470,27 +467,25 @@ export function toShellData(
         !item.categoryId &&
         !item.lines &&
         account.kind !== "tracking";
-      const shareTotals = new Map<string, { name: string; amount: number }>();
-      const shares = item.lines?.length
-        ? item.lines.map((line) => line.counterpartyShare)
-        : [item.counterpartyShare];
-      for (const share of shares) {
-        if (!share?.amount) continue;
-        const key = JSON.stringify([
-          share.accountId,
-          share.counterpartyName ?? "",
-        ]);
-        const previous = shareTotals.get(key);
-        shareTotals.set(key, {
-          name:
-            share.counterpartyName ??
-            view.budget.accounts.find(
-              (account) => account.id === share.accountId,
-            )?.name ??
-            "Share",
-          amount: (previous?.amount ?? 0) + share.amount,
-        });
-      }
+      // A repayment moves money out of a counterparty account, like a
+      // transfer, rather than earning it.
+      const repaidFrom =
+        item.linkedCounterpartyAccountId &&
+        counterparty.get(item.linkedCounterpartyAccountId);
+      const shareNames = [
+        ...new Set(
+          (item.lines ?? [item])
+            .map((line) => line.counterpartyShare)
+            .filter((share) => share?.amount)
+            .map(
+              (share) =>
+                share!.counterpartyName ??
+                view.budget.accounts.find(
+                  (account) => account.id === share!.accountId,
+                )?.name,
+            ),
+        ),
+      ];
       return {
         id: item.id,
         date: item.date,
@@ -523,36 +518,26 @@ export function toShellData(
                 : ((item.categoryId && categoryName.get(item.categoryId)) ??
                   (boundary
                     ? "Inflow: Ready to Assign"
-                    : transactionCategory(item.kind, item.amount))),
+                    : repaidFrom
+                      ? `Transfer: ${displayName(repaidFrom)}`
+                      : transactionCategory(item.kind, item.amount))),
         needsCategory,
         categoryNotNeeded,
         forMonth:
           item.expenseMonth !== item.date.slice(0, 7)
             ? monthName(item.expenseMonth)
             : undefined,
-        shared:
-          Boolean(item.sharedCategoryId) ||
-          Boolean(item.counterpartyShare) ||
-          Boolean(item.lines?.some((line) => line.counterpartyShare)),
-        shareable:
-          ["purchase", "refund"].includes(item.kind) &&
-          account.kind !== "tracking",
-        shareLabel:
-          [...shareTotals.values()]
-            .map((share) => `${share.name} ${money(share.amount)}`)
-            .join(" · ") || undefined,
+        shared: Boolean(item.sharedCategoryId),
+        shareLabel: shareNames.join(" ") || undefined,
+        repayment: repaidFrom
+          ? {
+              from: item.counterpartyName ?? displayName(repaidFrom),
+              account: displayName(repaidFrom),
+            }
+          : undefined,
         history: item.history.map((entry) => ({
           reason: historyReason[entry.reason],
           amount: entry.amount,
-          actorId: entry.actorId,
-          at: entry.at,
-          shares: entry.shareChanges?.map((change) => {
-            const label = (share: typeof change.previous) =>
-              share
-                ? `${share.counterpartyName ?? view.budget.accounts.find((account) => account.id === share.accountId)?.name ?? "Share"} ${money(share.amount)}`
-                : "No share";
-            return `${label(change.previous)} → ${label(change.next)}`;
-          }),
         })),
       };
     }),

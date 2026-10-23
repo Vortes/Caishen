@@ -384,7 +384,13 @@ export function payeeMemoryRows(
   memory: PayeeMemory | undefined,
 ): WireRow[] {
   return memory
-    ? [row("payeeMemory", rowKey(userId, payeeKey), { ...memory, userId, payeeKey })]
+    ? [
+        row("payeeMemory", rowKey(userId, payeeKey), {
+          ...memory,
+          userId,
+          payeeKey,
+        }),
+      ]
     : [];
 }
 
@@ -961,9 +967,16 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       expectedIncome: Object.fromEntries(
         (income.get(userId) ?? []).map((item) => [item.month, item.amount]),
       ),
-      ...(payees ? {
-        payeeMemory: Object.fromEntries(payees.map(item => [item.payeeKey, without(item, ["userId", "payeeKey"])])),
-      } : {}),
+      ...(payees
+        ? {
+            payeeMemory: Object.fromEntries(
+              payees.map((item) => [
+                item.payeeKey,
+                without(item, ["userId", "payeeKey"]),
+              ]),
+            ),
+          }
+        : {}),
     };
   });
 }

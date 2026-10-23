@@ -1,0 +1,22 @@
+/* A repayment's row reads like the editor's, with text where the editor has
+   fields: each cell sits where a field's text would. */
+.staticCell {
+  justify-content: center;
+  height: calc(
+    var(--size-control) + (var(--size-row-lg) - var(--size-control)) / 2
+  );
+}
+.staticCell[data-numeric] {
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  max-width: 72ch;
+  margin: 0;
+  padding: 0 var(--space-row-x) 12px var(--row-gutter);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
