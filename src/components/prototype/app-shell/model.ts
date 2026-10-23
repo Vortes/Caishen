@@ -512,6 +512,9 @@ export function toShellData(
           Boolean(item.sharedCategoryId) ||
           Boolean(item.counterpartyShare) ||
           Boolean(item.lines?.some((line) => line.counterpartyShare)),
+        shareable:
+          ["purchase", "refund"].includes(item.kind) &&
+          account.kind !== "tracking",
         shareLabel:
           [
             item.counterpartyShare,
