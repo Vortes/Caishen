@@ -15,7 +15,7 @@ export default defineConfig({
     // other worktrees) can more than double that.
     testTimeout: 20_000,
     environmentOptions: {
-      jsdom: { url: "http://localhost/prototype/app-shell" },
+      jsdom: { url: "http://localhost/app" },
     },
   },
 });

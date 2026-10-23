@@ -9,9 +9,10 @@ import {
   BRAND_TILE_STOPS,
 } from "~/components/shared/brand-geometry";
 import { EntryPage } from "~/components/entry/entry-page";
+import { SHELL_PATH } from "~/components/workspace/routes";
 import styles from "~/components/entry/welcome.module.css";
 
-// The legacy Welcome, allowed past the app's design system limits: a 96px
+// Welcome's brand treatment allows a 96px
 // display headline, violet-tinted panels, a solid primary button, and the
 // brand's pinwheel drawn faintly across the story panel.
 export function Welcome() {
@@ -53,10 +54,7 @@ export function Welcome() {
                   <ArrowRightIcon size={16} aria-hidden />
                 </button>
               </SignUpButton>
-              <SignInButton
-                mode="modal"
-                forceRedirectUrl="/prototype/app-shell"
-              >
+              <SignInButton mode="modal" forceRedirectUrl={SHELL_PATH}>
                 <button type="button" className={styles.secondary}>
                   Sign in
                 </button>
@@ -75,7 +73,7 @@ export function Welcome() {
 
 const markOffset = (100 - 100 * BRAND_SMALL_MARK_SCALE) / 2;
 
-// The legacy wordmark: the pinwheel tile and "caishen." in lowercase, the
+// The wordmark: the pinwheel tile and "caishen." in lowercase, the
 // period in the brand's violet.
 function Wordmark() {
   return (

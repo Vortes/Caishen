@@ -3,7 +3,7 @@ import {
   type EndpointLookup,
 } from "../../src/server/dev/development-database";
 
-export const shellPath = "/prototype/app-shell";
+export const shellPath = "/app";
 
 // Match the database suite's isolated branch check: dev-caishen or a verified
 // worktree branch under it. The managed web server inherits these same URLs;

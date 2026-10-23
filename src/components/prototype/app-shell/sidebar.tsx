@@ -25,7 +25,7 @@ import { usePortalContainer } from "~/components/ui/tooltip";
 import { AccountEntry } from "./account-entry";
 import { BanksPopover } from "./banks";
 import { money } from "./model";
-import { SHELL_PATH, type SettingsPage } from "./settings-pages";
+import { type SettingsPage } from "~/components/workspace/routes";
 import { useShellData } from "./shell-data";
 import { UserAvatar } from "./user-avatar";
 import styles from "./shell.module.css";
@@ -356,7 +356,7 @@ function ProfileMenu({
             onSelect={() =>
               // The budget this browser kept goes before the session does.
               void deleteStoredBudgets().finally(
-                () => void signOut({ redirectUrl: SHELL_PATH }),
+                () => void signOut({ redirectUrl: "/" }),
               )
             }
           >

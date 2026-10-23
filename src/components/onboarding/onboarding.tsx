@@ -21,8 +21,8 @@ import {
   useBankConnections,
 } from "~/components/prototype/app-shell/banks";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
-import { SHELL_PATH } from "~/components/prototype/app-shell/settings-pages";
-import { PartnerSettings } from "~/components/prototype/app-shell/partner";
+import { SHELL_PATH } from "~/components/workspace/routes";
+import { PartnerSettings } from "~/components/settings/partner";
 import { ShellDataProvider } from "~/components/prototype/app-shell/shell-data";
 import { toShellData } from "~/components/prototype/app-shell/model";
 import {
