@@ -4,6 +4,7 @@ Caishen is a Next.js app for personal budgeting, shared expenses, and daily mone
 
 - Create persistent project documentation only when the user explicitly requests it.
 - Before finishing, delete one-off scripts and temporary artifacts created for the task, including ignored and untracked files.
+- "Clean up" means: stop servers you started, remove task worktrees, and delete merged or pushed local branches.
 
 `npm run check` runs ESLint and TypeScript together. Discover other commands in [package.json](package.json).
 

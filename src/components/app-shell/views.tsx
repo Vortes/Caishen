@@ -484,13 +484,23 @@ function RowCheckbox({
   label,
   state,
   onChange,
+  onShiftClick,
 }: {
   label: string;
   state: boolean | "mixed";
   onChange: () => void;
+  // Takes over a shift-click, which otherwise toggles just this box.
+  onShiftClick?: () => void;
 }) {
   return (
-    <label className={styles.checkboxSlot}>
+    <label
+      className={styles.checkboxSlot}
+      onClickCapture={(event) => {
+        if (!onShiftClick || !event.shiftKey) return;
+        event.preventDefault();
+        onShiftClick();
+      }}
+    >
       <Checkbox
         aria-label={label}
         checked={state === "mixed" ? "indeterminate" : state}
@@ -695,6 +705,23 @@ export function RegisterView({
     onCheck,
   });
   const selectionStyle = useRowSelection(checked);
+  // Shift-click checks, or clears, every row from the last one clicked to
+  // this one, like YNAB and Gmail.
+  const anchor = useRef<string | null>(null);
+  const order = [...(pendingOpen ? pending : []), ...cleared]
+    .filter((item) => item.source === "budget" || item.editableImport)
+    .map((item) => item.id);
+  const checkTo = (id: string, value: boolean) => {
+    const from = order.indexOf(anchor.current ?? selectedId ?? "");
+    const to = order.indexOf(id);
+    onCheck(
+      from < 0
+        ? [id]
+        : order.slice(Math.min(from, to), Math.max(from, to) + 1),
+      value,
+    );
+    anchor.current = id;
+  };
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
   const editingId = session?.rowId;
@@ -791,12 +818,20 @@ export function RegisterView({
         <div
           className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
           {...selectionStyle.rowProps(item.id)}
+          onMouseDown={(event) => {
+            // Shift would otherwise extend a text selection across rows.
+            if (checkable && event.shiftKey) event.preventDefault();
+          }}
         >
           {checkable && (
             <RowCheckbox
               label={`Select ${item.payee}`}
               state={isChecked}
-              onChange={() => onCheck([item.id], !isChecked)}
+              onChange={() => {
+                anchor.current = item.id;
+                onCheck([item.id], !isChecked);
+              }}
+              onShiftClick={() => checkTo(item.id, !isChecked)}
             />
           )}
           <button
@@ -808,8 +843,13 @@ export function RegisterView({
             className={`${styles.txColumns} ${styles.row}`}
             aria-current={selectedId === item.id ? "true" : undefined}
             onClick={(event) => {
+              if (checkable && event.shiftKey) {
+                checkTo(item.id, !isChecked);
+                return;
+              }
               // Finishing a text selection in the row doesn't click it.
               if (event.detail > 0 && window.getSelection()?.toString()) return;
+              anchor.current = item.id;
               // A pointer click; Enter and Space click with no position.
               if (isChecked && checked.length === 1 && event.detail > 0) {
                 if (item.repayment) {
@@ -965,6 +1005,7 @@ export function RegisterView({
             : undefined;
         if (event.key === "x" && id) {
           event.preventDefault();
+          anchor.current = id;
           onCheck([id], !checked.includes(id));
           return;
         }
