@@ -42,3 +42,74 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* A recorded purchase's source: where its facts come from. */
+.source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.source > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.fieldPair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.fieldPair > :first-child {
+  padding-right: 4px;
+}
+.fieldPair > :last-child {
+  padding-left: 4px;
+}
+/* The share starts as an even split; clicking it makes it editable. */
+.evenButton {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  font: inherit;
+  cursor: pointer;
+}
+.evenButton > :first-child {
+  color: var(--text-primary);
+}
+.evenAmount {
+  font-variant-numeric: tabular-nums;
+}
+/* The shell's choice field draws its own well. */
+.choiceWell {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A waiting import's possible recorded purchases, in its editor. */
+.matches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px calc(var(--space-row-x) + 16px + 16px - 8px) 0 var(--row-gutter);
+}
+.match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--type-small);
+}
+.match > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.match > p {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-secondary);
+}
+.matchHint {
+  color: var(--text-tertiary);
+}

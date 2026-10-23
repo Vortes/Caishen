@@ -146,7 +146,7 @@ export const budgetRouter = createTRPCRouter({
       status: "ready" as const,
       services,
       connections: banks.map(bankConnectionView),
-      imports: bankInboxItems(banks, opened.ledger.budget),
+      imports: bankInboxItems(banks, opened.ledger.budget, opened.ledger.state),
       partnerFirstName: await partnerFirstName(
         ctx.db,
         opened.household.workspaceId,
@@ -220,7 +220,7 @@ export const budgetRouter = createTRPCRouter({
           services,
           connections,
           evidence: currentEvidence,
-          imports: bankInboxItems(banks, ledger.budget),
+          imports: bankInboxItems(banks, ledger.budget, ledger.state),
         };
       } catch (error) {
         domainError(error);
