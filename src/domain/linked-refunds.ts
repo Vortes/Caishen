@@ -8,7 +8,7 @@ export function refundOrder(a: Transaction, b: Transaction): number {
 
 export function proportionalRefundLines(original: Transaction, previousAmount: number, refundAmount: number): TransactionLine[] {
   const originalLines = counterpartyLines(original);
-  if (!originalLines.length || original.amount >= 0) return [];
+  if (!originalLines.length || originalLines.some(line => !line.amount) || original.amount >= 0) return [];
   const allocate = (amount: number) => {
     const parts = originalLines.map(line => ({ id: line.id, amount: Number(BigInt(-line.amount) * BigInt(amount) / BigInt(-original.amount)) }));
     const largest = parts.reduce((a, b) => Math.abs(a.amount) >= Math.abs(b.amount) ? a : b);
