@@ -45,6 +45,7 @@ import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
 import { SettingsNav, Sidebar, type Screen } from "./sidebar";
+import { PanelWidthDials, usePanelWidths } from "./panel-widths";
 import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import { PartnerRegister } from "./partner-register";
@@ -227,19 +228,24 @@ export function AppShell({
     if (ready) localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings, ready]);
 
+  // Laptop and tablet screens use fixed widths instead of the saved ones.
+  const tuned = usePanelWidths();
+  const sidebarWidth = tuned?.sidebar ?? settings.sidebar.width;
+  const inspectorWidth = tuned?.inspector ?? settings.inspector.width;
   const sidebarState = narrow
-    ? { ...settings.sidebar, collapsed: !drawer.sidebar }
-    : settings.sidebar;
+    ? { width: sidebarWidth, collapsed: !drawer.sidebar }
+    : { ...settings.sidebar, width: sidebarWidth };
   const inspectorState = narrow
     ? {
-        width: phone ? INSPECTOR.min : settings.inspector.width,
+        width: phone ? INSPECTOR.min : inspectorWidth,
         collapsed: !drawer.inspector,
       }
-    : settings.inspector;
+    : { ...settings.inspector, width: inspectorWidth };
 
   const sidebar = usePanel({
     side: "left",
     ...SIDEBAR,
+    min: Math.min(SIDEBAR.min, sidebarWidth),
     state: sidebarState,
     onChange: (next) =>
       narrow
@@ -252,6 +258,7 @@ export function AppShell({
   const inspector = usePanel({
     side: "right",
     ...INSPECTOR,
+    min: Math.min(INSPECTOR.min, inspectorWidth),
     state: inspectorState,
     onChange: (next) =>
       narrow
@@ -515,7 +522,7 @@ export function AppShell({
                 <div
                   className={styles.peek}
                   data-open={peekOpen || undefined}
-                  style={{ width: settings.sidebar.width }}
+                  style={{ width: sidebarWidth }}
                   aria-hidden={!peekOpen || undefined}
                   inert={!peekOpen}
                   onPointerEnter={openPeek}
@@ -889,6 +896,7 @@ export function AppShell({
 
             {overlays}
           </TooltipProvider>
+          <PanelWidthDials />
         </div>
       </ActionProviders>
     </ShellDataProvider>
