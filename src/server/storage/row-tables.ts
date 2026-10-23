@@ -2,6 +2,7 @@ import {
   rowKey,
   rowKeyParts,
   tableNames,
+  tombstone,
   type TableName,
   type WireRow,
 } from "~/domain/rows";
@@ -431,6 +432,40 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       json("counterpartyShare", true),
     ],
   },
+  partnerEntry: {
+    model: "PartnerEntry",
+    key: ["id"],
+    columns: [
+      text("id"),
+      text("payerId"),
+      {
+        name: "sourceTransactionId",
+        field: "transactionId",
+        within: "source",
+        type: "text",
+      },
+      {
+        name: "sourceLineId",
+        field: "lineId",
+        within: "source",
+        type: "text",
+      },
+      text("date"),
+      text("payee"),
+      text("status"),
+      cents("amount"),
+      cents("share"),
+      bool("removed", true),
+      json("history"),
+      sort,
+    ],
+  },
+  partnerEntrySide: {
+    model: "PartnerEntrySide",
+    key: ["userId", "entryId"],
+    visibleTo: "userId",
+    columns: [userId, text("entryId"), text("categoryId", true)],
+  },
 };
 
 /** Every table's storage, parents before children. */
@@ -607,13 +642,7 @@ export function fromColumns(
   if (!Number.isSafeInteger(revision) || typeof stored.deleted !== "boolean")
     throw new StoredRowError(spec, id, "the row's revision can't be read");
   if (stored.deleted)
-    return {
-      table: spec.table,
-      id,
-      revision: revision as number,
-      deleted: true,
-      data: null,
-    };
+    return tombstone({ table: spec.table, id }, revision as number);
   const data: Record<string, unknown> = {};
   for (const column of spec.columns) {
     const value = stored[column.name];

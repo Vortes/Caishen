@@ -1,3 +1,4 @@
+import type { PartnerEntry } from "./partner-ledger";
 import type {
   Audit,
   Book,
@@ -27,6 +28,8 @@ export type SharedLedgerFacts = {
   partnerPurchases: SharedPurchaseFact[];
   partnerReceiptDates: Record<string, string>;
   partnerActivityCategoryIds: string[];
+  // The partner ledger both budgets share (src/domain/partner-ledger.ts).
+  partnerEntries?: PartnerEntry[];
 };
 
 export type PersonalLedger = SharedLedgerFacts & {
@@ -298,5 +301,8 @@ export function projectSharedLedger(
     partnerActivityCategoryIds: [
       ...new Set(partnerActivityCategoryIds.filter((id) => sharedIds.has(id))),
     ],
+    ...(state.partnerEntries?.length
+      ? { partnerEntries: structuredClone(state.partnerEntries) }
+      : {}),
   };
 }
