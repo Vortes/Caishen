@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Changes } from "./changes";
 import type { Budget, Transaction, TransactionLine } from "./engine";
 import { counterpartyLines, shareContribution } from "./counterparty";
+import type { PartnerSettlement } from "./partner-settlements";
 import { payeeKey } from "./payee-memory";
 import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 
@@ -225,7 +226,7 @@ export function partnerSideIssues(
 
 export type PartnerLedgerRow = {
   id: string;
-  kind: "purchase" | "refund" | "repayment";
+  kind: "purchase" | "refund" | "repayment" | "settlement";
   date: string;
   payee: string;
   status: "pending" | "posted";
@@ -245,19 +246,24 @@ export type PartnerLedgerRow = {
   transactionId?: string;
   lineId?: string;
   entryId?: string;
+  // A settlement: the household's record of it, and how it was sent.
+  settlementId?: string;
+  method?: string;
+  confirmed?: boolean;
   history: PartnerEntryChange[];
 };
 
 /**
  * The viewer's Partner register, newest first, with a running balance that
  * ends at the Partner account's balance: their own shared lines and
- * repayments from their budget, and their partner's entries from the
+ * settlement legs from their budget, and their partner's entries from the
  * shared ledger.
  */
 export function partnerLedgerRows(
   budget: Budget,
   entries: PartnerEntry[] | undefined,
   cutoff: string,
+  settlements?: PartnerSettlement[],
 ): PartnerLedgerRow[] {
   const viewerId = budget.userId;
   const partner = partnerAccountOf(budget);
@@ -272,20 +278,26 @@ export function partnerLedgerRows(
     )
       continue;
     if (transaction.linkedCounterpartyAccountId === partner.id) {
+      const settlement = settlements?.find(
+        (item) => item.id === transaction.partnerSettlementId,
+      );
       rows.push({
-        id: `${transaction.id}:repayment`,
-        kind: "repayment",
+        id: settlement?.id ?? `${transaction.id}:repayment`,
+        kind: settlement ? "settlement" : "repayment",
         date: transaction.date,
         payee: transaction.payee,
         status: transaction.status,
-        payerId: "",
-        shared: 0,
+        payerId: settlement?.payerId ?? "",
+        shared: settlement?.amount ?? 0,
         you: 0,
         partner: 0,
         change: -transaction.amount,
         categoryId: undefined,
         needsCategory: false,
         transactionId: transaction.id,
+        settlementId: settlement?.id,
+        method: settlement?.method,
+        confirmed: settlement?.confirmed,
         history: [],
       });
       continue;

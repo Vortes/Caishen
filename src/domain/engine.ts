@@ -45,6 +45,16 @@ import {
   type PartnerEntry,
   type PartnerSide,
 } from "./partner-ledger";
+import {
+  activeSettlements,
+  isSettlementLeg,
+  openRequest,
+  partnerRequestSchema,
+  partnerSettlementSchema,
+  settlementLegIssues,
+  type PartnerRequest,
+  type PartnerSettlement,
+} from "./partner-settlements";
 import { canonicalJson } from "./canonical-json";
 import { Changes } from "./changes";
 import { payeeKey, rememberCategorizations } from "./payee-memory";
@@ -570,6 +580,8 @@ export type Transaction = {
   refundOfTransactionId?: string;
   linkedCounterpartyAccountId?: string;
   counterpartyName?: string;
+  // This partner's leg of a settlement (src/domain/partner-settlements.ts).
+  partnerSettlementId?: string;
   id: string;
   accountId: string;
   date: string;
@@ -715,6 +727,9 @@ export type Book = {
   audit: Audit[];
   // The partner ledger both budgets share (src/domain/partner-ledger.ts).
   partnerEntries?: PartnerEntry[];
+  // Settling up between the partners (src/domain/partner-settlements.ts).
+  partnerSettlements?: PartnerSettlement[];
+  partnerRequests?: PartnerRequest[];
 };
 
 export const storedIdentifier = z.string().min(1).max(1024);
@@ -757,6 +772,7 @@ export const transactionSchema = z.object({
   refundOfTransactionId: storedIdentifier.optional(),
   linkedCounterpartyAccountId: storedIdentifier.optional(),
   counterpartyName: z.string().optional(),
+  partnerSettlementId: storedIdentifier.optional(),
   id: storedIdentifier,
   accountId: storedIdentifier,
   date: daySchema,
@@ -952,7 +968,11 @@ export function budgetReferenceIssues(
       (!transaction.categoryId || transaction.lines !== undefined)
     )
       issues.push("Invalid counterparty share reference");
-    if (transaction.linkedCounterpartyAccountId) {
+    // A settlement leg reads by its own rules (settlementLegIssues).
+    if (
+      transaction.linkedCounterpartyAccountId &&
+      !isSettlementLeg(transaction)
+    ) {
       const counterparty = counterpartyAccount(
         transaction.linkedCounterpartyAccountId,
       );
@@ -1018,6 +1038,7 @@ export function budgetReferenceIssues(
     ...issues,
     ...linkedRefundIssues(budget),
     ...partnerSideIssues(budget),
+    ...settlementLegIssues(budget),
   ];
 }
 // The stored data both partners share: shared categories, what they owe each
@@ -1074,6 +1095,8 @@ export const householdSchema = z.object({
     }),
   ),
   partnerEntries: z.array(partnerEntrySchema).optional(),
+  partnerSettlements: z.array(partnerSettlementSchema).optional(),
+  partnerRequests: z.array(partnerRequestSchema).optional(),
 });
 export type Household = z.infer<typeof householdSchema>;
 // Each shared category's participants must have its paired category.
@@ -1947,6 +1970,10 @@ function replay(
           key,
           safe((repaidByKey.get(key) ?? 0) + Math.max(0, transaction.amount)),
         );
+        // A partner paying your card directly is a repayment you paid
+        // straight into the card: it funds the cards their shares were
+        // fronted on, and this card's payment spends its reserve.
+        if (account.kind === "credit") payments.push(transaction);
       }
       if (transaction.kind === "reimbursement" || transaction.kind === "income")
         continue;
@@ -2890,7 +2917,14 @@ function projectAccountingState(
     sharedStatement: sharedStatement(book, userId, month),
     sharedLedger: projectSharedLedger(book, userId),
     counterpartyRegister: counterpartyRegisterEntries(budget, { cutoff }),
-    partnerLedger: partnerLedgerRows(budget, book.partnerEntries, cutoff),
+    partnerLedger: partnerLedgerRows(
+      budget,
+      book.partnerEntries,
+      cutoff,
+      activeSettlements(book.partnerSettlements),
+    ),
+    partnerSettlements: activeSettlements(book.partnerSettlements),
+    partnerRequest: openRequest(book.partnerRequests, book.partnerSettlements),
     reimbursements: budget.reimbursements.map((claim) => ({
       ...structuredClone(claim),
       outstanding: safe(

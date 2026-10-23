@@ -13,6 +13,10 @@ import {
   partnerSideSchema,
   shareWithinAmount,
 } from "./partner-ledger";
+import {
+  partnerRequestSchema,
+  partnerSettlementSchema,
+} from "./partner-settlements";
 import type { TableName, WireRow } from "./rows";
 
 // What each row table's data holds, read as strictly as the engine reads
@@ -163,6 +167,8 @@ export const rowDataSchemas = {
     ...owned,
     entryId: storedIdentifier,
   }),
+  partnerSettlement: partnerSettlementSchema.extend(sort),
+  partnerRequest: partnerRequestSchema.extend(sort),
 } satisfies Record<TableName, z.ZodTypeAny>;
 
 /** Why a live row's data doesn't read, or null when it does. */

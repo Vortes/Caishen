@@ -20,23 +20,25 @@ model CrudItem {
 }
 
 model Workspace {
-  id               String            @id @default(cuid())
-  revision         Int               @default(0)
+  id                 String              @id @default(cuid())
+  revision           Int                 @default(0)
   // Browsers holding an older revision download every row again: the
   // household changed shape or rows were removed outright (ADR 0006).
-  resetRevision    Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  members          WorkspaceMember[]
-  invites          PartnerInvite[]
+  resetRevision      Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  members            WorkspaceMember[]
+  invites            PartnerInvite[]
   // Rows (ADR 0006). Read and written only through src/server/storage.
-  budgetMembers    Member[]
-  sharedCategories SharedCategory[]
-  obligations      Obligation[]
-  settlements      Settlement[]
-  partnerFacts     PartnerFact[]
-  partnerEntries   PartnerEntry[]
-  operationLog     Operation[]
+  budgetMembers      Member[]
+  sharedCategories   SharedCategory[]
+  obligations        Obligation[]
+  settlements        Settlement[]
+  partnerFacts       PartnerFact[]
+  partnerEntries     PartnerEntry[]
+  partnerSettlements PartnerSettlement[]
+  partnerRequests    PartnerRequest[]
+  operationLog       Operation[]
 }
 
 model WorkspaceMember {
@@ -323,6 +325,7 @@ model Transaction {
   refundOfTransactionId       String?
   linkedCounterpartyAccountId String?
   counterpartyName            String?
+  partnerSettlementId         String?
   removed                     Boolean?
   reconciled                  Boolean?
   sort                        Int
@@ -694,5 +697,43 @@ model PartnerEntrySide {
   member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
 
   @@id([workspaceId, userId, entryId])
+  @@index([workspaceId, revision])
+}
+
+// Settling up between the partners: one payment from one partner to the
+// other, holding only its ledger facts. Each partner's leg of it is a
+// transaction in their own budget.
+model PartnerSettlement {
+  workspaceId String
+  id          String
+  payerId     String
+  date        String
+  amount      BigInt
+  method      String
+  confirmed   Boolean
+  removed     Boolean?
+  history     Json
+  sort        Int
+  revision    Int
+  deleted     Boolean   @default(false)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, revision])
+}
+
+// One partner asking the other to pay an amount.
+model PartnerRequest {
+  workspaceId String
+  id          String
+  requesterId String
+  date        String
+  amount      BigInt
+  sort        Int
+  revision    Int
+  deleted     Boolean   @default(false)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
   @@index([workspaceId, revision])
 }
