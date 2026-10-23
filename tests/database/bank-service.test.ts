@@ -519,7 +519,7 @@ void test("first-connect inbox excludes unrecorded tombstones while preserving o
       (record) => record.current.providerTransactionId === "opening-posted",
     )!.id,
   );
-  assert.match(inbox[0]!.error!, /opening balance/);
+  assert.equal(inbox[0]!.eligibility, "opening_snapshot_changed");
   assert.equal(
     updated.records.length,
     3,
@@ -575,7 +575,10 @@ void test("first-connect opening history ignores payee-only changes for saved le
     errors: {},
     reviews: {},
   });
-  assert.match((await bankInbox(h.db, alice))[0]!.error!, /opening balance/);
+  assert.equal(
+    (await bankInbox(h.db, alice))[0]!.eligibility,
+    "opening_snapshot_changed",
+  );
 });
 
 void test("inbox categories come from the linked ledger category, and normal posting has no discrepancy", async () => {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { openingSnapshotChangedMessage } from "../../src/domain/register-entry";
 import { randomUUID } from "node:crypto";
 import test, { type TestContext } from "node:test";
 
@@ -370,9 +371,10 @@ void test("changes to opening history require review without counting the old pu
   baseline.current.amountCents = 2500;
   await setConnectionImports(db, aliceId, connectionId, imports);
   const changed = await state();
-  assert.match(
-    changed.imports.find((record) => record.logicalId === baseline.id)!.error!,
-    /opening balance/,
+  assert.equal(
+    changed.imports.find((record) => record.logicalId === baseline.id)!
+      .eligibility,
+    "opening_snapshot_changed",
   );
   await assert.rejects(
     alice.budget.resolveImport({
@@ -381,7 +383,7 @@ void test("changes to opening history require review without counting the old pu
       expectedRevision: changed.revision,
       command: { ...command, amount: -2500 },
     }),
-    { code: "BAD_REQUEST" },
+    { code: "BAD_REQUEST", message: openingSnapshotChangedMessage },
   );
   assert.equal((await state()).view!.cash, 120050);
   await alice.budget.resolveImport({

@@ -135,6 +135,7 @@ test.each([
         history: [],
         reviewEvidence: [],
         quarantined: false,
+        eligibility: "eligible",
       },
     ];
     // The first save is refused; the next one resolves the import.

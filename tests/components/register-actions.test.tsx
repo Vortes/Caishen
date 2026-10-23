@@ -31,6 +31,7 @@ function bankImport(
     history: [],
     reviewEvidence: [],
     quarantined: false,
+    eligibility: "eligible",
     ...extra,
   };
 }

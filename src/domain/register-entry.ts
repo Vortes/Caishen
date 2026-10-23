@@ -131,6 +131,7 @@ export const quarantinedImportMessage =
   "This bank transaction wasn't imported. Record it yourself if it affects your budget, then dismiss it.";
 
 export type BankInboxItem = {
+  eligibility: ImportEligibility;
   accountId: string | null;
   loanId?: string;
   transactionId?: string;
@@ -150,6 +151,8 @@ function bankImportActionIssue(
   action: "record" | "link",
 ): string | null {
   if (imported.quarantined) return quarantinedImportMessage;
+  const eligibilityIssue = importEligibilityIssue(imported.eligibility);
+  if (eligibilityIssue) return eligibilityIssue;
   if (
     imported.loanId ||
     budget.loans.some((loan) => loan.id === imported.accountId)
@@ -236,11 +239,7 @@ export function classifyRegisterEntry(
     return {
       origin: "import",
       item,
-      eligibility: item.loanId
-        ? "loan_activity"
-        : account
-          ? "eligible"
-          : "unmapped",
+      eligibility: item.eligibility,
       capabilities: {
         edit: { ok: false, reason: "Record this bank activity first" },
         approve: unavailable,
@@ -355,4 +354,30 @@ const directAccountKinds: Record<Account["kind"], boolean> = {
 };
 export function directEntryAccounts<T extends Account>(accounts: T[]): T[] {
   return accounts.filter((account) => directAccountKinds[account.kind]);
+}
+
+export const openingSnapshotChangedMessage =
+  "This activity may already be included in this account's opening balance. Investigate the bank's changes or uncertain matches before recording an adjustment; importing it could count it twice.";
+export const beforeStartMessage =
+  "This activity is already included in the opening balance or predates the import start date. Ignore it rather than duplicating opening history.";
+export const openingSnapshotMessage = beforeStartMessage;
+export const unmappedImportMessage =
+  "Map this provider account to your own ledger account first.";
+export function importEligibilityIssue(
+  eligibility: ImportEligibility,
+): string | null {
+  switch (eligibility) {
+    case "eligible":
+      return null;
+    case "before_start":
+      return beforeStartMessage;
+    case "opening_snapshot":
+      return openingSnapshotMessage;
+    case "opening_snapshot_changed":
+      return openingSnapshotChangedMessage;
+    case "loan_activity":
+      return loanActivityReviewMessage;
+    case "unmapped":
+      return unmappedImportMessage;
+  }
 }

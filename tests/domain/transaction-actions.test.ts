@@ -192,3 +192,36 @@ for (const scenario of scenarios) {
     );
   });
 }
+
+void test("F4: changed opening history is not recordable even without a prose error", async () => {
+  const { transactionActions } =
+    await import("../../src/components/transactions/transaction-actions");
+  const book = purchaseAndRefund({ source: "manual", status: "posted" });
+  const item = {
+    eligibility: "opening_snapshot_changed" as const,
+    connectionId: "bank",
+    logicalId: "opening",
+    fingerprint: "a".repeat(64),
+    providerAccountId: "provider",
+    accountId: "checking",
+    date: "2026-10-10",
+    payee: "Opening history",
+    amount: -2500,
+    pending: false,
+    removed: false,
+    needsMatchReview: false,
+    error: null,
+    history: [],
+    reviewEvidence: [],
+    quarantined: false,
+    categoryName: null,
+    categoryId: undefined,
+    transactionId: undefined,
+  };
+  const actions = transactionActions(
+    projectBook(book, "owner", "2026-10"),
+    item,
+  );
+  assert.equal(actions.edit, null);
+  assert.equal(actions.select, false);
+});

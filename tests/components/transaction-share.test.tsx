@@ -35,6 +35,7 @@ function bankImport(
     history: [],
     reviewEvidence: [],
     quarantined: false,
+    eligibility: "eligible",
     ...extra,
   };
 }
@@ -455,6 +456,7 @@ test("the register offers Share for purchases and categorized refunds while bloc
           bankImport("tracking", "Tracking import", { accountId: "tracking" }),
           bankImport("quarantined", "Quarantined import", {
             quarantined: true,
+            eligibility: "eligible",
           }),
           bankImport("resolved", "Resolved import", {
             transactionId: "existing",
