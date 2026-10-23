@@ -1,3 +1,35 @@
+BEGIN;
+
+-- The format-7 server must be live before this drop. Refuse to discard
+-- any remaining legacy ledger; inspect and migrate it explicitly instead.
+LOCK TABLE "Obligation", "PartnerFact", "Reimbursement", "ReimbursementReceipt", "Settlement", "SettlementAllocation", "SharedCategory", "TransactionShare", "Transaction" IN ACCESS EXCLUSIVE MODE;
+DO $$
+BEGIN
+  IF EXISTS (
+      SELECT 1 FROM "Obligation"
+      UNION ALL
+      SELECT 1 FROM "PartnerFact"
+      UNION ALL
+      SELECT 1 FROM "Reimbursement"
+      UNION ALL
+      SELECT 1 FROM "ReimbursementReceipt"
+      UNION ALL
+      SELECT 1 FROM "Settlement"
+      UNION ALL
+      SELECT 1 FROM "SettlementAllocation"
+      UNION ALL
+      SELECT 1 FROM "SharedCategory"
+      UNION ALL
+      SELECT 1 FROM "TransactionShare"
+    ) OR EXISTS (
+      SELECT 1 FROM "Transaction"
+      WHERE NOT COALESCE("removed", false)
+        AND ("sharedCategoryId" IS NOT NULL OR "kind" = 'settlement')
+    ) THEN
+    RAISE EXCEPTION 'Legacy shared-cost data remains; refusing to drop it';
+  END IF;
+END $$;
+
 -- Removes the retired shared-cost model: shared categories, obligations,
 -- net settlements, expected reimbursements, and the partner facts derived
 -- from them (ADR 0007). Line shares, the partner ledger, and partner
@@ -77,3 +109,5 @@ DROP TABLE "SharedCategory";
 -- DropTable
 DROP TABLE "TransactionShare";
 
+
+COMMIT;
