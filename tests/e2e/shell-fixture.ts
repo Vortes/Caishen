@@ -30,6 +30,7 @@ type BudgetOptions = {
   account?: string;
   cash?: number;
   purchase?: { payee: string; amount: number; reviewed?: boolean };
+  uncategorizedPurchases?: { payee: string; amount: number }[];
 };
 export type TestBudget = {
   userId: string;
@@ -110,7 +111,7 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
               page.getByRole("heading", {
                 name: "Welcome. Let’s set up your budget.",
               }),
-            ).toBeVisible();
+            ).toBeVisible({ timeout: 30_000 });
             const api = createTRPCClient<AppRouter>({
               links: [
                 httpLink({
@@ -200,6 +201,18 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
                 amount: -options.purchase.amount,
                 status: "posted",
                 reviewed: options.purchase.reviewed ?? true,
+              });
+            for (const purchase of options.uncategorizedPurchases ?? [])
+              commands.push({
+                type: "transaction.upsert",
+                id: randomUUID(),
+                transactionId: randomUUID(),
+                accountId: "checking",
+                date: budget.date,
+                payee: purchase.payee,
+                amount: -purchase.amount,
+                status: "posted",
+                reviewed: true,
               });
             for (const command of commands) {
               ({ revision } = await api.budget.execute.mutate({

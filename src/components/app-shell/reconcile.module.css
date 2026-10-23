@@ -2,15 +2,6 @@
    share a rail; where they meet, one mark says whether they agree. Only that
    mark carries color. */
 
-/* Clips the step content while its height glides between steps. */
-.frame {
-  overflow: hidden;
-}
-/* The leaving step is lifted out of flow over the arriving one. */
-.steps {
-  position: relative;
-}
-
 .form {
   display: flex;
   flex-direction: column;

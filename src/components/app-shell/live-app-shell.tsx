@@ -398,6 +398,36 @@ function LiveWorkspace({
         `Categorized ${count(transactionIds)}`,
       ),
   };
+  const saveImportedTransaction = async (
+    item: (typeof imports)[number],
+    command: Command,
+    summary: string,
+    inPlace = false,
+  ) => {
+    await runOnServer(
+      command.id,
+      (expectedRevision) =>
+        trpc.budget.resolveImport.mutate({
+          connectionId: item.connectionId,
+          logicalId: item.logicalId,
+          expectedFingerprint: item.fingerprint,
+          expectedRevision,
+          command,
+        }),
+      summary,
+      inPlace,
+    );
+    setResolved((ids) => new Set(ids).add(item.logicalId));
+    try {
+      await utils.budget.overview.invalidate();
+    } finally {
+      setResolved((ids) => {
+        const next = new Set(ids);
+        next.delete(item.logicalId);
+        return next;
+      });
+    }
+  };
   const transactionSaver: TransactionSaver = {
     view,
     imports,
@@ -406,31 +436,49 @@ function LiveWorkspace({
         if (!saved) refused?.();
       }),
     saveImport: (item, command, summary, refused) => {
-      runOnServer(
-        command.id,
-        (expectedRevision) =>
-          trpc.budget.resolveImport.mutate({
-            connectionId: item.connectionId,
-            logicalId: item.logicalId,
-            expectedFingerprint: item.fingerprint,
-            expectedRevision,
-            command,
-          }),
-        summary,
-      ).then(
-        async () => {
-          setResolved((ids) => new Set(ids).add(item.logicalId));
-          notify(summary);
-          await utils.budget.overview.invalidate();
-          setResolved((ids) => {
-            const next = new Set(ids);
-            next.delete(item.logicalId);
-            return next;
-          });
-        },
+      saveImportedTransaction(item, command, summary).then(
+        () => notify(summary),
         () => refused?.(),
       );
       return null;
+    },
+    saveShares: async (changes) => {
+      const savedIds: string[] = [];
+      for (const { rowId, imported, command, summary } of changes) {
+        try {
+          if (imported) {
+            await saveImportedTransaction(imported, command, summary, true);
+          } else {
+            await new Promise<void>((resolve, reject) => {
+              const blocked = run(command, summary, (saved) =>
+                saved
+                  ? resolve()
+                  : reject(
+                      new Error("These changes couldn’t be saved. Try again."),
+                    ),
+              );
+              if (blocked) reject(new Error(blocked));
+            });
+          }
+          savedIds.push(rowId);
+          await client.idle();
+        } catch (failure) {
+          return {
+            savedIds,
+            error:
+              failure instanceof Error
+                ? failure.message
+                : "This share couldn't be saved. Try again.",
+          };
+        } finally {
+          shownInPlace.current.delete(command.id);
+        }
+      }
+      void utils.budget.overview.invalidate();
+      notify(
+        `Shared ${savedIds.length} ${savedIds.length === 1 ? "transaction" : "transactions"}`,
+      );
+      return { savedIds };
     },
     holdOpen,
   };

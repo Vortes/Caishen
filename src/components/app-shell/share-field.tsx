@@ -3,8 +3,15 @@
 import { CheckIcon, UsersIcon } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useId, useState, type ReactNode } from "react";
+import { Checkbox } from "~/components/ui/checkbox";
+import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import {
+  halfOf,
+  keepShare,
+  type ShareBasis,
+} from "~/components/transactions/transaction-share";
 import type { CounterpartyShare } from "~/domain/engine";
 import { money } from "./model";
 import { useShellData } from "./shell-data";
@@ -19,7 +26,7 @@ import styles from "./share.module.css";
 type Preset = "mine" | "split" | "theirs" | "custom" | "other";
 
 // Half is a fixed 50/50; the partner's half rounds down to the cent.
-export const halfOf = (amount: number) => Math.floor(Math.abs(amount) / 2);
+export { halfOf } from "~/components/transactions/transaction-share";
 
 // Who a share can be with: the partner, by the name the shell shows, and
 // the people already in the Reimbursements account, most recent first.
@@ -64,23 +71,7 @@ function presetOf(
   return "custom";
 }
 
-// A partner share set to nothing stays on the partner account at $0.00, so
-// the write-off and its history stay visible. Any other empty share is just
-// no share.
-export function keepShare(
-  saved: CounterpartyShare | null | undefined,
-  next: CounterpartyShare | null,
-  partnerId: string | undefined,
-): CounterpartyShare | null {
-  if (next && next.amount > 0) return next;
-  if (
-    saved &&
-    saved.accountId === partnerId &&
-    (!next || next.accountId === partnerId)
-  )
-    return { accountId: saved.accountId, amount: 0 };
-  return null;
-}
+export { keepShare } from "~/components/transactions/transaction-share";
 
 export function ShareLabel({ share }: { share?: CounterpartyShare | null }) {
   const { who } = useShareParties();
@@ -116,15 +107,74 @@ export function ShareMenu({
   children: ReactNode;
 }) {
   const container = usePortalContainer();
-  const { partner, reimbursements, people } = useShareParties();
   const [open, setOpen] = useState(false);
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>{children}</Popover.Trigger>
+      <Popover.Portal container={container}>
+        <Popover.Content
+          className={moveStyles.popover}
+          align="start"
+          sideOffset={6}
+          collisionPadding={12}
+          aria-label="Who this is for"
+        >
+          <ShareChoices
+            key={String(open)}
+            amounts={[amount]}
+            share={share}
+            saved={saved}
+            remembered={remembered}
+            onChange={(next) => {
+              const failure = onChange(next);
+              if (!failure) setOpen(false);
+              return failure;
+            }}
+          />
+          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+export function ShareChoices({
+  confirmation,
+  amounts,
+  share,
+  saved,
+  remembered,
+  onChange,
+}: {
+  confirmation?: ReactNode;
+  amounts: number[];
+  share?: CounterpartyShare | null;
+  saved?: CounterpartyShare | null;
+  remembered?: string;
+  onChange: (
+    share: CounterpartyShare | null,
+    basis: ShareBasis,
+  ) => string | null;
+}) {
+  const { partner, reimbursements, people } = useShareParties();
+  const amount = Math.min(...amounts);
+  const multiple = amounts.length > 1;
   const [error, setError] = useState("");
   const current = presetOf(share, amount, partner?.id);
-  const [form, setForm] = useState<"custom" | "other" | null>(null);
-  const pick = (next: CounterpartyShare | null) => {
-    const failure = onChange(keepShare(saved, next, partner?.id));
+  const [form, setForm] = useState<"custom" | "other" | null>(
+    current === "custom" || current === "other" ? current : null,
+  );
+  const pick = (
+    next: CounterpartyShare | null,
+    basis: ShareBasis = "fixed",
+  ) => {
+    const failure = onChange(
+      multiple && basis !== "fixed"
+        ? next
+        : keepShare(saved, next, partner?.id),
+      basis,
+    );
     if (failure) setError(failure);
-    else setOpen(false);
   };
   const half = halfOf(amount);
   const options: {
@@ -144,14 +194,14 @@ export function ShareMenu({
           {
             id: "split" as const,
             label: `Split with ${partner.name}`,
-            detail: money(half),
-            apply: () => pick({ accountId: partner.id, amount: half }),
+            detail: multiple ? "50% of each" : money(half),
+            apply: () => pick({ accountId: partner.id, amount: half }, "half"),
           },
           {
             id: "theirs" as const,
             label: `All ${partner.name}'s`,
-            detail: money(amount),
-            apply: () => pick({ accountId: partner.id, amount }),
+            detail: multiple ? "Full amount each" : money(amount),
+            apply: () => pick({ accountId: partner.id, amount }, "full"),
           },
           {
             id: "custom" as const,
@@ -165,58 +215,37 @@ export function ShareMenu({
       : []),
   ];
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        setError("");
-        setForm(
-          next && (current === "custom" || current === "other")
-            ? current
-            : null,
-        );
-      }}
-    >
-      <Popover.Trigger asChild>{children}</Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          className={moveStyles.popover}
-          align="start"
-          sideOffset={6}
-          collisionPadding={12}
-          aria-label="Who this is for"
+    <PopoverSteps step={confirmation ? "confirmation" : (form ?? "presets")}>
+      {confirmation ?? (
+        <div
           onKeyDown={(event) => {
-            // The register and editor move between rows on arrows; here
-            // they move between options.
             event.stopPropagation();
+            if (event.target instanceof HTMLInputElement) return;
             const items = [
               ...event.currentTarget.querySelectorAll<HTMLElement>(
                 "[data-share-option]",
               ),
             ];
-            // Number keys pick an option, as the menu's hints show.
-            if (
-              /^[1-9]$/.test(event.key) &&
-              !(event.target instanceof HTMLInputElement)
-            ) {
+            if (/^[1-9]$/.test(event.key)) {
               items[Number(event.key) - 1]?.click();
               event.preventDefault();
-              return;
-            }
-            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-            const index = items.indexOf(document.activeElement as HTMLElement);
-            const next =
+            } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              const index = items.indexOf(
+                document.activeElement as HTMLElement,
+              );
               items[
                 (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
                   items.length
-              ];
-            next?.focus();
-            event.preventDefault();
+              ]?.focus();
+              event.preventDefault();
+            }
           }}
         >
           <div className={moveStyles.header}>
             <strong>Who is this for?</strong>
-            <span className={moveStyles.balance}>{money(amount)}</span>
+            <span className={moveStyles.balance}>
+              {money(amounts.reduce((sum, value) => sum + value, 0))}
+            </span>
           </div>
           <div className={styles.shareOptions} role="group">
             {options.map((option, index) => (
@@ -245,7 +274,7 @@ export function ShareMenu({
           {form === "custom" && partner && (
             <CustomShare
               key="custom"
-              label={`${partner.name}'s share`}
+              label={`${partner.name}'s share${multiple ? " per transaction" : ""}`}
               amount={amount}
               initial={
                 share?.accountId === partner.id && share.amount
@@ -259,15 +288,18 @@ export function ShareMenu({
           )}
           {form === "other" && reimbursements && (
             <OtherShare
-              amount={amount}
+              amounts={amounts}
               people={people}
               initial={share?.accountId === reimbursements.id ? share : null}
-              onApply={(name, value) =>
-                pick({
-                  accountId: reimbursements.id,
-                  amount: value,
-                  counterpartyName: name,
-                })
+              onApply={(name, value, basis) =>
+                pick(
+                  {
+                    accountId: reimbursements.id,
+                    amount: value,
+                    counterpartyName: name,
+                  },
+                  basis,
+                )
               }
             />
           )}
@@ -281,10 +313,9 @@ export function ShareMenu({
               Prefilled from {remembered} last time.
             </p>
           )}
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+        </div>
+      )}
+    </PopoverSteps>
   );
 }
 
@@ -345,16 +376,19 @@ function CustomShare({
 }
 
 function OtherShare({
-  amount,
+  amounts,
   people,
   initial,
   onApply,
 }: {
-  amount: number;
+  amounts: number[];
   people: string[];
   initial: CounterpartyShare | null;
-  onApply: (name: string, value: number) => void;
+  onApply: (name: string, value: number, basis: ShareBasis) => void;
 }) {
+  const amount = Math.min(...amounts);
+  const multiple = amounts.length > 1;
+  const [full, setFull] = useState(multiple && !initial);
   const nameId = useId();
   const amountId = useId();
   const listId = useId();
@@ -370,12 +404,12 @@ function OtherShare({
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        const value = parseCents(text);
+        const value = full ? amount : parseCents(text);
         if (!name.trim()) return setError("Name who owes it.");
         if (value === null) return setError("Enter an amount, like 24.50.");
         if (value > amount)
           return setError(`A share can be at most ${money(amount)}.`);
-        onApply(name.trim(), value);
+        onApply(name.trim(), value, full ? "full" : "fixed");
       }}
     >
       <div className={styles.shareFormRow}>
@@ -402,19 +436,35 @@ function OtherShare({
             </datalist>
           </div>
         </div>
-        <div className={styles.shareFormField} data-narrow>
-          <label htmlFor={amountId}>Amount</label>
-          <AmountWell
-            id={amountId}
-            value={text}
-            invalid={Boolean(error)}
-            onChange={(value) => {
-              setText(value);
-              if (error) setError("");
+        {!full && (
+          <div className={styles.shareFormField} data-narrow>
+            <label htmlFor={amountId}>
+              {multiple ? "Amount each" : "Amount"}
+            </label>
+            <AmountWell
+              id={amountId}
+              value={text}
+              invalid={Boolean(error)}
+              onChange={(value) => {
+                setText(value);
+                if (error) setError("");
+              }}
+            />
+          </div>
+        )}
+      </div>
+      {multiple && (
+        <label className={styles.fullShare}>
+          <Checkbox
+            checked={full}
+            onCheckedChange={(value) => {
+              setFull(value === true);
+              setError("");
             }}
           />
-        </div>
-      </div>
+          Full amount of each transaction
+        </label>
+      )}
       {error && <p className={moveStyles.error}>{error}</p>}
       <p className={styles.formHint}>
         Tracked in your Reimbursements account. Only you see it.
