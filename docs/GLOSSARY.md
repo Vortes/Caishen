@@ -61,9 +61,6 @@ The private budget category for your portion of a transaction line. A line entir
 **Write-off**:
 Changing a share to zero, so the counterparty no longer owes it and the full line becomes your own spending, requiring a purpose category at that point. Every share change, including a write-off, is kept in the transaction history.
 
-**Linked refund**:
-A refund recorded against its original purchase, which returns each line's purpose category and share in proportion to the amount refunded.
-
 **Personal share**:
 The portion of an expense a person is responsible for, regardless of who paid the full charge: the line amount minus any share.
 _Avoid_: Amount paid

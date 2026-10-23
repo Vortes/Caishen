@@ -44,9 +44,7 @@ export function ShareSelection({
     (row) =>
       row.actions.share === "edit" &&
       !entry.view.budget.transactions.some(
-        (item) =>
-          item.id === row.id &&
-          (Boolean(item.lines?.length) || Boolean(item.refundOfTransactionId)),
+        (item) => item.id === row.id && Boolean(item.lines?.length),
       ),
   );
   const options = entry.view.categories

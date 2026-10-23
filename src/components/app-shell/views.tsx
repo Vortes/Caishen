@@ -6,10 +6,8 @@ import {
   ArrowRightLeftIcon,
   CheckIcon,
   ChevronDownIcon,
-  CircleCheckIcon,
-  Clock3Icon,
+  CopyrightIcon,
   LandmarkIcon,
-  LockIcon,
   SearchIcon,
   UsersIcon,
   type LucideIcon,
@@ -51,6 +49,7 @@ import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
 import { RepaymentEditor } from "./repayment-editor";
 import { ShareCell, ShareDetail } from "./share-detail";
+import { ClearedMark, clearedState } from "./cleared-mark";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
@@ -592,13 +591,6 @@ export function AvailablePill({
   );
 }
 
-// Reconciled rows recede, so the cleared ones still to check stand out.
-const statusIcon = {
-  pending: { icon: Clock3Icon, label: "Pending" },
-  posted: { icon: CircleCheckIcon, label: "Cleared" },
-  reconciled: { icon: LockIcon, label: "Reconciled" },
-};
-
 function matches(item: Transaction, query: string, accountName?: string) {
   const text = query.toLowerCase();
   return [
@@ -696,8 +688,8 @@ export function RegisterView({
   // YNAB's pattern: pending transactions lead under one heading that
   // collapses, set apart from the cleared ones below.
   const [pendingOpen, setPendingOpen] = useState(true);
-  const pending = rows.filter((item) => item.status === "pending");
-  const cleared = rows.filter((item) => item.status !== "pending");
+  const pending = rows.filter((item) => clearedState(item) === "pending");
+  const cleared = rows.filter((item) => clearedState(item) !== "pending");
   // A collapsed heading's rows can't be selected.
   const selection = useReviewSelection({
     rows: pendingOpen ? rows : cleared,
@@ -798,8 +790,12 @@ export function RegisterView({
           onClose={closeRepayment}
         />
       );
-    const statusKey = item.reconciled ? "reconciled" : item.status;
-    const status = statusIcon[statusKey];
+    const mark = clearedState(item);
+    const statusMark = <ClearedMark state={mark} />;
+    // YNAB's C column: a transaction flips between cleared and uncleared in
+    // place, until reconciling locks it.
+    const togglesCleared =
+      !item.reconciled && item.actions.edit === "transaction";
     const checkable = item.actions.select;
     const isChecked = checkable && checked.includes(item.id);
     // Marks the row in its first column.
@@ -837,7 +833,7 @@ export function RegisterView({
             data-row
             data-id={checkable ? item.id : undefined}
             data-transaction-row={item.id}
-            data-pending={item.status === "pending" || undefined}
+            data-pending={mark === "pending" || undefined}
             className={`${styles.txColumns} ${styles.row}`}
             aria-current={selectedId === item.id ? "true" : undefined}
             onClick={(event) => {
@@ -930,15 +926,29 @@ export function RegisterView({
               {item.amount > 0 && money(item.amount)}
             </span>
             <span className={styles.statusCell} data-column="status">
-              <status.icon
-                size={14}
-                className={styles.statusIcon}
-                data-status={statusKey}
-                aria-label={status.label}
-              />
+              {/* A toggle shows its mark over the row, below; the row
+                  still says its status. */}
+              {togglesCleared ? (
+                <span className="sr-only">{statusMark}</span>
+              ) : (
+                statusMark
+              )}
             </span>
           </button>
           <ShareCell row={item} accountColumn={accountColumn} />
+          {togglesCleared && (
+            <div className={`${styles.txColumns} ${styles.clearedActions}`}>
+              <span className={styles.clearedSlot}>
+                <IconButton
+                  size="sm"
+                  label={item.cleared ? "Mark uncleared" : "Mark cleared"}
+                  onClick={() => entry.toggleCleared(item.id)}
+                >
+                  <ClearedMark state={mark} labeled={false} />
+                </IconButton>
+              </span>
+            </div>
+          )}
           {item.counterpart && (
             <div className={`${styles.txColumns} ${styles.rowActions}`}>
               <span className={styles.counterpartAction}>
@@ -1059,7 +1069,14 @@ export function RegisterView({
         <span className={styles.numeric} data-narrow aria-hidden>
           Amount
         </span>
-        <span data-column="status" />
+        <span
+          className={styles.statusCell}
+          data-column="status"
+          title="Cleared"
+          aria-hidden
+        >
+          <CopyrightIcon size={14} />
+        </span>
       </div>
       {session && !inPlace && (
         <div className={styles.editorDock}>

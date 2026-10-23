@@ -23,7 +23,12 @@ import {
   transactionNeedsReview,
 } from "~/components/transactions/transaction-actions";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
-import { isCounterparty, type Target } from "~/domain/engine";
+import {
+  isCleared,
+  isCounterparty,
+  isPending,
+  type Target,
+} from "~/domain/engine";
 
 export { isCounterparty };
 import { namesPerson } from "~/lib/settlement-recognition";
@@ -78,7 +83,8 @@ export type Account = {
   name: string;
   kind: "cash" | "credit" | "tracking" | "partner" | "reimbursements";
   balance: number;
-  pending: number;
+  // What in the balance hasn't cleared the bank yet.
+  uncleared: number;
   // Today's cleared balance, whatever month is showing: what reconciling
   // compares with the bank's.
   cleared: number;
@@ -114,6 +120,8 @@ export type Transaction = {
   accountId: string | null;
   amount: number;
   status: "pending" | "posted";
+  // YNAB's C column, apart from the bank's pending status.
+  cleared: boolean;
   reconciled: boolean;
   source: "budget" | "bank";
   actions: ReturnType<typeof transactionActions>;
@@ -422,13 +430,13 @@ export function toShellData(
       kind: item.kind,
       balance: item.balance,
       // The engine leaves pending inflows out of the balance until they
-      // post, so only pending outflows are uncleared money in it.
-      pending: active
+      // post, so they aren't uncleared money in it either.
+      uncleared: active
         .filter(
           (entry) =>
             entry.accountId === item.id &&
-            entry.status === "pending" &&
-            entry.amount < 0 &&
+            !isCleared(entry) &&
+            !(isPending(entry) && entry.amount > 0) &&
             entry.date <= `${month}-31`,
         )
         .reduce((sum, entry) => sum + entry.amount, 0),
@@ -496,6 +504,7 @@ export function toShellData(
         accountId: item.accountId,
         amount: item.amount,
         status: item.status,
+        cleared: isCleared(item),
         reconciled: Boolean(item.reconciled),
         source: "budget",
         actions: transactionActions(view, item),
@@ -555,6 +564,7 @@ export function toShellData(
       accountId: item.accountId,
       amount: item.amount,
       status: item.pending ? "pending" : "posted",
+      cleared: !item.pending,
       reconciled: false,
       source: "bank",
       actions: transactionActions(view, item),

@@ -75,15 +75,6 @@
     opacity: 1;
   }
 }
-/* A linked refund's share follows its purchase, so it reads, not acts. */
-.shareStatic {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  height: var(--size-control-xs);
-  color: var(--text-secondary);
-}
 @container (max-width: 760px) {
   .shareActions {
     display: none;

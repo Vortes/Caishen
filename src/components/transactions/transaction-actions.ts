@@ -20,8 +20,7 @@ export type TransactionActions = {
   approve: boolean;
   reject: boolean;
   categorize: boolean;
-  refund: boolean;
-  share: "edit" | "read" | null;
+  share: "edit" | null;
 };
 
 export function transactionNeedsReview(
@@ -54,7 +53,6 @@ export function transactionSelectionActions(
     reject: selected.filter((row) => row.actions.reject).map((row) => row.id),
     categorize:
       selected.length > 0 && selected.every((row) => row.actions.categorize),
-    refund: single?.actions.refund ? single.id : null,
   };
 }
 
@@ -76,7 +74,6 @@ export function transactionActions(
       approve: false,
       reject: false,
       categorize: false,
-      refund: false,
       share:
         editable &&
         shareAccount &&
@@ -109,7 +106,6 @@ export function transactionActions(
     reject: transactionActionIssue(view.budget, item, "reject") === null,
     categorize:
       transactionActionIssue(view.budget, item, "categorize") === null,
-    refund: transactionActionIssue(view.budget, item, "refund") === null,
     share: transactionShareMode(view.budget, item),
   };
 }

@@ -481,6 +481,7 @@ function LiveWorkspace({
       return { savedIds };
     },
     holdOpen,
+    alert: (message) => notify(message, "attention"),
   };
 
   // Undo and redo cover this browser load. Each is a change of its own,

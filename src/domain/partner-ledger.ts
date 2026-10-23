@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Changes } from "./changes";
 import type { Budget, Transaction, TransactionLine } from "./engine";
+import { isPending } from "./cleared";
 import { counterpartyLines, shareContribution } from "./counterparty";
 import type { PartnerSettlement } from "./partner-settlements";
 import { payeeKey } from "./payee-memory";
@@ -329,7 +330,7 @@ export function partnerLedgerRows(
     if (
       transaction.removed ||
       transaction.date > cutoff ||
-      (transaction.status === "pending" && transaction.amount > 0)
+      (isPending(transaction) && transaction.amount > 0)
     )
       continue;
     if (transaction.linkedCounterpartyAccountId === partner.id) {

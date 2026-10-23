@@ -259,7 +259,7 @@ void test("the register excludes pending inflows from its uncleared balance and 
   const shell = data();
   const checking = shell.accounts.find(({ id }) => id === "checking")!;
   assert.equal(checking.balance, 96_500);
-  assert.equal(checking.pending, -1_000);
+  assert.equal(checking.uncleared, -1_000);
   assert.deepEqual(
     Object.fromEntries(
       shell.transactions.map(({ id, needsReview }) => [id, needsReview]),

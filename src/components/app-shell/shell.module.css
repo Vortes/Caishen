@@ -1022,6 +1022,18 @@ button.actionItem:disabled {
   display: flex;
   justify-content: center;
 }
+/* The C column's toggle, over its row in the last column. */
+.clearedActions {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.clearedSlot {
+  display: flex;
+  grid-column: -2;
+  justify-content: center;
+  pointer-events: auto;
+}
 .loanColumns {
   grid-template-columns: minmax(0, 1fr) 80px 96px 128px;
 }
@@ -1483,7 +1495,7 @@ button.actionItem:disabled {
   flex: none;
   color: var(--text-tertiary);
 }
-.statusIcon[data-status="posted"] {
+.statusIcon[data-status="cleared"] {
   color: var(--feedback-success);
 }
 .reviewDot {

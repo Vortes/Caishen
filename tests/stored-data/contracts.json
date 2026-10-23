@@ -584,6 +584,7 @@
         "accountId",
         "amount",
         "categoryId",
+        "cleared",
         "counterpartyName",
         "counterpartyShare",
         "date",
@@ -609,6 +610,7 @@
       ],
       "optional": [
         "categoryId",
+        "cleared",
         "counterpartyName",
         "counterpartyShare",
         "linkedCounterpartyAccountId",

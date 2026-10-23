@@ -53,6 +53,7 @@ export function createImportDraft(view: View, item: BankImport) {
     outflow: item.amount < 0 ? (-item.amount / 100).toFixed(2) : "",
     inflow: item.amount > 0 ? (item.amount / 100).toFixed(2) : "",
     status: item.pending ? ("pending" as const) : ("posted" as const),
+    cleared: !item.pending,
   };
 }
 

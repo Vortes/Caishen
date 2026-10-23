@@ -272,7 +272,11 @@ test("a fully reimbursable refund reopens with its person and saves without a ca
     date: "2026-10-06",
     amount: 1_154,
     payee: "Noodles refund",
-    refundOfTransactionId: "purchase",
+    counterpartyShare: {
+      accountId: "counterparty:reimbursements",
+      counterpartyName: "Mom",
+      amount: 1_154,
+    },
     recordedAt: "2026-10-06T12:00:00Z",
   });
   const shell = await renderShell({ book });
