@@ -26,6 +26,10 @@ An amount and timing goal attached to an envelope that determines and displays i
 **Transaction**:
 A single financial activity, such as a purchase or repayment. Its reported amount can change as the activity is finalized without becoming a second purchase or repayment.
 
+**Register entry**:
+A transaction or bank inbox item named once by the domain with its financial shape and the actions the register may offer. A permitted action still validates the values the user submits.
+_Avoid_: Transaction variant, editable-kind list
+
 **Transaction history**:
 An inspectable record of changes to a transaction, including amount updates and records combined into it.
 
@@ -95,6 +99,10 @@ A difference between the recorded account and financial-institution records that
 
 **Partner ledger**:
 The one record of what the partners owe each other, held by both budgets: each shared purchase's date, payee, amount, who paid, and the other partner's share, plus settlements between them. It shares no category, no line without a share, no other account, and nothing from Reimbursements.
+
+**Source line facts**:
+The facts inside a mirrored partner entry's source that let either partner's browser enforce share-edit rules: whether the payer's line has a purpose category, is on a split purchase, and is a linked refund. They disclose no category identifier or other private value. A recorded purchase awaiting its payer's import has no source yet.
+_Avoid_: Shared category, provisional preview
 
 **Partner's purchase**:
 A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and stays uncategorized, held from Ready to Assign, until you choose your own category for it.
