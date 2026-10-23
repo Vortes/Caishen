@@ -5,17 +5,13 @@ import {
   buildTransactionDraftCommand,
   createTransactionDraft,
 } from "./transaction-draft";
-import { isTransfer, READY_TO_ASSIGN } from "~/domain/transfers";
 import {
-  canEditImport,
-  importCategory,
   createImportDraft,
   importRowId,
-  partnerMatchesOf,
   type BankImport,
 } from "./import-draft";
 
-type Transaction = View["budget"]["transactions"][number];
+import { transactionActions } from "./transaction-actions";
 
 export type ShareBasis = "half" | "full" | "fixed";
 export type ShareChoice = {
@@ -71,7 +67,7 @@ export function prepareTransactionShares(
     );
     const imported = imports.find((item) => importRowId(item) === rowId);
     const item = transaction ?? imported;
-    if (!item || !canShare(view, item))
+    if (!item || transactionActions(view, item).share !== "edit")
       throw new Error(
         "This selection changed. Close Share and select the transactions again.",
       );
@@ -110,31 +106,3 @@ export function prepareTransactionShares(
 export type PreparedTransactionShare = ReturnType<
   typeof prepareTransactionShares
 >[number];
-
-export function canShare(view: View, item: Transaction | BankImport) {
-  const account = view.accounts.find(
-    (account) => account.id === item.accountId,
-  );
-  if (item.removed || (account?.kind !== "cash" && account?.kind !== "credit"))
-    return false;
-
-  if ("kind" in item)
-    return (
-      (item.kind === "purchase" || item.kind === "refund") && !isTransfer(item)
-    );
-
-  if (
-    !canEditImport(item) ||
-    item.loanId ||
-    item.error ||
-    item.needsMatchReview ||
-    partnerMatchesOf(item).length
-  )
-    return false;
-
-  const categoryId = importCategory(view, item);
-  return (
-    item.amount < 0 ||
-    (item.amount > 0 && Boolean(categoryId) && categoryId !== READY_TO_ASSIGN)
-  );
-}

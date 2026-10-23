@@ -27,12 +27,12 @@ import {
   rememberedCounterpartyShare,
 } from "~/domain/payee-memory";
 import {
-  canEditImport,
   createImportDraft,
   importRowId,
   type BankImport,
   type PartnerImportMatch,
 } from "~/components/transactions/import-draft";
+import { transactionActions } from "~/components/transactions/transaction-actions";
 
 type Transaction = View["budget"]["transactions"][number];
 
@@ -87,14 +87,6 @@ export type TransactionSession = {
 type FocusTarget = DraftField | "calendar" | "error";
 type FocusRequest = { id: number; target: FocusTarget; auto: boolean };
 
-const editableKinds: Transaction["kind"][] = [
-  "purchase",
-  "refund",
-  "income",
-  "transfer",
-  "card-payment",
-  "loan-payment",
-];
 // The row's fields as they read on screen, then its split lines', so a
 // failed save focuses the first problem the user sees.
 const screenOrder = (draft: TransactionDraft): DraftField[] => [
@@ -113,10 +105,6 @@ const screenOrder = (draft: TransactionDraft): DraftField[] => [
   "remaining",
   "interest",
 ];
-
-export function canEditTransaction(transaction: Transaction) {
-  return editableKinds.includes(transaction.kind);
-}
 
 export function useTransactionEntryController({
   saver,
@@ -233,14 +221,12 @@ export function useTransactionEntryController({
         )
       : undefined;
     const imported = transactionId
-      ? saver.imports.find(
-          (item) => importRowId(item) === transactionId && canEditImport(item),
-        )
+      ? saver.imports.find((item) => importRowId(item) === transactionId)
       : undefined;
+    const existing = imported ?? transaction;
     if (
       transactionId &&
-      !imported &&
-      (!transaction || !canEditTransaction(transaction))
+      (!existing || transactionActions(view, existing).edit !== "transaction")
     )
       return false;
     const draft = imported
@@ -668,6 +654,8 @@ export function useTransactionEntryController({
       (item) => item.id === transactionId && !item.removed,
     );
     if (!transaction) return "This transaction was deleted.";
+    if (transactionActions(view, transaction).share !== "edit")
+      return "This transaction cannot be shared.";
     const draft = createTransactionDraft(view, view.month, transaction);
     const line =
       transaction.lines?.find((item) => item.id === lineId) ?? transaction;

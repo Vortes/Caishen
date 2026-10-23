@@ -11,6 +11,12 @@ import {
   rememberedCounterpartyShare,
 } from "~/domain/payee-memory";
 import { READY_TO_ASSIGN } from "~/domain/transfers";
+import {
+  bankImportActionIssue,
+  alreadyLinkedImportMessage,
+  loanActivityReviewMessage,
+  quarantinedImportMessage,
+} from "~/domain/transaction-actions";
 import { prepareUserCommand } from "~/domain/user-command";
 import { Prisma } from "~/generated/prisma";
 import {
@@ -549,12 +555,6 @@ export function bankInboxItems(
     return [...imports, ...quarantined];
   });
 }
-
-const alreadyLinkedMessage =
-  "This bank activity is already linked to a budget transaction. Review the existing transaction rather than creating it again.";
-
-const loanActivityReviewMessage =
-  "Review this loan activity with your lender. Record payments using the confirmed principal and interest, then dismiss this update. Loan balances are not changed automatically.";
 
 // A connection of the member's and everything bank setup needs with it.
 async function openConnection(
@@ -1371,10 +1371,7 @@ export async function resolveImport(
     if (!record) {
       const quarantined = readQuarantine(state.reviews, input.logicalId);
       if (!quarantined) throw new TRPCError({ code: "NOT_FOUND" });
-      if (!input.ignore)
-        throw new Error(
-          "This bank transaction wasn't imported. Record it yourself if it affects your budget, then dismiss it.",
-        );
+      if (!input.ignore) throw new Error(quarantinedImportMessage);
       state.resolved[input.logicalId] = {
         fingerprint: quarantineFingerprint(quarantined.transaction),
         ignored: true,
@@ -1421,12 +1418,18 @@ export async function resolveImport(
         decidedAt: new Date().toISOString(),
       };
     else {
+      const imported = {
+        accountId: mapping?.accountId ?? null,
+        transactionId: state.resolved[record.id]?.transactionId,
+        removed: record.removed,
+        quarantined: false,
+      };
+      const linkIssue = bankImportActionIssue(ledger.budget, imported, "link");
+      if (linkIssue) throw new Error(linkIssue);
       if (!mapping)
         throw new Error(
           "Map this provider account to your own ledger account first.",
         );
-      if (ledger.budget.loans.some((loan) => loan.id === mapping.accountId))
-        throw new Error(loanActivityReviewMessage);
       const eligibility = bankImportEligibility(mapping, record);
       if (eligibility !== "eligible")
         throw new Error(
@@ -1458,7 +1461,7 @@ export async function resolveImport(
       } else if (input.command?.type === "partner.match") {
         // The payer confirmed which recorded purchase this import is.
         if (state.resolved[record.id]?.transactionId)
-          throw new Error(alreadyLinkedMessage);
+          throw new Error(alreadyLinkedImportMessage);
         const command = confirmedPartnerMatch(input.command, mapping, record);
         changeSets.push(
           executeWithChanges(
@@ -1472,18 +1475,14 @@ export async function resolveImport(
         submitted = saveIdentity(submittedCommand);
       } else {
         const command = input.command;
-        if (state.resolved[record.id]?.transactionId)
-          throw new Error(alreadyLinkedMessage);
+        const recordIssue = bankImportActionIssue(budget, imported, "record");
+        if (recordIssue) throw new Error(recordIssue);
         if (
           command?.type !== "transaction.upsert" &&
           !(input.expectedFingerprint && command?.type === "transaction.save")
         )
           throw new Error(
             "Record specialized payments or credits using their dedicated operation, then link the existing ledger record.",
-          );
-        if (record.removed)
-          throw new Error(
-            "This provider record was removed; do not create a new purchase from it.",
           );
         if (
           budget.transactions.some((item) => item.id === command.transactionId)
