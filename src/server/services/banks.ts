@@ -1260,7 +1260,7 @@ async function applyBankUpdate(
 }
 
 /**
- * The transaction a new bank import becomes when its payee is remembered
+ * The transaction a posted bank import becomes when its payee is remembered
  * (src/domain/payee-memory.ts): categorized as the user last categorized
  * the payee, and unreviewed. Nothing when the payee has no memory that fits,
  * or when a transaction entered by hand may be this purchase: that import
@@ -1272,7 +1272,7 @@ function rememberedImport(
   record: StoredImport,
   operationId: string,
 ): Extract<Command, { type: "transaction.upsert" }> | undefined {
-  if (record.removed) return undefined;
+  if (record.removed || record.current.pending) return undefined;
   const fact = record.current;
   const amount = -fact.amountCents;
   const payee = (fact.merchantName ?? fact.name).slice(0, 240);
@@ -1524,7 +1524,7 @@ export async function resolveImport(
                   0,
                   240,
                 ),
-            reviewed: false,
+            reviewed: record.current.pending,
             providerId: record.current.providerTransactionId,
           }).changeSet,
         );

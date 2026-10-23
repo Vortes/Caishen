@@ -53,7 +53,7 @@ export function balanceImports(
       (account?.kind === "cash" || account?.kind === "credit") &&
       !item.transactionId &&
       !item.removed &&
-      (!item.pending || item.amount < 0) &&
+      !item.pending &&
       !item.needsMatchReview &&
       !item.quarantined &&
       !item.error &&

@@ -111,7 +111,7 @@ void test("a bank purchase counts toward account balances while it waits for rev
   assert.equal(shell.transactions[0]!.source, "bank");
 });
 
-void test("card balances include unreviewed payments and pending purchases, while pending inflows wait to post", () => {
+void test("card balances include unreviewed posted payments while untouched pending imports wait outside balances", () => {
   const { data } = setup(-300_000);
   const shell = data(month, month, [
     bankImport({ logicalId: "payment", accountId: "card", amount: 200_000 }),
@@ -128,9 +128,9 @@ void test("card balances include unreviewed payments and pending purchases, whil
     }),
   ]);
   const card = shell.accounts.find(({ id }) => id === "card")!;
-  assert.equal(card.balance, -102_000);
+  assert.equal(card.balance, -100_000);
   assert.equal(card.cleared, -100_000);
-  assert.equal(card.pending, -2_000);
+  assert.equal(card.pending, 0);
 });
 
 void test("already recorded activity and uncertain matches never count twice before the inbox refreshes", () => {
@@ -173,6 +173,94 @@ void test("already recorded activity and uncertain matches never count twice bef
     )!.balance,
     100_000,
   );
+});
+
+void test("each account signals its own review work, while untouched pending imports have no review dot", () => {
+  const { run, data } = setup();
+  const pending = bankImport({ pending: true, accountId: "card" });
+  let shell = data(month, month, [bankImport(), pending]);
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "checking")!.toReview,
+    true,
+  );
+  assert.equal(shell.accounts.find(({ id }) => id === "card")!.toReview, false);
+  run({
+    type: "transaction.upsert",
+    transactionId: "card-purchase",
+    accountId: "card",
+    date: "2026-10-20",
+    amount: -3_000,
+    payee: "Market",
+    status: "posted",
+    categoryId: "Dining",
+    reviewed: false,
+  });
+  shell = data(month, month, [pending]);
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "checking")!.toReview,
+    false,
+  );
+  assert.equal(shell.accounts.find(({ id }) => id === "card")!.toReview, true);
+  run({ type: "transaction.approve", transactionIds: ["card-purchase"] });
+  shell = data(month, month, [pending]);
+  assert.equal(shell.accounts.find(({ id }) => id === "card")!.toReview, false);
+});
+
+void test("only untouched bank pending imports belong in the pending section, and entered purchases count once", () => {
+  const { run, data } = setup();
+  const pending = bankImport({ pending: true });
+  const before = data(month, month, [pending]);
+  assert.equal(before.transactions[0]!.pendingImport, true);
+  assert.equal(before.accounts[0]!.balance, 100_000);
+  run({
+    type: "transaction.upsert",
+    transactionId: "entered-pending",
+    accountId: "checking",
+    date: "2026-10-20",
+    amount: -2_000,
+    payee: "New merchant",
+    status: "pending",
+    categoryId: "Dining",
+    providerId: "provider-purchase",
+  });
+  const after = data();
+  assert.equal(Boolean(after.transactions[0]!.pendingImport), false);
+  assert.equal(after.accounts[0]!.balance, 98_000);
+  assert.equal(after.accounts[0]!.pending, -2_000);
+  const changed = data(month, month, [
+    bankImport({
+      pending: true,
+      transactionId: "entered-pending",
+      error: "Bank changed this purchase",
+    }),
+  ]);
+  assert.equal(
+    Boolean(
+      changed.transactions.find(({ source }) => source === "bank")!
+        .pendingImport,
+    ),
+    false,
+  );
+});
+
+void test("an entered purchase missing its category keeps its account review dot even after approval", () => {
+  const { run, data } = setup();
+  run({
+    type: "transaction.upsert",
+    transactionId: "uncategorized",
+    accountId: "checking",
+    date: "2026-10-20",
+    amount: -2_000,
+    payee: "New merchant",
+    status: "pending",
+    reviewed: true,
+  });
+  const shell = data();
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "checking")!.toReview,
+    true,
+  );
+  assert.equal(shell.transactions[0]!.needsReview, true);
 });
 
 void test("import balances respect the selected month while cleared balances include current activity", (t) => {

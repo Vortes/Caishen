@@ -403,6 +403,66 @@ void test("retrying a pending import save does not record it twice", async () =>
   );
 });
 
+void test("entering a pending import counts it once, removes its review dot, and matches its posted version", async () => {
+  const h = await pendingImport();
+  const before = await h.state();
+  const beforeShell = toShellData({ ...before, view: before.view! });
+  assert.equal(
+    beforeShell.accounts.find(({ id }) => id === "cash")!.balance,
+    10_000,
+  );
+  await h.api.budget.resolveImport({
+    ...h.input,
+    command: {
+      ...h.input.command,
+      date: "2026-10-20",
+      amount: -2_000,
+      payee: "Coffee shop",
+    },
+  });
+  const entered = await h.state();
+  const enteredShell = toShellData({ ...entered, view: entered.view! });
+  assert.equal(
+    enteredShell.accounts.find(({ id }) => id === "cash")!.balance,
+    8_000,
+  );
+  assert.equal(
+    enteredShell.accounts.find(({ id }) => id === "cash")!.toReview,
+    false,
+  );
+  assert.equal(entered.imports.length, 0);
+  syncPages([
+    {
+      added: [
+        plaidTransaction({
+          transaction_id: "posted-edit",
+          pending_transaction_id: "pending-edit",
+          name: "Coffee shop",
+          date: "2026-10-20",
+          amount: 20,
+        }),
+      ],
+      removed: [
+        { transaction_id: "pending-edit", account_id: "provider-checking" },
+      ],
+      next_cursor: "posted",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  const posted = await h.state();
+  const postedShell = toShellData({ ...posted, view: posted.view! });
+  assert.equal(
+    postedShell.accounts.find(({ id }) => id === "cash")!.balance,
+    8_000,
+  );
+  assert.equal(
+    postedShell.accounts.find(({ id }) => id === "cash")!.toReview,
+    false,
+  );
+  assert.equal(posted.view!.budget.transactions.length, 1);
+  assert.equal(posted.view!.budget.transactions[0]!.status, "posted");
+});
+
 void test("an edited pending import posts to the same transaction and keeps the user's payee and category", async () => {
   const h = await pendingImport();
   await resolveImport(h.db, alice, h.input);
@@ -442,7 +502,7 @@ void test("an edited pending import posts to the same transaction and keeps the 
   assert.deepEqual(await bankInbox(h.db, alice), []);
 });
 
-void test("a pending bank import can become a paired transfer without becoming approved or cleared", async () => {
+void test("entering a pending bank transfer approves both sides without marking them posted", async () => {
   const h = await pendingImport();
   await h.setBook(
     execute(await h.book(), alice, {
@@ -468,7 +528,7 @@ void test("a pending bank import can become a paired transfer without becoming a
   assert.equal(pair.length, 2);
   assert.equal(pair[0]!.amount + pair[1]!.amount, 0);
   assert.equal(
-    pair.every((item) => item.status === "pending" && !item.reviewed),
+    pair.every((item) => item.status === "pending" && item.reviewed),
     true,
   );
 });
@@ -1485,7 +1545,7 @@ void test("a remembered payee's import waits in the inbox when a hand-entered tr
   );
 });
 
-void test("a remembered import keeps its category when it posts, and leaves when the bank removes it", async () => {
+void test("a remembered pending import waits outside the register until posting, then counts once and still needs review", async () => {
   const h = await linkedHarness();
   syncPages([
     { added: [groceryRun("first-run", "2026-10-02")], next_cursor: "1" },
@@ -1521,10 +1581,16 @@ void test("a remembered import keeps its category when it posts, and leaves when
   await syncBanks(h.db, alice);
   assert.deepEqual(
     (await runs()).map((item) => [item.status, item.categoryId, item.reviewed]),
-    [
-      ["posted", "dining", false],
-      ["pending", "dining", false],
-    ],
+    [["posted", "dining", false]],
+  );
+  const pending = (await bankInbox(h.db, alice))[0]!;
+  assert.equal(pending.pending, true);
+  const state = await h.state();
+  const staged = toShellData({ ...state, view: state.view! });
+  assert.equal(staged.accounts.find(({ id }) => id === "cash")!.balance, 5_790);
+  assert.equal(
+    staged.transactions.find(({ source }) => source === "bank")!.needsReview,
+    false,
   );
   await syncBanks(h.db, alice);
   assert.deepEqual(
