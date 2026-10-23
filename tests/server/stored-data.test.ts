@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { type ZodTypeAny } from "zod";
-import { householdSchema, transactionSchema } from "../../src/domain/engine";
 import { rowDataSchemas } from "../../src/domain/row-schemas";
+import {
+  counterpartyShareSchema,
+  transactionHistorySchema,
+} from "../../src/domain/engine";
+import { partnerEntryObject } from "../../src/domain/partner-ledger";
+import { partnerSettlementSchema } from "../../src/domain/partner-settlements";
 import { tableNames } from "../../src/domain/rows";
 import {
   reconciliationResultSchema,
@@ -27,16 +32,19 @@ const jsonColumns: Record<string, ZodTypeAny> = {
   "ReviewEvidence.evidence": savedEvidenceSchema,
   "ReviewEvidence.result": reconciliationResultSchema,
   "DailyDelivery.payload": dailyDeliveryPayloadSchema,
-  "SharedCategory.weights":
-    householdSchema.shape.sharedCategories.element.shape.weights,
-  "SharedCategory.categoryIds":
-    householdSchema.shape.sharedCategories.element.shape.categoryIds,
-  "PartnerFact.shares": transactionSchema.shape.shares.unwrap(),
   "BankImport.record": bankImportColumnSchemas.record,
   "BankImport.resolved": bankImportColumnSchemas.resolved,
   "BankImport.reviews": bankImportColumnSchemas.reviews,
   "Operation.command": operationCommandSchema,
   "Operation.changeSet": changeSetSchema,
+  "Transaction.counterpartyShare": counterpartyShareSchema.nullable(),
+  "TransactionLine.counterpartyShare": counterpartyShareSchema.nullable(),
+  "PayeeMemory.counterpartyShare": counterpartyShareSchema.nullable(),
+  "TransactionHistory.shareChanges": transactionHistorySchema.shape.shareChanges
+    .unwrap()
+    .nullable(),
+  "PartnerEntry.history": partnerEntryObject.shape.history,
+  "PartnerSettlement.history": partnerSettlementSchema.shape.history,
 };
 // Row tables store their data as columns: kinds and statuses are text, and
 // their values may only grow like any stored enum.
@@ -58,7 +66,9 @@ const contracts = JSON.parse(
 ) as Record<string, Contract[]>;
 type RecordValue = Record<string, unknown>;
 function locations(value: unknown, path: string): string[][] {
-  const parts = path ? path.replaceAll("[]", ".*").split(".") : [];
+  const parts = path
+    ? path.replaceAll("[]", ".*").replace(/^\./, "").split(".")
+    : [];
   function visit(
     current: unknown,
     remaining: string[],
@@ -114,6 +124,7 @@ function assertLoads(column: string, value: unknown, description: string) {
     result.success,
     `${description} no longer loads. Stored data must remain readable (ADR 0006).\n${result.success ? "" : result.error.message}`,
   );
+  if (value === null) assert.equal(result.data, null, description);
   for (const contract of contracts[column] ?? []) {
     if (contract.when && (value as RecordValue).kind !== contract.when.kind)
       continue;
@@ -246,6 +257,11 @@ for (const column of Object.keys(columns)) {
           let checked = 0;
           for (const { file, value } of records)
             for (const at of locations(value, path)) {
+              if (!at.length) {
+                assertLoads(column, null, `${column}/${file}: value is null`);
+                checked++;
+                continue;
+              }
               const variant = structuredClone(value);
               const parent = readAt(variant, at.slice(0, -1)) as RecordValue;
               parent[at.at(-1)!] = null;

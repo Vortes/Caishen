@@ -16,7 +16,6 @@ import {
   type ChangeSet,
   type WireRow,
 } from "../../src/domain/rows";
-import { deriveObligations } from "../../src/domain/shared-ledger";
 import { PrismaClient } from "../../src/generated/prisma";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
@@ -51,13 +50,12 @@ const sorted = (rows: WireRow[]) =>
   [...rows].sort((a, b) => key(a).localeCompare(key(b)));
 
 // What rows hold of a book: everything but the audit, with assignments
-// folded and generated obligations derived.
+// folded.
 function stored(book: Book): Book {
   const copy = json(book);
   for (const budget of Object.values(copy.budgets))
     budget.assignments = foldAssignments(budget.assignments);
   copy.audit = [];
-  copy.obligations = deriveObligations(copy);
   return json(copy);
 }
 
@@ -138,18 +136,12 @@ void test("the development seed and bank imports are stored whole, and each part
     reviews,
   });
 
-  // A partner's browser holds their own budget's rows, the shared rows, and
-  // the partner facts derived for them.
+  // A partner's browser holds their own budget's rows and the shared rows.
   for (const viewerId of ["alex", "jordan"]) {
     const visible = await loadRows(db, workspaceId, { viewerId });
     assert.deepStrictEqual(
       sorted(visible),
       sorted(rows.filter((row) => rowVisibleTo(row, viewerId))),
-    );
-    assert.ok(visible.some((row) => row.table === "partnerFact"));
-    assert.ok(
-      visible.some((row) => row.table === "sharedCategory"),
-      "shared rows",
     );
   }
 });

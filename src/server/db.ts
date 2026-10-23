@@ -9,15 +9,19 @@ const createPrismaClient = () =>
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof createPrismaClient> | undefined;
   prismaSchema: string | undefined;
+  prismaConstructor: typeof PrismaClient | undefined;
 };
 
 const schema = JSON.stringify(Prisma.dmmf.datamodel);
 export const db =
-  globalForPrisma.prismaSchema === schema && globalForPrisma.prisma
+  globalForPrisma.prismaSchema === schema &&
+  globalForPrisma.prismaConstructor === PrismaClient &&
+  globalForPrisma.prisma
     ? globalForPrisma.prisma
     : createPrismaClient();
 
 if (env.NODE_ENV !== "production") {
   globalForPrisma.prisma = db;
   globalForPrisma.prismaSchema = schema;
+  globalForPrisma.prismaConstructor = PrismaClient;
 }

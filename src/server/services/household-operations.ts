@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { composeChangeSets, rowsIn } from "~/domain/change-sets";
 import {
   createBook,
+  budgetReferenceIssues,
   execute,
   executeWithChanges,
   mergeBooks,
@@ -36,6 +37,7 @@ import {
 } from "./household";
 import { commandHash, domainError, operationHash } from "./safety";
 import { budgetMaintenance } from "./stored-data";
+import { readPartnerInvite, limitInviteChecks } from "./partner-invites";
 
 // The server's own household operations that aren't bank updates: creating
 // a budget, joining a partner's household, and the legacy screen's bulk
@@ -45,14 +47,24 @@ import { budgetMaintenance } from "./stored-data";
 export async function onboard(
   db: Database,
   userId: string,
-  input: { name: string; month: string; timezone: string },
+  input: {
+    name: string;
+    month: string;
+    timezone: string;
+    emailEnabled?: boolean;
+  },
   observe?: RevisionObserver,
 ): Promise<OperationResult> {
   try {
     const book = execute(
       withCounterpartyAccounts(createBook(userId, input.name, input.month)),
       userId,
-      { type: "settings.update", id: randomUUID(), timezone: input.timezone },
+      {
+        type: "settings.update",
+        id: randomUUID(),
+        timezone: input.timezone,
+        emailEnabled: input.emailEnabled ?? true,
+      },
     );
     const rows = bookToRows(book);
     const operationId = randomUUID();
@@ -157,22 +169,10 @@ export async function joinHousehold(
   code: string,
   observe?: RevisionObserver,
 ): Promise<OperationResult> {
+  await limitInviteChecks(db, userId);
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const invite = await db.partnerInvite.findUnique({
-        where: { tokenHash: commandHash(code) },
-      });
-      if (!invite || invite.usedBy || invite.expiresAt < new Date())
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "This invitation is invalid, expired, or already used.",
-        });
-      if (invite.createdBy === userId)
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "Give this code to your partner to use in their own account.",
-        });
+      const invite = await readPartnerInvite(db, userId, code);
       const own = await wholeBook(db, userId);
       const host = await wholeBook(db, invite.createdBy);
       if (host.household.workspaceId !== invite.workspaceId)
@@ -380,4 +380,63 @@ export async function importCategories(
     },
     observe,
   );
+}
+
+export async function setOnboardingCategories(
+  db: Database,
+  actorId: string,
+  input: {
+    operationId: string;
+    expectedRevision: number;
+    categories: Extract<Command, { type: "category.import" }>["categories"];
+  },
+  observe?: RevisionObserver,
+) {
+  const opened = await requireHousehold(db, actorId, observe);
+  const saved = await findOperation(
+    db,
+    opened.household.workspaceId,
+    input.operationId,
+  );
+  if (saved) return earlierResult(saved, actorId, input, input);
+  if (opened.ledger.personal) throw budgetMaintenance();
+  if (opened.requestRevision !== input.expectedRevision)
+    throw refusal(
+      "conflict",
+      "Your budget changed. Refresh before saving categories.",
+      opened.household.revision,
+    );
+  const original = opened.ledger.state as Book;
+  const book = execute(original, actorId, {
+    type: "category.import",
+    id: input.operationId,
+    categories: input.categories,
+  });
+  const selected = new Set(
+    input.categories.map((category) => category.categoryId),
+  );
+  const budget = book.budgets[actorId]!;
+  budget.categories = budget.categories.filter(
+    (category) =>
+      !category.id.startsWith("setup:") || selected.has(category.id),
+  );
+  if (budgetReferenceIssues(budget).length)
+    throw refusal(
+      "rejected",
+      "A category you removed is already used by your budget. Keep it selected, or manage it from the plan.",
+    );
+  const written = await writeServerOperation(db, opened, {
+    actorId,
+    operationId: input.operationId,
+    type: "budget.setupCategories",
+    source: "user",
+    submitted: input,
+    changeSet: {
+      operationId: input.operationId,
+      revision: 0,
+      ...diffRows(bookToRows(original), bookToRows(book)),
+    },
+  });
+  observe?.(written.revision);
+  return written;
 }

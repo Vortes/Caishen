@@ -1,10 +1,12 @@
 /* Toasts stack in the bottom-right corner, newest last, over everything but
-   popovers. The region lets clicks through to the page around its toasts. */
+   popovers. The region lets clicks through to the page around its toasts. A
+   page with its own control in that corner raises the stack above it with
+   --toast-region-bottom. */
 .region {
   position: fixed;
   z-index: 50;
   right: 16px;
-  bottom: 16px;
+  bottom: var(--toast-region-bottom, 16px);
   display: flex;
   flex-direction: column;
   align-items: flex-end;

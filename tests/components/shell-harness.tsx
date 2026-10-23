@@ -202,6 +202,25 @@ export function sent(execute: {
   return execute.mock.calls.map(([input]) => input.command);
 }
 
+const displaysPayee =
+  (payee: string) => (_name: string, element: Element | null) =>
+    element instanceof HTMLElement &&
+    within(element).queryByText(payee, { exact: true }) !== null;
+
+export function transactionRow(payee: string) {
+  return within(screen.getByRole("group", { name: "Transactions" })).getByRole(
+    "button",
+    { name: displaysPayee(payee) },
+  );
+}
+
+export function findTransactionRow(payee: string) {
+  return within(screen.getByRole("group", { name: "Transactions" })).findByRole(
+    "button",
+    { name: displaysPayee(payee) },
+  );
+}
+
 /** The toast showing `text`, once it appears. */
 export async function findToast(
   text: string | RegExp,

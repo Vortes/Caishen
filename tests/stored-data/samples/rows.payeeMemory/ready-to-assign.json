@@ -1,6 +1,6 @@
 {
-  "payee": "Employer",
+  "payee": "Cedar Labs · payroll",
   "kind": "readyToAssign",
   "userId": "alex",
-  "payeeKey": "employer"
+  "payeeKey": "cedarlabspayroll"
 }

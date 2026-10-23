@@ -1,7 +1,8 @@
 "use client";
 
 import { useAuth, useClerk } from "@clerk/nextjs";
-import { InfoIcon, LogInIcon, RotateCwIcon, WrenchIcon } from "lucide-react";
+import { LogInIcon, RotateCwIcon, WrenchIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -57,6 +58,8 @@ import {
   type TransactionReview,
 } from "./transaction-review";
 import { useHistoryShortcuts } from "./use-history-shortcuts";
+import { SHELL_PATH } from "~/components/workspace/routes";
+import { BudgetLoadError } from "~/components/entry/load-error";
 
 type Overview = RouterOutputs["budget"]["overview"];
 
@@ -159,6 +162,7 @@ function LiveBudget({
   skeleton: ReactNode;
 }) {
   const snapshot = useBudgetSelector(whole);
+  const [retrying, setRetrying] = useState(false);
   // Bank connections, their inbox, and Reflect's spending are read beside
   // the rows; they follow the budget's revision.
   const utils = api.useUtils();
@@ -190,19 +194,21 @@ function LiveBudget({
     overview?.status === "new" ||
     (snapshot.status === "empty" && overview?.status !== "ready")
   )
-    return (
-      <Status icon={<InfoIcon size={18} />}>
-        <strong>You don’t have a budget yet.</strong>
-        <a href="/">Create one in Caishen</a>, then come back.
-      </Status>
-    );
+    return <StartOnboarding>{skeleton}</StartOnboarding>;
   if (snapshot.status !== "ready") {
+    if (retrying) return skeleton;
     if (snapshot.refreshFailed || (overviewError && !overview))
       return (
-        <Status icon={<InfoIcon size={18} />}>
-          <strong>Your budget couldn’t load.</strong>
-          {overviewError ?? "Check your connection, then reload the page."}
-        </Status>
+        <BudgetLoadError
+          error={overviewError}
+          onRetry={() => {
+            setRetrying(true);
+            void Promise.all([
+              client.refresh(),
+              utils.budget.overview.invalidate(),
+            ]).finally(() => setRetrying(false));
+          }}
+        />
       );
     return skeleton;
   }
@@ -215,6 +221,13 @@ function LiveBudget({
       overview={overview}
     />
   );
+}
+
+function StartOnboarding({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  // Setup stays on its own page so the first saved budget cannot replace it.
+  useEffect(() => router.replace("/welcome"), [router]);
+  return children;
 }
 
 type Notice = {
@@ -460,6 +473,17 @@ function LiveWorkspace({
                 `Renamed your budget to ${name}`,
               )
             }
+            joinBlocked={
+              snapshot.pending.length
+                ? "Wait for your changes to finish saving before connecting budgets."
+                : undefined
+            }
+            updatePreferences={(change) =>
+              run(
+                { type: "settings.update", id: newId(), ...change },
+                "Preferences saved",
+              )
+            }
             overlays={
               <>
                 <BankDialog />
@@ -561,7 +585,7 @@ function message(result: RunResult): string | null {
   return result.ok ? null : result.message;
 }
 
-const SIGN_IN_URL = "/sign-in?redirect_url=/prototype/app-shell";
+const SIGN_IN_URL = `/sign-in?redirect_url=${SHELL_PATH}`;
 
 function SignIn() {
   return (

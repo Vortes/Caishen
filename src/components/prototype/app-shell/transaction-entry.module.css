@@ -108,6 +108,7 @@
   .entryRow > [data-column="date"],
   .entryRow > [data-column="payee"],
   .entryRow > [data-column="category"],
+  .entryRow > [data-column="share"],
   .entryRow > [data-column="account"] {
     grid-column: 1 / -1;
   }

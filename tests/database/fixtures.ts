@@ -22,6 +22,8 @@ import {
   writeChangeSet,
 } from "../../src/server/storage/rows";
 
+export const databaseClientBuild = `${CLIENT_FORMAT}:test`;
+
 // Households and bank connections set up for database tests, stored the way
 // the app stores them (ADR 0006).
 

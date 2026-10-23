@@ -1,0 +1,34 @@
+{
+  "revision": 1,
+  "amount": 325000,
+  "status": "posted",
+  "date": "2026-08-01",
+  "payee": "Cedar Labs \u00b7 payroll",
+  "operationId": "dev-seed:44",
+  "reason": "created",
+  "userId": "alex",
+  "transactionId": "salary-2026-08-1",
+  "sequence": 0,
+  "actorId": "alex",
+  "at": "2026-10-21T12:00:00Z",
+  "shareChanges": [
+    {
+      "lineId": "supplies",
+      "previous": null,
+      "next": {
+        "accountId": "counterparty:reimbursements",
+        "amount": 1000,
+        "counterpartyName": "Employer"
+      }
+    },
+    {
+      "lineId": "supplies",
+      "previous": {
+        "accountId": "counterparty:reimbursements",
+        "amount": 1000,
+        "counterpartyName": "Employer"
+      },
+      "next": null
+    }
+  ]
+}

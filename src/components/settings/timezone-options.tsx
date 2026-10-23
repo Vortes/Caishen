@@ -1,14 +1,17 @@
-export function TimezoneOptions() {
+export function TimezoneOptions({ include }: { include?: string } = {}) {
   return (
     <>
       {[
-        "America/Los_Angeles",
-        "America/Denver",
-        "America/Chicago",
-        "America/New_York",
-        "America/Phoenix",
-        "America/Anchorage",
-        "Pacific/Honolulu",
+        ...new Set([
+          "America/Los_Angeles",
+          "America/Denver",
+          "America/Chicago",
+          "America/New_York",
+          "America/Phoenix",
+          "America/Anchorage",
+          "Pacific/Honolulu",
+          ...(include ? [include] : []),
+        ]),
       ].map((timezone) => (
         <option key={timezone} value={timezone}>
           {timezone

@@ -215,7 +215,10 @@ void test("another user's private accounts, purchases and suggestions are inacce
     "Alice private bank",
   ])
     assert.ok(!JSON.stringify(shared).includes(privateValue));
-  await assert.rejects(eve.api.budget.join({ code }), { code: "NOT_FOUND" });
+  await assert.rejects(eve.api.budget.join({ code }), {
+    code: "BAD_REQUEST",
+    message: /already used/,
+  });
   assert.equal((await eve.state()).view!.members.length, 1);
   assert.ok(!JSON.stringify(await eve.state()).includes("Alice"));
 });
@@ -227,7 +230,15 @@ void test("joining a household survives a serialization conflict", async (t) => 
     get(target, property) {
       if (property === "$transaction")
         return async (...args: unknown[]) => {
-          if (conflict) {
+          const options = args[1];
+          if (
+            conflict &&
+            typeof options === "object" &&
+            options !== null &&
+            "isolationLevel" in options &&
+            options.isolationLevel ===
+              Prisma.TransactionIsolationLevel.Serializable
+          ) {
             conflict = false;
             throw new Prisma.PrismaClientKnownRequestError(
               "Simulated serialization conflict",

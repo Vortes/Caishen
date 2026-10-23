@@ -1,148 +1,125 @@
 "use client";
 
-import { SignInButton } from "@clerk/nextjs";
-import Link from "next/link";
+import { SignInButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
-import { Brand, Icon } from "~/components/shared";
-import { Button } from "~/components/ui-legacy/button";
-import { usePlaidLink } from "./use-plaid-link";
+import Link from "next/link";
+import { CircleAlertIcon, CircleCheckIcon, LogInIcon } from "lucide-react";
+import { Button } from "~/components/ui/button";
 import { currentMonth } from "~/components/budget/format";
 import { api } from "~/trpc/react";
 import {
-  BankAccountSetup,
-  hasUnmappedBankAccounts,
-  useBankAccountSetup,
-} from "./bank-account-setup";
+  BankConnectionsProvider,
+  BankDialog,
+  useBankConnections,
+} from "~/components/prototype/app-shell/banks";
+import { EmptyAppFrame } from "~/components/entry/empty-app-frame";
+import { SHELL_PATH } from "~/components/workspace/routes";
+import shell from "~/components/prototype/app-shell/shell.module.css";
+
+const holdOpen = () => () => undefined;
 
 export function PlaidOAuthReturn() {
-  const link = usePlaidLink();
-  const { isLoaded, userId, resume, cancel } = link;
-  const [returnUrl, setReturnUrl] = useState("");
+  const { isLoaded, userId } = useAuth();
   const [month, setMonth] = useState(currentMonth);
+  const [returnUrl, setReturnUrl] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const utils = api.useUtils();
   const budget = api.budget.state.useQuery(
     { month },
-    { enabled: Boolean(userId && link.saved && !link.busy) },
+    { enabled: Boolean(userId) },
   );
-  const setup = useBankAccountSetup(
-    budget.data ?? undefined,
-    link.connectionId,
-    link.saved && !link.busy,
-  );
-  const savedConnection = budget.data?.connections.find(
-    (connection) => connection.id === link.connectionId,
-  );
-
+  const timezone = budget.data?.view?.budget.settings.timezone;
   useEffect(() => {
-    const timezone = budget.data?.view?.budget.settings.timezone;
     if (timezone) setMonth(currentMonth(timezone));
-  }, [budget.data?.view?.budget.settings.timezone]);
-
+  }, [timezone]);
   useEffect(() => setReturnUrl(window.location.href), []);
-  useEffect(() => {
-    if (!isLoaded || !userId) return;
-    void resume();
-    return cancel;
-  }, [isLoaded, userId, resume, cancel]);
-
-  const title = link.saved
-    ? "Your bank is connected."
-    : link.error
-      ? "Your bank connection needs attention."
-      : "Finish connecting your bank.";
-
+  const banks = useBankConnections({
+    state: budget.data ?? {
+      connections: [],
+      view: null,
+      revision: 0,
+      services: [],
+    },
+    notify: setNotice,
+    holdOpen,
+    resumeReturn: true,
+    runOnServer: async (_id, send) => {
+      const current = await utils.client.budget.state.query({ month });
+      await send(current.revision);
+      await utils.budget.state.invalidate();
+    },
+  });
+  const back =
+    userId &&
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem(`caishen:onboarding:${userId}`)
+      ? "/welcome"
+      : SHELL_PATH;
+  const Icon = !userId
+    ? LogInIcon
+    : banks.saved
+      ? CircleCheckIcon
+      : CircleAlertIcon;
   return (
-    <main className="onboarding">
-      <Brand />
-      <section className="panel w-full max-w-xl">
-        <div className="panel-header">
-          <h1 className="text-xl">{title}</h1>
-        </div>
-        <div className="panel-body grid gap-5">
-          {!isLoaded || !returnUrl ? (
-            <p role="status">Opening your bank connection…</p>
-          ) : !userId ? (
-            <>
+    <EmptyAppFrame>
+      <BankConnectionsProvider value={banks}>
+        {!banks.view && !banks.plaidOpen && (
+          <div className={shell.empty} role="status">
+            <Icon size={18} aria-hidden />
+            <div className={shell.emptyBody}>
               <p>
-                Sign in to the same Caishen account you used to start connecting
-                your bank.
+                <strong>
+                  {!isLoaded
+                    ? "Opening your bank connection…"
+                    : !userId
+                      ? "Finish connecting your bank"
+                      : banks.saved
+                        ? "Your bank is connected"
+                        : banks.error
+                          ? "Your bank connection needs attention"
+                          : "Opening your bank connection…"}
+                </strong>
+                {!userId && isLoaded
+                  ? "Sign in to the same Caishen account you used to start connecting your bank."
+                  : banks.error || notice}
               </p>
-              <SignInButton mode="redirect" forceRedirectUrl={returnUrl}>
-                <Button>
-                  Sign in to finish connecting <Icon name="arrow" size={16} />
-                </Button>
-              </SignInButton>
-            </>
-          ) : (
-            <>
-              {link.error && (
-                <p className="form-error" role="alert">
-                  {link.error}
-                </p>
-              )}
-              {link.message && <p role="status">{link.message}</p>}
-              {link.busy && (
-                <p role="status">
-                  {link.phase === "saving"
-                    ? "Saving your bank connection…"
-                    : link.phase === "syncing"
-                      ? "Updating your bank accounts and activity…"
-                      : "Continue in the secure Plaid window to finish connecting your bank."}
-                </p>
-              )}
-              {link.needsSync && (
-                <Button
-                  disabled={link.busy}
-                  onClick={() => void link.retrySync()}
-                >
-                  {link.busy ? "Updating…" : "Retry bank update"}
-                </Button>
-              )}
-              {link.saved && !link.busy && budget.isPending && (
-                <p>Loading your connected accounts…</p>
-              )}
-              {budget.error && (
-                <div className="grid gap-3">
-                  <p className="form-error" role="alert">
-                    {budget.error.message}
-                  </p>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void budget.refetch()}
-                  >
-                    Retry loading accounts
+              {!userId && isLoaded && returnUrl ? (
+                <SignInButton mode="redirect" forceRedirectUrl={returnUrl}>
+                  <Button variant="primary">
+                    Sign in to finish connecting
                   </Button>
-                </div>
+                </SignInButton>
+              ) : (
+                userId && (
+                  <>
+                    {budget.error && (
+                      <>
+                        <p role="alert">{budget.error.message}</p>
+                        <Button onClick={() => void budget.refetch()}>
+                          Retry loading accounts
+                        </Button>
+                      </>
+                    )}
+                    {banks.connections.map((connection) => (
+                      <div key={connection.id}>
+                        <Button onClick={() => banks.setUp(connection.id)}>
+                          Set up {connection.institutionName ?? "bank"} accounts
+                        </Button>
+                      </div>
+                    ))}
+                    {(banks.error || banks.saved) && (
+                      <Button asChild>
+                        <Link href={back}>Back to your budget</Link>
+                      </Button>
+                    )}
+                  </>
+                )
               )}
-              {savedConnection && hasUnmappedBankAccounts(savedConnection) && (
-                <Button onClick={() => setup.open(savedConnection.id)}>
-                  Set up accounts
-                </Button>
-              )}
-              <Button
-                asChild
-                variant={
-                  link.saved &&
-                  !(savedConnection && hasUnmappedBankAccounts(savedConnection))
-                    ? "default"
-                    : "secondary"
-                }
-              >
-                <Link href="/">
-                  Back to your budget <Icon name="arrow" size={16} />
-                </Link>
-              </Button>
-            </>
-          )}
-        </div>
-      </section>
-      {setup.connection && budget.data && (
-        <BankAccountSetup
-          key={setup.connection.id}
-          state={budget.data}
-          connection={setup.connection}
-          onClose={setup.close}
-        />
-      )}
-    </main>
+            </div>
+          </div>
+        )}
+        <BankDialog />
+      </BankConnectionsProvider>
+    </EmptyAppFrame>
   );
 }

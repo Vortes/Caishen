@@ -1,0 +1,22 @@
+{
+  "id": "market-settlement",
+  "payerId": "jordan",
+  "date": "2026-01-21",
+  "amount": 1500,
+  "method": "Bank transfer",
+  "confirmed": true,
+  "history": [
+    {
+      "actorId": "jordan",
+      "operationId": "corpus-59",
+      "reason": "matched"
+    },
+    {
+      "actorId": "alex",
+      "operationId": "corpus-60",
+      "at": "2026-01-21T12:00:00Z",
+      "reason": "confirmed"
+    }
+  ],
+  "sort": 0
+}

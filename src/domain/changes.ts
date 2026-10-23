@@ -4,13 +4,11 @@ import type {
   Budget,
   Category,
   Loan,
-  Obligation,
   PayeeMemory,
-  Reimbursement,
-  Settlement,
-  SharedCategory,
   Transaction,
 } from "./engine";
+import type { PartnerEntry } from "./partner-ledger";
+import type { PartnerRequest, PartnerSettlement } from "./partner-settlements";
 import {
   accountRow,
   assignmentRow,
@@ -20,12 +18,11 @@ import {
   groupRows,
   loanRows,
   memberRows,
-  openingObligationRows,
-  partnerFactRows,
+  partnerEntryRow,
+  partnerRequestRow,
+  partnerSettlementRow,
+  partnerSideRows,
   payeeMemoryRows,
-  reimbursementRows,
-  settlementRows,
-  sharedCategoryRows,
   transactionRows,
   type ChangeSet,
   type WireRow,
@@ -47,8 +44,6 @@ export class Changes {
   // Each touched part's current rows, and its rows when first touched.
   private readonly parts = new Map<string, () => WireRow[]>();
   private readonly before = new Map<string, WireRow[]>();
-  // Partner facts per viewer when a part they derive from was first touched.
-  private readonly facts = new Map<string, WireRow[]>();
   private readonly positions = new WeakMap<object, Map<string, number>>();
   // Each touched transaction as it was when first touched.
   private readonly edited = new Map<
@@ -62,17 +57,6 @@ export class Changes {
     if (this.parts.has(key)) return;
     this.parts.set(key, rows);
     this.before.set(key, rows());
-  }
-
-  // Partner facts derive from each budget's transactions, the settlements,
-  // and the shared categories; only the household's whole book holds the
-  // partner's side, so a personal ledger's change sets never include them.
-  private touchFacts(changedBudget?: Budget): void {
-    const state = this.state;
-    if (isPersonalLedger(state)) return;
-    for (const viewerId of Object.keys(state.budgets))
-      if (viewerId !== changedBudget?.userId && !this.facts.has(viewerId))
-        this.facts.set(viewerId, partnerFactRows(state, viewerId));
   }
 
   // An item's position in its collection, which is its sort.
@@ -218,7 +202,6 @@ export class Changes {
           index < 0 ? undefined : structuredClone(budget.transactions[index]),
       });
     }
-    this.touchFacts(budget);
     this.item(
       `transaction ${budget.userId} ${id}`,
       () => budget.transactions,
@@ -264,6 +247,60 @@ export class Changes {
     return (budget.payeeMemory ??= {});
   }
 
+  /** One partner's private sides of partner ledger entries. */
+  partnerSide(
+    budget: Budget,
+    entryId: string,
+  ): NonNullable<Budget["partnerSides"]> {
+    this.touch(`partner side ${budget.userId} ${entryId}`, () =>
+      partnerSideRows(budget.userId, entryId, budget.partnerSides?.[entryId]),
+    );
+    return (budget.partnerSides ??= {});
+  }
+
+  /** A partner ledger entry, which both partners' browsers hold. */
+  partnerEntry(entry: PartnerEntry): PartnerEntry {
+    this.item(
+      `partner entry ${entry.id}`,
+      () => this.state.partnerEntries ?? [],
+      entry.id,
+      (item, sort) => [partnerEntryRow(item, sort)],
+    );
+    return entry;
+  }
+
+  addPartnerEntry(entry: PartnerEntry): void {
+    this.partnerEntry(entry);
+    (this.state.partnerEntries ??= []).push(entry);
+  }
+
+  /** A settlement between the partners, which both browsers hold. */
+  partnerSettlement(settlement: PartnerSettlement): PartnerSettlement {
+    this.item(
+      `partner settlement ${settlement.id}`,
+      () => this.state.partnerSettlements ?? [],
+      settlement.id,
+      (item, sort) => [partnerSettlementRow(item, sort)],
+    );
+    return settlement;
+  }
+
+  addPartnerSettlement(settlement: PartnerSettlement): void {
+    this.partnerSettlement(settlement);
+    (this.state.partnerSettlements ??= []).push(settlement);
+  }
+
+  /** A request to pay, which both browsers hold. */
+  addPartnerRequest(request: PartnerRequest): void {
+    this.item(
+      `partner request ${request.id}`,
+      () => this.state.partnerRequests ?? [],
+      request.id,
+      (item, sort) => [partnerRequestRow(item, sort)],
+    );
+    (this.state.partnerRequests ??= []).push(request);
+  }
+
   /** A loan with its rates and payments. */
   loan(budget: Budget, loan: Loan): Loan {
     this.item(
@@ -280,56 +317,6 @@ export class Changes {
     budget.loans.push(loan);
   }
 
-  /** A reimbursement claim with its receipts. */
-  reimbursement(budget: Budget, claim: Reimbursement): Reimbursement {
-    this.item(
-      `reimbursement ${budget.userId} ${claim.id}`,
-      () => budget.reimbursements,
-      claim.id,
-      (item, sort) => reimbursementRows(budget.userId, item, sort),
-    );
-    return claim;
-  }
-
-  addReimbursement(budget: Budget, claim: Reimbursement): void {
-    this.reimbursement(budget, claim);
-    budget.reimbursements.push(claim);
-  }
-
-  /** The shared categories, which the caller changes, adds, or removes. */
-  sharedCategories(): SharedCategory[] {
-    this.touchFacts();
-    this.touch("shared categories", () =>
-      sharedCategoryRows(this.state.sharedCategories),
-    );
-    return this.state.sharedCategories;
-  }
-
-  /** The opening shared balances, to which the caller adds. */
-  openingObligations(): Obligation[] {
-    this.touch("opening obligations", () =>
-      openingObligationRows(this.state.obligations),
-    );
-    return this.state.obligations;
-  }
-
-  /** A settlement with its allocations. */
-  settlement(settlement: Settlement): Settlement {
-    this.touchFacts();
-    this.item(
-      `settlement ${settlement.id}`,
-      () => this.state.settlements,
-      settlement.id,
-      (item, sort) => settlementRows(item, sort),
-    );
-    return settlement;
-  }
-
-  addSettlement(settlement: Settlement): void {
-    this.settlement(settlement);
-    this.state.settlements.push(settlement);
-  }
-
   /** Every row the touched entities changed, with its prior content. */
   changeSet(operationId: string): ChangeSet {
     const changeSet: ChangeSet = {
@@ -344,10 +331,6 @@ export class Changes {
       changeSet.after.push(...changes.after);
     };
     for (const [key, rows] of this.parts) add(this.before.get(key)!, rows());
-    const state = this.state;
-    if (!isPersonalLedger(state))
-      for (const [viewerId, before] of this.facts)
-        add(before, partnerFactRows(state, viewerId));
     return changeSet;
   }
 }

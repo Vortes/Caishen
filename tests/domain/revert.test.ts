@@ -15,7 +15,6 @@ import {
   changesOnlyBudgetOf,
   composeChangeSets,
   executeRevert,
-  getRow,
   revert,
   rowsIn,
   stampChangeSet,
@@ -78,20 +77,6 @@ void test("applying each stamped change set to stored rows rebuilds every book",
       sameBook(rowsToBook(rowsIn(step.rowsAfter)), step.after),
       `${step.command.type} (${step.command.id})`,
     );
-  const removedShared = getRow(final, "sharedCategory", rowKey("trips"))!;
-  assert.deepStrictEqual(
-    [removedShared.deleted, removedShared.data],
-    [true, null],
-    "removed rows stay as deleted rows",
-  );
-  // A stamped row carries the revision of the operation that last changed it.
-  const shared = find("shared.rule");
-  const row = getRow(final, "sharedCategory", rowKey("groceries"))!;
-  assert.equal(row.revision, shared.stamped.revision);
-  assert.equal(
-    shared.stamped.before.find((item) => item.id === row.id)!.revision,
-    find("shared.create").stamped.revision,
-  );
   assert.ok(
     find("account.add").stamped.before.every((item) => item.revision === 0),
   );
@@ -127,8 +112,8 @@ void test("every command can be undone right away and redone", () => {
 });
 
 void test("an undo is refused when a row it restores changed since, including by the partner", () => {
-  // Jordan changed the split Alex's shared category was created with.
-  const shared = find("shared.create");
+  // Jordan edited the partner entry Alex recorded.
+  const shared = find("partner.record");
   assert.match(
     refusal(() => executeRevert(final, revertOf(shared), shared.stamped)),
     /changed again since/,
@@ -209,20 +194,17 @@ void test("a partner's browser undoes on its own rows like the server", () => {
 });
 
 void test("a browser receives only its own rows of a change set", () => {
-  const shared = find("shared.create").stamped;
+  const shared = find("partner.settle").stamped;
   const ids = (changeSet: ChangeSet) => changeSet.after.map((row) => row.id);
-  assert.ok(ids(shared).includes(rowKey("jordan", "groceries")));
+  const partnerRow = shared.after.find((row) => rowOwner(row) === "jordan")!;
+  assert.ok(partnerRow);
   const alex = changeSetVisibleTo(shared, "alex");
-  assert.ok(!ids(alex).includes(rowKey("jordan", "groceries")));
+  assert.ok(!ids(alex).includes(partnerRow.id));
   assert.deepStrictEqual(
     alex.before.map((row) => row.id),
     ids(alex),
   );
-  assert.ok(
-    ids(changeSetVisibleTo(shared, "jordan")).includes(
-      rowKey("jordan", "groceries"),
-    ),
-  );
+  assert.ok(ids(changeSetVisibleTo(shared, "jordan")).includes(partnerRow.id));
 });
 
 void test("the server executes revert alongside the engine's commands", () => {
@@ -307,49 +289,6 @@ void test("undoing two changes to the same row one after the other restores each
   assert.equal(household.book().budgets.alex!.expectedIncome["2026-10"], 200);
 });
 
-void test("an undo is refused by content: a partner's real change blocks it, a change that was undone does not", () => {
-  const household = writer(
-    addMember(
-      createBook("alex", "Alex", "2026-09"),
-      "jordan",
-      "Jordan",
-      "2026-09",
-    ),
-  );
-  for (const [actorId, id] of [
-    ["alex", "alex-food"],
-    ["jordan", "jordan-food"],
-  ] as const)
-    household.run(actorId, {
-      type: "category.add",
-      id,
-      categoryId: "food",
-      name: "Food",
-    });
-  household.run("alex", {
-    type: "shared.create",
-    id: "share",
-    sharedCategoryId: "food",
-    participants: ["alex", "jordan"],
-    weights: { alex: 1, jordan: 1 },
-    categoryIds: { alex: "food", jordan: "food" },
-  });
-  household.run("jordan", {
-    type: "shared.rule",
-    id: "split",
-    sharedCategoryId: "food",
-    weights: { alex: 1, jordan: 3 },
-  });
-  assert.match(
-    refusal(() => household.undo("undo-share", "share")),
-    /changed again since/,
-  );
-  // Once the partner undoes their change, the row holds what "share" wrote.
-  household.undo("undo-split", "split");
-  household.undo("undo-share", "share");
-  assert.deepStrictEqual(household.book().sharedCategories, []);
-});
-
 void test("composed change sets keep each row's first prior content and last content", () => {
   const household = addMember(
     createBook("alex", "Alex", "2026-09"),
@@ -400,11 +339,5 @@ void test("only a change set confined to the actor's own budget can be re-run on
   const own = find("income.expect").stamped;
   assert.ok(changesOnlyBudgetOf(own, "alex"));
   assert.ok(!changesOnlyBudgetOf(own, "jordan"));
-  // Sharing writes the household's shared categories and the partner's rows.
-  assert.ok(!changesOnlyBudgetOf(find("shared.create").stamped, "alex"));
   assert.equal(rowOwner({ table: "member", id: rowKey("alex") }), null);
-  assert.equal(
-    rowOwner({ table: "partnerFact", id: rowKey("alex", "receipt", "x") }),
-    null,
-  );
 });

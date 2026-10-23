@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  addMember,
-  createBook,
-  execute,
-  type Command,
-} from "../../src/domain/engine";
+import { createBook, execute, type Command } from "../../src/domain/engine";
 
 const posting = (
   patch: Partial<Extract<Command, { type: "transaction.upsert" }>> = {},
@@ -23,7 +18,7 @@ const posting = (
   ...patch,
 });
 
-function pendingPurchase(shared = false, reviewed = true) {
+function pendingPurchase(reviewed = true) {
   let book = createBook("alice", "Alice", "2026-10");
   book = execute(book, "alice", {
     type: "account.add",
@@ -45,29 +40,15 @@ function pendingPurchase(shared = false, reviewed = true) {
     categoryId: "travel",
     name: "Travel",
   });
-  if (shared) {
-    book = addMember(book, "bob", "Bob", "2026-10");
-    book = execute(book, "alice", {
-      type: "shared.create",
-      id: "shared",
-      sharedCategoryId: "shared-dining",
-      participants: ["alice", "bob"],
-      categoryIds: { alice: "dining", bob: "dining-bob" },
-      weights: { alice: 1, bob: 1 },
-    });
-  }
   return execute(
     book,
     "alice",
-    {
-      ...posting({
-        id: "pending",
-        status: "pending",
-        categoryId: "dining",
-        providerId: "pending-record",
-      }),
-      sharedCategoryId: shared ? "shared-dining" : undefined,
-    },
+    posting({
+      id: "pending",
+      status: "pending",
+      categoryId: "dining",
+      providerId: "pending-record",
+    }),
     reviewed ? "user" : "agent",
   );
 }
@@ -110,23 +91,10 @@ void test("new, unreviewed, or financially changed bank activity still requires 
     );
   }
   const unreviewed = execute(
-    pendingPurchase(false, false),
+    pendingPurchase(false),
     "alice",
     posting(),
     "agent",
   );
   assert.equal(unreviewed.budgets.alice!.transactions[0]!.reviewed, false);
-});
-
-void test("bank posting preserves shared approval only when shares and split weights stay the same", () => {
-  const pending = pendingPurchase(true);
-  const unchanged = execute(pending, "alice", posting(), "agent");
-  assert.equal(unchanged.budgets.alice!.transactions[0]!.reviewed, true);
-  for (const shares of [
-    { alice: 1200, bob: 800 },
-    { alice: 1000, bob: 1000 },
-  ]) {
-    const changed = execute(pending, "alice", posting({ shares }), "agent");
-    assert.equal(changed.budgets.alice!.transactions[0]!.reviewed, false);
-  }
 });

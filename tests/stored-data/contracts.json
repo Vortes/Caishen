@@ -191,34 +191,11 @@
         "message",
         "scheduledAt",
         "to",
+        "unsubscribeUrl",
         "message.subject",
         "message.text"
       ],
-      "optional": ["scheduledAt"],
-      "nullable": [],
-      "values": {}
-    }
-  ],
-  "SharedCategory.weights": [
-    {
-      "fields": [],
-      "optional": [],
-      "nullable": [],
-      "values": {}
-    }
-  ],
-  "SharedCategory.categoryIds": [
-    {
-      "fields": [],
-      "optional": [],
-      "nullable": [],
-      "values": {}
-    }
-  ],
-  "PartnerFact.shares": [
-    {
-      "fields": [],
-      "optional": [],
+      "optional": ["scheduledAt", "unsubscribeUrl"],
       "nullable": [],
       "values": {}
     }
@@ -361,20 +338,16 @@
           "loanPayment",
           "loanRate",
           "member",
-          "obligation",
-          "partnerFact",
-          "reimbursement",
-          "reimbursementReceipt",
+          "partnerEntry",
+          "partnerEntrySide",
+          "partnerRequest",
+          "partnerSettlement",
+          "payeeMemory",
           "rule",
-          "settlement",
-          "settlementAllocation",
-          "sharedCategory",
           "target",
           "transaction",
           "transactionHistory",
-          "transactionLine",
-          "transactionShare",
-          "payeeMemory"
+          "transactionLine"
         ],
         "before[].table": [
           "account",
@@ -388,21 +361,96 @@
           "loanPayment",
           "loanRate",
           "member",
-          "obligation",
-          "partnerFact",
-          "reimbursement",
-          "reimbursementReceipt",
+          "partnerEntry",
+          "partnerEntrySide",
+          "partnerRequest",
+          "partnerSettlement",
+          "payeeMemory",
           "rule",
-          "settlement",
-          "settlementAllocation",
-          "sharedCategory",
           "target",
           "transaction",
           "transactionHistory",
-          "transactionLine",
-          "transactionShare",
-          "payeeMemory"
+          "transactionLine"
         ]
+      }
+    }
+  ],
+  "Transaction.counterpartyShare": [
+    {
+      "fields": ["accountId", "amount", "counterpartyName"],
+      "optional": ["counterpartyName"],
+      "nullable": [""],
+      "values": {}
+    }
+  ],
+  "TransactionLine.counterpartyShare": [
+    {
+      "fields": ["accountId", "amount", "counterpartyName"],
+      "optional": ["counterpartyName"],
+      "nullable": [""],
+      "values": {}
+    }
+  ],
+  "PayeeMemory.counterpartyShare": [
+    {
+      "fields": ["accountId", "amount", "counterpartyName"],
+      "optional": ["counterpartyName"],
+      "nullable": [""],
+      "values": {}
+    }
+  ],
+  "TransactionHistory.shareChanges": [
+    {
+      "fields": [
+        "[].lineId",
+        "[].next",
+        "[].previous",
+        "[].previous.accountId",
+        "[].previous.amount",
+        "[].previous.counterpartyName",
+        "[].next.accountId",
+        "[].next.amount",
+        "[].next.counterpartyName"
+      ],
+      "optional": ["[].previous.counterpartyName", "[].next.counterpartyName"],
+      "nullable": ["", "[].previous", "[].next"],
+      "values": {}
+    }
+  ],
+  "PartnerEntry.history": [
+    {
+      "fields": [
+        "[].actorId",
+        "[].at",
+        "[].changes",
+        "[].operationId",
+        "[].reason",
+        "[].changes[].field",
+        "[].changes[].next",
+        "[].changes[].previous"
+      ],
+      "optional": ["[].at", "[].changes"],
+      "nullable": [],
+      "values": {
+        "[].reason": [
+          "created",
+          "matched",
+          "recorded",
+          "removed",
+          "restored",
+          "updated"
+        ],
+        "[].changes[].field": ["amount", "date", "payee", "share", "status"]
+      }
+    }
+  ],
+  "PartnerSettlement.history": [
+    {
+      "fields": ["[].actorId", "[].at", "[].operationId", "[].reason"],
+      "optional": ["[].at"],
+      "nullable": [],
+      "values": {
+        "[].reason": ["confirmed", "matched", "removed"]
       }
     }
   ],
@@ -445,7 +493,7 @@
       "optional": ["reconciled"],
       "nullable": [],
       "values": {
-        "kind": ["cash", "credit", "tracking", "partner", "reimbursements"]
+        "kind": ["cash", "credit", "partner", "reimbursements", "tracking"]
       }
     }
   ],
@@ -460,16 +508,16 @@
   "rows.category": [
     {
       "fields": [
+        "counterpartyAccountId",
         "group",
         "id",
         "name",
         "pairedAccountId",
         "pairedLoanId",
         "sort",
-        "userId",
-        "counterpartyAccountId"
+        "userId"
       ],
-      "optional": ["pairedAccountId", "pairedLoanId", "counterpartyAccountId"],
+      "optional": ["counterpartyAccountId", "pairedAccountId", "pairedLoanId"],
       "nullable": [],
       "values": {}
     }
@@ -536,29 +584,41 @@
         "accountId",
         "amount",
         "categoryId",
+        "counterpartyName",
+        "counterpartyShare",
         "date",
         "expenseMonth",
         "id",
         "kind",
+        "linkedCounterpartyAccountId",
         "linkedId",
+        "partnerSettlementId",
         "payee",
         "providerId",
         "reconciled",
+        "refundOfTransactionId",
         "removed",
         "reviewed",
         "revision",
-        "sharedCategoryId",
         "sort",
         "status",
-        "userId"
+        "userId",
+        "counterpartyShare.accountId",
+        "counterpartyShare.amount",
+        "counterpartyShare.counterpartyName"
       ],
       "optional": [
         "categoryId",
+        "counterpartyName",
+        "counterpartyShare",
+        "linkedCounterpartyAccountId",
         "linkedId",
+        "partnerSettlementId",
         "providerId",
         "reconciled",
+        "refundOfTransactionId",
         "removed",
-        "sharedCategoryId"
+        "counterpartyShare.counterpartyName"
       ],
       "nullable": [],
       "values": {
@@ -571,25 +631,18 @@
           "purchase",
           "refund",
           "reimbursement",
-          "settlement",
           "statement-credit",
           "transfer"
         ]
       }
     }
   ],
-  "rows.transactionShare": [
-    {
-      "fields": ["participantId", "share", "transactionId", "userId", "weight"],
-      "optional": ["share", "weight"],
-      "nullable": [],
-      "values": {}
-    }
-  ],
   "rows.transactionHistory": [
     {
       "fields": [
+        "actorId",
         "amount",
+        "at",
         "combinedId",
         "date",
         "operationId",
@@ -597,12 +650,29 @@
         "reason",
         "revision",
         "sequence",
+        "shareChanges",
         "status",
         "transactionId",
-        "userId"
+        "userId",
+        "shareChanges[].lineId",
+        "shareChanges[].next",
+        "shareChanges[].previous",
+        "shareChanges[].previous.accountId",
+        "shareChanges[].previous.amount",
+        "shareChanges[].previous.counterpartyName",
+        "shareChanges[].next.accountId",
+        "shareChanges[].next.amount",
+        "shareChanges[].next.counterpartyName"
       ],
-      "optional": ["combinedId"],
-      "nullable": [],
+      "optional": [
+        "actorId",
+        "at",
+        "combinedId",
+        "shareChanges",
+        "shareChanges[].previous.counterpartyName",
+        "shareChanges[].next.counterpartyName"
+      ],
+      "nullable": ["shareChanges[].previous", "shareChanges[].next"],
       "values": {
         "status": ["pending", "posted"],
         "reason": [
@@ -664,32 +734,6 @@
       "values": {}
     }
   ],
-  "rows.reimbursement": [
-    {
-      "fields": [
-        "amount",
-        "id",
-        "kind",
-        "name",
-        "sort",
-        "transactionId",
-        "userId"
-      ],
-      "optional": [],
-      "nullable": [],
-      "values": {
-        "kind": ["cash", "statement-credit"]
-      }
-    }
-  ],
-  "rows.reimbursementReceipt": [
-    {
-      "fields": ["amount", "date", "id", "reimbursementId", "sort", "userId"],
-      "optional": [],
-      "nullable": [],
-      "values": {}
-    }
-  ],
   "rows.rule": [
     {
       "fields": [
@@ -722,133 +766,134 @@
       "values": {}
     }
   ],
-  "rows.sharedCategory": [
-    {
-      "fields": ["categoryIds", "id", "participants", "sort", "weights"],
-      "optional": [],
-      "nullable": [],
-      "values": {}
-    }
-  ],
-  "rows.obligation": [
-    {
-      "fields": [
-        "amount",
-        "creditorId",
-        "date",
-        "debtorId",
-        "expenseMonth",
-        "id",
-        "opening",
-        "payee",
-        "payerId",
-        "sharedCategoryId",
-        "sort",
-        "transactionId"
-      ],
-      "optional": ["date", "expenseMonth", "payee", "payerId", "transactionId"],
-      "nullable": [],
-      "values": {}
-    }
-  ],
-  "rows.settlement": [
-    {
-      "fields": [
-        "amount",
-        "date",
-        "id",
-        "payerId",
-        "received",
-        "recipientId",
-        "sort"
-      ],
-      "optional": [],
-      "nullable": [],
-      "values": {}
-    }
-  ],
-  "rows.settlementAllocation": [
-    {
-      "fields": ["amount", "kind", "obligationId", "sequence", "settlementId"],
-      "optional": [],
-      "nullable": [],
-      "values": {
-        "kind": ["offset", "payment"]
-      }
-    }
-  ],
-  "rows.partnerFact": [
-    {
-      "fields": [
-        "amount",
-        "date",
-        "expenseMonth",
-        "id",
-        "kind",
-        "payee",
-        "payerId",
-        "sharedCategoryId",
-        "shares",
-        "sort",
-        "status",
-        "viewerId"
-      ],
-      "optional": ["shares"],
-      "nullable": [],
-      "values": {
-        "status": ["pending", "posted"],
-        "kind": ["purchase"]
-      },
-      "when": {
-        "kind": "purchase"
-      }
-    },
-    {
-      "fields": ["date", "kind", "settlementId", "viewerId"],
-      "optional": [],
-      "nullable": [],
-      "values": {
-        "kind": ["receipt"]
-      },
-      "when": {
-        "kind": "receipt"
-      }
-    },
-    {
-      "fields": ["kind", "payerId", "sharedCategoryId", "sort", "viewerId"],
-      "optional": [],
-      "nullable": [],
-      "values": {
-        "kind": ["activity"]
-      },
-      "when": {
-        "kind": "activity"
-      }
-    }
-  ],
   "rows.transactionLine": [
     {
       "fields": [
         "amount",
         "categoryId",
+        "counterpartyShare",
         "id",
         "sort",
         "transactionId",
-        "userId"
+        "userId",
+        "counterpartyShare.accountId",
+        "counterpartyShare.amount",
+        "counterpartyShare.counterpartyName"
       ],
-      "optional": [],
+      "optional": ["counterpartyShare", "counterpartyShare.counterpartyName"],
       "nullable": [],
       "values": {}
     }
   ],
   "rows.payeeMemory": [
     {
-      "fields": ["payee", "kind", "categoryId", "userId", "payeeKey"],
-      "optional": ["categoryId"],
+      "fields": [
+        "categoryId",
+        "counterpartyShare",
+        "kind",
+        "payee",
+        "payeeKey",
+        "userId",
+        "counterpartyShare.accountId",
+        "counterpartyShare.amount",
+        "counterpartyShare.counterpartyName"
+      ],
+      "optional": [
+        "categoryId",
+        "counterpartyShare",
+        "counterpartyShare.counterpartyName"
+      ],
       "nullable": [],
       "values": {
         "kind": ["category", "readyToAssign"]
       }
+    }
+  ],
+  "rows.partnerEntry": [
+    {
+      "fields": [
+        "amount",
+        "date",
+        "history",
+        "id",
+        "payee",
+        "payerId",
+        "removed",
+        "share",
+        "sort",
+        "source",
+        "status",
+        "source.lineId",
+        "source.transactionId",
+        "history[].actorId",
+        "history[].at",
+        "history[].changes",
+        "history[].operationId",
+        "history[].reason",
+        "history[].changes[].field",
+        "history[].changes[].next",
+        "history[].changes[].previous"
+      ],
+      "optional": ["removed", "source", "history[].at", "history[].changes"],
+      "nullable": [],
+      "values": {
+        "status": ["pending", "posted"],
+        "history[].reason": [
+          "created",
+          "matched",
+          "recorded",
+          "removed",
+          "restored",
+          "updated"
+        ],
+        "history[].changes[].field": [
+          "amount",
+          "date",
+          "payee",
+          "share",
+          "status"
+        ]
+      }
+    }
+  ],
+  "rows.partnerEntrySide": [
+    {
+      "fields": ["categoryId", "entryId", "userId"],
+      "optional": ["categoryId"],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.partnerSettlement": [
+    {
+      "fields": [
+        "amount",
+        "confirmed",
+        "date",
+        "history",
+        "id",
+        "method",
+        "payerId",
+        "removed",
+        "sort",
+        "history[].actorId",
+        "history[].at",
+        "history[].operationId",
+        "history[].reason"
+      ],
+      "optional": ["removed", "history[].at"],
+      "nullable": [],
+      "values": {
+        "history[].reason": ["confirmed", "matched", "removed"]
+      }
+    }
+  ],
+  "rows.partnerRequest": [
+    {
+      "fields": ["amount", "date", "id", "requesterId", "sort"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
     }
   ]
 }

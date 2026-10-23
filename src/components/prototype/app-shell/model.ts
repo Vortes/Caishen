@@ -16,17 +16,19 @@ import {
   today,
 } from "~/components/budget/format";
 import type { State, View } from "~/components/budget/types";
-import { partnerOf, sharePercent } from "~/components/shared-expenses/split";
+import { partnerOf } from "~/components/partner/partner";
 import { transactionCategory } from "~/components/transactions/transaction-category";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import { isCounterparty, type Target } from "~/domain/engine";
 
 export { isCounterparty };
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
+import { namesPerson } from "~/lib/settlement-recognition";
 import {
   canEditImport,
   importCategory,
   importRowId,
+  partnerMatchesOf,
 } from "~/components/transactions/import-draft";
 import { describeTarget } from "./target-draft";
 
@@ -63,9 +65,6 @@ export type Category = {
   // A paired envelope's counterparty account: available is the float set
   // aside minus what the account says is owed to you.
   pairs?: { accountId: string; name: string; balance: number };
-  reserved: number;
-  spendable: number;
-  sharePercents: number[];
   autoAssign: AutoAssignCategory;
 };
 
@@ -82,6 +81,8 @@ export type Account = {
   cleared: number;
   // The last time it matched the bank's.
   reconciled?: { date: string; balance: number };
+  // Entries wait for the user: the partner's purchases still to categorize.
+  toReview?: boolean;
   connection?: {
     institution: string;
     synced: string;
@@ -127,12 +128,21 @@ export type Transaction = {
   needsCategory: boolean;
   categoryNotNeeded: boolean;
   forMonth?: string;
-  shared: boolean;
+  // Who owes a share of it, for search.
+  shareLabel?: string;
+  // Money someone paid back, or a payment between the partners: who, the
+  // counterparty account it moved, and the settlement it is one leg of.
+  repayment?: {
+    from: string;
+    account: string;
+    settlementId?: string;
+  };
   history: { reason: string; amount: number }[];
 };
 
 export type ShellData = {
   budgetName: string;
+  preferences?: View["budget"]["settings"];
   month: {
     key: string;
     current: string;
@@ -150,14 +160,7 @@ export type ShellData = {
   transactions: Transaction[];
   costToBeMe: number;
   expectedIncome: number | null;
-  partner?: { name: string; youOwe: number; owedToYou: number };
-  reimbursements: {
-    id: string;
-    name: string;
-    amount: number;
-    outstanding: number;
-    kind: "cash" | "statement-credit";
-  }[];
+  partner?: { name: string };
 };
 
 const relative = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
@@ -186,6 +189,8 @@ function importReviewReason(item: State["imports"][number]) {
   if (!item.accountId) return "Connect this bank account to a budget account";
   if (item.removed || item.error) return "The bank changed this transaction";
   if (item.needsMatchReview) return "Check that this matches the right entry";
+  if (partnerMatchesOf(item).length)
+    return "Match it to the purchase it was recorded as";
   if (!item.pending) return "Imported from your bank";
   return undefined;
 }
@@ -260,7 +265,6 @@ export function toShellData(
 ): ShellData {
   const view = state.view;
   const month = view.month;
-  const userId = view.budget.userId;
   const accountName = new Map(
     view.accounts.map((item) => [item.id, item.name]),
   );
@@ -270,6 +274,8 @@ export function toShellData(
   const displayName = (account: { kind: string; name: string }) =>
     (account.kind === "partner" ? state.partnerFirstName : undefined) ??
     account.name;
+  const partnerAccount = view.accounts.find((item) => item.kind === "partner");
+  const partnerName = partnerAccount && displayName(partnerAccount);
   const counterparty = new Map(
     view.accounts
       .filter(
@@ -285,15 +291,6 @@ export function toShellData(
       return [item.id, pair ? displayName(pair) : item.name];
     }),
   );
-  const shares = new Map<string, number[]>();
-  for (const shared of view.sharedCategories) {
-    const id = shared.categoryIds[userId];
-    if (id)
-      shares.set(id, [
-        ...(shares.get(id) ?? []),
-        sharePercent(shared.weights, userId),
-      ]);
-  }
 
   const categories = view.categories.map((item): Category => {
     const card = item.pairedAccountId
@@ -367,9 +364,6 @@ export function toShellData(
         name: displayName(pair),
         balance: pair.balance,
       },
-      reserved: item.reserved,
-      spendable: item.spendable,
-      sharePercents: shares.get(item.id) ?? [],
       autoAssign: item,
     };
   });
@@ -407,6 +401,11 @@ export function toShellData(
   }
 
   const active = view.budget.transactions.filter((item) => !item.removed);
+  const confirmed = new Set(
+    view.partnerSettlements
+      .filter((settlement) => settlement.confirmed)
+      .map((settlement) => settlement.id),
+  );
   const accounts = view.accounts.map((item): Account => {
     const connection = state.connections.find((entry) =>
       Object.values(
@@ -431,6 +430,11 @@ export function toShellData(
         .reduce((sum, entry) => sum + entry.amount, 0),
       cleared: item.cleared,
       reconciled: item.reconciled,
+      toReview:
+        item.kind === "partner" &&
+        view.partnerLedger.some(
+          (row) => row.needsCategory || row.confirmed === false,
+        ),
       connection: connection && {
         institution: connection.institutionName ?? "Connected bank",
         synced: syncedLabel(connection.lastSyncedAt, connection.error),
@@ -461,6 +465,25 @@ export function toShellData(
         !item.categoryId &&
         !item.lines &&
         account.kind !== "tracking";
+      // A repayment moves money out of a counterparty account, like a
+      // transfer, rather than earning it.
+      const repaidFrom =
+        item.linkedCounterpartyAccountId &&
+        counterparty.get(item.linkedCounterpartyAccountId);
+      const shareNames = [
+        ...new Set(
+          (item.lines ?? [item])
+            .map((line) => line.counterpartyShare)
+            .filter((share) => share?.amount)
+            .map(
+              (share) =>
+                share!.counterpartyName ??
+                view.budget.accounts.find(
+                  (account) => account.id === share!.accountId,
+                )?.name,
+            ),
+        ),
+      ];
       return {
         id: item.id,
         date: item.date,
@@ -479,25 +502,43 @@ export function toShellData(
                 date: counterpart.date,
               }
             : undefined,
-        needsReview: !item.reviewed,
+        // A settlement leg waits until either partner confirms it.
+        needsReview:
+          !item.reviewed ||
+          Boolean(
+            item.partnerSettlementId &&
+            !confirmed.has(item.partnerSettlementId),
+          ),
         categoryId: item.categoryId,
         categoryLabel: categoryNotNeeded
           ? "Category not needed"
           : needsCategory
             ? "Needs category"
-            : item.lines
-              ? `Split (${item.lines.length})`
-              : ((item.categoryId && categoryName.get(item.categoryId)) ??
-                (boundary
-                  ? "Inflow: Ready to Assign"
-                  : transactionCategory(item.kind, item.amount))),
+            : item.lines?.length === 1
+              ? (categoryName.get(item.lines[0]!.categoryId) ??
+                "Needs category")
+              : item.lines
+                ? `Split (${item.lines.length})`
+                : ((item.categoryId && categoryName.get(item.categoryId)) ??
+                  (boundary
+                    ? "Inflow: Ready to Assign"
+                    : repaidFrom
+                      ? `Transfer: ${displayName(repaidFrom)}`
+                      : transactionCategory(item.kind, item.amount))),
         needsCategory,
         categoryNotNeeded,
         forMonth:
           item.expenseMonth !== item.date.slice(0, 7)
             ? monthName(item.expenseMonth)
             : undefined,
-        shared: Boolean(item.sharedCategoryId),
+        shareLabel: shareNames.join(" ") || undefined,
+        repayment: repaidFrom
+          ? {
+              from: item.counterpartyName ?? displayName(repaidFrom),
+              account: displayName(repaidFrom),
+              settlementId: item.partnerSettlementId,
+            }
+          : undefined,
         history: item.history.map((entry) => ({
           reason: historyReason[entry.reason],
           amount: entry.amount,
@@ -517,8 +558,20 @@ export function toShellData(
       needsReview: bankImportNeedsReview(item),
       reviewReason: importReviewReason(item),
       ...importCategoryLabel(view, item, categoryName),
+      // Money to or from the partner waits for the partner's import of it,
+      // then both become one settlement.
+      ...(partnerName &&
+      item.accountId &&
+      !item.transactionId &&
+      !importCategory(view, item) &&
+      namesPerson(item.payee, partnerName)
+        ? {
+            categoryLabel: `Transfer: ${partnerName}`,
+            needsCategory: false,
+            reviewReason: `Waiting for ${partnerName}’s import to match`,
+          }
+        : {}),
       categoryNotNeeded: false,
-      shared: false,
       history: [],
     })),
   ].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -527,6 +580,7 @@ export function toShellData(
   const todayKey = today(view.budget.settings.timezone);
   return {
     budgetName: view.budget.name,
+    preferences: view.budget.settings,
     month: {
       key: month,
       start: view.budget.startMonth,
@@ -564,18 +618,7 @@ export function toShellData(
     transactions,
     costToBeMe: view.costToBeMe,
     expectedIncome: view.expectedIncome,
-    partner: partner && {
-      name: partner.name,
-      youOwe: view.settlement.youOwe,
-      owedToYou: view.settlement.owedToYou,
-    },
-    reimbursements: view.reimbursements.map((item) => ({
-      id: item.id,
-      name: item.name,
-      amount: item.amount,
-      outstanding: item.outstanding,
-      kind: item.kind,
-    })),
+    partner: partner && { name: partner.name },
   };
 }
 

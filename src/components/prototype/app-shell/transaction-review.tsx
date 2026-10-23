@@ -182,6 +182,28 @@ export function SelectionIsland({
               </Button>
             </>
           )}
+          {selected.length === 1 &&
+            selected[0]!.source === "budget" &&
+            entry.view.budget.transactions.some(
+              (transaction) =>
+                transaction.id === selected[0]!.id &&
+                transaction.kind === "purchase" &&
+                transaction.amount < 0,
+            ) && (
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  entry.start({
+                    accountId: selected[0]!.accountId,
+                    refundOfTransactionId: selected[0]!.id,
+                    field: "inflow",
+                  })
+                }
+              >
+                Refund
+              </Button>
+            )}
           <CategorizeAction selected={selected} disabled={busy} />
         </div>
       </div>
@@ -212,10 +234,7 @@ function CategorizeAction({
       (category) =>
         !category.pairedAccountId &&
         !category.pairedLoanId &&
-        !category.counterpartyAccountId &&
-        transactions.every(
-          (item) => !item.sharedCategoryId || item.categoryId === category.id,
-        ),
+        !category.counterpartyAccountId,
     )
     .map((category) => ({ value: category.id, label: category.name }));
   const available =

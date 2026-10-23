@@ -44,36 +44,6 @@ void test("the development budget provides cash and credit accounts with email d
   assert.equal(partner.budget.settings.emailEnabled, false);
 });
 
-void test("the development budget shows matching settlement balances and unconfirmed repayments", () => {
-  const { primary, partner } = seedFixture();
-  assert.equal(primary.settlement.net, -partner.settlement.net);
-  assert.ok(primary.settlement.net > 25000);
-  assert.equal(primary.sharedStatement.balance, primary.settlement.net);
-  assert.equal(partner.sharedStatement.balance, partner.settlement.net);
-  assert.equal(primary.sharedStatement.repayments.length, 2);
-  assert.equal(partner.sharedStatement.awaitingYourConfirmation.length, 1);
-  assert.equal(primary.sharedStatement.awaitingYourConfirmation.length, 1);
-});
-
-void test("the development budget shows outstanding cash and statement-credit reimbursements", () => {
-  const { primary } = seedFixture();
-  assert.equal(
-    primary.reimbursements.find((claim) => claim.id === "work-hotel")
-      ?.outstanding,
-    28000,
-  );
-  assert.equal(
-    primary.reimbursements.find((claim) => claim.id === "work-train")
-      ?.outstanding,
-    0,
-  );
-  assert.equal(
-    primary.reimbursements.find((claim) => claim.id === "amex-offer")
-      ?.outstanding,
-    1500,
-  );
-});
-
 void test("the development budget includes overspent categories", () => {
   const { primary } = seedFixture();
   assert.ok(
@@ -162,20 +132,13 @@ void test("the development budget includes pending income and agent categorizati
 });
 
 void test("the development budget keeps unrelated partner purchases private", () => {
-  const { primary, partner } = seedFixture();
-  assert.deepEqual(
-    primary.sharedStatement.categories.find(
-      (category) => category.sharedCategoryId === "weekend",
-    )?.purchases,
-    [],
-  );
+  const { partner } = seedFixture();
   assert.ok(!JSON.stringify(partner).includes("Cedar Labs · conference hotel"));
 });
 
-void test("the development budget carries savings and settlements forward without carrying cash overspending", () => {
-  const { seed, primary } = seedFixture();
+void test("the development budget carries savings forward without carrying cash overspending", () => {
+  const { seed } = seedFixture();
   const nextMonth = projectBook(seed.book, "alex", "2026-11");
-  assert.equal(nextMonth.settlement.net, primary.settlement.net);
   assert.ok(
     nextMonth.categories.find((category) => category.id === "emergency")!
       .available > 0,

@@ -52,7 +52,6 @@ export function CategoryTable({
   onAssign,
   onError,
   busy,
-  sharedSplits,
 }: {
   view: View;
   run: (command: Command) => void;
@@ -62,7 +61,6 @@ export function CategoryTable({
   onAssign: (category: Category, amount: number) => void;
   onError: (message: string) => void;
   busy: boolean;
-  sharedSplits: Map<string, number[]>;
 }) {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
@@ -146,8 +144,6 @@ export function CategoryTable({
                   items.map((category) => {
                     const status = categoryStatus(category);
                     const line = statusLine(category, status);
-                    const splits = sharedSplits.get(category.id) ?? [];
-                    const split = splits[0];
                     return (
                       <tr
                         className={cn("category-row", selectionStyles.row)}
@@ -178,24 +174,6 @@ export function CategoryTable({
                                 >
                                   {category.name}
                                 </button>
-                                {split !== undefined && (
-                                  <span
-                                    className="shared-mark"
-                                    title="Shared with your partner"
-                                  >
-                                    <Icon name="shared" size={12} />
-                                    <span aria-hidden="true">
-                                      {splits.length > 1
-                                        ? "Multiple splits"
-                                        : `${split}/${100 - split}`}
-                                    </span>
-                                    <span className="sr-only">
-                                      {splits.length > 1
-                                        ? `Shared with your partner using ${splits.length} split rules`
-                                        : `Shared with your partner. Your share ${split} percent, partner’s share ${100 - split} percent`}
-                                    </span>
-                                  </span>
-                                )}
                                 {line && (
                                   <span
                                     className={`category-status is-${status}`}

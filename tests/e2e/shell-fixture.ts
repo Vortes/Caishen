@@ -107,7 +107,9 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
             await page.goto(shellPath);
             await clerk.signIn({ page, emailAddress: email });
             await expect(
-              page.getByText("You don’t have a budget yet."),
+              page.getByRole("heading", {
+                name: "Welcome. Let’s set up your budget.",
+              }),
             ).toBeVisible();
             const api = createTRPCClient<AppRouter>({
               links: [

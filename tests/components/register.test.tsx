@@ -4,9 +4,11 @@ import type { Command } from "~/domain/engine";
 import { SyncError } from "~/components/sync/transport";
 import {
   findToast,
+  findTransactionRow as findRow,
   readyOverview,
   renderShell,
   sent,
+  transactionRow as row,
   type Overview,
 } from "./shell-harness";
 
@@ -25,16 +27,6 @@ const purchase = (
   status: "posted",
   reviewed,
 });
-const row = (payee: string) =>
-  within(screen.getByRole("group", { name: "Transactions" })).getByRole(
-    "button",
-    { name: new RegExp(payee) },
-  );
-const findRow = (payee: string) =>
-  within(screen.getByRole("group", { name: "Transactions" })).findByRole(
-    "button",
-    { name: new RegExp(payee) },
-  );
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
 
@@ -63,13 +55,16 @@ test.each(["pending", "posted"] as const)(
       "18.75",
     );
     await shell.user.click(editor().getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-    expect(sent(shell.execute)[0]).toMatchObject({
-      type: "transaction.upsert",
-      transactionId: "purchase",
-      amount: -1875,
-      status,
-    });
+    await findToast("Saved Market");
+    const saved = within(await findRow("Market"));
+    expect(saved.getByText("$18.75", { exact: true })).toBeTruthy();
+    expect(saved.getByText("Gifts", { exact: true })).toBeTruthy();
+    expect(
+      saved.getByLabelText(status === "pending" ? "Pending" : "Cleared"),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole("checkbox", { name: "Select Market" }),
+    ).toHaveLength(1);
   },
 );
 
@@ -99,7 +94,7 @@ test.each([
     kind: "credit",
   },
 ] as const)(
-  "a $status bank import in $accountName selects, opens its field, and saves through its bank link",
+  "a $status bank import in $accountName keeps edits after a refused save and saves once on retry",
   async ({ status, accountId, accountName, kind }) => {
     const seedCommands: Command[] =
       accountId === "checking"
@@ -177,7 +172,7 @@ test.each([
       document.activeElement,
     );
     await shell.user.click(editor().getByRole("button", { name: "Cancel" }));
-    expect(shell.resolveImport).not.toHaveBeenCalled();
+    expect(within(row("Imported coffee")).getByText("$25.00")).toBeTruthy();
     await shell.user.keyboard("e");
     await shell.user.clear(editor().getByLabelText("Payee", { exact: true }));
     await shell.user.type(
@@ -194,21 +189,6 @@ test.each([
       "Gifts{Enter}",
     );
     await shell.user.click(editor().getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(shell.resolveImport).toHaveBeenCalledTimes(1));
-    expect(shell.execute).not.toHaveBeenCalled();
-    expect(shell.resolveImport.mock.calls[0]![0]).toMatchObject({
-      connectionId: "bank",
-      logicalId: "imported-coffee",
-      expectedFingerprint: "a".repeat(64),
-      command: {
-        type: "transaction.upsert",
-        accountId,
-        payee: "Neighborhood cafe",
-        amount: -1875,
-        categoryId: "gifts",
-        status,
-      },
-    });
     await findToast("Your bank changed this import.");
     await screen.findByText(
       "Not saved. Your changes are still here, so you can try again.",
@@ -217,18 +197,27 @@ test.each([
       "value",
       "Neighborhood cafe",
     );
+    expect(editor().getByLabelText("Outflow", { exact: true })).toHaveProperty(
+      "value",
+      "18.75",
+    );
+    expect(editor().getByRole("combobox", { name: "Category" })).toHaveProperty(
+      "value",
+      "Gifts",
+    );
     await shell.user.click(editor().getByRole("button", { name: "Save" }));
     expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
     await findToast("Saved Neighborhood cafe");
-    expect(shell.resolveImport).toHaveBeenCalledTimes(2);
+    const saved = within(await findRow("Neighborhood cafe"));
+    expect(saved.getByText("$18.75", { exact: true })).toBeTruthy();
+    expect(saved.getByText("Gifts", { exact: true })).toBeTruthy();
     expect(
-      within(await findRow("Neighborhood cafe")).getByLabelText(
-        status === "pending" ? "Pending" : "Cleared",
-      ),
+      saved.getByLabelText(status === "pending" ? "Pending" : "Cleared"),
     ).toBeTruthy();
+    expect(screen.queryByText("Imported coffee", { exact: true })).toBeNull();
     expect(
-      screen.queryByRole("button", { name: /Imported coffee.*Needs category/ }),
-    ).toBeNull();
+      screen.getAllByRole("checkbox", { name: "Select Neighborhood cafe" }),
+    ).toHaveLength(1);
   },
 );
 
@@ -358,22 +347,16 @@ test("categorization applies to both selected purchases at once", async () => {
   expect(
     screen.queryByRole("form", { name: "Categorize transactions" }),
   ).toBeNull();
-  await waitFor(() => expect(row("Market").textContent).toContain("Food"));
-  expect(row("Coffee").textContent).toContain("Food");
   await findToast("Categorized 2 transactions");
-  const command = sent(shell.execute)[0];
-  expect(command).toMatchObject({
-    type: "transaction.categorize.batch",
-    categoryId: "food",
-  });
-  expect(command).toHaveProperty(
-    "transactionIds",
-    expect.arrayContaining(["purchase", "coffee"]),
-  );
-  expect(command).toHaveProperty("transactionIds.length", 2);
+  expect(
+    within(await findRow("Market")).getByText("Food", { exact: true }),
+  ).toBeTruthy();
+  expect(
+    within(await findRow("Coffee")).getByText("Food", { exact: true }),
+  ).toBeTruthy();
 });
 
-test("Reject submits only the unreviewed purchase in a mixed selection", async () => {
+test("Reject removes only the unreviewed purchase in a mixed selection", async () => {
   const shell = await renderShell({
     seedCommands: [purchase(), purchase("coffee", false)],
   });
@@ -383,11 +366,10 @@ test("Reject submits only the unreviewed purchase in a mixed selection", async (
     screen.getByRole("checkbox", { name: "Select Coffee" }),
   );
   await shell.user.click(screen.getByRole("button", { name: "Reject" }));
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.reject",
-    transactionIds: ["coffee"],
-  });
+  await findToast("Rejected 1 transaction");
+  expect(within(await findRow("Market")).getByText("$25.00")).toBeTruthy();
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(screen.queryByText("Coffee", { exact: true })).toBeNull();
 });
 
 test("editing a brokerage transfer from the tracking register retains its required budget category", async () => {
@@ -556,16 +538,18 @@ test("choosing and removing a transfer payee changes category requirements witho
     "Category not needed",
   );
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
+  await findToast("Try that again.");
   await screen.findByText(
     "Not saved. Your changes are still here, so you can try again.",
   );
-  expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.save",
-    transactionId: "purchase",
-    transferAccountId: "savings",
-    amount: -2500,
-    categoryId: undefined,
-  });
+  expect(editor().getByLabelText("Payee", { exact: true })).toHaveProperty(
+    "value",
+    "Transfer to Savings",
+  );
+  expect(editor().getByLabelText("Category", { exact: true })).toHaveProperty(
+    "value",
+    "Category not needed",
+  );
   await shell.user.clear(editor().getByLabelText("Payee", { exact: true }));
   await shell.user.type(
     editor().getByLabelText("Payee", { exact: true }),
@@ -577,12 +561,15 @@ test("choosing and removing a transfer payee changes category requirements witho
     "Gifts{Enter}",
   );
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(2));
-  expect(sent(shell.execute)[1]).toMatchObject({
-    type: "transaction.upsert",
-    transactionId: "purchase",
-    payee: "Merchant purchase",
-    categoryId: "gifts",
-    amount: -2500,
-  });
+  await findToast("Saved Merchant purchase");
+  const saved = within(await findRow("Merchant purchase"));
+  expect(saved.getByText("Gifts", { exact: true })).toBeTruthy();
+  expect(saved.getByText("$25.00", { exact: true })).toBeTruthy();
+  expect(screen.queryByRole("checkbox", { name: "Select Market" })).toBeNull();
+  expect(
+    screen.getAllByRole("checkbox", { name: "Select Merchant purchase" }),
+  ).toHaveLength(1);
+  expect(
+    within(screen.getByRole("button", { name: /^Savings/ })).getByText("$0.00"),
+  ).toBeTruthy();
 });

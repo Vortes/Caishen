@@ -5,7 +5,10 @@ import nextEnv from "@next/env";
 import type { Command } from "../../src/domain/engine";
 import type { WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createDatabaseCaller as createCaller } from "./fixtures";
+import {
+  createDatabaseCaller as createCaller,
+  databaseClientBuild,
+} from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
@@ -38,7 +41,11 @@ async function linesFrom(since: number | null) {
   const rows: WireRow[] = [];
   let cursor: string | undefined;
   do {
-    const page = await api.sync.pull({ since, cursor, clientBuild: "2:test" });
+    const page = await api.sync.pull({
+      since,
+      cursor,
+      clientBuild: databaseClientBuild,
+    });
     rows.push(...page.rows);
     cursor = page.nextCursor;
   } while (cursor);

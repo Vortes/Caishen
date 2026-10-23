@@ -20,10 +20,15 @@ import {
   paymentPayees,
   splitRemaining,
   type DraftLine,
+  type DraftShare,
 } from "~/components/transactions/transaction-draft";
+import type { CounterpartyShare } from "~/domain/engine";
+import { proportionalRefundLines } from "~/domain/linked-refunds";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
+import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
+import { PartnerMatches } from "./partner-match";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -32,7 +37,9 @@ import {
   PayeeField,
   type ChoiceOption,
 } from "./transaction-fields";
+import { ShareLabel, ShareMenu, parseCents } from "./share-field";
 import shell from "./shell.module.css";
+import shareStyles from "./share.module.css";
 import styles from "./transaction-entry.module.css";
 
 // The open editor: a row in the register, under its column headers.
@@ -99,6 +106,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   });
 
   const account = view.accounts.find((item) => item.id === draft.accountId);
+  const matches = session.imported ? partnerMatchesOf(session.imported) : [];
   const destinations = paymentPayees(view, draft);
   const destination = destinations.find((item) =>
     item.accountId
@@ -118,18 +126,55 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     account?.kind === "tracking"
       ? Boolean(draft.outflow)
       : Boolean(draft.inflow);
-  const shared = view.sharedCategories.find(
-    (item) => item.id === draft.sharedCategoryId,
-  );
-  // A purchase or refund can split; a transfer, loan payment, tracked
-  // activity, or shared expense can't.
+  // A purchase or refund can split; a transfer, loan payment, or tracked
+  // activity can't.
   const splittable =
-    !draft.transferAccountId &&
-    !draft.loanId &&
-    account?.kind !== "tracking" &&
-    !shared;
+    !draft.transferAccountId && !draft.loanId && account?.kind !== "tracking";
   const split = draft.lines.length > 0;
   const remaining = split ? splitRemaining(draft) : undefined;
+  // A purchase or refund on a cash or card account can carry a share.
+  const shareable =
+    !categoryNotNeeded &&
+    !draft.transferAccountId &&
+    !draft.loanId &&
+    (account?.kind === "cash" || account?.kind === "credit");
+  // The share a new transaction took from its payee's memory, until the
+  // user picks one.
+  const remembered =
+    !session.initial && !session.shareChosen && draft.counterpartyShare
+      ? draft.payee.trim()
+      : undefined;
+  // A linked refund's share follows its purchase, in proportion to what's
+  // refunded so far.
+  const refundOf = draft.refundOfTransactionId
+    ? view.budget.transactions.find(
+        (item) => item.id === draft.refundOfTransactionId,
+      )
+    : undefined;
+  const refundShares = (() => {
+    const refunded = draftAmount(draft);
+    if (!refundOf || !refunded || refunded < 0) return null;
+    const earlier = view.budget.transactions
+      .filter(
+        (item) =>
+          !item.removed &&
+          item.refundOfTransactionId === refundOf.id &&
+          item.id !== session.initial?.id,
+      )
+      .reduce((sum, item) => sum + item.amount, 0);
+    const lines = proportionalRefundLines(refundOf, earlier, refunded);
+    const shares = lines.flatMap((line) =>
+      line.counterpartyShare?.amount ? [line.counterpartyShare] : [],
+    );
+    return shares.length ? (
+      <ShareLabel
+        share={{
+          ...shares[0]!,
+          amount: shares.reduce((sum, share) => sum + share.amount, 0),
+        }}
+      />
+    ) : null;
+  })();
   const accountOptions = useMemo<ChoiceOption[]>(
     () =>
       view.accounts.map((item) => ({
@@ -149,8 +194,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       (category) =>
         !category.pairedAccountId &&
         !category.counterpartyAccountId &&
-        (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId) &&
-        (!shared || shared.categoryIds[view.budget.userId] === category.id),
+        (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId),
     )
     .map((category) => ({
       value: category.id,
@@ -170,8 +214,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           !boundary &&
           initial !== undefined &&
           !isTransfer(initial) &&
-          initial?.kind !== "loan-payment") ||
-        Boolean(shared),
+          initial?.kind !== "loan-payment"),
     },
     ...spendingOptions,
   ];
@@ -378,10 +421,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           ? draft.categoryId
           : "",
         ...amountFields(draftAmount(draft) ?? 0),
+        counterpartyShare: draft.counterpartyShare,
       },
       { lineId: newId(), categoryId: "", outflow: "", inflow: "" },
     ];
-    entry.change({ categoryId: "", lines }, true);
+    entry.change({ categoryId: "", lines, counterpartyShare: undefined }, true);
     return lines;
   };
   // The lines a split started with, until the editor shows them.
@@ -431,7 +475,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       entry.change({ lines: rest });
       focusNext.current = "addLine";
     } else {
-      entry.change({ lines: [], categoryId: rest[0]?.categoryId ?? "" });
+      entry.change({
+        lines: [],
+        categoryId: rest[0]?.categoryId ?? "",
+        counterpartyShare: rest[0]?.counterpartyShare,
+      });
       focusNext.current = "outflow";
     }
   };
@@ -518,12 +566,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           describedBy={described("categoryId")}
           onChange={chooseCategory}
           onPicked={afterCategory}
-          // A loan's payment or a shared expense takes a category that
-          // already exists.
+          // A loan's payment takes a category that already exists.
           onCreate={
-            loan || shared
-              ? undefined
-              : { noun: "category", create: setCreating }
+            loan ? undefined : { noun: "category", create: setCreating }
           }
         />
       </div>
@@ -586,9 +631,19 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           Save and add another
         </Button>
       )}
-      <Button variant="primary" size="sm" type="submit" disabled={removed}>
-        Save
-      </Button>
+      {matches.length ? (
+        <Button
+          size="sm"
+          disabled={removed}
+          onClick={() => entry.submit(false)}
+        >
+          Save as new
+        </Button>
+      ) : (
+        <Button variant="primary" size="sm" type="submit" disabled={removed}>
+          Save
+        </Button>
+      )}
     </div>
   );
 
@@ -613,8 +668,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   // A split line: its category and amount under the row's own columns.
   const lineRow = (line: DraftLine, index: number) => {
     const number = index + 1;
-    const lineId = (field: "categoryId" | "outflow" | "inflow") =>
-      lineField(line.lineId, field);
+    const lineId = (
+      field: "categoryId" | "counterpartyShare" | "outflow" | "inflow",
+    ) => lineField(line.lineId, field);
     const lineAmount = (name: "outflow" | "inflow") => (
       <div
         className={styles.well}
@@ -674,6 +730,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             }}
           />,
         )}
+        {shareCell(
+          lineId("counterpartyShare"),
+          `Line ${number} share`,
+          line.counterpartyShare,
+          draftAmount(line) ?? 0,
+          session.initial?.lines?.find((item) => item.id === line.lineId)
+            ?.counterpartyShare,
+          (counterpartyShare) => changeLine(line.lineId, { counterpartyShare }),
+        )}
         {cell(
           lineId("outflow"),
           "outflow",
@@ -699,6 +764,57 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     );
   };
 
+  // A line's Share cell: a well that opens the share menu. saved is the
+  // line's share as last saved, which "Just mine" writes off.
+  const shareCell = (
+    name: DraftField,
+    label: string,
+    value: DraftShare | null | undefined,
+    lineAmount: number,
+    saved: CounterpartyShare | undefined,
+    onChange: (share: DraftShare | null) => void,
+  ) => {
+    const share = value && {
+      ...value,
+      amount: parseCents(value.amount) ?? 0,
+    };
+    return (
+      <div className={styles.cell} data-column="share">
+        <label htmlFor={id(name)} className={styles.cellLabel}>
+          {label}
+        </label>
+        <ShareMenu
+          amount={Math.abs(lineAmount)}
+          share={share}
+          saved={saved}
+          remembered={name === "counterpartyShare" ? remembered : undefined}
+          onChange={(next) => {
+            onChange(
+              next && { ...next, amount: (next.amount / 100).toFixed(2) },
+            );
+            return null;
+          }}
+        >
+          <button
+            ref={register(name)}
+            id={id(name)}
+            type="button"
+            className={`${styles.well} ${shareStyles.shareWell}`}
+            data-invalid={fields[name] ? "" : undefined}
+            aria-describedby={described(name)}
+          >
+            {share?.amount ? (
+              <ShareLabel share={share} />
+            ) : (
+              <span className={shell.faint}>Just mine</span>
+            )}
+          </button>
+        </ShareMenu>
+        {fieldError(name)}
+      </div>
+    );
+  };
+
   const title = editing ? "Edit transaction" : "New transaction";
   return (
     <form
@@ -708,7 +824,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        void entry.submit(false);
+        // Enter matches an import to the one purchase it may be; with
+        // several, the payer picks one.
+        const [only] = matches;
+        if (only && matches.length === 1) entry.matchImport(only);
+        else if (matches.length)
+          event.currentTarget
+            .querySelector<HTMLElement>("[data-partner-match]")
+            ?.focus();
+        else void entry.submit(false);
       }}
       onKeyDown={(event) => {
         // The register moves its selection with the arrow keys; inside the
@@ -735,6 +859,34 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         {cell("date", "date", "Date", dateControl)}
         {cell("payee", "payee", "Payee", payeeControl)}
         {cell("categoryId", "category", "Category", categoryControl)}
+        {split || !shareable ? (
+          <span className={styles.spacer} data-column="share" />
+        ) : refundOf ? (
+          <div className={styles.cell} data-column="share">
+            <span className={styles.cellLabel}>Share</span>
+            <span
+              className={`${styles.well} ${shareStyles.shareWell}`}
+              data-static
+            >
+              {refundShares ?? (
+                <span className={shell.faint}>Nothing shared</span>
+              )}
+            </span>
+          </div>
+        ) : (
+          shareCell(
+            "counterpartyShare",
+            "Share",
+            draft.counterpartyShare,
+            draftAmount(draft) ?? 0,
+            session.initial &&
+              (session.initial.counterpartyShare ??
+                (session.initial.lines?.length === 1
+                  ? session.initial.lines[0]!.counterpartyShare
+                  : undefined)),
+            (counterpartyShare) => entry.change({ counterpartyShare }),
+          )
+        )}
         {cell("outflow", "outflow", "Outflow", amount("outflow"))}
         {cell("inflow", "inflow", "Inflow", amount("inflow"))}
         <span data-column="status" aria-hidden />
@@ -817,7 +969,19 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           </p>
         </div>
       )}
+      {matches.length > 0 && <PartnerMatches matches={matches} />}
       <div className={styles.rowFooter}>
+        {refundOf ? (
+          <span className={shareStyles.footerHint}>
+            A refund of {refundOf.payee}: its share comes back in proportion
+          </span>
+        ) : (
+          remembered && (
+            <span className={shareStyles.footerHint}>
+              Category and share filled in from {remembered} last time
+            </span>
+          )
+        )}
         {error}
         {actions}
       </div>

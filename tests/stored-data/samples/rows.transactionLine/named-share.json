@@ -1,0 +1,13 @@
+{
+  "userId": "alex",
+  "transactionId": "costco-2026-10",
+  "id": "costco-2026-10-groceries",
+  "categoryId": "groceries",
+  "amount": -15000,
+  "sort": 0,
+  "counterpartyShare": {
+    "accountId": "counterparty:reimbursements",
+    "amount": 1000,
+    "counterpartyName": "Employer"
+  }
+}

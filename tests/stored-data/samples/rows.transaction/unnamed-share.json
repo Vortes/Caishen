@@ -1,0 +1,19 @@
+{
+  "id": "office-supplies",
+  "accountId": "checking",
+  "date": "2026-08-01",
+  "amount": -2000,
+  "payee": "Office shop",
+  "status": "posted",
+  "expenseMonth": "2026-08",
+  "revision": 2,
+  "reviewed": true,
+  "kind": "purchase",
+  "userId": "alex",
+  "sort": 0,
+  "categoryId": "shopping",
+  "counterpartyShare": {
+    "accountId": "counterparty:reimbursements",
+    "amount": 1000
+  }
+}

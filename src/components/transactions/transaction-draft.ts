@@ -18,12 +18,19 @@ export { READY_TO_ASSIGN } from "~/domain/transfers";
 // The category list's Split choice, which never names a category.
 export const SPLIT = "\u0000split";
 
+export type DraftShare = {
+  accountId: string;
+  amount: string;
+  counterpartyName?: string;
+};
+
 // One line of a split: part of the amount, in one category.
 export type DraftLine = {
   lineId: string;
   categoryId: string;
   outflow: string;
   inflow: string;
+  counterpartyShare?: DraftShare | null;
 };
 
 export type TransactionDraft = {
@@ -38,8 +45,8 @@ export type TransactionDraft = {
   inflow: string;
   status: "pending" | "posted";
   expenseMonth: string;
-  sharedCategoryId: string;
-  ownShare: string;
+  counterpartyShare?: DraftShare | null;
+  refundOfTransactionId?: string;
   // Two or more when the amount is split across categories; none otherwise.
   lines: DraftLine[];
 };
@@ -47,11 +54,11 @@ export type TransactionDraft = {
 // A field that can be in error: one of the draft's, one of a split line's,
 // or what the split's lines leave unassigned.
 export type LineField =
-  `lines.${string}.${"categoryId" | "outflow" | "inflow"}`;
+  `lines.${string}.${"categoryId" | "counterpartyShare" | "outflow" | "inflow"}`;
 export type DraftFieldKey = keyof TransactionDraft | LineField | "remaining";
 export const lineField = (
   lineId: string,
-  field: "categoryId" | "outflow" | "inflow",
+  field: "categoryId" | "counterpartyShare" | "outflow" | "inflow",
 ): LineField => `lines.${lineId}.${field}`;
 
 export type TransactionDraftFields = Partial<Record<DraftFieldKey, string>>;
@@ -127,6 +134,9 @@ export function createTransactionDraft(
     payee: transaction ? registerPayee(view.budget, transaction) : "",
     categoryId:
       transaction?.categoryId ??
+      (transaction?.lines?.length === 1
+        ? transaction.lines[0]?.categoryId
+        : undefined) ??
       (transaction &&
       (account?.kind === "tracking" && counterpart
         ? counterpart.amount
@@ -143,11 +153,29 @@ export function createTransactionDraft(
         : "",
     status: transaction?.status ?? "posted",
     expenseMonth: transaction?.expenseMonth ?? month,
-    sharedCategoryId: transaction?.sharedCategoryId ?? "",
-    ownShare: "",
-    lines: (transaction?.lines ?? []).map((line) => ({
+    counterpartyShare: (() => {
+      const share =
+        transaction?.counterpartyShare ??
+        (transaction?.lines?.length === 1
+          ? transaction.lines[0]?.counterpartyShare
+          : undefined);
+      return share
+        ? { ...share, amount: (share.amount / 100).toFixed(2) }
+        : undefined;
+    })(),
+    refundOfTransactionId: transaction?.refundOfTransactionId,
+    lines: (transaction?.lines?.length === 1
+      ? []
+      : (transaction?.lines ?? [])
+    ).map((line) => ({
       lineId: line.id,
       categoryId: line.categoryId,
+      counterpartyShare: line.counterpartyShare
+        ? {
+            ...line.counterpartyShare,
+            amount: (line.counterpartyShare.amount / 100).toFixed(2),
+          }
+        : undefined,
       ...amountFields(line.amount),
     })),
   };
@@ -203,10 +231,8 @@ export function buildTransactionDraftCommand({
   const payee = draft.payee.trim();
   const expenseMonth = draft.expenseMonth.trim();
   const categoryId = draft.categoryId.trim();
-  const sharedCategoryId = draft.sharedCategoryId.trim();
   const outflowText = draft.outflow.trim();
   const inflowText = draft.inflow.trim();
-  const ownShareText = draft.ownShare.trim();
   const transfer = Boolean(draft.transferAccountId || draft.loanId);
   const loan = view.budget.loans.find((item) => item.id === draft.loanId);
   const other = view.accounts.find(
@@ -302,10 +328,43 @@ export function buildTransactionDraftCommand({
       fields.categoryId =
         "Choose a category for money entering or leaving your budget.";
   }
+  const shareInput = (
+    share: DraftShare | null | undefined,
+    total: number,
+    field: DraftFieldKey,
+  ) => {
+    if (!share) return share;
+    const amount = parseAmount(share.amount.trim());
+    if (amount === undefined || amount > Math.abs(total))
+      fields[field] = "Enter a share between $0 and the full line amount.";
+    if (
+      !view.accounts.some(
+        (item) => item.id === share.accountId && isCounterparty(item),
+      )
+    )
+      fields[field] = "Choose Partner or Reimbursements.";
+    if (
+      share.accountId === "counterparty:reimbursements" &&
+      !share.counterpartyName?.trim()
+    )
+      fields[field] = "Enter the person or organization that owes you.";
+    return {
+      ...share,
+      counterpartyName: share.counterpartyName?.trim()
+        ? share.counterpartyName.trim()
+        : undefined,
+      amount: amount ?? 0,
+    };
+  };
   const split = draft.lines.length > 0;
-  const lines: { lineId: string; categoryId: string; amount: number }[] = [];
+  const lines: {
+    lineId: string;
+    categoryId: string;
+    amount: number;
+    counterpartyShare?: ReturnType<typeof shareInput>;
+  }[] = [];
   if (split) {
-    if (transfer || account?.kind === "tracking" || sharedCategoryId)
+    if (transfer || account?.kind === "tracking")
       fields.categoryId = "Only a purchase or refund can be split.";
     for (const line of draft.lines) {
       const category = view.categories.find(
@@ -329,6 +388,11 @@ export function buildTransactionDraftCommand({
           lineId: line.lineId,
           categoryId: line.categoryId,
           amount,
+          counterpartyShare: shareInput(
+            line.counterpartyShare,
+            amount,
+            lineField(line.lineId, "counterpartyShare"),
+          ),
         });
     }
     const remaining = splitRemaining(draft);
@@ -360,52 +424,14 @@ export function buildTransactionDraftCommand({
       fields.categoryId =
         "An existing category cannot be cleared. Choose a category.";
   }
-  if (transfer && (sharedCategoryId || transaction?.sharedCategoryId))
-    fields.payee =
-      "Resolve the shared expense before converting it to a transfer.";
-  if (transaction?.sharedCategoryId && !sharedCategoryId)
-    fields.sharedCategoryId =
-      "An existing shared expense cannot be made personal here.";
 
-  let shares: Record<string, number> | undefined;
-  const shared = view.sharedCategories.find(
-    (item) => item.id === sharedCategoryId,
+  const counterpartyShare = shareInput(
+    draft.counterpartyShare,
+    inflow || -outflow,
+    "counterpartyShare",
   );
-  if (sharedCategoryId) {
-    if (!shared?.participants.includes(view.budget.userId))
-      fields.sharedCategoryId = "Choose one of your shared categories.";
-    else if (shared.categoryIds[view.budget.userId] !== categoryId)
-      fields.categoryId =
-        "Use the personal category paired with this shared expense.";
-    if (inflowText)
-      fields.sharedCategoryId =
-        "Shared merchant refunds need manual investigation in this version.";
-  } else if (ownShareText)
-    fields.ownShare = "Choose a shared category before overriding your share.";
-
-  if (ownShareText && sharedCategoryId) {
-    const ownShare = parseAmount(ownShareText);
-    if (ownShare === undefined)
-      fields.ownShare =
-        "Enter a nonnegative share with no more than two decimal places.";
-    else if (ownShare > outflow)
-      fields.ownShare = "Your share cannot exceed the full outflow.";
-    else if (shared) {
-      const others = shared.participants.filter(
-        (id) => id !== view.budget.userId,
-      );
-      const partnerId = others.length === 1 ? others[0] : undefined;
-      if (!partnerId)
-        fields.sharedCategoryId =
-          "Shared expenses require one connected partner.";
-      else
-        shares = {
-          [view.budget.userId]: ownShare,
-          [partnerId]: outflow - ownShare,
-        };
-    }
-  }
-
+  if (counterpartyShare && (transfer || loan || account?.kind === "tracking"))
+    fields.counterpartyShare = "Shares apply to purchases and refunds.";
   if (Object.keys(fields).length) throw new TransactionDraftError(fields);
   return {
     type:
@@ -436,11 +462,11 @@ export function buildTransactionDraftCommand({
             categoryId === READY_TO_ASSIGN
           ? undefined
           : categoryId,
-    ...(split ? { lines } : {}),
+    ...(split ? { lines } : { counterpartyShare }),
+    refundOfTransactionId: draft.refundOfTransactionId,
+    recordedAt: new Date().toISOString(),
     status: draft.status,
     expenseMonth: expenseMonth || undefined,
-    sharedCategoryId: sharedCategoryId || undefined,
-    shares,
     revision: transaction ? transaction.revision + 1 : undefined,
   };
 }

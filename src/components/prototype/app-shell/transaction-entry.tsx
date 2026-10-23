@@ -14,16 +14,21 @@ import {
   type TransactionDraft,
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
-import type { Command } from "~/domain/engine";
-import { rememberedCategory } from "~/domain/payee-memory";
+import type { Command, CounterpartyShare } from "~/domain/engine";
+import {
+  rememberedCategory,
+  rememberedCounterpartyShare,
+} from "~/domain/payee-memory";
 import {
   canEditImport,
   createImportDraft,
   importRowId,
   type BankImport,
+  type PartnerImportMatch,
 } from "~/components/transactions/import-draft";
 
 type Transaction = View["budget"]["transactions"][number];
+
 export type DraftField = DraftFieldKey;
 
 // What the live workspace lends the shell for saving transactions: the
@@ -66,6 +71,7 @@ export type TransactionSession = {
   // Until the user chooses a category, a new transaction's category follows
   // its payee's memory; this is what it has when the payee has none.
   unremembered?: string;
+  shareChosen?: boolean;
 };
 
 type FocusTarget = DraftField | "calendar" | "error";
@@ -86,11 +92,12 @@ const screenOrder = (draft: TransactionDraft): DraftField[] => [
   "date",
   "payee",
   "categoryId",
+  "counterpartyShare",
   "outflow",
   "inflow",
   ...draft.lines.flatMap((line) =>
-    (["categoryId", "outflow", "inflow"] as const).map((field) =>
-      lineField(line.lineId, field),
+    (["categoryId", "counterpartyShare", "outflow", "inflow"] as const).map(
+      (field) => lineField(line.lineId, field),
     ),
   ),
   "remaining",
@@ -205,10 +212,16 @@ export function useTransactionEntryController({
     transactionId,
     accountId,
     field,
+    refundOfTransactionId,
+    counterpartyShare,
   }: {
     transactionId?: string;
+    refundOfTransactionId?: string;
     accountId?: string | null;
     field?: DraftField;
+    // A share picked before the editor opened, such as from the register's
+    // Share cell on a row that still needs its category.
+    counterpartyShare?: CounterpartyShare | null;
   }) => {
     if (session || !view.accounts.length) return false;
     const transaction = transactionId
@@ -235,6 +248,20 @@ export function useTransactionEntryController({
           transaction,
           accountId ?? undefined,
         );
+    if (refundOfTransactionId) {
+      const original = view.budget.transactions.find(
+        (item) => item.id === refundOfTransactionId && !item.removed,
+      );
+      if (!original || original.amount >= 0) return false;
+      draft.refundOfTransactionId = original.id;
+      draft.payee = original.payee;
+      draft.categoryId =
+        original.categoryId ?? original.lines?.[0]?.categoryId ?? "";
+      draft.outflow = "";
+      draft.inflow = (Math.abs(original.amount) / 100).toFixed(2);
+      draft.counterpartyShare = undefined;
+      draft.lines = [];
+    }
     const unremembered = transaction
       ? undefined
       : imported
@@ -265,12 +292,22 @@ export function useTransactionEntryController({
       imported,
       rowId: transactionId,
       entityId: newId(),
-      draft,
+      draft:
+        counterpartyShare === undefined
+          ? draft
+          : {
+              ...draft,
+              counterpartyShare: counterpartyShare && {
+                ...counterpartyShare,
+                amount: (counterpartyShare.amount / 100).toFixed(2),
+              },
+            },
       pristine: draft,
       fields: {},
       error: "",
       calendarOpen: field === "date" || (!transactionId && Boolean(accountId)),
       unremembered,
+      shareChosen: counterpartyShare !== undefined,
     });
     reveal();
     // A new transaction starts on its first column. In one account's
@@ -301,6 +338,8 @@ export function useTransactionEntryController({
           const before = current.draft.lines.find(
             (item) => item.lineId === line.lineId,
           );
+          if (before?.counterpartyShare !== line.counterpartyShare)
+            delete fields[lineField(line.lineId, "counterpartyShare")];
           for (const field of ["categoryId", "outflow", "inflow"] as const)
             if (before?.[field] !== line[field]) {
               delete fields[lineField(line.lineId, field)];
@@ -312,6 +351,29 @@ export function useTransactionEntryController({
         }
       }
       const draft = { ...current.draft, ...next };
+      const shareChosen =
+        Boolean(current.shareChosen) ||
+        "counterpartyShare" in next ||
+        "lines" in next;
+      if (
+        !shareChosen &&
+        !current.initial &&
+        !draft.lines.length &&
+        ["payee", "accountId", "outflow", "inflow"].some((key) => key in next)
+      ) {
+        const share = rememberedCounterpartyShare(view.budget, {
+          payee: draft.payee,
+          accountId: draft.accountId,
+          amount:
+            draftAmount(draft) === undefined
+              ? undefined
+              : Math.round(draftAmount(draft)! * 100),
+        });
+        // A written-off share remembers nothing to prefill.
+        draft.counterpartyShare = share?.amount
+          ? { ...share, amount: (share.amount / 100).toFixed(2) }
+          : undefined;
+      }
       const unremembered = chosen ? undefined : current.unremembered;
       if (
         unremembered !== undefined &&
@@ -326,8 +388,14 @@ export function useTransactionEntryController({
             accountId: draft.accountId,
             amount: draftAmount(draft),
           }) ?? unremembered;
-      return { ...current, draft, fields, error: "", unremembered };
-
+      return {
+        ...current,
+        draft,
+        fields,
+        error: "",
+        unremembered,
+        shareChosen,
+      };
     });
   };
 
@@ -393,24 +461,7 @@ export function useTransactionEntryController({
 
     const payee = draft.payee.trim();
     const summary = session.rowId ? `Saved ${payee}` : `Added ${payee}`;
-    // The editor closes as the change shows. If the server turns it down,
-    // the draft comes back with what went wrong, unless another editor is
-    // open by then.
-    const sent = session;
-    const refused = () => {
-      setSession(
-        (current) =>
-          current ?? {
-            ...sent,
-            key: newId(),
-            fields: {},
-            error:
-              "Not saved. Your changes are still here, so you can try again.",
-            calendarOpen: false,
-          },
-      );
-      focus("error");
-    };
+    const refused = reopenOnRefusal(session);
     const blocked = session.imported
       ? saver.saveImport(session.imported, command, summary, refused)
       : saver.save(command, summary, refused);
@@ -446,6 +497,65 @@ export function useTransactionEntryController({
     } else close();
   };
 
+  // The editor closes as the change shows. If the server turns it down,
+  // the draft comes back with what went wrong, unless another editor is
+  // open by then.
+  const reopenOnRefusal = (sent: TransactionSession) => () => {
+    setSession(
+      (current) =>
+        current ?? {
+          ...sent,
+          key: newId(),
+          fields: {},
+          error:
+            "Not saved. Your changes are still here, so you can try again.",
+          calendarOpen: false,
+        },
+    );
+    focus("error");
+  };
+
+  // Saves the open bank import as the purchase a partner recorded before
+  // it arrived, with the category the editor shows for the payer's part.
+  const matchImport = (match: PartnerImportMatch) => {
+    const imported = session?.imported;
+    if (!session || !imported?.accountId || removed) return;
+    const categoryId = session.draft.lines.length
+      ? ""
+      : session.draft.categoryId || (match.categoryId ?? "");
+    if (!categoryId || categoryId === READY_TO_ASSIGN) {
+      patch({
+        fields: { categoryId: "Choose a category for your part of it." },
+        error: "",
+      });
+      focus("categoryId");
+      return;
+    }
+    const blocked = saver.saveImport(
+      imported,
+      {
+        type: "partner.match",
+        id: newId(),
+        recordedAt: new Date().toISOString(),
+        entryId: match.entryId,
+        transactionId: session.entityId,
+        accountId: imported.accountId,
+        date: imported.date,
+        amount: imported.amount,
+        status: imported.pending ? "pending" : "posted",
+        categoryId,
+      },
+      `Matched your import to ${match.payee}`,
+      reopenOnRefusal(session),
+    );
+    if (blocked) {
+      patch({ fields: {}, error: blocked });
+      focus("error");
+      return;
+    }
+    close();
+  };
+
   // Leaving the register would hide unsaved work, so it waits for Save or
   // Cancel. An untouched editor just closes. Returns whether to stay.
   const holdForDraft = () => {
@@ -460,9 +570,49 @@ export function useTransactionEntryController({
     return false;
   };
 
+  // Saves one line's share straight from the register, as the editor would
+  // with nothing else changed. lineId is the transaction's own id when it
+  // has no split. Returns why it can't save, or null once it's on its way.
+  const saveShare = (
+    transactionId: string,
+    lineId: string,
+    share: CounterpartyShare | null,
+    summary: string,
+  ) => {
+    const transaction = view.budget.transactions.find(
+      (item) => item.id === transactionId && !item.removed,
+    );
+    if (!transaction) return "This transaction was deleted.";
+    const draft = createTransactionDraft(view, view.month, transaction);
+    const next = share && { ...share, amount: (share.amount / 100).toFixed(2) };
+    if (draft.lines.length)
+      draft.lines = draft.lines.map((line) =>
+        line.lineId === lineId ? { ...line, counterpartyShare: next } : line,
+      );
+    else draft.counterpartyShare = next;
+    try {
+      return saver.save(
+        buildTransactionDraftCommand({
+          draft,
+          view,
+          transaction,
+          operationId: newId(),
+          entityId: transaction.id,
+        }),
+        summary,
+      );
+    } catch (failure) {
+      return failure instanceof Error
+        ? failure.message
+        : "This share couldn't be saved. Try again.";
+    }
+  };
+
   return {
     view,
     holdOpen,
+    saveCommand: saver.save,
+    saveShare,
     // Returns why the account can't be added, or null once it's on its way.
     addAccount: (command: Extract<Command, { type: "account.add" }>) =>
       saver.save(command, `Added ${command.name}`),
@@ -479,6 +629,7 @@ export function useTransactionEntryController({
       change({ categoryId, lines: [] }, true),
     setCalendarOpen: (calendarOpen: boolean) => patch({ calendarOpen }),
     submit,
+    matchImport,
     cancel: () => close(),
     holdForDraft,
     // The pending focus move, taken once by whichever editor is showing.

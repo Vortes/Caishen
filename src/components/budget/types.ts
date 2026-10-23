@@ -1,6 +1,6 @@
 import { type RouterOutputs } from "~/trpc/react";
 
-export type Tab = "budget" | "transactions" | "loans" | "settings";
+export type Tab = "budget" | "transactions" | "loans";
 export type Panel = {
   type:
     | "account"
@@ -9,16 +9,10 @@ export type Panel = {
     | "import"
     | "card-payment"
     | "statement-credit"
-    | "reimbursement"
-    | "receive"
-    | "shared-category"
-    | "opening"
-    | "settlement"
     | "loan"
     | "loan-payment"
     | "rate"
     | "reconcile"
-    | "join"
     | "history";
   id?: string;
   accountId?: string;

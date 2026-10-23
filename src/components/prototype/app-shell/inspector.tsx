@@ -181,15 +181,7 @@ function sum(categories: Category[], pick: (item: Category) => number) {
 }
 
 function MonthDetails() {
-  const {
-    categories,
-    month,
-    costToBeMe,
-    expectedIncome,
-    partner,
-    reimbursements,
-  } = useShellData();
-  const owed = reimbursements.filter((item) => item.outstanding > 0);
+  const { categories, month, costToBeMe, expectedIncome } = useShellData();
   const tabs = [
     {
       value: "auto-assign",
@@ -224,47 +216,6 @@ function MonthDetails() {
       ),
     },
   ];
-  if (partner)
-    tabs.push({
-      value: "shared",
-      label: "Shared",
-      content: (
-        <div className={styles.tabBody}>
-          <Property label="You owe" icon={UsersIcon}>
-            {money(partner.youOwe)}
-          </Property>
-          <Property label="Owed to you">{money(partner.owedToYou)}</Property>
-          <p className={styles.tabEmpty}>
-            {partner.youOwe === partner.owedToYou
-              ? `You and ${partner.name} are settled up.`
-              : partner.youOwe > partner.owedToYou
-                ? `You owe ${partner.name} ${money(partner.youOwe - partner.owedToYou)} overall.`
-                : `${partner.name} owes you ${money(partner.owedToYou - partner.youOwe)} overall.`}
-          </p>
-        </div>
-      ),
-    });
-  if (reimbursements.length)
-    tabs.push({
-      value: "reimbursements",
-      label: `Reimbursements ${owed.length}`,
-      content: owed.length ? (
-        <ul className={styles.actionList}>
-          {owed.map((item) => (
-            <li key={item.id}>
-              <div className={styles.actionItem}>
-                <span>{item.name}</span>
-                <span className={styles.numeric}>
-                  {money(item.outstanding)}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className={styles.tabEmpty}>Every reimbursement has arrived.</p>
-      ),
-    });
   return (
     <>
       <Card>
@@ -394,22 +345,6 @@ function CategoryDetails({ category }: { category: Category }) {
           </Property>
         )}
       </Card>
-      {(category.sharePercents.length > 0 || category.reserved > 0) && (
-        <Card>
-          {category.sharePercents.length > 0 && (
-            <Property label="Shared" icon={UsersIcon}>
-              Your share{" "}
-              {category.sharePercents.map((value) => `${value}%`).join(", ")}
-            </Property>
-          )}
-          {category.reserved > 0 && (
-            <>
-              <Property label="Reserved">{money(category.reserved)}</Property>
-              <Property label="Spendable">{money(category.spendable)}</Property>
-            </>
-          )}
-        </Card>
-      )}
       <Card>
         <Tabs defaultValue="target">
           <TabsList aria-label="Category details">

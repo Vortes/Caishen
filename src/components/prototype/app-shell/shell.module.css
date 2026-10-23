@@ -971,11 +971,12 @@ button.actionItem:disabled {
   /* A register row's review dot follows the checkbox: 6px past it, and 6px
      before the row's text. */
   --row-gutter: 42px;
-  --tx-columns: 8.25rem minmax(0, 1.3fr) minmax(0, 1fr) 6.5rem 6.5rem 16px;
+  --tx-columns: 8.25rem minmax(0, 1.3fr) minmax(0, 1fr) 10.5rem 6.5rem 6.5rem
+    16px;
 }
 .register[data-accounts] {
-  --tx-columns: minmax(0, 0.8fr) 8.25rem minmax(0, 1.2fr) minmax(0, 1fr) 6.5rem
-    6.5rem 16px;
+  --tx-columns: minmax(0, 0.8fr) 8.25rem minmax(0, 1.2fr) minmax(0, 1fr) 10.5rem
+    6.5rem 6.5rem 16px;
 }
 .register .txColumns > [data-narrow] {
   display: none;
@@ -1006,6 +1007,8 @@ button.actionItem:disabled {
   .register[data-accounts] {
     --tx-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto 16px;
   }
+  .register .row > [data-column="share"],
+  .register .columnHeader > [data-column="share"],
   .register .txColumns > [data-wide],
   .register [data-row] > [data-empty] {
     display: none;
@@ -1922,4 +1925,8 @@ button.actionItem:disabled {
   .menu[data-state] {
     animation: none;
   }
+}
+
+.register [data-row] [data-column] {
+  user-select: text;
 }

@@ -36,6 +36,7 @@ assertDevelopmentDatabase(process.env);
 const base = new PrismaClient();
 const now = new Date("2026-10-17T00:20:00Z");
 const keys = [
+  "CLERK_SECRET_KEY",
   "RESEND_API_KEY",
   "EMAIL_FROM",
   "APP_BASE_URL",
@@ -46,6 +47,7 @@ const keys = [
 ] as const;
 const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 beforeEach(() => {
+  process.env.CLERK_SECRET_KEY = "fixture-signing-key";
   process.env.RESEND_API_KEY = "fixture-email-key";
   process.env.EMAIL_FROM = "Caishen <daily@example.com>";
   process.env.APP_BASE_URL = "https://caishen.example";

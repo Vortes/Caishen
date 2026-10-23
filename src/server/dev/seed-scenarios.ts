@@ -1,13 +1,17 @@
 import {
   addMember,
   bookSchema,
+  counterpartyId,
   createBook,
   execute,
+  pairedEnvelopeId,
   projectBook,
+  withCounterpartyAccounts,
   type Book,
   type Command,
   type Target,
 } from "~/domain/engine";
+import { partnerEntryId } from "~/domain/partner-ledger";
 import {
   reconcileStatement,
   type ClearedSnapshot,
@@ -49,9 +53,9 @@ const categories = [
   ["registration", "Car registration", "True expenses"],
   ["travel", "Travel", "Goals"],
   ["emergency", "Emergency fund", "Goals"],
-  ["work", "Work reimbursements", "Reimbursements"],
+  ["work", "Work travel", "True expenses"],
   ["gifts", "Gifts", "True expenses"],
-  ["weekend", "Weekend projects", "Shared"],
+  ["weekend", "Weekend projects", "True expenses"],
 ] as const;
 
 export function buildDevelopmentSeed({
@@ -72,11 +76,13 @@ export function buildDevelopmentSeed({
     throw new Error("Use a valid YYYY-MM-DD seed date.");
   const month = asOf.slice(0, 7);
   const firstMonth = shiftMonth(month, -2);
-  let book = addMember(
-    createBook(userId, "Demo · Alex’s budget", firstMonth),
-    partnerId,
-    "Demo · Jordan’s budget",
-    firstMonth,
+  let book = withCounterpartyAccounts(
+    addMember(
+      createBook(userId, "Demo · Alex’s budget", firstMonth),
+      partnerId,
+      "Demo · Jordan’s budget",
+      firstMonth,
+    ),
   );
   const operations: SeedOperation[] = [];
   const run = (
@@ -94,6 +100,68 @@ export function buildDevelopmentSeed({
   const date = (period: string, day: number) => {
     const limit = period === month ? Number(asOf.slice(8)) : 28;
     return `${period}-${String(Math.min(day, limit)).padStart(2, "0")}`;
+  };
+  const partner = counterpartyId("partner");
+  const reimbursements = counterpartyId("reimbursements");
+  // A purchase line shared with a counterparty, recorded when it was made.
+  const share = (
+    period: string,
+    day: number,
+    accountId: string,
+    amount: number,
+    counterpartyName?: string,
+  ) => ({
+    counterpartyShare: { accountId, amount, counterpartyName },
+    recordedAt: `${date(period, day)}T20:00:00.000Z`,
+  });
+  // The non-payer's side of a shared purchase, in their own category.
+  const categorizeSide = (
+    payerId: string,
+    transactionId: string,
+    categoryId: string,
+  ) =>
+    run(payerId === userId ? partnerId : userId, {
+      type: "partner.categorize",
+      entryId: partnerEntryId(payerId, transactionId, transactionId),
+      categoryId,
+    });
+  // A payment between the partners, as both banks' imports record it.
+  const settle = (
+    settlementId: string,
+    payerId: string,
+    settledOn: string,
+    amount: number,
+    method: string,
+    confirmed: boolean,
+  ) => {
+    const recipientId = payerId === userId ? partnerId : userId;
+    run(
+      payerId,
+      {
+        type: "partner.settle",
+        settlementId,
+        method,
+        legs: [
+          {
+            userId: payerId,
+            accountId: "checking",
+            date: settledOn,
+            amount: -amount,
+            payee: `${method} payment`,
+          },
+          {
+            userId: recipientId,
+            accountId: "checking",
+            date: settledOn,
+            amount,
+            payee: `${method} payment received`,
+          },
+        ],
+      },
+      "agent",
+    );
+    if (confirmed)
+      run(recipientId, { type: "partner.settlement.confirm", settlementId });
   };
   const buy = (
     actorId: string,
@@ -243,28 +311,6 @@ export function buildDevelopmentSeed({
       dueDate: `${shiftMonth(month, 6)}-01`,
     });
   }
-  for (const [id, weights] of [
-    ["rent", { [userId]: 1, [partnerId]: 1 }],
-    ["utilities", { [userId]: 1, [partnerId]: 1 }],
-    ["groceries", { [userId]: 2, [partnerId]: 3 }],
-    ["weekend", { [userId]: 1, [partnerId]: 1 }],
-  ] as const)
-    run(userId, {
-      type: "shared.create",
-      sharedCategoryId: id,
-      participants: [userId, partnerId],
-      weights,
-      categoryIds: { [userId]: id, [partnerId]: id },
-    });
-  run(userId, {
-    type: "opening.add",
-    obligationId: "opening-rent",
-    sharedCategoryId: "rent",
-    debtorId: userId,
-    creditorId: partnerId,
-    amount: 17500,
-  });
-
   for (let offset = -2; offset <= 0; offset++) {
     const period = shiftMonth(month, offset);
     const current = offset === 0;
@@ -290,7 +336,7 @@ export function buildDevelopmentSeed({
         payee: "Discover · savings interest",
       });
       const funding: Record<string, number> = {
-        rent: index ? 260000 : 130000,
+        rent: 130000,
         utilities: index ? 15000 : 25000,
         groceries: 60000,
         dining: 25000,
@@ -302,13 +348,19 @@ export function buildDevelopmentSeed({
         registration: 6000,
         travel: 35000,
         emergency: 50000,
-        work: 60000,
+        work: 5000,
         gifts: 5000,
         "student-payment": 32000,
         "personal-payment": 24500,
         "card:amex": 20000,
         "card:discover": 8000,
       };
+      // Float in the People envelopes: cash set aside for what each fronts
+      // for the other until it's paid back.
+      if (offset === -2) {
+        funding[pairedEnvelopeId("partner")] = index ? 130000 : 25000;
+        if (!index) funding[pairedEnvelopeId("reimbursements")] = 60000;
+      }
       for (const [categoryId, amount] of Object.entries(funding))
         run(actorId, { type: "assign", categoryId, amount, month: period });
       for (const [day, payee, amount, categoryId, accountId] of [
@@ -387,16 +439,17 @@ export function buildDevelopmentSeed({
         28000,
         "groceries",
         "checking",
-        { sharedCategoryId: "groceries" },
+        share(period, 1, partner, 14000),
       );
-      run(partnerId, {
-        type: "settlement.record",
-        settlementId: "partner-payment-awaiting-receipt",
-        otherUserId: userId,
-        date: date(period, 1),
-        accountId: "checking",
-        amount: 12000,
-      });
+      categorizeSide(userId, "household-stock-up", "groceries");
+      settle(
+        "partner-payment-awaiting-confirmation",
+        partnerId,
+        date(period, 1),
+        12000,
+        "Venmo",
+        false,
+      );
     }
     buy(
       partnerId,
@@ -407,8 +460,9 @@ export function buildDevelopmentSeed({
       260000,
       "rent",
       "checking",
-      { sharedCategoryId: "rent" },
+      share(period, 2, partner, 130000),
     );
+    categorizeSide(partnerId, `rent-${suffix}`, "rent");
     buy(
       userId,
       period,
@@ -418,8 +472,9 @@ export function buildDevelopmentSeed({
       18942,
       "utilities",
       "checking",
-      { sharedCategoryId: "utilities" },
+      share(period, 3, partner, 9471),
     );
+    categorizeSide(userId, `utilities-${suffix}`, "utilities");
     buy(
       userId,
       period,
@@ -429,8 +484,9 @@ export function buildDevelopmentSeed({
       12346,
       "groceries",
       "amex",
-      { sharedCategoryId: "groceries" },
+      share(period, 4, partner, 6173),
     );
+    if (!current) categorizeSide(userId, `groceries-a-${suffix}`, "groceries");
     buy(
       partnerId,
       period,
@@ -440,36 +496,24 @@ export function buildDevelopmentSeed({
       8793,
       "groceries",
       "amex",
-      {
-        sharedCategoryId: "groceries",
-        shares: { [userId]: 3000, [partnerId]: 5793 },
-      },
+      share(period, 5, partner, 3000),
     );
+    categorizeSide(partnerId, `groceries-b-${suffix}`, "groceries");
     if (!current) {
-      const net = projectBook(book, userId, period).settlement.net;
-      const payer = net >= 0 ? userId : partnerId;
-      const recipient = net >= 0 ? partnerId : userId;
-      run(payer, {
-        type: "settlement.record",
-        settlementId: `settlement-${suffix}`,
-        otherUserId: recipient,
-        date: date(period, 20),
-        accountId: "checking",
-        amount: Math.abs(net),
-      });
-      run(recipient, {
-        type: "settlement.receive",
-        settlementId: `settlement-${suffix}`,
-        accountId: "checking",
-        date: date(period, 21),
-      });
+      // Settle up each month: whoever owes pays the Partner balance.
+      const owedToYou = projectBook(book, userId, period).accounts.find(
+        (account) => account.id === partner,
+      )!.balance;
+      if (owedToYou)
+        settle(
+          `settlement-${suffix}`,
+          owedToYou > 0 ? partnerId : userId,
+          date(period, 20),
+          Math.abs(owedToYou),
+          "Zelle",
+          true,
+        );
     }
-    if (offset === -1)
-      run(partnerId, {
-        type: "shared.rule",
-        sharedCategoryId: "utilities",
-        weights: { [userId]: 60, [partnerId]: 40 },
-      });
     if (current) break;
     for (const actorId of [userId, partnerId])
       run(actorId, {
@@ -503,38 +547,31 @@ export function buildDevelopmentSeed({
     48000,
     "work",
     "amex",
+    share(month, 6, reimbursements, 48000, "Cedar Labs"),
   );
-  run(userId, {
-    type: "reimbursement.expect",
-    reimbursementId: "work-hotel",
-    transactionId: "conference-hotel",
-    name: "Cedar Labs · conference hotel",
-    amount: 48000,
-    kind: "cash",
-  });
-  run(userId, {
-    type: "reimbursement.receive",
-    reimbursementId: "work-hotel",
-    accountId: "checking",
-    date: date(month, 10),
-    amount: 20000,
-  });
-  buy(userId, month, 7, "work-train", "Amtrak · client visit", 8500, "work");
-  run(userId, {
-    type: "reimbursement.expect",
-    reimbursementId: "work-train",
-    transactionId: "work-train",
-    name: "Cedar Labs · client travel",
-    amount: 8500,
-    kind: "cash",
-  });
-  run(userId, {
-    type: "reimbursement.receive",
-    reimbursementId: "work-train",
-    accountId: "checking",
-    date: date(month, 11),
-    amount: 8500,
-  });
+  const repaid = (day: number, amount: number) =>
+    run(userId, {
+      type: "counterparty.receive",
+      counterpartyAccountId: reimbursements,
+      cashAccountId: "checking",
+      date: date(month, day),
+      amount,
+      counterpartyName: "Cedar Labs",
+      recordedAt: `${date(month, day)}T20:00:00.000Z`,
+    });
+  repaid(10, 20000);
+  buy(
+    userId,
+    month,
+    7,
+    "work-train",
+    "Amtrak · client visit",
+    8500,
+    "work",
+    "checking",
+    share(month, 7, reimbursements, 8500, "Cedar Labs"),
+  );
+  repaid(11, 8500);
   buy(
     userId,
     month,
@@ -546,19 +583,10 @@ export function buildDevelopmentSeed({
     "amex",
   );
   run(userId, {
-    type: "reimbursement.expect",
-    reimbursementId: "amex-offer",
-    transactionId: "amex-offer-purchase",
-    name: "Amex offer · REI",
-    amount: 2500,
-    kind: "statement-credit",
-  });
-  run(userId, {
     type: "card.credit",
     accountId: "amex",
     date: date(month, 12),
     amount: 1000,
-    reimbursementId: "amex-offer",
     posted: true,
   });
   run(userId, {
@@ -736,14 +764,14 @@ export function buildDevelopmentSeed({
       month,
       amount: -dining.available,
     });
-  run(userId, {
-    type: "settlement.record",
-    settlementId: "current-partial-settlement",
-    otherUserId: partnerId,
-    date: date(month, 16),
-    accountId: "checking",
-    amount: 25000,
-  });
+  settle(
+    "current-partial-settlement",
+    userId,
+    date(month, 16),
+    25000,
+    "Zelle",
+    true,
+  );
   for (const actorId of [userId, partnerId])
     run(actorId, {
       type: "card.payment",

@@ -3,27 +3,24 @@ import {
   applyChangeSet,
   changeSetVisibleTo,
   changesOnlyBudgetOf,
+  composeChangeSets,
   executeRevert,
   rowsIn,
   toRowSet,
 } from "~/domain/change-sets";
 import {
   AccountingError,
-  createBook,
   executeWithChanges,
-  type Book,
   type CommandSource,
   type LedgerCommand,
 } from "~/domain/engine";
 import {
-  diffRows,
-  partnerFactRows,
+  rowKey,
   rowKeyParts,
   rowOwner,
   rowVisibleTo,
   type ChangeSet,
 } from "~/domain/rows";
-import type { PersonalLedger } from "~/domain/shared-ledger";
 import { prepareUserCommand } from "~/domain/user-command";
 import { Prisma, type PrismaClient } from "~/generated/prisma";
 import {
@@ -35,6 +32,7 @@ import {
 } from "~/server/storage/households";
 import { findOperation, RevisionConflictError } from "~/server/storage/rows";
 import { bankMappingsSchema } from "./bank-account-setup";
+import { bankImportColumnSchemas } from "./bank-import-rows";
 import { addCounterpartyAccounts } from "./household-operations";
 import { matchesSavedOperation, operationHash } from "./safety";
 import { refusal } from "./sync-refusal";
@@ -118,47 +116,6 @@ export type OperationResult = {
 export const PARTNER_MAINTENANCE_MESSAGE =
   "This change also needs your partner’s plan, which is under maintenance. Try again in a few minutes.";
 
-// A household holding only this partner's budget, with the household's
-// shared records, to derive what the other partner sees of it.
-function partnerView(ledger: PersonalLedger): Book {
-  const budgets: Book["budgets"] = { [ledger.budget.userId]: ledger.budget };
-  for (const member of ledger.members)
-    if (member.userId !== ledger.budget.userId)
-      budgets[member.userId] = createBook(
-        member.userId,
-        member.name,
-        ledger.budget.startMonth,
-      ).budgets[member.userId]!;
-  return {
-    version: 1,
-    budgets,
-    sharedCategories: ledger.sharedCategories,
-    obligations: [],
-    settlements: ledger.settlements,
-    audit: [],
-  };
-}
-
-/**
- * While the partner's budget doesn't read, a change runs on the actor's
- * personal ledger, which can't update what the partner sees of the actor's
- * budget. Such a change waits until the partner's budget reads again.
- */
-function ensurePartnerUnaffected(
-  before: PersonalLedger,
-  after: PersonalLedger,
-) {
-  for (const member of before.members) {
-    if (member.userId === before.budget.userId) continue;
-    const changed = diffRows(
-      partnerFactRows(partnerView(before), member.userId),
-      partnerFactRows(partnerView(after), member.userId),
-    );
-    if (changed.after.length)
-      throw new AccountingError(PARTNER_MAINTENANCE_MESSAGE);
-  }
-}
-
 /**
  * An undo can remove an account or transaction a bank connection still
  * names: an account its bank account is linked to, or the transaction a
@@ -241,13 +198,22 @@ async function commandChangeSet(
       ledger.personal ? actorId : undefined,
     );
     await ensureBankReferencesKept(db, household, actorId, reverted.changeSet);
-    if (ledger.personal)
-      ensurePartnerUnaffected(
-        ledger.state as PersonalLedger,
-        reverted.book as PersonalLedger,
-      );
     return reverted.changeSet;
   }
+  // A match needs the bank's facts, so it's made from the import itself.
+  if (command.type === "partner.match")
+    throw new AccountingError("Match a bank import from the import itself");
+  // A change to the partner's shared purchase changes their transaction,
+  // which a personal ledger doesn't hold.
+  if (
+    ledger.personal &&
+    (command.type === "partner.settlement.reject" ||
+      (command.type === "partner.edit" &&
+        ledger.state.partnerEntries?.some(
+          (entry) => entry.id === command.entryId && entry.payerId !== actorId,
+        )))
+  )
+    throw new AccountingError(PARTNER_MAINTENANCE_MESSAGE);
   const result = executeWithChanges(
     ledger.state,
     actorId,
@@ -255,12 +221,41 @@ async function commandChangeSet(
     "user",
     submitted,
   );
-  if (ledger.personal)
-    ensurePartnerUnaffected(
-      ledger.state as PersonalLedger,
-      result.book as PersonalLedger,
-    );
-  return result.changeSet;
+  if (command.type !== "partner.settlement.reject") return result.changeSet;
+  const removedLegs = new Set(
+    result.changeSet.after.flatMap((row) =>
+      row.table === "transaction" &&
+      row.data?.removed &&
+      row.data.partnerSettlementId === command.settlementId
+        ? [row.id]
+        : [],
+    ),
+  );
+  const before = [];
+  const after = [];
+  for (const row of household.rows.get("bankImport")?.values() ?? []) {
+    if (row.table !== "bankImport" || row.deleted || !row.data?.resolved)
+      continue;
+    const resolved = bankImportColumnSchemas.resolved.parse(row.data.resolved);
+    if (
+      !resolved.transactionId ||
+      !removedLegs.has(rowKey(row.data.userId, resolved.transactionId))
+    )
+      continue;
+    const data = { ...row.data };
+    delete data.resolved;
+    before.push(row);
+    after.push({ ...row, data });
+  }
+  return composeChangeSets(command.id, [
+    result.changeSet,
+    {
+      operationId: command.id,
+      revision: 0,
+      before,
+      after,
+    },
+  ]);
 }
 
 /**

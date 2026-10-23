@@ -2,6 +2,8 @@
 
 import dynamic from "next/dynamic";
 
+import "./prototype-feedback.css";
+
 // The dynamic import sits behind a build-time constant so production
 // bundles drop Agentation entirely instead of shipping an unused chunk.
 const Agentation =

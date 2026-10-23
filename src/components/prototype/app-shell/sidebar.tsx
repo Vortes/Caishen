@@ -25,7 +25,7 @@ import { usePortalContainer } from "~/components/ui/tooltip";
 import { AccountEntry } from "./account-entry";
 import { BanksPopover } from "./banks";
 import { money } from "./model";
-import { SHELL_PATH, type SettingsPage } from "./settings-pages";
+import { type SettingsPage } from "~/components/workspace/routes";
 import { useShellData } from "./shell-data";
 import { UserAvatar } from "./user-avatar";
 import styles from "./shell.module.css";
@@ -128,6 +128,7 @@ export function Sidebar({
           label: account.name,
           value: account.balance,
           warning: false,
+          toReview: account.toReview,
           current:
             screen.type === "register" && screen.accountId === account.id,
           go: () => onNavigate({ type: "register", accountId: account.id }),
@@ -221,6 +222,9 @@ export function Sidebar({
                           label={item.label}
                           value={money(item.value)}
                           warning={item.warning}
+                          toReview={
+                            "toReview" in item && item.toReview === true
+                          }
                           current={item.current}
                           onClick={item.go}
                         />
@@ -356,7 +360,7 @@ function ProfileMenu({
             onSelect={() =>
               // The budget this browser kept goes before the session does.
               void deleteStoredBudgets().finally(
-                () => void signOut({ redirectUrl: SHELL_PATH }),
+                () => void signOut({ redirectUrl: "/" }),
               )
             }
           >

@@ -7,7 +7,10 @@ import { ObservedRevision } from "~/server/api/revision-header";
 import { db } from "~/server/db";
 import { readHouseholdRevision } from "~/server/storage/rows";
 import { ensureLocalUser } from "~/server/users";
-import { CLIENT_FORMAT_HEADER, MINIMUM_CLIENT_FORMAT } from "~/domain/client-format";
+import {
+  CLIENT_FORMAT_HEADER,
+  MINIMUM_CLIENT_FORMAT,
+} from "~/domain/client-format";
 import { refusal } from "~/server/services/sync-refusal";
 
 export const createTRPCContext = async (opts: { headers: Headers }) => {
@@ -30,7 +33,8 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.userId) throw new TRPCError({ code: "UNAUTHORIZED" });
 
   const header = ctx.headers.get(CLIENT_FORMAT_HEADER);
-  const format = header === null ? 1 : /^[1-9]\d*$/.test(header) ? Number(header) : 0;
+  const format =
+    header === null ? 1 : /^[1-9]\d*$/.test(header) ? Number(header) : 0;
   if (!Number.isSafeInteger(format) || format < MINIMUM_CLIENT_FORMAT)
     throw refusal("staleClient", "Reload Caishen to get the latest version.");
 

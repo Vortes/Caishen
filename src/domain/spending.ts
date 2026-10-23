@@ -1,8 +1,5 @@
-import {
-  isPersonalLedger,
-  ledgerSharedPurchases,
-  type AccountingState,
-} from "./shared-ledger";
+import { counterpartyLines, shareContribution } from "./counterparty";
+import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 
 // One transaction's contribution to a person's personal spending: their share of
 // a purchase or refund, wherever it was paid from, and the interest part of a
@@ -19,7 +16,7 @@ export type SpendingEntry = {
   payee: string;
   // Only set for this person's own transactions.
   accountId?: string;
-  // This person's category; a partner's shared purchase maps to the paired one.
+  // This person's category.
   categoryId?: string;
   // Positive cents spent; negative when refunds outweigh spending.
   amount: number;
@@ -51,14 +48,14 @@ export function personalSpendingEntries(
       transaction.kind === "refund" ||
       (transaction.kind === "transfer" && transaction.categoryId)
     )
-      amount = transaction.shares?.[userId] ?? -transaction.amount;
+      amount = -transaction.amount;
     else if (transaction.kind === "loan-payment")
       amount =
         payments.find((payment) => payment.id === transaction.linkedId)
           ?.interest ?? 0;
     if (!amount) continue;
-    if (transaction.lines && !transaction.shares) {
-      for (const line of transaction.lines)
+    if (transaction.lines || transaction.counterpartyShare) {
+      for (const line of counterpartyLines(transaction))
         entries.push({
           id: `${userId}:${transaction.id}:${line.id}`,
           transactionId: transaction.id,
@@ -68,7 +65,9 @@ export function personalSpendingEntries(
           payee: transaction.payee,
           accountId: transaction.accountId,
           categoryId: line.categoryId,
-          amount: -line.amount,
+          amount:
+            -line.amount -
+            shareContribution(line.amount, line.counterpartyShare),
         });
       continue;
     }
@@ -81,22 +80,6 @@ export function personalSpendingEntries(
       payee: transaction.payee,
       accountId: transaction.accountId,
       categoryId: transaction.categoryId,
-      amount,
-    });
-  }
-  for (const purchase of ledgerSharedPurchases(state)) {
-    const amount = purchase.shares[userId];
-    if (purchase.payerId === userId || !amount) continue;
-    entries.push({
-      id: `${purchase.payerId}:${purchase.id}`,
-      transactionId: purchase.id,
-      paidByYou: false,
-      month: purchase.expenseMonth,
-      date: purchase.date,
-      payee: purchase.payee,
-      categoryId: state.sharedCategories.find(
-        (shared) => shared.id === purchase.sharedCategoryId,
-      )?.categoryIds[userId],
       amount,
     });
   }

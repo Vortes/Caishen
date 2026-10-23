@@ -5,9 +5,7 @@ import { monthLabelPattern, monthNavigation } from "./calendar";
 export const available = (page: Page, category: string) =>
   page.getByRole("button", { name: new RegExp(`available in ${category}\\.`) });
 export const transactionRow = (page: Page, payee: string) =>
-  page
-    .getByRole("group", { name: "Transactions", exact: true })
-    .getByRole("button", { name: new RegExp(payee) });
+  transactions(page).filter({ hasText: payee });
 
 export const assigned = (page: Page, category: string) =>
   page.getByRole("button", {

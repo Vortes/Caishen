@@ -122,6 +122,7 @@ export interface DailyReviewMessageInput {
   inboxCount: number;
   latestSuccessfulSync: Date | null;
   timeZone: string;
+  unsubscribeUrl?: string;
 }
 
 export function buildDailyReviewMessage(input: DailyReviewMessageInput): {
@@ -158,7 +159,7 @@ export function buildDailyReviewMessage(input: DailyReviewMessageInput): {
     subject: count
       ? `${count} ${count === 1 ? "item" : "items"} to review in Caishen`
       : "Your Caishen review inbox is clear",
-    text: `${count} unresolved ${count === 1 ? "item is" : "items are"} in your private review inbox.\n\nLatest successful account update: ${freshness}. Bank data may arrive later than the transaction.\n\nOpen your inbox: ${new URL("/?view=review", url.origin).toString()}\n\nYour inbox keeps unresolved items together, including after missed days.`,
+    text: `${count} unresolved ${count === 1 ? "item is" : "items are"} in your private review inbox.\n\nLatest successful account update: ${freshness}. Bank data may arrive later than the transaction.\n\nOpen your inbox: ${new URL("/?view=review", url.origin).toString()}\n\nYour inbox keeps unresolved items together, including after missed days.${input.unsubscribeUrl ? `\n\nTurn off daily emails: ${input.unsubscribeUrl}` : ""}`,
   };
 }
 
@@ -227,6 +228,7 @@ export function createResendClient(
       dedupeKey: string;
       message: { subject: string; text: string };
       scheduledAt?: string;
+      unsubscribeUrl?: string;
     }): Promise<{ id: string }> {
       const recipient = z.string().email().max(320).parse(input.to);
       const dedupeKey = z
@@ -252,6 +254,14 @@ export function createResendClient(
         .refine((value) => Number.isFinite(new Date(value).getTime()))
         .optional()
         .parse(input.scheduledAt);
+      const unsubscribeUrl = input.unsubscribeUrl
+        ? z
+            .string()
+            .url()
+            .regex(/^https:\/\//)
+            .max(2048)
+            .parse(input.unsubscribeUrl)
+        : undefined;
       const response = await fetcher("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -265,6 +275,14 @@ export function createResendClient(
           subject: message.subject,
           text: message.text,
           ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
+          ...(unsubscribeUrl
+            ? {
+                headers: {
+                  "List-Unsubscribe": `<${unsubscribeUrl}>`,
+                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                },
+              }
+            : {}),
         }),
         signal: AbortSignal.timeout(20_000),
         cache: "no-store",

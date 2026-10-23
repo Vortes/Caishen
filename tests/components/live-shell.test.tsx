@@ -146,7 +146,7 @@ test("signing out elsewhere stops saving and asks to sign in, keeping the change
   expect(toast.getAttribute("role")).toBe("alert");
   expect(
     within(toast).getByRole("link", { name: "Sign in" }).getAttribute("href"),
-  ).toBe("/sign-in?redirect_url=/prototype/app-shell");
+  ).toBe("/sign-in?redirect_url=/app");
   expect(assignedLabel()).toMatch(/^\$150\.00 assigned/);
   await new Promise((resolve) => setTimeout(resolve, 1_500));
   expect(shell.execute).toHaveBeenCalledTimes(1);

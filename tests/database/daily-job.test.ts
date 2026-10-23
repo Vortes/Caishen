@@ -12,8 +12,14 @@ import { assertDevelopmentDatabase } from "../../src/server/dev/development-data
 assertDevelopmentDatabase(process.env);
 const base = new PrismaClient();
 const batchTime = new Date("2026-10-17T00:20:00Z");
-const keys = ["RESEND_API_KEY", "EMAIL_FROM", "APP_BASE_URL"] as const;
+const keys = [
+  "CLERK_SECRET_KEY",
+  "RESEND_API_KEY",
+  "EMAIL_FROM",
+  "APP_BASE_URL",
+] as const;
 const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+process.env.CLERK_SECRET_KEY = "fixture-signing-key";
 process.env.RESEND_API_KEY = "fixture-never-call-provider";
 process.env.EMAIL_FROM = "Fixture <daily@example.com>";
 process.env.APP_BASE_URL = "https://caishen.example";

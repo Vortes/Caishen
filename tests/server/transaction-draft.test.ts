@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  addMember,
   createBook,
   execute,
   projectBook,
@@ -22,7 +21,7 @@ const month = "2026-10";
 const date = "2026-10-10";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 
-function fixture(shared = false) {
+function fixture() {
   let book = createBook("alan", "Alan", month);
   let sequence = 0;
   const run = (command: WithoutId<Command>, actor = "alan") => {
@@ -38,20 +37,6 @@ function fixture(shared = false) {
   });
   run({ type: "category.add", categoryId: "food", name: "Food" });
   run({ type: "assign", categoryId: "food", month, amount: 10_000 });
-  if (shared) {
-    book = addMember(book, "partner", "Partner", month);
-    run(
-      { type: "category.add", categoryId: "partner-food", name: "Food" },
-      "partner",
-    );
-    run({
-      type: "shared.create",
-      sharedCategoryId: "shared-food",
-      participants: ["alan", "partner"],
-      weights: { alan: 1, partner: 3 },
-      categoryIds: { alan: "food", partner: "partner-food" },
-    });
-  }
   const view = () => projectBook(book, "alan", month);
   const draft = (changes: Partial<TransactionDraft> = {}) => ({
     ...createTransactionDraft(view(), month),
@@ -139,55 +124,6 @@ void test("cash income enters Ready to Assign while a categorized inflow refunds
     9_250,
   );
   assert.equal(setup.view().readyToAssign, 91_001);
-});
-
-void test("a shared override conserves the charge and creates the matching partner obligation", () => {
-  const setup = fixture(true);
-  const transaction = setup.save(
-    setup.draft({
-      outflow: "100.01",
-      sharedCategoryId: "shared-food",
-      ownShare: "25.00",
-    }),
-  );
-  assert.deepEqual(transaction.shares, { alan: 2_500, partner: 7_501 });
-  assert.equal(setup.view().amountPaid, 10_001);
-  assert.equal(setup.view().personalSpending, 2_500);
-  assert.equal(setup.view().settlement.owedToYou, 7_501);
-  assert.throws(
-    () =>
-      setup.build(
-        setup.draft({
-          outflow: "10",
-          sharedCategoryId: "shared-food",
-          ownShare: "10.01",
-        }),
-      ),
-    (error: unknown) =>
-      error instanceof TransactionDraftError && Boolean(error.fields.ownShare),
-  );
-});
-
-void test("editing preserves the original shared ratio and approval and appends one revision", () => {
-  const setup = fixture(true);
-  const original = setup.save(
-    setup.draft({ outflow: "100.00", sharedCategoryId: "shared-food" }),
-  );
-  setup.run({ type: "transaction.approve", transactionIds: [original.id] });
-  const current = setup
-    .view()
-    .budget.transactions.find((item) => item.id === original.id)!;
-  const draft = createTransactionDraft(setup.view(), month, current);
-  assert.equal(draft.ownShare, "");
-  const corrected = setup.save({ ...draft, outflow: "200.00" }, current);
-  assert.equal(corrected.id, original.id);
-  assert.equal(corrected.revision, 2);
-  assert.equal(corrected.reviewed, true);
-  assert.equal(corrected.history.length, 2);
-  assert.deepEqual(corrected.shares, { alan: 5_000, partner: 15_000 });
-  assert.deepEqual(corrected.splitWeights, original.splitWeights);
-  assert.equal(setup.view().personalSpending, 5_000);
-  assert.equal(setup.view().settlement.owedToYou, 15_000);
 });
 
 void test("invalid dual, signed, zero, imprecise, and unsafe amounts never change the ledger", () => {

@@ -127,19 +127,6 @@
       }
     },
     {
-      "table": "transactionShare",
-      "id": "alex/utilities-2026-08/alex",
-      "revision": 7,
-      "deleted": false,
-      "data": {
-        "userId": "alex",
-        "transactionId": "utilities-2026-08",
-        "participantId": "alex",
-        "share": 9471,
-        "weight": 1
-      }
-    },
-    {
       "table": "transactionHistory",
       "id": "alex/salary-2026-08-1/0",
       "revision": 7,
@@ -198,35 +185,6 @@
         "interest": 12775,
         "userId": "alex",
         "loanId": "student",
-        "sort": 0
-      }
-    },
-    {
-      "table": "reimbursement",
-      "id": "alex/work-hotel",
-      "revision": 7,
-      "deleted": false,
-      "data": {
-        "id": "work-hotel",
-        "transactionId": "conference-hotel",
-        "name": "Cedar Labs · conference hotel",
-        "amount": 48000,
-        "kind": "cash",
-        "userId": "alex",
-        "sort": 0
-      }
-    },
-    {
-      "table": "reimbursementReceipt",
-      "id": "alex/work-hotel/dev-seed:317",
-      "revision": 7,
-      "deleted": false,
-      "data": {
-        "id": "dev-seed:317",
-        "date": "2026-10-10",
-        "amount": 20000,
-        "userId": "alex",
-        "reimbursementId": "work-hotel",
         "sort": 0
       }
     },
@@ -329,81 +287,94 @@
       }
     },
     {
-      "table": "sharedCategory",
-      "id": "rent",
+      "table": "payeeMemory",
+      "id": "alex/cedarlabspayroll",
       "revision": 7,
       "deleted": false,
       "data": {
-        "id": "rent",
-        "participants": [
-          "alex",
-          "jordan"
+        "payee": "Cedar Labs · payroll",
+        "kind": "readyToAssign",
+        "userId": "alex",
+        "payeeKey": "cedarlabspayroll"
+      }
+    },
+    {
+      "table": "partnerEntry",
+      "id": "jordan:rent-2026-08:rent-2026-08",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "jordan:rent-2026-08:rent-2026-08",
+        "payerId": "jordan",
+        "source": {
+          "transactionId": "rent-2026-08",
+          "lineId": "rent-2026-08"
+        },
+        "date": "2026-08-02",
+        "payee": "Parkside Apartments · rent",
+        "status": "posted",
+        "amount": -260000,
+        "share": 130000,
+        "history": [
+          {
+            "actorId": "jordan",
+            "at": "2026-08-02T20:00:00.000Z",
+            "operationId": "dev-seed:122",
+            "reason": "created"
+          }
         ],
-        "weights": {
-          "alex": 1,
-          "jordan": 1
-        },
-        "categoryIds": {
-          "alex": "rent",
-          "jordan": "rent"
-        },
         "sort": 0
       }
     },
     {
-      "table": "obligation",
-      "id": "opening-rent",
+      "table": "partnerEntrySide",
+      "id": "alex/jordan:rent-2026-08:rent-2026-08",
       "revision": 7,
       "deleted": false,
       "data": {
-        "id": "opening-rent",
-        "sharedCategoryId": "rent",
-        "debtorId": "alex",
-        "creditorId": "jordan",
-        "amount": 17500,
-        "opening": true,
-        "sort": 0
+        "categoryId": "rent",
+        "userId": "alex",
+        "entryId": "jordan:rent-2026-08:rent-2026-08"
       }
     },
     {
-      "table": "settlement",
+      "table": "partnerSettlement",
       "id": "settlement-2026-08",
       "revision": 7,
       "deleted": false,
       "data": {
         "id": "settlement-2026-08",
         "payerId": "alex",
-        "recipientId": "jordan",
         "date": "2026-08-20",
-        "amount": 133621,
-        "received": true,
+        "amount": 117356,
+        "method": "Zelle",
+        "confirmed": true,
+        "history": [
+          {
+            "actorId": "alex",
+            "operationId": "dev-seed:130",
+            "reason": "matched"
+          },
+          {
+            "actorId": "jordan",
+            "operationId": "dev-seed:131",
+            "reason": "confirmed"
+          }
+        ],
         "sort": 0
       }
     },
     {
-      "table": "settlementAllocation",
-      "id": "settlement-2026-08/0",
+      "table": "partnerRequest",
+      "id": "market-request",
       "revision": 7,
       "deleted": false,
       "data": {
-        "obligationId": "opening-rent",
-        "amount": 16879,
-        "kind": "offset",
-        "settlementId": "settlement-2026-08",
-        "sequence": 0
-      }
-    },
-    {
-      "table": "partnerFact",
-      "id": "alex/activity/rent",
-      "revision": 7,
-      "deleted": false,
-      "data": {
-        "viewerId": "alex",
-        "kind": "activity",
-        "payerId": "jordan",
-        "sharedCategoryId": "rent",
-        "sort": 24
+        "id": "market-request",
+        "requesterId": "alex",
+        "date": "2026-01-20",
+        "amount": 1500,
+        "sort": 0
       }
     }
   ],
@@ -472,13 +443,6 @@
       "data": null
     },
     {
-      "table": "transactionShare",
-      "id": "alex/utilities-2026-08/alex",
-      "revision": 0,
-      "deleted": true,
-      "data": null
-    },
-    {
       "table": "transactionHistory",
       "id": "alex/salary-2026-08-1/0",
       "revision": 0,
@@ -507,20 +471,6 @@
       "data": null
     },
     {
-      "table": "reimbursement",
-      "id": "alex/work-hotel",
-      "revision": 0,
-      "deleted": true,
-      "data": null
-    },
-    {
-      "table": "reimbursementReceipt",
-      "id": "alex/work-hotel/dev-seed:317",
-      "revision": 0,
-      "deleted": true,
-      "data": null
-    },
-    {
       "table": "rule",
       "id": "alex/dining-from-emergency",
       "revision": 0,
@@ -535,37 +485,37 @@
       "data": null
     },
     {
-      "table": "sharedCategory",
-      "id": "rent",
-      "revision": 0,
+      "table": "payeeMemory",
+      "id": "alex/cedarlabspayroll",
+      "revision": 6,
       "deleted": true,
       "data": null
     },
     {
-      "table": "obligation",
-      "id": "opening-rent",
-      "revision": 0,
+      "table": "partnerEntry",
+      "id": "jordan:rent-2026-08:rent-2026-08",
+      "revision": 6,
       "deleted": true,
       "data": null
     },
     {
-      "table": "settlement",
+      "table": "partnerEntrySide",
+      "id": "alex/jordan:rent-2026-08:rent-2026-08",
+      "revision": 6,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "partnerSettlement",
       "id": "settlement-2026-08",
-      "revision": 0,
+      "revision": 6,
       "deleted": true,
       "data": null
     },
     {
-      "table": "settlementAllocation",
-      "id": "settlement-2026-08/0",
-      "revision": 0,
-      "deleted": true,
-      "data": null
-    },
-    {
-      "table": "partnerFact",
-      "id": "alex/activity/rent",
-      "revision": 0,
+      "table": "partnerRequest",
+      "id": "market-request",
+      "revision": 6,
       "deleted": true,
       "data": null
     }

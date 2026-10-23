@@ -245,12 +245,12 @@ async function linkedHarness() {
     accountId: "cash",
     name: "Checking",
     kind: "cash",
-    openingBalance: 100_000,
+    openingBalance: 10000,
     date: "2026-10-01",
   });
   book = execute(book, alice, {
     type: "category.add",
-    id: "dining",
+    id: "category",
     categoryId: "dining",
     name: "Dining",
   });
@@ -262,32 +262,13 @@ async function linkedHarness() {
 }
 
 async function pendingImport() {
-  const h = await harness();
-  let book = execute(await h.book(), alice, {
-    type: "account.add",
-    id: "cash",
-    accountId: "cash",
-    name: "Checking",
-    kind: "cash",
-    openingBalance: 10000,
-    date: "2026-10-01",
-  });
-  book = execute(book, alice, {
-    type: "category.add",
-    id: "category",
-    categoryId: "dining",
-    name: "Dining",
-  });
-  await h.setBook(book);
+  const h = await linkedHarness();
   const records = applyTransactionSync(
     [],
     { added: [importFact("pending-edit", true)], modified: [], removed: [] },
     h.connection.id,
   ).records;
   const record = records[0]!;
-  await h.setMappings({
-    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
-  });
   await h.setImports({ records, resolved: {}, errors: {}, reviews: {} });
   const input = {
     connectionId: h.connection.id,

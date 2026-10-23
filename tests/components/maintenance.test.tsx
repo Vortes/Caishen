@@ -1,8 +1,14 @@
 import { screen } from "@testing-library/react";
 import { TRPCError } from "@trpc/server";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { SyncError } from "~/components/sync/transport";
 import { readyOverview, refocus, renderShell } from "./shell-harness";
+
+const router = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+  usePathname: () => "/app",
+}));
 
 test("a budget the server can't read shows maintenance in place of the plan, then the plan once it reads again", async () => {
   let readable = false;
@@ -34,7 +40,7 @@ test("a budget the server can't read shows maintenance in place of the plan, the
   await screen.findByRole("heading", { name: "Plan" });
 });
 
-test("someone without a budget is sent to create one, without the budget being polled", async () => {
+test("someone without a budget starts guided onboarding, without the budget being polled", async () => {
   let pulls = 0;
   await renderShell({
     overview: () => ({
@@ -49,10 +55,10 @@ test("someone without a budget is sent to create one, without the budget being p
     },
     plan: false,
   });
-  await screen.findByText("You don’t have a budget yet.");
-  expect(
-    screen.getByRole("link", { name: "Create one in Caishen" }),
-  ).toBeTruthy();
+  await vi.waitFor(() =>
+    expect(router.replace).toHaveBeenCalledWith("/welcome"),
+  );
+  expect(screen.queryByRole("heading", { name: "Plan" })).toBeNull();
   // A failed pull would be retried after a second.
   await new Promise((resolve) => setTimeout(resolve, 1_500));
   expect(pulls).toBe(1);

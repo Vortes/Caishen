@@ -1,0 +1,159 @@
+/* ---------- Standalone page ---------- */
+
+/* A screen outside the app shell repeats the shell root's base styles: the
+   button font reset and the focus ring (see DESIGN.md, "Base styles"). */
+.page {
+  min-height: 100dvh;
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  line-height: 1.4;
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
+}
+.page[data-fixed] {
+  position: fixed;
+  inset: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.page :where(button) {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+.page :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-row);
+}
+.page :where(h1, h2, h3, p) {
+  margin: 0;
+}
+
+/* ---------- Brand ---------- */
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: var(--type-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.brand > svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---------- Shared form pieces ---------- */
+
+/* A form field isn't in the system yet; these follow the shell's settings
+   input (.settingInput) so every screen in the batch matches. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.fieldLabel {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.fieldHint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.input,
+.select {
+  width: 100%;
+  min-width: 0;
+  height: var(--size-control);
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  outline: none;
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+  transition: border-color 150ms;
+}
+.select {
+  padding-right: 6px;
+}
+.input:hover,
+.select:hover {
+  border-color: var(--border-strong);
+}
+.input[aria-invalid="true"] {
+  border-color: var(--feedback-attention);
+}
+.page .input:focus-visible,
+.page .select:focus-visible,
+.input:focus-visible,
+.select:focus-visible {
+  outline: none;
+  border-color: var(--focus-ring);
+}
+.input:disabled,
+.select:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+@media (pointer: coarse) {
+  .input,
+  .select {
+    font-size: 16px;
+  }
+}
+.error {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.error > svg {
+  flex: none;
+  transform: translateY(2px);
+}
+.success {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.success > svg {
+  flex: none;
+  color: var(--feedback-success);
+  transform: translateY(2px);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-inset);
+}
+.actions[data-end] {
+  justify-content: flex-end;
+}
+.textLink {
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms;
+}
+.textLink:hover {
+  text-decoration-color: currentColor;
+}

@@ -23,7 +23,6 @@ import {
   type WireRow,
 } from "../../src/domain/rows";
 import { rowDataSchemas, rowIssues } from "../../src/domain/row-schemas";
-import { deriveObligations } from "../../src/domain/shared-ledger";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 import { buildCommandCorpus } from "./fixtures/command-corpus";
 import { monthAfter, syntheticBook } from "./fixtures/synthetic-book";
@@ -32,13 +31,12 @@ import { monthAfter, syntheticBook } from "./fixtures/synthetic-book";
 const json = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 // What rows hold of a book: everything but the audit, with assignments
-// folded and generated obligations derived.
+// folded.
 function stored(book: Book): Book {
   const copy = json(book);
   for (const budget of Object.values(copy.budgets))
     budget.assignments = foldAssignments(budget.assignments);
   copy.audit = [];
-  copy.obligations = deriveObligations(copy);
   return json(copy);
 }
 
@@ -94,25 +92,6 @@ void test("every book round-trips through rows", () => {
     tableNames.filter((table) => !filled.has(table)),
     ["rule", "bankImport"],
   );
-});
-
-void test("generated obligations derived from rows are the ones the engine keeps", () => {
-  for (const [name, book] of [
-    ["development seed", seed.book],
-    ["corpus", corpus.book],
-  ] as const) {
-    assert.ok(book.obligations.some((obligation) => !obligation.opening));
-    assert.deepStrictEqual(
-      json(deriveObligations(book)),
-      json(book.obligations),
-      name,
-    );
-    assert.ok(
-      bookToRows(book)
-        .filter((row) => row.table === "obligation")
-        .every((row) => row.data!.opening),
-    );
-  }
 });
 
 void test("rows keep each collection's order in explicit sort columns", () => {
@@ -246,14 +225,6 @@ void test("a partner's browser rows hold none of the other partner's budget", ()
       (row) =>
         !["budgetSettings", "transaction", "account"].includes(row.table) ||
         rowKeyParts(row.id)[0] === "jordan",
-    ),
-  );
-  // Alex's shared purchases reach Jordan only as partner facts.
-  assert.ok(
-    rows.some(
-      (row) =>
-        row.table === "partnerFact" &&
-        row.id === rowKey("jordan", "purchase", "alex", "shared-market"),
     ),
   );
 });
