@@ -1,0 +1,5 @@
+/* Agentation's toolbar is a 44px button 20px from the bottom-right corner,
+   where toasts stack. While it's on the page, toasts start above it. */
+body:has(agentation-toolbar) {
+  --toast-region-bottom: 72px;
+}

@@ -51,6 +51,10 @@ import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
 import { SettingsNav, Sidebar, type Screen } from "./sidebar";
 import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
+import {
+  ReimbursementFilters,
+  ReimbursementsRegister,
+} from "./reimbursements-register";
 import type { Highlight } from "./reflect/chart-utils";
 import { SpendingList, SpendingListSkeleton } from "./reflect/spending-list";
 import { ReflectFilters } from "./reflect/filters";
@@ -181,6 +185,8 @@ export function AppShellPrototype({
     );
   const [reviewOnly, setReviewOnly] = useState(false);
   const [query, setQuery] = useState("");
+  // The person or organization the Reimbursements register is narrowed to.
+  const [owedBy, setOwedBy] = useState<string | null>(null);
   // Settings cover the shell while the address is theirs; the screen behind
   // them stays as it was, so Back to app returns to it.
   const settingsPage = settingsPageAt(usePathname());
@@ -329,12 +335,29 @@ export function AppShellPrototype({
     setChecked([]);
     setReviewOnly(false);
     setQuery("");
+    setOwedBy(null);
     if (narrow)
       setDrawer({
         sidebar: false,
         inspector: next.type !== "register" && Boolean(id),
       });
     closePeek(0);
+  };
+
+  // Opens a transaction in its own account's register, selected, for the
+  // month it happened.
+  const jump = (transaction: {
+    id: string;
+    accountId: string;
+    date: string;
+  }) => {
+    if (entry.holdForDraft()) return;
+    navigate(
+      { type: "register", accountId: transaction.accountId },
+      transaction.id,
+    );
+    onMonthChange(transaction.date.slice(0, 7));
+    setChecked([transaction.id]);
   };
 
   const openSettings = (page: SettingsPage) => {
@@ -603,6 +626,7 @@ export function AppShellPrototype({
                         accounts={account ? [account] : accounts}
                         account={account}
                         reconciling={reconciling}
+                        owedBy={owedBy}
                       />
                     )}
 
@@ -625,6 +649,13 @@ export function AppShellPrototype({
                             setFilters(next);
                             setPath({});
                           }}
+                        />
+                      )}
+                      {account?.kind === "reimbursements" && (
+                        <ReimbursementFilters
+                          account={account}
+                          value={owedBy}
+                          onChange={setOwedBy}
                         />
                       )}
                       {recordable && (
@@ -746,28 +777,27 @@ export function AppShellPrototype({
                         )}
                         {screen.type === "register" && (
                           <>
-                            <RegisterView
-                              key={screen.accountId ?? "all"}
-                              accountId={screen.accountId}
-                              reviewOnly={reviewOnly}
-                              query={query}
-                              selectedId={selectedId}
-                              onSelect={selectOnly}
-                              checked={checked}
-                              onCheck={check}
-                              onJump={(transaction) => {
-                                if (entry.holdForDraft()) return;
-                                navigate(
-                                  {
-                                    type: "register",
-                                    accountId: transaction.accountId,
-                                  },
-                                  transaction.id,
-                                );
-                                onMonthChange(transaction.date.slice(0, 7));
-                                setChecked([transaction.id]);
-                              }}
-                            />
+                            {account?.kind === "reimbursements" ? (
+                              <ReimbursementsRegister
+                                key={account.id}
+                                account={account}
+                                who={owedBy}
+                                query={query}
+                                onJump={jump}
+                              />
+                            ) : (
+                              <RegisterView
+                                key={screen.accountId ?? "all"}
+                                accountId={screen.accountId}
+                                reviewOnly={reviewOnly}
+                                query={query}
+                                selectedId={selectedId}
+                                onSelect={selectOnly}
+                                checked={checked}
+                                onCheck={check}
+                                onJump={jump}
+                              />
+                            )}
                           </>
                         )}
                         {screen.type === "loans" && (
