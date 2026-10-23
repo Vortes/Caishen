@@ -474,7 +474,7 @@ export function toShellData(
         ? item.lines.map((line) => line.counterpartyShare)
         : [item.counterpartyShare];
       for (const share of shares) {
-        if (!share || !share.amount) continue;
+        if (!share?.amount) continue;
         const key = JSON.stringify([
           share.accountId,
           share.counterpartyName ?? "",
