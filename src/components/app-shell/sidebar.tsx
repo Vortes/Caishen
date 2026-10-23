@@ -203,7 +203,12 @@ export function Sidebar({
               >
                 <span>{section.label}</span>
                 <Caret />
-                <span className={styles.sectionTotal}>{money(total)}</span>
+                <span
+                  className={styles.sectionTotal}
+                  data-negative={total < 0 || undefined}
+                >
+                  {money(total)}
+                </span>
               </button>
               {/* Stays mounted so it can animate closed; inert while hidden
                   so its rows drop out of the tab order. */}
@@ -220,7 +225,7 @@ export function Sidebar({
                         <NavItem
                           key={item.id}
                           label={item.label}
-                          value={money(item.value)}
+                          value={item.value}
                           warning={item.warning}
                           toReview={
                             "toReview" in item && item.toReview === true
@@ -403,7 +408,7 @@ function NavItem({
   current: boolean;
   // Transactions are waiting for review.
   toReview?: boolean;
-  value?: string;
+  value?: number;
   warning?: boolean;
   onClick: () => void;
 }) {
@@ -424,7 +429,14 @@ function NavItem({
             aria-label="Connection needs attention"
           />
         )}
-        {value && <span className={styles.navValue}>{value}</span>}
+        {value !== undefined && (
+          <span
+            className={styles.navValue}
+            data-negative={value < 0 || undefined}
+          >
+            {money(value)}
+          </span>
+        )}
         {toReview && (
           <span
             className={styles.reviewDot}

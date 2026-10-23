@@ -223,9 +223,13 @@
 .navValue,
 .sectionTotal {
   flex: none;
-  color: var(--text-tertiary);
+  color: var(--text-primary);
   font-size: var(--type-small);
   font-variant-numeric: tabular-nums;
+}
+.navValue[data-negative],
+.sectionTotal[data-negative] {
+  color: var(--money-negative);
 }
 .warningDot {
   flex: none;
@@ -294,12 +298,6 @@
 }
 .sectionTotal {
   margin-left: auto;
-  opacity: 0;
-  transition: opacity 150ms;
-}
-.sectionHeading:hover .sectionTotal,
-.sectionHeading:focus-visible .sectionTotal {
-  opacity: 1;
 }
 .sidebarFooter {
   display: flex;
