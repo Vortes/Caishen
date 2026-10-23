@@ -130,6 +130,9 @@ export type Transaction = {
   shared: boolean;
   // Who owes a share of it, for search.
   shareLabel?: string;
+  // Money someone paid back: who, and the counterparty account it moved out
+  // of.
+  repayment?: { from: string; account: string };
   history: { reason: string; amount: number }[];
 };
 
@@ -525,6 +528,12 @@ export function toShellData(
             : undefined,
         shared: Boolean(item.sharedCategoryId),
         shareLabel: shareNames.join(" ") || undefined,
+        repayment: repaidFrom
+          ? {
+              from: item.counterpartyName ?? displayName(repaidFrom),
+              account: displayName(repaidFrom),
+            }
+          : undefined,
         history: item.history.map((entry) => ({
           reason: historyReason[entry.reason],
           amount: entry.amount,

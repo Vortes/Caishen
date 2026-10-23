@@ -43,6 +43,7 @@ import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
+import { RepaymentEditor } from "./repayment-editor";
 import { ShareCell, ShareDetail } from "./share-detail";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
@@ -551,6 +552,21 @@ export function RegisterView({
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
   const editingId = session?.rowId;
+  // A repayment opens in place too, as a note on what it is; it closes when
+  // the selection moves on.
+  const [repaymentId, setRepaymentId] = useState<string | null>(null);
+  if (repaymentId && repaymentId !== selectedId) setRepaymentId(null);
+  const closeRepayment = () => {
+    const id = repaymentId;
+    setRepaymentId(null);
+    requestAnimationFrame(() =>
+      register.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-transaction-row="${CSS.escape(id ?? "")}"]`,
+        )
+        ?.focus(),
+    );
+  };
   const inPlace =
     session && rows.some((item) => item.id === editingId)
       ? editingId
@@ -590,6 +606,19 @@ export function RegisterView({
   const row = (item: Transaction) => {
     if (item.id === inPlace)
       return <TransactionEditor key={item.id} accountColumn={accountColumn} />;
+    if (item.id === repaymentId && item.repayment)
+      return (
+        <RepaymentEditor
+          key={item.id}
+          transaction={{ ...item, repayment: item.repayment }}
+          accountName={
+            accountColumn
+              ? (accountName(item.accountId) ?? "Unlinked bank account")
+              : undefined
+          }
+          onClose={closeRepayment}
+        />
+      );
     const statusKey = item.reconciled ? "reconciled" : item.status;
     const status = statusIcon[statusKey];
     const checkable = item.source === "budget" || Boolean(item.editableImport);
@@ -629,6 +658,10 @@ export function RegisterView({
               if (event.detail > 0 && window.getSelection()?.toString()) return;
               // A pointer click; Enter and Space click with no position.
               if (isChecked && checked.length === 1 && event.detail > 0) {
+                if (item.repayment) {
+                  setRepaymentId(item.id);
+                  return;
+                }
                 const skip = item.categoryNotNeeded ? "category" : undefined;
                 // The cell clicked, or the column nearest the pointer when the
                 // click lands between cells.
@@ -786,6 +819,16 @@ export function RegisterView({
         if (event.key === "x" && id) {
           event.preventDefault();
           onCheck([id], !checked.includes(id));
+          return;
+        }
+        // e edits the selected row; a repayment's opens its note.
+        if (
+          event.key === "e" &&
+          id === selectedId &&
+          rows.find((item) => item.id === id)?.repayment
+        ) {
+          event.preventDefault();
+          setRepaymentId(id);
           return;
         }
         moveSelection(event);
