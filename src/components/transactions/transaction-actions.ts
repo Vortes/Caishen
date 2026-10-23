@@ -22,6 +22,7 @@ export function transactionNeedsReview(
   if (!("kind" in item)) return bankImportNeedsReview(item);
   return (
     !item.reviewed ||
+    classifyRegisterEntry(view.budget, item).fields.needsCategory ||
     Boolean(
       item.partnerSettlementId &&
       !view.partnerSettlements.some(

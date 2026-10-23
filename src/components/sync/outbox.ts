@@ -82,13 +82,13 @@ export class Outbox {
     op: PendingOperation,
     baseRevision: number,
   ): Promise<ExecuteResult> {
-    return op.command
-      ? this.transport.execute({
-          command: op.command,
+    return op.send
+      ? op.send(baseRevision)
+      : this.transport.execute({
+          command: op.command!,
           baseRevision,
           clientId: this.options.clientId,
-        })
-      : op.send!(baseRevision);
+        });
   }
 
   private async failed(operationId: string, error: unknown) {

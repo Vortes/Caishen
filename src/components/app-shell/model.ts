@@ -19,6 +19,7 @@ import {
   transactionNeedsReview,
 } from "~/components/transactions/transaction-actions";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
+import { balanceImports } from "~/domain/bank-import-balances";
 import { isCounterparty, type Target } from "~/domain/engine";
 
 export { isCounterparty };
@@ -80,7 +81,8 @@ export type Account = {
   cleared: number;
   // The last time it matched the bank's.
   reconciled?: { date: string; balance: number };
-  // Entries wait for the user: the partner's purchases still to categorize.
+  importReviewRequired?: boolean;
+  // This account has transactions waiting for review.
   toReview?: boolean;
   connection?: {
     institution: string;
@@ -112,6 +114,8 @@ export type Transaction = {
   status: "pending" | "posted";
   reconciled: boolean;
   source: "budget" | "bank";
+  // Bank activity waiting outside the register until entered or posted.
+  pendingImport?: boolean;
   actions: ReturnType<typeof transactionActions>;
   needsReview: boolean;
   counterpart?: {
@@ -269,6 +273,7 @@ export function toShellData(
 ): ShellData {
   const view = state.view;
   const month = view.month;
+  const todayKey = today(view.budget.settings.timezone);
   const accountName = new Map(
     view.accounts.map((item) => [item.id, item.name]),
   );
@@ -405,42 +410,7 @@ export function toShellData(
   }
 
   const active = view.budget.transactions.filter((item) => !item.removed);
-  const accounts = view.accounts.map((item): Account => {
-    const connection = state.connections.find((entry) =>
-      Object.values(
-        (entry.accountMappings ?? {}) as Record<string, { accountId?: string }>,
-      ).some((mapping) => mapping.accountId === item.id),
-    );
-    return {
-      id: item.id,
-      name: displayName(item),
-      kind: item.kind,
-      balance: item.balance,
-      // The engine leaves pending inflows out of the balance until they
-      // post, so only pending outflows are uncleared money in it.
-      pending: active
-        .filter(
-          (entry) =>
-            entry.accountId === item.id &&
-            entry.status === "pending" &&
-            entry.amount < 0 &&
-            entry.date <= `${month}-31`,
-        )
-        .reduce((sum, entry) => sum + entry.amount, 0),
-      cleared: item.cleared,
-      reconciled: item.reconciled,
-      toReview:
-        item.id === partnerAccount?.id &&
-        view.partnerLedger.some(
-          (row) => row.needsCategory || row.confirmed === false,
-        ),
-      connection: connection && {
-        institution: connection.institutionName ?? "Connected bank",
-        synced: syncedLabel(connection.lastSyncedAt, connection.error),
-        needsAttention: Boolean(connection.error),
-      },
-    };
-  });
+  const imported = balanceImports(view.budget, state.imports, todayKey);
 
   const transactions: Transaction[] = [
     ...active.map((item): Transaction => {
@@ -542,6 +512,10 @@ export function toShellData(
         status: item.pending ? "pending" : "posted",
         reconciled: false,
         source: "bank",
+        pendingImport:
+          item.pending &&
+          !item.transactionId &&
+          !transactionNeedsReview(view, item),
         actions: transactionActions(view, item),
         needsReview: transactionNeedsReview(view, item),
         reviewReason: entry.capabilities.record.ok
@@ -569,8 +543,53 @@ export function toShellData(
     }),
   ].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
+  const accounts = view.accounts.map((item): Account => {
+    const activity = imported.filter((entry) => entry.accountId === item.id);
+    const working = activity.filter((entry) => entry.date <= `${month}-31`);
+    const balance = working.reduce((sum, entry) => sum + entry.amount, 0);
+    const posted = activity.reduce((sum, entry) => sum + entry.amount, 0);
+    const connection = state.connections.find((entry) =>
+      Object.values(
+        (entry.accountMappings ?? {}) as Record<string, { accountId?: string }>,
+      ).some((mapping) => mapping.accountId === item.id),
+    );
+    return {
+      id: item.id,
+      name: displayName(item),
+      kind: item.kind,
+      balance: item.balance + balance,
+      // The engine leaves pending inflows out of the balance until they
+      // post, so only pending outflows are uncleared money in it.
+      pending: active
+        .filter(
+          (entry) =>
+            entry.accountId === item.id &&
+            entry.status === "pending" &&
+            entry.amount < 0 &&
+            entry.date <= `${month}-31`,
+        )
+        .reduce((sum, entry) => sum + entry.amount, 0),
+      cleared: item.cleared + posted,
+      importReviewRequired: activity.length > 0,
+      reconciled: item.reconciled,
+      toReview:
+        transactions.some(
+          (transaction) =>
+            transaction.accountId === item.id && transaction.needsReview,
+        ) ||
+        (item.id === partnerAccount?.id &&
+          view.partnerLedger.some(
+            (row) => row.needsCategory || row.confirmed === false,
+          )),
+      connection: connection && {
+        institution: connection.institutionName ?? "Connected bank",
+        synced: syncedLabel(connection.lastSyncedAt, connection.error),
+        needsAttention: Boolean(connection.error),
+      },
+    };
+  });
+
   const partner = partnerOf(view);
-  const todayKey = today(view.budget.settings.timezone);
   return {
     budgetName: view.budget.name,
     preferences: view.budget.settings,

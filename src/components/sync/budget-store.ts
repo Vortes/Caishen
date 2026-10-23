@@ -43,6 +43,8 @@ export type RunOptions = {
   summary: string;
   /** Called once, when the server confirms or refuses the command. */
   onSettled?: (result: Settled) => void;
+  /** Preview the command normally, but save through a specialized route. */
+  send?: (baseRevision: number) => Promise<ExecuteResult>;
 };
 
 export type RunResult =
@@ -117,6 +119,8 @@ export type PendingOperation = {
   /** For a revert: the change set it restores in this browser. */
   readonly revertTarget?: ChangeSet;
   readonly onSettled?: (result: Settled) => void;
+  /** Imports whose preview created a transaction this operation edits. */
+  readonly dependencies: readonly string[];
   settled: boolean;
   /** The server applied it at this revision; its rows have not arrived. */
   confirmedAt: number | null;
@@ -259,7 +263,12 @@ export class BudgetStore {
     if (this.pending.some((op) => op.operationId === command.id))
       return { ok: false, message: "This change was already sent" };
     this.push(
-      { command, summary: options.summary, onSettled: options.onSettled },
+      {
+        command,
+        summary: options.summary,
+        onSettled: options.onSettled,
+        send: options.send,
+      },
       step,
     );
     this.undoStack.push({
@@ -346,7 +355,10 @@ export class BudgetStore {
   private push(
     op: Pick<PendingOperation, "summary" | "onSettled" | "revertTarget"> &
       (
-        | { command: LedgerCommand & { id: string }; send?: undefined }
+        | {
+            command: LedgerCommand & { id: string };
+            send?: PendingOperation["send"];
+          }
         | {
             command: null;
             operationId: string;
@@ -356,6 +368,23 @@ export class BudgetStore {
     step?: Step,
   ) {
     const operationId = op.command ? op.command.id : op.operationId;
+    const dependencies = this.pending
+      .filter((pending) => {
+        if (!pending.send || !pending.command || !step) return false;
+        const imported = this.steps.get(pending.operationId)?.changeSet;
+        return imported?.after.some(
+          (row, index) =>
+            row.table === "transaction" &&
+            imported.before[index]!.deleted &&
+            step.changeSet.before.some(
+              (before) =>
+                before.table === row.table &&
+                before.id === row.id &&
+                !before.deleted,
+            ),
+        );
+      })
+      .map((pending) => pending.operationId);
     this.pending.push({
       operationId,
       summary: op.summary,
@@ -363,6 +392,7 @@ export class BudgetStore {
       send: op.send ?? null,
       revertTarget: op.revertTarget,
       onSettled: op.onSettled,
+      dependencies,
       settled: false,
       confirmedAt: null,
       failures: 0,
@@ -531,11 +561,13 @@ export class BudgetStore {
     const op = this.pending.find((item) => item.operationId === operationId);
     if (!op) return;
     const refused = new Set([operationId]);
-    // Undoing or redoing a refused operation can't succeed either.
+    // Edits of an import preview must not become standalone purchases if
+    // the bank refuses the import. Undo and redo depend on their target too.
     for (const other of this.pending)
       if (
-        other.command?.type === "revert" &&
-        refused.has(other.command.targetOperationId)
+        other.dependencies.some((id) => refused.has(id)) ||
+        (other.command?.type === "revert" &&
+          refused.has(other.command.targetOperationId))
       )
         refused.add(other.operationId);
     for (const item of this.pending.filter((p) => refused.has(p.operationId))) {

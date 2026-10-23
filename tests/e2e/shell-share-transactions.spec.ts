@@ -166,7 +166,7 @@ for (const scenario of cases) {
       ).toBeVisible();
     }
 
-    if (scenario.entry === "row") await saved(page);
+    await saved(page);
 
     await reloadBudget(page, budget);
     await expect(available(page, budget.category)).toHaveText(

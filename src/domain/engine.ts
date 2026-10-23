@@ -4108,8 +4108,24 @@ function applyCommand(
                         ),
                   }
                 : undefined));
-      if (account.kind === "tracking" && counterpartyShare)
-        fail("Tracking activity cannot have a counterparty share");
+      if (counterpartyShare) {
+        const share = classifyRegisterEntry(budget, {
+          id: command.transactionId,
+          accountId: account.id,
+          date: command.date,
+          amount: command.amount,
+          payee: command.payee,
+          categoryId: command.categoryId ?? existing?.categoryId,
+          counterpartyShare,
+          refundOfTransactionId,
+        }).capabilities.share;
+        if (share.mode === "none")
+          fail(
+            isCounterparty(account)
+              ? directEntryAccountMessage
+              : "Tracking activity cannot have a counterparty share",
+          );
+      }
       const validateShare = (amount: number, share?: CounterpartyShare) => {
         if (!share) return;
         if (share.amount > Math.abs(amount))

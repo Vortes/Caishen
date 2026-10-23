@@ -18,7 +18,15 @@ import {
   openBudgetClient,
   type BudgetClient,
 } from "~/components/sync/budget-client";
-import type { BudgetSnapshot, RunResult } from "~/components/sync/budget-store";
+import type {
+  BudgetSnapshot,
+  RunResult,
+  Settled,
+} from "~/components/sync/budget-store";
+import {
+  importRowId,
+  type BankImport,
+} from "~/components/transactions/import-draft";
 import {
   BudgetClientProvider,
   useBudgetMonth,
@@ -263,14 +271,40 @@ function LiveWorkspace({
   const connections = overview?.connections ?? noConnections;
   // Imports a save just resolved stay hidden until the inbox catches up.
   const [resolved, setResolved] = useState<ReadonlySet<string>>(new Set());
+  const [importPreviews, setImportPreviews] = useState<
+    ReadonlyMap<string, { fingerprint: string; transactionId: string }>
+  >(new Map());
   const allImports = overview?.imports ?? noImports;
   const imports = useMemo(
     () =>
-      resolved.size
-        ? allImports.filter((item) => !resolved.has(item.logicalId))
-        : allImports,
-    [allImports, resolved],
+      allImports.filter((item) => {
+        if (resolved.has(item.logicalId)) return false;
+        const preview = importPreviews.get(importRowId(item));
+        return (
+          preview?.fingerprint !== item.fingerprint ||
+          !view.budget.transactions.some(
+            (transaction) =>
+              transaction.id === preview.transactionId && !transaction.removed,
+          )
+        );
+      }),
+    [allImports, resolved, importPreviews, view.budget.transactions],
   );
+  useEffect(() => {
+    setImportPreviews((current) => {
+      const next = new Map(
+        [...current].filter(([id, preview]) =>
+          allImports.some(
+            (item) =>
+              importRowId(item) === id &&
+              item.fingerprint === preview.fingerprint &&
+              !item.transactionId,
+          ),
+        ),
+      );
+      return next.size === current.size ? current : next;
+    });
+  }, [allImports]);
   const partnerFirstName = overview?.partnerFirstName ?? undefined;
   const data = useMemo(
     () => toShellData({ view, connections, imports, partnerFirstName }),
@@ -428,6 +462,42 @@ function LiveWorkspace({
       });
     }
   };
+  const previewImport = (
+    item: BankImport,
+    command: Command,
+    summary: string,
+    onSettled: (result: Settled) => void,
+  ): RunResult => {
+    if (command.type !== "transaction.upsert")
+      return { ok: false, message: "This bank operation cannot be previewed." };
+    const result = client.run(command, {
+      summary,
+      send: (expectedRevision) =>
+        serverOperation(
+          () =>
+            trpc.budget.resolveImport.mutate({
+              connectionId: item.connectionId,
+              logicalId: item.logicalId,
+              expectedFingerprint: item.fingerprint,
+              expectedRevision,
+              command,
+            }),
+          renewSession,
+        ),
+      onSettled: (settled) => {
+        onSettled(settled);
+        if (settled.ok) void utils.budget.overview.invalidate();
+      },
+    });
+    if (result.ok)
+      setImportPreviews((current) =>
+        new Map(current).set(importRowId(item), {
+          fingerprint: item.fingerprint,
+          transactionId: command.transactionId,
+        }),
+      );
+    return result;
+  };
   const transactionSaver: TransactionSaver = {
     view,
     imports,
@@ -436,49 +506,53 @@ function LiveWorkspace({
         if (!saved) refused?.();
       }),
     saveImport: (item, command, summary, refused) => {
+      if (command.type === "transaction.upsert")
+        return message(
+          previewImport(item, command, summary, (settled) => {
+            if (settled.ok) notify(summary, "neutral", command.id);
+            else refused?.();
+          }),
+        );
       saveImportedTransaction(item, command, summary).then(
         () => notify(summary),
         () => refused?.(),
       );
       return null;
     },
-    saveShares: async (changes) => {
-      const savedIds: string[] = [];
+    saveShares: (changes, refused) => {
+      const queuedIds: string[] = [];
+      const failures: { payee: string; message: string }[] = [];
+      let remaining = changes.length;
       for (const { rowId, imported, command, summary } of changes) {
-        try {
-          if (imported) {
-            await saveImportedTransaction(imported, command, summary, true);
-          } else {
-            await new Promise<void>((resolve, reject) => {
-              const blocked = run(command, summary, (saved) =>
-                saved
-                  ? resolve()
-                  : reject(
-                      new Error("These changes couldn’t be saved. Try again."),
-                    ),
-              );
-              if (blocked) reject(new Error(blocked));
+        shownInPlace.current.add(command.id);
+        const settled = (result: Settled) => {
+          remaining--;
+          if (!result.ok) {
+            failures.push({
+              payee: "payee" in command ? command.payee : summary,
+              message: result.message,
             });
+            refused(rowId);
+            notify(
+              `Couldn’t share ${failures.map((item) => item.payee).join(", ")}. ${[...new Set(failures.map((item) => item.message))].join(" ")}`,
+              "attention",
+            );
+          } else {
+            shownInPlace.current.delete(command.id);
+            if (remaining === 0 && !failures.length)
+              notify(`Shared ${count(queuedIds)}`, "neutral", command.id);
           }
-          savedIds.push(rowId);
-          await client.idle();
-        } catch (failure) {
-          return {
-            savedIds,
-            error:
-              failure instanceof Error
-                ? failure.message
-                : "This share couldn't be saved. Try again.",
-          };
-        } finally {
+        };
+        const result = imported
+          ? previewImport(imported, command, summary, settled)
+          : client.run(command, { summary, onSettled: settled });
+        if (!result.ok) {
           shownInPlace.current.delete(command.id);
+          return { queuedIds, error: result.message };
         }
+        queuedIds.push(rowId);
       }
-      void utils.budget.overview.invalidate();
-      notify(
-        `Shared ${savedIds.length} ${savedIds.length === 1 ? "transaction" : "transactions"}`,
-      );
-      return { savedIds };
+      return { queuedIds };
     },
     holdOpen,
   };

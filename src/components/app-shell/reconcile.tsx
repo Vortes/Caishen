@@ -8,6 +8,7 @@ import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import type { Command } from "~/domain/engine";
+import { reviewImportsBeforeReconciliation } from "~/domain/bank-import-balances";
 import { money, type Account } from "./model";
 import { parseAmount } from "./move-money";
 import { useShellData } from "./shell-data";
@@ -115,6 +116,10 @@ function ReconcileForm({
     setError("");
   };
   const finish = (balance: number) => {
+    if (account.importReviewRequired) {
+      setError(reviewImportsBeforeReconciliation);
+      return;
+    }
     const adjust = balance !== account.cleared;
     const command = {
       type: "account.reconcile" as const,
