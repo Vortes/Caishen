@@ -50,7 +50,7 @@ twice.
 ## Review dot
 
 Something waiting for the user to check, like transactions to review, is a
-6px dot in `--text-secondary`: `.reviewDot` with `data-on` in the prototype.
+6px dot in `--text-secondary`: `.reviewDot` with `data-on` in the shell.
 It says "look here", never how many. Never a number and never the accent:
 a colored count in the sidebar competes with money states for attention,
 and the register already shows what is waiting.

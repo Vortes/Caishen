@@ -21,7 +21,7 @@ test("a change can be undone and redone during the visit that made it", async ({
   await expect(available(page, "Gifts")).toHaveText("$150.00");
   await saved(page);
 
-  await page.locator("#prototype-content").focus();
+  await page.locator("#app-content").focus();
   await page.keyboard.press("ControlOrMeta+z");
   await expect(available(page, "Gifts")).toHaveText("$100.00");
   await expect(readyToAssign(page)).toHaveText("$700.00");
@@ -34,7 +34,7 @@ test("a change can be undone and redone during the visit that made it", async ({
   await reloadBudget(page, budget);
   await expect(available(page, "Gifts")).toHaveText("$150.00");
   await expect(readyToAssign(page)).toHaveText("$650.00");
-  await page.locator("#prototype-content").focus();
+  await page.locator("#app-content").focus();
   await page.keyboard.press("ControlOrMeta+z");
   await expect(notifications(page)).not.toContainText("Action undone.");
   await expect(available(page, "Gifts")).toHaveText("$150.00");

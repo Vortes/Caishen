@@ -47,8 +47,6 @@ function undo(before: Book, after: Book, id: string) {
       ).book as Book,
   };
 }
-import { optimisticState } from "../../src/components/workspace/optimistic-state";
-import type { State } from "../../src/components/budget/types";
 
 const month = "2026-10";
 const date = `${month}-10`;
@@ -198,7 +196,7 @@ void test("legacy card payment edits preserve both IDs and consume reserve witho
   assert.deepEqual(f.book, before);
 });
 
-void test("import conversion preserves bank identity and approval propagates optimistically and durably", () => {
+void test("import conversion preserves bank identity and approval propagates to both transfer entries", () => {
   const f = fixture();
   f.run({
     type: "transaction.upsert",
@@ -215,26 +213,11 @@ void test("import conversion preserves bank identity and approval propagates opt
   assert.equal(sent.providerId, "bank-42");
   assert.equal(sent.reviewed, false);
   assert.equal(received.reviewed, false);
-  const state: State = {
-    status: "ready",
-    view: f.view(),
-    revision: 0,
-    history: { undo: null, redo: null },
-    services: [],
-    connections: [],
-    evidence: [],
-    imports: [],
-  };
   const command: Command = {
     type: "transaction.approve",
     id: "approve",
     transactionIds: [received.id],
   };
-  const projected = optimisticState(state, command);
-  assert.equal(
-    projected.view!.budget.transactions.filter((item) => !item.reviewed).length,
-    0,
-  );
   f.run(command);
   assert.equal(f.transaction(sent.id).reviewed, true);
   f.save(

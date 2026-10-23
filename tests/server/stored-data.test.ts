@@ -13,7 +13,7 @@ import { tableNames } from "../../src/domain/rows";
 import {
   reconciliationResultSchema,
   savedEvidenceSchema,
-} from "../../src/server/integrations/reconciliation";
+} from "../../src/server/storage/review-evidence";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
 import { connectionColumnSchema } from "../../src/server/services/banks";

@@ -7,17 +7,10 @@ import {
   pairedEnvelopeId,
   projectBook,
   withCounterpartyAccounts,
-  type Book,
   type Command,
   type Target,
 } from "~/domain/engine";
 import { partnerEntryId } from "~/domain/partner-ledger";
-import {
-  reconcileStatement,
-  type ClearedSnapshot,
-  type StatementEvidence,
-} from "~/server/integrations/reconciliation";
-
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 export type SeedOperation = {
   actorId: string;
@@ -794,91 +787,3 @@ export function buildDevelopmentSeed({
 }
 
 export type DevelopmentSeed = ReturnType<typeof buildDevelopmentSeed>;
-
-function statement(
-  book: Book,
-  userId: string,
-  accountId: string,
-  periodStart: string,
-  cutoff: string,
-): ClearedSnapshot {
-  const budget = book.budgets[userId]!;
-  const account = budget.accounts.find((item) => item.id === accountId)!;
-  const cleared = budget.transactions.filter(
-    (transaction) =>
-      transaction.accountId === accountId &&
-      !transaction.removed &&
-      transaction.status === "posted",
-  );
-  const openingBalanceCents =
-    account.openingBalance +
-    cleared
-      .filter((transaction) => transaction.date < periodStart)
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const activity = cleared
-    .filter(
-      (transaction) =>
-        transaction.date >= periodStart && transaction.date <= cutoff,
-    )
-    .map((transaction) => ({
-      date: transaction.date,
-      description: transaction.payee,
-      amountCents: transaction.amount,
-    }));
-  return {
-    accountId,
-    currency: "USD",
-    periodStart,
-    cutoff,
-    balanceKind: "cleared",
-    openingBalanceCents,
-    closingBalanceCents:
-      openingBalanceCents +
-      activity.reduce((sum, transaction) => sum + transaction.amountCents, 0),
-    activity,
-  };
-}
-
-export function buildSeedStatements(seed: DevelopmentSeed) {
-  return [seed.userId, seed.partnerId].flatMap((userId) =>
-    ["checking", "savings", "amex"].map((accountId) => {
-      const ledger = statement(
-        seed.book,
-        userId,
-        accountId,
-        `${seed.month}-01`,
-        seed.asOf,
-      );
-      const evidence: StatementEvidence = {
-        ...structuredClone(ledger),
-        source: "statement",
-        verified: true,
-        activityComplete: true,
-      };
-      if (accountId === "checking") {
-        evidence.activity.push({
-          date: seed.asOf,
-          description: "Unrecognized bank service charge",
-          amountCents: -3499,
-        });
-        evidence.closingBalanceCents -= 3499;
-      }
-      const csv =
-        [
-          "Date,Description,Amount",
-          ...evidence.activity.map(
-            (activity) =>
-              `${activity.date},"${activity.description.replaceAll('"', '""')}",${(activity.amountCents / 100).toFixed(2)}`,
-          ),
-        ].join("\n") + "\n";
-      return {
-        userId,
-        accountId,
-        ledger,
-        evidence,
-        result: reconcileStatement(ledger, evidence),
-        csv,
-      };
-    }),
-  );
-}

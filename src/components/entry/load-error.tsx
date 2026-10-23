@@ -3,7 +3,7 @@
 import { CloudOffIcon, InfoIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { EmptyAppFrame } from "./empty-app-frame";
-import shell from "~/components/prototype/app-shell/shell.module.css";
+import shell from "~/components/app-shell/shell.module.css";
 import styles from "./load-error.module.css";
 
 export function BudgetLoadError({

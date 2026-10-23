@@ -11,10 +11,10 @@ import {
   BankConnectionsProvider,
   BankDialog,
   useBankConnections,
-} from "~/components/prototype/app-shell/banks";
+} from "~/components/app-shell/banks";
 import { EmptyAppFrame } from "~/components/entry/empty-app-frame";
 import { SHELL_PATH } from "~/components/workspace/routes";
-import shell from "~/components/prototype/app-shell/shell.module.css";
+import shell from "~/components/app-shell/shell.module.css";
 
 const holdOpen = () => () => undefined;
 

@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { PrismaClient } from "../src/generated/prisma";
 import { projectBook } from "../src/domain/engine";
@@ -11,7 +9,6 @@ import {
 } from "../src/server/dev/seed-database";
 import {
   buildDevelopmentSeed,
-  buildSeedStatements,
   developmentToday,
 } from "../src/server/dev/seed-scenarios";
 
@@ -110,59 +107,6 @@ Existing seed data is left intact unless --reset is supplied.`);
       ),
     );
     if (result.skipped) return;
-    const directory = resolve(".next/cache/dev-seed", result.workspaceId);
-    await mkdir(directory, { recursive: true });
-    const statements = buildSeedStatements(result.seed);
-    for (const statement of statements) {
-      const role = statement.userId === userId ? "you" : "partner";
-      await writeFile(
-        resolve(
-          directory,
-          `${role}-${statement.accountId}-${statement.result.status}.csv`,
-        ),
-        statement.csv,
-      );
-      await writeFile(
-        resolve(directory, `${role}-${statement.accountId}-matched.csv`),
-        [
-          "Date,Description,Amount",
-          ...statement.ledger.activity.map(
-            (activity) =>
-              `${activity.date},"${activity.description.replaceAll('"', '""')}",${(activity.amountCents / 100).toFixed(2)}`,
-          ),
-        ].join("\n") + "\n",
-      );
-    }
-    await writeFile(
-      resolve(directory, "statement-balances.json"),
-      JSON.stringify(
-        statements.map(
-          ({
-            userId: ownerId,
-            accountId,
-            ledger,
-            evidence,
-            result: comparison,
-          }) => ({
-            userId: ownerId,
-            accountId,
-            periodStart: ledger.periodStart,
-            cutoff: ledger.cutoff,
-            openingBalanceCents: ledger.openingBalanceCents,
-            matchedClosingBalanceCents: ledger.closingBalanceCents,
-            statementClosingBalanceCents: evidence.closingBalanceCents,
-            status: comparison.status,
-          }),
-        ),
-        null,
-        2,
-      ) + "\n",
-    );
-    await writeFile(
-      resolve(directory, "ynab-categories.csv"),
-      "Category Group,Category\nHome,Water & sewer\nTrue expenses,Pet care\nGoals,New bicycle\n",
-    );
-    console.log(`Statement and category-import fixtures: ${directory}`);
     for (const original of result.previousWorkspaces)
       console.log(
         `Restore ${original.userId}: npm run db:seed -- --user ${original.userId} --restore ${original.workspaceId}${original.userId !== userId || values.partner || process.env.DEV_SEED_PARTNER_ID ? ` --partner ${original.userId === userId ? identity.partnerId : userId}` : ""}`,

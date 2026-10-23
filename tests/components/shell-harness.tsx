@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, vi } from "vitest";
-import { LiveAppShell } from "~/components/prototype/app-shell/live-app-shell";
+import { LiveAppShell } from "~/components/app-shell/live-app-shell";
 import type {
   ExecuteInput,
   PullInput,

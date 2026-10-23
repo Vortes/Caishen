@@ -105,9 +105,10 @@ void test("a split saved through budget.execute pulls back line by line, and und
   ]);
 
   const split = revision;
+  const categorizeOperation = randomUUID();
   await execute({
     type: "transaction.categorize",
-    id: randomUUID(),
+    id: categorizeOperation,
     transactionId: "costco",
     categoryId: "groceries",
   });
@@ -116,10 +117,14 @@ void test("a split saved through budget.execute pulls back line by line, and und
     [`${userId}/costco/paper`, true, null],
   ]);
 
-  const { revision: undone } = await api.budget.changeHistory({
-    direction: "undo",
-    expectedRevision: revision,
-    operationId: randomUUID(),
+  const { revision: undone } = await api.budget.execute({
+    clientId: "test",
+    baseRevision: revision,
+    command: {
+      type: "revert",
+      id: randomUUID(),
+      targetOperationId: categorizeOperation,
+    },
   });
   assert.deepStrictEqual(await linesFrom(revision), [
     [`${userId}/costco/food`, false, line("food", "groceries", -15_000, 0)],

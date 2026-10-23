@@ -1,6 +1,6 @@
 # Design system to-do
 
-UI in the app shell prototype (`src/components/prototype/app-shell/`) that
+UI in the app shell (`src/components/app-shell/`) that
 doesn't follow the design system yet. Check items off as they land.
 
 ## Missing primitives
@@ -13,8 +13,8 @@ doesn't follow the design system yet. Check items off as they land.
       (`inspector.tsx`), the move-money destination options (`move-money.tsx`)
 - [ ] Breadcrumbs (`reflect/reflect-view.tsx`)
 - [ ] Header tabs: Spending Breakdown / Trends, and decide whether they become
-      a `Tabs` variant or take the pill look (`app-shell-prototype.tsx`)
-- [ ] Month label button in the header (`app-shell-prototype.tsx`)
+      a `Tabs` variant or take the pill look (`app-shell.tsx`)
+- [ ] Month label button in the header (`app-shell.tsx`)
 - [ ] `Select`: the custom date range's native selects (`reflect/filters.tsx`)
 - [ ] `Popover` surface: the Reflect filters, slice, and move-money popovers
       style their own (`reflect/reflect.module.css`, `move-money.module.css`)
@@ -35,7 +35,7 @@ doesn't follow the design system yet. Check items off as they land.
       pill to open move money (`move-money.module.css`, `.pillButton`); decide
       whether funding pills get a pressable form
 - [ ] Funding components (`AvailablePill`, `FundingBar`, `FundingRing`,
-      `Meter`, `Figure`) move out of the prototype; type `Figure` and `Meter`
+      `Meter`, `Figure`) move into the shared UI library; type `Figure` and `Meter`
       tone props as `Funding` instead of `string`
 
 ## Tokens

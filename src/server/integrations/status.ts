@@ -76,11 +76,6 @@ export function integrationStatus(
     ),
     plaid,
     describe(
-      "OpenRouter",
-      ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"],
-      "Credentials and model are present. Suggestions still require review; model access has not been verified.",
-    ),
-    describe(
       "Daily email",
       ["RESEND_API_KEY", "EMAIL_FROM", "APP_BASE_URL"],
       "Email configuration is present. Sender verification and delivery must be verified with the provider.",

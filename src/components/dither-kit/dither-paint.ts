@@ -1,8 +1,7 @@
 import type { AreaVariant } from "./chart-context";
 import { rgb, type Seed } from "./palette";
 
-// 4×4 ordered (Bayer) matrix, normalized to 0–1 thresholds — the exact matrix
-// the legacy chart dithers with.
+// 4×4 ordered (Bayer) matrix, normalized to 0–1 thresholds.
 export const BAYER = [
   [0, 8, 2, 10],
   [12, 4, 14, 6],

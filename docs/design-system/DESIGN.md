@@ -11,9 +11,7 @@ you use.
 
 ## Rules
 
-1. **Build from `src/components/ui/` only.** Never import from
-   `src/components/ui-legacy/`; those are the old shadcn components, kept only
-   until the legacy screens migrate.
+1. **Build from `src/components/ui/` only.**
 2. **Use only semantic tokens from `src/styles/tokens.css`.** Never a
    primitive (`--violet-500`), never a raw value (`#…`, `oklch(…)`, `white`).
    A raw value can't follow the light theme, and a primitive says what a color
@@ -51,23 +49,23 @@ you use.
 
 ## Not in the system yet
 
-These patterns exist in the app shell prototype
-(`src/components/prototype/app-shell/`) but have no primitive. Copy the
-prototype's pattern, use only semantic tokens, and say in your summary that
+These patterns exist in the app shell
+(`src/components/app-shell/`) but have no primitive. Copy the
+shell's pattern, use only semantic tokens, and say in your summary that
 the screen needs the missing primitive. Never invent a new primitive inline.
 
 - **Rows**: plan, register, list, and menu rows (`.row`, `.listRow`,
-  `.preset`, `.actionItem` in the prototype). No shared row primitive exists;
+  `.preset`, `.actionItem` in the shell). No shared row primitive exists;
   selection styling must follow [rows.md](rows.md).
 - **Navigation**: sidebar items and section headings, breadcrumbs, the
   Spending Breakdown / Trends report tabs.
 - **Form fields**: text inputs, selects, amount fields.
-- **Popover and dialog surfaces**: the prototype styles its own popover.
+- **Popover and dialog surfaces**: the shell styles its own popover.
   For a confirm dialog, use Radix `AlertDialog` with that surface, Cancel
   as `secondary`, and the confirm as `danger` or `primary`.
 - **Base styles**: the focus ring (`--focus-ring`, 2px) and the button font
   reset live in the shell's root class, not globally. A screen outside the
   app shell has to repeat them.
 - **Funding components**: `AvailablePill`, `FundingBar`, `FundingRing`, and
-  `Meter` live in the prototype and take the category's `Funding` state from
+  `Meter` live in the shell and take the category's `Funding` state from
   `model.ts`. Use them for money states; never rebuild one with a `Tag`.

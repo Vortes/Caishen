@@ -14,7 +14,7 @@ import {
   describeTarget,
   type TargetDraft,
   type TargetKind,
-} from "../../src/components/prototype/app-shell/target-draft";
+} from "../../src/components/app-shell/target-draft";
 
 const month = "2026-10";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;

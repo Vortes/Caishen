@@ -465,6 +465,51 @@ void test("one failed daylight-saving target does not prevent the other local da
     "2026-03-08",
   ]);
 });
+void test("reverting email opt-in cancels a scheduled review and retries a failed cancellation", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now });
+  const h = await fixture(t, { emailEnabled: false });
+  const enable = randomUUID();
+  await h.run({ type: "settings.update", id: enable, emailEnabled: true });
+  assert.equal((await runDailyJob(h.db, now, h.dependencies)).scheduled, 1);
+  let fail = true;
+  const canceled: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const endpoint = new URL(url instanceof Request ? url.url : url);
+    assert.equal(endpoint.origin, "https://api.resend.com");
+    if (endpoint.pathname === "/emails/email_1/cancel") {
+      if (fail) {
+        fail = false;
+        return Response.json({}, { status: 503 });
+      }
+      canceled.push("email_1");
+      return Response.json({ id: "email_1" });
+    }
+    assert.equal(endpoint.pathname, "/emails/email_1");
+    return Response.json({ id: "email_1", last_event: "scheduled" });
+  });
+  const revert = {
+    clientId: "test",
+    baseRevision: (await h.api.budget.state({ month: "2026-10" })).revision,
+    command: {
+      type: "revert" as const,
+      id: randomUUID(),
+      targetOperationId: enable,
+    },
+  };
+  await assert.rejects(h.api.budget.execute(revert), {
+    code: "INTERNAL_SERVER_ERROR",
+    message: /settings were saved, but queued email could not be canceled/,
+  });
+  assert.equal(
+    (await h.api.budget.state({ month: "2026-10" })).view?.budget.settings
+      .emailEnabled,
+    false,
+  );
+  const saved = await h.api.budget.execute(revert);
+  assert.equal(saved.revision, revert.baseRevision + 1);
+  await h.api.budget.execute(revert);
+  assert.deepEqual(canceled, ["email_1"]);
+});
 for (const failedCancel of [false, true])
   void test(`disabling email during delivery ${failedCancel ? "retries a failed cancellation" : "cancels the accepted schedule"}`, async (t) => {
     t.mock.timers.enable({ apis: ["Date"], now });

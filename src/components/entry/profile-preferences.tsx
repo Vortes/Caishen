@@ -7,7 +7,7 @@ import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { TimezoneOptions } from "~/components/settings/timezone-options";
 import type { Budget } from "~/domain/engine";
-import shell from "~/components/prototype/app-shell/shell.module.css";
+import shell from "~/components/app-shell/shell.module.css";
 import batch from "./entry.module.css";
 import styles from "./settings.module.css";
 

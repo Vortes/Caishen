@@ -7,7 +7,7 @@ import {
   setEmailSubscription,
 } from "~/server/services/email-preferences";
 import { TRPCError } from "@trpc/server";
-import { z, type ZodError } from "zod";
+import { z } from "zod";
 import {
   commandSchema,
   ledgerCommandSchema,
@@ -21,20 +21,10 @@ import {
   protectedProcedure,
   submittedInputProcedure,
 } from "~/server/api/trpc";
-import { parseCategoryImport } from "~/server/categories";
-import { createOpenRouterProvider } from "~/server/integrations/model";
 import { integrationStatus } from "~/server/integrations/status";
-import {
-  parseStatementCsv,
-  reconcileStatement,
-  savedReconciliationResult,
-} from "~/server/integrations/reconciliation";
-import { dateSchema, centsSchema } from "~/server/integrations/validation";
-import { commandHash, domainError, jsonValue } from "~/server/services/safety";
+import { domainError } from "~/server/services/safety";
 import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import {
-  approveSuggestions,
-  importCategories,
   joinHousehold,
   onboard,
   setOnboardingCategories,
@@ -42,15 +32,9 @@ import {
 import {
   executeCommand,
   openHousehold,
-  requireHousehold,
   type Database,
 } from "~/server/services/household";
-import { changeHistory, historySummary } from "~/server/services/history";
-import {
-  budgetMaintenance,
-  reportUnreadable,
-  zodIssues,
-} from "~/server/services/stored-data";
+import { budgetMaintenance } from "~/server/services/stored-data";
 import { readImportStates } from "~/server/services/bank-import-rows";
 import { readHouseholdRevision } from "~/server/storage/rows";
 import {
@@ -61,7 +45,6 @@ import {
   linkBankToken,
   syncBanks,
   resolveImport,
-  mapBankAccount,
   reconnectBank,
   setupBankAccounts,
 } from "~/server/services/banks";
@@ -74,12 +57,6 @@ const submittedCommand = z.object({ command: z.unknown() });
 function currentMonth(zone: string) {
   return budgetDay(zone).slice(0, 7);
 }
-const evidenceAlert =
-  (evidenceId: string, userId: string) => (error: ZodError) =>
-    reportUnreadable({ record: "ReviewEvidence.result", evidenceId, userId }, [
-      { issues: zodIssues(error) },
-    ]);
-
 // A user's bank connections as the app reads them with their imports.
 const savedBankConnections = (db: Database, userId: string) =>
   db.bankConnection.findMany({
@@ -158,22 +135,9 @@ export const budgetRouter = createTRPCRouter({
   state: protectedProcedure
     .input(z.object({ month }))
     .query(async ({ ctx, input }) => {
-      const [opened, savedConnections, evidence] = await Promise.all([
+      const [opened, savedConnections] = await Promise.all([
         openHousehold(ctx.db, ctx.userId, ctx.revision.observe),
         savedBankConnections(ctx.db, ctx.userId),
-        ctx.db.reviewEvidence.findMany({
-          where: { clerkUserId: ctx.userId },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-          select: {
-            id: true,
-            accountId: true,
-            cutoff: true,
-            result: true,
-            evidence: true,
-            createdAt: true,
-          },
-        }),
       ]);
       const services = integrationStatus(process.env);
       if (opened?.ledger.status !== "ready")
@@ -183,10 +147,8 @@ export const budgetRouter = createTRPCRouter({
           status: opened ? ("maintenance" as const) : ("new" as const),
           view: null,
           revision: opened?.household.revision ?? 0,
-          history: { undo: null, redo: null },
           services,
           connections: [],
-          evidence: [],
           imports: [],
         };
       const { household, ledger } = opened;
@@ -196,17 +158,6 @@ export const budgetRouter = createTRPCRouter({
       );
       const connections = banks.map(bankConnectionView);
       try {
-        const currentEvidence = evidence.map(
-          ({ evidence: savedEvidence, result, ...item }) => ({
-            ...item,
-            result: savedReconciliationResult(
-              result,
-              savedEvidence,
-              household.revision,
-              evidenceAlert(item.id, ctx.userId),
-            ),
-          }),
-        );
         return {
           status: "ready" as const,
           view: projectBook(
@@ -216,10 +167,8 @@ export const budgetRouter = createTRPCRouter({
             currentMonth(ledger.budget.settings.timezone),
           ),
           revision: household.revision,
-          history: await historySummary(ctx.db, household, ctx.userId),
           services,
           connections,
-          evidence: currentEvidence,
           imports: bankInboxItems(banks, ledger.budget, ledger.state),
         };
       } catch (error) {
@@ -299,10 +248,16 @@ export const budgetRouter = createTRPCRouter({
         },
         ctx.revision.observe,
       );
-      if (
+      let emailDisabled =
         input.command.type === "settings.update" &&
-        input.command.emailEnabled === false
-      ) {
+        input.command.emailEnabled === false;
+      if (input.command.type === "revert") {
+        const opened = await openHousehold(ctx.db, ctx.userId);
+        emailDisabled =
+          opened?.ledger.status === "ready" &&
+          !opened.ledger.budget.settings.emailEnabled;
+      }
+      if (emailDisabled) {
         try {
           await cancelScheduledDailyReviews(ctx.db, ctx.userId);
         } catch {
@@ -314,85 +269,6 @@ export const budgetRouter = createTRPCRouter({
         }
       }
       return result;
-    }),
-
-  changeHistory: protectedProcedure
-    .input(
-      z.object({
-        direction: z.enum(["undo", "redo"]),
-        expectedRevision: revision,
-        operationId: z.string().uuid(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const result = await changeHistory(
-        ctx.db,
-        ctx.userId,
-        input,
-        ctx.revision.observe,
-      );
-      let warning: string | null = null;
-      try {
-        const opened = await openHousehold(ctx.db, ctx.userId);
-        if (
-          opened?.ledger.status === "ready" &&
-          !opened.ledger.budget.settings.emailEnabled
-        )
-          await cancelScheduledDailyReviews(ctx.db, ctx.userId);
-      } catch {
-        warning =
-          "Your change was saved, but queued email could not be checked. Review your email preferences in Settings.";
-      }
-      return { ...result, warning };
-    }),
-
-  approveSuggestions: submittedInputProcedure
-    .input(
-      z.object({
-        operationId: z.string().uuid(),
-        expectedRevision: revision,
-        items: z
-          .array(
-            z.object({
-              transactionId: z.string().min(1).max(256),
-              categoryId: z.string().min(1).max(256),
-            }),
-          )
-          .min(1)
-          .max(100),
-      }),
-    )
-    .mutation(({ ctx, input }) =>
-      approveSuggestions(
-        ctx.db,
-        ctx.userId,
-        input,
-        ctx.submittedInput,
-        ctx.revision.observe,
-      ),
-    ),
-
-  importCategories: protectedProcedure
-    .input(
-      z.object({ text: z.string().max(1_000_000), expectedRevision: revision }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      try {
-        return await importCategories(
-          ctx.db,
-          ctx.userId,
-          {
-            categories: parseCategoryImport(input.text).map((category) => ({
-              categoryId: `ynab:${commandHash(category).slice(0, 32)}`,
-              ...category,
-            })),
-            expectedRevision: input.expectedRevision,
-          },
-          ctx.revision.observe,
-        );
-      } catch (error) {
-        domainError(error);
-      }
     }),
 
   invite: protectedProcedure.mutation(({ ctx }) =>
@@ -410,145 +286,6 @@ export const budgetRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       joinHousehold(ctx.db, ctx.userId, input.code, ctx.revision.observe),
     ),
-
-  suggest: protectedProcedure
-    .input(z.object({ transactionIds: z.array(z.string()).max(100) }))
-    .mutation(async ({ ctx, input }) => {
-      const {
-        ledger: { budget },
-      } = await requireHousehold(ctx.db, ctx.userId, ctx.revision.observe);
-      const transactions = budget.transactions.filter(
-        (t) =>
-          !t.removed &&
-          t.kind === "purchase" &&
-          input.transactionIds.includes(t.id),
-      );
-      if (transactions.length !== new Set(input.transactionIds).size)
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message:
-            "Only your own active purchases can be sent for suggestions.",
-        });
-      try {
-        return await createOpenRouterProvider({
-          apiKey: process.env.OPENROUTER_API_KEY ?? "",
-          model: process.env.OPENROUTER_MODEL ?? "",
-        }).suggestCategories({
-          categories: budget.categories
-            .filter((c) => !c.pairedAccountId && !c.pairedLoanId)
-            .map((c) => ({ id: c.id, name: c.name })),
-          transactions: transactions.map((t) => ({
-            id: t.id,
-            merchant: t.payee,
-            date: t.date,
-            amountCents: -t.amount,
-          })),
-        });
-      } catch (error) {
-        domainError(error);
-      }
-    }),
-
-  reconcile: protectedProcedure
-    .input(
-      z.object({
-        accountId: z.string(),
-        periodStart: dateSchema,
-        cutoff: dateSchema,
-        openingBalanceCents: centsSchema,
-        closingBalanceCents: centsSchema,
-        csv: z.string().max(1_000_000),
-        verified: z.boolean().default(false),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const {
-        household,
-        ledger: { budget },
-      } = await requireHousehold(ctx.db, ctx.userId, ctx.revision.observe);
-      const account = budget.accounts.find((a) => a.id === input.accountId);
-      if (!account)
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Account not found.",
-        });
-      if (input.periodStart < account.date)
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "The statement starts before this account's opening ledger balance.",
-        });
-      try {
-        const activity = budget.transactions.filter(
-          (t) =>
-            t.accountId === account.id && !t.removed && t.status === "posted",
-        );
-        const openingBalanceCents =
-          account.openingBalance +
-          activity
-            .filter((t) => t.date < input.periodStart)
-            .reduce((sum, t) => sum + t.amount, 0);
-        const periodActivity = activity
-          .filter((t) => t.date >= input.periodStart && t.date <= input.cutoff)
-          .map((t) => ({
-            date: t.date,
-            description: t.payee,
-            amountCents: t.amount,
-            ...(t.providerId ? { reference: t.providerId } : {}),
-          }));
-        const evidence = {
-          accountId: account.id,
-          currency: "USD" as const,
-          periodStart: input.periodStart,
-          cutoff: input.cutoff,
-          openingBalanceCents: input.openingBalanceCents,
-          closingBalanceCents: input.closingBalanceCents,
-          activity: parseStatementCsv(input.csv),
-          balanceKind: "cleared" as const,
-          source: "statement" as const,
-          verified: input.verified,
-          activityComplete: input.verified,
-        };
-        const result = reconcileStatement(
-          {
-            accountId: account.id,
-            currency: "USD",
-            periodStart: input.periodStart,
-            cutoff: input.cutoff,
-            openingBalanceCents,
-            closingBalanceCents:
-              openingBalanceCents +
-              periodActivity.reduce((sum, t) => sum + t.amountCents, 0),
-            activity: periodActivity,
-            balanceKind: "cleared",
-          },
-          evidence,
-        );
-        await ctx.db.reviewEvidence.create({
-          data: {
-            clerkUserId: ctx.userId,
-            accountId: account.id,
-            kind: "statement",
-            cutoff: input.cutoff,
-            evidence: jsonValue({
-              ...evidence,
-              csvHash: commandHash(input.csv),
-              attestedBy: ctx.userId,
-              revision: household.revision,
-            }),
-            result: jsonValue(result),
-          },
-        });
-        return {
-          ...result,
-          revision: household.revision,
-          changeSet: null,
-          rebased: false as const,
-        };
-      } catch (error) {
-        domainError(error);
-      }
-    }),
 
   plaidLinkToken: protectedProcedure
     .input(
@@ -569,16 +306,6 @@ export const budgetRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       reconnectBank(ctx.db, ctx.userId, input.connectionId),
     ),
-  mapBankAccount: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.string(),
-        providerAccountId: z.string(),
-        accountId: z.string(),
-        startDate: dateSchema,
-      }),
-    )
-    .mutation(({ ctx, input }) => mapBankAccount(ctx.db, ctx.userId, input)),
   setupBankAccounts: submittedInputProcedure
     .input(setupBankAccountsSchema)
     .mutation(({ ctx, input }) =>

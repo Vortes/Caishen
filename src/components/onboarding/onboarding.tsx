@@ -19,12 +19,12 @@ import {
   BankConnectionsProvider,
   BankDialog,
   useBankConnections,
-} from "~/components/prototype/app-shell/banks";
+} from "~/components/app-shell/banks";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { SHELL_PATH } from "~/components/workspace/routes";
 import { PartnerSettings } from "~/components/settings/partner";
-import { ShellDataProvider } from "~/components/prototype/app-shell/shell-data";
-import { toShellData } from "~/components/prototype/app-shell/model";
+import { ShellDataProvider } from "~/components/app-shell/shell-data";
+import { toShellData } from "~/components/app-shell/model";
 import {
   GuidedOnboarding,
   type BudgetBasics,

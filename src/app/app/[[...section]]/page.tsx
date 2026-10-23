@@ -1,6 +1,6 @@
 import { type Metadata } from "next";
 import { notFound } from "next/navigation";
-import { LiveAppShell } from "~/components/prototype/app-shell/live-app-shell";
+import { LiveAppShell } from "~/components/app-shell/live-app-shell";
 import { settingsPageAt, SHELL_PATH } from "~/components/workspace/routes";
 
 export const metadata: Metadata = {

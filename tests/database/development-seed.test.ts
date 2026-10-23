@@ -94,7 +94,6 @@ void test("development seed persists through the API, repeats safely, resets onl
     const state = await api.budget.state({ month });
     assert.equal(state.view!.budget.name, "Demo · Alex’s budget");
     assert.equal(state.imports.length, 0);
-    assert.equal(state.evidence.length, 0);
     assert.equal(
       state.view!.budget.transactions.filter(
         (transaction) => !transaction.removed && !transaction.reviewed,

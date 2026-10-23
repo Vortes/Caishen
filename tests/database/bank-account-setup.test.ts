@@ -491,15 +491,6 @@ void test("linking an existing account preserves its name and balance and reject
     }),
     { code: "BAD_REQUEST" },
   );
-  await assert.rejects(
-    alice.budget.mapBankAccount({
-      connectionId: secondConnectionId,
-      providerAccountId: "manual-checking",
-      accountId: mappings.checking!.accountId,
-      startDate: tomorrow.toISOString().slice(0, 10),
-    }),
-    { code: "BAD_REQUEST" },
-  );
   await alice.budget.setupBankAccounts(link);
   const linked = await state();
   const manual = linked.view!.accounts.find(

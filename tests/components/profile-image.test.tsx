@@ -4,8 +4,8 @@ import { useUser } from "@clerk/nextjs";
 import {
   compressProfileImage,
   profileImageUrl,
-} from "~/components/prototype/app-shell/profile-image";
-import { UserAvatar } from "~/components/prototype/app-shell/user-avatar";
+} from "~/components/app-shell/profile-image";
+import { UserAvatar } from "~/components/app-shell/user-avatar";
 
 vi.mock("@clerk/nextjs", () => ({
   useUser: vi.fn(() => ({ isLoaded: true, user: null })),

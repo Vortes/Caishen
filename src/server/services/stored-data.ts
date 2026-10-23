@@ -21,7 +21,6 @@ type StoredRecord =
       connectionId: string;
       userId: string;
     }
-  | { record: "ReviewEvidence.result"; evidenceId: string; userId: string }
   | { record: "DailyDelivery.payload"; deliveryId: string; userId: string };
 
 /** What didn't read in one part of a stored record. */

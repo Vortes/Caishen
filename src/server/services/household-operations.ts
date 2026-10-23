@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { composeChangeSets, rowsIn } from "~/domain/change-sets";
+import { rowsIn } from "~/domain/change-sets";
 import {
   createBook,
   budgetReferenceIssues,
   execute,
-  executeWithChanges,
   mergeBooks,
   withCounterpartyAccounts,
   type Book,
@@ -35,13 +34,12 @@ import {
   type OperationResult,
   type RevisionObserver,
 } from "./household";
-import { commandHash, domainError, operationHash } from "./safety";
+import { domainError, operationHash } from "./safety";
 import { budgetMaintenance } from "./stored-data";
 import { readPartnerInvite, limitInviteChecks } from "./partner-invites";
 
-// The server's own household operations that aren't bank updates: creating
-// a budget, joining a partner's household, and the legacy screen's bulk
-// changes.
+// The server's household operations outside bank updates: creating a
+// budget, joining a partner, and applying category changes together.
 
 /** Creates a member's personal budget in a household of their own. */
 export async function onboard(
@@ -256,130 +254,6 @@ export async function joinHousehold(
     }
   }
   throw refusal("conflict", "A budget changed while joining. Try again.");
-}
-
-/**
- * Runs commands one after another as one operation, for the legacy
- * screen's bulk changes: refused when the household moved past the
- * revision they were made against, answered with the original result when
- * retried.
- */
-async function bulkOperation(
-  db: Database,
-  actorId: string,
-  input: {
-    operationId: string;
-    type: string;
-    submitted: unknown;
-    expectedRevision: number;
-    commands: Command[];
-  },
-  observe?: RevisionObserver,
-): Promise<OperationResult> {
-  try {
-    const opened = await requireHousehold(db, actorId, observe);
-    const saved = await findOperation(
-      db,
-      opened.household.workspaceId,
-      input.operationId,
-    );
-    if (saved)
-      return earlierResult(saved, actorId, input.submitted, input.submitted);
-    if (opened.requestRevision !== input.expectedRevision)
-      throw refusal(
-        "conflict",
-        "Your budget changed in another session. Refresh before saving.",
-        opened.household.revision,
-      );
-    let state = opened.ledger.state;
-    const changeSets: ChangeSet[] = [];
-    for (const command of input.commands) {
-      const result = executeWithChanges(state, actorId, command);
-      state = result.book;
-      changeSets.push(result.changeSet);
-    }
-    return await writeServerOperation(db, opened, {
-      actorId,
-      operationId: input.operationId,
-      source: "user",
-      type: input.type,
-      submitted: input.submitted,
-      changeSet: composeChangeSets(input.operationId, changeSets),
-    });
-  } catch (error) {
-    if (error instanceof RevisionConflictError)
-      throw refusal(
-        "conflict",
-        "Your budget changed. Refresh before saving.",
-        error.revision,
-      );
-    domainError(error);
-  }
-}
-
-export async function approveSuggestions(
-  db: Database,
-  actorId: string,
-  input: {
-    operationId: string;
-    expectedRevision: number;
-    items: { transactionId: string; categoryId: string }[];
-  },
-  submitted: unknown,
-  observe?: RevisionObserver,
-): Promise<OperationResult> {
-  if (
-    new Set(input.items.map((item) => item.transactionId)).size !==
-    input.items.length
-  )
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Choose each purchase only once.",
-    });
-  return bulkOperation(
-    db,
-    actorId,
-    {
-      operationId: input.operationId,
-      type: "suggestions.approve",
-      submitted,
-      expectedRevision: input.expectedRevision,
-      commands: input.items.map((item) => ({
-        type: "transaction.categorize",
-        id: `${input.operationId}:${commandHash(item).slice(0, 32)}`,
-        ...item,
-      })),
-    },
-    observe,
-  );
-}
-
-export async function importCategories(
-  db: Database,
-  actorId: string,
-  input: {
-    categories: Extract<Command, { type: "category.import" }>["categories"];
-    expectedRevision: number;
-  },
-  observe?: RevisionObserver,
-): Promise<OperationResult> {
-  const command: Command = {
-    type: "category.import",
-    id: randomUUID(),
-    categories: input.categories,
-  };
-  return bulkOperation(
-    db,
-    actorId,
-    {
-      operationId: command.id,
-      type: command.type,
-      submitted: command,
-      expectedRevision: input.expectedRevision,
-      commands: [command],
-    },
-    observe,
-  );
 }
 
 export async function setOnboardingCategories(

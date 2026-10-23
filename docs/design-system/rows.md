@@ -17,7 +17,7 @@ Apply `list` and `listProps` to the list or table, and `row` and
 `rowProps(id)` to each selectable row wrapper or `<tr>`. Table outlines are
 drawn on cells so the first and last cells retain rounded outer corners.
 Real call sites: `PlanView` and `RegisterView` in
-`src/components/prototype/app-shell/views.tsx`, `CategoryTable` in
+`src/components/app-shell/views.tsx`, `CategoryTable` in
 `src/components/budget/category-table.tsx`, and `TransactionRegister` with
 `TransactionRow` in `src/components/transactions/`.
 
