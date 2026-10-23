@@ -286,7 +286,7 @@ test("payment payees exclude the current account and a receiving-side edit submi
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "card-payment:card",
     accountId: "visa",
     transferAccountId: "checking",
@@ -390,7 +390,7 @@ test("editing a brokerage transfer from the tracking register retains its requir
       date: "2026-10-01",
     },
     {
-      type: "transaction.save",
+      type: "transaction.upsert",
       id: "seed-tracking",
       transactionId: "tracking",
       accountId: "brokerage",
@@ -417,7 +417,7 @@ test("editing a brokerage transfer from the tracking register retains its requir
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "tracking",
     accountId: "brokerage",
     transferAccountId: "checking",
@@ -475,7 +475,7 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "loan-payment:payment",
     loanId: "loan",
     amount: -7000,

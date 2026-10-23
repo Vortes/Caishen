@@ -228,7 +228,7 @@ export function buildTransactionDraftCommand({
   transaction?: Transaction;
   operationId: string;
   entityId: string;
-}): Extract<Command, { type: "transaction.upsert" | "transaction.save" }> {
+}): Extract<Command, { type: "transaction.upsert" }> {
   const fields: TransactionDraftFields = {};
   const account = view.accounts.find((item) => item.id === draft.accountId);
   const date = draft.date.trim();
@@ -471,17 +471,8 @@ export function buildTransactionDraftCommand({
   if (counterpartyShare && entry?.capabilities.share.mode === "none")
     fields.counterpartyShare = "Shares apply to purchases and refunds.";
   if (Object.keys(fields).length) throw new TransactionDraftError(fields);
-  let commandType: "transaction.upsert" | "transaction.save" = transfer
-    ? "transaction.save"
-    : "transaction.upsert";
-  switch (existingEntry?.shape.kind) {
-    case "transfer":
-    case "card-payment":
-    case "loan-payment":
-      commandType = "transaction.save";
-  }
   return {
-    type: commandType,
+    type: "transaction.upsert",
     ...(transfer
       ? {
           transferAccountId: draft.transferAccountId || undefined,

@@ -2261,3 +2261,33 @@ void test("direct register entries on either counterparty account use the accoun
       },
     );
 });
+
+void test("F5: register upsert loan payments cannot predate the first confirmed rate", () => {
+  const setup = fixture();
+  setup.run({
+    type: "loan.add",
+    loanId: "car",
+    categoryId: "loan-category",
+    name: "Car",
+    principal: 100_000,
+    annualRateBps: 500,
+    minimumPayment: 5000,
+    variable: false,
+    effectiveDate: "2026-10-15",
+  });
+  assert.throws(
+    () =>
+      setup.run({
+        type: "transaction.upsert",
+        transactionId: "payment",
+        accountId: "checking",
+        date: "2026-10-10",
+        amount: -5000,
+        payee: "Car payment",
+        loanId: "car",
+        interest: 1000,
+        categoryId: "loan-category",
+      }),
+    { message: "Payment predates the loan" },
+  );
+});

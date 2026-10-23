@@ -429,6 +429,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("transaction.upsert"),
     id: identifier,
     ...transactionInput,
+    transferAccountId: identifier.optional(),
+    loanId: identifier.optional(),
+    interest: nonnegativeCents.optional(),
   }),
   z.object({
     type: z.literal("transaction.save"),
@@ -2633,7 +2636,10 @@ function validateCardPayment(
 function saveRegisterTransaction(
   book: AccountingState,
   budget: Budget,
-  command: Extract<ParsedCommand, { type: "transaction.save" }>,
+  command: Extract<
+    ParsedCommand,
+    { type: "transaction.save" | "transaction.upsert" }
+  >,
   source: CommandSource,
   changes: Changes,
 ) {
@@ -4036,15 +4042,28 @@ function applyCommand(
       const existing = budget.transactions.find(
         (transaction) => transaction.id === command.transactionId,
       );
-      if (existing) {
-        const entry = classifyRegisterEntry(budget, existing);
-        if (!entry.capabilities.edit.ok) fail(entry.capabilities.edit.reason);
-        switch (entry.shape.kind) {
-          case "transfer":
-          case "card-payment":
-          case "loan-payment":
-            fail("Use the dedicated operation for transfers and repayments");
-        }
+      const entry = classifyRegisterEntry(
+        budget,
+        existing ?? {
+          id: command.transactionId,
+          accountId: command.accountId,
+          date: command.date,
+          amount: command.amount,
+          payee: command.payee,
+          transferAccountId: command.transferAccountId,
+          loanId: command.loanId,
+        },
+      );
+      if (existing && !entry.capabilities.edit.ok)
+        fail(entry.capabilities.edit.reason);
+      if (
+        command.transferAccountId ||
+        command.loanId ||
+        "counterpart" in entry.shape ||
+        "loan" in entry.shape
+      ) {
+        saveRegisterTransaction(book, budget, command, source, changes);
+        break;
       }
       if (existing && existing.accountId !== command.accountId)
         fail("A transaction cannot move between accounts");
@@ -4226,14 +4245,30 @@ function applyCommand(
       }
       if (account.kind === "tracking" && categoryId)
         fail("Tracking activity does not use budget categories");
-      if (
+      const statementCredit =
         account.kind === "credit" &&
         command.amount > 0 &&
         !categoryId &&
         !lines &&
-        !isFullShare({ amount: command.amount, counterpartyShare })
-      )
-        fail("Use a card payment or posted statement credit for card inflows");
+        !counterpartyShare;
+      if (statementCredit) {
+        if (command.status !== "posted") break;
+        const state = materialize(
+          book,
+          actorId,
+          monthOf(command.date),
+          command.date,
+        ).accounts.get(account.id)!;
+        const remaining = materialize(
+          book,
+          actorId,
+          monthOf(command.date),
+        ).accounts.get(account.id)!;
+        if (command.amount > Math.min(-state.balance, -remaining.balance))
+          fail(
+            "Credit exceeds card debt; positive card balances require bank evidence",
+          );
+      }
       if (
         counterpartyShare &&
         ((!categoryId &&
@@ -4280,8 +4315,9 @@ function applyCommand(
           source === "user"
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
-        kind:
-          command.amount < 0
+        kind: statementCredit
+          ? "statement-credit"
+          : command.amount < 0
             ? "purchase"
             : categoryId || lines || counterpartyShare
               ? "refund"
