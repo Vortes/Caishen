@@ -12,8 +12,9 @@ import { createContext, useContext, useEffect, useId, useState } from "react";
 import { newId } from "~/components/budget/format";
 import { useBudgetSelector } from "~/components/sync/hooks";
 import type { BudgetSnapshot } from "~/components/sync/budget-store";
-import { isTransfer } from "~/domain/transfers";
 import type { Command } from "~/domain/engine";
+import { TRANSACTION_ACTION_LIMIT } from "~/domain/transaction-actions";
+import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
@@ -24,9 +25,6 @@ import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import styles from "./transaction-review.module.css";
 import { ShareSelection } from "./share-selection";
-
-// transaction.approve takes at most this many transactions at once.
-export const APPROVE_LIMIT = 500;
 
 export function approveCommand(transactionIds: string[]): Command {
   return { type: "transaction.approve", id: newId(), transactionIds };
@@ -69,9 +67,7 @@ export function useReviewSelection({
   onCheck: (ids: string[], value: boolean) => void;
 }) {
   const idle = useBudgetSelector(saved);
-  const selectable = rows.filter(
-    (item) => item.source === "budget" || item.editableImport,
-  );
+  const selectable = rows.filter((item) => item.actions.select);
   const showing = new Set(selectable.map((item) => item.id));
   const stale = checked.filter((id) => !showing.has(id));
   useEffect(() => {
@@ -81,10 +77,7 @@ export function useReviewSelection({
   return {
     selectable,
     selected,
-    // Approval counts only what still needs review.
-    approvable: selected
-      .filter((item) => item.source === "budget" && item.needsReview)
-      .map((item) => item.id),
+    actions: transactionSelectionActions(selected),
   };
 }
 
@@ -118,7 +111,7 @@ export function SelectAll({
 // Floats over the bottom of the register while rows are selected, in place
 // of a details panel. Review actions disappear once the selection is approved.
 export function SelectionIsland({
-  selection: { selected, approvable },
+  selection: { selected, actions },
   onCheck,
 }: {
   selection: ReturnType<typeof useReviewSelection>;
@@ -127,7 +120,10 @@ export function SelectionIsland({
   const review = useTransactionReview();
   const entry = useTransactionEntry();
   if (!selected.length) return null;
-  const overLimit = approvable.length > APPROVE_LIMIT;
+  const { approve: approvable, reject: rejectable, refund: refundId } = actions;
+  const overLimit =
+    approvable.length > TRANSACTION_ACTION_LIMIT ||
+    rejectable.length > TRANSACTION_ACTION_LIMIT;
   const busy = Boolean(entry.session);
   return (
     <div className={styles.islandSlot}>
@@ -156,56 +152,53 @@ export function SelectionIsland({
           </span>
           {overLimit && (
             <span className={styles.hint}>
-              Approve up to {APPROVE_LIMIT} at a time.
+              Review up to {TRANSACTION_ACTION_LIMIT} at a time.
             </span>
           )}
         </span>
         <span className={styles.divider} aria-hidden />
         <div className={styles.actions}>
           {approvable.length > 0 && (
-            <>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={busy || overLimit}
-                onClick={() => review.approve(approvable)}
-              >
-                <CircleCheckIcon aria-hidden />
-                Approve ({approvable.length})
-              </Button>
-              <Button
-                size="sm"
-                disabled={busy || overLimit}
-                onClick={() => review.reject(approvable)}
-              >
-                <CircleXIcon aria-hidden />
-                Reject
-              </Button>
-            </>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={busy || approvable.length > TRANSACTION_ACTION_LIMIT}
+              onClick={() => review.approve(approvable)}
+            >
+              <CircleCheckIcon aria-hidden />
+              Approve ({approvable.length})
+            </Button>
           )}
-          {selected.length === 1 &&
-            selected[0]!.source === "budget" &&
-            entry.view.budget.transactions.some(
-              (transaction) =>
-                transaction.id === selected[0]!.id &&
-                transaction.kind === "purchase" &&
-                transaction.amount < 0,
-            ) && (
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() =>
-                  entry.start({
-                    accountId: selected[0]!.accountId,
-                    refundOfTransactionId: selected[0]!.id,
-                    field: "inflow",
-                  })
-                }
-              >
-                Refund
-              </Button>
-            )}
-          <CategorizeAction selected={selected} disabled={busy} />
+          {rejectable.length > 0 && (
+            <Button
+              size="sm"
+              disabled={busy || rejectable.length > TRANSACTION_ACTION_LIMIT}
+              onClick={() => review.reject(rejectable)}
+            >
+              <CircleXIcon aria-hidden />
+              Reject
+            </Button>
+          )}
+          {refundId && (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                entry.start({
+                  accountId: selected[0]!.accountId,
+                  refundOfTransactionId: refundId,
+                  field: "inflow",
+                })
+              }
+            >
+              Refund
+            </Button>
+          )}
+          <CategorizeAction
+            selected={selected}
+            available={actions.categorize}
+            disabled={busy}
+          />
           <ShareSelection
             selected={selected}
             disabled={busy}
@@ -219,9 +212,11 @@ export function SelectionIsland({
 
 function CategorizeAction({
   selected,
+  available,
   disabled,
 }: {
   selected: Transaction[];
+  available: boolean;
   disabled: boolean;
 }) {
   const review = useTransactionReview();
@@ -232,9 +227,6 @@ function CategorizeAction({
   const [categoryId, setCategoryId] = useState("");
   const [error, setError] = useState("");
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
-  const transactions = view.budget.transactions.filter(
-    (item) => !item.removed && selected.some((row) => row.id === item.id),
-  );
   const options: ChoiceOption[] = view.categories
     .filter(
       (category) =>
@@ -243,15 +235,6 @@ function CategorizeAction({
         !category.counterpartyAccountId,
     )
     .map((category) => ({ value: category.id, label: category.name }));
-  const available =
-    selected.length <= APPROVE_LIMIT &&
-    selected.every((item) => !item.categoryNotNeeded) &&
-    transactions.length === selected.length &&
-    transactions.every(
-      (item) =>
-        isTransfer(item) ||
-        ["purchase", "income", "refund"].includes(item.kind),
-    );
   const submit = () => {
     if (!categoryId || disabled) return;
     const blocked = review.categorize(
@@ -261,7 +244,14 @@ function CategorizeAction({
     if (blocked) setError(blocked);
     else setOpen(false);
   };
-  if (!open && (disabled || !available || !options.length)) return null;
+  if (
+    !open &&
+    (disabled ||
+      !available ||
+      selected.length > TRANSACTION_ACTION_LIMIT ||
+      !options.length)
+  )
+    return null;
   return (
     <Popover.Root
       open={open}

@@ -42,7 +42,7 @@ export function ShareSelection({
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const available = selected.every(
     (row) =>
-      row.shareable &&
+      row.actions.share === "edit" &&
       !entry.view.budget.transactions.some(
         (item) =>
           item.id === row.id &&

@@ -18,15 +18,16 @@ import {
 import type { State, View } from "~/components/budget/types";
 import { partnerOf } from "~/components/partner/partner";
 import { transactionCategory } from "~/components/transactions/transaction-category";
-import { canShare } from "~/components/transactions/transaction-share";
+import {
+  transactionActions,
+  transactionNeedsReview,
+} from "~/components/transactions/transaction-actions";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import { isCounterparty, type Target } from "~/domain/engine";
 
 export { isCounterparty };
-import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import { namesPerson } from "~/lib/settlement-recognition";
 import {
-  canEditImport,
   importCategory,
   importShare,
   importRowId,
@@ -115,8 +116,7 @@ export type Transaction = {
   status: "pending" | "posted";
   reconciled: boolean;
   source: "budget" | "bank";
-  editableImport?: boolean;
-  shareable: boolean;
+  actions: ReturnType<typeof transactionActions>;
   needsReview: boolean;
   counterpart?: {
     id: string;
@@ -410,11 +410,6 @@ export function toShellData(
   }
 
   const active = view.budget.transactions.filter((item) => !item.removed);
-  const confirmed = new Set(
-    view.partnerSettlements
-      .filter((settlement) => settlement.confirmed)
-      .map((settlement) => settlement.id),
-  );
   const accounts = view.accounts.map((item): Account => {
     const connection = state.connections.find((entry) =>
       Object.values(
@@ -503,7 +498,7 @@ export function toShellData(
         status: item.status,
         reconciled: Boolean(item.reconciled),
         source: "budget",
-        shareable: canShare(view, item),
+        actions: transactionActions(view, item),
         counterpart:
           counterpart && other
             ? {
@@ -513,13 +508,7 @@ export function toShellData(
                 date: counterpart.date,
               }
             : undefined,
-        // A settlement leg waits until either partner confirms it.
-        needsReview:
-          !item.reviewed ||
-          Boolean(
-            item.partnerSettlementId &&
-            !confirmed.has(item.partnerSettlementId),
-          ),
+        needsReview: transactionNeedsReview(view, item),
         categoryId: item.categoryId,
         categoryLabel: categoryNotNeeded
           ? "Category not needed"
@@ -568,9 +557,8 @@ export function toShellData(
       status: item.pending ? "pending" : "posted",
       reconciled: false,
       source: "bank",
-      shareable: canShare(view, item),
-      editableImport: canEditImport(item),
-      needsReview: bankImportNeedsReview(item),
+      actions: transactionActions(view, item),
+      needsReview: transactionNeedsReview(view, item),
       reviewReason: importReviewReason(item),
       ...importCategoryLabel(view, item, categoryName),
       // Money to or from the partner waits for the partner's import of it,

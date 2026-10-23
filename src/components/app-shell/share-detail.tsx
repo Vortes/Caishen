@@ -4,7 +4,7 @@ import { HistoryIcon, PlusIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { View } from "~/components/budget/types";
 import { lineField } from "~/components/transactions/transaction-draft";
-import { canShare } from "~/components/transactions/transaction-share";
+import { transactionActions } from "~/components/transactions/transaction-actions";
 import { Button } from "~/components/ui/button";
 import { counterpartyLines } from "~/domain/counterparty";
 import type { CounterpartyShare, TransactionLine } from "~/domain/engine";
@@ -91,7 +91,7 @@ export function ShareCell({
 }) {
   const entry = useTransactionEntry();
   const { view, who } = useShareParties();
-  if (!row.shareable) return null;
+  if (!row.actions.share) return null;
   const transactionId = row.id;
   const transaction =
     row.source === "budget"
@@ -112,7 +112,7 @@ export function ShareCell({
       <span className={styles.shareSlot}>{content}</span>
     </div>
   );
-  if (transaction?.refundOfTransactionId)
+  if (row.actions.share === "read")
     return label
       ? slot(<span className={styles.shareStatic}>{label}</span>)
       : null;
@@ -182,7 +182,9 @@ export function ShareDetail({ transactionId }: { transactionId: string }) {
   const transaction = view.budget.transactions.find(
     (item) => item.id === transactionId,
   );
-  if (!transaction || !canShare(view, transaction)) return null;
+  if (!transaction) return null;
+  const actions = transactionActions(view, transaction);
+  if (!actions.share) return null;
   const lines = counterpartyLines(transaction).filter(
     (line) => line.counterpartyShare,
   );
@@ -231,27 +233,28 @@ export function ShareDetail({ transactionId }: { transactionId: string }) {
             </div>
           </dl>
         )}
-        {original ? (
-          <p className={styles.formHint}>
-            This refund&rsquo;s share follows {original.payee} on{" "}
-            {original.date}, in proportion to the amount refunded.
-          </p>
-        ) : (
-          lines.map((line) => (
-            <ShareEditor
-              key={`${line.id}-${line.counterpartyShare!.amount}`}
-              transactionId={transaction.id}
-              payee={transaction.payee}
-              line={line}
-              category={
-                lines.length > 1 || transaction.lines
-                  ? view.categories.find((item) => item.id === line.categoryId)
-                      ?.name
-                  : undefined
-              }
-            />
-          ))
-        )}
+        {actions.share === "read"
+          ? original && (
+              <p className={styles.formHint}>
+                This refund&rsquo;s share follows {original.payee} on{" "}
+                {original.date}, in proportion to the amount refunded.
+              </p>
+            )
+          : lines.map((line) => (
+              <ShareEditor
+                key={`${line.id}-${line.counterpartyShare!.amount}`}
+                transactionId={transaction.id}
+                payee={transaction.payee}
+                line={line}
+                category={
+                  lines.length > 1 || transaction.lines
+                    ? view.categories.find(
+                        (item) => item.id === line.categoryId,
+                      )?.name
+                    : undefined
+                }
+              />
+            ))}
       </div>
       {history.length > 0 && (
         <div className={styles.history}>

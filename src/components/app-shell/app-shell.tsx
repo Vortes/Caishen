@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
+import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { AccountSummary, SearchField } from "./account";
 import type { Reconciling } from "./reconcile";
 import {
@@ -187,6 +188,9 @@ export function AppShell({
         ? [...new Set([...current, ...ids])]
         : current.filter((id) => !ids.includes(id)),
     );
+  const selectedActions = transactionSelectionActions(
+    transactions.filter((transaction) => checked.includes(transaction.id)),
+  );
   const [reviewOnly, setReviewOnly] = useState(
     () => new URLSearchParams(window.location.search).get("view") === "review",
   );
@@ -305,9 +309,10 @@ export function AppShell({
       } else if (
         event.key === "e" &&
         screen.type === "register" &&
-        selectedId
+        selectedActions.edit?.id === selectedId &&
+        selectedActions.edit?.kind === "transaction"
       ) {
-        if (!entry.start({ transactionId: selectedId })) return;
+        if (!entry.start({ transactionId: selectedActions.edit.id })) return;
       } else if (event.key === "Escape") {
         if (peekOpen) setPeek(false);
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
@@ -336,6 +341,7 @@ export function AppShell({
     path,
     entry,
     selectedId,
+    selectedActions,
     settingsOpen,
     closeSettings,
   ]);

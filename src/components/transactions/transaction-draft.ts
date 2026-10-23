@@ -1,6 +1,7 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { isCounterparty, type Command } from "~/domain/engine";
+import { transactionEditOperation } from "~/domain/transaction-actions";
 import {
   isTransfer,
   registerPayee,
@@ -465,7 +466,7 @@ export function buildTransactionDraftCommand({
     type:
       transfer ||
       (transaction &&
-        (isTransfer(transaction) || transaction.kind === "loan-payment"))
+        transactionEditOperation(transaction) === "transaction.save")
         ? "transaction.save"
         : "transaction.upsert",
     ...(transfer

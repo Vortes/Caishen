@@ -1,5 +1,11 @@
 import { z } from "zod";
 import {
+  transactionActionIssue,
+  transactionEditOperation,
+  transactionShareMode,
+  TRANSACTION_ACTION_LIMIT,
+} from "./transaction-actions";
+import {
   linkedRefundIssues,
   proportionalRefundLines,
   refundOrder,
@@ -439,13 +445,13 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("transaction.approve"),
     id: identifier,
-    transactionIds: z.array(identifier).min(1).max(500),
+    transactionIds: z.array(identifier).min(1).max(TRANSACTION_ACTION_LIMIT),
   }),
   z.object({
     type: z.literal("transaction.reject"),
     recordedAt: z.string().datetime().optional(),
     id: identifier,
-    transactionIds: z.array(identifier).min(1).max(500),
+    transactionIds: z.array(identifier).min(1).max(TRANSACTION_ACTION_LIMIT),
   }),
   z.object({
     type: z.literal("transaction.categorize"),
@@ -458,7 +464,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("transaction.categorize.batch"),
     recordedAt: z.string().datetime().optional(),
     id: identifier,
-    transactionIds: z.array(identifier).min(1).max(500),
+    transactionIds: z.array(identifier).min(1).max(TRANSACTION_ACTION_LIMIT),
     categoryId: identifier,
   }),
   z.object({
@@ -2636,19 +2642,10 @@ function saveRegisterTransaction(
   const existing = budget.transactions.find(
     (item) => item.id === command.transactionId,
   );
-  if (existing?.removed) fail("This transaction was removed");
-  if (
-    existing &&
-    ![
-      "purchase",
-      "refund",
-      "income",
-      "transfer",
-      "card-payment",
-      "loan-payment",
-    ].includes(existing.kind)
-  )
-    fail("This kind of transaction cannot be edited in the register");
+  if (existing) {
+    const issue = transactionActionIssue(budget, existing, "edit");
+    if (issue) fail(issue);
+  }
   if (
     existing &&
     (command.accountId !== existing.accountId ||
@@ -3420,8 +3417,10 @@ function editPartnerEntry(
   );
   if (transaction.removed || !line?.counterpartyShare)
     fail("This shared entry was removed");
-  if (transaction.refundOfTransactionId)
+  const shareMode = transactionShareMode(payer, transaction);
+  if (shareMode === "read")
     fail("A linked refund's share follows its purchase. Change the purchase");
+  if (shareMode !== "edit") fail("Shares apply to purchases and refunds");
   if (transaction.lines && amount !== line!.amount)
     fail("Change a split purchase's amounts on the purchase itself");
   const date = command.date ?? transaction.date;
@@ -4024,7 +4023,10 @@ function applyCommand(
       const existing = budget.transactions.find(
         (transaction) => transaction.id === command.transactionId,
       );
-      if (existing && !["purchase", "refund", "income"].includes(existing.kind))
+      if (
+        existing &&
+        transactionEditOperation(existing) !== "transaction.upsert"
+      )
         fail("Use the dedicated operation for transfers and repayments");
       if (existing && existing.accountId !== command.accountId)
         fail("A transaction cannot move between accounts");
@@ -4056,12 +4058,10 @@ function applyCommand(
         command.refundOfTransactionId ?? existing?.refundOfTransactionId;
       if (refundOfTransactionId) {
         const original = getTransaction(budget, refundOfTransactionId);
-        if (
-          original.id === command.transactionId ||
-          original.kind !== "purchase" ||
-          original.amount >= 0
-        )
+        if (original.id === command.transactionId)
           fail("Link refunds to an original purchase");
+        const issue = transactionActionIssue(budget, original, "refund");
+        if (issue) fail(issue);
         if (command.amount <= 0 || command.date < original.date)
           fail("A linked refund must be an inflow on or after its purchase");
         const siblings = budget.transactions.filter(
@@ -4381,30 +4381,10 @@ function applyCommand(
       const rejected = new Map<string, Transaction>();
       for (const id of command.transactionIds) {
         const transaction = getTransaction(budget, id);
-        if (
-          budget.transactions.some(
-            (item) =>
-              active(item) && item.refundOfTransactionId === transaction.id,
-          )
-        )
-          fail("Remove linked refunds before rejecting their purchase");
+        const issue = transactionActionIssue(budget, transaction, "reject");
+        if (issue) fail(issue);
         const counterparts = transferCounterparts(budget, transaction);
-        if (isTransfer(transaction) && counterparts.length !== 1)
-          fail("The other side of this transfer is missing or ambiguous");
         for (const item of [transaction, ...counterparts]) {
-          if (item.reviewed)
-            fail("Only unapproved transactions can be rejected");
-          if (
-            ![
-              "purchase",
-              "income",
-              "refund",
-              "transfer",
-              "card-payment",
-              "loan-payment",
-            ].includes(item.kind)
-          )
-            fail("This transaction cannot be rejected from the register");
           rejected.set(item.id, item);
         }
       }
@@ -4451,13 +4431,8 @@ function applyCommand(
     case "transaction.approve": {
       for (const id of command.transactionIds) {
         const transaction = getTransaction(budget, id);
-        if (
-          transaction.amount < 0 &&
-          !counterpartyLines(transaction).length &&
-          transaction.kind === "purchase" &&
-          getAccount(budget, transaction.accountId).kind !== "tracking"
-        )
-          fail("Categorize purchases before approval");
+        const issue = transactionActionIssue(budget, transaction, "approve");
+        if (issue) fail(issue);
         changes.transaction(budget, transaction).reviewed = true;
         for (const counterpart of transferCounterparts(budget, transaction))
           changes.transaction(budget, counterpart).reviewed = true;
@@ -4501,24 +4476,15 @@ function applyCommand(
     }
     case "transaction.categorize": {
       const transaction = getTransaction(budget, command.transactionId);
+      const issue = transactionActionIssue(budget, transaction, "categorize");
+      if (issue) fail(issue);
       if (isTransfer(transaction)) {
         const counterparts = transferCounterparts(budget, transaction);
-        const other =
-          counterparts[0] ?? fail("The other side of this transfer is missing");
-        if (counterparts.length !== 1)
-          fail("The other side of this transfer is missing or ambiguous");
-        if (
-          !transferNeedsCategory(
-            getAccount(budget, transaction.accountId),
-            getAccount(budget, other.accountId),
-          )
-        )
-          fail("This transfer does not use a category");
         const category = getCategory(budget, command.categoryId);
         refusePairedEnvelope(category);
         if (category.pairedAccountId || category.pairedLoanId)
           fail("Choose a spending category for this transfer");
-        for (const item of [transaction, other]) {
+        for (const item of [transaction, ...counterparts]) {
           changes.transaction(budget, item).categoryId = category.id;
           item.reviewed = source === "user";
           item.history.push({
@@ -4533,14 +4499,8 @@ function applyCommand(
         }
         break;
       }
-      if (!["purchase", "income", "refund"].includes(transaction.kind))
-        fail("Use the dedicated operation for transfers and repayments");
-      if (getAccount(budget, transaction.accountId).kind === "tracking")
-        fail("Tracking activity does not use budget categories");
       const category = getCategory(budget, command.categoryId);
       refusePairedEnvelope(category);
-      if (transaction.refundOfTransactionId)
-        fail("Edit the original purchase to change linked refund categories");
       if (category.pairedAccountId || category.pairedLoanId)
         fail("Payment categories cannot categorize purchases");
       changes.transaction(budget, transaction);

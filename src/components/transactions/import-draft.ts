@@ -17,12 +17,6 @@ export function partnerMatchesOf(item: BankImport) {
 }
 export type PartnerImportMatch = ReturnType<typeof partnerMatchesOf>[number];
 
-export function canEditImport(item: BankImport) {
-  return Boolean(
-    item.accountId && !item.removed && !item.transactionId && !item.quarantined,
-  );
-}
-
 /**
  * The category a waiting bank import takes: the one it already has, else
  * what its payee's memory prefills (READY_TO_ASSIGN for Ready to Assign).

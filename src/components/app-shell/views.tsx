@@ -709,15 +709,13 @@ export function RegisterView({
   // this one, like YNAB and Gmail.
   const anchor = useRef<string | null>(null);
   const order = [...(pendingOpen ? pending : []), ...cleared]
-    .filter((item) => item.source === "budget" || item.editableImport)
+    .filter((item) => item.actions.select)
     .map((item) => item.id);
   const checkTo = (id: string, value: boolean) => {
     const from = order.indexOf(anchor.current ?? selectedId ?? "");
     const to = order.indexOf(id);
     onCheck(
-      from < 0
-        ? [id]
-        : order.slice(Math.min(from, to), Math.max(from, to) + 1),
+      from < 0 ? [id] : order.slice(Math.min(from, to), Math.max(from, to) + 1),
       value,
     );
     anchor.current = id;
@@ -802,7 +800,7 @@ export function RegisterView({
       );
     const statusKey = item.reconciled ? "reconciled" : item.status;
     const status = statusIcon[statusKey];
-    const checkable = item.source === "budget" || Boolean(item.editableImport);
+    const checkable = item.actions.select;
     const isChecked = checkable && checked.includes(item.id);
     // Marks the row in its first column.
     const reviewDot = (
@@ -851,8 +849,8 @@ export function RegisterView({
               if (event.detail > 0 && window.getSelection()?.toString()) return;
               anchor.current = item.id;
               // A pointer click; Enter and Space click with no position.
-              if (isChecked && checked.length === 1 && event.detail > 0) {
-                if (item.repayment) {
+              if (selection.actions.edit?.id === item.id && event.detail > 0) {
+                if (selection.actions.edit.kind === "repayment") {
                   setRepaymentId(item.id);
                   return;
                 }
@@ -868,7 +866,7 @@ export function RegisterView({
                   clicked && clicked in registerEditFields && clicked !== skip
                     ? clicked
                     : columnAt(event.currentTarget, event.clientX, skip);
-                if (column) {
+                if (column && item.actions.edit === "transaction") {
                   entry.start({
                     transactionId: item.id,
                     field: registerEditFields[column]!,
@@ -1013,7 +1011,8 @@ export function RegisterView({
         if (
           event.key === "e" &&
           id === selectedId &&
-          rows.find((item) => item.id === id)?.repayment
+          selection.actions.edit?.id === id &&
+          selection.actions.edit?.kind === "repayment"
         ) {
           event.preventDefault();
           setRepaymentId(id);
