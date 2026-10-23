@@ -942,7 +942,9 @@ button.actionItem:disabled {
   /* The left padding that holds a row's checkbox, 10px in from the row's
      edge like the column header's. */
   --row-gutter: 34px;
-  padding: 0 8px 72px;
+  /* Wide enough that macOS's overlay scrollbar, which draws over the
+     content, clears the rows and the editor's border. */
+  padding: 0 16px 72px;
 }
 .columns,
 .txColumns,
@@ -1024,6 +1026,18 @@ button.actionItem:disabled {
   background: var(--surface-panel);
   color: var(--text-tertiary);
   font-size: var(--type-small);
+}
+/* A new transaction stays pinned under the column header while the
+   register scrolls beneath it. The top padding keeps the editor's border
+   clear of the header; flow-root keeps its bottom margin inside the opaque
+   band. */
+.editorDock {
+  position: sticky;
+  z-index: 1;
+  top: var(--size-row-md);
+  display: flow-root;
+  padding-top: 8px;
+  background: var(--surface-panel);
 }
 .groupRow,
 .dayRow {
