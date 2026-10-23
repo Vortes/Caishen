@@ -82,8 +82,8 @@ void test("partners each get a partner account and envelope, and adding them aga
   for (const userId of ["alan", "anna"])
     assert.deepEqual(people(book, userId), {
       accounts: [
-        { kind: "reimbursements", balance: 0 },
         { kind: "partner", balance: 0 },
+        { kind: "reimbursements", balance: 0 },
       ],
       envelopes: [
         {

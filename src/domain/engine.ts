@@ -330,6 +330,13 @@ export const commandSchema = z.discriminatedUnion("type", [
     // the difference.
     adjustmentId: identifier.optional(),
   }),
+  // Accounts in sidebar order, top first. They trade places among
+  // themselves; accounts it leaves out keep theirs.
+  z.object({
+    type: z.literal("account.reorder"),
+    id: identifier,
+    accountIds: z.array(identifier).max(500),
+  }),
   z.object({
     type: z.literal("group.add"),
     id: identifier,
@@ -476,6 +483,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     date: daySchema,
     amount: positiveCents,
     posted: z.boolean().default(true),
+  }),
+  // Loans in sidebar order, like account.reorder.
+  z.object({
+    type: z.literal("loan.reorder"),
+    id: identifier,
+    loanIds: z.array(identifier).max(500),
   }),
   z.object({
     type: z.literal("loan.add"),
@@ -1146,6 +1159,23 @@ function ensureNoCounterpartyEntries(budget: Budget): void {
     );
 }
 
+// The items in the order the ids name them. They trade places among
+// themselves; items the ids leave out keep theirs. Each moved item is
+// touched before the list changes.
+function reorder<T extends { id: string }>(
+  items: T[],
+  ids: string[],
+  touch: (item: T) => T,
+): T[] {
+  const named = [...new Set(ids)].flatMap((id) => {
+    const item = items.find((value) => value.id === id);
+    return item ? [touch(item)] : [];
+  });
+  const moved = new Set(named);
+  let next = 0;
+  return items.map((item) => (moved.has(item) ? named[next++]! : item));
+}
+
 /**
  * The book with every counterparty account and paired envelope its budgets
  * should hold, adding only what is missing. The server runs it when a budget
@@ -1164,14 +1194,25 @@ export function withCounterpartyAccounts(book: Book): Book {
       );
       if (existing && existing.kind !== kind)
         fail("A budget account already uses a counterparty account's ID");
+      // The partner's account goes ahead of Reimbursements.
+      const before =
+        kind === "partner"
+          ? budget.accounts.findIndex(
+              (account) => account.kind === "reimbursements",
+            )
+          : -1;
       if (!existing)
-        budget.accounts.push({
-          id: accountId,
-          name,
-          kind,
-          openingBalance: 0,
-          date: `${budget.startMonth}-01`,
-        });
+        budget.accounts.splice(
+          before < 0 ? budget.accounts.length : before,
+          0,
+          {
+            id: accountId,
+            name,
+            kind,
+            openingBalance: 0,
+            date: `${budget.startMonth}-01`,
+          },
+        );
       const envelopeId = pairedEnvelopeId(kind);
       const envelope = budget.categories.find((item) => item.id === envelopeId);
       if (envelope && envelope.counterpartyAccountId !== accountId)
@@ -3113,6 +3154,7 @@ function executeAccountingState<T extends AccountingState>(
     "target.snooze",
     "account.add",
     "account.reconcile",
+    "account.reorder",
     "group.add",
     "group.reorder",
     "category.add",
@@ -3121,6 +3163,7 @@ function executeAccountingState<T extends AccountingState>(
     "income.expect",
     "loan.add",
     "loan.rate",
+    "loan.reorder",
     "transaction.approve",
     "transaction.reject",
     "partner.settlement.reject",
@@ -3737,6 +3780,18 @@ function applyCommand(
           group: "Credit card payments",
           pairedAccountId: command.accountId,
         });
+      break;
+    }
+    case "account.reorder": {
+      budget.accounts = reorder(budget.accounts, command.accountIds, (item) =>
+        changes.account(budget, item),
+      );
+      break;
+    }
+    case "loan.reorder": {
+      budget.loans = reorder(budget.loans, command.loanIds, (item) =>
+        changes.loan(budget, item),
+      );
       break;
     }
     case "account.reconcile": {

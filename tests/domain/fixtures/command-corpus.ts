@@ -375,6 +375,7 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
       )!.cleared + 100,
     adjustmentId: "savings-interest",
   }));
+  alex({ type: "account.reorder", accountIds: ["savings", "checking"] });
 
   // The partner.
   jordan({
@@ -386,6 +387,29 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
   });
   jordan({ type: "category.add", categoryId: "household", name: "Household" });
   jordan({ type: "group.reorder", names: ["Everyday"] });
+  jordan({
+    type: "loan.add",
+    loanId: "bike",
+    categoryId: "bike-loan",
+    name: "Bike",
+    principal: 100_000,
+    annualRateBps: 400,
+    minimumPayment: 5_000,
+    variable: false,
+    effectiveDate: "2026-01-01",
+  });
+  jordan({
+    type: "loan.add",
+    loanId: "boat",
+    categoryId: "boat-loan",
+    name: "Boat",
+    principal: 100_000,
+    annualRateBps: 400,
+    minimumPayment: 5_000,
+    variable: false,
+    effectiveDate: "2026-01-01",
+  });
+  jordan({ type: "loan.reorder", loanIds: ["boat", "bike"] });
   alex({
     type: "partner.record",
     entryId: "shared-market",
