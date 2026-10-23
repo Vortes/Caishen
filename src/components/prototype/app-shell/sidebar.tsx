@@ -128,6 +128,7 @@ export function Sidebar({
           label: account.name,
           value: account.balance,
           warning: false,
+          toReview: account.toReview,
           current:
             screen.type === "register" && screen.accountId === account.id,
           go: () => onNavigate({ type: "register", accountId: account.id }),
@@ -221,6 +222,9 @@ export function Sidebar({
                           label={item.label}
                           value={money(item.value)}
                           warning={item.warning}
+                          toReview={
+                            "toReview" in item && item.toReview === true
+                          }
                           current={item.current}
                           onClick={item.go}
                         />
