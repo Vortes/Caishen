@@ -35,6 +35,7 @@ model Workspace {
   obligations      Obligation[]
   settlements      Settlement[]
   partnerFacts     PartnerFact[]
+  partnerEntries   PartnerEntry[]
   operationLog     Operation[]
 }
 
@@ -160,8 +161,8 @@ model Member {
   name         String
   sort         Int
   revision     Int
-  deleted      Boolean          @default(false)
-  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deleted      Boolean            @default(false)
+  workspace    Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   settings     BudgetSettings?
   accounts     Account[]
   groups       CategoryGroup[]
@@ -174,6 +175,7 @@ model Member {
   bankImports  BankImport[]
   partnerFacts PartnerFact[]
   payees       PayeeMemory[]
+  partnerSides PartnerEntrySide[]
 
   @@id([workspaceId, userId])
   @@index([workspaceId, revision])
@@ -654,5 +656,43 @@ model PayeeMemory {
   member            Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
 
   @@id([workspaceId, userId, payeeKey])
+  @@index([workspaceId, revision])
+}
+
+// The partner ledger both budgets share: one entry per purchase or refund
+// line shared between the partners, holding only its ledger facts.
+model PartnerEntry {
+  workspaceId         String
+  id                  String
+  payerId             String
+  sourceTransactionId String?
+  sourceLineId        String?
+  date                String
+  payee               String
+  status              String
+  amount              BigInt
+  share               BigInt
+  removed             Boolean?
+  history             Json
+  sort                Int
+  revision            Int
+  deleted             Boolean   @default(false)
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, id])
+  @@index([workspaceId, revision])
+}
+
+// One partner's private side of a partner ledger entry: their category.
+model PartnerEntrySide {
+  workspaceId String
+  userId      String
+  entryId     String
+  categoryId  String?
+  revision    Int
+  deleted     Boolean @default(false)
+  member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, entryId])
   @@index([workspaceId, revision])
 }

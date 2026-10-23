@@ -15,6 +15,7 @@ import type {
   TransactionHistory,
   TransactionLine,
 } from "./engine";
+import type { PartnerEntry, PartnerSide } from "./partner-ledger";
 import {
   deriveObligations,
   settlementReceiptDate,
@@ -56,6 +57,8 @@ export const tableNames = [
   "partnerFact",
   "transactionLine",
   "payeeMemory",
+  "partnerEntry",
+  "partnerEntrySide",
 ] as const;
 export type TableName = (typeof tableNames)[number];
 
@@ -141,6 +144,10 @@ export type TableData = {
   // One line of a split transaction, in the transaction's order.
   transactionLine: Owned & Sorted & { transactionId: string } & TransactionLine;
   payeeMemory: Owned & { payeeKey: string } & PayeeMemory;
+  // The partner ledger both budgets share, and each partner's private side
+  // of its entries (src/domain/partner-ledger.ts).
+  partnerEntry: Sorted & PartnerEntry;
+  partnerEntrySide: Owned & { entryId: string } & PartnerSide;
 };
 
 /**
@@ -208,6 +215,7 @@ const budgetTables = new Set<TableName>([
   "rule",
   "bankImport",
   "payeeMemory",
+  "partnerEntrySide",
 ]);
 
 /**
@@ -384,8 +392,34 @@ export function payeeMemoryRows(
   memory: PayeeMemory | undefined,
 ): WireRow[] {
   return memory
-    ? [row("payeeMemory", rowKey(userId, payeeKey), { ...memory, userId, payeeKey })]
+    ? [
+        row("payeeMemory", rowKey(userId, payeeKey), {
+          ...memory,
+          userId,
+          payeeKey,
+        }),
+      ]
     : [];
+}
+
+export function partnerSideRows(
+  userId: string,
+  entryId: string,
+  side: PartnerSide | undefined,
+): WireRow[] {
+  return side
+    ? [
+        row("partnerEntrySide", rowKey(userId, entryId), {
+          ...side,
+          userId,
+          entryId,
+        }),
+      ]
+    : [];
+}
+
+export function partnerEntryRow(entry: PartnerEntry, sort: number): WireRow {
+  return row("partnerEntry", rowKey(entry.id), { ...entry, sort });
 }
 
 export function transactionRows(
@@ -626,6 +660,9 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
     ...Object.entries(budget.payeeMemory ?? {}).flatMap(([key, memory]) =>
       payeeMemoryRows(userId, key, memory),
     ),
+    ...Object.entries(budget.partnerSides ?? {}).flatMap(([entryId, side]) =>
+      partnerSideRows(userId, entryId, side),
+    ),
   ];
 }
 
@@ -682,14 +719,18 @@ export function sameJson(a: unknown, b: unknown): boolean {
 }
 
 /** A row that does not exist: before its creation or after its removal. */
-export function tombstone(row: Pick<WireRow, "table" | "id">): WireRow {
+export function tombstone(
+  row: Pick<WireRow, "table" | "id">,
+  revision = 0,
+): WireRow {
+  // Too many tables for TypeScript to match the union member by member.
   return {
     table: row.table,
     id: row.id,
-    revision: 0,
+    revision,
     deleted: true,
     data: null,
-  };
+  } as WireRow;
 }
 
 /**
@@ -746,6 +787,7 @@ export function bookToRows(book: Book): WireRow[] {
       settlementRows(settlement, sort),
     ),
     ...members.flatMap((budget) => partnerFactRows(book, budget.userId)),
+    ...(book.partnerEntries ?? []).map(partnerEntryRow),
   ]);
 }
 
@@ -799,6 +841,7 @@ export function personalLedgerToRows(ledger: PersonalLedger): WireRow[] {
         sort,
       }),
     ),
+    ...(ledger.partnerEntries ?? []).map(partnerEntryRow),
   ]);
 }
 
@@ -870,6 +913,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
     data.budgetSettings.map((item) => [item.userId, item]),
   );
   const memory = groupBy(data.payeeMemory, owner);
+  const sides = groupBy(data.partnerEntrySide, owner);
   const names = new Map(data.member.map((member) => [member.userId, member]));
   return userIds.map((userId): Budget => {
     const setting =
@@ -883,6 +927,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
     const record = (values: Record<string, number> | undefined) =>
       values && Object.keys(values).length ? values : undefined;
     const payees = memory.get(userId);
+    const partnerSides = sides.get(userId);
     return {
       userId,
       name: names.get(userId)?.name ?? "",
@@ -961,9 +1006,26 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       expectedIncome: Object.fromEntries(
         (income.get(userId) ?? []).map((item) => [item.month, item.amount]),
       ),
-      ...(payees ? {
-        payeeMemory: Object.fromEntries(payees.map(item => [item.payeeKey, without(item, ["userId", "payeeKey"])])),
-      } : {}),
+      ...(payees
+        ? {
+            payeeMemory: Object.fromEntries(
+              payees.map((item) => [
+                item.payeeKey,
+                without(item, ["userId", "payeeKey"]),
+              ]),
+            ),
+          }
+        : {}),
+      ...(partnerSides
+        ? {
+            partnerSides: Object.fromEntries(
+              partnerSides.map((side) => [
+                side.entryId,
+                without(side, ["userId", "entryId"]),
+              ]),
+            ),
+          }
+        : {}),
     };
   });
 }
@@ -979,6 +1041,17 @@ function settlementsFrom(data: Tables): Settlement[] {
       without(allocation, ["settlementId", "sequence"]),
     ),
   }));
+}
+
+// The partner ledger's entries, when the household has any.
+function partnerEntriesFrom(data: Tables): { partnerEntries?: PartnerEntry[] } {
+  return data.partnerEntry.length
+    ? {
+        partnerEntries: data.partnerEntry.map((entry) =>
+          without(entry, ["sort"]),
+        ),
+      }
+    : {};
 }
 
 /**
@@ -1005,6 +1078,7 @@ export function rowsToBook(rows: Iterable<WireRow>): Book {
     ),
     settlements: settlementsFrom(data),
     audit: [],
+    ...partnerEntriesFrom(data),
   };
   book.obligations = deriveObligations(book);
   return book;
@@ -1058,6 +1132,7 @@ export function rowsToPersonalLedger(
       facts.flatMap((fact) => (fact.kind === "activity" ? [fact] : [])),
     ).map((fact) => fact.sharedCategoryId),
     audit: [],
+    ...partnerEntriesFrom(data),
   };
   // What the viewer's numbers use, as projectSharedLedger selects it.
   const sharedIds = new Set(sharedCategories.map((category) => category.id));

@@ -12,6 +12,7 @@ import {
   rowsToBook,
   rowsToPersonalLedger,
   rowVisibleTo,
+  tombstone,
   type ChangeSet,
   type RowSet,
   type TableName,
@@ -162,13 +163,9 @@ export class HouseholdCache {
           before: [],
           after: [
             ...readable,
-            ...[...failed.values()].map((row): WireRow => ({
-              table: row.table,
-              id: row.id,
-              revision: loaded.revision,
-              deleted: true,
-              data: null,
-            })),
+            ...[...failed.values()].map((row) =>
+              tombstone(row, loaded.revision),
+            ),
           ],
         }),
         unreadable,

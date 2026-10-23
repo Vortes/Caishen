@@ -8,6 +8,11 @@ import {
   transactionHistorySchema,
   transactionSchema,
 } from "./engine";
+import {
+  partnerEntryObject,
+  partnerSideSchema,
+  shareWithinAmount,
+} from "./partner-ledger";
 import type { TableName, WireRow } from "./rows";
 
 // What each row table's data holds, read as strictly as the engine reads
@@ -152,6 +157,11 @@ export const rowDataSchemas = {
   payeeMemory: payeeMemorySchema.extend({
     ...owned,
     payeeKey: storedIdentifier,
+  }),
+  partnerEntry: partnerEntryObject.extend(sort).refine(...shareWithinAmount),
+  partnerEntrySide: partnerSideSchema.extend({
+    ...owned,
+    entryId: storedIdentifier,
   }),
 } satisfies Record<TableName, z.ZodTypeAny>;
 

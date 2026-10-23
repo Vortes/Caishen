@@ -29,6 +29,19 @@ import {
   type PersonalLedger,
 } from "./shared-ledger";
 import { personalSpendingEntries } from "./spending";
+import {
+  entryCounts,
+  mirroredChange,
+  mirroredEntries,
+  partnerAccountOf,
+  partnerEntrySchema,
+  partnerLedgerRows,
+  partnerSideIssues,
+  partnerSideSchema,
+  sideCategory,
+  type PartnerEntry,
+  type PartnerSide,
+} from "./partner-ledger";
 import { canonicalJson } from "./canonical-json";
 import { Changes } from "./changes";
 import { rememberCategorizations } from "./payee-memory";
@@ -622,6 +635,8 @@ export type Budget = {
   expectedIncome: Record<string, number>;
   // By payee key; absent until a payee is first categorized.
   payeeMemory?: Record<string, PayeeMemory>;
+  // This partner's private side of each partner ledger entry, by entry id.
+  partnerSides?: Record<string, PartnerSide>;
 };
 export type SharedCategory = {
   id: string;
@@ -675,6 +690,8 @@ export type Book = {
   obligations: Obligation[];
   settlements: Settlement[];
   audit: Audit[];
+  // The partner ledger both budgets share (src/domain/partner-ledger.ts).
+  partnerEntries?: PartnerEntry[];
 };
 
 export const storedIdentifier = z.string().min(1).max(1024);
@@ -847,6 +864,7 @@ export const budgetShape = z.object({
   }),
   expectedIncome: z.record(monthSchema, nonnegativeCents).default({}),
   payeeMemory: z.record(storedIdentifier, payeeMemorySchema).optional(),
+  partnerSides: z.record(storedIdentifier, partnerSideSchema).optional(),
 });
 // One partner's stored personal budget, with the checks that need only that
 // budget, so one partner's budget can be read without the other's.
@@ -869,7 +887,8 @@ export function budgetReferenceIssues(
     | "loans"
     | "reimbursements"
     | "assignments"
-  >,
+  > &
+    Partial<Pick<Budget, "partnerSides">>,
 ): string[] {
   const issues: string[] = [];
   for (const collection of [
@@ -972,7 +991,11 @@ export function budgetReferenceIssues(
     )
   )
     issues.push("Invalid assignment reference");
-  return [...issues, ...linkedRefundIssues(budget)];
+  return [
+    ...issues,
+    ...linkedRefundIssues(budget),
+    ...partnerSideIssues(budget),
+  ];
 }
 // The stored data both partners share: shared categories, what they owe each
 // other, their settlements, and the command audit.
@@ -1027,6 +1050,7 @@ export const householdSchema = z.object({
       fingerprint: z.string(),
     }),
   ),
+  partnerEntries: z.array(partnerEntrySchema).optional(),
 });
 export type Household = z.infer<typeof householdSchema>;
 // Each shared category's participants must have its paired category.
@@ -1494,6 +1518,8 @@ type MonthRows = {
   transactions: Transaction[];
   assignments: Assignment[];
   settlements: Settlement[];
+  // The partner's ledger entries dated in the month, by date and then ID.
+  mirrored: PartnerEntry[];
 };
 type ReplayIndex = {
   months: Map<string, MonthRows>;
@@ -1514,7 +1540,12 @@ function indexReplay(book: AccountingState, budget: Budget): ReplayIndex {
   const rows = (month: string): MonthRows => {
     let found = months.get(month);
     if (!found) {
-      found = { transactions: [], assignments: [], settlements: [] };
+      found = {
+        transactions: [],
+        assignments: [],
+        settlements: [],
+        mirrored: [],
+      };
       months.set(month, found);
     }
     return found;
@@ -1522,10 +1553,17 @@ function indexReplay(book: AccountingState, budget: Budget): ReplayIndex {
   for (const transaction of budget.transactions)
     if (active(transaction))
       rows(monthOf(transaction.date)).transactions.push(transaction);
-  for (const { transactions } of months.values())
+  if (partnerAccountOf(budget))
+    for (const entry of mirroredEntries(book.partnerEntries, budget.userId))
+      rows(monthOf(entry.date)).mirrored.push(entry);
+  for (const { transactions, mirrored } of months.values()) {
     transactions.sort(
       (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
     );
+    mirrored.sort(
+      (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
+    );
+  }
   for (const assignment of budget.assignments)
     rows(assignment.month).assignments.push(assignment);
   for (const settlement of book.settlements)
@@ -1746,7 +1784,14 @@ function replay(
     transactions: [],
     assignments: [],
     settlements: [],
+    mirrored: [],
   };
+  const partnerAccount = partnerAccountOf(budget);
+  const partnerEnvelope =
+    partnerAccount &&
+    budget.categories.find(
+      (item) => item.counterpartyAccountId === partnerAccount.id,
+    );
   for (
     let cursor = budget.startMonth;
     cursor <= month;
@@ -1900,6 +1945,27 @@ function replay(
           cards.set(account.id, safe((cards.get(account.id) ?? 0) - amount));
           creditByCategory.set(categoryId, cards);
         }
+      }
+    }
+    // The partner's purchases: what the viewer owes for them moves their
+    // Partner account, and their paired envelope holds it. Their side's
+    // category, once chosen, spends the share as cash.
+    for (const entry of rows.mirrored) {
+      if (!partnerAccount || !entryCounts(entry, cutoff)) continue;
+      const change = mirroredChange(entry, userId);
+      const counterparty = accounts.get(partnerAccount.id)!;
+      counterparty.balance = safe(counterparty.balance + change);
+      const categoryId = sideCategory(budget, entry.id);
+      for (const [id, amount] of [
+        [categoryId, change],
+        [partnerEnvelope?.id, -change],
+      ] as const) {
+        if (!id || !amount) continue;
+        const state = categories.get(id)!;
+        state.activity = safe(state.activity + amount);
+        state.available = safe(state.available + amount);
+        state.cashActivity = safe(state.cashActivity + amount);
+        cashByCategory.set(id, safe((cashByCategory.get(id) ?? 0) + amount));
       }
     }
     for (const settlement of rows.settlements) {
@@ -2722,11 +2788,20 @@ function projectAccountingState(
       ...account,
       ...calculated.accounts.get(account.id)!,
       cleared: isCounterparty(account)
-        ? sum(
-            counterpartyRegisterEntries(budget, {
-              accountId: account.id,
-              cutoff,
-            }).map((entry) => entry.amount),
+        ? safe(
+            sum(
+              counterpartyRegisterEntries(budget, {
+                accountId: account.id,
+                cutoff,
+              }).map((entry) => entry.amount),
+            ) +
+              (account.kind === "partner"
+                ? sum(
+                    mirroredEntries(book.partnerEntries, userId)
+                      .filter((entry) => entryCounts(entry, cutoff))
+                      .map((entry) => mirroredChange(entry, userId)),
+                  )
+                : 0),
           )
         : clearedBalance(budget, account),
     })),
@@ -2741,6 +2816,7 @@ function projectAccountingState(
     sharedStatement: sharedStatement(book, userId, month),
     sharedLedger: projectSharedLedger(book, userId),
     counterpartyRegister: counterpartyRegisterEntries(budget, { cutoff }),
+    partnerLedger: partnerLedgerRows(budget, book.partnerEntries, cutoff),
     reimbursements: budget.reimbursements.map((claim) => ({
       ...structuredClone(claim),
       outstanding: safe(
