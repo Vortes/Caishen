@@ -10,6 +10,7 @@ import {
   reconciledLabel,
   type Reconciling,
 } from "./reconcile";
+import { ReimbursementsSummary } from "./reimbursements-register";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 
@@ -20,14 +21,19 @@ export function AccountSummary({
   accounts,
   account,
   reconciling,
+  owedBy,
 }: {
   accounts: Account[];
   account?: Account;
   reconciling: Reconciling;
+  // The person or organization the Reimbursements register is narrowed to.
+  owedBy: string | null;
 }) {
   const { today } = useShellData();
   const working = accounts.reduce((sum, item) => sum + item.balance, 0);
   const uncleared = accounts.reduce((sum, item) => sum + item.pending, 0);
+  if (account?.kind === "reimbursements")
+    return <ReimbursementsSummary account={account} who={owedBy} />;
   // No bank clears a counterparty account's entries: its balance is just
   // what one side owes the other.
   if (account && isCounterparty(account))
