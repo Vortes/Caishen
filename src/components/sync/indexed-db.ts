@@ -22,8 +22,9 @@ const knownDatabases = new Set<string>();
 function userDatabaseNames(userId: string) {
   return [
     `${DATABASE_PREFIX}${userId}`,
-    ...Array.from({ length: CLIENT_FORMAT }, (_, index) =>
-      `${DATABASE_PREFIX}${index + 1}:${userId}`,
+    ...Array.from(
+      { length: CLIENT_FORMAT },
+      (_, index) => `${DATABASE_PREFIX}${index + 1}:${userId}`,
     ),
   ];
 }
@@ -164,8 +165,7 @@ export async function deleteStoredBudgets({
 }: { except?: string; userId?: string } = {}): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   const names = new Set(knownDatabases);
-  if (userId)
-    for (const name of userDatabaseNames(userId)) names.add(name);
+  if (userId) for (const name of userDatabaseNames(userId)) names.add(name);
   if ("databases" in indexedDB)
     for (const database of await indexedDB.databases())
       if (database.name?.startsWith(DATABASE_PREFIX)) names.add(database.name);

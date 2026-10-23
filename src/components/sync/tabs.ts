@@ -6,7 +6,8 @@ import type { RevisionHint, RevisionSignal } from "./revision-signal";
 // Each tab keeps its own pending commands and undo history; a tab that hears
 // of the next revision applies its change set, and one further behind pulls.
 
-export const tabChannelName = (userId: string) => `caishen:${CLIENT_FORMAT}:${userId}`;
+export const tabChannelName = (userId: string) =>
+  `caishen:${CLIENT_FORMAT}:${userId}`;
 
 type TabMessage = Required<Pick<RevisionHint, "revision">> &
   Pick<RevisionHint, "changeSet">;
