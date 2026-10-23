@@ -591,7 +591,7 @@ export function buildDevelopmentSeed({
     accountId: "amex",
     amount: 1000,
     payee: "Posted statement credit",
-    status: true ? "posted" : "pending",
+    status: "posted",
   });
   run(userId, {
     type: "transaction.upsert",

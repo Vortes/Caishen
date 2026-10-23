@@ -8,122 +8,7 @@ import {
 
 export const TRANSACTION_ACTION_LIMIT = 500;
 
-type Action = "edit" | "approve" | "reject" | "categorize" | "refund";
-
 type RegisterBudget = Pick<Budget, "accounts" | "loans" | "transactions">;
-
-type EditOperation = "transaction.upsert" | null;
-const kindActions: Record<
-  Transaction["kind"],
-  {
-    editOperation: EditOperation;
-    reject: boolean;
-  }
-> = {
-  purchase: { editOperation: "transaction.upsert", reject: true },
-  income: { editOperation: "transaction.upsert", reject: true },
-  refund: { editOperation: "transaction.upsert", reject: true },
-  transfer: { editOperation: "transaction.upsert", reject: true },
-  "card-payment": { editOperation: "transaction.upsert", reject: true },
-  "loan-payment": { editOperation: "transaction.upsert", reject: true },
-  reimbursement: { editOperation: null, reject: false },
-  "statement-credit": { editOperation: null, reject: false },
-  adjustment: { editOperation: null, reject: false },
-};
-
-function transactionEditOperation(transaction: Transaction): EditOperation {
-  return kindActions[transaction.kind].editOperation;
-}
-
-// Null means the action is supported. Submitted values and permissions still
-// need validation against the current ledger when the action runs.
-function transactionActionIssue(
-  budget: RegisterBudget,
-  transaction: Transaction,
-  action: Action,
-): string | null {
-  if (transaction.removed) return "This transaction was removed";
-  const account = budget.accounts.find(
-    (account) => account.id === transaction.accountId,
-  );
-  if (!account) return "Account access denied";
-  switch (action) {
-    case "edit":
-      if (!directAccountKinds[account.kind]) return directEntryAccountMessage;
-      return transactionEditOperation(transaction)
-        ? null
-        : "This kind of transaction cannot be edited in the register";
-    case "approve":
-      return transaction.amount < 0 &&
-        transaction.kind === "purchase" &&
-        !counterpartyLines(transaction).length &&
-        account.kind !== "tracking"
-        ? "Categorize purchases before approval"
-        : null;
-    case "reject": {
-      if (
-        budget.transactions.some(
-          (item) =>
-            !item.removed && item.refundOfTransactionId === transaction.id,
-        )
-      )
-        return "Remove linked refunds before rejecting their purchase";
-      const counterparts = transferCounterparts(budget, transaction);
-      if (isTransfer(transaction) && counterparts.length !== 1)
-        return "The other side of this transfer is missing or ambiguous";
-      for (const item of [transaction, ...counterparts]) {
-        if (item.reviewed)
-          return "Only unapproved transactions can be rejected";
-        if (!kindActions[item.kind].reject)
-          return "This transaction cannot be rejected from the register";
-      }
-      return null;
-    }
-    case "categorize": {
-      if (isTransfer(transaction)) {
-        const counterparts = transferCounterparts(budget, transaction);
-        if (!counterparts.length)
-          return "The other side of this transfer is missing";
-        if (counterparts.length !== 1)
-          return "The other side of this transfer is missing or ambiguous";
-        const other = budget.accounts.find(
-          (account) => account.id === counterparts[0]!.accountId,
-        );
-        if (!other) return "Account access denied";
-        return transferNeedsCategory(account, other)
-          ? null
-          : "This transfer does not use a category";
-      }
-      if (!["purchase", "income", "refund"].includes(transaction.kind))
-        return "Use the dedicated operation for transfers and repayments";
-      if (account.kind === "tracking")
-        return "Tracking activity does not use budget categories";
-      return transaction.refundOfTransactionId
-        ? "Edit the original purchase to change linked refund categories"
-        : null;
-    }
-    case "refund":
-      return transaction.kind === "purchase" && transaction.amount < 0
-        ? null
-        : "Link refunds to an original purchase";
-  }
-}
-
-function transactionShareMode(
-  budget: Pick<Budget, "accounts">,
-  transaction: Transaction,
-): "edit" | "read" | null {
-  const account = budget.accounts.find(
-    (account) => account.id === transaction.accountId,
-  );
-  if (
-    transaction.removed ||
-    (account?.kind !== "cash" && account?.kind !== "credit") ||
-    (transaction.kind !== "purchase" && transaction.kind !== "refund")
-  )
-    return null;
-  return transaction.refundOfTransactionId ? "read" : "edit";
-}
 
 export const alreadyLinkedImportMessage =
   "This bank activity is already linked to a budget transaction. Review the existing transaction rather than creating it again.";
@@ -161,7 +46,7 @@ function bankImportActionIssue(
   )
     return loanActivityReviewMessage;
   if (!budget.accounts.some((account) => account.id === imported.accountId))
-    return "Map this provider account to your own ledger account first.";
+    return unmappedImportMessage;
   if (action === "record") {
     if (imported.transactionId) return alreadyLinkedImportMessage;
     if (imported.removed)
@@ -184,12 +69,27 @@ export type Capabilities = {
   record: Capability;
   link: Capability;
 };
+// The intrinsic structure of a transaction: what it is, before any rule about
+// what the register may do with it. Every capability below is derived from
+// this shape, the account it sits on, and the transaction's own flags.
 export type TransactionShape =
-  | { kind: "purchase"; share: ShareState; split: boolean }
+  // uncategorized: neither a purpose category nor any share is recorded yet.
+  | {
+      kind: "purchase";
+      share: ShareState;
+      split: boolean;
+      uncategorized: boolean;
+    }
   | { kind: "income" }
-  | { kind: "refund"; share: ShareState; linkedTo: string | null }
-  | { kind: "transfer"; counterpart: Transaction | null }
-  | { kind: "card-payment"; counterpart: Transaction | null }
+  | { kind: "refund"; share: ShareState; linkedTo: string | null } // linkedTo = refundOfTransactionId
+  // counterpart is the single other side; null when it is missing or
+  // ambiguous. counterparts lists everything that matched.
+  | { kind: "transfer"; counterpart: Transaction | null; counterparts: Transaction[] }
+  | {
+      kind: "card-payment";
+      counterpart: Transaction | null;
+      counterparts: Transaction[];
+    }
   | { kind: "loan-payment"; loan: Loan | null }
   | { kind: "reimbursement" }
   | { kind: "statement-credit" }
@@ -240,6 +140,10 @@ export const splitPurchaseAmountMessage =
   "Change a split purchase's amounts on the purchase itself";
 export const purposeCategoryMessage =
   "Choose a purpose category for your part of it";
+const removedMessage = "This transaction was removed";
+const otherSideMissingMessage = "The other side of this transfer is missing";
+const otherSideAmbiguousMessage =
+  "The other side of this transfer is missing or ambiguous";
 
 const capability = (reason: string | null): Capability =>
   reason ? { ok: false, reason } : { ok: true };
@@ -247,6 +151,178 @@ const unavailable: Capability = {
   ok: false,
   reason: "This action does not apply to this register entry",
 };
+
+// Shapes the register edits and rejects. The others are written by the
+// engine as consequences of something else: a repayment, a statement credit,
+// a reconciliation adjustment.
+const registerShapes: Record<TransactionShape["kind"], boolean> = {
+  purchase: true,
+  income: true,
+  refund: true,
+  transfer: true,
+  "card-payment": true,
+  "loan-payment": true,
+  reimbursement: false,
+  "statement-credit": false,
+  adjustment: false,
+};
+// Shapes whose purpose category is set directly on the entry.
+const categorizedShapes: Record<TransactionShape["kind"], boolean> = {
+  purchase: true,
+  income: true,
+  refund: true,
+  transfer: false,
+  "card-payment": false,
+  "loan-payment": false,
+  reimbursement: false,
+  "statement-credit": false,
+  adjustment: false,
+};
+
+function shapeOf(
+  budget: RegisterBudget,
+  item: Transaction,
+  loan: Loan | undefined,
+): TransactionShape {
+  const lines = counterpartyLines(item);
+  const totalShare = lines.reduce(
+    (total, line) => total + (line.counterpartyShare?.amount ?? 0),
+    0,
+  );
+  const share: ShareState =
+    totalShare === 0
+      ? "none"
+      : totalShare === Math.abs(item.amount)
+        ? "full"
+        : "partial";
+  switch (item.kind) {
+    case "purchase":
+      return {
+        kind: item.kind,
+        share,
+        split: Boolean(item.lines?.length),
+        uncategorized: lines.length === 0,
+      };
+    case "refund":
+      return {
+        kind: item.kind,
+        share,
+        linkedTo: item.refundOfTransactionId ?? null,
+      };
+    case "transfer":
+    case "card-payment": {
+      const counterparts = transferCounterparts(budget, item);
+      return {
+        kind: item.kind,
+        counterpart: counterparts.length === 1 ? counterparts[0]! : null,
+        counterparts,
+      };
+    }
+    case "loan-payment":
+      return { kind: item.kind, loan: loan ?? null };
+    default:
+      return { kind: item.kind };
+  }
+}
+
+function transactionCapabilities(
+  budget: RegisterBudget,
+  item: Transaction,
+  account: Account,
+  shape: TransactionShape,
+): Capabilities {
+  const removed = item.removed ? removedMessage : null;
+  const counterparts = "counterparts" in shape ? shape.counterparts : [];
+  const linkedRefunds = budget.transactions.some(
+    (other) => !other.removed && other.refundOfTransactionId === item.id,
+  );
+
+  const edit = (): EditCapability => {
+    if (removed) return { ok: false, reason: removed };
+    if (!directAccountKinds[account.kind])
+      return { ok: false, reason: directEntryAccountMessage };
+    if (!registerShapes[shape.kind])
+      return {
+        ok: false,
+        reason: "This kind of transaction cannot be edited in the register",
+      };
+    return { ok: true, command: "transaction.upsert" };
+  };
+
+  const approve = (): string | null =>
+    removed ??
+    (shape.kind === "purchase" &&
+    item.amount < 0 &&
+    shape.uncategorized &&
+    account.kind !== "tracking"
+      ? "Categorize purchases before approval"
+      : null);
+
+  const reject = (): string | null => {
+    if (removed) return removed;
+    if (linkedRefunds)
+      return "Remove linked refunds before rejecting their purchase";
+    if ("counterparts" in shape && counterparts.length !== 1)
+      return otherSideAmbiguousMessage;
+    for (const side of [item, ...counterparts]) {
+      if (side.reviewed) return "Only unapproved transactions can be rejected";
+      if (!registerShapes[side.kind])
+        return "This transaction cannot be rejected from the register";
+    }
+    return null;
+  };
+
+  const categorize = (): string | null => {
+    if (removed) return removed;
+    if ("counterparts" in shape) {
+      if (!counterparts.length) return otherSideMissingMessage;
+      if (!shape.counterpart) return otherSideAmbiguousMessage;
+      const other = budget.accounts.find(
+        (candidate) => candidate.id === shape.counterpart!.accountId,
+      );
+      if (!other) return "Account access denied";
+      return transferNeedsCategory(account, other)
+        ? null
+        : "This transfer does not use a category";
+    }
+    if (!categorizedShapes[shape.kind])
+      return "Use the dedicated operation for transfers and repayments";
+    if (account.kind === "tracking")
+      return "Tracking activity does not use budget categories";
+    return shape.kind === "refund" && shape.linkedTo
+      ? "Edit the original purchase to change linked refund categories"
+      : null;
+  };
+
+  const refund = (): string | null =>
+    removed ??
+    (shape.kind === "purchase" && item.amount < 0
+      ? null
+      : "Link refunds to an original purchase");
+
+  const share = (): Capabilities["share"] => {
+    if (
+      removed ||
+      (account.kind !== "cash" && account.kind !== "credit") ||
+      (shape.kind !== "purchase" && shape.kind !== "refund")
+    )
+      return { mode: "none" };
+    return shape.kind === "refund" && shape.linkedTo
+      ? { mode: "read", reason: linkedRefundShareMessage }
+      : { mode: "edit" };
+  };
+
+  return {
+    edit: edit(),
+    approve: capability(approve()),
+    reject: capability(reject()),
+    categorize: capability(categorize()),
+    refund: capability(refund()),
+    share: share(),
+    record: unavailable,
+    link: unavailable,
+  };
+}
 
 export function classifyRegisterEntry(
   budget: RegisterBudget,
@@ -340,64 +416,25 @@ export function classifyRegisterEntry(
     reviewed: input.reviewed ?? false,
     expenseMonth: input.expenseMonth ?? input.date.slice(0, 7),
   };
-  const lines = counterpartyLines(item);
-  const totalShare = lines.reduce(
-    (total, line) => total + (line.counterpartyShare?.amount ?? 0),
-    0,
-  );
-  const share: ShareState =
-    totalShare === 0
-      ? "none"
-      : totalShare === Math.abs(item.amount)
-        ? "full"
-        : "partial";
-  let shape: TransactionShape;
-  switch (item.kind) {
-    case "purchase":
-      shape = { kind: item.kind, share, split: Boolean(item.lines?.length) };
-      break;
-    case "refund":
-      shape = {
-        kind: item.kind,
-        share,
-        linkedTo: item.refundOfTransactionId ?? null,
-      };
-      break;
-    case "transfer":
-    case "card-payment":
-      shape = {
-        kind: item.kind,
-        counterpart: transferCounterparts(budget, item)[0] ?? null,
-      };
-      break;
-    case "loan-payment":
-      shape = {
-        kind: item.kind,
-        loan: loan ?? null,
-      };
-      break;
-    default:
-      shape = { kind: item.kind };
-  }
+  const shape = shapeOf(budget, item, loan);
   const counterpart = "counterpart" in shape ? shape.counterpart : null;
   const other =
     destination ??
     budget.accounts.find((account) => account.id === counterpart?.accountId);
   const boundary = Boolean(other && transferNeedsCategory(account, other));
-  const category = item.refundOfTransactionId
-    ? "linked"
-    : isTransfer(item)
-      ? boundary
-        ? "boundary"
-        : "none"
-      : item.kind === "loan-payment"
-        ? "payment"
-        : account.kind === "tracking" ||
-            (item.kind === "adjustment" && account.kind !== "cash")
-          ? "none"
-          : "purpose";
-  const edit = transactionActionIssue(budget, item, "edit");
-  const shareMode = transactionShareMode(budget, item);
+  const category =
+    shape.kind === "refund" && shape.linkedTo
+      ? "linked"
+      : isTransfer(item)
+        ? boundary
+          ? "boundary"
+          : "none"
+        : shape.kind === "loan-payment"
+          ? "payment"
+          : account.kind === "tracking" ||
+              (shape.kind === "adjustment" && account.kind !== "cash")
+            ? "none"
+            : "purpose";
   return {
     origin: "transaction",
     transaction: item,
@@ -406,39 +443,23 @@ export function classifyRegisterEntry(
     fields: {
       category,
       split:
-        (item.kind === "purchase" || item.kind === "refund") &&
+        (shape.kind === "purchase" || shape.kind === "refund") &&
         category === "purpose",
       needsCategory:
-        item.kind === "purchase" &&
-        share === "none" &&
+        shape.kind === "purchase" &&
+        shape.share === "none" &&
         !item.categoryId &&
         !item.lines &&
         account.kind !== "tracking",
       clearCategory:
-        isTransfer(item) || item.kind === "loan-payment" || !item.categoryId,
+        isTransfer(item) || shape.kind === "loan-payment" || !item.categoryId,
       readyToAssign: boundary || account.kind !== "credit",
       budgetAmount: account.kind === "tracking" ? -item.amount : item.amount,
       budgetSide: account.kind === "tracking" ? "other" : "here",
       loanPayment: account.kind === "cash",
       repayment: Boolean(item.linkedCounterpartyAccountId),
     },
-    capabilities: {
-      edit: edit
-        ? { ok: false, reason: edit }
-        : { ok: true, command: "transaction.upsert" },
-      approve: capability(transactionActionIssue(budget, item, "approve")),
-      reject: capability(transactionActionIssue(budget, item, "reject")),
-      categorize: capability(
-        transactionActionIssue(budget, item, "categorize"),
-      ),
-      refund: capability(transactionActionIssue(budget, item, "refund")),
-      share:
-        shareMode === "read"
-          ? { mode: "read", reason: linkedRefundShareMessage }
-          : { mode: shareMode ?? "none" },
-      record: unavailable,
-      link: unavailable,
-    },
+    capabilities: transactionCapabilities(budget, item, account, shape),
   };
 }
 
