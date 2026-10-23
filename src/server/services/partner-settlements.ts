@@ -8,7 +8,10 @@ import {
   type Budget,
   type Command,
 } from "~/domain/engine";
-import { settlementLegId } from "~/domain/partner-settlements";
+import {
+  isRejectedSettlementImport,
+  settlementLegId,
+} from "~/domain/partner-settlements";
 import type { ChangeSet } from "~/domain/rows";
 import type { AccountingState } from "~/domain/shared-ledger";
 import {
@@ -270,6 +273,7 @@ function unrecorded(
       record.current.pending ||
       record.matchStatus !== "confirmed" ||
       state.resolved[record.id] ||
+      isRejectedSettlementImport(budget, record.providerTransactionIds) ||
       bankImportEligibility(mapping, record) !== "eligible" ||
       budget.transactions.some(
         (transaction) =>

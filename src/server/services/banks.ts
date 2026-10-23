@@ -1,3 +1,4 @@
+import { isRejectedSettlementImport } from "~/domain/partner-settlements";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -1209,6 +1210,13 @@ async function applyBankUpdate(
     )
       continue;
     if (!resolution) {
+      if (
+        isRejectedSettlementImport(
+          budgetOf(book, userId),
+          record.providerTransactionIds,
+        )
+      )
+        continue;
       // A purchase a partner recorded first is matched, or waits to be.
       const partnerImport = partnerImports.get(record.id);
       if (partnerImport === "wait") continue;
