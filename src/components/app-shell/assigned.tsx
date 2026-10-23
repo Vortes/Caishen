@@ -84,6 +84,23 @@ export function AssignedCell({ category }: { category: Category }) {
     }
   }, [openMonth, month.key]);
 
+  // A blur that fails to save leaves the field open with its error but
+  // without focus, so Escape anywhere still drops the edit back to the
+  // amount it opened with.
+  const failed = editor?.error != null;
+  useEffect(() => {
+    if (!failed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (inputRef.current?.contains(event.target as Node)) return;
+      ready.current = false;
+      refocus.current = document.activeElement === document.body;
+      setEditor(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [failed]);
+
   const open = () => {
     if (editing) return;
     ready.current = true;
