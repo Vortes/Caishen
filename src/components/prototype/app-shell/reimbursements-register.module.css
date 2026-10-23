@@ -1,8 +1,10 @@
 /* Date, payee, who, category, amount, the running balance, and the status
-   column every register keeps, so amounts line up across accounts. The
-   doubled class outranks the shell register's own columns. */
+   column every register keeps, so amounts line up across accounts. A
+   repayment's category names the cash account it landed in, so Category
+   gets the room a payee doesn't need. The doubled class outranks the shell
+   register's own columns. */
 .register.register {
-  --tx-columns: 5.5rem minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.8fr) 7rem
+  --tx-columns: 5.5rem minmax(0, 0.9fr) minmax(0, 0.6fr) minmax(0, 1.4fr) 7rem
     7rem 16px;
 }
 @container (max-width: 760px) {
