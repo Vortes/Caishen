@@ -54,6 +54,8 @@ const commandLabels = {
   "counterparty.receive": "Receive repayment",
   "partner.categorize": "Categorize shared entry",
   "partner.edit": "Change shared entry",
+  "partner.settle": "Record settlement",
+  "partner.settlement.confirm": "Confirm settlement",
   "card.payment": "Record card payment",
   "card.credit": "Record statement credit",
   "loan.add": "Add loan",
