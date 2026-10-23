@@ -33,7 +33,16 @@ import styles from "./assign-money.module.css";
 export function AssignMoneyPopover({ children }: { children: ReactNode }) {
   const container = usePortalContainer();
   const { readyToAssign } = useShellData();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(
+    () => new URLSearchParams(window.location.search).get("assign") === "1",
+  );
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("assign")) {
+      url.searchParams.delete("assign");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, []);
   const { holdOpen } = useMoveMoney();
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (

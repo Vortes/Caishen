@@ -67,8 +67,7 @@ export function BudgetApp() {
         <p role="status">{MAINTENANCE_DETAIL}</p>
       </main>
     );
-  if (!state.data?.view)
-    return <Onboarding month={month} onComplete={() => void state.refetch()} />;
+  if (!state.data?.view) return <Onboarding />;
   return (
     <BudgetWorkspace
       key={userId}

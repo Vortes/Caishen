@@ -1,0 +1,49 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-inset);
+}
+/* Sized to the code, monospaced so the two groups line up as typed. */
+.input {
+  width: 15ch;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.input::placeholder {
+  letter-spacing: 0.08em;
+}
+
+.display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.displayText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.code {
+  color: var(--text-primary);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--type-title);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+@media (max-width: 480px) {
+  .display {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

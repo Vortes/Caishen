@@ -142,6 +142,7 @@ export type Transaction = {
 
 export type ShellData = {
   budgetName: string;
+  preferences?: View["budget"]["settings"];
   month: {
     key: string;
     current: string;
@@ -579,6 +580,7 @@ export function toShellData(
   const todayKey = today(view.budget.settings.timezone);
   return {
     budgetName: view.budget.name,
+    preferences: view.budget.settings,
     month: {
       key: month,
       start: view.budget.startMonth,

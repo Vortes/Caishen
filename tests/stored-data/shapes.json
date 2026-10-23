@@ -518,7 +518,8 @@
         "from": "required",
         "message": "required",
         "scheduledAt": "optional",
-        "to": "required"
+        "to": "required",
+        "unsubscribeUrl": "optional"
       }
     },
     "$.from": {
@@ -544,6 +545,9 @@
       "type": "string"
     },
     "$.message.text": {
+      "type": "string"
+    },
+    "$.unsubscribeUrl": {
       "type": "string"
     }
   },
