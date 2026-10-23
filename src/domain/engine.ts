@@ -1327,14 +1327,7 @@ function rescaleLines(
   const scaled = lines.map((line) => ({
     ...line,
     amount: Math.round((line.amount * amount) / total),
-    counterpartyShare: line.counterpartyShare
-      ? {
-          ...line.counterpartyShare,
-          amount: Math.round(
-            line.counterpartyShare.amount * Math.abs(amount / total),
-          ),
-        }
-      : undefined,
+    ...(line.counterpartyShare ? {counterpartyShare: {...line.counterpartyShare, amount: Math.round(line.counterpartyShare.amount * Math.abs(amount / total))}} : {}),
   }));
   const largest = scaled.reduce((a, b) =>
     Math.abs(b.amount) > Math.abs(a.amount) ? b : a,
@@ -1791,6 +1784,7 @@ function replay(
     const cashByCategory = new Map<string, number>();
     const credits: Transaction[] = [];
     const payments: Transaction[] = [];
+    const positiveCardCreditSpent = new Set<string>();
     const debtTransfers: { from: string; to: string; amount: number }[] = [];
     for (const assignment of rows.assignments) {
       const state = categories.get(assignment.categoryId)!;
@@ -1807,6 +1801,7 @@ function replay(
       const account = index.account(transaction.accountId);
       if (transaction.status === "pending" && transaction.amount > 0) continue;
       const accountState = accounts.get(account.id)!;
+      if (account.kind === "credit" && accountState.balance > 0 && transaction.amount < 0) positiveCardCreditSpent.add(account.id);
       accountState.balance = safe(accountState.balance + transaction.amount);
       if (transaction.amount < 0)
         accountState.outflows = safe(
@@ -2067,6 +2062,14 @@ function replay(
         state.creditsReleased + reserve - state.reserve,
       );
       state.reserve = reserve;
+    }
+    for (const account of budget.accounts.filter(item => item.kind === "credit")) {
+      const state = accounts.get(account.id)!;
+      if (state.balance > 0 || positiveCardCreditSpent.has(account.id)) {
+        const reserve = Math.min(state.reserve, Math.max(0, -state.balance));
+        state.creditsReleased = safe(state.creditsReleased + reserve - state.reserve);
+        state.reserve = reserve;
+      }
     }
     for (const category of budget.categories)
       if (category.pairedAccountId) {
@@ -3280,11 +3283,18 @@ export function checkRestoredLedger(state: AccountingState): void {
   for (const budget of budgets) ensureSupportedCardBalances(budget);
 }
 
+function isPostedLinkedCardRefund(budget: Budget, transaction: Transaction): boolean {
+  if (transaction.kind !== "refund" || transaction.amount <= 0 || transaction.status !== "posted" || !transaction.refundOfTransactionId) return false;
+  const original = budget.transactions.find(item => active(item) && item.id === transaction.refundOfTransactionId);
+  return Boolean(original && original.kind === "purchase" && original.amount < 0 && original.accountId === transaction.accountId && original.date <= transaction.date);
+}
+
 function ensureSupportedCardBalances(budget: Budget): void {
   for (const account of budget.accounts.filter(
     (item) => item.kind === "credit",
   )) {
     const activity = new Map<string, number>();
+    const linkedCredits = new Map<string, number>();
     for (const transaction of budget.transactions.filter(
       (item) =>
         active(item) &&
@@ -3296,11 +3306,13 @@ function ensureSupportedCardBalances(budget: Budget): void {
         month,
         safe((activity.get(month) ?? 0) + transaction.amount),
       );
+      if (isPostedLinkedCardRefund(budget, transaction)) linkedCredits.set(month, safe((linkedCredits.get(month) ?? 0) + transaction.amount));
     }
     let balance = account.openingBalance;
     for (const month of [...activity.keys()].sort()) {
+      const priorCredit = Math.max(0, balance);
       balance = safe(balance + activity.get(month)!);
-      if (balance > 0)
+      if (balance > priorCredit + (linkedCredits.get(month) ?? 0))
         fail(
           "This change would create a positive card balance; investigate recorded credits and payments first",
         );
@@ -3933,7 +3945,7 @@ function applyCommand(
             id: line.lineId,
             categoryId: line.categoryId,
             amount: line.amount,
-            counterpartyShare: line.counterpartyShare ?? undefined,
+            ...(line.counterpartyShare ? {counterpartyShare: line.counterpartyShare} : {}),
           }))
         : command.categoryId || !existing?.lines
           ? undefined
@@ -4068,35 +4080,15 @@ function applyCommand(
             payee: command.payee,
             operationId: command.id,
             reason: existing ? "updated" : "created",
-            actorId,
-            at: command.recordedAt,
-            shareChanges: (() => {
+            ...(() => {
               const before = existing ? counterpartyLines(existing) : [];
-              const after =
-                lines ??
-                (categoryId
-                  ? [
-                      {
-                        id: command.transactionId,
-                        categoryId,
-                        amount: command.amount,
-                        counterpartyShare,
-                      },
-                    ]
-                  : []);
-              return [
-                ...new Set([...before, ...after].map((line) => line.id)),
-              ].flatMap((lineId) => {
-                const previous =
-                  before.find((line) => line.id === lineId)
-                    ?.counterpartyShare ?? null;
-                const next =
-                  after.find((line) => line.id === lineId)?.counterpartyShare ??
-                  null;
-                return canonicalJson(previous) === canonicalJson(next)
-                  ? []
-                  : [{ lineId, previous, next }];
+              const after = lines ?? (categoryId ? [{id: command.transactionId, categoryId, amount: command.amount, counterpartyShare}] : []);
+              const shareChanges = [...new Set([...before, ...after].map(line => line.id))].flatMap(lineId => {
+                const previous = before.find(line => line.id === lineId)?.counterpartyShare ?? null;
+                const next = after.find(line => line.id === lineId)?.counterpartyShare ?? null;
+                return canonicalJson(previous) === canonicalJson(next) ? [] : [{lineId, previous, next}];
               });
+              return shareChanges.length ? {actorId, at: command.recordedAt, shareChanges} : {};
             })(),
           },
         ],
@@ -4116,6 +4108,8 @@ function applyCommand(
         );
       if (
         account.kind === "credit" &&
+        command.amount > 0 &&
+        !isPostedLinkedCardRefund(budget, transaction) &&
         materialize(book, actorId, monthOf(command.date)).accounts.get(
           account.id,
         )!.balance > 0
