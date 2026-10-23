@@ -30,6 +30,25 @@ export function transferMethod(text: string): string | undefined {
 
 const cardPayment = /\b(payment|pmt|epay|epayment|autopay)\b/i;
 
+/**
+ * Whether money out of an account may be one partner paying the other: out
+ * of a cash account, naming a person-to-person service, a card payment, or
+ * the partner. Such an import may become a settlement leg once the
+ * partner's import of it arrives.
+ */
+export function maySettleOut(
+  candidate: Pick<SettlementCandidate, "accountKind" | "amount" | "text">,
+  namesPartner: boolean,
+): boolean {
+  return (
+    candidate.accountKind === "cash" &&
+    candidate.amount < 0 &&
+    (transferMethod(candidate.text) !== undefined ||
+      cardPayment.test(candidate.text) ||
+      namesPartner)
+  );
+}
+
 export type SettlementCandidate = {
   key: string;
   userId: string;
@@ -75,15 +94,13 @@ export function matchSettlements(
     namesPerson(candidate.text, partnerName(otherId));
   const service = (candidate: SettlementCandidate) =>
     transferMethod(candidate.text) !== undefined;
-  const outs = candidates.filter(
-    (item) =>
-      item.accountKind === "cash" &&
-      item.amount < 0 &&
-      (service(item) ||
-        cardPayment.test(item.text) ||
-        candidates.some(
-          (other) => other.userId !== item.userId && names(item, other.userId),
-        )),
+  const outs = candidates.filter((item) =>
+    maySettleOut(
+      item,
+      candidates.some(
+        (other) => other.userId !== item.userId && names(item, other.userId),
+      ),
+    ),
   );
   const ins = candidates.filter(
     (item) =>

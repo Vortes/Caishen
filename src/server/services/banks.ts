@@ -70,6 +70,12 @@ import {
   setupBankAccountsSchema,
   type SetupBankAccountsInput,
 } from "./bank-account-setup";
+import {
+  confirmedPartnerMatch,
+  inboxPartnerMatches,
+  planPartnerImports,
+  type InboxPartnerMatch,
+} from "./partner-imports";
 
 const connectionDetailsShape = {
   accounts: z.array(bankAccountSchema).max(1000).default([]),
@@ -410,6 +416,7 @@ export async function bankInbox(db: Database, userId: string) {
   return bankInboxItems(
     connections.map((connection) => readBankConnection(connection, imports)),
     opened?.ledger.status === "ready" ? opened.ledger.budget : undefined,
+    opened?.ledger.status === "ready" ? opened.ledger.state : undefined,
   );
 }
 
@@ -417,6 +424,7 @@ export async function bankInbox(db: Database, userId: string) {
 export function bankInboxItems(
   connections: ReadConnection[],
   budget: Budget | undefined,
+  ledger?: Pick<AccountingState, "partnerEntries">,
 ) {
   const transactions = new Map(
     budget?.transactions.map((transaction) => [transaction.id, transaction]),
@@ -461,6 +469,16 @@ export function bankInboxItems(
             ? (categories.get(categoryId) ?? null)
             : null,
         };
+        // The purchases a partner recorded that this import may be.
+        const partnerMatches: InboxPartnerMatch[] =
+          budget && ledger && !transactionId && !loanId
+            ? inboxPartnerMatches(
+                ledger,
+                budget,
+                mapping?.accountId ?? null,
+                record,
+              )
+            : [];
         return {
           ...category,
           categoryId,
@@ -477,6 +495,7 @@ export function bankInboxItems(
           pending: record.current.pending,
           removed: record.removed,
           needsMatchReview: record.matchStatus === "needs_review",
+          ...(partnerMatches.length ? { partnerMatches } : {}),
           error: loanId
             ? loanActivityReviewMessage
             : bankImportEligibility(
@@ -529,6 +548,9 @@ export function bankInboxItems(
     return [...imports, ...quarantined];
   });
 }
+
+const alreadyLinkedMessage =
+  "This bank activity is already linked to a budget transaction. Review the existing transaction rather than creating it again.";
 
 const loanActivityReviewMessage =
   "Review this loan activity with your lender. Record payments using the confirmed principal and interest, then dismiss this update. Loan balances are not changed automatically.";
@@ -1164,6 +1186,14 @@ async function applyBankUpdate(
   let book = opened.ledger.state;
   const changeSets: ChangeSet[] = [];
   const operations: Command[] = [];
+  const partnerImports = planPartnerImports(
+    book,
+    budgetOf(book, userId),
+    plan.records,
+    mappings,
+    old.resolved,
+    (record) => `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
+  );
   for (const change of plan.changes) {
     const record = change.after;
     const mapped = mappings[record.current.providerAccountId];
@@ -1179,12 +1209,17 @@ async function applyBankUpdate(
     )
       continue;
     if (!resolution) {
-      const remembered = rememberedImport(
-        budgetOf(book, userId),
-        mapped.accountId,
-        record,
-        `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
-      );
+      // A purchase a partner recorded first is matched, or waits to be.
+      const partnerImport = partnerImports.get(record.id);
+      if (partnerImport === "wait") continue;
+      const remembered =
+        partnerImport ??
+        rememberedImport(
+          budgetOf(book, userId),
+          mapped.accountId,
+          record,
+          `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
+        );
       if (!remembered) continue;
       try {
         const result = executeWithChanges(book, userId, remembered, "provider");
@@ -1506,12 +1541,25 @@ export async function resolveImport(
             "The selected ledger record must have the same account, signed amount, and date. Uncertain matches need investigation.",
           );
         transactionId = transaction.id;
+      } else if (input.command?.type === "partner.match") {
+        // The payer confirmed which recorded purchase this import is.
+        if (state.resolved[record.id]?.transactionId)
+          throw new Error(alreadyLinkedMessage);
+        const command = confirmedPartnerMatch(input.command, mapping, record);
+        changeSets.push(
+          executeWithChanges(
+            ledger.state,
+            userId,
+            prepareUserCommand(budget, command),
+          ).changeSet,
+        );
+        transactionId = command.transactionId;
+        operationId = command.id;
+        submitted = saveIdentity(submittedCommand);
       } else {
         const command = input.command;
         if (state.resolved[record.id]?.transactionId)
-          throw new Error(
-            "This bank activity is already linked to a budget transaction. Review the existing transaction rather than creating it again.",
-          );
+          throw new Error(alreadyLinkedMessage);
         if (
           command?.type !== "transaction.upsert" &&
           !(input.expectedFingerprint && command?.type === "transaction.save")
