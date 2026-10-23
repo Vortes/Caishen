@@ -1,6 +1,6 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
-import { isCounterparty, type Command } from "~/domain/engine";
+import { isCleared, isCounterparty, type Command } from "~/domain/engine";
 import {
   classifyRegisterEntry,
   directEntryAccounts,
@@ -46,6 +46,7 @@ export type TransactionDraft = {
   outflow: string;
   inflow: string;
   status: "pending" | "posted";
+  cleared: boolean;
   expenseMonth: string;
   counterpartyShare?: DraftShare | null;
   refundOfTransactionId?: string;
@@ -156,6 +157,7 @@ export function createTransactionDraft(
         ? (transaction.amount / 100).toFixed(2)
         : "",
     status: transaction?.status ?? "posted",
+    cleared: transaction ? isCleared(transaction) : false,
     expenseMonth: transaction?.expenseMonth ?? month,
     counterpartyShare: (() => {
       const share =
@@ -499,6 +501,7 @@ export function buildTransactionDraftCommand({
     refundOfTransactionId: draft.refundOfTransactionId,
     recordedAt: new Date().toISOString(),
     status: draft.status,
+    cleared: draft.cleared,
     expenseMonth: expenseMonth || undefined,
     revision: transaction ? transaction.revision + 1 : undefined,
   };

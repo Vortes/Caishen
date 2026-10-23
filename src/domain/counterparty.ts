@@ -1,3 +1,4 @@
+import { isPending } from "./cleared";
 import type {
   Budget,
   CounterpartyShare,
@@ -68,7 +69,7 @@ export function counterpartyRegisterEntries(
       if (
         transaction.removed ||
         (filter.cutoff && transaction.date > filter.cutoff) ||
-        (transaction.status === "pending" && transaction.amount > 0)
+        (isPending(transaction) && transaction.amount > 0)
       )
         return [];
       if (transaction.linkedCounterpartyAccountId)

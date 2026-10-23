@@ -44,6 +44,7 @@ import {
   type ChoiceOption,
 } from "./transaction-fields";
 import { ShareLabel, ShareMenu, parseCents } from "./share-field";
+import { ClearedMark, clearedState } from "./cleared-mark";
 import { TransactionCategoryField } from "./transaction-category-field";
 import shell from "./shell.module.css";
 import shareStyles from "./share.module.css";
@@ -924,7 +925,19 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         )}
         {cell("outflow", "outflow", "Outflow", amount("outflow"))}
         {cell("inflow", "inflow", "Inflow", amount("inflow"))}
-        <span data-column="status" aria-hidden />
+        {session.initial?.reconciled ? (
+          <span data-column="status" aria-hidden />
+        ) : (
+          <div className={styles.removeLine} data-column="status">
+            <IconButton
+              label={draft.cleared ? "Mark uncleared" : "Mark cleared"}
+              size="sm"
+              onClick={() => entry.change({ cleared: !draft.cleared })}
+            >
+              <ClearedMark state={clearedState(draft)} labeled={false} />
+            </IconButton>
+          </div>
+        )}
         {amountError && (
           <p id={amountErrorId} className={styles.amountError}>
             <CircleAlertIcon size={13} aria-hidden />

@@ -63,6 +63,7 @@ export type TransactionSaver = {
   ) => { queuedIds: string[]; error?: string };
   // Holds the undo shortcut while the editor is open.
   holdOpen: () => () => void;
+  alert: (message: string) => void;
 };
 
 export type TransactionSession = {
@@ -698,11 +699,57 @@ export function useTransactionEntryController({
     }
   };
 
+  // Flips a transaction between cleared and uncleared from the register's
+  // C column, as the editor would with nothing else changed. A bank import
+  // is recorded with the new status and still waits for review.
+  const toggleCleared = (rowId: string) => {
+    const transaction = view.budget.transactions.find(
+      (item) => item.id === rowId && !item.removed,
+    );
+    const imported = transaction
+      ? undefined
+      : saver.imports.find((item) => importRowId(item) === rowId);
+    const existing = transaction ?? imported;
+    if (!existing || transactionActions(view, existing).edit !== "transaction")
+      return;
+    const before = imported
+      ? createImportDraft(view, imported)
+      : createTransactionDraft(view, view.month, transaction);
+    const cleared = !before.cleared;
+    const summary = `Marked ${before.payee.trim()} ${cleared ? "cleared" : "uncleared"}`;
+    let blocked: string | null;
+    try {
+      const command = buildTransactionDraftCommand({
+        draft: { ...before, cleared },
+        view,
+        transaction,
+        operationId: newId(),
+        entityId: transaction?.id ?? newId(),
+      });
+      blocked = imported
+        ? saver.saveImport(
+            imported,
+            command.type === "transaction.upsert"
+              ? { ...command, reviewed: false }
+              : command,
+            summary,
+          )
+        : saver.save(command, summary);
+    } catch (failure) {
+      blocked =
+        failure instanceof Error
+          ? failure.message
+          : "This transaction couldn't be saved. Try again.";
+    }
+    if (blocked) saver.alert(blocked);
+  };
+
   return {
     view,
     holdOpen,
     saveCommand: saver.save,
     saveShare,
+    toggleCleared,
     shareSelection: (
       ids: string[],
       choice: ShareChoice,

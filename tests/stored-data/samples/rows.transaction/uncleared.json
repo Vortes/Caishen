@@ -1,0 +1,16 @@
+{
+  "id": "grocer-2026-10-04",
+  "accountId": "checking",
+  "date": "2026-10-04",
+  "amount": -4210,
+  "payee": "Corner Grocer",
+  "status": "posted",
+  "cleared": false,
+  "categoryId": "groceries",
+  "expenseMonth": "2026-10",
+  "revision": 1,
+  "reviewed": true,
+  "kind": "purchase",
+  "userId": "alex",
+  "sort": 11
+}
