@@ -20,7 +20,6 @@ import {
 import {
   deriveObligations,
   isPersonalLedger,
-  ledgerHasSharedActivity,
   ledgerMembers,
   ledgerReceiptDates,
   ledgerSharedPurchases,
@@ -539,6 +538,30 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
 ]);
 export type Command = z.input<typeof commandSchema>;
+
+const sharedCategoriesRetired =
+  "Shared categories are retired. Share a purchase line with your partner instead; its category stays your own.";
+const retiredSharedExpense =
+  "This expense belongs to a retired shared category, so its category can't change.";
+const claimsRetired =
+  "Expected reimbursements are retired. Share the purchase with Reimbursements, naming who pays you back, and record their repayment there.";
+// The legacy shared-cost model's commands. Their stored records still read
+// (ADR 0006), but nothing writes them: line shares, the partner ledger, and
+// settlements from bank imports replaced them (ADR 0007). The schemas stay
+// so a stale client's command is refused with its replacement, not a
+// validation error.
+const retiredCommands = {
+  "shared.create": sharedCategoriesRetired,
+  "shared.rule": sharedCategoriesRetired,
+  "shared.remove": sharedCategoriesRetired,
+  "opening.add": "Opening shared balances are retired.",
+  "settlement.record":
+    "Net settlements are retired. A payment between partners is recorded from both partners' bank imports.",
+  "settlement.receive":
+    "Net settlements are retired. A payment between partners is recorded from both partners' bank imports.",
+  "reimbursement.expect": claimsRetired,
+  "reimbursement.receive": claimsRetired,
+} satisfies Partial<Record<Command["type"], string>>;
 
 /**
  * Restores what a stored operation changed (ADR 0006): undo, and redo as
@@ -1218,9 +1241,6 @@ export const ownBudget = (book: AccountingState, userId: string): Budget =>
     : Object.hasOwn(book.budgets, userId)
       ? book.budgets[userId]
       : undefined) ?? fail("Budget access denied");
-const memberName = (book: AccountingState, userId: string): string =>
-  ledgerMembers(book).find((member) => member.userId === userId)?.name ??
-  fail("Household member access denied");
 const getAccount = (budget: Budget, id: string): Account =>
   budget.accounts.find((account) => account.id === id) ??
   fail("Account access denied");
@@ -1484,19 +1504,6 @@ function sharedAccess(
     ? shared
     : fail("Shared category access denied");
 }
-function validateWeights(
-  participants: string[],
-  weights: Record<string, number>,
-): void {
-  if (
-    new Set(participants).size !== 2 ||
-    Object.keys(weights).length !== 2 ||
-    participants.some((id) => weights[id] === undefined) ||
-    sum(Object.values(weights)) <= 0
-  )
-    fail("A split must include both participants and positive total weight");
-}
-
 function synchronizeObligations(book: AccountingState): void {
   const all = deriveObligations(book);
   checkSettlements(book, all);
@@ -4565,29 +4572,28 @@ function applyCommand(
         if (category.pairedAccountId || category.pairedLoanId)
           fail("Use the paired payment operation");
       }
-      const sharedCategoryId =
-        command.sharedCategoryId ?? existing?.sharedCategoryId;
+      // Shared categories are retired: an expense recorded under one keeps
+      // it, and its shares follow its amount by its stored split.
+      if (command.shares) fail(sharedCategoriesRetired);
+      if (
+        command.sharedCategoryId &&
+        command.sharedCategoryId !== existing?.sharedCategoryId
+      )
+        fail(sharedCategoriesRetired);
+      const sharedCategoryId = existing?.sharedCategoryId;
       let weights: Record<string, number> | undefined;
       let shares: Record<string, number> | undefined;
       if (sharedCategoryId) {
         const shared = sharedAccess(book, actorId, sharedCategoryId);
         if (categoryId !== shared.categoryIds[actorId])
-          fail("Shared expense must use its paired personal category");
+          fail(retiredSharedExpense);
         if (command.amount >= 0)
           fail(
             "Shared merchant refunds require manual investigation in this version",
           );
         weights = existing?.splitWeights ?? shared.weights;
-        shares = command.shares ?? splitAmount(-command.amount, weights);
-        if (
-          Object.keys(shares).length !== shared.participants.length ||
-          shared.participants.some((id) => shares?.[id] === undefined) ||
-          sum(Object.values(shares)) !== -command.amount
-        )
-          fail("Personal shares must conserve the full expense amount");
-        if (command.shares) weights = command.shares;
-      } else if (command.shares)
-        fail("Personal-share overrides require a shared category");
+        shares = splitAmount(-command.amount, weights);
+      }
       const revision = existing
         ? Math.max(existing.revision + 1, command.revision ?? 0)
         : (command.revision ?? 1);
@@ -4937,7 +4943,7 @@ function applyCommand(
           actorId
         ] !== category.id
       )
-        fail("Change the shared expense classification explicitly");
+        fail(retiredSharedExpense);
       changes.transaction(budget, transaction);
       if (transaction.lines?.some((line) => line.counterpartyShare)) {
         transaction.lines = transaction.lines.map((line) => ({
@@ -5014,303 +5020,15 @@ function applyCommand(
       });
       break;
     }
-    case "shared.create": {
-      if (
-        book.sharedCategories.some(
-          (category) => category.id === command.sharedCategoryId,
-        )
-      )
-        fail("Shared category ID already exists");
-      if (!command.participants.includes(actorId))
-        fail("You must participate in a shared category");
-      validateWeights(command.participants, command.weights);
-      if (Object.keys(command.categoryIds).length !== 2)
-        fail("Each participant needs a paired category");
-      if (
-        book.sharedCategories.some((existing) =>
-          command.participants.some(
-            (id) =>
-              existing.participants.includes(id) &&
-              existing.categoryIds[id] === command.categoryIds[id],
-          ),
-        )
-      )
-        fail("This category is already shared");
-      const source = getCategory(
-        ownBudget(book, actorId),
-        command.categoryIds[actorId] ??
-          fail("Each participant needs a paired category"),
-      );
-      for (const id of command.participants) {
-        if (isPersonalLedger(book) && id !== actorId) {
-          if (!command.categoryIds[id])
-            fail("Each participant needs a paired category");
-          memberName(book, id);
-          // The server validates the peer's private category before committing.
-          continue;
-        }
-        const member = ownBudget(book, id);
-        const categoryId =
-          command.categoryIds[id] ??
-          fail("Each participant needs a paired category");
-        if (
-          id !== actorId &&
-          !member.categories.some((category) => category.id === categoryId)
-        )
-          changes.addCategory(member, {
-            id: categoryId,
-            name: source.name,
-            group: "Shared",
-          });
-        const category = getCategory(member, categoryId);
-        if (category.pairedAccountId || category.pairedLoanId)
-          fail("Payment categories cannot be shared expenses");
-      }
-      changes.sharedCategories().push({
-        id: command.sharedCategoryId,
-        participants: command.participants,
-        weights: command.weights,
-        categoryIds: command.categoryIds,
-      });
-      break;
-    }
-    case "shared.rule": {
-      const shared = sharedAccess(book, actorId, command.sharedCategoryId);
-      validateWeights(shared.participants, command.weights);
-      changes.sharedCategories();
-      shared.weights = command.weights;
-      break;
-    }
-    case "shared.remove": {
-      const shared = sharedAccess(book, actorId, command.sharedCategoryId);
-      if (
-        book.obligations.some(
-          (obligation) => obligation.sharedCategoryId === shared.id,
-        ) ||
-        ledgerHasSharedActivity(book, shared.id)
-      )
-        fail(
-          "Shared categories with recorded activity cannot be deleted. Their expense and settlement history must be preserved.",
-        );
-      changes.sharedCategories();
-      book.sharedCategories = book.sharedCategories.filter(
-        (category) => category.id !== shared.id,
-      );
-      break;
-    }
-    case "opening.add": {
-      const shared = sharedAccess(book, actorId, command.sharedCategoryId);
-      if (
-        command.debtorId === command.creditorId ||
-        !shared.participants.includes(command.debtorId) ||
-        !shared.participants.includes(command.creditorId)
-      )
-        fail("Opening direction must identify both participants");
-      if (
-        book.obligations.some(
-          (obligation) => obligation.id === command.obligationId,
-        )
-      )
-        fail("Opening obligation ID already exists");
-      changes.openingObligations().push({
-        id: command.obligationId,
-        sharedCategoryId: shared.id,
-        debtorId: command.debtorId,
-        creditorId: command.creditorId,
-        amount: command.amount,
-        opening: true,
-      });
-      break;
-    }
-    case "settlement.record": {
-      requireDate(budget, command.date);
-      if (
-        book.settlements.some(
-          (settlement) => settlement.id === command.settlementId,
-        )
-      )
-        fail("Settlement ID already exists");
-      memberName(book, command.otherUserId);
-      if (actorId === command.otherUserId) fail("Select the other member");
-      const eligible = book.obligations
-        .filter(
-          (obligation) =>
-            (!obligation.date || obligation.date <= command.date) &&
-            ((obligation.debtorId === actorId &&
-              obligation.creditorId === command.otherUserId) ||
-              (obligation.debtorId === command.otherUserId &&
-                obligation.creditorId === actorId)),
-        )
-        .sort((a, b) => a.id.localeCompare(b.id));
-      const ownDebt = eligible.filter(
-        (obligation) => obligation.debtorId === actorId,
-      );
-      const outstandingNow = outstandingBalances(book);
-      const otherDebt = eligible.filter(
-        (obligation) => obligation.debtorId !== actorId,
-      );
-      const ownTotal = sum(
-        ownDebt.map((obligation) => outstandingNow(obligation)),
-      );
-      const otherTotal = sum(
-        otherDebt.map((obligation) => outstandingNow(obligation)),
-      );
-      if (ownTotal < otherTotal) fail("The other member owes the net payment");
-      if (command.amount > ownTotal - otherTotal)
-        fail("Recorded payment exceeds the current net settlement");
-      if (command.amount > 0)
-        requireCash(
-          budget,
-          command.accountId ?? fail("Select the paying cash account"),
-          command.date,
-        );
-      const allocations: Settlement["allocations"] = [];
-      let offset = otherTotal;
-      let paymentRemaining = command.amount;
-      for (const obligation of ownDebt) {
-        const amount = outstandingNow(obligation);
-        const offsetAmount = Math.min(offset, amount);
-        offset -= offsetAmount;
-        if (offsetAmount)
-          allocations.push({
-            obligationId: obligation.id,
-            amount: offsetAmount,
-            kind: "offset",
-          });
-        const paidAmount = Math.min(amount - offsetAmount, paymentRemaining);
-        paymentRemaining -= paidAmount;
-        if (paidAmount)
-          allocations.push({
-            obligationId: obligation.id,
-            amount: paidAmount,
-            kind: "payment",
-          });
-      }
-      for (const obligation of otherDebt) {
-        const amount = outstandingNow(obligation);
-        if (amount)
-          allocations.push({
-            obligationId: obligation.id,
-            amount,
-            kind: "offset",
-          });
-      }
-      changes.addSettlement({
-        id: command.settlementId,
-        payerId: actorId,
-        recipientId: command.otherUserId,
-        date: command.date,
-        amount: command.amount,
-        received: command.amount === 0,
-        allocations,
-      });
-      if (command.amount > 0)
-        appendTransaction(changes, budget, command.id, {
-          id: `${command.id}:payment`,
-          accountId: command.accountId!,
-          date: command.date,
-          amount: -command.amount,
-          payee: `Settlement with ${memberName(book, command.otherUserId)}`,
-          status: "posted",
-          expenseMonth: monthOf(command.date),
-          kind: "settlement",
-          linkedId: command.settlementId,
-        });
-      break;
-    }
-    case "settlement.receive": {
-      const settlement =
-        book.settlements.find(
-          (item) =>
-            item.id === command.settlementId && item.recipientId === actorId,
-        ) ?? fail("Settlement receipt access denied");
-      if (settlement.received) fail("Settlement receipt already recorded");
-      requireDate(budget, command.date);
-      if (command.date < settlement.date)
-        fail("Receipt predates the recorded settlement payment");
-      requireCash(budget, command.accountId, command.date);
-      changes.settlement(settlement).received = true;
-      appendTransaction(changes, budget, command.id, {
-        id: `${command.id}:receipt`,
-        accountId: command.accountId,
-        date: command.date,
-        amount: settlement.amount,
-        payee: "Shared settlement received",
-        status: "posted",
-        expenseMonth: monthOf(command.date),
-        kind: "reimbursement",
-        linkedId: settlement.id,
-      });
-      break;
-    }
-    case "reimbursement.expect": {
-      if (
-        budget.reimbursements.some(
-          (claim) => claim.id === command.reimbursementId,
-        )
-      )
-        fail("Reimbursement ID already exists");
-      const transaction = getTransaction(budget, command.transactionId);
-      if (transaction.amount >= 0 || transaction.kind !== "purchase")
-        fail("Reimbursements must link to a purchase");
-      if (transaction.sharedCategoryId)
-        fail("Partner reimbursements already belong to the shared settlement");
-      if (
-        command.kind === "statement-credit" &&
-        getAccount(budget, transaction.accountId).kind !== "credit"
-      )
-        fail("Statement-credit claims require a card purchase");
-      const claimed = sum(
-        budget.reimbursements
-          .filter((claim) => claim.transactionId === transaction.id)
-          .map((claim) => claim.amount),
-      );
-      if (claimed + command.amount > -transaction.amount)
-        fail("Claims cannot exceed the linked expense");
-      changes.addReimbursement(budget, {
-        id: command.reimbursementId,
-        transactionId: transaction.id,
-        name: command.name,
-        amount: command.amount,
-        kind: command.kind,
-        receipts: [],
-      });
-      break;
-    }
-    case "reimbursement.receive": {
-      const claim =
-        budget.reimbursements.find(
-          (item) => item.id === command.reimbursementId,
-        ) ?? fail("Reimbursement access denied");
-      if (claim.kind !== "cash")
-        fail("Use a posted statement credit for a card benefit");
-      requireDate(budget, command.date);
-      if (command.date < getTransaction(budget, claim.transactionId).date)
-        fail("Receipt predates the reimbursed expense");
-      requireCash(budget, command.accountId, command.date);
-      if (
-        command.amount >
-        claim.amount - sum(claim.receipts.map((receipt) => receipt.amount))
-      )
-        fail("Receipt exceeds the outstanding claim");
-      changes.reimbursement(budget, claim).receipts.push({
-        id: command.id,
-        date: command.date,
-        amount: command.amount,
-      });
-      appendTransaction(changes, budget, command.id, {
-        id: `${command.id}:receipt`,
-        accountId: command.accountId,
-        date: command.date,
-        amount: command.amount,
-        payee: claim.name,
-        status: "posted",
-        expenseMonth: monthOf(command.date),
-        kind: "reimbursement",
-        linkedId: claim.id,
-      });
-      break;
-    }
+    case "shared.create":
+    case "shared.rule":
+    case "shared.remove":
+    case "opening.add":
+    case "settlement.record":
+    case "settlement.receive":
+    case "reimbursement.expect":
+    case "reimbursement.receive":
+      return fail(retiredCommands[command.type]);
     case "card.payment": {
       requireDate(budget, command.date);
       validateCardPayment(
@@ -5351,26 +5069,7 @@ function applyCommand(
         accountAtDate(budget, command.accountId, command.date).kind !== "credit"
       )
         fail("Select a credit-card account");
-      const claim = command.reimbursementId
-        ? (budget.reimbursements.find(
-            (item) => item.id === command.reimbursementId,
-          ) ?? fail("Reimbursement access denied"))
-        : undefined;
-      if (claim) {
-        if (claim.kind !== "statement-credit") fail("This claim expects cash");
-        if (command.date < getTransaction(budget, claim.transactionId).date)
-          fail("Credit predates the reimbursed expense");
-        if (
-          getTransaction(budget, claim.transactionId).accountId !==
-          command.accountId
-        )
-          fail("Credit must post to the original card");
-        if (
-          command.amount >
-          claim.amount - sum(claim.receipts.map((receipt) => receipt.amount))
-        )
-          fail("Credit exceeds the outstanding claim");
-      }
+      if (command.reimbursementId) fail(claimsRetired);
       if (!command.posted) break;
       const state = materialize(
         book,
@@ -5387,12 +5086,6 @@ function applyCommand(
         fail(
           "Credit exceeds card debt; positive card balances require bank evidence",
         );
-      if (claim)
-        changes.reimbursement(budget, claim).receipts.push({
-          id: command.id,
-          date: command.date,
-          amount: command.amount,
-        });
       appendTransaction(changes, budget, command.id, {
         id: `${command.id}:credit`,
         accountId: command.accountId,
@@ -5402,7 +5095,6 @@ function applyCommand(
         status: "posted",
         expenseMonth: monthOf(command.date),
         kind: "statement-credit",
-        linkedId: claim?.id,
       });
       break;
     }

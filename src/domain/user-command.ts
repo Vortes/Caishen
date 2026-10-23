@@ -29,13 +29,10 @@ export function prepareUserCommand(
     "transaction.save",
     "card.payment",
     "card.credit",
-    "reimbursement.receive",
     "counterparty.receive",
     "partner.edit",
     "partner.request",
     "loan.payment",
-    "settlement.record",
-    "settlement.receive",
     "account.add",
   ].includes(command.type);
   const date =

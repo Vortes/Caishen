@@ -205,20 +205,6 @@ export function settlementReceiptDate(
   )?.date;
 }
 
-export function ledgerHasSharedActivity(
-  state: AccountingState,
-  sharedCategoryId: string,
-) {
-  const ownActivity = (budget: Budget) =>
-    budget.transactions.some(
-      (transaction) => transaction.sharedCategoryId === sharedCategoryId,
-    );
-  return isPersonalLedger(state)
-    ? ownActivity(state.budget) ||
-        state.partnerActivityCategoryIds.includes(sharedCategoryId)
-    : Object.values(state.budgets).some(ownActivity);
-}
-
 export function projectSharedLedger(
   state: AccountingState,
   userId: string,

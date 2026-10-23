@@ -1246,7 +1246,6 @@ async function applyBankUpdate(
           status: record.current.pending ? "pending" : "posted",
           categoryId: transaction.categoryId,
           expenseMonth: transaction.expenseMonth,
-          sharedCategoryId: transaction.sharedCategoryId,
           providerId: record.current.providerTransactionId,
         };
     try {
