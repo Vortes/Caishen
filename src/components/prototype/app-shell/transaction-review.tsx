@@ -184,7 +184,12 @@ export function SelectionIsland({
           )}
           {selected.length === 1 &&
             selected[0]!.source === "budget" &&
-            selected[0]!.amount < 0 && (
+            entry.view.budget.transactions.some(
+              (transaction) =>
+                transaction.id === selected[0]!.id &&
+                transaction.kind === "purchase" &&
+                transaction.amount < 0,
+            ) && (
               <Button
                 size="sm"
                 disabled={busy}
