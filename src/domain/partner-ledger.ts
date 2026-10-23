@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Changes } from "./changes";
 import type { Budget, Transaction, TransactionLine } from "./engine";
 import { counterpartyLines, shareContribution } from "./counterparty";
+import type { PartnerSettlement } from "./partner-settlements";
 import { payeeKey } from "./payee-memory";
 import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 
@@ -34,11 +35,13 @@ import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 //   held from Ready to Assign.
 // - An entry without a `source` is a purchase recorded before the payer's
 //   bank import arrives (`partner.record`). It counts at once in both
-//   budgets: the non-payer's as above, and the payer's Partner account and
-//   paired envelope by the same change, held as credit rather than cash
-//   overspending, since no account of theirs has paid it yet. The payer's
-//   own part waits for the import; the category they chose for it, if they
-//   recorded it themselves, is their side until then.
+//   budgets: the non-payer's as above, and the payer's Partner account by
+//   the same change. The payer's paired envelope doesn't move, since no
+//   account of theirs has paid it yet; whatever the partner settles toward
+//   it before the import stays in that envelope until the import spends
+//   it, so it never reaches Ready to Assign. The payer's own part waits for
+//   the import; the category they chose for it, if they recorded it
+//   themselves, is their side until then.
 // - When the payer's import arrives it is matched to the entry
 //   (`partner.match`): the import becomes the payer's transaction with the
 //   entry's share, and the entry's `source` names it. The entry keeps its
@@ -274,7 +277,7 @@ export function partnerSideIssues(
 
 export type PartnerLedgerRow = {
   id: string;
-  kind: "purchase" | "refund" | "repayment";
+  kind: "purchase" | "refund" | "repayment" | "settlement";
   date: string;
   payee: string;
   status: "pending" | "posted";
@@ -294,6 +297,10 @@ export type PartnerLedgerRow = {
   transactionId?: string;
   lineId?: string;
   entryId?: string;
+  // A settlement: the household's record of it, and how it was sent.
+  settlementId?: string;
+  method?: string;
+  confirmed?: boolean;
   // Recorded before the payer's import, which hasn't arrived yet.
   awaitingImport: boolean;
   // Who recorded it before the payer's import, when someone did.
@@ -304,13 +311,14 @@ export type PartnerLedgerRow = {
 /**
  * The viewer's Partner register, newest first, with a running balance that
  * ends at the Partner account's balance: their own shared lines and
- * repayments from their budget, and their partner's entries from the
+ * settlement legs from their budget, and their partner's entries from the
  * shared ledger.
  */
 export function partnerLedgerRows(
   budget: Budget,
   entries: PartnerEntry[] | undefined,
   cutoff: string,
+  settlements?: PartnerSettlement[],
 ): PartnerLedgerRow[] {
   const viewerId = budget.userId;
   const partner = partnerAccountOf(budget);
@@ -325,20 +333,26 @@ export function partnerLedgerRows(
     )
       continue;
     if (transaction.linkedCounterpartyAccountId === partner.id) {
+      const settlement = settlements?.find(
+        (item) => item.id === transaction.partnerSettlementId,
+      );
       rows.push({
-        id: `${transaction.id}:repayment`,
-        kind: "repayment",
+        id: settlement?.id ?? `${transaction.id}:repayment`,
+        kind: settlement ? "settlement" : "repayment",
         date: transaction.date,
         payee: transaction.payee,
         status: transaction.status,
-        payerId: "",
-        shared: 0,
+        payerId: settlement?.payerId ?? "",
+        shared: settlement?.amount ?? 0,
         you: 0,
         partner: 0,
         change: -transaction.amount,
         categoryId: undefined,
         needsCategory: false,
         transactionId: transaction.id,
+        settlementId: settlement?.id,
+        method: settlement?.method,
+        confirmed: settlement?.confirmed,
         awaitingImport: false,
         history: [],
       });

@@ -1,4 +1,5 @@
 import type { PartnerEntry } from "./partner-ledger";
+import type { PartnerRequest, PartnerSettlement } from "./partner-settlements";
 import type {
   Audit,
   Book,
@@ -30,6 +31,9 @@ export type SharedLedgerFacts = {
   partnerActivityCategoryIds: string[];
   // The partner ledger both budgets share (src/domain/partner-ledger.ts).
   partnerEntries?: PartnerEntry[];
+  // Settling up between the partners (src/domain/partner-settlements.ts).
+  partnerSettlements?: PartnerSettlement[];
+  partnerRequests?: PartnerRequest[];
 };
 
 export type PersonalLedger = SharedLedgerFacts & {
@@ -303,6 +307,12 @@ export function projectSharedLedger(
     ],
     ...(state.partnerEntries?.length
       ? { partnerEntries: structuredClone(state.partnerEntries) }
+      : {}),
+    ...(state.partnerSettlements?.length
+      ? { partnerSettlements: structuredClone(state.partnerSettlements) }
+      : {}),
+    ...(state.partnerRequests?.length
+      ? { partnerRequests: structuredClone(state.partnerRequests) }
       : {}),
   };
 }

@@ -16,6 +16,7 @@ import type {
   TransactionLine,
 } from "./engine";
 import type { PartnerEntry, PartnerSide } from "./partner-ledger";
+import type { PartnerRequest, PartnerSettlement } from "./partner-settlements";
 import {
   deriveObligations,
   settlementReceiptDate,
@@ -59,6 +60,8 @@ export const tableNames = [
   "payeeMemory",
   "partnerEntry",
   "partnerEntrySide",
+  "partnerSettlement",
+  "partnerRequest",
 ] as const;
 export type TableName = (typeof tableNames)[number];
 
@@ -148,6 +151,9 @@ export type TableData = {
   // of its entries (src/domain/partner-ledger.ts).
   partnerEntry: Sorted & PartnerEntry;
   partnerEntrySide: Owned & { entryId: string } & PartnerSide;
+  // Settling up between the partners (src/domain/partner-settlements.ts).
+  partnerSettlement: Sorted & PartnerSettlement;
+  partnerRequest: Sorted & PartnerRequest;
 };
 
 /**
@@ -420,6 +426,34 @@ export function partnerSideRows(
 
 export function partnerEntryRow(entry: PartnerEntry, sort: number): WireRow {
   return row("partnerEntry", rowKey(entry.id), { ...entry, sort });
+}
+
+export function partnerSettlementRow(
+  settlement: PartnerSettlement,
+  sort: number,
+): WireRow {
+  return row("partnerSettlement", rowKey(settlement.id), {
+    ...settlement,
+    sort,
+  });
+}
+
+export function partnerRequestRow(
+  request: PartnerRequest,
+  sort: number,
+): WireRow {
+  return row("partnerRequest", rowKey(request.id), { ...request, sort });
+}
+
+// What both partners' browsers hold of settling up.
+function settlingUpRows(state: {
+  partnerSettlements?: PartnerSettlement[];
+  partnerRequests?: PartnerRequest[];
+}): WireRow[] {
+  return [
+    ...(state.partnerSettlements ?? []).map(partnerSettlementRow),
+    ...(state.partnerRequests ?? []).map(partnerRequestRow),
+  ];
 }
 
 export function transactionRows(
@@ -788,6 +822,7 @@ export function bookToRows(book: Book): WireRow[] {
     ),
     ...members.flatMap((budget) => partnerFactRows(book, budget.userId)),
     ...(book.partnerEntries ?? []).map(partnerEntryRow),
+    ...settlingUpRows(book),
   ]);
 }
 
@@ -842,6 +877,7 @@ export function personalLedgerToRows(ledger: PersonalLedger): WireRow[] {
       }),
     ),
     ...(ledger.partnerEntries ?? []).map(partnerEntryRow),
+    ...settlingUpRows(ledger),
   ]);
 }
 
@@ -1054,6 +1090,29 @@ function partnerEntriesFrom(data: Tables): { partnerEntries?: PartnerEntry[] } {
     : {};
 }
 
+// Settling up, when the household has settled or asked.
+function settlingUpFrom(data: Tables): {
+  partnerSettlements?: PartnerSettlement[];
+  partnerRequests?: PartnerRequest[];
+} {
+  return {
+    ...(data.partnerSettlement.length
+      ? {
+          partnerSettlements: data.partnerSettlement.map((settlement) =>
+            without(settlement, ["sort"]),
+          ),
+        }
+      : {}),
+    ...(data.partnerRequest.length
+      ? {
+          partnerRequests: data.partnerRequest.map((request) =>
+            without(request, ["sort"]),
+          ),
+        }
+      : {}),
+  };
+}
+
 /**
  * The household a set of rows holds. Generated obligations are derived from
  * the shared purchases; the audit is empty, since operations are recorded
@@ -1079,6 +1138,7 @@ export function rowsToBook(rows: Iterable<WireRow>): Book {
     settlements: settlementsFrom(data),
     audit: [],
     ...partnerEntriesFrom(data),
+    ...settlingUpFrom(data),
   };
   book.obligations = deriveObligations(book);
   return book;
@@ -1133,6 +1193,7 @@ export function rowsToPersonalLedger(
     ).map((fact) => fact.sharedCategoryId),
     audit: [],
     ...partnerEntriesFrom(data),
+    ...settlingUpFrom(data),
   };
   // What the viewer's numbers use, as projectSharedLedger selects it.
   const sharedIds = new Set(sharedCategories.map((category) => category.id));

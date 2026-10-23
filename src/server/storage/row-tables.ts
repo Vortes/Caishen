@@ -197,6 +197,7 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("refundOfTransactionId", true),
       text("linkedCounterpartyAccountId", true),
       text("counterpartyName", true),
+      text("partnerSettlementId", true),
       bool("removed", true),
       bool("reconciled", true),
       sort,
@@ -465,6 +466,32 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
     key: ["userId", "entryId"],
     visibleTo: "userId",
     columns: [userId, text("entryId"), text("categoryId", true)],
+  },
+  partnerSettlement: {
+    model: "PartnerSettlement",
+    key: ["id"],
+    columns: [
+      text("id"),
+      text("payerId"),
+      text("date"),
+      cents("amount"),
+      text("method"),
+      bool("confirmed"),
+      bool("removed", true),
+      json("history"),
+      sort,
+    ],
+  },
+  partnerRequest: {
+    model: "PartnerRequest",
+    key: ["id"],
+    columns: [
+      text("id"),
+      text("requesterId"),
+      text("date"),
+      cents("amount"),
+      sort,
+    ],
   },
 };
 
