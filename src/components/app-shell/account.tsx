@@ -15,8 +15,8 @@ import { ReimbursementsSummary } from "./reimbursements-register";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 
-// YNAB's balance equation: what the bank has cleared, plus what is still
-// pending, is the balance the budget works with. One account's summary also
+// YNAB's balance equation: what the bank has cleared, plus what hasn't
+// cleared yet, is the balance the budget works with. One account's summary also
 // reconciles it.
 export function AccountSummary({
   accounts,
@@ -32,7 +32,7 @@ export function AccountSummary({
 }) {
   const { today } = useShellData();
   const working = accounts.reduce((sum, item) => sum + item.balance, 0);
-  const uncleared = accounts.reduce((sum, item) => sum + item.pending, 0);
+  const uncleared = accounts.reduce((sum, item) => sum + item.uncleared, 0);
   if (account?.kind === "reimbursements")
     return <ReimbursementsSummary account={account} who={owedBy} />;
   if (account?.kind === "partner") return <PartnerSummary account={account} />;

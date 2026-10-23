@@ -71,10 +71,8 @@ export function prepareTransactionShares(
       throw new Error(
         "This selection changed. Close Share and select the transactions again.",
       );
-    if (transaction?.lines?.length || transaction?.refundOfTransactionId)
-      throw new Error(
-        "Edit split transactions and linked refunds individually.",
-      );
+    if (transaction?.lines?.length)
+      throw new Error("Edit split transactions individually.");
     const draft = imported
       ? createImportDraft(view, imported)
       : createTransactionDraft(view, view.month, transaction);

@@ -280,7 +280,11 @@ void test("repayment funds a fully shared card purchase and a later refund leave
     date: "2026-10-07",
     amount: 1_154,
     payee: "Noodles Plus",
-    refundOfTransactionId: "noodles",
+    counterpartyShare: {
+      accountId: "counterparty:reimbursements",
+      counterpartyName: "Mom",
+      amount: 1_154,
+    },
     recordedAt: "2026-10-07T12:00:00Z",
   });
   const view = budget.view();

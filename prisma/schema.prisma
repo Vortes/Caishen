@@ -322,6 +322,8 @@ model Transaction {
   counterpartyName            String?
   partnerSettlementId         String?
   removed                     Boolean?
+  // YNAB's C column. Rows saved before it are cleared once posted.
+  cleared                     Boolean?
   reconciled                  Boolean?
   sort                        Int
   revision                    Int

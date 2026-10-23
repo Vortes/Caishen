@@ -1,6 +1,6 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
-import { isCounterparty, type Command } from "~/domain/engine";
+import { isCleared, isCounterparty, type Command } from "~/domain/engine";
 import { transactionEditOperation } from "~/domain/transaction-actions";
 import {
   isTransfer,
@@ -45,9 +45,10 @@ export type TransactionDraft = {
   outflow: string;
   inflow: string;
   status: "pending" | "posted";
+  // YNAB's C column. A new transaction starts uncleared, like YNAB's.
+  cleared: boolean;
   expenseMonth: string;
   counterpartyShare?: DraftShare | null;
-  refundOfTransactionId?: string;
   // Two or more when the amount is split across categories; none otherwise.
   lines: DraftLine[];
 };
@@ -140,7 +141,6 @@ export function createTransactionDraft(
         : undefined) ??
       (transaction &&
       !transaction.counterpartyShare &&
-      !transaction.refundOfTransactionId &&
       (account?.kind === "tracking" && counterpart
         ? counterpart.amount
         : transaction.amount) > 0
@@ -155,6 +155,7 @@ export function createTransactionDraft(
         ? (transaction.amount / 100).toFixed(2)
         : "",
     status: transaction?.status ?? "posted",
+    cleared: transaction ? isCleared(transaction) : false,
     expenseMonth: transaction?.expenseMonth ?? month,
     counterpartyShare: (() => {
       const share =
@@ -166,7 +167,6 @@ export function createTransactionDraft(
         ? { ...share, amount: (share.amount / 100).toFixed(2) }
         : undefined;
     })(),
-    refundOfTransactionId: transaction?.refundOfTransactionId,
     lines: (transaction?.lines?.length === 1
       ? []
       : (transaction?.lines ?? [])
@@ -413,11 +413,7 @@ export function buildTransactionDraftCommand({
     )
       fields.remaining =
         "Split the whole amount: the lines must add up to the total.";
-  } else if (
-    !transfer &&
-    account?.kind !== "tracking" &&
-    !draft.refundOfTransactionId
-  ) {
+  } else if (!transfer && account?.kind !== "tracking") {
     const category = view.categories.find((item) => item.id === categoryId);
     if (categoryId === READY_TO_ASSIGN) {
       if (outflowText)
@@ -430,8 +426,7 @@ export function buildTransactionDraftCommand({
       !(
         draft.counterpartyShare &&
         parseAmount(draft.counterpartyShare.amount) === (inflow || outflow)
-      ) &&
-      !draft.refundOfTransactionId
+      )
     )
       fields.categoryId = "Choose a category for your part of it.";
     else if (
@@ -492,9 +487,9 @@ export function buildTransactionDraftCommand({
           ? undefined
           : categoryId || undefined,
     ...(split ? { lines } : { counterpartyShare }),
-    refundOfTransactionId: draft.refundOfTransactionId,
     recordedAt: new Date().toISOString(),
     status: draft.status,
+    cleared: draft.cleared,
     expenseMonth: expenseMonth || undefined,
     revision: transaction ? transaction.revision + 1 : undefined,
   };

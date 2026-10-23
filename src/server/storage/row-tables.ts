@@ -198,6 +198,7 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("counterpartyName", true),
       text("partnerSettlementId", true),
       bool("removed", true),
+      bool("cleared", true),
       bool("reconciled", true),
       sort,
     ],

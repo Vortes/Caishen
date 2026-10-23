@@ -130,7 +130,7 @@ void test("card balances include unreviewed posted payments while untouched pend
   const card = shell.accounts.find(({ id }) => id === "card")!;
   assert.equal(card.balance, -100_000);
   assert.equal(card.cleared, -100_000);
-  assert.equal(card.pending, 0);
+  assert.equal(card.uncleared, 0);
 });
 
 void test("already recorded activity and uncertain matches never count twice before the inbox refreshes", () => {
@@ -226,7 +226,7 @@ void test("only untouched bank pending imports belong in the pending section, an
   const after = data();
   assert.equal(Boolean(after.transactions[0]!.pendingImport), false);
   assert.equal(after.accounts[0]!.balance, 98_000);
-  assert.equal(after.accounts[0]!.pending, -2_000);
+  assert.equal(after.accounts[0]!.uncleared, -2_000);
   const changed = data(month, month, [
     bankImport({
       pending: true,
@@ -491,7 +491,7 @@ void test("the register excludes pending inflows from its uncleared balance and 
   const shell = data();
   const checking = shell.accounts.find(({ id }) => id === "checking")!;
   assert.equal(checking.balance, 96_500);
-  assert.equal(checking.pending, -1_000);
+  assert.equal(checking.uncleared, -1_000);
   assert.deepEqual(
     Object.fromEntries(
       shell.transactions.map(({ id, needsReview }) => [id, needsReview]),

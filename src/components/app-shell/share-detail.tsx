@@ -80,8 +80,7 @@ function shareNotice(
 
 // The register's Share cell, over its row in the Share column. On one line
 // it opens the share menu and saves what's picked; a split opens the editor,
-// where each line has its own. A linked refund's share follows its
-// purchase, so it only reads.
+// where each line has its own.
 export function ShareCell({
   row,
   accountColumn,
@@ -112,10 +111,6 @@ export function ShareCell({
       <span className={styles.shareSlot}>{content}</span>
     </div>
   );
-  if (row.actions.share === "read")
-    return label
-      ? slot(<span className={styles.shareStatic}>{label}</span>)
-      : null;
   const button = (
     <button
       type="button"
@@ -200,11 +195,6 @@ export function ShareDetail({ transactionId }: { transactionId: string }) {
     ? who(total)
     : lines[0] && who(lines[0].counterpartyShare!);
   const refund = transaction.amount > 0;
-  const original =
-    transaction.refundOfTransactionId &&
-    view.budget.transactions.find(
-      (item) => item.id === transaction.refundOfTransactionId,
-    );
   return (
     <div
       className={styles.detail}
@@ -233,28 +223,20 @@ export function ShareDetail({ transactionId }: { transactionId: string }) {
             </div>
           </dl>
         )}
-        {actions.share === "read"
-          ? original && (
-              <p className={styles.formHint}>
-                This refund&rsquo;s share follows {original.payee} on{" "}
-                {original.date}, in proportion to the amount refunded.
-              </p>
-            )
-          : lines.map((line) => (
-              <ShareEditor
-                key={`${line.id}-${line.counterpartyShare!.amount}`}
-                transactionId={transaction.id}
-                payee={transaction.payee}
-                line={line}
-                category={
-                  lines.length > 1 || transaction.lines
-                    ? view.categories.find(
-                        (item) => item.id === line.categoryId,
-                      )?.name
-                    : undefined
-                }
-              />
-            ))}
+        {lines.map((line) => (
+          <ShareEditor
+            key={`${line.id}-${line.counterpartyShare!.amount}`}
+            transactionId={transaction.id}
+            payee={transaction.payee}
+            line={line}
+            category={
+              lines.length > 1 || transaction.lines
+                ? view.categories.find((item) => item.id === line.categoryId)
+                    ?.name
+                : undefined
+            }
+          />
+        ))}
       </div>
       {history.length > 0 && (
         <div className={styles.history}>

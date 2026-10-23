@@ -6,7 +6,7 @@ import {
   transferNeedsCategory,
 } from "./transfers";
 
-type Action = "edit" | "approve" | "reject" | "categorize" | "refund";
+type Action = "edit" | "approve" | "reject" | "categorize";
 
 export const TRANSACTION_ACTION_LIMIT = 500;
 
@@ -60,13 +60,6 @@ export function transactionActionIssue(
         ? "Categorize purchases before approval"
         : null;
     case "reject": {
-      if (
-        budget.transactions.some(
-          (item) =>
-            !item.removed && item.refundOfTransactionId === transaction.id,
-        )
-      )
-        return "Remove linked refunds before rejecting their purchase";
       const counterparts = transferCounterparts(budget, transaction);
       if (isTransfer(transaction) && counterparts.length !== 1)
         return "The other side of this transfer is missing or ambiguous";
@@ -97,21 +90,15 @@ export function transactionActionIssue(
         return "Use the dedicated operation for transfers and repayments";
       if (account.kind === "tracking")
         return "Tracking activity does not use budget categories";
-      return transaction.refundOfTransactionId
-        ? "Edit the original purchase to change linked refund categories"
-        : null;
+      return null;
     }
-    case "refund":
-      return transaction.kind === "purchase" && transaction.amount < 0
-        ? null
-        : "Link refunds to an original purchase";
   }
 }
 
 export function transactionShareMode(
   budget: Pick<Budget, "accounts">,
   transaction: Transaction,
-): "edit" | "read" | null {
+): "edit" | null {
   const account = budget.accounts.find(
     (account) => account.id === transaction.accountId,
   );
@@ -121,7 +108,7 @@ export function transactionShareMode(
     (transaction.kind !== "purchase" && transaction.kind !== "refund")
   )
     return null;
-  return transaction.refundOfTransactionId ? "read" : "edit";
+  return "edit";
 }
 
 export const alreadyLinkedImportMessage =
