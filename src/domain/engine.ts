@@ -1327,7 +1327,16 @@ function rescaleLines(
   const scaled = lines.map((line) => ({
     ...line,
     amount: Math.round((line.amount * amount) / total),
-    ...(line.counterpartyShare ? {counterpartyShare: {...line.counterpartyShare, amount: Math.round(line.counterpartyShare.amount * Math.abs(amount / total))}} : {}),
+    ...(line.counterpartyShare
+      ? {
+          counterpartyShare: {
+            ...line.counterpartyShare,
+            amount: Math.round(
+              line.counterpartyShare.amount * Math.abs(amount / total),
+            ),
+          },
+        }
+      : {}),
   }));
   const largest = scaled.reduce((a, b) =>
     Math.abs(b.amount) > Math.abs(a.amount) ? b : a,
@@ -3292,10 +3301,26 @@ export function checkRestoredLedger(state: AccountingState): void {
   for (const budget of budgets) ensureSupportedCardBalances(budget);
 }
 
-function isPostedLinkedCardRefund(budget: Budget, transaction: Transaction): boolean {
-  if (transaction.kind !== "refund" || transaction.amount <= 0 || transaction.status !== "posted" || !transaction.refundOfTransactionId) return false;
-  const original = budget.transactions.find(item => active(item) && item.id === transaction.refundOfTransactionId);
-  return Boolean(original && original.kind === "purchase" && original.amount < 0 && original.accountId === transaction.accountId && original.date <= transaction.date);
+function isPostedLinkedCardRefund(
+  budget: Budget,
+  transaction: Transaction,
+): boolean {
+  if (
+    transaction.kind !== "refund" ||
+    transaction.amount <= 0 ||
+    transaction.status !== "posted" ||
+    !transaction.refundOfTransactionId
+  )
+    return false;
+  const original = budget.transactions.find(
+    (item) => active(item) && item.id === transaction.refundOfTransactionId,
+  );
+  return Boolean(
+    original?.kind === "purchase" &&
+    original.amount < 0 &&
+    original.accountId === transaction.accountId &&
+    original.date <= transaction.date,
+  );
 }
 
 function ensureSupportedCardBalances(budget: Budget): void {
@@ -3315,7 +3340,11 @@ function ensureSupportedCardBalances(budget: Budget): void {
         month,
         safe((activity.get(month) ?? 0) + transaction.amount),
       );
-      if (isPostedLinkedCardRefund(budget, transaction)) linkedCredits.set(month, safe((linkedCredits.get(month) ?? 0) + transaction.amount));
+      if (isPostedLinkedCardRefund(budget, transaction))
+        linkedCredits.set(
+          month,
+          safe((linkedCredits.get(month) ?? 0) + transaction.amount),
+        );
     }
     let balance = account.openingBalance;
     for (const month of [...activity.keys()].sort()) {
@@ -3954,7 +3983,9 @@ function applyCommand(
             id: line.lineId,
             categoryId: line.categoryId,
             amount: line.amount,
-            ...(line.counterpartyShare ? {counterpartyShare: line.counterpartyShare} : {}),
+            ...(line.counterpartyShare
+              ? { counterpartyShare: line.counterpartyShare }
+              : {}),
           }))
         : command.categoryId || !existing?.lines
           ? undefined
@@ -4091,13 +4122,34 @@ function applyCommand(
             reason: existing ? "updated" : "created",
             ...(() => {
               const before = existing ? counterpartyLines(existing) : [];
-              const after = lines ?? (categoryId ? [{id: command.transactionId, categoryId, amount: command.amount, counterpartyShare}] : []);
-              const shareChanges = [...new Set([...before, ...after].map(line => line.id))].flatMap(lineId => {
-                const previous = before.find(line => line.id === lineId)?.counterpartyShare ?? null;
-                const next = after.find(line => line.id === lineId)?.counterpartyShare ?? null;
-                return canonicalJson(previous) === canonicalJson(next) ? [] : [{lineId, previous, next}];
+              const after =
+                lines ??
+                (categoryId
+                  ? [
+                      {
+                        id: command.transactionId,
+                        categoryId,
+                        amount: command.amount,
+                        counterpartyShare,
+                      },
+                    ]
+                  : []);
+              const shareChanges = [
+                ...new Set([...before, ...after].map((line) => line.id)),
+              ].flatMap((lineId) => {
+                const previous =
+                  before.find((line) => line.id === lineId)
+                    ?.counterpartyShare ?? null;
+                const next =
+                  after.find((line) => line.id === lineId)?.counterpartyShare ??
+                  null;
+                return canonicalJson(previous) === canonicalJson(next)
+                  ? []
+                  : [{ lineId, previous, next }];
               });
-              return shareChanges.length ? {actorId, at: command.recordedAt, shareChanges} : {};
+              return shareChanges.length
+                ? { actorId, at: command.recordedAt, shareChanges }
+                : {};
             })(),
           },
         ],
