@@ -1698,6 +1698,13 @@ export function materialize(
   return replay(book, budgetThrough(book, userId, month), month, cutoff);
 }
 
+// A paired envelope's card spending is kept per counterparty, so a repayment
+// funds the card its payer's shares were fronted on. Other categories' card
+// spending is kept under the category's own ID.
+const creditKey = (categoryId: string, counterpartyName = "") =>
+  `${categoryId}\u0000${counterpartyName}`;
+const creditCategory = (key: string) => key.split("\u0000")[0]!;
+
 // Replays the budget month by month from its start through the given month.
 // After each month, afterMonth can read that month's Ready to Assign.
 function replay(
@@ -1778,18 +1785,22 @@ function replay(
       state.creditsReleased = 0;
     }
     const creditByCategory = new Map(
-      [...carriedCounterpartyCredit].map(([categoryId, cards]) => [
-        categoryId,
+      [...carriedCounterpartyCredit].map(([key, cards]) => [
+        key,
         new Map(cards),
       ]),
     );
-    const priorCounterpartyCredit = new Map(
-      [...carriedCounterpartyCredit].map(([categoryId, cards]) => [
-        categoryId,
-        sum([...cards.values()]),
-      ]),
-    );
+    const priorCounterpartyCredit = new Map<string, number>();
+    for (const [key, cards] of carriedCounterpartyCredit)
+      priorCounterpartyCredit.set(
+        creditCategory(key),
+        safe(
+          (priorCounterpartyCredit.get(creditCategory(key)) ?? 0) +
+            sum([...cards.values()]),
+        ),
+      );
     carriedCounterpartyCredit.clear();
+    const repaidByKey = new Map<string, number>();
     const cashByCategory = new Map<string, number>();
     const credits: Transaction[] = [];
     const payments: Transaction[] = [];
@@ -1863,28 +1874,39 @@ function replay(
           category.id,
           safe((cashByCategory.get(category.id) ?? 0) + transaction.amount),
         );
+        const key = creditKey(category.id, transaction.counterpartyName);
+        repaidByKey.set(
+          key,
+          safe((repaidByKey.get(key) ?? 0) + Math.max(0, transaction.amount)),
+        );
       }
       if (transaction.kind === "reimbursement" || transaction.kind === "income")
         continue;
       if (transaction.kind === "settlement") continue;
-      const accountingLines = counterpartyLines(transaction).flatMap((line) => {
-        const share = line.counterpartyShare;
-        if (!share) return [line];
-        const contribution = shareContribution(line.amount, share);
-        const counterparty = accounts.get(share.accountId)!;
-        counterparty.balance = safe(counterparty.balance + contribution);
-        const paired = budget.categories.find(
-          (item) => item.counterpartyAccountId === share.accountId,
-        )!;
-        return [
-          {
-            categoryId: line.categoryId,
-            amount: safe(line.amount + contribution),
-          },
-          { categoryId: paired.id, amount: -contribution },
-        ];
-      });
-      for (const { categoryId, amount } of accountingLines) {
+      const accountingLines = counterpartyLines(transaction).flatMap(
+        (line): { categoryId: string; amount: number; key?: string }[] => {
+          const share = line.counterpartyShare;
+          if (!share) return [line];
+          const contribution = shareContribution(line.amount, share);
+          const counterparty = accounts.get(share.accountId)!;
+          counterparty.balance = safe(counterparty.balance + contribution);
+          const paired = budget.categories.find(
+            (item) => item.counterpartyAccountId === share.accountId,
+          )!;
+          return [
+            {
+              categoryId: line.categoryId,
+              amount: safe(line.amount + contribution),
+            },
+            {
+              categoryId: paired.id,
+              amount: -contribution,
+              key: creditKey(paired.id, share.counterpartyName),
+            },
+          ];
+        },
+      );
+      for (const { categoryId, amount, key } of accountingLines) {
         const state = categories.get(categoryId)!;
         state.activity = safe(state.activity + amount);
         state.available = safe(state.available + amount);
@@ -1896,9 +1918,10 @@ function replay(
           );
         } else {
           const cards =
-            creditByCategory.get(categoryId) ?? new Map<string, number>();
+            creditByCategory.get(key ?? categoryId) ??
+            new Map<string, number>();
           cards.set(account.id, safe((cards.get(account.id) ?? 0) - amount));
-          creditByCategory.set(categoryId, cards);
+          creditByCategory.set(key ?? categoryId, cards);
         }
       }
     }
@@ -1942,6 +1965,7 @@ function replay(
     const liquidity = new Map<string, number>();
     const purchases: {
       categoryId: string;
+      key: string;
       cardId: string;
       remaining: number;
     }[] = [];
@@ -1958,12 +1982,41 @@ function replay(
             (cashByCategory.get(categoryId) ?? 0),
         ),
       );
-      for (const [cardId, amount] of creditByCategory.get(categoryId) ?? []) {
+    }
+    for (const [key, cards] of creditByCategory) {
+      const categoryId = creditCategory(key);
+      if (!liquidity.has(categoryId)) continue;
+      for (const [cardId, amount] of cards) {
         if (amount > 0)
-          purchases.push({ categoryId, cardId, remaining: amount });
+          purchases.push({ categoryId, key, cardId, remaining: amount });
         if (amount < 0)
           refunds.push({ categoryId, cardId, remaining: -amount });
       }
+    }
+    const fund = (purchase: (typeof purchases)[number], amount: number) => {
+      const card = accounts.get(purchase.cardId)!;
+      card.reserve = safe(card.reserve + amount);
+      card.fundedSpending = safe(card.fundedSpending + amount);
+      liquidity.set(
+        purchase.categoryId,
+        safe(liquidity.get(purchase.categoryId)! - amount),
+      );
+      purchase.remaining = safe(purchase.remaining - amount);
+      paymentNeeds.set(
+        purchase.cardId,
+        Math.max(0, (paymentNeeds.get(purchase.cardId) ?? 0) - amount),
+      );
+    };
+    // A repayment first funds the cards its payer's shares were fronted on;
+    // only the rest restores the envelope's cash.
+    for (const purchase of [...purchases].sort(
+      (a, b) => a.key.localeCompare(b.key) || a.cardId.localeCompare(b.cardId),
+    )) {
+      const repaid = repaidByKey.get(purchase.key) ?? 0;
+      const amount = Math.min(purchase.remaining, repaid);
+      if (!amount) continue;
+      fund(purchase, amount);
+      repaidByKey.set(purchase.key, safe(repaid - amount));
     }
     let moved = true;
     let pass = 0;
@@ -1976,7 +2029,7 @@ function replay(
           (paymentNeeds.get(b.cardId) ?? 0) -
             (paymentNeeds.get(a.cardId) ?? 0) ||
           a.cardId.localeCompare(b.cardId) ||
-          a.categoryId.localeCompare(b.categoryId),
+          a.key.localeCompare(b.key),
       );
       for (const purchase of purchases) {
         const amount = Math.min(
@@ -1984,18 +2037,7 @@ function replay(
           Math.max(0, liquidity.get(purchase.categoryId) ?? 0),
         );
         if (!amount) continue;
-        const card = accounts.get(purchase.cardId)!;
-        card.reserve = safe(card.reserve + amount);
-        card.fundedSpending = safe(card.fundedSpending + amount);
-        liquidity.set(
-          purchase.categoryId,
-          safe(liquidity.get(purchase.categoryId)! - amount),
-        );
-        purchase.remaining -= amount;
-        paymentNeeds.set(
-          purchase.cardId,
-          Math.max(0, (paymentNeeds.get(purchase.cardId) ?? 0) - amount),
-        );
+        fund(purchase, amount);
         moved = true;
       }
       for (const refund of refunds) {
@@ -2023,16 +2065,8 @@ function replay(
       categories.get(refund.categoryId)!.available = safe(
         categories.get(refund.categoryId)!.available - refund.remaining,
       );
-    for (const [categoryId, amount] of liquidity) {
-      const state = categories.get(categoryId)!;
-      const priorCashDeficit = index.category(categoryId).counterpartyAccountId
-        ? Math.max(
-            0,
-            -state.opening - (priorCounterpartyCredit.get(categoryId) ?? 0),
-          )
-        : 0;
-      state.cashOverspending = Math.max(0, -amount - priorCashDeficit);
-    }
+    for (const [categoryId, amount] of liquidity)
+      categories.get(categoryId)!.cashOverspending = Math.max(0, -amount);
     for (const transfer of debtTransfers) {
       const from = accounts.get(transfer.from)!;
       const to = accounts.get(transfer.to)!;
@@ -2060,8 +2094,52 @@ function replay(
         state.reserve - reserveBeforePayments.get(account.id)!,
       );
     }
+    // Paired envelope card spending still unfunded carries into later months.
+    // Card debt that cash paid before a reserve funded it is cash-backed now,
+    // so it leaves the carried credit and the payment's shortfall.
+    for (const purchase of purchases) {
+      if (
+        !purchase.remaining ||
+        !index.category(purchase.categoryId).counterpartyAccountId
+      )
+        continue;
+      const cards =
+        carriedCounterpartyCredit.get(purchase.key) ??
+        new Map<string, number>();
+      cards.set(
+        purchase.cardId,
+        safe((cards.get(purchase.cardId) ?? 0) + purchase.remaining),
+      );
+      carriedCounterpartyCredit.set(purchase.key, cards);
+    }
+    for (const transfer of debtTransfers) {
+      let remaining = transfer.amount;
+      for (const cards of carriedCounterpartyCredit.values()) {
+        const moved = Math.min(remaining, cards.get(transfer.from) ?? 0);
+        if (!moved) continue;
+        cards.set(transfer.from, cards.get(transfer.from)! - moved);
+        cards.set(transfer.to, safe((cards.get(transfer.to) ?? 0) + moved));
+        remaining -= moved;
+      }
+    }
+    for (const account of budget.accounts.filter(
+      (item) => item.kind === "credit",
+    )) {
+      const state = accounts.get(account.id)!;
+      let remainingDebt = Math.max(0, -state.balance - state.reserve);
+      for (const cards of carriedCounterpartyCredit.values()) {
+        const debt = Math.min(cards.get(account.id) ?? 0, remainingDebt);
+        paidCashShortfall = Math.max(
+          0,
+          safe(paidCashShortfall - ((cards.get(account.id) ?? 0) - debt)),
+        );
+        cards.set(account.id, debt);
+        remainingDebt -= debt;
+      }
+    }
     for (const [categoryId, state] of categories) {
-      if (index.category(categoryId).pairedAccountId) continue;
+      const category = index.category(categoryId);
+      if (category.pairedAccountId || category.counterpartyAccountId) continue;
       const amount = Math.min(
         paidCashShortfall,
         Math.max(0, -state.available - state.cashOverspending),
@@ -2096,42 +2174,6 @@ function replay(
         state.available = account.reserve;
         state.activity = safe(state.available - state.opening - state.assigned);
       }
-    for (const purchase of purchases) {
-      if (
-        !purchase.remaining ||
-        !index.category(purchase.categoryId).counterpartyAccountId
-      )
-        continue;
-      const cards =
-        carriedCounterpartyCredit.get(purchase.categoryId) ??
-        new Map<string, number>();
-      cards.set(
-        purchase.cardId,
-        safe((cards.get(purchase.cardId) ?? 0) + purchase.remaining),
-      );
-      carriedCounterpartyCredit.set(purchase.categoryId, cards);
-    }
-    for (const transfer of debtTransfers) {
-      let remaining = transfer.amount;
-      for (const cards of carriedCounterpartyCredit.values()) {
-        const moved = Math.min(remaining, cards.get(transfer.from) ?? 0);
-        if (!moved) continue;
-        cards.set(transfer.from, cards.get(transfer.from)! - moved);
-        cards.set(transfer.to, safe((cards.get(transfer.to) ?? 0) + moved));
-        remaining -= moved;
-      }
-    }
-    for (const account of budget.accounts.filter(
-      (item) => item.kind === "credit",
-    )) {
-      const state = accounts.get(account.id)!;
-      let remainingDebt = Math.max(0, -state.balance - state.reserve);
-      for (const cards of carriedCounterpartyCredit.values()) {
-        const debt = Math.min(cards.get(account.id) ?? 0, remainingDebt);
-        cards.set(account.id, debt);
-        remainingDebt -= debt;
-      }
-    }
     for (const category of budget.categories) {
       if (!category.counterpartyAccountId) continue;
       const state = categories.get(category.id)!;
@@ -2145,6 +2187,15 @@ function replay(
       state.available = safe(
         float - accounts.get(category.counterpartyAccountId)!.balance,
       );
+      // Whatever the envelope lacks beyond its unfunded card credit was paid
+      // in cash. It stays cash overspending until repaid or covered, since the
+      // envelope never clips and a repayment never reaches Ready to Assign.
+      const cardCredit = sum(
+        [...carriedCounterpartyCredit]
+          .filter(([key]) => creditCategory(key) === category.id)
+          .flatMap(([, cards]) => [...cards.values()]),
+      );
+      state.cashOverspending = Math.max(0, safe(-state.available - cardCredit));
     }
     snapshots.set(
       cursor,
