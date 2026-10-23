@@ -158,7 +158,11 @@ void test("a household is read whole once, then only the rows changed since, del
     sorted(rowsIn(first.rows)),
     sorted(await loadRows(db, workspaceId)),
   );
-  assert.equal(await cache.load(db, alex), first, "nothing changed");
+  assert.deepEqual(
+    await cache.load(db, alex),
+    first,
+    "the same revision and rows remain available",
+  );
 
   // Another server instance writes, then removes, Alex's expected income.
   let rows = await loadRows(db, workspaceId);

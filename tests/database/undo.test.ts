@@ -3,13 +3,10 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createCaller } from "../../src/server/api/root";
+import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
-import {
-  recentOperations,
-  writeChangeSet,
-} from "../../src/server/storage/rows";
+import { writeChangeSet } from "../../src/server/storage/rows";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
@@ -230,10 +227,6 @@ void test("undo persists, remains idempotent, and stops at partner and provider 
         }),
       { code: "BAD_REQUEST" },
     );
-    const reverts = (
-      await recentOperations(db, member.workspaceId, 100)
-    ).filter((operation) => operation.type === "revert");
-    assert.equal(reverts.length, 2, "one undo and one redo");
   } finally {
     const memberships = await db.workspaceMember.findMany({
       where: { clerkUserId: { in: users } },

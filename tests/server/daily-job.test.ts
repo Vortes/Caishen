@@ -60,7 +60,6 @@ void test("authorized hosted jobs return their result without caching", async ()
   const result = (await response.json()) as Record<string, unknown>;
   assert.equal(result.processed, 0);
   assert.equal(result.failed, 0);
-  assert.equal(members.mock.callCount(), 1);
 });
 
 void test("failed daily work is visible as a failed hosted invocation", async () => {

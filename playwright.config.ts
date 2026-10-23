@@ -16,6 +16,7 @@ export default defineConfig({
     { name: "api-smoke", testMatch: "api-authorization.spec.ts" },
   ],
   webServer: {
+    env: { CLERK_WEBHOOK_SIGNING_SECRET: "" },
     command: `npm run dev -- --hostname ${environment.hostname} --port ${environment.port}`,
     url: `${environment.baseURL}${shellPath}`,
     reuseExistingServer: false,

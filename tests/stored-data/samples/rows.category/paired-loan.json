@@ -1,0 +1,8 @@
+{
+  "id": "car-loan",
+  "name": "Car loan",
+  "group": "Debt",
+  "pairedLoanId": "loan-car",
+  "userId": "alex",
+  "sort": 0
+}

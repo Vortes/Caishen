@@ -1,0 +1,16 @@
+{
+  "id": "returned-supplies",
+  "accountId": "checking",
+  "date": "2026-08-01",
+  "amount": 500,
+  "payee": "Office shop",
+  "status": "posted",
+  "expenseMonth": "2026-08",
+  "revision": 2,
+  "reviewed": true,
+  "kind": "refund",
+  "userId": "alex",
+  "sort": 0,
+  "categoryId": "shopping",
+  "refundOfTransactionId": "office-supplies"
+}

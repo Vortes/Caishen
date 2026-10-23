@@ -1,0 +1,13 @@
+{
+  "status": "discrepancy",
+  "differenceCents": 1000,
+  "reasons": [],
+  "missingFromLedger": [],
+  "missingFromStatement": [
+    {
+      "amountCents": -1000,
+      "date": "2026-10-17",
+      "description": "Lunch"
+    }
+  ]
+}

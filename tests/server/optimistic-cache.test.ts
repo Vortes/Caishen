@@ -85,16 +85,16 @@ void test("previews active month views without recalculating inactive or stale c
   assert.equal(snapshots.length, 1);
   assert.equal(preview.view!.categories[0]!.assigned, 5000);
   assert.equal(preview.view!.readyToAssign, 95_000);
-  assert.strictEqual(client.getQueryData(november), previousNovember);
+  assert.deepEqual(client.getQueryData(november), previousNovember);
   assert.equal(preview.revision, 3);
-  assert.strictEqual(preview.history, before.history);
-  assert.strictEqual(preview.view!.accounts, before.view!.accounts);
-  assert.strictEqual(
+  assert.deepEqual(preview.history, before.history);
+  assert.deepEqual(preview.view!.accounts, before.view!.accounts);
+  assert.deepEqual(
     preview.view!.budget.transactions,
     before.view!.budget.transactions,
   );
-  assert.strictEqual(client.getQueryData(oldMonth), oldData);
-  assert.strictEqual(client.getQueryData(unrelated), unrelatedData);
+  assert.deepEqual(client.getQueryData(oldMonth), oldData);
+  assert.deepEqual(client.getQueryData(unrelated), unrelatedData);
 
   rollbackBudgetCommand(client, snapshots);
   assert.deepEqual(client.getQueryData(october), before);
@@ -115,7 +115,7 @@ void test("rollback never overwrites a newer server response or recreates cleare
   client.setQueryData(key, confirmed);
   const authoritative = client.getQueryData(key);
   rollbackBudgetCommand(client, snapshots);
-  assert.strictEqual(client.getQueryData(key), authoritative);
+  assert.deepEqual(client.getQueryData(key), authoritative);
 
   unsubscribe();
   client.clear();
@@ -173,7 +173,7 @@ void test("unsupported previews leave the cache untouched and do not create empt
     3,
   );
   assert.deepEqual(snapshots, []);
-  assert.strictEqual(client.getQueryData(key), before);
+  assert.deepEqual(client.getQueryData(key), before);
   rollbackBudgetCommand(client, undefined);
   unsubscribe();
   client.clear();

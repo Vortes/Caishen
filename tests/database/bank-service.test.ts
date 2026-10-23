@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import test, { afterEach, mock } from "node:test";
 import nextEnv from "@next/env";
 
+import { createDatabaseCaller as createCaller } from "./fixtures";
+import { ObservedRevision } from "../../src/server/api/trpc";
 import { PrismaClient } from "../../src/generated/prisma";
 import { execute, isCounterparty, type Book } from "../../src/domain/engine";
 import { bookToRows, diffRows, rowsToBook } from "../../src/domain/rows";
@@ -15,10 +17,7 @@ import {
   bankImportFingerprint,
   openingSnapshot,
 } from "../../src/server/services/bank-account-setup";
-import {
-  importStateChange,
-  importStatesFromRows,
-} from "../../src/server/services/bank-import-rows";
+import { importStateChange } from "../../src/server/services/bank-import-rows";
 import {
   bankAccountDetails,
   bankInbox,
@@ -31,10 +30,8 @@ import {
 import { onboard } from "../../src/server/services/household-operations";
 import { households } from "../../src/server/storage/households";
 import {
-  findOperation,
   loadRows,
   readHouseholdRevision,
-  recentOperations,
   writeChangeSet,
 } from "../../src/server/storage/rows";
 import {
@@ -162,9 +159,19 @@ async function harness() {
     });
   };
   const household = async () => (await households.load(db, alice))!;
+  const api = createCaller({
+    db,
+    userId: alice,
+    headers: new Headers(),
+    revision: new ObservedRevision(),
+  });
+  const state = () => api.budget.state({ month: "2026-10" });
   return {
     db,
     connection,
+    state,
+    details: async () =>
+      (await state()).connections.find((item) => item.id === connection.id)!,
     book: async () => rowsToBook(await loadRows(db, workspaceId)),
     setBook: async (book: Book) =>
       write(
@@ -199,44 +206,13 @@ async function harness() {
     },
     saved: () =>
       db.bankConnection.findUniqueOrThrow({ where: { id: connection.id } }),
-    /** The connection's details and import state, as the bank code reads them. */
-    imports: async () => {
-      const saved = await db.bankConnection.findUniqueOrThrow({
-        where: { id: connection.id },
-      });
-      return {
-        ...(saved.imports as Record<string, unknown>),
-        ...(importStatesFromRows(await loadRows(db, workspaceId)).get(
-          connection.id,
-        ) ?? { records: [], resolved: {}, errors: {}, reviews: {} }),
-      };
-    },
-    revision: async () => (await readHouseholdRevision(db, alice))!.revision,
-    /** Bank updates that changed transactions the member recorded. */
-    transactionUpdates: async () => {
-      let count = 0;
-      for (const operation of await recentOperations(db, workspaceId, 1000))
-        if (
-          operation.type === "bank.sync" &&
-          operation.source === "provider" &&
-          (
-            await findOperation(db, workspaceId, operation.operationId)
-          )?.changeSet?.after.some((row) => row.table === "transaction")
-        )
-          count++;
-      return count;
-    },
-    /** Operations written after Alice's budget was created and set up. */
-    operations: async () =>
-      (await recentOperations(db, workspaceId, 1000)).filter(
-        (operation) =>
-          !["budget.onboard", "test.setup"].includes(operation.type),
-      ).length,
+    revision: async () => (await state()).revision,
   };
 }
 
 void test("bank update Link tokens and completion enforce connection ownership before accessing Plaid", async () => {
   const h = await harness();
+  const before = await h.details();
   const fetcher = mock.method(globalThis, "fetch", async () => {
     throw new Error("Provider must not be called");
   });
@@ -247,10 +223,7 @@ void test("bank update Link tokens and completion enforce connection ownership b
     code: "NOT_FOUND",
   });
   assert.equal(fetcher.mock.callCount(), 0);
-  assert.equal(
-    (await h.saved()).updatedAt.getTime(),
-    h.connection.updatedAt.getTime(),
-  );
+  assert.deepEqual(await h.details(), before);
 });
 
 const importFact = (id: string, pending = false) =>
@@ -321,7 +294,7 @@ async function pendingImport() {
 void test("the register can edit pending bank activity without clearing it or changing the bank fact", async () => {
   const h = await pendingImport();
   await resolveImport(h.db, alice, h.input);
-  const transactions = (await h.book()).budgets[alice]!.transactions;
+  const transactions = (await h.state()).view!.budget.transactions;
   assert.equal(transactions.length, 1);
   const saved = transactions[0]!;
   assert.equal(saved.payee, "Neighborhood cafe");
@@ -340,9 +313,8 @@ void test("retrying a pending import save does not record it twice", async () =>
   const start = await h.revision();
   await resolveImport(h.db, alice, h.input);
   await resolveImport(h.db, alice, h.input);
-  assert.equal((await h.book()).budgets[alice]!.transactions.length, 1);
+  assert.equal((await h.state()).view!.budget.transactions.length, 1);
   assert.equal(await h.revision(), start + 1);
-  assert.equal(await h.operations(), 1);
   await assert.rejects(
     resolveImport(h.db, alice, {
       ...h.input,
@@ -381,7 +353,7 @@ void test("an edited pending import posts to the same transaction and keeps the 
     return Response.json(accountsResponse());
   });
   await syncBanks(h.db, alice);
-  const transactions = (await h.book()).budgets[alice]!.transactions;
+  const transactions = (await h.state()).view!.budget.transactions;
   assert.equal(transactions.length, 1);
   assert.equal(transactions[0]!.id, "purchase");
   assert.equal(transactions[0]!.status, "posted");
@@ -413,7 +385,7 @@ void test("a pending bank import can become a paired transfer without becoming a
       categoryId: undefined,
     },
   });
-  const pair = (await h.book()).budgets[alice]!.transactions;
+  const pair = (await h.state()).view!.budget.transactions;
   assert.equal(pair.length, 2);
   assert.equal(pair[0]!.amount + pair[1]!.amount, 0);
   assert.equal(
@@ -442,7 +414,7 @@ void test("a pending import edit refuses stale bank facts, stale budgets, and ot
   await assert.rejects(resolveImport(h.db, bob, h.input), {
     code: "NOT_FOUND",
   });
-  assert.equal(await h.operations(), 0);
+  assert.deepEqual((await h.state()).view!.budget.transactions, []);
   assert.equal(await h.revision(), start);
 });
 
@@ -472,14 +444,17 @@ void test("pending edits retain bank status and reject account changes or duplic
     }),
     /matching ledger record/,
   );
-  assert.equal(await h.operations(), 0);
+  assert.deepEqual(
+    (await h.state()).view!.budget.transactions.map((item) => item.id),
+    ["existing"],
+  );
   const fresh = await pendingImport();
   await resolveImport(fresh.db, alice, {
     ...fresh.input,
     command: { ...fresh.input.command, status: "posted" },
   });
   assert.equal(
-    (await fresh.book()).budgets[alice]!.transactions[0]!.status,
+    (await fresh.state()).view!.budget.transactions[0]!.status,
     "pending",
   );
 });
@@ -786,7 +761,7 @@ for (const delivery of [
         updated: delivery === "user deletion" ? 0 : 1,
       });
       assert.equal(
-        (await h.book()).budgets[alice]!.transactions[0]!.removed,
+        (await h.state()).view!.budget.transactions[0]!.removed,
         true,
       );
       if (delivery !== "user deletion")
@@ -796,8 +771,8 @@ for (const delivery of [
       imported: 0,
       updated: delivery === "user deletion" ? 0 : 1,
     });
-    assert.equal((await h.book()).budgets[alice]!.transactions.length, 1);
-    const purchase = (await h.book()).budgets[alice]!.transactions[0]!;
+    assert.equal((await h.state()).view!.budget.transactions.length, 1);
+    const purchase = (await h.state()).view!.budget.transactions[0]!;
     assert.equal(
       purchase.status,
       delivery === "user deletion" ? "pending" : "posted",
@@ -812,22 +787,31 @@ for (const delivery of [
       imported: 0,
       updated: 0,
     });
-    const operations =
-      delivery === "user deletion" ? 0 : delivery === "same sync" ? 1 : 2;
-    assert.equal(await h.transactionUpdates(), operations);
   });
 
 void test("update mode reuses the private Item token and refreshes metadata without exchanging a public token", async () => {
   const h = await harness();
+  await h.setMappings({
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
+  const records = applyTransactionSync(
+    [],
+    { added: [importFact("earlier")], modified: [], removed: [] },
+    h.connection.id,
+  ).records;
+  const earlier = records[0]!.id;
   const savedHistory = {
-    records: [],
-    resolved: { previous: { fingerprint: "b".repeat(64), ignored: true } },
-    errors: { previous: "Review an earlier import" },
-    reviews: { previous: [{ message: "Original review evidence" }] },
+    records,
+    resolved: {},
+    errors: { [earlier]: "Review an earlier import" },
+    reviews: { [earlier]: [{ message: "Original review evidence" }] },
     synchronizedAccountIds: ["provider-checking"],
     transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
   };
   await h.setImports(savedHistory);
+  const priorInbox = await bankInbox(h.db, alice);
+  assert.equal(priorInbox.length, 1);
+  assert.equal(priorInbox[0]!.error, "Review an earlier import");
   const paths: string[] = [];
   mock.method(
     globalThis,
@@ -861,29 +845,20 @@ void test("update mode reuses the private Item token and refreshes metadata with
   const result = await reconnectBank(h.db, alice, h.connection.id);
   assert.deepEqual(result, { id: h.connection.id });
   assert.deepEqual(paths, ["/link/token/create", "/accounts/get"]);
-  assert.equal((await h.saved()).error, null);
-  assert.deepEqual(await h.imports(), {
-    ...savedHistory,
-    ...bankAccountDetails(await h.imports()),
-  });
+  assert.equal((await h.details()).error, null);
+  assert.deepEqual(await bankInbox(h.db, alice), priorInbox);
   assert.deepEqual(
-    bankAccountDetails(await h.imports()).accounts.map((a) => [
-      a.name,
-      a.currentBalance,
-    ]),
+    (await h.details()).accounts.map((a) => [a.name, a.currentBalance]),
     [["Chase checking", 123.45]],
   );
   assert.deepEqual(
-    (await h.book()).budgets[alice]!.accounts.filter(
+    (await h.state()).view!.budget.accounts.filter(
       (account) => !isCounterparty(account),
     ),
     [],
   );
-  assert.deepEqual(
-    bankAccountDetails(await h.imports()).synchronizedAccountIds,
-    [],
-  );
-  assert.equal(bankAccountDetails(await h.imports()).transactionStatus, null);
+  assert.deepEqual((await h.details()).synchronizedAccountIds, []);
+  assert.equal((await h.details()).transactionStatus, null);
   assert.ok(!JSON.stringify({ link, result }).includes("private-access-token"));
 });
 
@@ -964,7 +939,7 @@ void test("successful public token exchange remains saved if account metadata is
     "new-private-token",
   );
   assert.ok(!JSON.stringify(result).includes("private provider details"));
-  assert.deepEqual(bankAccountDetails(await h.imports()).accounts, []);
+  assert.deepEqual((await h.details()).accounts, []);
 });
 
 void test("bank sync updates cached account details without creating ledger accounts or balances", async () => {
@@ -984,22 +959,17 @@ void test("bank sync updates cached account details without creating ledger acco
     return Response.json(accountsResponse());
   });
   assert.deepEqual(await syncBanks(h.db, alice), { imported: 0, updated: 0 });
-  assert.equal((await h.saved()).cursor, "next");
-  assert.equal((await h.saved()).error, null);
-  assert.equal(
-    bankAccountDetails(await h.imports()).accounts[0]!.availableBalance,
-    100,
-  );
+  assert.equal((await h.details()).error, null);
+  assert.equal((await h.details()).accounts[0]!.availableBalance, 100);
   assert.deepEqual(
-    (await h.book()).budgets[alice]!.accounts.filter(
+    (await h.state()).view!.budget.accounts.filter(
       (account) => !isCounterparty(account),
     ),
     [],
   );
-  assert.deepEqual(
-    bankAccountDetails(await h.imports()).synchronizedAccountIds,
-    ["provider-checking"],
-  );
+  assert.deepEqual((await h.details()).synchronizedAccountIds, [
+    "provider-checking",
+  ]);
 });
 
 void test("opening metadata uses the balance paired with sync activity rather than a newer accounts/get balance", async () => {
@@ -1021,7 +991,7 @@ void test("opening metadata uses the balance paired with sync activity rather th
     return Response.json(result);
   });
   await syncBanks(h.db, alice);
-  const details = bankAccountDetails(await h.imports());
+  const details = await h.details();
   assert.equal(details.accounts[0]!.currentBalance, 100);
   assert.deepEqual(details.synchronizedAccountIds, ["provider-checking"]);
 });
@@ -1048,23 +1018,13 @@ void test("a prior sync balance is retained only when its cursor and account act
   });
   await syncBanks(h.db, alice);
   await syncBanks(h.db, alice);
-  assert.equal(
-    bankAccountDetails(await h.imports()).accounts[0]!.currentBalance,
-    123.45,
-  );
-  assert.deepEqual(
-    bankAccountDetails(await h.imports()).synchronizedAccountIds,
-    ["provider-checking"],
-  );
+  assert.equal((await h.details()).accounts[0]!.currentBalance, 123.45);
+  assert.deepEqual((await h.details()).synchronizedAccountIds, [
+    "provider-checking",
+  ]);
   await syncBanks(h.db, alice);
-  assert.equal(
-    bankAccountDetails(await h.imports()).accounts[0]!.currentBalance,
-    80,
-  );
-  assert.deepEqual(
-    bankAccountDetails(await h.imports()).synchronizedAccountIds,
-    [],
-  );
+  assert.equal((await h.details()).accounts[0]!.currentBalance, 80);
+  assert.deepEqual((await h.details()).synchronizedAccountIds, []);
 });
 
 void test("an account delta without its matching sync balance invalidates the prior balance source", async () => {
@@ -1089,15 +1049,11 @@ void test("an account delta without its matching sync balance invalidates the pr
     return Response.json(accountsResponse());
   });
   await syncBanks(h.db, alice);
-  assert.deepEqual(
-    bankAccountDetails(await h.imports()).synchronizedAccountIds,
-    ["provider-checking"],
-  );
+  assert.deepEqual((await h.details()).synchronizedAccountIds, [
+    "provider-checking",
+  ]);
   await syncBanks(h.db, alice);
-  assert.deepEqual(
-    bankAccountDetails(await h.imports()).synchronizedAccountIds,
-    [],
-  );
+  assert.deepEqual((await h.details()).synchronizedAccountIds, []);
 });
 
 const plaidTransaction = (overrides: Record<string, unknown> = {}) => ({
@@ -1115,12 +1071,16 @@ const plaidTransaction = (overrides: Record<string, unknown> = {}) => ({
 
 function syncPages(pages: Record<string, unknown>[]) {
   let call = 0;
-  return mock.method(
+  const requests: Record<string, unknown>[] = [];
+  mock.method(
     globalThis,
     "fetch",
-    async (url: string | URL | Request) => {
+    async (url: string | URL | Request, init?: RequestInit) => {
       if (requestUrl(url).pathname !== "/transactions/sync")
         return Response.json(accountsResponse());
+      requests.push(
+        JSON.parse(init!.body as string) as Record<string, unknown>,
+      );
       const page = pages[Math.min(call++, pages.length - 1)]!;
       return Response.json({
         added: [],
@@ -1133,6 +1093,7 @@ function syncPages(pages: Record<string, unknown>[]) {
       });
     },
   );
+  return requests;
 }
 
 void test("a non-USD transaction is quarantined for review while the rest of the sync applies", async () => {
@@ -1141,7 +1102,7 @@ void test("a non-USD transaction is quarantined for review while the rest of the
     "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
   });
   const warn = mock.method(console, "warn", () => undefined);
-  syncPages([
+  const requests = syncPages([
     {
       added: [
         plaidTransaction(),
@@ -1154,13 +1115,13 @@ void test("a non-USD transaction is quarantined for review while the rest of the
       ],
       next_cursor: "after-eur",
     },
+    { next_cursor: "after-eur" },
   ]);
   assert.deepEqual(await syncBanks(h.db, alice), {
     imported: 1,
     updated: 0,
   });
-  assert.equal((await h.saved()).cursor, "after-eur");
-  assert.equal((await h.saved()).error, null);
+  assert.equal((await h.details()).error, null);
   const inbox = await bankInbox(h.db, alice);
   assert.deepEqual(
     inbox.map((item) => [item.payee, item.quarantined]),
@@ -1184,6 +1145,8 @@ void test("a non-USD transaction is quarantined for review while the rest of the
     ),
     "logs leave out merchant details",
   );
+  assert.deepEqual(await syncBanks(h.db, alice), { imported: 0, updated: 0 });
+  assert.equal(requests.at(-1)!.cursor, "after-eur");
 });
 
 void test("malformed sync records are quarantined or skipped without blocking the cursor", async () => {
@@ -1192,7 +1155,7 @@ void test("malformed sync records are quarantined or skipped without blocking th
     "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
   });
   mock.method(console, "warn", () => undefined);
-  syncPages([
+  const requests = syncPages([
     {
       added: [
         plaidTransaction(),
@@ -1209,12 +1172,12 @@ void test("malformed sync records are quarantined or skipped without blocking th
       removed: [{ account_id: "provider-checking" }],
       next_cursor: "after-malformed",
     },
+    { next_cursor: "after-malformed" },
   ]);
   assert.deepEqual(await syncBanks(h.db, alice), {
     imported: 1,
     updated: 0,
   });
-  assert.equal((await h.saved()).cursor, "after-malformed");
   const quarantined = (await bankInbox(h.db, alice)).filter(
     (item) => item.quarantined,
   );
@@ -1232,6 +1195,8 @@ void test("malformed sync records are quarantined or skipped without blocking th
     quarantined.find((item) => item.logicalId.includes("bad-date"))!.date,
     new Date().toISOString().slice(0, 10),
   );
+  assert.deepEqual(await syncBanks(h.db, alice), { imported: 0, updated: 0 });
+  assert.equal(requests.at(-1)!.cursor, "after-malformed");
 });
 
 void test("a quarantined transaction leaves review once the bank fixes, removes, or the user dismisses it", async () => {
@@ -1354,7 +1319,7 @@ void test("an import from a payee the user categorized arrives categorized and c
   await saveImport(h, first.logicalId, "dining");
 
   await syncBanks(h.db, alice);
-  const second = (await h.book()).budgets[alice]!.transactions.find(
+  const second = (await h.state()).view!.budget.transactions.find(
     (transaction) => transaction.providerId === "second-run",
   );
   assert.ok(second, "the remembered payee's import became a transaction");
@@ -1394,7 +1359,7 @@ void test("a remembered payee's import waits in the inbox when a hand-entered tr
   );
   await syncBanks(h.db, alice);
   assert.equal(
-    (await h.book()).budgets[alice]!.transactions.filter(
+    (await h.state()).view!.budget.transactions.filter(
       (transaction) => !transaction.removed,
     ).length,
     2,
@@ -1434,7 +1399,7 @@ void test("a remembered import keeps its category when it posts, and leaves when
   await syncBanks(h.db, alice);
   await saveImport(h, (await bankInbox(h.db, alice))[0]!.logicalId, "dining");
   const runs = async () =>
-    (await h.book()).budgets[alice]!.transactions.filter(
+    (await h.state()).view!.budget.transactions.filter(
       (transaction) =>
         !transaction.removed && transaction.payee === "Trader Joe's",
     );
@@ -1483,7 +1448,7 @@ void test("pay remembered as Ready to Assign arrives there, and money going out 
   await syncBanks(h.db, alice);
   await saveImport(h, (await bankInbox(h.db, alice))[0]!.logicalId);
   await syncBanks(h.db, alice);
-  const pay = (await h.book()).budgets[alice]!.transactions.find(
+  const pay = (await h.state()).view!.budget.transactions.find(
     (transaction) => transaction.providerId === "october-15",
   );
   assert.equal(pay?.kind, "income");

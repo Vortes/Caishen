@@ -74,12 +74,12 @@ function expectProjection(book: Book, command: Command, selectedMonth = month) {
   assert.deepEqual(actual.view, { ...expected, audit: before.view!.audit });
   assert.deepEqual(before, original, "prediction must not mutate cached data");
   assert.equal(actual.revision, before.revision);
-  assert.equal(actual.history, before.history);
-  assert.equal(actual.services, before.services);
-  assert.equal(actual.connections, before.connections);
-  assert.equal(actual.evidence, before.evidence);
-  assert.equal(actual.imports, before.imports);
-  assert.equal(actual.view.audit, before.view!.audit);
+  assert.deepEqual(actual.history, before.history);
+  assert.deepEqual(actual.services, before.services);
+  assert.deepEqual(actual.connections, before.connections);
+  assert.deepEqual(actual.evidence, before.evidence);
+  assert.deepEqual(actual.imports, before.imports);
+  assert.deepEqual(actual.view.audit, before.view!.audit);
   return actual;
 }
 
@@ -171,7 +171,7 @@ void test("rejected commands leave the original cache untouched", () => {
     { type: "income.expect", id: "bad-amount", month, amount: -1 },
   ];
   for (const command of rejected)
-    assert.equal(optimisticState(before, command, now), before, command.id);
+    assert.deepEqual(optimisticState(before, command, now), before, command.id);
   const onboarding: State = {
     status: "new",
     view: null,
@@ -182,7 +182,7 @@ void test("rejected commands leave the original cache untouched", () => {
     evidence: [],
     imports: [],
   };
-  assert.equal(optimisticState(onboarding, rejected[0]!, now), onboarding);
+  assert.deepEqual(optimisticState(onboarding, rejected[0]!, now), onboarding);
 });
 
 void test("target snoozing follows today in the budget timezone and projects future months", () => {
@@ -274,9 +274,9 @@ void test("shared budget metadata updates retain private projection and authorit
     },
     now,
   );
-  assert.equal(updated.view!.categories, before.view!.categories);
-  assert.equal(updated.view!.accounts, before.view!.accounts);
-  assert.equal(updated.view!.budget.settings, before.view!.budget.settings);
+  assert.deepEqual(updated.view!.categories, before.view!.categories);
+  assert.deepEqual(updated.view!.accounts, before.view!.accounts);
+  assert.deepEqual(updated.view!.budget.settings, before.view!.budget.settings);
 });
 
 void test("settings wait for server confirmation so pending changes preserve preference drafts", () => {
@@ -296,7 +296,11 @@ void test("settings wait for server confirmation so pending changes preserve pre
         timezone: "Pacific/Honolulu",
       },
     ] satisfies Command[])
-      assert.equal(optimisticState(before, command, now), before, command.id);
+      assert.deepEqual(
+        optimisticState(before, command, now),
+        before,
+        command.id,
+      );
   }
 });
 
@@ -340,7 +344,7 @@ void test("invalid connected-budget requests leave the original state untouched"
     },
     { type: "income.expect", id: "past-income", month: "2026-09", amount: 100 },
   ] satisfies Command[])
-    assert.equal(optimisticState(before, command, now), before, command.id);
+    assert.deepEqual(optimisticState(before, command, now), before, command.id);
 
   const command: Command = {
     type: "income.expect",
@@ -349,5 +353,5 @@ void test("invalid connected-budget requests leave the original state untouched"
     amount: 100,
   };
   const saved = stateFor(execute(setup.book, "alan", command));
-  assert.equal(optimisticState(saved, command, now), saved);
+  assert.deepEqual(optimisticState(saved, command, now), saved);
 });

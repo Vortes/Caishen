@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { rowKey, rowOwner, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createCaller } from "../../src/server/api/root";
+import {
+  createDatabaseCaller as createCaller,
+  databaseClientBuild,
+} from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   BUDGET_MAINTENANCE_MESSAGE,
@@ -226,10 +229,15 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
     // Browsers get no rows that don't read: the owner's pull waits, the
     // partner's holds none of the owner's budget anyway.
     await assert.rejects(
-      alerts(() => alice.sync.pull({ since: null, clientBuild: "2:test" })),
+      alerts(() =>
+        alice.sync.pull({ since: null, clientBuild: databaseClientBuild }),
+      ),
       maintenance,
     );
-    const pulled = await bob.sync.pull({ since: null, clientBuild: "2:test" });
+    const pulled = await bob.sync.pull({
+      since: null,
+      clientBuild: databaseClientBuild,
+    });
     assert.ok(pulled.rows.length > 0);
     assert.ok(!pulled.rows.some((row) => rowOwner(row) === a));
 
@@ -344,7 +352,7 @@ void test("standing rules an earlier release stored still load, sync, and undo",
     assert.equal(state.status, "ready");
     const pulled = await alice.sync.pull({
       since: null,
-      clientBuild: "2:test",
+      clientBuild: databaseClientBuild,
     });
     assert.ok(pulled.rows.some((row) => row.id === rule.id && !row.deleted));
     ({ revision } = await alice.budget.execute({

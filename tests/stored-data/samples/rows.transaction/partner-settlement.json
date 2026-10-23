@@ -1,0 +1,16 @@
+{
+  "id": "settlement-received",
+  "accountId": "checking",
+  "date": "2026-08-01",
+  "amount": 1000,
+  "payee": "Jordan",
+  "status": "posted",
+  "expenseMonth": "2026-08",
+  "revision": 2,
+  "reviewed": true,
+  "kind": "reimbursement",
+  "userId": "alex",
+  "sort": 0,
+  "linkedCounterpartyAccountId": "counterparty:partner",
+  "partnerSettlementId": "settlement-1"
+}

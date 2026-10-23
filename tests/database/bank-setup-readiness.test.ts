@@ -4,7 +4,7 @@ import test, { afterEach, mock, type TestContext } from "node:test";
 
 import { createBook, isCounterparty } from "../../src/domain/engine";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createCaller } from "../../src/server/api/root";
+import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { bankSetupDate } from "../../src/server/services/bank-account-setup";

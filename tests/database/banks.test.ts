@@ -10,7 +10,7 @@ import {
   type Book,
   type Command,
 } from "../../src/domain/engine";
-import { createCaller } from "../../src/server/api/root";
+import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   applyTransactionSync,
@@ -21,9 +21,6 @@ import { commandHash, jsonValue } from "../../src/server/services/safety";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { createBankConnection, createHousehold } from "./fixtures";
-import { rowsToBook } from "../../src/domain/rows";
-import { importStatesFromRows } from "../../src/server/services/bank-import-rows";
-import { loadRows } from "../../src/server/storage/rows";
 
 assertDevelopmentDatabase(process.env);
 
@@ -613,10 +610,7 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
         boundary === "mapping" ? "race-account" : "race-checking";
       try {
         await db.user.create({ data: { clerkUserId: userId } });
-        const workspaceId = await createHousehold(
-          db,
-          fixtureBook(userId, "race"),
-        );
+        await createHousehold(db, fixtureBook(userId, "race"));
         await createBankConnection(db, {
           data: {
             id: connectionId,
@@ -713,11 +707,11 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
           results.filter((result) => result.status === "fulfilled").length,
           1,
         );
-        const [rows, connection] = await Promise.all([
-          loadRows(db, workspaceId),
-          db.bankConnection.findUniqueOrThrow({ where: { id: connectionId } }),
-        ]);
-        const budget = rowsToBook(rows).budgets[userId]!;
+        const saved = await api.budget.state({ month: "2026-10" });
+        const budget = saved.view!.budget;
+        const connection = saved.connections.find(
+          (item) => item.id === connectionId,
+        )!;
         const externalCommitted = results[0].status === "fulfilled";
         if (boundary === "mapping") {
           const mapping = bankMappingsSchema.parse(connection.accountMappings)[
@@ -729,10 +723,9 @@ for (const boundary of ["mapping", "existing transaction link"] as const)
             externalCommitted,
           );
         } else {
-          const resolved = importStatesFromRows(rows).get(connectionId)!;
           assert.equal(
-            Boolean(resolved.resolved[record.id]),
-            externalCommitted,
+            saved.imports.some((item) => item.logicalId === record.id),
+            !externalCommitted,
           );
           assert.equal(
             budget.transactions.some(

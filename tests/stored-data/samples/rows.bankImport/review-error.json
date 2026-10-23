@@ -1,0 +1,13 @@
+{
+  "userId": "alex",
+  "sort": 0,
+  "connectionId": "connection",
+  "logicalId": "pending-coffee",
+  "error": "Confirm the pending match.",
+  "reviews": [
+    {
+      "kind": "possible_pending_match",
+      "candidateIds": ["coffee"]
+    }
+  ]
+}

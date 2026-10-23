@@ -197,15 +197,20 @@ void test("setting a month's total assigns the difference and keeps one assignme
     [assigned("rent"), assigned("food"), assigned("gifts")],
     [15_000, 5_000, 0],
   );
-  assert.deepEqual(setup.book().budgets.alan!.assignments, [
-    { id: "operation-5", categoryId: "rent", month: "2026-10", amount: 15_000 },
-    {
-      id: "operation-9:to",
-      categoryId: "food",
-      month: "2026-10",
-      amount: 5_000,
-    },
-  ]);
+  assert.deepEqual(
+    setup
+      .book()
+      .budgets.alan!.assignments.map(({ categoryId, month, amount }) => ({
+        categoryId,
+        month,
+        amount,
+      })),
+    [
+      { categoryId: "rent", month: "2026-10", amount: 15_000 },
+      { categoryId: "food", month: "2026-10", amount: 5_000 },
+    ],
+  );
+  assert.equal(setup.view().readyToAssign, 80_000);
 });
 
 void test("setting a total checks the difference like any assignment", () => {

@@ -89,7 +89,7 @@ void test("purchases count in full, and refunds in the same category net against
   );
 });
 
-void test("only loan interest is spending, and income and removed purchases are not", () => {
+void test("only loan interest is spending, and income is not", () => {
   const setup = household();
   setup.run({
     type: "loan.add",
@@ -143,4 +143,32 @@ void test("entries fall in their expense period rather than their payment date",
     expenseMonth: "2026-11",
   });
   assert.equal(setup.entries()[0]?.month, "2026-11");
+});
+
+void test("removed purchases no longer count as personal spending", () => {
+  const setup = household();
+  for (const [transactionId, amount] of [
+    ["kept", -2_000],
+    ["removed", -8_000],
+  ] as const)
+    setup.run({
+      type: "transaction.upsert",
+      transactionId,
+      accountId: "checking",
+      date: "2026-10-04",
+      amount,
+      payee: "Market",
+      categoryId: "food",
+    });
+  assert.deepEqual(
+    setup.entries().map(({ amount }) => amount),
+    [2_000, 8_000],
+  );
+  setup.run({ type: "transaction.remove", transactionId: "removed" });
+  assert.deepEqual(
+    setup
+      .entries()
+      .map(({ transactionId, amount }) => ({ transactionId, amount })),
+    [{ transactionId: "kept", amount: 2_000 }],
+  );
 });

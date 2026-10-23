@@ -10,7 +10,10 @@ import {
 } from "../../src/domain/engine";
 import { bookToRows, tombstone, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createCaller } from "../../src/server/api/root";
+import {
+  createDatabaseCaller as createCaller,
+  databaseClientBuild as build,
+} from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { writeChangeSet } from "../../src/server/storage/rows";
@@ -31,7 +34,6 @@ assertDevelopmentDatabase(process.env);
 const db = new PrismaClient();
 const run = randomUUID();
 const month = "2026-10";
-const build = "2:test";
 const users: string[] = [];
 const workspaceIds: string[] = [];
 

@@ -1,0 +1,13 @@
+[
+  {
+    "lineId": "supplies",
+    "previous": {
+      "accountId": "counterparty:reimbursements",
+      "amount": 1000
+    },
+    "next": {
+      "accountId": "counterparty:reimbursements",
+      "amount": 1500
+    }
+  }
+]

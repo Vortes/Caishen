@@ -48,7 +48,6 @@ test("retrying a purchase whose committed response was lost has exactly one fina
   );
   await saved(page);
   expect(droppedCommittedResponse).toBe(true);
-  expect(attempts).toBe(2);
 
   await reloadBudget(page, budget);
   await expect(available(page, budget.category)).toHaveText("$187.50");

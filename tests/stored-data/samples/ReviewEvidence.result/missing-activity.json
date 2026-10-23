@@ -1,0 +1,23 @@
+{
+  "status": "discrepancy",
+  "differenceCents": 0,
+  "reasons": ["Cleared activity differs."],
+  "missingFromLedger": [
+    {
+      "amountCents": -1500,
+      "date": "2026-10-17",
+      "description": "Coffee",
+      "pending": false,
+      "reference": "bank-coffee"
+    }
+  ],
+  "missingFromStatement": [
+    {
+      "amountCents": -1500,
+      "date": "2026-10-17",
+      "description": "Lunch",
+      "pending": false,
+      "reference": "ledger-lunch"
+    }
+  ]
+}

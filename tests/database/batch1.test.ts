@@ -10,12 +10,11 @@ import {
 } from "../../src/domain/client-format";
 import { emailPreferenceToken } from "../../src/server/services/email-preferences";
 import { deletePersonalBudget } from "../../src/server/services/account-deletion";
+import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import type { Command } from "../../src/domain/engine";
 
-const database = new URL(process.env.BATCH1_TEST_DATABASE_URL!);
-assert.ok(["localhost", "127.0.0.1"].includes(database.hostname));
-assert.match(database.pathname, /^\/caishen_batch1_/);
-const db = new PrismaClient({ datasourceUrl: database.toString() });
+assertDevelopmentDatabase(process.env);
+const db = new PrismaClient();
 const users: string[] = [];
 const workspaces = new Set<string>();
 const caller = (userId: string) =>

@@ -19,18 +19,33 @@ import {
   savedReconciliationResult,
 } from "../../src/server/integrations/reconciliation";
 
-void test("development seeds are deterministic and preserve accounting and privacy rules", () => {
-  const options = { userId: "alex", partnerId: "jordan", asOf: "2026-10-17" };
+const options = { userId: "alex", partnerId: "jordan", asOf: "2026-10-17" };
+function seedFixture() {
   const seed = buildDevelopmentSeed(options);
+  return {
+    seed,
+    primary: projectBook(seed.book, "alex", seed.month),
+    partner: projectBook(seed.book, "jordan", seed.month),
+  };
+}
+
+void test("development seeds repeat exactly and load as a valid budget", () => {
+  const { seed } = seedFixture();
   assert.deepEqual(seed, buildDevelopmentSeed(options));
   assert.deepEqual(bookSchema.parse(seed.book), seed.book);
   assert.equal(seed.firstMonth, "2026-08");
-  const primary = projectBook(seed.book, "alex", seed.month);
-  const partner = projectBook(seed.book, "jordan", seed.month);
+});
+
+void test("the development budget provides cash and credit accounts with email disabled", () => {
+  const { primary, partner } = seedFixture();
   assert.ok(primary.accounts.some((account) => account.kind === "cash"));
   assert.ok(primary.accounts.some((account) => account.kind === "credit"));
   assert.equal(primary.budget.settings.emailEnabled, false);
   assert.equal(partner.budget.settings.emailEnabled, false);
+});
+
+void test("the development budget includes overspent categories", () => {
+  const { primary } = seedFixture();
   assert.ok(
     primary.categories.find((category) => category.id === "health")!.available <
       0,
@@ -39,11 +54,19 @@ void test("development seeds are deterministic and preserve accounting and priva
     primary.categories.find((category) => category.id === "shopping")!
       .available < 0,
   );
+});
+
+void test("the development budget includes a snoozed target", () => {
+  const { seed, primary } = seedFixture();
   assert.ok(
     primary.categories
       .find((category) => category.id === "travel")!
       .target?.snoozedMonths.includes(seed.month),
   );
+});
+
+void test("the development budget includes fixed and variable-rate loans", () => {
+  const { primary } = seedFixture();
   assert.equal(
     primary.budget.loans.find((loan) => loan.id === "student")?.rates.length,
     2,
@@ -52,6 +75,10 @@ void test("development seeds are deterministic and preserve accounting and priva
     primary.budget.loans.find((loan) => loan.id === "personal")?.rates.length,
     1,
   );
+});
+
+void test("the development budget retains correction, merge and removal history", () => {
+  const { primary } = seedFixture();
   assert.ok(
     primary.audit.some(
       (entry) => entry.type === "cover" && entry.source === "user",
@@ -75,6 +102,10 @@ void test("development seeds are deterministic and preserve accounting and priva
     )?.removed,
     true,
   );
+});
+
+void test("the development budget has no purchases waiting for category approval", () => {
+  const { primary, partner } = seedFixture();
   for (const view of [primary, partner])
     assert.equal(
       view.budget.transactions.filter(
@@ -82,6 +113,10 @@ void test("development seeds are deterministic and preserve accounting and priva
       ).length,
       0,
     );
+});
+
+void test("the development budget includes pending income and agent categorization", () => {
+  const { primary } = seedFixture();
   assert.ok(
     primary.budget.transactions.some(
       (transaction) =>
@@ -94,7 +129,15 @@ void test("development seeds are deterministic and preserve accounting and priva
         entry.type === "transaction.upsert" && entry.source === "agent",
     ),
   );
+});
+
+void test("the development budget keeps unrelated partner purchases private", () => {
+  const { partner } = seedFixture();
   assert.ok(!JSON.stringify(partner).includes("Cedar Labs · conference hotel"));
+});
+
+void test("the development budget carries savings forward without carrying cash overspending", () => {
+  const { seed } = seedFixture();
   const nextMonth = projectBook(seed.book, "alex", "2026-11");
   assert.ok(
     nextMonth.categories.find((category) => category.id === "emergency")!

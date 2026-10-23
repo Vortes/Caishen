@@ -9,6 +9,10 @@ import { createTRPCClient, httpLink } from "@trpc/client";
 import { randomUUID } from "node:crypto";
 import superjson from "superjson";
 
+import {
+  CLIENT_FORMAT,
+  CLIENT_FORMAT_HEADER,
+} from "../../src/domain/client-format";
 import type { Command } from "../../src/domain/engine";
 import { PrismaClient } from "../../src/generated/prisma/index.js";
 import type { AppRouter } from "../../src/server/api/root";
@@ -103,13 +107,16 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
             await page.goto(shellPath);
             await clerk.signIn({ page, emailAddress: email });
             await expect(
-              page.getByText("You don’t have a budget yet."),
+              page.getByRole("heading", {
+                name: "Welcome. Let’s set up your budget.",
+              }),
             ).toBeVisible();
             const api = createTRPCClient<AppRouter>({
               links: [
                 httpLink({
                   url: `${baseURL}/api/trpc`,
                   transformer: superjson,
+                  headers: { [CLIENT_FORMAT_HEADER]: String(CLIENT_FORMAT) },
                   fetch: async (url, options) => {
                     const address =
                       typeof url === "string"

@@ -76,6 +76,14 @@ function everyRow(): WireRow[] {
     const row = rows.find((item) => item.table === table)!;
     rows.push({ ...row, data: { ...row.data!, ...fields } } as WireRow);
   };
+  rows.push({
+    table: "payeeMemory",
+    id: rowKey("alex", "coffee shop"),
+    revision: 0,
+    deleted: false,
+    data: sample("rows.payeeMemory/category.json"),
+  } as WireRow);
+  extend("category", { counterpartyAccountId: "partner" });
   extend("target", { cadence: "monthly", monthDay: 15 });
   extend("transaction", {
     providerId: "plaid:item:transaction",
