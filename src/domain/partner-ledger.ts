@@ -287,7 +287,7 @@ export type PartnerLedgerRow = {
   change: number;
   balance: number;
   categoryId?: string;
-  // The viewer's payee memory for an entry they still need to categorize.
+  // The viewer's payee memory for an entry they haven't categorized.
   suggestedCategoryId?: string;
   needsCategory: boolean;
   // The viewer's own transaction and line, when they paid.
@@ -390,9 +390,10 @@ export function partnerLedgerRows(
       partner: paid ? entry.share : shared - entry.share,
       change: mirroredChange(entry, viewerId),
       categoryId,
-      suggestedCategoryId: needsCategory
-        ? rememberedSpendingCategory(budget, entry.payee)
-        : undefined,
+      suggestedCategoryId:
+        needsCategory || (paid && !categoryId)
+          ? rememberedSpendingCategory(budget, entry.payee)
+          : undefined,
       needsCategory,
       entryId: entry.id,
       awaitingImport: awaitingImport(entry),
@@ -412,8 +413,8 @@ export function partnerLedgerRows(
 
 // The spending category the viewer last gave this payee, which prefills
 // their side of a partner's purchase.
-function rememberedSpendingCategory(
-  budget: Budget,
+export function rememberedSpendingCategory(
+  budget: Pick<Budget, "payeeMemory" | "categories">,
   payee: string,
 ): string | undefined {
   const memory = budget.payeeMemory?.[payeeKey(payee)];
@@ -494,6 +495,32 @@ export function writeEntry(
     ...(changed.length ? { changes: changed } : {}),
   });
   delete tracked.removed;
+}
+
+/**
+ * Links an entry recorded before its payer's import to that import's line,
+ * whose facts it takes from then on, recording what changed.
+ */
+export function matchEntry(
+  changes: Changes,
+  entry: PartnerEntry,
+  facts: EntryFacts,
+  write: LedgerWrite,
+): void {
+  const changed = PARTNER_HISTORY_FIELDS.flatMap((field) =>
+    entry[field] === facts[field]
+      ? []
+      : [{ field, previous: entry[field], next: facts[field] }],
+  );
+  const tracked = changes.partnerEntry(entry);
+  Object.assign(tracked, facts);
+  tracked.history.push({
+    actorId: write.actorId,
+    operationId: write.operationId,
+    ...(write.at ? { at: write.at } : {}),
+    reason: "matched",
+    ...(changed.length ? { changes: changed } : {}),
+  });
 }
 
 function removeEntry(
