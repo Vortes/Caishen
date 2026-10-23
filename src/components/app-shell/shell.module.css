@@ -408,7 +408,7 @@
 }
 .monthButton {
   height: var(--size-control-sm);
-  padding: 0 8px;
+  padding: 0 2px;
   border: 0;
   border-radius: 6px;
   background: transparent;

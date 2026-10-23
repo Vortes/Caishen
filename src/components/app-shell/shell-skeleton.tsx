@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { Property } from "./cards";
 import { autoAssignOptions } from "./inspector";
+import { MonthLabel } from "./month-picker";
 import { findPalette, paletteVars } from "./palettes";
 import type { Settings } from "./settings";
 import { Caret } from "./sidebar";
@@ -155,7 +156,9 @@ export function ShellSkeleton({
                   <ChevronLeftIcon aria-hidden />
                 </IconButton>
                 <span className={`${styles.monthButton} ${skeleton.month}`}>
-                  {hydrated ? month : <Skeleton width={88} />}
+                  <MonthLabel year={month.slice(-4)}>
+                    {hydrated ? month : <Skeleton width={88} />}
+                  </MonthLabel>
                 </span>
                 <IconButton label="Next month">
                   <ChevronRightIcon aria-hidden />

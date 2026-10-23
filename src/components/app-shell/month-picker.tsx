@@ -6,7 +6,13 @@ import {
   ChevronRightIcon,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { moveMonth } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
@@ -49,7 +55,7 @@ const keyOf = (year: number, index: number) =>
 
 // The header's month: arrows step a month at a time, as before; the label
 // opens a dropdown that jumps to any month from the budget's first to five
-// years ahead.
+// years ahead. Away from the current month, Today brings it back.
 export function MonthNav({
   month,
   onChange,
@@ -59,6 +65,7 @@ export function MonthNav({
 }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const away = month.key !== month.current;
   const pick = (next: string) => {
     setOpen(false);
     onChange(next);
@@ -79,8 +86,7 @@ export function MonthNav({
             className={`${shellStyles.monthButton} ${styles.monthTrigger}`}
             aria-label={`${month.label}, choose a month`}
           >
-            {month.label}
-            <ChevronDownIcon size={12} aria-hidden />
+            <MonthLabel year={month.key.slice(0, 4)}>{month.label}</MonthLabel>
           </button>
         </Popover.Trigger>
         <Popover.Portal container={container}>
@@ -97,7 +103,7 @@ export function MonthNav({
             <div className={styles.pickerFooter}>
               <Button
                 size="sm"
-                disabled={month.key === month.current}
+                disabled={!away}
                 onClick={() => pick(month.current)}
               >
                 This month
@@ -113,7 +119,51 @@ export function MonthNav({
       >
         <ChevronRightIcon aria-hidden />
       </IconButton>
+      <div
+        className={styles.today}
+        data-shown={away || undefined}
+        inert={!away}
+      >
+        <Button
+          variant="quiet"
+          size="sm"
+          onClick={() => onChange(month.current)}
+        >
+          Today
+        </Button>
+      </div>
     </div>
+  );
+}
+
+// The label is as wide as the widest month name in that year, so the arrows
+// on either side never move as the month changes. Every name sits hidden in
+// the same grid cell to size it in the label's own font; they are drawn from
+// CSS so they never show up as text on the page.
+export function MonthLabel({
+  year,
+  children,
+}: {
+  year: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className={styles.labelSlot}>
+      {LONG.map((name) => (
+        <span
+          key={name}
+          className={styles.labelGhost}
+          data-text={`${name} ${year}`}
+          aria-hidden
+        >
+          <ChevronDownIcon size={12} />
+        </span>
+      ))}
+      <span className={styles.label}>
+        {children}
+        <ChevronDownIcon size={12} aria-hidden />
+      </span>
+    </span>
   );
 }
 
