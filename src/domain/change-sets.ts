@@ -124,7 +124,17 @@ export function changesOnlyBudgetOf(
   changeSet: ChangeSet,
   userId: string,
 ): boolean {
-  return changeSet.after.every((row) => rowOwner(row) === userId);
+  return changeSet.after.every(
+    (row, index) =>
+      rowOwner(row) === userId ||
+      // The payer's entries follow their own lines (partner-ledger.ts).
+      (row.table === "partnerEntry" &&
+        [row, changeSet.before[index]!].every(
+          (side) =>
+            side.data === null ||
+            (side.table === "partnerEntry" && side.data.payerId === userId),
+        )),
+  );
 }
 
 /**

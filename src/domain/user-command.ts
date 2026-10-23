@@ -31,6 +31,7 @@ export function prepareUserCommand(
     "card.credit",
     "reimbursement.receive",
     "counterparty.receive",
+    "partner.edit",
     "loan.payment",
     "settlement.record",
     "settlement.receive",
@@ -50,6 +51,7 @@ export function prepareUserCommand(
     command.type === "transaction.save" ||
     command.type === "transaction.upsert" ||
     command.type === "counterparty.receive" ||
+    command.type === "partner.edit" ||
     command.type === "transaction.merge" ||
     command.type === "transaction.remove" ||
     command.type === "transaction.reject" ||

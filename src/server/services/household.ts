@@ -248,6 +248,16 @@ async function commandChangeSet(
       );
     return reverted.changeSet;
   }
+  // A change to the partner's shared purchase changes their transaction,
+  // which a personal ledger doesn't hold.
+  if (
+    ledger.personal &&
+    command.type === "partner.edit" &&
+    ledger.state.partnerEntries?.some(
+      (entry) => entry.id === command.entryId && entry.payerId !== actorId,
+    )
+  )
+    throw new AccountingError(PARTNER_MAINTENANCE_MESSAGE);
   const result = executeWithChanges(
     ledger.state,
     actorId,
