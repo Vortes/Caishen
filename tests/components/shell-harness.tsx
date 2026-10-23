@@ -91,6 +91,7 @@ afterEach(() => {
 export async function renderShell(
   options: {
     book?: Book;
+    server?: FakeServer;
     seedCommands?: Command[];
     // Answers budget.execute; the fake server's answer unless a test holds
     // or fails it.
@@ -111,9 +112,11 @@ export async function renderShell(
     plan?: boolean;
   } = {},
 ) {
-  const server = new FakeServer(
-    options.book ?? budgetFixture({ seedCommands: options.seedCommands }),
-  );
+  const server =
+    options.server ??
+    new FakeServer(
+      options.book ?? budgetFixture({ seedCommands: options.seedCommands }),
+    );
   const execute = vi.fn(
     options.execute ??
       ((input: ExecuteInput) => server.execute("owner", input)),
@@ -168,7 +171,7 @@ export async function renderShell(
       }),
     }),
   });
-  render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <api.Provider client={client} queryClient={queryClient}>
         <LiveAppShell />
@@ -184,6 +187,11 @@ export async function renderShell(
     overview,
     resolveImport,
     queryClient,
+    reload: async (): Promise<void> => {
+      rendered.unmount();
+      queryClient.clear();
+      await renderShell({ ...options, server });
+    },
   };
 }
 
@@ -208,7 +216,7 @@ export async function findToast(
 export async function refocus() {
   await act(async () => {
     window.dispatchEvent(new Event("focus"));
-    document.dispatchEvent(new Event("visibilitychange"));
+    document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
     await Promise.resolve();
   });
 }

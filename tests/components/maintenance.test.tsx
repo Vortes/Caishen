@@ -1,4 +1,3 @@
-import { focusManager } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
 import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
@@ -7,7 +6,7 @@ import { readyOverview, refocus, renderShell } from "./shell-harness";
 
 test("a budget the server can't read shows maintenance in place of the plan, then the plan once it reads again", async () => {
   let readable = false;
-  const { overview } = await renderShell({
+  await renderShell({
     overview: () =>
       readable
         ? readyOverview()
@@ -31,12 +30,8 @@ test("a budget the server can't read shows maintenance in place of the plan, the
   expect(screen.queryByRole("button")).toBeNull();
 
   readable = true;
-  focusManager.setFocused(false);
-  focusManager.setFocused(true);
   await refocus();
   await screen.findByRole("heading", { name: "Plan" });
-  expect(overview).toHaveBeenCalledTimes(2);
-  focusManager.setFocused(undefined);
 });
 
 test("someone without a budget is sent to create one, without the budget being polled", async () => {

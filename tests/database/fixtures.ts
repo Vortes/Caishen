@@ -1,3 +1,12 @@
+import type { TestContext } from "node:test";
+import { PrismaClient as TestDatabase } from "../../src/generated/prisma";
+import { ObservedRevision } from "../../src/server/api/trpc";
+import type { Command } from "../../src/domain/engine";
+import { createCaller } from "../../src/server/api/root";
+import {
+  CLIENT_FORMAT,
+  CLIENT_FORMAT_HEADER,
+} from "../../src/domain/client-format";
 import { randomUUID } from "node:crypto";
 import { bookToRows } from "../../src/domain/rows";
 import type { Book } from "../../src/domain/engine";
@@ -88,4 +97,61 @@ export async function createBankConnection(
     data.id,
     data.imports as Partial<ImportRowState> & Record<string, unknown>,
   );
+}
+
+/** An API client speaking the same supported format as the browser. */
+export function createDatabaseCaller(
+  context: Extract<Parameters<typeof createCaller>[0], { headers: Headers }>,
+) {
+  const headers = new Headers(context.headers);
+  headers.set(CLIENT_FORMAT_HEADER, String(CLIENT_FORMAT));
+  return createCaller({ ...context, headers });
+}
+
+/** Fresh API users and budgets; each test owns and removes its data. */
+export async function apiFixture(t: TestContext, names = ["Alice"]) {
+  const db = new TestDatabase();
+  const users = names.map(() => `test-api-${randomUUID()}`);
+  const month = "2026-10";
+  t.after(async () => {
+    await db.reviewEvidence.deleteMany({
+      where: { clerkUserId: { in: users } },
+    });
+    await db.bankConnection.deleteMany({
+      where: { clerkUserId: { in: users } },
+    });
+    await db.workspace.deleteMany({
+      where: {
+        OR: [
+          { members: { some: { clerkUserId: { in: users } } } },
+          { budgetMembers: { some: { userId: { in: users } } } },
+        ],
+      },
+    });
+    await db.user.deleteMany({ where: { clerkUserId: { in: users } } });
+    await db.$disconnect();
+  });
+  const people = [];
+  for (const [index, userId] of users.entries()) {
+    const api = createDatabaseCaller({
+      db,
+      userId,
+      headers: new Headers(),
+      revision: new ObservedRevision(),
+    });
+    const state = () => api.budget.state({ month });
+    const run = async (command: Command) =>
+      api.budget.execute({
+        command,
+        clientId: "test",
+        baseRevision: (await state()).revision,
+      });
+    await api.budget.onboard({
+      name: names[index]!,
+      month,
+      timezone: "America/Los_Angeles",
+    });
+    people.push({ userId, api, state, run });
+  }
+  return { db, people, month };
 }

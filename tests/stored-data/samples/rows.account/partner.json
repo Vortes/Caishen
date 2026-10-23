@@ -1,0 +1,9 @@
+{
+  "id": "partner",
+  "name": "Partner",
+  "kind": "partner",
+  "openingBalance": 0,
+  "date": "2026-10-01",
+  "userId": "alex",
+  "sort": 3
+}

@@ -36,10 +36,6 @@ void test("OAuth return preserves the original user, token, expiration, and reco
   assert.deepEqual(readPlaidLinkSession(browser, session.userId, now), {
     session: { ...original, version: 1 },
   });
-  const persisted: unknown = JSON.parse(
-    browser.getItem(PLAID_LINK_SESSION_KEY)!,
-  );
-  assert.deepEqual(persisted, { ...original, version: 1 });
 });
 
 void test("expiry is enforced at the exact expiration boundary and expired data is removed", () => {
@@ -53,7 +49,10 @@ void test("expiry is enforced at the exact expiration boundary and expired data 
     ).error!,
     /expired.*Return to your budget/,
   );
-  assert.equal(browser.getItem(PLAID_LINK_SESSION_KEY), null);
+  assert.match(
+    readPlaidLinkSession(browser, session.userId, now).error!,
+    /missing/,
+  );
   assert.throws(
     () =>
       savePlaidLinkSession(browser, session, Date.parse(session.expiration)),
@@ -73,7 +72,10 @@ void test("a different signed-in user cannot resume a stored bank authorization"
     readPlaidLinkSession(browser, "user_other", now).error!,
     /another Caishen account/,
   );
-  assert.equal(browser.getItem(PLAID_LINK_SESSION_KEY), null);
+  assert.match(
+    readPlaidLinkSession(browser, session.userId, now).error!,
+    /missing/,
+  );
 });
 
 void test("missing, corrupt, and invalid sessions offer a fresh connect action", () => {
@@ -94,7 +96,10 @@ void test("missing, corrupt, and invalid sessions offer a fresh connect action",
       readPlaidLinkSession(browser, session.userId, now).error!,
       /Connect a bank/,
     );
-    assert.equal(browser.getItem(PLAID_LINK_SESSION_KEY), null);
+    assert.match(
+      readPlaidLinkSession(browser, session.userId, now).error!,
+      /missing/,
+    );
   }
 });
 
@@ -115,9 +120,15 @@ void test("finishing an older Link flow does not clear a newer tab's session", (
   const browser = storage();
   savePlaidLinkSession(browser, session, now);
   clearPlaidLinkSession(browser, "link-older-token");
-  assert.ok(browser.getItem(PLAID_LINK_SESSION_KEY));
+  assert.equal(
+    readPlaidLinkSession(browser, session.userId, now).session?.linkToken,
+    session.linkToken,
+  );
   clearPlaidLinkSession(browser, session.linkToken);
-  assert.equal(browser.getItem(PLAID_LINK_SESSION_KEY), null);
+  assert.match(
+    readPlaidLinkSession(browser, session.userId, now).error!,
+    /missing/,
+  );
 });
 
 void test("Plaid receives the complete redirect URL without re-encoding its OAuth state", () => {

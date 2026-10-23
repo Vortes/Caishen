@@ -1,0 +1,13 @@
+{
+  "id": "checking",
+  "name": "Checking",
+  "kind": "cash",
+  "openingBalance": 50000,
+  "date": "2026-10-01",
+  "userId": "alex",
+  "sort": 0,
+  "reconciled": {
+    "date": "2026-10-17",
+    "balance": 45000
+  }
+}

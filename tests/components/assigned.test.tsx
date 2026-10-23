@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { refocus, renderShell, sent } from "./shell-harness";
+import { findToast, refocus, renderShell } from "./shell-harness";
 
 const amount = () =>
   screen.getByRole("button", {
@@ -18,13 +18,14 @@ test("Enter followed by blur cannot submit an assignment twice", async () => {
   fireEvent.submit(input.closest("form")!);
   fireEvent.blur(input);
   await waitFor(() => expect(amount().textContent).toBe("$150.00"));
-  await waitFor(() => expect(shell.server.revision).toBe(1));
-  expect(sent(shell.execute)).toEqual([
-    expect.objectContaining({ type: "assign.set", amount: 15_000 }),
-  ]);
+  await findToast("Gifts now has $150.00 assigned");
+  expect(screen.getByText("$850.00")).toBeTruthy();
+  await shell.reload();
+  expect(amount().textContent).toBe("$150.00");
+  expect(screen.getByText("$850.00")).toBeTruthy();
 });
 
-test("an amount left as it opened sends nothing, even when the total changed elsewhere", async () => {
+test("leaving an amount unchanged preserves an assignment changed elsewhere", async () => {
   const shell = await renderShell();
   await shell.user.click(amount());
   shell.server.act("owner", {
@@ -35,10 +36,11 @@ test("an amount left as it opened sends nothing, even when the total changed els
     amount: 13_000,
   });
   await refocus();
-  await waitFor(() => expect(shell.server.pulls.length).toBe(2));
+  await screen.findByText("$870.00");
   await shell.user.keyboard("{Enter}");
   await waitFor(() => expect(amount().textContent).toBe("$130.00"));
-  expect(shell.execute).not.toHaveBeenCalled();
+  await shell.reload();
+  expect(amount().textContent).toBe("$130.00");
 });
 
 test("an amount that isn't money stays in the field with what's wrong", async () => {
@@ -48,7 +50,9 @@ test("an amount that isn't money stays in the field with what's wrong", async ()
   await shell.user.type(field(), "lots{Enter}");
   expect(field()).toHaveProperty("value", "lots");
   expect(field().getAttribute("aria-invalid")).toBe("true");
-  expect(shell.execute).not.toHaveBeenCalled();
+  await shell.user.keyboard("{Escape}");
+  await shell.reload();
+  expect(amount().textContent).toBe("$100.00");
 });
 
 test("changing month discards an unsaved assignment instead of applying it to the new month", async () => {
@@ -63,5 +67,8 @@ test("changing month discards an unsaved assignment instead of applying it to th
   expect(
     screen.queryByRole("textbox", { name: "Assigned amount for Gifts" }),
   ).toBeNull();
-  expect(shell.execute).not.toHaveBeenCalled();
+  await shell.reload();
+  expect(amount().textContent).toBe("$100.00");
+  await shell.user.click(screen.getByRole("button", { name: "Next month" }));
+  expect(amount().textContent).toBe("$0.00");
 });

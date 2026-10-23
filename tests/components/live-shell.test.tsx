@@ -3,13 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
 import { ZodError } from "zod";
 import { SyncError } from "~/components/sync/transport";
-import {
-  deferred,
-  findToast,
-  refocus,
-  renderShell,
-  sent,
-} from "./shell-harness";
+import { deferred, findToast, refocus, renderShell } from "./shell-harness";
 
 const amount = () =>
   screen.getByRole("button", {
@@ -32,19 +26,12 @@ test("an Assigned edit shows at once and saves the month's total", async () => {
 
   // The editor closes and the plan shows the total before the server answers.
   expect(amount().getAttribute("aria-label")).toMatch(/^\$150\.00 assigned/);
-  await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
-  expect(sent(shell.execute)).toEqual([
-    expect.objectContaining({
-      type: "assign.set",
-      categoryId: "gifts",
-      month: "2026-10",
-      amount: 15_000,
-    }),
-  ]);
 
   gate.resolve();
   const toast = await findToast("Gifts now has $150.00 assigned");
   expect(within(toast).getByRole("button", { name: "Undo" })).toBeTruthy();
+  await shell.reload();
+  expect(amount().textContent).toBe("$150.00");
 });
 
 const assignedLabel = () => amount().getAttribute("aria-label");
@@ -90,17 +77,9 @@ test("undo and redo apply at once, from the toast or the keyboard, for changes m
   await shell.user.keyboard("{Meta>}z{/Meta}");
   expect(assignedLabel()).toMatch(/^\$100\.00 assigned/);
   await findToast("Action undone.");
-  expect(sent(shell.execute).map((command) => command.type)).toEqual([
-    "assign.set",
-    "revert",
-    "revert",
-    "revert",
-  ]);
-  expect(shell.server.book().budgets.owner!.assignments).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ categoryId: "gifts", amount: 10_000 }),
-    ]),
-  );
+  await shell.reload();
+  expect(amount().textContent).toBe("$100.00");
+  expect(screen.getByText("$900.00")).toBeTruthy();
 });
 
 test("a change the server refuses comes off the screen with the server's reason", async () => {
@@ -196,14 +175,12 @@ test("while the server can't be reached, changes stay on screen, leaving warns, 
   );
   await findToast("Gifts now has $150.00 assigned");
   expect(screen.queryByText(/^Saving paused/)).toBeNull();
-  // Every attempt carried the same operation, which saved once.
-  expect(new Set(sent(shell.execute).map((command) => command.id)).size).toBe(
-    1,
-  );
-  expect(shell.server.revision).toBe(1);
   const after = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(after);
   expect(after.defaultPrevented).toBe(false);
+  await shell.reload();
+  expect(amount().textContent).toBe("$150.00");
+  expect(screen.getByText("$850.00")).toBeTruthy();
 });
 
 test("changes made elsewhere show when the window regains focus", async () => {

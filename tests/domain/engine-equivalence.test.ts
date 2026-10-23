@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AccountingError,
   execute,
   materialize,
   outstanding,
@@ -371,7 +372,7 @@ void test("assignment commands keep one row per category and month with unchange
     Command,
     { type: "assign" | "assign.batch" | "assign.set" | "cover" }
   >;
-  let applied = 0;
+  let checked = 0;
   for (const [name, original] of books.slice(0, -1)) {
     const userId = "alex";
     let book = original;
@@ -438,30 +439,58 @@ void test("assignment commands keep one row per category and month with unchange
         },
       ];
       for (const command of commands) {
-        let next: Book;
-        try {
-          next = execute(book, userId, command);
-        } catch {
+        // Ask the older, unfolded-row implementation whether this command is valid.
+        const expected = outcome(() => {
+          if (command.type === "cover") {
+            const available = referenceMaterialize(
+              shadow,
+              userId,
+              month,
+            ).categories.get(command.fromCategoryId)!.available;
+            if (available < command.amount)
+              throw new AccountingError(
+                "Source category has insufficient funds",
+              );
+            return [
+              ...rows,
+              {
+                id: `${command.id}:from`,
+                categoryId: command.fromCategoryId,
+                month,
+                amount: -command.amount,
+              },
+              {
+                id: `${command.id}:to`,
+                categoryId: command.toCategoryId,
+                month,
+                amount: command.amount,
+              },
+            ];
+          }
+          if (command.type === "assign.set") {
+            const amount = command.amount - total(command.categoryId);
+            return amount === 0
+              ? [...rows]
+              : referenceAssign(shadow, userId, {
+                  ...command,
+                  type: "assign",
+                  amount,
+                });
+          }
+          return referenceAssign(shadow, userId, command);
+        });
+        const actual = outcome(() => execute(book, userId, command));
+        checked++;
+        if ("error" in expected) {
+          assert.deepStrictEqual(actual, expected, `${name}, ${command.id}`);
           continue;
         }
-        book = next;
-        const push = (id: string, categoryId: string, amount: number) =>
-          rows.push({ id, categoryId, month, amount });
-        if (command.type === "assign")
-          push(command.id, command.categoryId, command.amount);
-        if (command.type === "assign.batch")
-          command.changes.forEach((change, offset) =>
-            push(`${command.id}:${offset}`, change.categoryId, change.amount),
-          );
-        if (command.type === "cover") {
-          push(`${command.id}:from`, command.fromCategoryId, -command.amount);
-          push(`${command.id}:to`, command.toCategoryId, command.amount);
-        }
-        if (command.type === "assign.set") {
-          const difference = command.amount - total(command.categoryId);
-          if (difference) push(command.id, command.categoryId, difference);
-        }
-        applied++;
+        assert.ok(
+          "value" in actual,
+          `${name}, ${command.id}: ${JSON.stringify(actual)}`,
+        );
+        book = actual.value as Book;
+        rows.splice(0, rows.length, ...(expected.value as typeof rows));
         const keys = assignmentKeys(book, userId);
         assert.equal(new Set(keys).size, keys.length, `${name}, ${command.id}`);
         assert.deepStrictEqual(
@@ -478,5 +507,14 @@ void test("assignment commands keep one row per category and month with unchange
       }
     }
   }
-  assert.ok(applied > 100);
+  assert.equal(
+    checked,
+    books
+      .slice(0, -1)
+      .reduce(
+        (count, [, book]) =>
+          count + monthsOf(book, "alex").slice(1, 8).length * 6,
+        0,
+      ),
+  );
 });

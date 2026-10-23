@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { rowKey, rowOwner, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createCaller } from "../../src/server/api/root";
+import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   BUDGET_MAINTENANCE_MESSAGE,

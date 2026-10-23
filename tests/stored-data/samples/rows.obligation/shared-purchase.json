@@ -1,0 +1,14 @@
+{
+  "id": "rent-share",
+  "sharedCategoryId": "rent",
+  "debtorId": "alex",
+  "creditorId": "jordan",
+  "amount": 130000,
+  "expenseMonth": "2026-10",
+  "transactionId": "rent",
+  "payerId": "jordan",
+  "payee": "Rent",
+  "date": "2026-10-01",
+  "sort": 0,
+  "opening": false
+}

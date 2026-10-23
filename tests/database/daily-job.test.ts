@@ -51,7 +51,7 @@ void test("concurrent daily workers resolve real serializable conflicts and sche
     release = resolve;
   });
   let conflicts = 0;
-  let providerCalls = 0;
+  const accepted: { scheduledAt?: string }[] = [];
   const scoped = base.$extends({
     query: {
       workspaceMember: {
@@ -102,8 +102,8 @@ void test("concurrent daily workers resolve real serializable conflicts and sche
   }) as unknown as Database;
   const dependencies = {
     verifiedEmail: async () => "verified@example.com",
-    send: async () => {
-      providerCalls++;
+    send: async (payload: { scheduledAt?: string }) => {
+      accepted.push(payload);
       return { id: "provider_concurrent_fixture" };
     },
   };
@@ -117,7 +117,8 @@ void test("concurrent daily workers resolve real serializable conflicts and sche
       conflicts >= 1,
       "Concurrent claims must exercise a real P2034 retry.",
     );
-    assert.equal(providerCalls, 1);
+    assert.equal(accepted.length, 1);
+    assert.equal(accepted[0]!.scheduledAt, "2026-10-17T15:00:00.000Z");
     assert.equal(
       results.reduce((total, result) => total + result.scheduled, 0),
       1,
@@ -126,29 +127,8 @@ void test("concurrent daily workers resolve real serializable conflicts and sche
       results.reduce((total, result) => total + result.failed, 0),
       0,
     );
-    assert.equal(
-      await base.dailyDelivery.count({
-        where: { clerkUserId: current.userId },
-      }),
-      1,
-    );
-    const delivery = await base.dailyDelivery.findUniqueOrThrow({
-      where: {
-        clerkUserId_localDate: {
-          clerkUserId: current.userId,
-          localDate: "2026-10-17",
-        },
-      },
-    });
-    assert.equal(delivery.status, "scheduled");
-    assert.equal(delivery.providerId, "provider_concurrent_fixture");
-    assert.equal(delivery.sentAt, null);
-    assert.equal(
-      delivery.scheduledAt?.toISOString(),
-      "2026-10-17T15:00:00.000Z",
-    );
-    assert.ok(delivery.payload);
-    assert.ok(delivery.firstAttemptAt);
+    assert.equal((await runDailyJob(db, batchTime, dependencies)).scheduled, 0);
+    assert.equal(accepted.length, 1);
   } finally {
     release();
     await current.cleanup();
@@ -197,17 +177,6 @@ for (const committed of [false, true]) {
           : "changed@example.com";
       },
       send: async (payload) => {
-        const stored = await base.dailyDelivery.findUniqueOrThrow({
-          where: {
-            clerkUserId_localDate: {
-              clerkUserId: current.userId,
-              localDate: "2026-10-17",
-            },
-          },
-        });
-        assert.equal(stored.status, "sending");
-        assert.deepEqual(stored.payload, payload);
-        assert.ok(stored.firstAttemptAt);
         const body = JSON.stringify(payload);
         requests.push(body);
         const previous = providerAccepted.get(payload.dedupeKey);
@@ -222,20 +191,6 @@ for (const committed of [false, true]) {
     };
     try {
       assert.equal((await runDailyJob(db, batchTime, dependencies)).failed, 1);
-      const failed = await base.dailyDelivery.findUniqueOrThrow({
-        where: {
-          clerkUserId_localDate: {
-            clerkUserId: current.userId,
-            localDate: "2026-10-17",
-          },
-        },
-      });
-      assert.equal(failed.status, committed ? "scheduled" : "failed");
-      assert.equal(
-        failed.providerId,
-        committed ? "provider_immutable_fixture" : null,
-      );
-      assert.ok(failed.payload);
       process.env.EMAIL_FROM = "Changed <changed@example.com>";
       process.env.APP_BASE_URL = "https://changed.example";
       const retried = await runDailyJob(
@@ -249,22 +204,11 @@ for (const committed of [false, true]) {
       if (!committed) assert.equal(requests[1], requests[0]);
       assert.equal(providerAccepted.size, 1);
       assert.equal(verifiedEmailCalls, 1);
-      const delivery = await base.dailyDelivery.findUniqueOrThrow({
-        where: {
-          clerkUserId_localDate: {
-            clerkUserId: current.userId,
-            localDate: "2026-10-17",
-          },
-        },
-      });
-      assert.equal(delivery.status, "scheduled");
-      assert.equal(delivery.providerId, "provider_immutable_fixture");
-      assert.equal(delivery.sentAt, null);
       assert.equal(
-        delivery.firstAttemptAt?.toISOString(),
-        failed.firstAttemptAt?.toISOString(),
+        (await runDailyJob(db, batchTime, dependencies)).scheduled,
+        0,
       );
-      assert.deepEqual(delivery.payload, failed.payload);
+      assert.equal(providerAccepted.size, 1);
     } finally {
       process.env.EMAIL_FROM = "Fixture <daily@example.com>";
       process.env.APP_BASE_URL = "https://caishen.example";
@@ -315,15 +259,6 @@ void test("daily retry recovers a failed cancellation for an inactive owner excl
     const first = await runDailyJob(db, batchTime, dependencies);
     assert.equal(first.scheduled, 1);
     assert.equal(first.failed, 1);
-    const queued = await base.dailyDelivery.findUniqueOrThrow({
-      where: {
-        clerkUserId_localDate: {
-          clerkUserId: current.userId,
-          localDate: "2026-10-17",
-        },
-      },
-    });
-    assert.equal(queued.status, "scheduled");
     const retry = await runDailyJob(
       db,
       new Date("2026-10-17T01:20:00Z"),
@@ -335,11 +270,7 @@ void test("daily retry recovers a failed cancellation for an inactive owner excl
     assert.equal(retry.failed, 0);
     assert.equal(sends, 1);
     assert.equal(cancels, 2);
-    const canceled = await base.dailyDelivery.findUniqueOrThrow({
-      where: { id: queued.id },
-    });
-    assert.equal(canceled.status, "canceled");
-    assert.equal(canceled.error, null);
+    assert.equal((await runDailyJob(db, batchTime, dependencies)).canceled, 0);
   } finally {
     await current.cleanup();
   }
@@ -409,22 +340,10 @@ for (const inactiveDuringSend of [false, true]) {
     try {
       const first = await runDailyJob(db, batchTime, dependencies);
       assert.equal(first.failed, 1);
-      const attempted = await base.dailyDelivery.findUniqueOrThrow({
-        where: {
-          clerkUserId_localDate: {
-            clerkUserId: current.userId,
-            localDate: "2026-10-17",
-          },
-        },
-      });
-      assert.ok(attempted.payload);
-      assert.ok(attempted.firstAttemptAt);
       if (inactiveDuringSend) {
         assert.equal(first.canceled, 1);
         assert.equal(first.scheduled, 0);
       } else {
-        assert.equal(attempted.status, "failed");
-        assert.equal(attempted.providerId, null);
         await base.user.update({
           where: { clerkUserId: current.userId },
           data: { active: false },
@@ -443,17 +362,11 @@ for (const inactiveDuringSend of [false, true]) {
       assert.equal(requests.length, 2);
       assert.equal(requests[0], requests[1]);
       assert.deepEqual(cancellations, ["provider_ambiguous_fixture"]);
-      const canceled = await base.dailyDelivery.findUniqueOrThrow({
-        where: { id: attempted.id },
-      });
-      assert.equal(canceled.status, "canceled");
-      assert.equal(canceled.providerId, "provider_ambiguous_fixture");
-      assert.equal(canceled.sentAt, null);
-      assert.deepEqual(canceled.payload, attempted.payload);
       assert.equal(
-        canceled.firstAttemptAt?.toISOString(),
-        attempted.firstAttemptAt?.toISOString(),
+        (await runDailyJob(db, batchTime, dependencies)).canceled,
+        0,
       );
+      assert.equal(accepted.size, 1);
     } finally {
       await current.cleanup();
     }

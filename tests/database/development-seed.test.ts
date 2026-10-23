@@ -3,7 +3,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "../../src/generated/prisma";
 import { createBook } from "../../src/domain/engine";
-import { createCaller } from "../../src/server/api/root";
+import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import {
   assertDevelopmentSeedEnvironment,

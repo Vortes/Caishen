@@ -1,0 +1,10 @@
+{
+  "bank-account": {
+    "accountId": "checking",
+    "startDate": "2026-10-01",
+    "openingSnapshot": {
+      "fingerprints": {},
+      "postedImportIds": []
+    }
+  }
+}

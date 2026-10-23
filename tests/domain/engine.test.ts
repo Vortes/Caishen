@@ -75,9 +75,8 @@ void test("integer cents and largest-remainder splits conserve each cent determi
     );
 });
 
-void test("assignments only use received cash, retain immutability, and cannot be made by an agent", () => {
+void test("assignments cannot exceed received cash", () => {
   const setup = fixture(100_000);
-  const before = structuredClone(setup.book);
   const next = execute(setup.book, "alan", {
     id: "assign-first",
     type: "assign",
@@ -85,7 +84,6 @@ void test("assignments only use received cash, retain immutability, and cannot b
     month,
     amount: 60_000,
   });
-  assert.deepEqual(setup.book, before);
   assert.equal(projectBook(next, "alan", month).readyToAssign, 40_000);
   assert.throws(
     () =>
@@ -98,19 +96,41 @@ void test("assignments only use received cash, retain immutability, and cannot b
       }),
     /existing Ready/,
   );
+});
+
+void test("assigning cash leaves the input budget unchanged", () => {
+  const setup = fixture(100_000);
+  const before = structuredClone(setup.book);
+  const next = execute(setup.book, "alan", {
+    id: "assign",
+    type: "assign",
+    categoryId: "food",
+    month,
+    amount: 60_000,
+  });
+  assert.equal(projectBook(next, "alan", month).readyToAssign, 40_000);
+  assert.deepEqual(setup.book, before);
+});
+
+void test("an agent cannot assign the user's cash", () => {
+  const setup = fixture(100_000);
   assert.throws(
     () =>
       execute(
-        next,
+        setup.book,
         "alan",
         { id: "ai", type: "assign", categoryId: "food", month, amount: 1 },
         "agent",
       ),
     /user action/,
   );
+});
+
+void test("an outsider cannot add a category to another person's budget", () => {
+  const setup = fixture();
   assert.throws(
     () =>
-      execute(next, "intruder", {
+      execute(setup.book, "intruder", {
         id: "intruder",
         type: "category.add",
         categoryId: "bad",

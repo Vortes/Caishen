@@ -1,0 +1,17 @@
+{
+  "id": "removed-rent",
+  "accountId": "checking",
+  "date": "2026-10-01",
+  "amount": -260000,
+  "payee": "Rent",
+  "status": "posted",
+  "kind": "purchase",
+  "sharedCategoryId": "rent",
+  "providerId": "plaid:rent",
+  "removed": true,
+  "userId": "alex",
+  "sort": 0,
+  "expenseMonth": "2026-10",
+  "revision": 1,
+  "reviewed": true
+}

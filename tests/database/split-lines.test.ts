@@ -5,7 +5,7 @@ import nextEnv from "@next/env";
 import type { Command } from "../../src/domain/engine";
 import type { WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createCaller } from "../../src/server/api/root";
+import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 

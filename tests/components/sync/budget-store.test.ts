@@ -678,12 +678,7 @@ test("a ledger the browser computes equals the one built from the rows it change
       bookToRows(step.before).filter((row) => rowVisibleTo(row, step.actorId)),
     );
     const ledger = rowsToPersonalLedger(rowsIn(rows), step.actorId);
-    let result;
-    try {
-      result = executeWithChanges(ledger, step.actorId, step.command);
-    } catch {
-      continue;
-    }
+    const result = executeWithChanges(ledger, step.actorId, step.command);
     result.book.audit = [];
     const rebuilt = rowsToPersonalLedger(
       rowsIn(applyChangeSet(rows, result.changeSet)),
@@ -699,5 +694,5 @@ test("a ledger the browser computes equals the one built from the rows it change
       ).toBe(true);
     checked++;
   }
-  expect(checked).toBeGreaterThan(50);
+  expect(checked).toBe(buildCommandCorpus().steps.length);
 });

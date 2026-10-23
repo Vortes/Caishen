@@ -1,0 +1,854 @@
+{
+  "BankConnection.imports": [
+    {
+      "fields": [
+        "accounts",
+        "errors",
+        "institutionId",
+        "institutionName",
+        "records",
+        "resolved",
+        "reviews",
+        "synchronizedAccountIds",
+        "transactionStatus",
+        "records[].categoryId",
+        "records[].current",
+        "records[].history",
+        "records[].id",
+        "records[].matchStatus",
+        "records[].namespace",
+        "records[].providerTransactionIds",
+        "records[].removed",
+        "records[].current.amountCents",
+        "records[].current.authorizedDate",
+        "records[].current.currency",
+        "records[].current.date",
+        "records[].current.merchantName",
+        "records[].current.name",
+        "records[].current.pending",
+        "records[].current.pendingTransactionId",
+        "records[].current.provider",
+        "records[].current.providerAccountId",
+        "records[].current.providerTransactionId",
+        "records[].history[].after",
+        "records[].history[].before",
+        "records[].history[].kind",
+        "records[].history[].before.amountCents",
+        "records[].history[].before.authorizedDate",
+        "records[].history[].before.currency",
+        "records[].history[].before.date",
+        "records[].history[].before.merchantName",
+        "records[].history[].before.name",
+        "records[].history[].before.pending",
+        "records[].history[].before.pendingTransactionId",
+        "records[].history[].before.provider",
+        "records[].history[].before.providerAccountId",
+        "records[].history[].before.providerTransactionId",
+        "records[].history[].after.amountCents",
+        "records[].history[].after.authorizedDate",
+        "records[].history[].after.currency",
+        "records[].history[].after.date",
+        "records[].history[].after.merchantName",
+        "records[].history[].after.name",
+        "records[].history[].after.pending",
+        "records[].history[].after.pendingTransactionId",
+        "records[].history[].after.provider",
+        "records[].history[].after.providerAccountId",
+        "records[].history[].after.providerTransactionId",
+        "resolved.*.decidedAt",
+        "resolved.*.fingerprint",
+        "resolved.*.ignored",
+        "resolved.*.transactionId",
+        "accounts[].accountId",
+        "accounts[].availableBalance",
+        "accounts[].currency",
+        "accounts[].currentBalance",
+        "accounts[].mask",
+        "accounts[].name",
+        "accounts[].officialName",
+        "accounts[].subtype",
+        "accounts[].type"
+      ],
+      "optional": [
+        "accounts",
+        "errors",
+        "institutionId",
+        "institutionName",
+        "records",
+        "resolved",
+        "reviews",
+        "synchronizedAccountIds",
+        "transactionStatus",
+        "resolved.*.decidedAt",
+        "resolved.*.ignored",
+        "resolved.*.transactionId"
+      ],
+      "nullable": [
+        "records[].current.pendingTransactionId",
+        "records[].current.authorizedDate",
+        "records[].current.merchantName",
+        "records[].categoryId",
+        "records[].history[].before",
+        "records[].history[].before.pendingTransactionId",
+        "records[].history[].before.authorizedDate",
+        "records[].history[].before.merchantName",
+        "records[].history[].after",
+        "records[].history[].after.pendingTransactionId",
+        "records[].history[].after.authorizedDate",
+        "records[].history[].after.merchantName",
+        "accounts[].officialName",
+        "accounts[].mask",
+        "accounts[].subtype",
+        "accounts[].currentBalance",
+        "accounts[].availableBalance",
+        "accounts[].currency",
+        "institutionId",
+        "institutionName",
+        "transactionStatus"
+      ],
+      "values": {
+        "records[].current.provider": ["plaid"],
+        "records[].current.currency": ["USD"],
+        "records[].matchStatus": ["confirmed", "needs_review"],
+        "records[].history[].kind": [
+          "added",
+          "modified",
+          "pending_posted",
+          "removed",
+          "restored"
+        ],
+        "records[].history[].before.provider": ["plaid"],
+        "records[].history[].before.currency": ["USD"],
+        "records[].history[].after.provider": ["plaid"],
+        "records[].history[].after.currency": ["USD"]
+      }
+    }
+  ],
+  "BankConnection.accountMappings": [
+    {
+      "fields": [
+        "*.accountId",
+        "*.openingSnapshot",
+        "*.startDate",
+        "*.openingSnapshot.financialFingerprints",
+        "*.openingSnapshot.fingerprints",
+        "*.openingSnapshot.postedImportIds",
+        "*.openingSnapshot.reviewImportIds"
+      ],
+      "optional": [
+        "*.openingSnapshot",
+        "*.openingSnapshot.financialFingerprints",
+        "*.openingSnapshot.reviewImportIds"
+      ],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "ReviewEvidence.evidence": [
+    {
+      "fields": ["revision"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "ReviewEvidence.result": [
+    {
+      "fields": [
+        "differenceCents",
+        "missingFromLedger",
+        "missingFromStatement",
+        "reasons",
+        "status",
+        "missingFromLedger[].amountCents",
+        "missingFromLedger[].date",
+        "missingFromLedger[].description",
+        "missingFromLedger[].pending",
+        "missingFromLedger[].reference",
+        "missingFromStatement[].amountCents",
+        "missingFromStatement[].date",
+        "missingFromStatement[].description",
+        "missingFromStatement[].pending",
+        "missingFromStatement[].reference"
+      ],
+      "optional": [
+        "missingFromLedger[].pending",
+        "missingFromLedger[].reference",
+        "missingFromStatement[].pending",
+        "missingFromStatement[].reference"
+      ],
+      "nullable": ["differenceCents"],
+      "values": {
+        "status": ["discrepancy", "insufficient_evidence", "reconciled"]
+      }
+    }
+  ],
+  "DailyDelivery.payload": [
+    {
+      "fields": [
+        "dedupeKey",
+        "from",
+        "message",
+        "scheduledAt",
+        "to",
+        "message.subject",
+        "message.text"
+      ],
+      "optional": ["scheduledAt"],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "SharedCategory.weights": [
+    {
+      "fields": [],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "SharedCategory.categoryIds": [
+    {
+      "fields": [],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "PartnerFact.shares": [
+    {
+      "fields": [],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "BankImport.record": [
+    {
+      "fields": [
+        "categoryId",
+        "current",
+        "history",
+        "id",
+        "matchStatus",
+        "namespace",
+        "providerTransactionIds",
+        "removed",
+        "current.amountCents",
+        "current.authorizedDate",
+        "current.currency",
+        "current.date",
+        "current.merchantName",
+        "current.name",
+        "current.pending",
+        "current.pendingTransactionId",
+        "current.provider",
+        "current.providerAccountId",
+        "current.providerTransactionId",
+        "history[].after",
+        "history[].before",
+        "history[].kind",
+        "history[].before.amountCents",
+        "history[].before.authorizedDate",
+        "history[].before.currency",
+        "history[].before.date",
+        "history[].before.merchantName",
+        "history[].before.name",
+        "history[].before.pending",
+        "history[].before.pendingTransactionId",
+        "history[].before.provider",
+        "history[].before.providerAccountId",
+        "history[].before.providerTransactionId",
+        "history[].after.amountCents",
+        "history[].after.authorizedDate",
+        "history[].after.currency",
+        "history[].after.date",
+        "history[].after.merchantName",
+        "history[].after.name",
+        "history[].after.pending",
+        "history[].after.pendingTransactionId",
+        "history[].after.provider",
+        "history[].after.providerAccountId",
+        "history[].after.providerTransactionId"
+      ],
+      "optional": [],
+      "nullable": [
+        "current.pendingTransactionId",
+        "current.authorizedDate",
+        "current.merchantName",
+        "categoryId",
+        "history[].before",
+        "history[].before.pendingTransactionId",
+        "history[].before.authorizedDate",
+        "history[].before.merchantName",
+        "history[].after",
+        "history[].after.pendingTransactionId",
+        "history[].after.authorizedDate",
+        "history[].after.merchantName"
+      ],
+      "values": {
+        "current.provider": ["plaid"],
+        "current.currency": ["USD"],
+        "matchStatus": ["confirmed", "needs_review"],
+        "history[].kind": [
+          "added",
+          "modified",
+          "pending_posted",
+          "removed",
+          "restored"
+        ],
+        "history[].before.provider": ["plaid"],
+        "history[].before.currency": ["USD"],
+        "history[].after.provider": ["plaid"],
+        "history[].after.currency": ["USD"]
+      }
+    }
+  ],
+  "BankImport.resolved": [
+    {
+      "fields": ["decidedAt", "fingerprint", "ignored", "transactionId"],
+      "optional": ["decidedAt", "ignored", "transactionId"],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "BankImport.reviews": [
+    {
+      "fields": [],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "Operation.command": [
+    {
+      "fields": [],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "Operation.changeSet": [
+    {
+      "fields": [
+        "after",
+        "before",
+        "operationId",
+        "revision",
+        "after[].data",
+        "after[].deleted",
+        "after[].id",
+        "after[].revision",
+        "after[].table",
+        "before[].data",
+        "before[].deleted",
+        "before[].id",
+        "before[].revision",
+        "before[].table"
+      ],
+      "optional": [],
+      "nullable": ["after[].data", "before[].data"],
+      "values": {
+        "after[].table": [
+          "account",
+          "assignment",
+          "bankImport",
+          "budgetSettings",
+          "category",
+          "categoryGroup",
+          "expectedIncome",
+          "loan",
+          "loanPayment",
+          "loanRate",
+          "member",
+          "obligation",
+          "partnerFact",
+          "reimbursement",
+          "reimbursementReceipt",
+          "rule",
+          "settlement",
+          "settlementAllocation",
+          "sharedCategory",
+          "target",
+          "transaction",
+          "transactionHistory",
+          "transactionLine",
+          "transactionShare",
+          "payeeMemory"
+        ],
+        "before[].table": [
+          "account",
+          "assignment",
+          "bankImport",
+          "budgetSettings",
+          "category",
+          "categoryGroup",
+          "expectedIncome",
+          "loan",
+          "loanPayment",
+          "loanRate",
+          "member",
+          "obligation",
+          "partnerFact",
+          "reimbursement",
+          "reimbursementReceipt",
+          "rule",
+          "settlement",
+          "settlementAllocation",
+          "sharedCategory",
+          "target",
+          "transaction",
+          "transactionHistory",
+          "transactionLine",
+          "transactionShare",
+          "payeeMemory"
+        ]
+      }
+    }
+  ],
+  "rows.member": [
+    {
+      "fields": ["name", "sort", "userId"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.budgetSettings": [
+    {
+      "fields": [
+        "emailEnabled",
+        "emailHour",
+        "startMonth",
+        "timezone",
+        "userId"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.account": [
+    {
+      "fields": [
+        "date",
+        "id",
+        "kind",
+        "name",
+        "openingBalance",
+        "reconciled",
+        "sort",
+        "userId",
+        "reconciled.balance",
+        "reconciled.date"
+      ],
+      "optional": ["reconciled"],
+      "nullable": [],
+      "values": {
+        "kind": ["cash", "credit", "tracking", "partner", "reimbursements"]
+      }
+    }
+  ],
+  "rows.categoryGroup": [
+    {
+      "fields": ["name", "sort", "userId"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.category": [
+    {
+      "fields": [
+        "group",
+        "id",
+        "name",
+        "pairedAccountId",
+        "pairedLoanId",
+        "sort",
+        "userId",
+        "counterpartyAccountId"
+      ],
+      "optional": ["pairedAccountId", "pairedLoanId", "counterpartyAccountId"],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.target": [
+    {
+      "fields": [
+        "categoryId",
+        "userId",
+        "amount",
+        "behavior",
+        "cadence",
+        "dueDate",
+        "monthDay",
+        "repeatEvery",
+        "repeatUnit",
+        "snoozedMonths",
+        "startMonth",
+        "weekday"
+      ],
+      "optional": [
+        "dueDate",
+        "monthDay",
+        "repeatEvery",
+        "repeatUnit",
+        "snoozedMonths",
+        "weekday"
+      ],
+      "nullable": [],
+      "values": {
+        "cadence": [
+          "card-monthly",
+          "card-payoff",
+          "custom",
+          "loan",
+          "monthly",
+          "weekly",
+          "yearly"
+        ],
+        "behavior": ["balance", "contribution", "refill"],
+        "repeatUnit": ["months", "years"]
+      }
+    }
+  ],
+  "rows.assignment": [
+    {
+      "fields": ["amount", "categoryId", "id", "month", "sort", "userId"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.expectedIncome": [
+    {
+      "fields": ["amount", "month", "userId"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.transaction": [
+    {
+      "fields": [
+        "accountId",
+        "amount",
+        "categoryId",
+        "date",
+        "expenseMonth",
+        "id",
+        "kind",
+        "linkedId",
+        "payee",
+        "providerId",
+        "reconciled",
+        "removed",
+        "reviewed",
+        "revision",
+        "sharedCategoryId",
+        "sort",
+        "status",
+        "userId"
+      ],
+      "optional": [
+        "categoryId",
+        "linkedId",
+        "providerId",
+        "reconciled",
+        "removed",
+        "sharedCategoryId"
+      ],
+      "nullable": [],
+      "values": {
+        "status": ["pending", "posted"],
+        "kind": [
+          "adjustment",
+          "card-payment",
+          "income",
+          "loan-payment",
+          "purchase",
+          "refund",
+          "reimbursement",
+          "settlement",
+          "statement-credit",
+          "transfer"
+        ]
+      }
+    }
+  ],
+  "rows.transactionShare": [
+    {
+      "fields": ["participantId", "share", "transactionId", "userId", "weight"],
+      "optional": ["share", "weight"],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.transactionHistory": [
+    {
+      "fields": [
+        "amount",
+        "combinedId",
+        "date",
+        "operationId",
+        "payee",
+        "reason",
+        "revision",
+        "sequence",
+        "status",
+        "transactionId",
+        "userId"
+      ],
+      "optional": ["combinedId"],
+      "nullable": [],
+      "values": {
+        "status": ["pending", "posted"],
+        "reason": [
+          "categorized",
+          "created",
+          "merged",
+          "redone",
+          "removed",
+          "undone",
+          "updated"
+        ]
+      }
+    }
+  ],
+  "rows.loan": [
+    {
+      "fields": [
+        "categoryId",
+        "id",
+        "minimumPayment",
+        "name",
+        "principal",
+        "sort",
+        "userId",
+        "variable"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.loanRate": [
+    {
+      "fields": [
+        "annualRateBps",
+        "effectiveDate",
+        "loanId",
+        "sequence",
+        "userId"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.loanPayment": [
+    {
+      "fields": [
+        "date",
+        "id",
+        "interest",
+        "loanId",
+        "principal",
+        "sort",
+        "userId"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.reimbursement": [
+    {
+      "fields": [
+        "amount",
+        "id",
+        "kind",
+        "name",
+        "sort",
+        "transactionId",
+        "userId"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {
+        "kind": ["cash", "statement-credit"]
+      }
+    }
+  ],
+  "rows.reimbursementReceipt": [
+    {
+      "fields": ["amount", "date", "id", "reimbursementId", "sort", "userId"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.rule": [
+    {
+      "fields": [
+        "enabled",
+        "fromCategoryId",
+        "id",
+        "sort",
+        "toCategoryId",
+        "userId"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.bankImport": [
+    {
+      "fields": [
+        "connectionId",
+        "error",
+        "logicalId",
+        "record",
+        "resolved",
+        "reviews",
+        "sort",
+        "userId"
+      ],
+      "optional": ["error", "record", "resolved", "reviews"],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.sharedCategory": [
+    {
+      "fields": ["categoryIds", "id", "participants", "sort", "weights"],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.obligation": [
+    {
+      "fields": [
+        "amount",
+        "creditorId",
+        "date",
+        "debtorId",
+        "expenseMonth",
+        "id",
+        "opening",
+        "payee",
+        "payerId",
+        "sharedCategoryId",
+        "sort",
+        "transactionId"
+      ],
+      "optional": ["date", "expenseMonth", "payee", "payerId", "transactionId"],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.settlement": [
+    {
+      "fields": [
+        "amount",
+        "date",
+        "id",
+        "payerId",
+        "received",
+        "recipientId",
+        "sort"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.settlementAllocation": [
+    {
+      "fields": ["amount", "kind", "obligationId", "sequence", "settlementId"],
+      "optional": [],
+      "nullable": [],
+      "values": {
+        "kind": ["offset", "payment"]
+      }
+    }
+  ],
+  "rows.partnerFact": [
+    {
+      "fields": [
+        "amount",
+        "date",
+        "expenseMonth",
+        "id",
+        "kind",
+        "payee",
+        "payerId",
+        "sharedCategoryId",
+        "shares",
+        "sort",
+        "status",
+        "viewerId"
+      ],
+      "optional": ["shares"],
+      "nullable": [],
+      "values": {
+        "status": ["pending", "posted"],
+        "kind": ["purchase"]
+      },
+      "when": {
+        "kind": "purchase"
+      }
+    },
+    {
+      "fields": ["date", "kind", "settlementId", "viewerId"],
+      "optional": [],
+      "nullable": [],
+      "values": {
+        "kind": ["receipt"]
+      },
+      "when": {
+        "kind": "receipt"
+      }
+    },
+    {
+      "fields": ["kind", "payerId", "sharedCategoryId", "sort", "viewerId"],
+      "optional": [],
+      "nullable": [],
+      "values": {
+        "kind": ["activity"]
+      },
+      "when": {
+        "kind": "activity"
+      }
+    }
+  ],
+  "rows.transactionLine": [
+    {
+      "fields": [
+        "amount",
+        "categoryId",
+        "id",
+        "sort",
+        "transactionId",
+        "userId"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.payeeMemory": [
+    {
+      "fields": ["payee", "kind", "categoryId", "userId", "payeeKey"],
+      "optional": ["categoryId"],
+      "nullable": [],
+      "values": {
+        "kind": ["category", "readyToAssign"]
+      }
+    }
+  ]
+}

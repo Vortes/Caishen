@@ -13,7 +13,6 @@ import {
   openPersistence,
   STORE_SCHEMA_VERSION,
 } from "~/components/sync/indexed-db";
-import { MemoryPersistence } from "~/components/sync/persistence";
 import { rowsIn, toRowSet } from "~/domain/change-sets";
 import { projectBook, type Command } from "~/domain/engine";
 import { rowsToPersonalLedger, type WireRow } from "~/domain/rows";
@@ -217,19 +216,30 @@ test("rows stored by an older storage schema are dropped", async () => {
 });
 
 test("falls back to memory where IndexedDB is missing or won't open", async () => {
+  async function checkFallback() {
+    const storage = await openPersistence("alex", "test");
+    const rows = rowsIn(new FakeServer(household()).rows);
+    await storage.write({
+      since: null,
+      revision: 3,
+      rows,
+      snapshot: toRowSet(rows),
+      source: "server",
+    });
+    expect(await storage.load()).toMatchObject({ revision: 3, rows });
+    await storage.clear();
+    expect(await storage.load()).toBeNull();
+    storage.close();
+  }
   vi.stubGlobal("indexedDB", undefined);
-  expect(await openPersistence("alex", "test")).toBeInstanceOf(
-    MemoryPersistence,
-  );
+  await checkFallback();
   const broken = new IDBFactory();
   broken.open = () => {
     throw new DOMException("The operation is insecure.", "SecurityError");
   };
   vi.stubGlobal("indexedDB", broken);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-  expect(await openPersistence("alex", "test")).toBeInstanceOf(
-    MemoryPersistence,
-  );
+  await checkFallback();
 
   // The client works the same, keeping rows for the tab only.
   vi.stubGlobal("indexedDB", undefined);

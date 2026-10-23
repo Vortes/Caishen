@@ -1,0 +1,28 @@
+{
+  "operationId": "categorize-coffee",
+  "revision": 13,
+  "after": [
+    {
+      "table": "payeeMemory",
+      "id": "alex/coffee shop",
+      "revision": 13,
+      "deleted": false,
+      "data": {
+        "payee": "Coffee Shop",
+        "kind": "category",
+        "categoryId": "dining",
+        "userId": "alex",
+        "payeeKey": "coffee shop"
+      }
+    }
+  ],
+  "before": [
+    {
+      "table": "payeeMemory",
+      "id": "alex/coffee shop",
+      "revision": 0,
+      "deleted": true,
+      "data": null
+    }
+  ]
+}

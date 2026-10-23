@@ -8,7 +8,7 @@ import type { LedgerCommand } from "../../src/domain/engine";
 import { rowKey, rowVisibleTo, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
 import { formatTRPCError } from "../../src/server/api/error-formatter";
-import { createCaller } from "../../src/server/api/root";
+import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { executeWithChanges } from "../../src/domain/engine";
@@ -32,9 +32,9 @@ nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
 const db = new PrismaClient();
 const run = randomUUID();
-const alexId = `test-sync-alex-${run}`;
-const jordanId = `test-sync-jordan-${run}`;
-const users = [alexId, jordanId];
+let alexId: string;
+let jordanId: string;
+const users: string[] = [];
 const month = "2026-10";
 const build = "2:test";
 
@@ -45,8 +45,8 @@ function caller(userId: string) {
     revision,
   };
 }
-const alex = caller(alexId);
-const jordan = caller(jordanId);
+let alex: ReturnType<typeof caller>;
+let jordan: ReturnType<typeof caller>;
 
 const refusalOf = async (promise: Promise<unknown>) => {
   try {
@@ -94,7 +94,12 @@ const execute = (
   baseRevision: number,
 ) => who.api.budget.execute({ command, baseRevision, clientId: "test-tab" });
 
-test.before(async () => {
+test.beforeEach(async () => {
+  alexId = `test-sync-alex-${randomUUID()}`;
+  jordanId = `test-sync-jordan-${randomUUID()}`;
+  users.push(alexId, jordanId);
+  alex = caller(alexId);
+  jordan = caller(jordanId);
   for (const [who, name] of [
     [alex, "Alex"],
     [jordan, "Jordan"],
@@ -330,7 +335,36 @@ void test("joining resets every browser, and partners see only their own rows of
   );
 });
 
+async function joinedCategories() {
+  const { code } = await alex.api.budget.invite();
+  let { revision } = await jordan.api.budget.join({ code });
+  for (const who of [alex, jordan])
+    ({ revision } = await execute(
+      who,
+      {
+        type: "category.add",
+        id: randomUUID(),
+        categoryId: "food",
+        name: "Food",
+      },
+      revision,
+    ));
+  await execute(
+    alex,
+    {
+      type: "shared.create",
+      id: randomUUID(),
+      sharedCategoryId: "food",
+      participants: [alexId, jordanId],
+      weights: { [alexId]: 1, [jordanId]: 1 },
+      categoryIds: { [alexId]: "food", [jordanId]: "food" },
+    },
+    revision,
+  );
+}
+
 void test("a command made against an older revision runs again when it changes only the actor's budget, and is a conflict otherwise", async () => {
+  await joinedCategories();
   const base = (await readHouseholdRevision(db, alexId))!.revision;
   // Jordan changes something first.
   await execute(
@@ -365,6 +399,7 @@ void test("a command made against an older revision runs again when it changes o
 });
 
 void test("undo restores what an operation changed, in any order, and is refused once a partner changed it again", async () => {
+  await joinedCategories();
   let revision = (await readHouseholdRevision(db, alexId))!.revision;
   const first = await execute(
     alex,
@@ -442,6 +477,7 @@ void test("undo restores what an operation changed, in any order, and is refused
 });
 
 void test("a server instance holding an old copy of the household answers from the latest rows and writes on them", async () => {
+  await joinedCategories();
   // This process holds the household as of now.
   const held = (await households.load(db, alexId))!;
   // Another server instance writes for Jordan.

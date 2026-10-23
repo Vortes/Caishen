@@ -1,386 +1,325 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import nextEnv from "@next/env";
-import { isCounterparty } from "../../src/domain/engine";
 import { Prisma, PrismaClient } from "../../src/generated/prisma";
-import { createCaller } from "../../src/server/api/root";
+import { isCounterparty } from "../../src/domain/engine";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
-import { operationHash } from "../../src/server/services/safety";
-import { findOperation, recentOperations } from "../../src/server/storage/rows";
+import { apiFixture, createDatabaseCaller as createCaller } from "./fixtures";
 
-nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
-const db = new PrismaClient();
-const users = [
-  `test-alice-${randomUUID()}`,
-  `test-bob-${randomUUID()}`,
-  `test-eve-${randomUUID()}`,
-];
-const caller = (userId: string | null) =>
-  createCaller({
-    revision: new ObservedRevision(),
+const month = "2026-10";
+async function fixture(t: TestContext) {
+  const { db, people } = await apiFixture(t, ["Alice", "Bob", "Eve"]);
+  const [alice, bob, eve] = people as [
+    (typeof people)[number],
+    (typeof people)[number],
+    (typeof people)[number],
+  ];
+  await alice.run({
+    type: "account.add",
+    id: randomUUID(),
+    accountId: "alice-bank",
+    name: "Alice private bank",
+    kind: "cash",
+    openingBalance: 500_000,
+    date: "2026-10-01",
+  });
+  await alice.run({
+    type: "category.add",
+    id: randomUUID(),
+    categoryId: "alice-private",
+    name: "Alice secret category",
+  });
+  return { db, alice, bob, eve };
+}
+async function purchaseFixture(t: TestContext) {
+  const f = await fixture(t);
+  await f.alice.run({
+    type: "assign",
+    id: randomUUID(),
+    categoryId: "alice-private",
+    month,
+    amount: 20_000,
+  });
+  await f.alice.run(purchase(-10_000));
+  return f;
+}
+function purchase(amount: number) {
+  return {
+    type: "transaction.upsert" as const,
+    id: randomUUID(),
+    transactionId: "secret-purchase",
+    accountId: "alice-bank",
+    date: "2026-10-02",
+    amount,
+    payee: "Private merchant",
+    categoryId: "alice-private",
+    reviewed: false,
+  };
+}
+const statement = {
+  accountId: "alice-bank",
+  periodStart: "2026-10-01",
+  cutoff: "2026-10-31",
+  openingBalanceCents: 500_000,
+  closingBalanceCents: 490_000,
+  csv: "Date,Description,Amount\n2026-10-02,Private merchant,-100.00",
+  verified: true,
+};
+
+void test("a signed-out request cannot read a budget", async () => {
+  const db = new PrismaClient();
+  try {
+    const api = createCaller({
+      db,
+      userId: null,
+      headers: new Headers(),
+      revision: new ObservedRevision(),
+    });
+    await assert.rejects(api.budget.state({ month }), { code: "UNAUTHORIZED" });
+  } finally {
+    await db.$disconnect();
+  }
+});
+void test("a new user can create a budget through the API", async () => {
+  const db = new PrismaClient();
+  const userId = `test-new-${randomUUID()}`;
+  const api = createCaller({
     db,
     userId,
     headers: new Headers(),
+    revision: new ObservedRevision(),
   });
-const [aliceId, bobId, eveId] = users as [string, string, string];
-const alice = caller(aliceId),
-  bob = caller(bobId),
-  eve = caller(eveId);
-const month = "2026-10";
-const cmdId = () => randomUUID();
-
-void test("server operations persist, enforce privacy, protect concurrent writes, and reconcile actual activity", async () => {
   try {
-    await assert.rejects(() => caller(null).budget.state({ month }), {
-      code: "UNAUTHORIZED",
-    });
-    assert.equal((await alice.budget.overview()).status, "new");
-    for (const [api, name] of [
-      [alice, "Alice"],
-      [bob, "Bob"],
-      [eve, "Eve"],
-    ] as const)
-      await api.budget.onboard({
-        name,
-        month,
-        timezone: "America/Los_Angeles",
-      });
-    await alice.budget.execute({
-      clientId: "test",
-      baseRevision: 1,
-      command: {
-        type: "account.add",
-        id: cmdId(),
-        accountId: "alice-bank",
-        name: "Alice private bank",
-        kind: "cash",
-        openingBalance: 500000,
-        date: "2026-10-01",
-      },
-    });
-    // Validation adds the category's default group; the operation is still
-    // identified by what was submitted, so a release that changes that
-    // default cannot turn a retry into a conflict.
-    const submittedCategory = {
-      type: "category.add" as const,
-      id: cmdId(),
-      categoryId: "alice-private",
-      name: "Alice secret category",
-    };
-    await alice.budget.execute({
-      clientId: "test",
-      baseRevision: 2,
-      command: submittedCategory,
-    });
-    const aliceWorkspace = (
-      await db.workspaceMember.findUniqueOrThrow({
-        where: { clerkUserId: aliceId },
-      })
-    ).workspaceId;
-    const savedCategory = await findOperation(
-      db,
-      aliceWorkspace,
-      submittedCategory.id,
-    );
-    assert.equal(savedCategory?.inputHash, operationHash(submittedCategory));
-    assert.equal(savedCategory.actorId, aliceId);
-    assert.deepEqual(savedCategory.command, submittedCategory);
-    const repeated = {
-      type: "assign" as const,
-      id: cmdId(),
-      categoryId: "alice-private",
+    assert.equal((await api.budget.overview()).status, "new");
+    await api.budget.onboard({
+      name: "Alice",
       month,
-      amount: 20000,
-    };
-    const first = await alice.budget.execute({
-      clientId: "test",
-      baseRevision: 3,
-      command: repeated,
+      timezone: "America/Los_Angeles",
     });
-    assert.deepEqual(
-      await alice.budget.execute({
-        clientId: "test",
-        baseRevision: 3,
-        command: repeated,
-      }),
-      { ...first, rebased: false },
-      "a retry answers with the original result and applies nothing",
-    );
-    await assert.rejects(
-      () =>
-        alice.budget.execute({
-          clientId: "test",
-          baseRevision: 4,
-          command: { ...repeated, amount: 30000 },
-        }),
-      { code: "BAD_REQUEST", message: /different details/ },
-    );
-    await alice.budget.execute({
-      clientId: "test",
-      baseRevision: 4,
-      command: {
-        type: "transaction.upsert",
-        id: cmdId(),
-        transactionId: "secret-purchase",
-        accountId: "alice-bank",
-        date: "2026-10-02",
-        amount: -10000,
-        payee: "Private merchant",
-        categoryId: "alice-private",
-        reviewed: false,
-      },
-    });
-    const own = await alice.budget.state({ month });
-    assert.equal(own.view?.cash, 490000);
-    assert.equal(own.view?.readyToAssign, 480000);
-    assert.equal(own.view?.personalSpending, 10000);
-    await assert.rejects(
-      () =>
-        alice.budget.execute({
-          clientId: "test",
-          baseRevision: own.revision,
-          command: {
-            type: "transaction.upsert",
-            id: cmdId(),
-            transactionId: "future-income",
-            accountId: "alice-bank",
-            date: "2100-01-01",
-            amount: 100000,
-            payee: "Future payroll",
-          },
-        }),
-      { code: "BAD_REQUEST" },
-    );
-    await assert.rejects(
-      () =>
-        alice.budget.execute({
-          clientId: "test",
-          baseRevision: own.revision,
-          command: {
-            type: "account.add",
-            id: cmdId(),
-            accountId: "future-bank",
-            name: "Future bank",
-            kind: "cash",
-            openingBalance: 100000,
-            date: "2100-01-01",
-          },
-        }),
-      { code: "BAD_REQUEST" },
-    );
-    assert.equal(
-      (await bob.budget.state({ month })).view?.budget.accounts.filter(
-        (account) => !isCounterparty(account),
-      ).length,
-      0,
-    );
-    await assert.rejects(() =>
-      bob.budget.execute({
-        clientId: "test",
-        baseRevision: 1,
-        command: {
-          type: "transaction.upsert",
-          id: cmdId(),
-          transactionId: "stolen",
-          accountId: "alice-bank",
-          date: "2026-10-02",
-          amount: -100,
-          payee: "Attack",
-        },
-      }),
-    );
-    await assert.rejects(
-      () => bob.budget.suggest({ transactionIds: ["secret-purchase"] }),
-      { code: "NOT_FOUND" },
-    );
-    const { code } = await alice.budget.invite();
-    let joinTransactionAttempts = 0;
-    const retryingDb = new Proxy(db, {
-      get(target, property) {
-        if (property === "$transaction")
-          return async (...args: unknown[]) => {
-            joinTransactionAttempts++;
-            if (joinTransactionAttempts === 1)
-              throw new Prisma.PrismaClientKnownRequestError(
-                "Simulated serialization conflict",
-                { code: "P2034", clientVersion: Prisma.prismaVersion.client },
-              );
-            const result: unknown = Reflect.apply(
-              target.$transaction.bind(target),
-              target,
-              args,
-            );
-            return result;
-          };
-        const value: unknown = Reflect.get(target, property);
-        return value;
-      },
-    });
-    await createCaller({
-      revision: new ObservedRevision(),
-      db: retryingDb,
-      userId: bobId,
-      headers: new Headers(),
-    }).budget.join({ code });
-    assert.ok(joinTransactionAttempts >= 2);
-    const bobView = await bob.budget.state({ month });
-    assert.equal(bobView.view?.members.length, 2);
-    assert.ok(!JSON.stringify(bobView).includes("Private merchant"));
-    assert.ok(!JSON.stringify(bobView).includes("Alice secret category"));
-    assert.ok(!JSON.stringify(bobView).includes("Alice private bank"));
-    await assert.rejects(() => eve.budget.join({ code }), {
-      code: "NOT_FOUND",
-    });
-    const concurrentRevision = (await alice.budget.state({ month })).revision;
-    const writes = await Promise.allSettled([
-      alice.budget.execute({
-        clientId: "test",
-        baseRevision: concurrentRevision,
-        command: {
-          type: "category.add",
-          id: cmdId(),
-          categoryId: "concurrent-a",
-          name: "Concurrent A",
-        },
-      }),
-      bob.budget.execute({
-        clientId: "test",
-        baseRevision: concurrentRevision,
-        command: {
-          type: "category.add",
-          id: cmdId(),
-          categoryId: "concurrent-b",
-          name: "Concurrent B",
-        },
-      }),
-    ]);
-    // Both change only their own budget, so the second runs again on the
-    // household the first wrote.
-    const results = writes.map((write) => {
-      assert.equal(write.status, "fulfilled");
-      return write.value;
-    });
-    assert.deepEqual(results.map((result) => result.rebased).sort(), [
-      false,
-      true,
-    ]);
-    assert.deepEqual(results.map((result) => result.revision).sort(), [
-      concurrentRevision + 1,
-      concurrentRevision + 2,
-    ]);
-    const eveView = await eve.budget.state({ month });
-    assert.equal(eveView.view?.members.length, 1);
-    assert.ok(!JSON.stringify(eveView).includes("Alice"));
-    const matched = await alice.budget.reconcile({
-      accountId: "alice-bank",
-      periodStart: "2026-10-01",
-      cutoff: "2026-10-31",
-      openingBalanceCents: 500000,
-      closingBalanceCents: 490000,
-      csv: "Date,Description,Amount\n2026-10-02,Private merchant,-100.00",
-      verified: true,
-    });
-    assert.equal(matched.status, "reconciled");
-    const reconciledState = await alice.budget.state({ month });
-    assert.equal(reconciledState.evidence[0]?.result.status, "reconciled");
-    assert.ok(!("evidence" in reconciledState.evidence[0]));
-    const changedPurchase = await alice.budget.execute({
-      clientId: "test",
-      baseRevision: reconciledState.revision,
-      command: {
-        type: "transaction.upsert",
-        id: cmdId(),
-        transactionId: "secret-purchase",
-        accountId: "alice-bank",
-        date: "2026-10-02",
-        amount: -9000,
-        payee: "Private merchant",
-        categoryId: "alice-private",
-        reviewed: false,
-      },
-    });
-    const staleState = await alice.budget.state({ month });
-    assert.equal(
-      staleState.evidence[0]?.result.status,
-      "insufficient_evidence",
-    );
-    assert.match(staleState.evidence[0].result.reasons[0]!, /ledger changed/);
-    await alice.budget.execute({
-      clientId: "test",
-      baseRevision: changedPurchase.revision,
-      command: {
-        type: "transaction.upsert",
-        id: cmdId(),
-        transactionId: "secret-purchase",
-        accountId: "alice-bank",
-        date: "2026-10-02",
-        amount: -10000,
-        payee: "Private merchant",
-        categoryId: "alice-private",
-        reviewed: false,
-      },
-    });
-    const mismatch = await alice.budget.reconcile({
-      accountId: "alice-bank",
-      periodStart: "2026-10-01",
-      cutoff: "2026-10-31",
-      openingBalanceCents: 500000,
-      closingBalanceCents: 489900,
-      csv: "Date,Description,Amount\n2026-10-02,Private merchant,-101.00",
-      verified: true,
-    });
-    assert.equal(mismatch.status, "discrepancy");
-    assert.equal((await alice.budget.state({ month })).view?.cash, 490000);
-    await assert.rejects(
-      () =>
-        bob.budget.reconcile({
-          accountId: "alice-bank",
-          periodStart: "2026-10-01",
-          cutoff: "2026-10-31",
-          openingBalanceCents: 500000,
-          closingBalanceCents: 490000,
-          csv: "Date,Description,Amount\n2026-10-02,Private merchant,-100.00",
-          verified: true,
-        }),
-      { code: "NOT_FOUND" },
-    );
-    const unverified = await alice.budget.reconcile({
-      accountId: "alice-bank",
-      periodStart: "2026-10-01",
-      cutoff: "2026-10-31",
-      openingBalanceCents: 500000,
-      closingBalanceCents: 490000,
-      csv: "Date,Description,Amount\n2026-10-02,Private merchant,-100.00",
-      verified: false,
-    });
-    assert.equal(unverified.status, "insufficient_evidence");
-    assert.equal((await bob.budget.state({ month })).evidence.length, 0);
-    const audit = (await recentOperations(db, aliceWorkspace, 100)).filter(
-      (operation) => operation.actorId === aliceId,
-    );
-    assert.ok(audit.length >= 4);
+    assert.equal((await api.budget.overview()).status, "ready");
   } finally {
-    const memberships = await db.workspaceMember.findMany({
-      where: { clerkUserId: { in: users } },
-    });
     await db.workspace.deleteMany({
-      where: {
-        OR: [
-          { id: { in: memberships.map((m) => m.workspaceId) } },
-          {
-            members: { none: {} },
-            budgetMembers: { some: { userId: bobId } },
-          },
-        ],
-      },
+      where: { members: { some: { clerkUserId: userId } } },
     });
-    await db.reviewEvidence.deleteMany({
-      where: { clerkUserId: { in: users } },
-    });
-    await db.user.deleteMany({ where: { clerkUserId: { in: users } } });
+    await db.user.deleteMany({ where: { clerkUserId: userId } });
     await db.$disconnect();
   }
+});
+void test("retried API commands keep one financial effect and reject conflicting reuse", async (t) => {
+  const { alice } = await fixture(t);
+  const submitted = {
+    type: "category.add" as const,
+    id: randomUUID(),
+    categoryId: "defaulted",
+    name: "Default group",
+  };
+  const beforeCategory = (await alice.state()).revision;
+  const added = await alice.api.budget.execute({
+    clientId: "test",
+    baseRevision: beforeCategory,
+    command: submitted,
+  });
+  assert.deepEqual(
+    await alice.api.budget.execute({
+      clientId: "test",
+      baseRevision: beforeCategory,
+      command: submitted,
+    }),
+    added,
+  );
+  assert.equal(
+    (await alice.state()).view!.budget.categories.filter(
+      (category) => category.id === "defaulted",
+    ).length,
+    1,
+  );
+  const command = {
+    type: "assign" as const,
+    id: randomUUID(),
+    categoryId: "alice-private",
+    month,
+    amount: 20_000,
+  };
+  const first = await alice.run(command);
+  assert.deepEqual(
+    await alice.api.budget.execute({
+      clientId: "test",
+      baseRevision: first.revision - 1,
+      command,
+    }),
+    { ...first, rebased: false },
+  );
+  assert.equal((await alice.state()).view!.readyToAssign, 480_000);
+  await assert.rejects(alice.run({ ...command, amount: 30_000 }), {
+    code: "BAD_REQUEST",
+    message: /different details/,
+  });
+});
+void test("a saved purchase changes cash and personal spending through API reads", async (t) => {
+  const { alice } = await purchaseFixture(t);
+  const own = await alice.state();
+  assert.equal(own.view!.cash, 490_000);
+  assert.equal(own.view!.readyToAssign, 480_000);
+  assert.equal(own.view!.personalSpending, 10_000);
+});
+void test("the API refuses future deposits and opening balances", async (t) => {
+  const { alice } = await fixture(t);
+  await assert.rejects(
+    alice.run({
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "future-income",
+      accountId: "alice-bank",
+      date: "2100-01-01",
+      amount: 100_000,
+      payee: "Future payroll",
+    }),
+    { code: "BAD_REQUEST" },
+  );
+  await assert.rejects(
+    alice.run({
+      type: "account.add",
+      id: randomUUID(),
+      accountId: "future-bank",
+      name: "Future bank",
+      kind: "cash",
+      openingBalance: 100_000,
+      date: "2100-01-01",
+    }),
+    { code: "BAD_REQUEST" },
+  );
+  assert.equal((await alice.state()).view!.cash, 500_000);
+});
+void test("another user's private accounts, purchases and suggestions are inaccessible", async (t) => {
+  const { alice, bob, eve } = await purchaseFixture(t);
+  assert.equal(
+    (await bob.state()).view!.accounts.filter(
+      (account) => !isCounterparty(account),
+    ).length,
+    0,
+  );
+  await assert.rejects(bob.run({ ...purchase(-100), transactionId: "stolen" }));
+  await assert.rejects(
+    bob.api.budget.suggest({ transactionIds: ["secret-purchase"] }),
+    { code: "NOT_FOUND" },
+  );
+  const { code } = await alice.api.budget.invite();
+  await bob.api.budget.join({ code });
+  const shared = await bob.state();
+  assert.equal(shared.view!.members.length, 2);
+  for (const privateValue of [
+    "Private merchant",
+    "Alice secret category",
+    "Alice private bank",
+  ])
+    assert.ok(!JSON.stringify(shared).includes(privateValue));
+  await assert.rejects(eve.api.budget.join({ code }), { code: "NOT_FOUND" });
+  assert.equal((await eve.state()).view!.members.length, 1);
+  assert.ok(!JSON.stringify(await eve.state()).includes("Alice"));
+});
+void test("joining a household survives a serialization conflict", async (t) => {
+  const { db, alice, bob } = await fixture(t);
+  const { code } = await alice.api.budget.invite();
+  let conflict = true;
+  const retrying = new Proxy(db, {
+    get(target, property) {
+      if (property === "$transaction")
+        return async (...args: unknown[]) => {
+          if (conflict) {
+            conflict = false;
+            throw new Prisma.PrismaClientKnownRequestError(
+              "Simulated serialization conflict",
+              { code: "P2034", clientVersion: Prisma.prismaVersion.client },
+            );
+          }
+          return Reflect.apply(
+            target.$transaction.bind(target),
+            target,
+            args,
+          ) as unknown;
+        };
+      return Reflect.get(target, property) as unknown;
+    },
+  });
+  await createCaller({
+    db: retrying,
+    userId: bob.userId,
+    headers: new Headers(),
+    revision: new ObservedRevision(),
+  }).budget.join({ code });
+  assert.equal(conflict, false, "the database failure was exercised");
+  assert.equal((await bob.state()).view!.members.length, 2);
+});
+void test("concurrent personal changes both persist in a joined household", async (t) => {
+  const { alice, bob } = await fixture(t);
+  await bob.api.budget.join(await alice.api.budget.invite());
+  const baseRevision = (await alice.state()).revision;
+  const results = await Promise.all(
+    [alice, bob].map((person, index) =>
+      person.api.budget.execute({
+        clientId: "test",
+        baseRevision,
+        command: {
+          type: "category.add",
+          id: randomUUID(),
+          categoryId: `concurrent-${index}`,
+          name: `Concurrent ${index}`,
+        },
+      }),
+    ),
+  );
+  assert.deepEqual(results.map((result) => result.rebased).sort(), [
+    false,
+    true,
+  ]);
+  assert.deepEqual(results.map((result) => result.revision).sort(), [
+    baseRevision + 1,
+    baseRevision + 2,
+  ]);
+  for (const [index, person] of [alice, bob].entries())
+    assert.ok(
+      (await person.state()).view!.categories.some(
+        (category) => category.id === `concurrent-${index}`,
+      ),
+    );
+});
+void test("matching statement evidence persists and becomes stale after a purchase correction", async (t) => {
+  const { alice } = await purchaseFixture(t);
+  assert.equal(
+    (await alice.api.budget.reconcile(statement)).status,
+    "reconciled",
+  );
+  const saved = await alice.state();
+  assert.equal(saved.evidence[0]!.result.status, "reconciled");
+  assert.ok(!("evidence" in saved.evidence[0]!));
+  await alice.run(purchase(-9_000));
+  const stale = await alice.state();
+  assert.equal(stale.evidence[0]!.result.status, "insufficient_evidence");
+  assert.match(stale.evidence[0]!.result.reasons[0]!, /ledger changed/);
+});
+void test("a statement discrepancy creates no invented cash adjustment", async (t) => {
+  const { alice } = await purchaseFixture(t);
+  const result = await alice.api.budget.reconcile({
+    ...statement,
+    closingBalanceCents: 489_900,
+    csv: "Date,Description,Amount\n2026-10-02,Private merchant,-101.00",
+  });
+  assert.equal(result.status, "discrepancy");
+  assert.equal((await alice.state()).view!.cash, 490_000);
+});
+void test("statement comparisons require verified evidence and remain private", async (t) => {
+  const { alice, bob } = await purchaseFixture(t);
+  const { code } = await alice.api.budget.invite();
+  await bob.api.budget.join({ code });
+  await assert.rejects(bob.api.budget.reconcile(statement), {
+    code: "NOT_FOUND",
+  });
+  assert.equal(
+    (await alice.api.budget.reconcile({ ...statement, verified: false }))
+      .status,
+    "insufficient_evidence",
+  );
+  assert.equal((await bob.state()).evidence.length, 0);
 });

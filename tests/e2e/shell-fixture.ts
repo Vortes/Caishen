@@ -9,6 +9,10 @@ import { createTRPCClient, httpLink } from "@trpc/client";
 import { randomUUID } from "node:crypto";
 import superjson from "superjson";
 
+import {
+  CLIENT_FORMAT,
+  CLIENT_FORMAT_HEADER,
+} from "../../src/domain/client-format";
 import type { Command } from "../../src/domain/engine";
 import { PrismaClient } from "../../src/generated/prisma/index.js";
 import type { AppRouter } from "../../src/server/api/root";
@@ -110,6 +114,7 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
                 httpLink({
                   url: `${baseURL}/api/trpc`,
                   transformer: superjson,
+                  headers: { [CLIENT_FORMAT_HEADER]: String(CLIENT_FORMAT) },
                   fetch: async (url, options) => {
                     const address =
                       typeof url === "string"
