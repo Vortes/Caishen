@@ -37,7 +37,6 @@ export function ShareSelection({
   const [targets, setTargets] = useState<Transaction[]>([]);
   const [choice, setChoice] = useState<ShareChoice | null>(null);
   const [categoryId, setCategoryId] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const available = selected.every(
@@ -77,20 +76,19 @@ export function ShareSelection({
         preventScroll: true,
       });
   }, [choice, needsCategory]);
-  const save = async () => {
-    if (!choice || saving) return;
-    setSaving(true);
+  const save = () => {
+    if (!choice) return;
     setError("");
-    const result = await entry.shareSelection(
+    const result = entry.shareSelection(
       targets.map((row) => row.id),
       choice,
       categoryId,
+      (rowId) => onCheck([rowId], true),
     );
-    onCheck(result.savedIds, false);
-    setSaving(false);
+    onCheck(result.queuedIds, false);
     if (result.error) {
       setTargets((rows) =>
-        rows.filter((row) => !result.savedIds.includes(row.id)),
+        rows.filter((row) => !result.queuedIds.includes(row.id)),
       );
       setError(result.error);
     } else setOpen(false);
@@ -101,7 +99,6 @@ export function ShareSelection({
       modal
       open={open}
       onOpenChange={(next) => {
-        if (saving) return;
         if (next) {
           setTargets(selected);
           setChoice(null);
@@ -112,7 +109,7 @@ export function ShareSelection({
       }}
     >
       <Popover.Trigger asChild>
-        <Button size="sm" disabled={disabled || saving}>
+        <Button size="sm" disabled={disabled}>
           <UsersIcon aria-hidden />
           Share
         </Button>
@@ -126,12 +123,6 @@ export function ShareSelection({
           collisionPadding={12}
           aria-label="Share selected transactions"
           onKeyDown={(event) => event.stopPropagation()}
-          onEscapeKeyDown={(event) => {
-            if (saving) event.preventDefault();
-          }}
-          onInteractOutside={(event) => {
-            if (saving) event.preventDefault();
-          }}
         >
           <ShareChoices
             amounts={targets.map((row) => Math.abs(row.amount))}
@@ -144,10 +135,9 @@ export function ShareSelection({
                 <form
                   className={styles.shareConfirmation}
                   aria-label="Share transactions"
-                  aria-busy={saving}
                   onSubmit={(event) => {
                     event.preventDefault();
-                    void save();
+                    save();
                   }}
                 >
                   <strong>
@@ -173,7 +163,6 @@ export function ShareSelection({
                         placeholder="Choose a category"
                         onChange={setCategoryId}
                         inputRef={categoryInput}
-                        disabled={saving}
                       />
                       <p className={styles.shareSummary}>
                         Applies to your uncategorized portions.
@@ -189,7 +178,6 @@ export function ShareSelection({
                   <div className={styles.actions}>
                     <Button
                       size="sm"
-                      disabled={saving}
                       onClick={() => {
                         setChoice(null);
                         setError("");
@@ -203,14 +191,10 @@ export function ShareSelection({
                       variant="primary"
                       type="submit"
                       disabled={
-                        saving ||
-                        disabled ||
-                        Boolean(needsCategory && !categoryId)
+                        disabled || Boolean(needsCategory && !categoryId)
                       }
                     >
-                      {saving
-                        ? "Saving…"
-                        : `Share ${targets.length} ${targets.length === 1 ? "transaction" : "transactions"}`}
+                      {`Share ${targets.length} ${targets.length === 1 ? "transaction" : "transactions"}`}
                     </Button>
                   </div>
                 </form>
