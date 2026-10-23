@@ -14,7 +14,7 @@ import {
   type TransactionDraft,
   type TransactionDraftFields,
 } from "~/components/transactions/transaction-draft";
-import type { Command } from "~/domain/engine";
+import type { Command, CounterpartyShare } from "~/domain/engine";
 import {
   rememberedCategory,
   rememberedCounterpartyShare,
@@ -94,8 +94,8 @@ const screenOrder = (draft: TransactionDraft): DraftField[] => [
   "outflow",
   "inflow",
   ...draft.lines.flatMap((line) =>
-    (["categoryId", "outflow", "inflow"] as const).map((field) =>
-      lineField(line.lineId, field),
+    (["categoryId", "counterpartyShare", "outflow", "inflow"] as const).map(
+      (field) => lineField(line.lineId, field),
     ),
   ),
   "remaining",
@@ -211,11 +211,15 @@ export function useTransactionEntryController({
     accountId,
     field,
     refundOfTransactionId,
+    counterpartyShare,
   }: {
     transactionId?: string;
     refundOfTransactionId?: string;
     accountId?: string | null;
     field?: DraftField;
+    // A share picked before the editor opened, such as from the register's
+    // Share cell on a row that still needs its category.
+    counterpartyShare?: CounterpartyShare | null;
   }) => {
     if (session || !view.accounts.length) return false;
     const transaction = transactionId
@@ -286,12 +290,22 @@ export function useTransactionEntryController({
       imported,
       rowId: transactionId,
       entityId: newId(),
-      draft,
+      draft:
+        counterpartyShare === undefined
+          ? draft
+          : {
+              ...draft,
+              counterpartyShare: counterpartyShare && {
+                ...counterpartyShare,
+                amount: (counterpartyShare.amount / 100).toFixed(2),
+              },
+            },
       pristine: draft,
       fields: {},
       error: "",
       calendarOpen: field === "date" || (!transactionId && Boolean(accountId)),
       unremembered,
+      shareChosen: counterpartyShare !== undefined,
     });
     reveal();
     // A new transaction starts on its first column. In one account's
@@ -322,6 +336,8 @@ export function useTransactionEntryController({
           const before = current.draft.lines.find(
             (item) => item.lineId === line.lineId,
           );
+          if (before?.counterpartyShare !== line.counterpartyShare)
+            delete fields[lineField(line.lineId, "counterpartyShare")];
           for (const field of ["categoryId", "outflow", "inflow"] as const)
             if (before?.[field] !== line[field]) {
               delete fields[lineField(line.lineId, field)];
@@ -351,7 +367,8 @@ export function useTransactionEntryController({
               ? undefined
               : Math.round(draftAmount(draft)! * 100),
         });
-        draft.counterpartyShare = share
+        // A written-off share remembers nothing to prefill.
+        draft.counterpartyShare = share?.amount
           ? { ...share, amount: (share.amount / 100).toFixed(2) }
           : undefined;
       }
@@ -509,10 +526,49 @@ export function useTransactionEntryController({
     return false;
   };
 
+  // Saves one line's share straight from the register, as the editor would
+  // with nothing else changed. lineId is the transaction's own id when it
+  // has no split. Returns why it can't save, or null once it's on its way.
+  const saveShare = (
+    transactionId: string,
+    lineId: string,
+    share: CounterpartyShare | null,
+    summary: string,
+  ) => {
+    const transaction = view.budget.transactions.find(
+      (item) => item.id === transactionId && !item.removed,
+    );
+    if (!transaction) return "This transaction was deleted.";
+    const draft = createTransactionDraft(view, view.month, transaction);
+    const next = share && { ...share, amount: (share.amount / 100).toFixed(2) };
+    if (draft.lines.length)
+      draft.lines = draft.lines.map((line) =>
+        line.lineId === lineId ? { ...line, counterpartyShare: next } : line,
+      );
+    else draft.counterpartyShare = next;
+    try {
+      return saver.save(
+        buildTransactionDraftCommand({
+          draft,
+          view,
+          transaction,
+          operationId: newId(),
+          entityId: transaction.id,
+        }),
+        summary,
+      );
+    } catch (failure) {
+      return failure instanceof Error
+        ? failure.message
+        : "This share couldn't be saved. Try again.";
+    }
+  };
+
   return {
     view,
     holdOpen,
     saveCommand: saver.save,
+    saveShare,
     // Returns why the account can't be added, or null once it's on its way.
     addAccount: (command: Extract<Command, { type: "account.add" }>) =>
       saver.save(command, `Added ${command.name}`),
