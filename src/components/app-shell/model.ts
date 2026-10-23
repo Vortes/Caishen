@@ -18,6 +18,7 @@ import {
 import type { State, View } from "~/components/budget/types";
 import { partnerOf } from "~/components/partner/partner";
 import { transactionCategory } from "~/components/transactions/transaction-category";
+import { canShare } from "~/components/transactions/transaction-share";
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import { isCounterparty, type Target } from "~/domain/engine";
 
@@ -114,6 +115,7 @@ export type Transaction = {
   reconciled: boolean;
   source: "budget" | "bank";
   editableImport?: boolean;
+  shareable: boolean;
   needsReview: boolean;
   counterpart?: {
     id: string;
@@ -493,6 +495,7 @@ export function toShellData(
         status: item.status,
         reconciled: Boolean(item.reconciled),
         source: "budget",
+        shareable: canShare(view, item),
         counterpart:
           counterpart && other
             ? {
@@ -554,6 +557,7 @@ export function toShellData(
       status: item.pending ? "pending" : "posted",
       reconciled: false,
       source: "bank",
+      shareable: canShare(view, item),
       editableImport: canEditImport(item),
       needsReview: bankImportNeedsReview(item),
       reviewReason: importReviewReason(item),

@@ -4,11 +4,11 @@ import { HistoryIcon, PlusIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { View } from "~/components/budget/types";
 import { lineField } from "~/components/transactions/transaction-draft";
+import { canShare } from "~/components/transactions/transaction-share";
 import { Button } from "~/components/ui/button";
 import { counterpartyLines } from "~/domain/counterparty";
 import type { CounterpartyShare, TransactionLine } from "~/domain/engine";
-import { isTransfer } from "~/domain/transfers";
-import { money } from "./model";
+import { money, type Transaction } from "./model";
 import {
   AmountWell,
   halfOf,
@@ -24,20 +24,6 @@ import styles from "./share.module.css";
 
 type BudgetTransaction = View["budget"]["transactions"][number];
 type Who = (share: CounterpartyShare) => string;
-
-// A purchase or refund on a cash or card account can carry a share.
-// Transfers and loan payments can't.
-export function canShare(view: View, transaction: BudgetTransaction) {
-  const account = view.accounts.find(
-    (item) => item.id === transaction.accountId,
-  );
-  return (
-    !transaction.removed &&
-    (transaction.kind === "purchase" || transaction.kind === "refund") &&
-    !isTransfer(transaction) &&
-    (account?.kind === "cash" || account?.kind === "credit")
-  );
-}
 
 // The lines a share can sit on: a split's lines, or the transaction itself
 // as one line, even before it has a category.
@@ -97,22 +83,27 @@ function shareNotice(
 // where each line has its own. A linked refund's share follows its
 // purchase, so it only reads.
 export function ShareCell({
-  transactionId,
+  row,
   accountColumn,
 }: {
-  transactionId: string;
+  row: Transaction;
   accountColumn: boolean;
 }) {
   const entry = useTransactionEntry();
   const { view, who } = useShareParties();
-  const transaction = view.budget.transactions.find(
-    (item) => item.id === transactionId,
-  );
-  if (!transaction || !canShare(view, transaction)) return null;
-  const lines = shareLines(transaction);
-  const total = shareTotal(who, transaction);
+  if (!row.shareable) return null;
+  const transactionId = row.id;
+  const transaction =
+    row.source === "budget"
+      ? view.budget.transactions.find((item) => item.id === transactionId)
+      : undefined;
+  if (row.source === "budget" && !transaction) return null;
+  const lines = transaction
+    ? shareLines(transaction)
+    : [{ id: row.id, categoryId: row.categoryId ?? "", amount: row.amount }];
+  const total = transaction ? shareTotal(who, transaction) : null;
   const label = total && <ShareLabel share={total} />;
-  const payee = transaction.payee;
+  const payee = row.payee;
   const slot = (content: ReactNode) => (
     <div
       className={`${shell.txColumns} ${styles.shareActions}`}
@@ -121,7 +112,7 @@ export function ShareCell({
       <span className={styles.shareSlot}>{content}</span>
     </div>
   );
-  if (transaction.refundOfTransactionId)
+  if (transaction?.refundOfTransactionId)
     return label
       ? slot(<span className={styles.shareStatic}>{label}</span>)
       : null;
@@ -161,12 +152,12 @@ export function ShareCell({
       share={line.counterpartyShare}
       saved={line.counterpartyShare}
       onChange={(share) => {
-        // A share needs the category the rest of the cost goes to, so a
-        // row without one opens the editor there, the share already set.
-        if (!line.categoryId)
+        // Imports resolve through the editor, with the share already set.
+        // A saved purchase without a category uses the same path.
+        if (row.source === "bank" || !line.categoryId)
           return entry.start({
             transactionId,
-            field: "categoryId",
+            field: line.categoryId ? "counterpartyShare" : "categoryId",
             counterpartyShare: share,
           })
             ? null
