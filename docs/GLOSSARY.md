@@ -99,6 +99,12 @@ The one record of what the partners owe each other, held by both budgets: each s
 **Partner's purchase**:
 A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and stays uncategorized, held from Ready to Assign, until you choose your own category for it.
 
+**Recorded purchase**:
+A partner ledger entry either partner records for a purchase before the payer's bank import arrives, naming who paid. It counts in both budgets at once; the payer's paired envelope doesn't move until the import pays it, so anything settled toward it meanwhile stays in that envelope.
+
+**Import match**:
+Pairing a payer's bank import with their recorded purchase, so the purchase counts once. A certain match is made as the import arrives; any other possible match waits in the review inbox for the payer to confirm, and the import doesn't count until then.
+
 **Repayment**:
 Money a counterparty pays you back. It reduces what they owe and restores their paired envelope; it is never income and never goes to Ready to Assign.
 _Avoid_: Reimbursement received
