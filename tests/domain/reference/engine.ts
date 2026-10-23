@@ -149,6 +149,7 @@ export function referenceMaterialize(
       state.fundedSpending = 0;
       state.paymentsMade = 0;
       state.creditsReleased = 0;
+      state.reserve = Math.max(0, state.reserve);
     }
     const creditByCategory = new Map<string, Map<string, number>>();
     const cashByCategory = new Map<string, number>();
@@ -344,27 +345,13 @@ export function referenceMaterialize(
       accounts.get(payment.accountId)!.reserve = safe(
         accounts.get(payment.accountId)!.reserve - payment.amount,
       );
-    let paidCashShortfall = 0;
     for (const account of budget.accounts.filter(
       (item) => item.kind === "credit",
     )) {
       const state = accounts.get(account.id)!;
-      if (state.reserve < 0) {
-        paidCashShortfall = safe(paidCashShortfall - state.reserve);
-        state.reserve = 0;
-      }
       state.paymentsMade = safe(
         state.reserve - reserveBeforePayments.get(account.id)!,
       );
-    }
-    for (const [categoryId, state] of categories) {
-      if (getCategory(budget, categoryId).pairedAccountId) continue;
-      const amount = Math.min(
-        paidCashShortfall,
-        Math.max(0, -state.available - state.cashOverspending),
-      );
-      state.cashOverspending = safe(state.cashOverspending + amount);
-      paidCashShortfall -= amount;
     }
     for (const credit of credits) {
       const state = accounts.get(credit.accountId)!;
@@ -380,6 +367,7 @@ export function referenceMaterialize(
         const account = accounts.get(category.pairedAccountId)!;
         state.available = account.reserve;
         state.activity = safe(state.available - state.opening - state.assigned);
+        state.cashOverspending = Math.max(0, -state.available);
       }
     snapshots.set(
       cursor,
@@ -390,7 +378,7 @@ export function referenceMaterialize(
     const state = accounts.get(account.id)!;
     state.shortfall =
       account.kind === "credit"
-        ? Math.max(0, -state.balance - state.reserve)
+        ? Math.max(0, -state.balance - Math.max(0, state.reserve))
         : 0;
   }
   const cash = sum(

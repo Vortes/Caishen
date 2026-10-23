@@ -191,7 +191,7 @@ void test("legacy card payment edits preserve both IDs and consume reserve witho
   const before = f.book;
   assert.throws(
     () => f.save({ inflow: "201.00", outflow: "" }, original.id),
-    /reserve or card debt/,
+    /exceeds card debt/,
   );
   assert.deepEqual(f.book, before);
 });

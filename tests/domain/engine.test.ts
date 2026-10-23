@@ -9,6 +9,7 @@ import {
   forecastLoan,
   mergeBooks,
   projectBook,
+  withCounterpartyAccounts,
   type Book,
   type Command,
   type CommandSource,
@@ -358,16 +359,150 @@ void test("unfunded card spending remains debt across rollover without reducing 
       .accounts.find((account) => account.id === "card")?.shortfall,
     3000,
   );
+  const readyToAssign = setup.view().readyToAssign;
+  const nextReadyToAssign = setup.view("alan", "2026-11").readyToAssign;
+  setup.run({
+    type: "card.payment",
+    cashAccountId: "checking",
+    cardAccountId: "card",
+    date,
+    amount: 8000,
+  });
+  const view = setup.view();
+  const card = view.accounts.find((account) => account.id === "card");
+  const payment = view.categories.find(
+    (category) => category.pairedAccountId === "card",
+  );
+  assert.equal(card?.balance, 0);
+  assert.equal(payment?.available, -3000);
+  assert.equal(payment?.cashOverspending, 3000);
+  assert.equal(card?.shortfall, 0);
+  assert.equal(view.readyToAssign, readyToAssign);
+  const next = setup.view("alan", "2026-11");
+  assert.equal(next.readyToAssign, nextReadyToAssign - 3000);
+  assert.equal(
+    next.categories.find((category) => category.pairedAccountId === "card")
+      ?.available,
+    0,
+  );
+});
+
+void test("a card payment larger than the reserve is refused only beyond the card debt", () => {
+  const setup = fixture(100_000);
+  setup.run({
+    type: "account.add",
+    accountId: "card",
+    name: "Card",
+    kind: "credit",
+    openingBalance: 0,
+  });
+  setup.run({ type: "assign", categoryId: "food", month, amount: 5000 });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "food-charge",
+    accountId: "card",
+    date,
+    amount: -5000,
+    payee: "Food",
+    categoryId: "food",
+  });
+  const payment = {
+    type: "card.payment",
+    cashAccountId: "checking",
+    cardAccountId: "card",
+    date,
+  } as const;
   assert.throws(
-    () =>
-      setup.run({
-        type: "card.payment",
-        cashAccountId: "checking",
-        cardAccountId: "card",
-        date,
-        amount: 8000,
-      }),
-    /exceeds existing reserve/,
+    () => setup.run({ ...payment, amount: 5001 }),
+    /exceeds card debt/,
+  );
+  setup.run({ ...payment, amount: 5000 });
+  assert.equal(
+    setup.view().accounts.find((account) => account.id === "card")?.balance,
+    0,
+  );
+});
+
+void test("paying a card beyond its reserve leaves credit-overspent categories credit-overspent", () => {
+  const setup = fixture(100_000);
+  setup.run({
+    type: "account.add",
+    accountId: "card",
+    name: "Card",
+    kind: "credit",
+    openingBalance: 0,
+  });
+  setup.run({ type: "assign", categoryId: "food", month, amount: 5000 });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "food-charge",
+    accountId: "card",
+    date,
+    amount: -8000,
+    payee: "Food",
+    categoryId: "food",
+  });
+  setup.run({
+    type: "card.payment",
+    cashAccountId: "checking",
+    cardAccountId: "card",
+    date,
+    amount: 8000,
+  });
+  const view = setup.view();
+  const food = view.categories.find((category) => category.id === "food");
+  assert.equal(food?.available, -3000);
+  assert.equal(food?.cashOverspending, 0);
+  assert.equal(
+    view.categories.find((category) => category.pairedAccountId === "card")
+      ?.cashOverspending,
+    3000,
+  );
+});
+
+void test("paying a card beyond its reserve makes a paired envelope's card share cash-backed", () => {
+  const setup = fixture(100_000);
+  setup.book = withCounterpartyAccounts(setup.book);
+  setup.run({
+    type: "account.add",
+    accountId: "card",
+    name: "Card",
+    kind: "credit",
+    openingBalance: 0,
+  });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "noodles",
+    accountId: "card",
+    date,
+    amount: -2000,
+    payee: "Noodles Plus",
+    counterpartyShare: {
+      accountId: "counterparty:reimbursements",
+      counterpartyName: "Mom",
+      amount: 2000,
+    },
+    recordedAt: "2026-10-10T12:00:00Z",
+  });
+  setup.run({
+    type: "card.payment",
+    cashAccountId: "checking",
+    cardAccountId: "card",
+    date,
+    amount: 2000,
+  });
+  const view = setup.view();
+  assert.equal(
+    view.categories.find(
+      (category) =>
+        category.counterpartyAccountId === "counterparty:reimbursements",
+    )?.cashOverspending,
+    2000,
+  );
+  assert.equal(
+    view.categories.find((category) => category.pairedAccountId === "card")
+      ?.cashOverspending,
+    0,
   );
 });
 
@@ -1193,7 +1328,7 @@ void test("a pending inbound deposit is not received cash and cannot fund a cate
   assert.equal(setup.view().readyToAssign, 10_000);
 });
 
-void test("cash spending after a funded card payment becomes cash overspending without a negative reserve", () => {
+void test("cash spending after a funded card payment becomes cash overspending in the card payment category", () => {
   const setup = fixture(100_000);
   setup.run({
     type: "account.add",
@@ -1230,7 +1365,7 @@ void test("cash spending after a funded card payment becomes cash overspending w
   });
   const card = setup.view().accounts.find((account) => account.id === "card")!;
   assert.equal(card.balance, 0);
-  assert.equal(card.reserve, 0);
+  assert.equal(card.reserve, -10_000);
   assert.equal(card.shortfall, 0);
   assert.equal(setup.view().readyToAssign, 90_000);
   assert.equal(setup.view("alan", "2026-11").readyToAssign, 80_000);
@@ -1879,7 +2014,7 @@ void test("backdated card payments and credits cannot use purchases recorded lat
         date: "2026-10-05",
         amount: 10_000,
       }),
-    /reserve or card debt/,
+    /exceeds card debt/,
   );
   assert.throws(
     () =>
@@ -1982,7 +2117,7 @@ void test("backdating a credit or payment preserves later recorded card payments
         date: "2026-10-05",
         amount: 10_000,
       }),
-    /reserve or card debt/,
+    /exceeds card debt/,
   );
   assert.equal(
     setup.view().accounts.find((account) => account.id === "card")?.balance,

@@ -117,7 +117,7 @@ _Avoid_: Net settlement
 One partner asking the other to pay a stated amount on a given day. What has been paid toward it is every settlement from the other partner since that day, and it closes when that reaches the amount; it has no deadline and moves no money.
 
 **Credit card payment reserve**:
-Existing cash set aside to pay a credit card, including funded purchase amounts moved from their spending categories. Paying the card consumes this reserve and reduces bank cash and card debt, without creating another expense or returning that payment amount to Ready to Assign.
+Existing cash set aside to pay a credit card, including funded purchase amounts moved from their spending categories. Paying the card consumes this reserve and reduces bank cash and card debt, without creating another expense or returning that payment amount to Ready to Assign. A payment larger than the reserve is still recorded; the difference shows as cash overspending in the card's payment category until it is covered, and the card's unfunded debt never counts it.
 
 **Loan account**:
 A record of an outstanding loan balance and its interest and payment terms. The amount owed is debt, not cash available to allocate to envelopes.
@@ -135,11 +135,11 @@ A comparison showing how an additional loan payment would affect a payoff foreca
 A credit applied to a credit-card account that reduces the amount owed, rather than depositing cash into a bank account. Once posted, it releases any existing payment reserve no longer needed to cover the remaining card balance into Ready to Assign.
 
 **Overspending**:
-Spending that exceeds the money available in a budget category. In a paired envelope, only what you fronted in cash counts as cash overspending, and it stays visible until it is repaid or covered with float.
+Spending that exceeds the money available in a budget category. In a paired envelope, only what you fronted in cash counts as cash overspending, and it stays visible until it is repaid or covered with float. A card payment larger than its reserve is cash overspending in the card's payment category; the spending categories it paid for keep their own state.
 
 **Overspending coverage**:
 Moving budgeted money from another category to cover overspending. Choosing the source is always the user's decision.
 _Avoid_: Recategorization
 
 **Monthly rollover**:
-The transition to a new budget month: positive available category balances carry forward, uncovered cash overspending reduces the next month's Ready to Assign, and uncovered credit spending remains debt requiring funding. Paired envelopes carry forward unchanged, including any shortfall, so money owed to you never reaches Ready to Assign.
+The transition to a new budget month: positive available category balances carry forward, uncovered cash overspending reduces the next month's Ready to Assign, including a card payment category left negative by a payment, and uncovered credit spending remains debt requiring funding. Paired envelopes carry forward unchanged, including any shortfall, so money owed to you never reaches Ready to Assign.

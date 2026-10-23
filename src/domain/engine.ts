@@ -1606,6 +1606,7 @@ function replay(
       state.fundedSpending = 0;
       state.paymentsMade = 0;
       state.creditsReleased = 0;
+      state.reserve = Math.max(0, state.reserve);
     }
     const creditByCategory = new Map(
       [...carriedCounterpartyCredit].map(([key, cards]) => [
@@ -1918,15 +1919,12 @@ function replay(
       accounts.get(payment.accountId)!.reserve = safe(
         accounts.get(payment.accountId)!.reserve - payment.amount,
       );
-    let paidCashShortfall = 0;
+    const paidCashShortfall = new Map<string, number>();
     for (const account of budget.accounts.filter(
       (item) => item.kind === "credit",
     )) {
       const state = accounts.get(account.id)!;
-      if (state.reserve < 0) {
-        paidCashShortfall = safe(paidCashShortfall - state.reserve);
-        state.reserve = 0;
-      }
+      paidCashShortfall.set(account.id, Math.max(0, -state.reserve));
       state.paymentsMade = safe(
         state.reserve - reserveBeforePayments.get(account.id)!,
       );
@@ -1963,26 +1961,29 @@ function replay(
       (item) => item.kind === "credit",
     )) {
       const state = accounts.get(account.id)!;
-      let remainingDebt = Math.max(0, -state.balance - state.reserve);
+      let remainingDebt = Math.max(
+        0,
+        -state.balance - Math.max(0, state.reserve),
+      );
       for (const cards of carriedCounterpartyCredit.values()) {
         const debt = Math.min(cards.get(account.id) ?? 0, remainingDebt);
-        paidCashShortfall = Math.max(
-          0,
-          safe(paidCashShortfall - ((cards.get(account.id) ?? 0) - debt)),
+        paidCashShortfall.set(
+          account.id,
+          Math.max(
+            0,
+            safe(
+              paidCashShortfall.get(account.id)! -
+                ((cards.get(account.id) ?? 0) - debt),
+            ),
+          ),
         );
         cards.set(account.id, debt);
         remainingDebt -= debt;
       }
     }
-    for (const [categoryId, state] of categories) {
-      const category = index.category(categoryId);
-      if (category.pairedAccountId || category.counterpartyAccountId) continue;
-      const amount = Math.min(
-        paidCashShortfall,
-        Math.max(0, -state.available - state.cashOverspending),
-      );
-      state.cashOverspending = safe(state.cashOverspending + amount);
-      paidCashShortfall -= amount;
+    for (const [cardId, shortfall] of paidCashShortfall) {
+      const state = accounts.get(cardId)!;
+      if (state.reserve < 0) state.reserve = -shortfall;
     }
     for (const credit of credits) {
       const state = accounts.get(credit.accountId)!;
@@ -2010,6 +2011,7 @@ function replay(
         const account = accounts.get(category.pairedAccountId)!;
         state.available = account.reserve;
         state.activity = safe(state.available - state.opening - state.assigned);
+        state.cashOverspending = Math.max(0, -state.available);
       }
     for (const category of budget.categories) {
       if (!category.counterpartyAccountId) continue;
@@ -2052,7 +2054,7 @@ function replay(
     const state = accounts.get(account.id)!;
     state.shortfall =
       account.kind === "credit"
-        ? Math.max(0, -state.balance - state.reserve)
+        ? Math.max(0, -state.balance - Math.max(0, state.reserve))
         : 0;
   }
   return {
@@ -2567,11 +2569,8 @@ function validateCardPayment(
     budget.userId,
     monthOf(date),
   ).accounts.get(cardAccountId)!;
-  if (
-    amount > Math.min(state.reserve, remaining.reserve) ||
-    amount > Math.min(-state.balance, -remaining.balance)
-  )
-    fail("Card payment exceeds existing reserve or card debt");
+  if (amount > Math.min(-state.balance, -remaining.balance))
+    fail("Card payment exceeds card debt");
   if (amount > calculated.accounts.get(cashAccountId)!.balance)
     fail("Card payment requires cash already received by its payment date");
 }
