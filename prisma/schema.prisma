@@ -302,32 +302,36 @@ model ExpectedIncome {
 }
 
 model Transaction {
-  workspaceId         String
-  userId              String
-  id                  String
-  accountId           String
-  date                String
-  amount              BigInt
-  payee               String
-  status              String
-  categoryId          String?
-  expenseMonth        String
-  sharedCategoryId    String?
-  providerId          String?
+  workspaceId                 String
+  userId                      String
+  id                          String
+  accountId                   String
+  date                        String
+  amount                      BigInt
+  payee                       String
+  status                      String
+  categoryId                  String?
+  expenseMonth                String
+  sharedCategoryId            String?
+  providerId                  String?
   // The transaction's own revision, which its history entries record.
-  transactionRevision Int
-  reviewed            Boolean
-  kind                String
-  linkedId            String?
-  removed             Boolean?
-  reconciled          Boolean?
-  sort                Int
-  revision            Int
-  deleted             Boolean              @default(false)
-  member              Member               @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
-  shares              TransactionShare[]
-  history             TransactionHistory[]
-  lines               TransactionLine[]
+  transactionRevision         Int
+  reviewed                    Boolean
+  kind                        String
+  linkedId                    String?
+  counterpartyShare           Json?
+  refundOfTransactionId       String?
+  linkedCounterpartyAccountId String?
+  counterpartyName            String?
+  removed                     Boolean?
+  reconciled                  Boolean?
+  sort                        Int
+  revision                    Int
+  deleted                     Boolean              @default(false)
+  member                      Member               @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  shares                      TransactionShare[]
+  history                     TransactionHistory[]
+  lines                       TransactionLine[]
 
   @@id([workspaceId, userId, id])
   @@index([workspaceId, revision])
@@ -362,6 +366,9 @@ model TransactionHistory {
   operationId         String
   reason              String
   combinedId          String?
+  actorId             String?
+  at                  String?
+  shareChanges        Json?
   revision            Int
   deleted             Boolean     @default(false)
   transaction         Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
@@ -372,16 +379,17 @@ model TransactionHistory {
 
 // One line of a split transaction: part of its amount in one category.
 model TransactionLine {
-  workspaceId   String
-  userId        String
-  transactionId String
-  id            String
-  categoryId    String
-  amount        BigInt
-  sort          Int
-  revision      Int
-  deleted       Boolean     @default(false)
-  transaction   Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
+  workspaceId       String
+  userId            String
+  transactionId     String
+  id                String
+  categoryId        String
+  amount            BigInt
+  counterpartyShare Json?
+  sort              Int
+  revision          Int
+  deleted           Boolean     @default(false)
+  transaction       Transaction @relation(fields: [workspaceId, userId, transactionId], references: [workspaceId, userId, id], onDelete: Cascade)
 
   @@id([workspaceId, userId, transactionId, id])
   @@index([workspaceId, revision])
@@ -637,15 +645,16 @@ model Operation {
 
 // A payee's most recent categorization, by its normalized payee key.
 model PayeeMemory {
-  workspaceId String
-  userId      String
-  payeeKey    String
-  payee       String
-  kind        String
-  categoryId  String?
-  revision    Int
-  deleted     Boolean @default(false)
-  member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  workspaceId       String
+  userId            String
+  payeeKey          String
+  payee             String
+  kind              String
+  categoryId        String?
+  counterpartyShare Json?
+  revision          Int
+  deleted           Boolean @default(false)
+  member            Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
 
   @@id([workspaceId, userId, payeeKey])
   @@index([workspaceId, revision])

@@ -1,3 +1,4 @@
+import { counterpartyLines, shareContribution } from "./counterparty";
 import {
   isPersonalLedger,
   ledgerSharedPurchases,
@@ -57,8 +58,11 @@ export function personalSpendingEntries(
         payments.find((payment) => payment.id === transaction.linkedId)
           ?.interest ?? 0;
     if (!amount) continue;
-    if (transaction.lines && !transaction.shares) {
-      for (const line of transaction.lines)
+    if (
+      (transaction.lines || transaction.counterpartyShare) &&
+      !transaction.shares
+    ) {
+      for (const line of counterpartyLines(transaction))
         entries.push({
           id: `${userId}:${transaction.id}:${line.id}`,
           transactionId: transaction.id,
@@ -68,7 +72,9 @@ export function personalSpendingEntries(
           payee: transaction.payee,
           accountId: transaction.accountId,
           categoryId: line.categoryId,
-          amount: -line.amount,
+          amount:
+            -line.amount -
+            shareContribution(line.amount, line.counterpartyShare),
         });
       continue;
     }

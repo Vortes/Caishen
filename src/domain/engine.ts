@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { linkedRefundIssues } from "./linked-refunds";
+import { counterpartyLines, counterpartyRegisterEntries, shareContribution } from "./counterparty";
+export { counterpartyRegisterEntries } from "./counterparty";
 import {
   isTransfer,
   transferCounterparts,
@@ -454,7 +457,20 @@ export type Category = {
   // The counterparty account this paired envelope holds the cash of.
   counterpartyAccountId?: string;
 };
+export type CounterpartyShare = {
+  accountId: string;
+  amount: number;
+  counterpartyName?: string;
+};
+export type ShareChange = {
+  lineId: string;
+  previous: CounterpartyShare | null;
+  next: CounterpartyShare | null;
+};
 export type TransactionHistory = {
+  actorId?: string;
+  at?: string;
+  shareChanges?: ShareChange[];
   revision: number;
   amount: number;
   status: "pending" | "posted";
@@ -472,11 +488,16 @@ export type TransactionHistory = {
   combinedId?: string;
 };
 export type TransactionLine = {
+  counterpartyShare?: CounterpartyShare;
   id: string;
   categoryId: string;
   amount: number;
 };
 export type Transaction = {
+  counterpartyShare?: CounterpartyShare;
+  refundOfTransactionId?: string;
+  linkedCounterpartyAccountId?: string;
+  counterpartyName?: string;
   id: string;
   accountId: string;
   date: string;
@@ -541,6 +562,7 @@ export type Reimbursement = {
 // entries (src/domain/payee-memory.ts). It names a budget category or Ready
 // to Assign.
 export type PayeeMemory = {
+  counterpartyShare?: CounterpartyShare;
   // The payee as it was written when last categorized.
   payee: string;
   kind: "category" | "readyToAssign";
@@ -621,7 +643,23 @@ export type Book = {
 };
 
 export const storedIdentifier = z.string().min(1).max(1024);
+export const counterpartyShareSchema = z.object({
+  accountId: storedIdentifier,
+  amount: nonnegativeCents,
+  counterpartyName: z.string().trim().min(1).max(240).optional(),
+});
 export const transactionHistorySchema = z.object({
+  actorId: storedIdentifier.optional(),
+  at: z.string().datetime().optional(),
+  shareChanges: z
+    .array(
+      z.object({
+        lineId: storedIdentifier,
+        previous: counterpartyShareSchema.nullable(),
+        next: counterpartyShareSchema.nullable(),
+      }),
+    )
+    .optional(),
   revision: z.number().int().nonnegative(),
   amount: cents,
   status: z.enum(["pending", "posted"]),
@@ -640,6 +678,10 @@ export const transactionHistorySchema = z.object({
   combinedId: storedIdentifier.optional(),
 });
 export const transactionSchema = z.object({
+  counterpartyShare: counterpartyShareSchema.optional(),
+  refundOfTransactionId: storedIdentifier.optional(),
+  linkedCounterpartyAccountId: storedIdentifier.optional(),
+  counterpartyName: z.string().optional(),
   id: storedIdentifier,
   accountId: storedIdentifier,
   date: daySchema,
@@ -647,11 +689,16 @@ export const transactionSchema = z.object({
   payee: z.string(),
   status: z.enum(["pending", "posted"]),
   categoryId: storedIdentifier.optional(),
-  lines: z.array(z.object({
-    id: storedIdentifier,
-    categoryId: storedIdentifier,
-    amount: cents,
-  })).optional(),
+  lines: z
+    .array(
+      z.object({
+        counterpartyShare: counterpartyShareSchema.optional(),
+        id: storedIdentifier,
+        categoryId: storedIdentifier,
+        amount: cents,
+      }),
+    )
+    .optional(),
   expenseMonth: monthSchema,
   sharedCategoryId: storedIdentifier.optional(),
   shares: z.record(nonnegativeCents).optional(),
@@ -701,6 +748,7 @@ const loanSchema = z.object({
   ),
 });
 export const payeeMemorySchema = z.object({
+  counterpartyShare: counterpartyShareSchema.optional(),
   payee: z.string(),
   kind: z.enum(["category", "readyToAssign"]),
   categoryId: storedIdentifier.optional(),
@@ -805,24 +853,91 @@ export function budgetReferenceIssues(
       (transaction) =>
         !transaction.removed &&
         (!accounts.has(transaction.accountId) ||
-          categoryLines(transaction).some(line => !categories.has(line.categoryId))),
+          categoryLines(transaction).some(
+            (line) => !categories.has(line.categoryId),
+          )),
     )
   )
     issues.push("Invalid transaction reference");
-  if (budget.transactions.some(transaction => transaction.lines && (
-    transaction.lines.length < 2 ||
-    transaction.categoryId !== undefined ||
-    new Set(transaction.lines.map(line => line.id)).size !== transaction.lines.length ||
-    transaction.lines.some(line => !line.amount) ||
-    transaction.lines.reduce((total, line) => total + line.amount, 0) !== transaction.amount
-  ))) issues.push("Invalid stored transaction lines");
+  const counterpartyAccount = (id: string) =>
+    budget.accounts.find(
+      (account) => account.id === id && isCounterparty(account),
+    );
+  const hasPairedEnvelope = (id: string) =>
+    budget.categories.some((category) => category.counterpartyAccountId === id);
+  for (const transaction of budget.transactions) {
+    if (transaction.removed) continue;
+    const source = budget.accounts.find(
+      (account) => account.id === transaction.accountId,
+    );
+    if (
+      transaction.counterpartyShare &&
+      (!transaction.categoryId || transaction.lines !== undefined)
+    )
+      issues.push("Invalid counterparty share reference");
+    if (transaction.linkedCounterpartyAccountId) {
+      const counterparty = counterpartyAccount(
+        transaction.linkedCounterpartyAccountId,
+      );
+      if (
+        !counterparty ||
+        !hasPairedEnvelope(counterparty.id) ||
+        transaction.kind !== "reimbursement" ||
+        transaction.amount <= 0 ||
+        source?.kind !== "cash" ||
+        transaction.categoryId ||
+        transaction.lines ||
+        transaction.counterpartyShare ||
+        (counterparty.kind === "reimbursements" &&
+          !transaction.counterpartyName?.trim())
+      )
+        issues.push("Invalid counterparty repayment reference");
+    }
+    for (const line of counterpartyLines(transaction)) {
+      const share = line.counterpartyShare;
+      if (!share) continue;
+      const counterparty = counterpartyAccount(share.accountId);
+      const category = budget.categories.find(
+        (item) => item.id === line.categoryId,
+      );
+      if (
+        !counterparty ||
+        !hasPairedEnvelope(share.accountId) ||
+        share.amount > Math.abs(line.amount) ||
+        (source?.kind !== "cash" && source?.kind !== "credit") ||
+        !category ||
+        category.counterpartyAccountId ||
+        category.pairedAccountId ||
+        category.pairedLoanId ||
+        !["purchase", "refund"].includes(transaction.kind) ||
+        transaction.sharedCategoryId ||
+        (counterparty.kind === "reimbursements" &&
+          !share.counterpartyName?.trim())
+      )
+        issues.push("Invalid counterparty share reference");
+    }
+  }
+  if (
+    budget.transactions.some(
+      (transaction) =>
+        transaction.lines &&
+        (transaction.lines.length < 2 ||
+          transaction.categoryId !== undefined ||
+          new Set(transaction.lines.map((line) => line.id)).size !==
+            transaction.lines.length ||
+          transaction.lines.some((line) => !line.amount) ||
+          transaction.lines.reduce((total, line) => total + line.amount, 0) !==
+            transaction.amount),
+    )
+  )
+    issues.push("Invalid stored transaction lines");
   if (
     budget.assignments.some(
       (assignment) => !categories.has(assignment.categoryId),
     )
   )
     issues.push("Invalid assignment reference");
-  return issues;
+  return [...issues, ...linkedRefundIssues(budget)];
 }
 // The stored data both partners share: shared categories, what they owe each
 // other, their settlements, and the command audit.
@@ -1187,7 +1302,6 @@ function rescaleLines(
   );
   return scaled.every((line) => line.amount) ? scaled : undefined;
 }
-
 
 export function categoryLines(
   transaction: Pick<Transaction, "categoryId" | "lines" | "amount">,
@@ -1577,6 +1691,7 @@ function replay(
   );
   const snapshots = new Map<string, Map<string, CategoryMonth>>();
   const startingBalances = new Map<string, number>();
+  const carriedCounterpartyCredit = new Map<string, Map<string, number>>();
   const empty: MonthRows = {
     transactions: [],
     assignments: [],
@@ -1588,8 +1703,10 @@ function replay(
     cursor = nextMonth(cursor)
   ) {
     const rows = index.months.get(cursor) ?? empty;
-    for (const state of categories.values()) {
-      state.opening = Math.max(0, state.available);
+    for (const [categoryId, state] of categories) {
+      state.opening = index.category(categoryId).counterpartyAccountId
+        ? state.available
+        : Math.max(0, state.available);
       state.available = state.opening;
       state.assigned = 0;
       state.activity = 0;
@@ -1610,10 +1727,23 @@ function replay(
       state.paymentsMade = 0;
       state.creditsReleased = 0;
     }
-    const creditByCategory = new Map<string, Map<string, number>>();
+    const creditByCategory = new Map(
+      [...carriedCounterpartyCredit].map(([categoryId, cards]) => [
+        categoryId,
+        new Map(cards),
+      ]),
+    );
+    const priorCounterpartyCredit = new Map(
+      [...carriedCounterpartyCredit].map(([categoryId, cards]) => [
+        categoryId,
+        sum([...cards.values()]),
+      ]),
+    );
+    carriedCounterpartyCredit.clear();
     const cashByCategory = new Map<string, number>();
     const credits: Transaction[] = [];
     const payments: Transaction[] = [];
+    const positiveCardCreditSpent = new Set<string>();
     const debtTransfers: { from: string; to: string; amount: number }[] = [];
     for (const assignment of rows.assignments) {
       const state = categories.get(assignment.categoryId)!;
@@ -1630,6 +1760,12 @@ function replay(
       const account = index.account(transaction.accountId);
       if (transaction.status === "pending" && transaction.amount > 0) continue;
       const accountState = accounts.get(account.id)!;
+      if (
+        account.kind === "credit" &&
+        accountState.balance > 0 &&
+        transaction.amount < 0
+      )
+        positiveCardCreditSpent.add(account.id);
       accountState.balance = safe(accountState.balance + transaction.amount);
       if (transaction.amount < 0)
         accountState.outflows = safe(
@@ -1659,10 +1795,46 @@ function replay(
         if (account.kind === "credit") payments.push(transaction);
         continue;
       }
+      if (transaction.linkedCounterpartyAccountId) {
+        const counterparty = accounts.get(
+          transaction.linkedCounterpartyAccountId,
+        )!;
+        counterparty.balance = safe(counterparty.balance - transaction.amount);
+        const category = budget.categories.find(
+          (item) =>
+            item.counterpartyAccountId ===
+            transaction.linkedCounterpartyAccountId,
+        )!;
+        const state = categories.get(category.id)!;
+        state.activity = safe(state.activity + transaction.amount);
+        state.available = safe(state.available + transaction.amount);
+        state.cashActivity = safe(state.cashActivity + transaction.amount);
+        cashByCategory.set(
+          category.id,
+          safe((cashByCategory.get(category.id) ?? 0) + transaction.amount),
+        );
+      }
       if (transaction.kind === "reimbursement" || transaction.kind === "income")
         continue;
       if (transaction.kind === "settlement") continue;
-      for (const { categoryId, amount } of categoryLines(transaction)) {
+      const accountingLines = counterpartyLines(transaction).flatMap((line) => {
+        const share = line.counterpartyShare;
+        if (!share) return [line];
+        const contribution = shareContribution(line.amount, share);
+        const counterparty = accounts.get(share.accountId)!;
+        counterparty.balance = safe(counterparty.balance + contribution);
+        const paired = budget.categories.find(
+          (item) => item.counterpartyAccountId === share.accountId,
+        )!;
+        return [
+          {
+            categoryId: line.categoryId,
+            amount: safe(line.amount + contribution),
+          },
+          { categoryId: paired.id, amount: -contribution },
+        ];
+      });
+      for (const { categoryId, amount } of accountingLines) {
         const state = categories.get(categoryId)!;
         state.activity = safe(state.activity + amount);
         state.available = safe(state.available + amount);
@@ -1731,6 +1903,7 @@ function replay(
         categoryId,
         safe(
           state.opening +
+            (priorCounterpartyCredit.get(categoryId) ?? 0) +
             state.assigned +
             (cashByCategory.get(categoryId) ?? 0),
         ),
@@ -1800,8 +1973,16 @@ function replay(
       categories.get(refund.categoryId)!.available = safe(
         categories.get(refund.categoryId)!.available - refund.remaining,
       );
-    for (const [categoryId, amount] of liquidity)
-      categories.get(categoryId)!.cashOverspending = Math.max(0, -amount);
+    for (const [categoryId, amount] of liquidity) {
+      const state = categories.get(categoryId)!;
+      const priorCashDeficit = index.category(categoryId).counterpartyAccountId
+        ? Math.max(
+            0,
+            -state.opening - (priorCounterpartyCredit.get(categoryId) ?? 0),
+          )
+        : 0;
+      state.cashOverspending = Math.max(0, -amount - priorCashDeficit);
+    }
     for (const transfer of debtTransfers) {
       const from = accounts.get(transfer.from)!;
       const to = accounts.get(transfer.to)!;
@@ -1846,6 +2027,18 @@ function replay(
       );
       state.reserve = reserve;
     }
+    for (const account of budget.accounts.filter(
+      (item) => item.kind === "credit",
+    )) {
+      const state = accounts.get(account.id)!;
+      if (state.balance > 0 || positiveCardCreditSpent.has(account.id)) {
+        const reserve = Math.min(state.reserve, Math.max(0, -state.balance));
+        state.creditsReleased = safe(
+          state.creditsReleased + reserve - state.reserve,
+        );
+        state.reserve = reserve;
+      }
+    }
     for (const category of budget.categories)
       if (category.pairedAccountId) {
         const state = categories.get(category.id)!;
@@ -1853,6 +2046,56 @@ function replay(
         state.available = account.reserve;
         state.activity = safe(state.available - state.opening - state.assigned);
       }
+    for (const purchase of purchases) {
+      if (
+        !purchase.remaining ||
+        !index.category(purchase.categoryId).counterpartyAccountId
+      )
+        continue;
+      const cards =
+        carriedCounterpartyCredit.get(purchase.categoryId) ??
+        new Map<string, number>();
+      cards.set(
+        purchase.cardId,
+        safe((cards.get(purchase.cardId) ?? 0) + purchase.remaining),
+      );
+      carriedCounterpartyCredit.set(purchase.categoryId, cards);
+    }
+    for (const transfer of debtTransfers) {
+      let remaining = transfer.amount;
+      for (const cards of carriedCounterpartyCredit.values()) {
+        const moved = Math.min(remaining, cards.get(transfer.from) ?? 0);
+        if (!moved) continue;
+        cards.set(transfer.from, cards.get(transfer.from)! - moved);
+        cards.set(transfer.to, safe((cards.get(transfer.to) ?? 0) + moved));
+        remaining -= moved;
+      }
+    }
+    for (const account of budget.accounts.filter(
+      (item) => item.kind === "credit",
+    )) {
+      const state = accounts.get(account.id)!;
+      let remainingDebt = Math.max(0, -state.balance - state.reserve);
+      for (const cards of carriedCounterpartyCredit.values()) {
+        const debt = Math.min(cards.get(account.id) ?? 0, remainingDebt);
+        cards.set(account.id, debt);
+        remainingDebt -= debt;
+      }
+    }
+    for (const category of budget.categories) {
+      if (!category.counterpartyAccountId) continue;
+      const state = categories.get(category.id)!;
+      const float = sum(
+        budget.assignments
+          .filter(
+            (item) => item.categoryId === category.id && item.month <= cursor,
+          )
+          .map((item) => item.amount),
+      );
+      state.available = safe(
+        float - accounts.get(category.counterpartyAccountId)!.balance,
+      );
+    }
     snapshots.set(
       cursor,
       new Map([...categories].map(([id, state]) => [id, { ...state }])),
@@ -2428,7 +2671,14 @@ function projectAccountingState(
     accounts: budget.accounts.map((account) => ({
       ...account,
       ...calculated.accounts.get(account.id)!,
-      cleared: clearedBalance(budget, account),
+      cleared: isCounterparty(account)
+        ? sum(
+            counterpartyRegisterEntries(budget, {
+              accountId: account.id,
+              cutoff,
+            }).map((entry) => entry.amount),
+          )
+        : clearedBalance(budget, account),
     })),
     personalSpending,
     amountPaid,
@@ -2440,6 +2690,7 @@ function projectAccountingState(
     settlement: { youOwe, owedToYou, net: safe(youOwe - owedToYou) },
     sharedStatement: sharedStatement(book, userId, month),
     sharedLedger: projectSharedLedger(book, userId),
+    counterpartyRegister: counterpartyRegisterEntries(budget, { cutoff }),
     reimbursements: budget.reimbursements.map((claim) => ({
       ...structuredClone(claim),
       outstanding: safe(
@@ -3477,7 +3728,12 @@ function applyCommand(
         (categoryId || command.sharedCategoryId || existing?.sharedCategoryId)
       )
         fail("Tracking activity does not use budget categories");
-      if (account.kind === "credit" && command.amount > 0 && !categoryId && !lines)
+      if (
+        account.kind === "credit" &&
+        command.amount > 0 &&
+        !categoryId &&
+        !lines
+      )
         fail("Use a card payment or posted statement credit for card inflows");
       if (categoryId) {
         const category = getCategory(budget, categoryId);
@@ -3556,7 +3812,11 @@ function applyCommand(
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
         kind:
-          command.amount < 0 ? "purchase" : categoryId || lines ? "refund" : "income",
+          command.amount < 0
+            ? "purchase"
+            : categoryId || lines
+              ? "refund"
+              : "income",
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
