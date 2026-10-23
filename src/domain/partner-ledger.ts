@@ -35,11 +35,13 @@ import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 //   held from Ready to Assign.
 // - An entry without a `source` is a purchase recorded before the payer's
 //   bank import arrives (`partner.record`). It counts at once in both
-//   budgets: the non-payer's as above, and the payer's Partner account and
-//   paired envelope by the same change, held as credit rather than cash
-//   overspending, since no account of theirs has paid it yet. The payer's
-//   own part waits for the import; the category they chose for it, if they
-//   recorded it themselves, is their side until then.
+//   budgets: the non-payer's as above, and the payer's Partner account by
+//   the same change. The payer's paired envelope doesn't move, since no
+//   account of theirs has paid it yet; whatever the partner settles toward
+//   it before the import stays in that envelope until the import spends
+//   it, so it never reaches Ready to Assign. The payer's own part waits for
+//   the import; the category they chose for it, if they recorded it
+//   themselves, is their side until then.
 // - When the payer's import arrives it is matched to the entry
 //   (`partner.match`): the import becomes the payer's transaction with the
 //   entry's share, and the entry's `source` names it. The entry keeps its
