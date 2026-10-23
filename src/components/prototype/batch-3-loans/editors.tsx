@@ -11,7 +11,6 @@ import shell from "../app-shell/shell.module.css";
 import entry from "../app-shell/transaction-entry.module.css";
 import target from "../app-shell/target-editor.module.css";
 import {
-  balanceOn,
   dayLabel,
   endOf,
   forecast,
@@ -28,14 +27,9 @@ import {
 import {
   categoryLabel,
   checkLoan,
-  checkPayment,
   checkRate,
   emptyLoan,
-  estimatedInterest,
-  paymentDraft,
-  split,
   type LoanDraft,
-  type PaymentDraft,
   type RateDraft,
 } from "./drafts";
 import { DayField, Field, focusFirst, Select, Well } from "./fields";
@@ -601,179 +595,5 @@ function RateImpact({ loan, draft }: { loan: Loan; draft: RateDraft }) {
         </dd>
       </div>
     </dl>
-  );
-}
-
-// ---------- Payment ----------
-
-export function usePaymentDraft(loan: Loan) {
-  const store = useStore();
-  const [draft, setDraft] = useState<PaymentDraft>(() => paymentDraft(loan));
-  const [tried, setTried] = useState(false);
-  const errors = tried ? checkPayment(draft, loan) : {};
-  const change = (next: Partial<PaymentDraft>) =>
-    setDraft((value) => ({ ...value, ...next }));
-  // Returns the fields to fix, in order, or saves and returns none.
-  const submit = (): string[] => {
-    setTried(true);
-    const found = checkPayment(draft, loan);
-    const order = ["accountId", "date", "amount", "interest"] as const;
-    const bad = order.filter((field) => found[field]);
-    if (bad.length) return bad;
-    const parts = split(draft, loan)!;
-    store.recordPayment(loan.id, {
-      accountId: draft.accountId,
-      date: draft.date,
-      principal: parts.principal,
-      interest: parts.interest,
-    });
-    return [];
-  };
-  return { draft, errors, change, submit };
-}
-
-// What the payment does to the loan, under the amounts.
-export function PaymentSplit({
-  loan,
-  draft,
-}: {
-  loan: Loan;
-  draft: PaymentDraft;
-}) {
-  const parts = split(draft, loan);
-  if (!parts || parts.principal < 0)
-    return (
-      <p className={target.hint}>
-        The payment is one outflow. Only the principal part lowers the loan
-        balance.
-      </p>
-    );
-  return (
-    <dl className={styles.compare}>
-      <div>
-        <dt>Principal</dt>
-        <dd>
-          <strong>{money(parts.principal)}</strong> of {money(parts.amount)}
-        </dd>
-      </div>
-      <div>
-        <dt>Balance</dt>
-        <dd>
-          {money(balanceOn(loan, TODAY))} →{" "}
-          <strong>{money(Math.max(0, parts.after))}</strong>
-        </dd>
-      </div>
-    </dl>
-  );
-}
-
-export function interestHint(loan: Loan, date: string) {
-  const rate = rateOn(loan, /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : TODAY);
-  return `Estimated ${money(estimatedInterest(loan, date))} at ${percent(rate.annualRateBps)}. Use the figure on your lender’s statement.`;
-}
-
-export function PaymentEditor({ loan }: { loan: Loan }) {
-  const store = useStore();
-  const { draft, errors, change, submit } = usePaymentDraft(loan);
-  const id = useId();
-  const field = (name: string) => `${id}-${name}`;
-  const form = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    form.current
-      ?.querySelector<HTMLInputElement>(`#${CSS.escape(field("interest"))}`)
-      ?.focus();
-    // Focus once, when the editor opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const cash = store.state.accounts.filter((item) => item.kind === "cash");
-  return (
-    <form
-      ref={form}
-      className={target.form}
-      noValidate
-      aria-label={`Record a payment to ${loan.name}`}
-      onSubmit={(event) => {
-        event.preventDefault();
-        const bad = submit();
-        if (bad.length)
-          requestAnimationFrame(() => focusFirst(form.current, bad.map(field)));
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !event.defaultPrevented) {
-          event.preventDefault();
-          store.open(null);
-        }
-      }}
-    >
-      <div className={styles.pair}>
-        <Field
-          id={field("accountId")}
-          label="Paid from"
-          error={errors.accountId}
-        >
-          <Select
-            id={field("accountId")}
-            value={draft.accountId}
-            error={errors.accountId}
-            onChange={(accountId) => change({ accountId })}
-          >
-            {cash.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field id={field("date")} label="Date" error={errors.date}>
-          <DayField
-            id={field("date")}
-            label="Payment date"
-            value={draft.date}
-            min={loan.rates[0]!.effectiveDate}
-            error={errors.date}
-            onChange={(date) => change({ date })}
-          />
-        </Field>
-      </div>
-      <div className={styles.pair}>
-        <Field id={field("amount")} label="Payment" error={errors.amount}>
-          <Well
-            id={field("amount")}
-            value={draft.amount}
-            prefix="$"
-            align="end"
-            error={errors.amount}
-            onChange={(amount) => change({ amount })}
-          />
-        </Field>
-        <Field
-          id={field("interest")}
-          label="Lender-confirmed interest"
-          error={errors.interest}
-          hint={interestHint(loan, draft.date)}
-        >
-          <Well
-            id={field("interest")}
-            value={draft.interest}
-            prefix="$"
-            placeholder="0.00"
-            align="end"
-            error={errors.interest}
-            hint
-            onChange={(interest) => change({ interest })}
-          />
-        </Field>
-      </div>
-      <PaymentSplit loan={loan} draft={draft} />
-      <div className={target.footer}>
-        <span className={target.spacer} />
-        <Button size="sm" onClick={() => store.open(null)}>
-          Cancel
-        </Button>
-        <Button variant="primary" size="sm" type="submit">
-          Record payment
-        </Button>
-      </div>
-    </form>
   );
 }

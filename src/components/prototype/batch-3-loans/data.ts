@@ -425,11 +425,11 @@ export const scenarios: Record<
 
 // Register rows for the loan payments: one outflow per recorded payment,
 // from the account that paid it.
-export function paymentRows(state: State, paidFrom: Record<string, string>) {
+export function paymentRows(state: State) {
   return state.loans.flatMap((item) =>
     item.payments.map<Row>((payment) => ({
       id: payment.id,
-      accountId: paidFrom[payment.id] ?? item.payFrom,
+      accountId: item.payFrom,
       date: payment.date,
       payee: `Payment to ${item.name}`,
       category: `${item.name} payment`,

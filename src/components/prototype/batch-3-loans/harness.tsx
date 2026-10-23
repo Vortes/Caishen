@@ -39,15 +39,6 @@ const variantGroups: {
       { value: "both", label: "One time or monthly" },
     ],
   },
-  {
-    key: "pay",
-    variable: "Record payment: where it’s entered",
-    short: "Payment",
-    options: [
-      { value: "panel", label: "Details panel" },
-      { value: "register", label: "Account register" },
-    ],
-  },
 ];
 
 // Prototype chrome, not product UI, along the top: scenario, the variants,

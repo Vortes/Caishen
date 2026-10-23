@@ -173,32 +173,6 @@
   display: grid;
   align-items: center;
 }
-.loanEntry {
-  align-items: flex-start;
-}
-.interestField {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 16rem;
-}
-.interestField label {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-}
-.faintSmall {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
-.entrySplit {
-  flex: 1;
-  min-width: 14rem;
-  padding-top: 18px;
-}
-
 /* ---------- Payoff chart ---------- */
 
 .chart {

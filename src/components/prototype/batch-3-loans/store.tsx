@@ -10,16 +10,12 @@ export type Variants = {
   compare: "numbers" | "chart";
   // What extra the preview takes: one time only, or one time or monthly.
   cadence: "once" | "both";
-  // Where a lender payment is entered: the details panel, or the paying
-  // account's register.
-  pay: "panel" | "register";
 };
 
 export const defaultVariants: Variants = {
   add: "panel",
   compare: "chart",
   cadence: "once",
-  pay: "panel",
 };
 
 export type Screen =
@@ -31,25 +27,12 @@ export type Screen =
 export type Tab = "extra" | "payments" | "rates";
 
 // The one editor open at a time, like the shell's transaction entry.
-export type Editor =
-  | { kind: "add" }
-  | { kind: "rate"; loanId: string }
-  | { kind: "payment"; loanId: string }
-  | { kind: "register-payment"; loanId: string; accountId: string };
-
-export type NewPayment = {
-  accountId: string;
-  date: string;
-  principal: number;
-  interest: number;
-};
+export type Editor = { kind: "add" } | { kind: "rate"; loanId: string };
 
 export type Store = {
   state: State;
   month: string;
   variants: Variants;
-  // Payments recorded in the prototype, by the account that paid.
-  paidFrom: Record<string, string>;
   balance: (accountId: string) => number;
   screen: Screen;
   navigate: (screen: Screen, loanId?: string | null) => void;
@@ -59,11 +42,8 @@ export type Store = {
   open: (editor: Editor | null) => void;
   tab: Tab;
   setTab: (tab: Tab) => void;
-  // The row the register just saved, selected like the shell does.
-  justSaved: string | null;
   addLoan: (loan: Loan) => void;
   confirmRate: (loanId: string, annualRateBps: number, date: string) => void;
-  recordPayment: (loanId: string, payment: NewPayment) => string;
 };
 
 const StoreContext = createContext<Store | null>(null);

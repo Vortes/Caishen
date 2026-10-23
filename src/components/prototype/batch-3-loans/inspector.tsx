@@ -25,7 +25,7 @@ import {
   TODAY,
   type Loan,
 } from "./data";
-import { AddLoanPanel, PaymentEditor, RateEditor } from "./editors";
+import { AddLoanPanel, RateEditor } from "./editors";
 import { ExtraPayment } from "./preview";
 import { useStore, type Tab } from "./store";
 import styles from "./loans.module.css";
@@ -87,7 +87,7 @@ export function LoansInspector() {
 
 function LoanDetails({ loan }: { loan: Loan }) {
   const store = useStore();
-  const { month, editor, variants } = store;
+  const { month, editor } = store;
   const balance = balanceOn(loan, endOf(month));
   const paidOff = paidOffOn(loan, endOf(month));
   const rate = rateOn(loan, endOf(month));
@@ -100,19 +100,6 @@ function LoanDetails({ loan }: { loan: Loan }) {
     (payment) => payment.date <= endOf(month),
   ).length;
 
-  const recordPayment = () => {
-    if (variants.pay === "register") {
-      store.open({
-        kind: "register-payment",
-        loanId: loan.id,
-        accountId: loan.payFrom,
-      });
-      store.navigate({ type: "register", accountId: loan.payFrom }, null);
-      return;
-    }
-    store.setTab("payments");
-    store.open({ kind: "payment", loanId: loan.id });
-  };
   const updateRate = () => {
     store.setTab("rates");
     store.open({ kind: "rate", loanId: loan.id });
@@ -172,17 +159,16 @@ function LoanDetails({ loan }: { loan: Loan }) {
           subtitle={loan.variable ? "Variable rate" : "Fixed rate"}
         />
         <Figure value={money(-balance)} caption="Remaining balance" />
-        <div className={shell.cardActions}>
-          <Button onClick={recordPayment}>Record payment</Button>
-          {loan.variable && (
+        {loan.variable && (
+          <div className={shell.cardActions}>
             <Button
               variant={due ? "primary" : "secondary"}
               onClick={updateRate}
             >
               Update rate
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </Card>
       <Card>
         <Property label="Rate">
@@ -222,11 +208,7 @@ function LoanDetails({ loan }: { loan: Loan }) {
             <ExtraPayment loan={loan} />
           </TabsContent>
           <TabsContent value="payments">
-            {editor?.kind === "payment" && editor.loanId === loan.id ? (
-              <PaymentEditor loan={loan} />
-            ) : (
-              <Payments loan={loan} />
-            )}
+            <Payments loan={loan} />
           </TabsContent>
           {loan.variable && (
             <TabsContent value="rates">
@@ -251,7 +233,7 @@ function Payments({
   // Borrowed and interest so far, which a paid-off loan shows above.
   summary?: boolean;
 }) {
-  const { month, state, paidFrom } = useStore();
+  const { month, state } = useStore();
   const [all, setAll] = useState(false);
   const payments = loan.payments
     .filter((payment) => payment.date <= endOf(month))
@@ -261,15 +243,13 @@ function Payments({
       <div className={shell.tabEmpty}>
         <strong className={shell.tabEmptyTitle}>No payments yet</strong>
         <p>
-          Record each payment with the interest from your lender’s statement,
-          and the balance follows it.
+          Record lender payments in the account register. Their principal and
+          interest appear here.
         </p>
       </div>
     );
   const shown = all ? payments : payments.slice(0, 6);
-  const account = (id: string) =>
-    state.accounts.find((item) => item.id === (paidFrom[id] ?? loan.payFrom))
-      ?.name;
+  const account = state.accounts.find((item) => item.id === loan.payFrom)?.name;
   return (
     <div className={styles.tabStack}>
       {summary && (
@@ -297,7 +277,7 @@ function Payments({
               </span>
             </span>
             <span className={styles.historyDetail}>
-              <span className={shell.truncate}>{account(payment.id)}</span>
+              <span className={shell.truncate}>{account}</span>
               <span className={styles.numeric}>
                 {money(payment.principal)} principal · {money(payment.interest)}{" "}
                 interest

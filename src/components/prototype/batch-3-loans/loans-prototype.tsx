@@ -1,8 +1,8 @@
 "use client";
 
 // Batch 3 (loans) design prototype: the shell's Loans screen with adding a
-// loan, confirming a variable rate, previewing an extra payment, and
-// recording a lender payment. Hardcoded data on its own page; nothing here
+// loan, confirming a variable rate, and previewing an extra payment.
+// Hardcoded data on its own page; nothing here
 // reaches a budget. Delete once the owner signs off and the shell has it.
 
 import {
@@ -50,7 +50,6 @@ import {
   defaultVariants,
   StoreProvider,
   type Editor,
-  type NewPayment,
   type Screen,
   type Store,
   type Tab,
@@ -59,7 +58,7 @@ import {
 } from "./store";
 import styles from "./loans.module.css";
 
-type Snapshot = { state: State; paidFrom: Record<string, string> };
+type Snapshot = { state: State };
 type Notice = { id: number; message: string; undo: Snapshot | null };
 
 export type Setup = {
@@ -89,7 +88,6 @@ export function readSetup(params: URLSearchParams): Setup {
     add: pick("add", ["panel", "row"], defaultVariants.add),
     compare: pick("compare", ["numbers", "chart"], defaultVariants.compare),
     cadence: pick("cadence", ["once", "both"], defaultVariants.cadence),
-    pay: pick("pay", ["panel", "register"], defaultVariants.pay),
   };
   const loan = params.get("loan");
   const open = params.get("open");
@@ -99,31 +97,19 @@ export function readSetup(params: URLSearchParams): Setup {
       ? { kind: "add" }
       : open === "rate" && loan
         ? { kind: "rate", loanId: loan }
-        : open === "payment" && loan
-          ? variants.pay === "register"
-            ? { kind: "register-payment", loanId: loan, accountId: "chase" }
-            : { kind: "payment", loanId: loan }
-          : null;
-  const screen: Screen =
-    editor?.kind === "register-payment"
-      ? { type: "register", accountId: "chase" }
-      : params.get("account")
-        ? {
-            type: "register",
-            accountId:
-              params.get("account") === "all" ? null : params.get("account"),
-          }
-        : { type: "loans" };
+        : null;
+  const screen: Screen = params.get("account")
+    ? {
+        type: "register",
+        accountId:
+          params.get("account") === "all" ? null : params.get("account"),
+      }
+    : { type: "loans" };
   return {
     scenario,
     variants,
     loan,
-    tab:
-      editor?.kind === "rate"
-        ? "rates"
-        : editor?.kind === "payment"
-          ? "payments"
-          : tab,
+    tab: editor?.kind === "rate" ? "rates" : tab,
     editor,
     screen,
   };
@@ -139,19 +125,17 @@ export function LoansPrototype() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [snapshot, setSnapshot] = useState<Snapshot>(() => ({
     state: scenarios[setup.scenario].state(),
-    paidFrom: {},
   }));
   const [month, setMonth] = useState(THIS_MONTH);
   const [screen, setScreen] = useState<Screen>(setup.screen);
   const [selected, setSelected] = useState<string | null>(setup.loan);
   const [editor, setEditor] = useState<Editor | null>(setup.editor);
   const [tab, setTab] = useState<Tab>(setup.tab);
-  const [justSaved, setJustSaved] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
 
-  const { state, paidFrom } = snapshot;
+  const { state } = snapshot;
 
   // Keeps the address in step with the variants, so a link opens the same
   // design.
@@ -165,13 +149,12 @@ export function LoansPrototype() {
   const reset = useCallback(
     (next: ScenarioId = scenario) => {
       setScenario(next);
-      setSnapshot({ state: scenarios[next].state(), paidFrom: {} });
+      setSnapshot({ state: scenarios[next].state() });
       setMonth(THIS_MONTH);
       setScreen({ type: "loans" });
       setSelected(null);
       setEditor(null);
       setTab("extra");
-      setJustSaved(null);
       setNotice(null);
       setInspectorOpen(true);
     },
@@ -185,23 +168,14 @@ export function LoansPrototype() {
     state,
     month,
     variants,
-    paidFrom,
     balance: (accountId) => {
       const account = state.accounts.find((item) => item.id === accountId)!;
-      const spent = state.loans
-        .flatMap((loan) => loan.payments)
-        .filter((payment) => paidFrom[payment.id] === accountId)
-        .reduce(
-          (sum, payment) => sum + payment.principal + payment.interest,
-          0,
-        );
-      return account.opening - spent;
+      return account.opening;
     },
     screen,
     navigate: (next, loanId = null) => {
       setScreen(next);
       setSelected(loanId);
-      setJustSaved(null);
     },
     selected,
     select: (loanId) => {
@@ -217,17 +191,14 @@ export function LoansPrototype() {
     tab,
     setTab: (next) => {
       setTab(next);
-      if (editor && editor.kind !== "add" && editor.kind !== "register-payment")
-        setEditor(null);
+      if (editor && editor.kind !== "add") setEditor(null);
     },
-    justSaved,
     addLoan: (loan: Loan) => {
       const before = snapshot;
       const categoryName =
         state.categories.find((item) => item.id === loan.categoryId)?.name ??
         `${loan.name} payment`;
       setSnapshot({
-        paidFrom,
         state: {
           ...state,
           loans: [...state.loans, loan],
@@ -246,7 +217,6 @@ export function LoansPrototype() {
       const before = snapshot;
       const loan = state.loans.find((item) => item.id === loanId)!;
       setSnapshot({
-        paidFrom,
         state: {
           ...state,
           loans: state.loans.map((item) =>
@@ -267,45 +237,6 @@ export function LoansPrototype() {
         `Confirmed ${percent(annualRateBps)} for ${loan.name} from ${dayLabel(date)}`,
         before,
       );
-    },
-    recordPayment: (loanId, payment: NewPayment) => {
-      const before = snapshot;
-      const id = `${loanId}-new-${Date.now()}`;
-      const loan = state.loans.find((item) => item.id === loanId)!;
-      const amount = payment.principal + payment.interest;
-      const account = state.accounts.find(
-        (item) => item.id === payment.accountId,
-      )!;
-      setSnapshot({
-        paidFrom: { ...paidFrom, [id]: payment.accountId },
-        state: {
-          ...state,
-          loans: state.loans.map((item) =>
-            item.id === loanId
-              ? {
-                  ...item,
-                  funded: Math.max(0, item.funded - amount),
-                  payments: [
-                    ...item.payments,
-                    {
-                      id,
-                      date: payment.date,
-                      principal: payment.principal,
-                      interest: payment.interest,
-                    },
-                  ],
-                }
-              : item,
-          ),
-        },
-      });
-      setEditor(null);
-      if (screen.type === "register") setJustSaved(id);
-      notify(
-        `Recorded ${money(amount)} to ${loan.name} from ${account.name}`,
-        before,
-      );
-      return id;
     },
   };
 
@@ -515,7 +446,6 @@ export function LoansPrototype() {
                       size="sm"
                       onClick={() => {
                         setSnapshot(notice.undo!);
-                        setJustSaved(null);
                         setNotice({
                           id: Date.now(),
                           message: "Action undone.",

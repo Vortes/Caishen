@@ -60,27 +60,6 @@ const groups: { title: string; links: Item[] }[] = [
           caption: "$200 extra moves Nelnet’s payoff from Dec 2034 to Nov 2034",
         },
       },
-      {
-        href: `${base}?loan=nelnet&open=payment`,
-        label: "Record a lender payment",
-        detail:
-          "October’s Nelnet payment, from the details panel. Leave interest empty or above the payment to see errors.",
-        legacy: {
-          src: "legacy-loan-payment.webp",
-          caption: "Lender payment dialog from the loan card",
-        },
-      },
-      {
-        href: `${base}?loan=nelnet&open=payment&pay=register`,
-        label: "Record a lender payment in the register",
-        detail:
-          "The same payment handed to Chase Total Checking’s register, in the shell’s transaction editor.",
-        legacy: {
-          src: "legacy-loan-payment.webp",
-          caption:
-            "Legacy only had the dialog from the loan card, not a register handoff",
-        },
-      },
     ],
   },
   {
@@ -146,13 +125,14 @@ export function LoansIndex() {
             <div>
               <h1>Batch 3 · Loans</h1>
               <p>
-                Add a loan, confirm a variable rate, preview an extra payment,
-                and record a lender payment, on the shell’s Loans screen.
-                Hardcoded data for October 21, 2026; nothing reaches a budget.
-                Every page has prototype controls along the bottom: scenario,
-                the four variants, theme, and Reset. Hover a control to see the
-                variable it moves. Each item shows what the legacy app did;
-                click it to enlarge.
+                Add a loan, confirm a variable rate, and preview an extra
+                payment on the shell’s Loans screen. Lender payments already use
+                the live account register and are outside this batch. Hardcoded
+                data for October 21, 2026; nothing reaches a budget. Every page
+                has prototype controls along the bottom: scenario, the three
+                variants, theme, and Reset. Hover a control to see the variable
+                it moves. Each item shows what the legacy app did; click it to
+                enlarge.
               </p>
             </div>
             <Button

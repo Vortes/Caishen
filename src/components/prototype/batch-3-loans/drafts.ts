@@ -1,16 +1,13 @@
 // What each loan editor holds while it's open, and why it can't save yet.
-// The rules follow the engine's loan.add, loan.rate, and loan payment checks,
+// The rules follow the engine's loan.add and loan.rate checks,
 // with the words a person would want next to the field.
 
 import {
-  balanceOn,
   dayLabel,
   isDay,
-  money,
   parseAmount,
   parseRate,
   percent,
-  rateOn,
   TODAY,
   type Category,
   type Loan,
@@ -93,76 +90,5 @@ export function checkRate(
     errors.date = `This loan starts ${dayLabel(start)}. Pick that day or later.`;
   else if (same)
     errors.date = `${percent(same.annualRateBps)} is already confirmed from ${dayLabel(same.effectiveDate)}. Pick another day.`;
-  return errors;
-}
-
-export type PaymentDraft = {
-  accountId: string;
-  date: string;
-  amount: string;
-  interest: string;
-};
-export type PaymentField = "accountId" | "date" | "amount" | "interest";
-
-export function paymentDraft(loan: Loan): PaymentDraft {
-  return {
-    accountId: loan.payFrom,
-    date: TODAY,
-    amount: (loan.minimumPayment / 100).toFixed(2),
-    interest: "",
-  };
-}
-
-// The payment's split once both amounts read: what reaches principal, and
-// the balance after it.
-export function split(draft: PaymentDraft, loan: Loan) {
-  const amount = parseAmount(draft.amount);
-  const interest = parseAmount(draft.interest);
-  if (amount === null || Number.isNaN(amount)) return null;
-  if (interest === null || Number.isNaN(interest)) return null;
-  const principal = amount - interest;
-  return {
-    amount,
-    interest,
-    principal,
-    after: balanceOn(loan, TODAY) - principal,
-  };
-}
-
-// What the lender would likely charge on this date, from the rate in effect.
-export function estimatedInterest(loan: Loan, date: string) {
-  const balance = balanceOn(loan, isDay(date) ? date : TODAY);
-  const rate = rateOn(loan, isDay(date) ? date : TODAY).annualRateBps;
-  return Math.round((balance * rate) / 120000);
-}
-
-export function checkPayment(
-  draft: PaymentDraft,
-  loan: Loan,
-): Partial<Record<PaymentField, string>> {
-  const errors: Partial<Record<PaymentField, string>> = {};
-  if (!draft.accountId) errors.accountId = "Pick the account that paid.";
-  const start = loan.rates[0]!.effectiveDate;
-  if (!isDay(draft.date)) errors.date = "Enter a date like 10/21/2026.";
-  else if (draft.date < start)
-    errors.date = `This loan starts ${dayLabel(start)}. Pick that day or later.`;
-  else if (draft.date > TODAY)
-    errors.date = "Record a payment once it has posted, today or earlier.";
-  const amount = parseAmount(draft.amount);
-  if (amount === null || amount === 0)
-    errors.amount = "Enter the amount that left your account.";
-  else if (Number.isNaN(amount)) errors.amount = "Enter an amount like 340.00.";
-  const interest = parseAmount(draft.interest);
-  if (interest === null)
-    errors.interest =
-      "Enter the interest from your lender, even if it’s $0.00.";
-  else if (Number.isNaN(interest))
-    errors.interest = "Enter an amount like 112.40.";
-  else if (amount !== null && !Number.isNaN(amount) && interest > amount)
-    errors.interest = `Interest can’t be more than the ${money(amount)} payment.`;
-  const parts = split(draft, loan);
-  const left = balanceOn(loan, TODAY);
-  if (!errors.interest && !errors.amount && parts && parts.principal > left)
-    errors.amount = `That puts ${money(parts.principal)} toward principal, more than the ${money(left)} left.`;
   return errors;
 }
