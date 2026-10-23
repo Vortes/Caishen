@@ -1801,7 +1801,12 @@ function replay(
       const account = index.account(transaction.accountId);
       if (transaction.status === "pending" && transaction.amount > 0) continue;
       const accountState = accounts.get(account.id)!;
-      if (account.kind === "credit" && accountState.balance > 0 && transaction.amount < 0) positiveCardCreditSpent.add(account.id);
+      if (
+        account.kind === "credit" &&
+        accountState.balance > 0 &&
+        transaction.amount < 0
+      )
+        positiveCardCreditSpent.add(account.id);
       accountState.balance = safe(accountState.balance + transaction.amount);
       if (transaction.amount < 0)
         accountState.outflows = safe(
@@ -2063,11 +2068,15 @@ function replay(
       );
       state.reserve = reserve;
     }
-    for (const account of budget.accounts.filter(item => item.kind === "credit")) {
+    for (const account of budget.accounts.filter(
+      (item) => item.kind === "credit",
+    )) {
       const state = accounts.get(account.id)!;
       if (state.balance > 0 || positiveCardCreditSpent.has(account.id)) {
         const reserve = Math.min(state.reserve, Math.max(0, -state.balance));
-        state.creditsReleased = safe(state.creditsReleased + reserve - state.reserve);
+        state.creditsReleased = safe(
+          state.creditsReleased + reserve - state.reserve,
+        );
         state.reserve = reserve;
       }
     }
