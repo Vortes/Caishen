@@ -281,6 +281,14 @@ export const commandSchema = z.discriminatedUnion("type", [
       )
       .length(2),
   }),
+  // Asking the partner to pay (src/domain/partner-settlements.ts).
+  z.object({
+    type: z.literal("partner.request"),
+    id: identifier,
+    requestId: identifier,
+    date: daySchema,
+    amount: positiveCents,
+  }),
   z.object({
     type: z.literal("partner.settlement.confirm"),
     id: identifier,
@@ -4270,6 +4278,20 @@ function applyCommand(
       receipt.reviewed = source === "user";
       receipt.history[0]!.actorId = actorId;
       receipt.history[0]!.at = command.recordedAt;
+      break;
+    }
+    case "partner.request": {
+      requireDate(budget, command.date);
+      if (!partnerAccountOf(budget))
+        fail("Link budgets with your partner before asking them to pay");
+      if (book.partnerRequests?.some((item) => item.id === command.requestId))
+        fail("Request ID already exists");
+      changes.addPartnerRequest({
+        id: command.requestId,
+        requesterId: actorId,
+        date: command.date,
+        amount: command.amount,
+      });
       break;
     }
     case "partner.settle": {

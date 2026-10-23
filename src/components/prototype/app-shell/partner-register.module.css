@@ -61,6 +61,50 @@
   gap: 8px;
 }
 
+/* An open request: what's been paid toward it since it was asked. */
+.requestStrip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 14px 20px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
+}
+.requestTrack {
+  position: relative;
+  flex: none;
+  width: 120px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-selected);
+}
+.requestTrack > span {
+  position: absolute;
+  inset: 0;
+  background: var(--text-secondary);
+  transform-origin: left;
+  transition: transform 260ms var(--ease-panel);
+}
+@media (prefers-reduced-motion: reduce) {
+  .requestTrack > span {
+    transition: none;
+  }
+}
+
+.popoverBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 0;
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+.popoverBody p {
+  margin: 0;
+}
+
 .fieldPair {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
