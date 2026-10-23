@@ -1,6 +1,7 @@
 "use client";
 
 import { SHELL_PATH } from "~/components/workspace/routes";
+import { counterpartyLines, isFullShare } from "~/domain/counterparty";
 import {
   ArrowRightLeftIcon,
   CheckIcon,
@@ -550,6 +551,14 @@ export function RegisterView({
   // the selection moves on.
   const [repaymentId, setRepaymentId] = useState<string | null>(null);
   if (repaymentId && repaymentId !== selectedId) setRepaymentId(null);
+  const fullySharedIds = new Set(
+    entry.view.budget.transactions
+      .filter((transaction) => {
+        const lines = counterpartyLines(transaction);
+        return lines.length > 0 && lines.every(isFullShare);
+      })
+      .map((transaction) => transaction.id),
+  );
   const closeRepayment = () => {
     const id = repaymentId;
     setRepaymentId(null);
@@ -780,9 +789,11 @@ export function RegisterView({
             </div>
           )}
         </div>
-        {selectedId === item.id && item.source === "budget" && (
-          <ShareDetail transactionId={item.id} />
-        )}
+        {selectedId === item.id &&
+          item.source === "budget" &&
+          !fullySharedIds.has(item.id) && (
+            <ShareDetail transactionId={item.id} />
+          )}
       </Fragment>
     );
   };

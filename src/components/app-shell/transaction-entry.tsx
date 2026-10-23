@@ -9,6 +9,7 @@ import {
   assertTransactionDraftCurrent,
   buildTransactionDraftCommand,
   createTransactionDraft,
+  draftAmount,
   lineField,
   type DraftFieldKey,
   type TransactionDraft,
@@ -103,15 +104,6 @@ const screenOrder = (draft: TransactionDraft): DraftField[] => [
   "remaining",
   "interest",
 ];
-
-// The draft's signed amount once one is entered: inflow positive.
-function draftAmount(draft: TransactionDraft) {
-  const inflow = Number.parseFloat(draft.inflow);
-  if (draft.inflow.trim() && inflow) return inflow;
-  const outflow = Number.parseFloat(draft.outflow);
-  if (draft.outflow.trim() && outflow) return -outflow;
-  return undefined;
-}
 
 export function canEditTransaction(transaction: Transaction) {
   return editableKinds.includes(transaction.kind);
@@ -214,6 +206,7 @@ export function useTransactionEntryController({
     field,
     refundOfTransactionId,
     counterpartyShare,
+    shareLineId,
   }: {
     transactionId?: string;
     refundOfTransactionId?: string;
@@ -222,6 +215,7 @@ export function useTransactionEntryController({
     // A share picked before the editor opened, such as from the register's
     // Share cell on a row that still needs its category.
     counterpartyShare?: CounterpartyShare | null;
+    shareLineId?: string;
   }) => {
     if (session || !view.accounts.length) return false;
     const transaction = transactionId
@@ -259,7 +253,12 @@ export function useTransactionEntryController({
         original.categoryId ?? original.lines?.[0]?.categoryId ?? "";
       draft.outflow = "";
       draft.inflow = (Math.abs(original.amount) / 100).toFixed(2);
-      draft.counterpartyShare = undefined;
+      draft.counterpartyShare = original.counterpartyShare
+        ? {
+            ...original.counterpartyShare,
+            amount: (original.counterpartyShare.amount / 100).toFixed(2),
+          }
+        : undefined;
       draft.lines = [];
     }
     const unremembered = transaction
@@ -297,10 +296,28 @@ export function useTransactionEntryController({
           ? draft
           : {
               ...draft,
-              counterpartyShare: counterpartyShare && {
-                ...counterpartyShare,
-                amount: (counterpartyShare.amount / 100).toFixed(2),
-              },
+              ...(shareLineId && draft.lines.length
+                ? {
+                    lines: draft.lines.map((line) =>
+                      line.lineId === shareLineId
+                        ? {
+                            ...line,
+                            counterpartyShare: counterpartyShare && {
+                              ...counterpartyShare,
+                              amount: (counterpartyShare.amount / 100).toFixed(
+                                2,
+                              ),
+                            },
+                          }
+                        : line,
+                    ),
+                  }
+                : {
+                    counterpartyShare: counterpartyShare && {
+                      ...counterpartyShare,
+                      amount: (counterpartyShare.amount / 100).toFixed(2),
+                    },
+                  }),
             },
       pristine: draft,
       fields: {},
@@ -351,6 +368,51 @@ export function useTransactionEntryController({
         }
       }
       const draft = { ...current.draft, ...next };
+      const carryFullShare = <
+        T extends Pick<
+          TransactionDraft,
+          "categoryId" | "counterpartyShare" | "outflow" | "inflow"
+        >,
+      >(
+        before: T,
+        after: T,
+      ): T => {
+        const share = before.counterpartyShare;
+        if (
+          share &&
+          share === after.counterpartyShare &&
+          Math.abs(draftAmount(before) ?? 0) ===
+            Math.abs(draftAmount({ outflow: share.amount, inflow: "" }) ?? 0) &&
+          (before.outflow !== after.outflow || before.inflow !== after.inflow)
+        )
+          after = {
+            ...after,
+            counterpartyShare: {
+              ...share,
+              amount: (Math.abs(draftAmount(after) ?? 0) / 100).toFixed(2),
+            },
+          };
+        if (
+          after.counterpartyShare &&
+          Math.abs(draftAmount(after) ?? 0) ===
+            Math.abs(
+              draftAmount({
+                outflow: after.counterpartyShare.amount,
+                inflow: "",
+              }) ?? 0,
+            )
+        )
+          after = { ...after, categoryId: "" };
+        return after;
+      };
+      Object.assign(draft, carryFullShare(current.draft, draft));
+      draft.lines = draft.lines.map((line) =>
+        carryFullShare(
+          current.draft.lines.find((before) => before.lineId === line.lineId) ??
+            line,
+          line,
+        ),
+      );
       const shareChosen =
         Boolean(current.shareChosen) ||
         "counterpartyShare" in next ||
@@ -365,9 +427,7 @@ export function useTransactionEntryController({
           payee: draft.payee,
           accountId: draft.accountId,
           amount:
-            draftAmount(draft) === undefined
-              ? undefined
-              : Math.round(draftAmount(draft)! * 100),
+            draft.outflow || draft.inflow ? draftAmount(draft) : undefined,
         });
         // A written-off share remembers nothing to prefill.
         draft.counterpartyShare = share?.amount
@@ -386,8 +446,20 @@ export function useTransactionEntryController({
           rememberedCategory(view.budget, {
             payee: draft.payee,
             accountId: draft.accountId,
-            amount: draftAmount(draft),
+            amount:
+              draft.outflow || draft.inflow ? draftAmount(draft) : undefined,
           }) ?? unremembered;
+      if (
+        draft.counterpartyShare &&
+        Math.abs(draftAmount(draft) ?? 0) ===
+          Math.abs(
+            draftAmount({
+              outflow: draft.counterpartyShare.amount,
+              inflow: "",
+            }) ?? 0,
+          )
+      )
+        draft.categoryId = "";
       return {
         ...current,
         draft,
@@ -523,7 +595,10 @@ export function useTransactionEntryController({
     const categoryId = session.draft.lines.length
       ? ""
       : session.draft.categoryId || (match.categoryId ?? "");
-    if (!categoryId || categoryId === READY_TO_ASSIGN) {
+    if (
+      match.share !== Math.abs(imported.amount) &&
+      (!categoryId || categoryId === READY_TO_ASSIGN)
+    ) {
       patch({
         fields: { categoryId: "Choose a category for your part of it." },
         error: "",
@@ -543,7 +618,8 @@ export function useTransactionEntryController({
         date: imported.date,
         amount: imported.amount,
         status: imported.pending ? "pending" : "posted",
-        categoryId,
+        categoryId:
+          match.share === Math.abs(imported.amount) ? undefined : categoryId,
       },
       `Matched your import to ${match.payee}`,
       reopenOnRefusal(session),
@@ -584,6 +660,19 @@ export function useTransactionEntryController({
     );
     if (!transaction) return "This transaction was deleted.";
     const draft = createTransactionDraft(view, view.month, transaction);
+    const line =
+      transaction.lines?.find((item) => item.id === lineId) ?? transaction;
+    if (!line.categoryId && share?.amount !== Math.abs(line.amount))
+      return start({
+        transactionId,
+        field: draft.lines.length
+          ? lineField(lineId, "categoryId")
+          : "categoryId",
+        counterpartyShare: share,
+        shareLineId: lineId,
+      })
+        ? null
+        : "Save or cancel the open transaction first.";
     const next = share && { ...share, amount: (share.amount / 100).toFixed(2) };
     if (draft.lines.length)
       draft.lines = draft.lines.map((line) =>

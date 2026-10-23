@@ -6,7 +6,12 @@ import nextEnv from "@next/env";
 import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { PrismaClient } from "../../src/generated/prisma";
-import { execute, isCounterparty, type Book } from "../../src/domain/engine";
+import {
+  execute,
+  isCounterparty,
+  withCounterpartyAccounts,
+  type Book,
+} from "../../src/domain/engine";
 import { bookToRows, diffRows, rowsToBook } from "../../src/domain/rows";
 import {
   applyTransactionSync,
@@ -1300,6 +1305,42 @@ const groceryRun = (id: string, date: string, overrides = {}) =>
     merchant_name: "Trader Joe's",
     ...overrides,
   });
+
+void test("a saved full reimbursement is remembered on the next bank import without a category", async () => {
+  const h = await linkedHarness();
+  await h.setBook(
+    execute(withCounterpartyAccounts(await h.book()), alice, {
+      type: "transaction.upsert",
+      id: "remember-mom",
+      transactionId: "first",
+      accountId: "cash",
+      date: "2026-10-02",
+      amount: -1_154,
+      payee: "Trader Joe's",
+      recordedAt: "2026-10-02T12:00:00Z",
+      counterpartyShare: {
+        accountId: "counterparty:reimbursements",
+        counterpartyName: "Mom",
+        amount: 1_154,
+      },
+    }),
+  );
+  syncPages([
+    { added: [groceryRun("for-mom", "2026-10-19")], next_cursor: "1" },
+  ]);
+  await syncBanks(h.db, alice);
+  const transaction = (await h.state()).view!.budget.transactions.find(
+    (item) => item.providerId === "for-mom",
+  );
+  assert.ok(
+    transaction,
+    "the imported purchase retains its remembered full share",
+  );
+  assert.equal(transaction.categoryId, undefined);
+  assert.equal(transaction.counterpartyShare?.counterpartyName, "Mom");
+  assert.equal(transaction.counterpartyShare?.amount, 4_210);
+  assert.equal(transaction.reviewed, false);
+});
 
 void test("an import from a payee the user categorized arrives categorized and counted, still to review", async () => {
   const h = await linkedHarness();

@@ -7,6 +7,7 @@ import {
 import {
   counterpartyLines,
   counterpartyRegisterEntries,
+  isFullShare,
   shareContribution,
 } from "./counterparty";
 export { counterpartyRegisterEntries } from "./counterparty";
@@ -185,7 +186,7 @@ const transactionInput = {
     .array(
       z.object({
         lineId: identifier,
-        categoryId: identifier,
+        categoryId: identifier.optional(),
         amount: cents,
         counterpartyShare: shareInputSchema.nullable().optional(),
       }),
@@ -587,7 +588,7 @@ export type TransactionHistory = {
 export type TransactionLine = {
   counterpartyShare?: CounterpartyShare;
   id: string;
-  categoryId: string;
+  categoryId?: string;
   amount: number;
 };
 export type Transaction = {
@@ -652,7 +653,7 @@ export type PayeeMemory = {
   counterpartyShare?: CounterpartyShare;
   // The payee as it was written when last categorized.
   payee: string;
-  kind: "category" | "readyToAssign";
+  kind: "category" | "readyToAssign" | "share";
   categoryId?: string;
 };
 export type Budget = {
@@ -752,7 +753,7 @@ export const transactionSchema = z.object({
       z.object({
         counterpartyShare: counterpartyShareSchema.optional(),
         id: storedIdentifier,
-        categoryId: storedIdentifier,
+        categoryId: storedIdentifier.optional(),
         amount: cents,
       }),
     )
@@ -804,7 +805,7 @@ const loanSchema = z.object({
 export const payeeMemorySchema = z.object({
   counterpartyShare: counterpartyShareSchema.optional(),
   payee: z.string(),
-  kind: z.enum(["category", "readyToAssign"]),
+  kind: z.enum(["category", "readyToAssign", "share"]),
   categoryId: storedIdentifier.optional(),
 });
 export const budgetShape = z.object({
@@ -906,7 +907,8 @@ export function budgetReferenceIssues(
     );
     if (
       transaction.counterpartyShare &&
-      (!transaction.categoryId || transaction.lines !== undefined)
+      ((!transaction.categoryId && !isFullShare(transaction)) ||
+        transaction.lines !== undefined)
     )
       issues.push("Invalid counterparty share reference");
     // A settlement leg reads by its own rules (settlementLegIssues).
@@ -932,6 +934,8 @@ export function budgetReferenceIssues(
         issues.push("Invalid counterparty repayment reference");
     }
     for (const line of counterpartyLines(transaction)) {
+      if (!line.categoryId && !isFullShare(line))
+        issues.push("A personal share requires a purpose category");
       const share = line.counterpartyShare;
       if (!share) continue;
       const counterparty = counterpartyAccount(share.accountId);
@@ -943,10 +947,10 @@ export function budgetReferenceIssues(
         !hasPairedEnvelope(share.accountId) ||
         share.amount > Math.abs(line.amount) ||
         (source?.kind !== "cash" && source?.kind !== "credit") ||
-        !category ||
-        category.counterpartyAccountId ||
-        category.pairedAccountId ||
-        category.pairedLoanId ||
+        (!category && !isFullShare(line)) ||
+        category?.counterpartyAccountId ||
+        category?.pairedAccountId ||
+        category?.pairedLoanId ||
         !["purchase", "refund"].includes(transaction.kind) ||
         (counterparty.kind === "reimbursements" &&
           !share.counterpartyName?.trim())
@@ -1242,19 +1246,23 @@ function rescaleLines(
   largest.amount = safe(
     largest.amount + amount - sum(scaled.map((line) => line.amount)),
   );
-  for (const line of scaled)
+  for (const [index, line] of scaled.entries())
     if (line.counterpartyShare)
-      line.counterpartyShare.amount = Math.min(
-        line.counterpartyShare.amount,
-        Math.abs(line.amount),
-      );
+      line.counterpartyShare.amount = isFullShare(lines[index]!)
+        ? Math.abs(line.amount)
+        : Math.min(line.counterpartyShare.amount, Math.abs(line.amount));
   return scaled.every((line) => line.amount) ? scaled : undefined;
 }
 
 export function categoryLines(
   transaction: Pick<Transaction, "categoryId" | "lines" | "amount">,
 ): { categoryId: string; amount: number }[] {
-  if (transaction.lines) return transaction.lines;
+  if (transaction.lines)
+    return transaction.lines.flatMap((line) =>
+      line.categoryId
+        ? [{ categoryId: line.categoryId, amount: line.amount }]
+        : [],
+    );
   return transaction.categoryId
     ? [{ categoryId: transaction.categoryId, amount: transaction.amount }]
     : [];
@@ -1704,7 +1712,10 @@ function replay(
       const accountingLines = counterpartyLines(transaction).flatMap(
         (line): { categoryId: string; amount: number; key?: string }[] => {
           const share = line.counterpartyShare;
-          if (!share) return [line];
+          if (!share)
+            return line.categoryId
+              ? [{ categoryId: line.categoryId, amount: line.amount }]
+              : [];
           const contribution = shareContribution(line.amount, share);
           const counterparty = accounts.get(share.accountId)!;
           counterparty.balance = safe(counterparty.balance + contribution);
@@ -1712,10 +1723,14 @@ function replay(
             (item) => item.counterpartyAccountId === share.accountId,
           )!;
           return [
-            {
-              categoryId: line.categoryId,
-              amount: safe(line.amount + contribution),
-            },
+            ...(line.categoryId
+              ? [
+                  {
+                    categoryId: line.categoryId,
+                    amount: safe(line.amount + contribution),
+                  },
+                ]
+              : []),
             {
               categoryId: paired.id,
               amount: -contribution,
@@ -3257,7 +3272,8 @@ function matchPartnerImport(
   if (!partner) fail("Link your partner's budget first");
   const categoryId =
     command.categoryId ?? budget.partnerSides?.[entry.id]?.categoryId;
-  if (!categoryId) fail("Choose a category for your part of it");
+  if (!categoryId && entry.share !== Math.abs(entry.amount))
+    fail("Choose a category for your part of it");
   applyCommand(
     book,
     budget,
@@ -4016,10 +4032,12 @@ function applyCommand(
               : existing?.counterpartyShare
                 ? {
                     ...existing.counterpartyShare,
-                    amount: Math.min(
-                      existing.counterpartyShare.amount,
-                      Math.abs(command.amount),
-                    ),
+                    amount: isFullShare(existing)
+                      ? Math.abs(command.amount)
+                      : Math.min(
+                          existing.counterpartyShare.amount,
+                          Math.abs(command.amount),
+                        ),
                   }
                 : undefined));
       if (account.kind === "tracking" && counterpartyShare)
@@ -4053,7 +4071,7 @@ function applyCommand(
       const lines = command.lines
         ? command.lines.map((line) => ({
             id: line.lineId,
-            categoryId: line.categoryId,
+            categoryId: isFullShare(line) ? undefined : line.categoryId,
             amount: line.amount,
             ...(line.counterpartyShare
               ? { counterpartyShare: line.counterpartyShare }
@@ -4077,9 +4095,16 @@ function applyCommand(
           : command.categoryId || !existing?.lines
             ? undefined
             : rescaleLines(existing.lines, command.amount);
-      const categoryId = lines
-        ? undefined
-        : (command.categoryId ?? existing?.categoryId);
+      const fullyShared = isFullShare({
+        amount: command.amount,
+        counterpartyShare,
+      });
+      const categoryId =
+        lines || fullyShared
+          ? undefined
+          : (command.categoryId ?? existing?.categoryId);
+      if (!lines && !categoryId && !fullyShared && existing?.counterpartyShare)
+        fail("Choose a purpose category for your part of it");
       if (lines) {
         if (account.kind === "tracking")
           fail("Tracking activity does not use budget categories");
@@ -4088,6 +4113,11 @@ function applyCommand(
         for (const line of lines) {
           if (!line.amount) fail("Enter an amount on every split line");
           validateShare(line.amount, line.counterpartyShare);
+          if (!line.categoryId) {
+            if (!isFullShare(line))
+              fail("Choose a purpose category for your part of it");
+            continue;
+          }
           const category = getCategory(budget, line.categoryId);
           refusePairedEnvelope(category);
           if (category.pairedAccountId || category.pairedLoanId)
@@ -4102,10 +4132,16 @@ function applyCommand(
         account.kind === "credit" &&
         command.amount > 0 &&
         !categoryId &&
-        !lines
+        !lines &&
+        !isFullShare({ amount: command.amount, counterpartyShare })
       )
         fail("Use a card payment or posted statement credit for card inflows");
-      if (counterpartyShare && (!categoryId || lines))
+      if (
+        counterpartyShare &&
+        ((!categoryId &&
+          !isFullShare({ amount: command.amount, counterpartyShare })) ||
+          lines)
+      )
         fail("A counterparty share requires its own purpose category");
       if (categoryId) {
         const category = getCategory(budget, categoryId);
@@ -4149,7 +4185,7 @@ function applyCommand(
         kind:
           command.amount < 0
             ? "purchase"
-            : categoryId || lines
+            : categoryId || lines || counterpartyShare
               ? "refund"
               : "income",
         reconciled: existing?.reconciled,
@@ -4167,7 +4203,7 @@ function applyCommand(
               const before = existing ? counterpartyLines(existing) : [];
               const after =
                 lines ??
-                (categoryId
+                (categoryId || counterpartyShare
                   ? [
                       {
                         id: command.transactionId,
@@ -4337,7 +4373,7 @@ function applyCommand(
         const transaction = getTransaction(budget, id);
         if (
           transaction.amount < 0 &&
-          !categoryLines(transaction).length &&
+          !counterpartyLines(transaction).length &&
           transaction.kind === "purchase" &&
           getAccount(budget, transaction.accountId).kind !== "tracking"
         )
@@ -4431,11 +4467,13 @@ function applyCommand(
       if (transaction.lines?.some((line) => line.counterpartyShare)) {
         transaction.lines = transaction.lines.map((line) => ({
           ...line,
-          categoryId: category.id,
+          categoryId: isFullShare(line) ? undefined : category.id,
         }));
         delete transaction.categoryId;
       } else {
-        transaction.categoryId = category.id;
+        transaction.categoryId = isFullShare(transaction)
+          ? undefined
+          : category.id;
         delete transaction.lines;
       }
       if (transaction.amount > 0) transaction.kind = "refund";

@@ -1,5 +1,8 @@
 import type { State, View } from "~/components/budget/types";
-import { rememberedCategory } from "~/domain/payee-memory";
+import {
+  rememberedCategory,
+  rememberedCounterpartyShare,
+} from "~/domain/payee-memory";
 import { createTransactionDraft, READY_TO_ASSIGN } from "./transaction-draft";
 
 export type BankImport = State["imports"][number];
@@ -38,6 +41,7 @@ export function importCategory(view: View, item: BankImport) {
 }
 
 export function createImportDraft(view: View, item: BankImport) {
+  const share = importShare(view, item);
   return {
     ...createTransactionDraft(
       view,
@@ -49,8 +53,21 @@ export function createImportDraft(view: View, item: BankImport) {
     payee: item.payee,
     categoryId:
       importCategory(view, item) ?? (item.amount > 0 ? READY_TO_ASSIGN : ""),
+    counterpartyShare: share
+      ? { ...share, amount: (share.amount / 100).toFixed(2) }
+      : undefined,
     outflow: item.amount < 0 ? (-item.amount / 100).toFixed(2) : "",
     inflow: item.amount > 0 ? (item.amount / 100).toFixed(2) : "",
     status: item.pending ? ("pending" as const) : ("posted" as const),
   };
+}
+
+export function importShare(view: View, item: BankImport) {
+  return item.accountId
+    ? rememberedCounterpartyShare(view.budget, {
+        payee: item.payee,
+        accountId: item.accountId,
+        amount: item.amount,
+      })
+    : undefined;
 }

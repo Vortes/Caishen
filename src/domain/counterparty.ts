@@ -13,7 +13,7 @@ export function counterpartyLines(
 ): TransactionLine[] {
   return (
     transaction.lines ??
-    (transaction.categoryId
+    (transaction.categoryId || transaction.counterpartyShare
       ? [
           {
             id: transaction.id,
@@ -23,6 +23,15 @@ export function counterpartyLines(
           },
         ]
       : [])
+  );
+}
+
+export function isFullShare(line: {
+  amount: number;
+  counterpartyShare?: CounterpartyShare | null;
+}): boolean {
+  return Boolean(
+    line.amount && line.counterpartyShare?.amount === Math.abs(line.amount),
   );
 }
 

@@ -365,7 +365,7 @@ model TransactionLine {
   userId            String
   transactionId     String
   id                String
-  categoryId        String
+  categoryId        String?
   amount            BigInt
   counterpartyShare Json?
   sort              Int

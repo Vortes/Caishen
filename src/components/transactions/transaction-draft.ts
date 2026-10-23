@@ -138,6 +138,8 @@ export function createTransactionDraft(
         ? transaction.lines[0]?.categoryId
         : undefined) ??
       (transaction &&
+      !transaction.counterpartyShare &&
+      !transaction.refundOfTransactionId &&
       (account?.kind === "tracking" && counterpart
         ? counterpart.amount
         : transaction.amount) > 0
@@ -169,7 +171,7 @@ export function createTransactionDraft(
       : (transaction?.lines ?? [])
     ).map((line) => ({
       lineId: line.id,
-      categoryId: line.categoryId,
+      categoryId: line.categoryId ?? "",
       counterpartyShare: line.counterpartyShare
         ? {
             ...line.counterpartyShare,
@@ -359,7 +361,7 @@ export function buildTransactionDraftCommand({
   const split = draft.lines.length > 0;
   const lines: {
     lineId: string;
-    categoryId: string;
+    categoryId?: string;
     amount: number;
     counterpartyShare?: ReturnType<typeof shareInput>;
   }[] = [];
@@ -370,14 +372,20 @@ export function buildTransactionDraftCommand({
       const category = view.categories.find(
         (item) => item.id === line.categoryId,
       );
-      if (
-        !category ||
-        category.pairedAccountId ||
-        category.pairedLoanId ||
-        category.counterpartyAccountId
-      )
-        fields[lineField(line.lineId, "categoryId")] = "Choose a category.";
       const amount = draftAmount(line);
+      const fullShare = Boolean(
+        amount &&
+        line.counterpartyShare &&
+        parseAmount(line.counterpartyShare.amount) === Math.abs(amount),
+      );
+      if (
+        (!category && !fullShare) ||
+        category?.pairedAccountId ||
+        category?.pairedLoanId ||
+        category?.counterpartyAccountId
+      )
+        fields[lineField(line.lineId, "categoryId")] =
+          "Choose a category for your part of it.";
       if (amount === undefined || (line.outflow.trim() && line.inflow.trim()))
         fields[lineField(line.lineId, "outflow")] =
           "Enter an amount with no more than two decimal places.";
@@ -386,7 +394,7 @@ export function buildTransactionDraftCommand({
       else
         lines.push({
           lineId: line.lineId,
-          categoryId: line.categoryId,
+          categoryId: fullShare ? undefined : line.categoryId,
           amount,
           counterpartyShare: shareInput(
             line.counterpartyShare,
@@ -404,7 +412,11 @@ export function buildTransactionDraftCommand({
     )
       fields.remaining =
         "Split the whole amount: the lines must add up to the total.";
-  } else if (!transfer && account?.kind !== "tracking") {
+  } else if (
+    !transfer &&
+    account?.kind !== "tracking" &&
+    !draft.refundOfTransactionId
+  ) {
     const category = view.categories.find((item) => item.id === categoryId);
     if (categoryId === READY_TO_ASSIGN) {
       if (outflowText)
@@ -412,14 +424,30 @@ export function buildTransactionDraftCommand({
       else if (account?.kind === "credit")
         fields.categoryId =
           "Use a card payment or statement credit for card inflows.";
-    } else if (!categoryId) fields.categoryId = "Choose a category.";
-    else if (!category || category.pairedAccountId || category.pairedLoanId)
+    } else if (
+      !categoryId &&
+      !(
+        draft.counterpartyShare &&
+        parseAmount(draft.counterpartyShare.amount) === (inflow || outflow)
+      ) &&
+      !draft.refundOfTransactionId
+    )
+      fields.categoryId = "Choose a category for your part of it.";
+    else if (
+      categoryId &&
+      (!category || category.pairedAccountId || category.pairedLoanId)
+    )
       fields.categoryId = "Choose a spending category or Ready to Assign.";
     if (
       transaction?.categoryId &&
       !isTransfer(transaction) &&
       transaction.kind !== "loan-payment" &&
-      (categoryId === READY_TO_ASSIGN || !categoryId)
+      (categoryId === READY_TO_ASSIGN ||
+        (!categoryId &&
+          !(
+            draft.counterpartyShare &&
+            parseAmount(draft.counterpartyShare.amount) === (inflow || outflow)
+          )))
     )
       fields.categoryId =
         "An existing category cannot be cleared. Choose a category.";
@@ -461,7 +489,7 @@ export function buildTransactionDraftCommand({
             account?.kind === "tracking" ||
             categoryId === READY_TO_ASSIGN
           ? undefined
-          : categoryId,
+          : categoryId || undefined,
     ...(split ? { lines } : { counterpartyShare }),
     refundOfTransactionId: draft.refundOfTransactionId,
     recordedAt: new Date().toISOString(),

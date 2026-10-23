@@ -46,20 +46,20 @@ The private counterparty account for everyone except your partner. Each of its e
 The counterparty account for your partner, showing the partner ledger. Its balance is the opposite of the same account in your partner's budget.
 
 **Paired envelope**:
-The budget category that belongs to a counterparty account and holds its cash. Its available amount is its float minus the account's balance, and it never resets at monthly rollover.
+The budget category that belongs to a counterparty account and holds its cash, including the entire cost of a fully reimbursable purchase. Its available amount is its float minus the account's balance, and it never resets at monthly rollover.
 
 **Float**:
 Your own cash assigned to a paired envelope, set aside to front costs for a counterparty until they repay. Assigning float lowers Ready to Assign like any other assignment.
 
 **Share**:
-The part of a transaction line that a counterparty is responsible for. Half means exactly 50/50; any other amount is entered on the line, and there is no default split between partners.
+The part of a transaction line that a counterparty is responsible for, including the whole line when none of the cost is yours. Half means exactly 50/50; any other amount is entered on the line, and there is no default split between partners.
 _Avoid_: Split rule, shared category, obligation
 
 **Purpose category**:
-The private budget category a line's spending belongs to, chosen by the person who recorded it regardless of any share.
+The private budget category for your portion of a transaction line. A line entirely owed by a counterparty has no purpose category.
 
 **Write-off**:
-Changing a share to zero, so the counterparty no longer owes it and the full line becomes your own spending. Every share change, including a write-off, is kept in the transaction history.
+Changing a share to zero, so the counterparty no longer owes it and the full line becomes your own spending, requiring a purpose category at that point. Every share change, including a write-off, is kept in the transaction history.
 
 **Linked refund**:
 A refund recorded against its original purchase, which returns each line's purpose category and share in proportion to the amount refunded.

@@ -28,6 +28,7 @@ import { namesPerson } from "~/lib/settlement-recognition";
 import {
   canEditImport,
   importCategory,
+  importShare,
   importRowId,
   partnerMatchesOf,
 } from "~/components/transactions/import-draft";
@@ -205,12 +206,17 @@ function importCategoryLabel(
   categoryName: Map<string, string>,
 ) {
   const categoryId = importCategory(view, item);
+  const share = importShare(view, item);
   const label =
     categoryId === READY_TO_ASSIGN
       ? transactionCategory("income", item.amount)
       : categoryId
         ? (item.categoryName ?? categoryName.get(categoryId))
-        : undefined;
+        : share?.amount === Math.abs(item.amount)
+          ? (share.counterpartyName ??
+            view.accounts.find((account) => account.id === share.accountId)
+              ?.name)
+          : undefined;
   return label
     ? { categoryId, categoryLabel: label, needsCategory: false }
     : { categoryLabel: "Needs category", needsCategory: true };
@@ -464,6 +470,7 @@ export function toShellData(
         !boundary;
       const needsCategory =
         item.kind === "purchase" &&
+        !item.counterpartyShare &&
         !item.categoryId &&
         !item.lines &&
         account.kind !== "tracking";
@@ -518,11 +525,14 @@ export function toShellData(
           : needsCategory
             ? "Needs category"
             : item.lines?.length === 1
-              ? (categoryName.get(item.lines[0]!.categoryId) ??
+              ? (categoryName.get(item.lines[0]!.categoryId ?? "") ??
                 "Needs category")
               : item.lines
                 ? `Split (${item.lines.length})`
                 : ((item.categoryId && categoryName.get(item.categoryId)) ??
+                  (item.counterpartyShare
+                    ? shareNames.join(", ")
+                    : undefined) ??
                   (boundary
                     ? "Inflow: Ready to Assign"
                     : repaidFrom
@@ -568,6 +578,7 @@ export function toShellData(
       item.accountId &&
       !item.transactionId &&
       !importCategory(view, item) &&
+      !importShare(view, item) &&
       namesPerson(item.payee, partnerName)
         ? {
             categoryLabel: `Transfer: ${partnerName}`,

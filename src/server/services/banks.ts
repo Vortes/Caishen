@@ -1276,12 +1276,12 @@ function rememberedImport(
   const amount = -fact.amountCents;
   const payee = (fact.merchantName ?? fact.name).slice(0, 240);
   const categoryId = rememberedCategory(budget, { payee, accountId, amount });
-  if (!categoryId) return undefined;
   const counterpartyShare = rememberedCounterpartyShare(budget, {
     payee,
     accountId,
     amount,
   });
+  if (!categoryId && !counterpartyShare) return undefined;
   const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
   const twin = budget.transactions.some(
     (transaction) =>
