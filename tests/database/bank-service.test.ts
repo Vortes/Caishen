@@ -3206,7 +3206,7 @@ void test("imports naming a retired provider id still reach its live linked acco
     }),
     /review/i,
   );
-  const item = result.imports[0]!;
+  const item = result.imports[0];
   await h.api.budget.resolveImport({
     connectionId: item.connectionId,
     logicalId: item.logicalId,
