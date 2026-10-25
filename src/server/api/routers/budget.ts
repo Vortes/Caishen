@@ -71,6 +71,7 @@ const savedBankConnections = (db: Database, userId: string) =>
       lastAttemptAt: true,
       error: true,
       accountMappings: true,
+      unavailableAccountIds: true,
       imports: true,
     },
   });

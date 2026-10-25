@@ -1438,6 +1438,132 @@ for (const delivery of [
     });
   });
 
+void test("a mapped account with missing cached identity routes a fresh Link back to the existing bank", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [],
+  });
+  const before = await h.state();
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("A potential duplicate must not be exchanged");
+  });
+  await assert.rejects(
+    exchangeBankToken(db, alice, "public-duplicate", linkMetadata()),
+    /Choose accounts/,
+  );
+  assert.equal(fetcher.mock.callCount(), 0);
+  assert.deepEqual(await h.state(), before);
+});
+
+void test("a partial reconnect merges fresh details without forgetting other mapped accounts", async () => {
+  const h = await linkedHarness();
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "account.add",
+      id: "savings",
+      accountId: "savings",
+      name: "Savings",
+      kind: "cash",
+      openingBalance: 50000,
+      date: "2026-10-01",
+    }),
+  );
+  const mappings = {
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+    "provider-savings": { accountId: "savings", startDate: "2026-10-01" },
+  };
+  await h.setMappings(mappings);
+  const checking = {
+    accountId: "provider-checking",
+    name: "Chase checking",
+    officialName: null,
+    mask: "1234",
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 100,
+    availableBalance: 100,
+    currency: "USD",
+  };
+  const savings = {
+    ...checking,
+    accountId: "provider-savings",
+    name: "Chase savings",
+    mask: "5678",
+    subtype: "savings",
+    currentBalance: 500,
+    availableBalance: 500,
+  };
+  await h.setImports({
+    accounts: [checking, savings],
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    synchronizedAccountIds: [checking.accountId, savings.accountId],
+  });
+  const before = await h.state();
+  let shareSavings = false;
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const response = accountsResponse();
+    if (shareSavings)
+      response.accounts.push({
+        ...response.accounts[0]!,
+        account_id: "provider-savings",
+        name: "Chase savings",
+        mask: "5678",
+        subtype: "savings",
+        balances: {
+          ...response.accounts[0]!.balances,
+          current: 510,
+          available: 510,
+        },
+      });
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        accounts: response.accounts,
+        next_cursor: "same",
+        has_more: false,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      });
+    assert.equal(requestUrl(url).pathname, "/accounts/get");
+    return Response.json(response);
+  });
+  await reconnectBank(db, alice, h.connection.id);
+  let details = await h.details();
+  assert.deepEqual(
+    details.accounts.map((a) => [a.accountId, a.currentBalance]),
+    [
+      ["provider-checking", 123.45],
+      ["provider-savings", 500],
+    ],
+  );
+  assert.deepEqual(details.accountMappings, mappings);
+  assert.deepEqual(details.unavailableAccountIds, ["provider-savings"]);
+  await syncBanks(db, alice);
+  details = await h.details();
+  assert.deepEqual(
+    details.accounts.find((a) => a.accountId === "provider-savings"),
+    savings,
+  );
+  assert.deepEqual(details.synchronizedAccountIds, ["provider-checking"]);
+  assert.deepEqual(details.unavailableAccountIds, ["provider-savings"]);
+  assert.deepEqual((await h.state()).view, before.view);
+  shareSavings = true;
+  await reconnectBank(db, alice, h.connection.id);
+  details = await h.details();
+  assert.deepEqual(details.unavailableAccountIds ?? [], []);
+  assert.equal(
+    details.accounts.find((a) => a.accountId === "provider-savings")!
+      .currentBalance,
+    510,
+  );
+  assert.deepEqual(details.accountMappings, mappings);
+  assert.deepEqual((await h.state()).view, before.view);
+});
+
 void test("update mode reuses the private Item token and refreshes metadata without exchanging a public token", async () => {
   const h = await harness();
   await h.setMappings({

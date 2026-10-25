@@ -344,9 +344,12 @@ export function BankItem({
       budget?.accounts.find((item) => item.id === mapping.accountId) ??
       budget?.loans.find((item) => item.id === mapping.accountId);
     const name = saved?.name ?? account?.name;
-    return name ? [{ providerId, account, name }] : [];
+    const shared =
+      Boolean(account) &&
+      !connection.unavailableAccountIds?.includes(providerId);
+    return name ? [{ providerId, account, name, shared }] : [];
   });
-  const missing = inBudget.some(({ account }) => !account);
+  const missing = inBudget.some(({ shared }) => !shared);
   const outside = connection.accounts.filter(
     (account) => !mappings.has(account.accountId),
   ).length;
@@ -397,7 +400,7 @@ export function BankItem({
           className={styles.accounts}
           aria-label={`${bankName(connection)} accounts in your budget`}
         >
-          {inBudget.map(({ providerId, account, name }) => (
+          {inBudget.map(({ providerId, account, name, shared }) => (
             <li key={providerId} className={styles.account}>
               <span className={styles.accountName}>
                 {name}
@@ -406,7 +409,7 @@ export function BankItem({
                 )}
               </span>
               <span className={styles.balance}>
-                {account
+                {account && shared
                   ? (bankBalance(account) ?? "Balance unavailable")
                   : connection.disconnectedAt
                     ? "Disconnected"

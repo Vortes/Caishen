@@ -32,63 +32,87 @@ function connection(): State["connections"][number] {
   };
 }
 
-test("a partial bank response keeps all mapped cards visible and refreshes only the returned card", async () => {
-  const cards = [
-    { id: "gold", name: "Amex Gold" },
-    { id: "everyday", name: "Amex EveryDay" },
-    { id: "business", name: "My Business Platinum" },
-    { id: "platinum", name: "Personal Platinum" },
-    { id: "blue", name: "Blue Cash Preferred" },
-  ];
-  const bank: State["connections"][number] = {
-    ...connection(),
-    institutionName: "American Express",
-    accountMappings: Object.fromEntries(
-      cards.map(({ id }) => [
-        `provider-${id}`,
-        { accountId: id, startDate: "2026-10-02" },
-      ]),
-    ),
-    accounts: [
-      {
-        accountId: "provider-business",
-        name: "Business Platinum Card",
-        officialName: null,
-        mask: "1005",
-        type: "credit",
-        subtype: "credit card",
-        currentBalance: 123.45,
-        availableBalance: null,
-        currency: "USD",
-      },
-    ],
-  };
-  const shell = await renderShell({
-    seedCommands: cards.map(({ id, name }) => ({
-      type: "account.add",
-      id: `add-${id}`,
-      accountId: id,
-      name,
-      kind: "credit",
-      date: "2026-10-01",
-      openingBalance: 0,
-    })),
-    overview: () => readyOverview({ connections: [bank] }),
-  });
-  await shell.user.click(screen.getByRole("button", { name: "Banks" }));
-  const accounts = screen.getByRole("list", {
-    name: "American Express accounts in your budget",
-  });
-  expect(within(accounts).getAllByRole("listitem")).toHaveLength(5);
-  for (const { name } of cards)
-    expect(within(accounts).getByText(name)).toBeTruthy();
-  expect(within(accounts).getByText("-$123.45")).toBeTruthy();
-  expect(within(accounts).getAllByText("Not currently shared")).toHaveLength(4);
-  expect(screen.queryByRole("button", { name: "Add accounts" })).toBeNull();
-  expect(
-    screen.getByText(/Your saved accounts and history are kept/),
-  ).toBeTruthy();
-});
+test.each([false, true])(
+  "a partial bank response keeps all mapped cards visible and refreshes only the returned card (cached details: %s)",
+  async (retainDetails) => {
+    const cards = [
+      { id: "gold", name: "Amex Gold" },
+      { id: "everyday", name: "Amex EveryDay" },
+      { id: "business", name: "My Business Platinum" },
+      { id: "platinum", name: "Personal Platinum" },
+      { id: "blue", name: "Blue Cash Preferred" },
+    ];
+    const bank: State["connections"][number] = {
+      ...connection(),
+      institutionName: "American Express",
+      accountMappings: Object.fromEntries(
+        cards.map(({ id }) => [
+          `provider-${id}`,
+          { accountId: id, startDate: "2026-10-02" },
+        ]),
+      ),
+      accounts: [
+        {
+          accountId: "provider-business",
+          name: "Business Platinum Card",
+          officialName: null,
+          mask: "1005",
+          type: "credit",
+          subtype: "credit card",
+          currentBalance: 123.45,
+          availableBalance: null,
+          currency: "USD",
+        },
+      ],
+    };
+    if (retainDetails) {
+      bank.unavailableAccountIds = [
+        "provider-gold",
+        "provider-everyday",
+        "provider-platinum",
+        "provider-blue",
+      ];
+      bank.accounts.push(
+        ...cards
+          .filter(({ id }) => id !== "business")
+          .map(({ id, name }) => ({
+            ...bank.accounts[0]!,
+            accountId: `provider-${id}`,
+            name,
+            mask: "9999",
+            currentBalance: 999,
+          })),
+      );
+    }
+    const shell = await renderShell({
+      seedCommands: cards.map(({ id, name }) => ({
+        type: "account.add",
+        id: `add-${id}`,
+        accountId: id,
+        name,
+        kind: "credit",
+        date: "2026-10-01",
+        openingBalance: 0,
+      })),
+      overview: () => readyOverview({ connections: [bank] }),
+    });
+    await shell.user.click(screen.getByRole("button", { name: "Banks" }));
+    const accounts = screen.getByRole("list", {
+      name: "American Express accounts in your budget",
+    });
+    expect(within(accounts).getAllByRole("listitem")).toHaveLength(5);
+    for (const { name } of cards)
+      expect(within(accounts).getByText(name)).toBeTruthy();
+    expect(within(accounts).getByText("-$123.45")).toBeTruthy();
+    expect(within(accounts).getAllByText("Not currently shared")).toHaveLength(
+      4,
+    );
+    expect(screen.queryByRole("button", { name: "Add accounts" })).toBeNull();
+    expect(
+      screen.getByText(/Your saved accounts and history are kept/),
+    ).toBeTruthy();
+  },
+);
 
 test("a loan with no bank balance offers setup and asks for confirmed lender terms", async () => {
   const bank = connection();
