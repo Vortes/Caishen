@@ -334,12 +334,22 @@ export function BankItem({
 }) {
   const banks = useBanks();
   const mappings = bankAccountMappings(connection.accountMappings);
-  // Only accounts in the budget are listed; the rest are counted, since a
-  // bank often holds accounts (a 401k, a mortgage) the budget never will.
-  const inBudget = connection.accounts.filter((account) =>
-    mappings.has(account.accountId),
-  );
-  const outside = connection.accounts.length - inBudget.length;
+  const budget = banks.state.view?.budget;
+  // A partial bank response changes access, not membership in the budget.
+  const inBudget = [...mappings].flatMap(([providerId, mapping]) => {
+    const account = connection.accounts.find(
+      (item) => item.accountId === providerId,
+    );
+    const saved =
+      budget?.accounts.find((item) => item.id === mapping.accountId) ??
+      budget?.loans.find((item) => item.id === mapping.accountId);
+    const name = saved?.name ?? account?.name;
+    return name ? [{ providerId, account, name }] : [];
+  });
+  const missing = inBudget.some(({ account }) => !account);
+  const outside = connection.accounts.filter(
+    (account) => !mappings.has(account.accountId),
+  ).length;
   const addable = addableAccounts(connection).length > 0;
   const reconnecting = banks.reconnecting === connection.id;
   return (
@@ -387,20 +397,30 @@ export function BankItem({
           className={styles.accounts}
           aria-label={`${bankName(connection)} accounts in your budget`}
         >
-          {inBudget.map((account) => (
-            <li key={account.accountId} className={styles.account}>
+          {inBudget.map(({ providerId, account, name }) => (
+            <li key={providerId} className={styles.account}>
               <span className={styles.accountName}>
-                {account.name}
-                {account.mask && (
+                {name}
+                {account?.mask && (
                   <span className={styles.mask}> ••{account.mask}</span>
                 )}
               </span>
               <span className={styles.balance}>
-                {bankBalance(account) ?? "Unavailable"}
+                {account
+                  ? (bankBalance(account) ?? "Balance unavailable")
+                  : connection.disconnectedAt
+                    ? "Disconnected"
+                    : "Not currently shared"}
               </span>
             </li>
           ))}
         </ul>
+      )}
+      {missing && !connection.disconnectedAt && (
+        <p className={styles.note}>
+          Your saved accounts and history are kept. Choose accounts to restore
+          updates for accounts that aren’t currently shared.
+        </p>
       )}
       {!connection.disconnectedAt && outside > 0 && (
         <div className={styles.outside}>
