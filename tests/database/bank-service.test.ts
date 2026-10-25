@@ -392,7 +392,12 @@ void test("disconnecting a bank preserves the account, reviewed history, and out
   assert.deepEqual(paths, ["/item/remove"]);
 });
 
-for (const mode of ["disconnected", "unavailable", "renamed"] as const)
+for (const mode of [
+  "disconnected",
+  "unavailable",
+  "renamed",
+  "revoked",
+] as const)
   void test(`relinking a ${mode} account preserves its reconciled history and excludes the replacement's historical imports`, async () => {
     const h = await linkedHarness();
     const today = bankSetupDate("America/Los_Angeles");
@@ -482,9 +487,14 @@ for (const mode of ["disconnected", "unavailable", "renamed"] as const)
         operationId: randomUUID(),
         expectedRevision: await h.revision(),
       });
+    if (mode === "revoked")
+      await db.bankConnection.update({
+        where: { id: h.connection.id },
+        data: { status: "revoked" },
+      });
     replacement = true;
     const linked =
-      mode === "disconnected"
+      mode === "disconnected" || mode === "revoked"
         ? await h.api.budget.plaidExchange({
             publicToken: "replacement-public",
             metadata: linkMetadata(response()),
@@ -517,7 +527,7 @@ for (const mode of ["disconnected", "unavailable", "renamed"] as const)
     assert.deepEqual(after.accounts, before.accounts);
     assert.deepEqual(after.transactions, before.transactions);
     assert.deepEqual(await bankInbox(db, alice), []);
-    if (mode !== "disconnected")
+    if (mode !== "disconnected" && mode !== "revoked")
       assert.deepEqual(
         (await h.details()).accounts.map((account) => account.accountId),
         ["replacement-checking"],
@@ -3898,4 +3908,402 @@ void test("broken provider supersession raises an alert and isolates the connect
         message.includes(h.connection.id),
     ),
   );
+});
+
+void test("first bank read copies legacy links once even when their cached identity is missing", async () => {
+  const h = await linkedHarness();
+  const snapshot = { postedImportIds: ["old-import"], fingerprints: {} };
+  await h.setMappings({
+    "provider-checking": {
+      accountId: "cash",
+      startDate: "2026-09-18",
+      openingSnapshot: snapshot,
+    },
+  });
+  const before = await h.book();
+  await h.state();
+  const rows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    include: { link: true },
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.providerAccountId, "provider-checking");
+  assert.equal(rows[0]!.status, "unavailable");
+  assert.equal(rows[0]!.persistentAccountId, null);
+  assert.equal(rows[0]!.mask, null);
+  assert.equal(rows[0]!.link!.accountId, "cash");
+  assert.equal(rows[0]!.link!.startDate, "2026-09-18");
+  assert.deepEqual(rows[0]!.link!.openingSnapshot, snapshot);
+  await h.state();
+  assert.deepEqual(
+    await db.bankAccount.findMany({
+      where: { connectionId: h.connection.id },
+      include: { link: true },
+    }),
+    rows,
+  );
+  assert.deepEqual(await h.book(), before);
+});
+
+void test("reconnect writes provider rows and preserves a revoked account omitted by Plaid", async () => {
+  const h = await linkedHarness();
+  await h.state();
+  await db.bankAccount.updateMany({
+    where: { connectionId: h.connection.id },
+    data: { status: "revoked" },
+  });
+  const legacy = await h.saved();
+  mockPlaid(async () =>
+    Response.json({
+      ...accountsResponse(),
+      accounts: [
+        { ...accountsResponse().accounts[0]!, account_id: "second-account" },
+      ],
+    }),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  const rows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    orderBy: { providerAccountId: "asc" },
+  });
+  assert.deepEqual(
+    rows.map((row) => [row.providerAccountId, row.status]),
+    [
+      ["provider-checking", "revoked"],
+      ["second-account", "shared"],
+    ],
+  );
+  assert.deepEqual((await h.saved()).accountMappings, legacy.accountMappings);
+  assert.deepEqual(bankAccountDetails((await h.saved()).imports).accounts, []);
+  mock.restoreAll();
+  mockPlaid(async () => Response.json(accountsResponse()));
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  assert.equal(
+    (
+      await db.bankAccount.findUniqueOrThrow({
+        where: {
+          connectionId_providerAccountId: {
+            connectionId: h.connection.id,
+            providerAccountId: "provider-checking",
+          },
+        },
+      })
+    ).status,
+    "shared",
+  );
+});
+
+void test("five Amex cards survive subset consent and explicit recovery of four changed ids", async () => {
+  const h = await harness();
+  await db.bankConnection.delete({ where: { id: h.connection.id } });
+  let phase: "all" | "subset" | "reshared" = "all";
+  const response = () => ({
+    item: { institution_id: "ins-amex", institution_name: "Amex" },
+    accounts: Array.from(
+      { length: phase === "subset" ? 1 : 5 },
+      (_, index) => ({
+        account_id:
+          phase === "reshared" && index ? `new-${index}` : `card-${index}`,
+        name: `Amex card ${index}`,
+        official_name: null,
+        mask: `100${index}`,
+        type: "credit",
+        subtype: "credit card",
+        balances: {
+          current: 10,
+          available: null,
+          iso_currency_code: "USD",
+          unofficial_currency_code: null,
+        },
+      }),
+    ),
+  });
+  mockPlaid(async (url) => {
+    switch (requestUrl(url).pathname) {
+      case "/item/public_token/exchange":
+        return Response.json({
+          access_token: "amex-access",
+          item_id: `amex-${run}`,
+        });
+      case "/transactions/sync":
+        return Response.json({
+          ...response(),
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: phase,
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      case "/accounts/get":
+        return Response.json(response());
+      default:
+        throw new Error("Unexpected Plaid request");
+    }
+  });
+  const linked = await h.api.budget.plaidExchange({
+    publicToken: "public-amex",
+    metadata: {
+      institution: { institution_id: "ins-amex" },
+      accounts: response().accounts.map((account) => ({
+        id: account.account_id,
+        name: account.name,
+        mask: account.mask,
+      })),
+    },
+  });
+  assert.equal(
+    await db.bankAccount.count({ where: { connectionId: linked.id } }),
+    5,
+  );
+  await h.api.budget.sync();
+  await h.api.budget.setupBankAccounts({
+    connectionId: linked.id,
+    operationId: randomUUID(),
+    expectedRevision: await h.revision(),
+    accounts: response().accounts.map((account) => ({
+      providerAccountId: account.account_id,
+      name: account.name,
+      expectedBalance: 10,
+    })),
+  });
+  const original = (await h.state()).view!.budget.accounts.filter(
+    (account) => account.kind === "credit",
+  );
+  assert.equal(original.length, 5);
+  const originalLinks = await db.bankAccountLink.findMany({
+    where: { userId: alice },
+    include: { bankAccount: true },
+  });
+  let book = await h.book();
+  for (const account of original)
+    book = execute(book, alice, {
+      type: "account.reconcile",
+      id: randomUUID(),
+      accountId: account.id,
+      date: bankSetupDate(book.budgets[alice]!.settings.timezone),
+      balance: -1000,
+    });
+  await h.setBook(book);
+  const before = (await h.state()).view!.budget;
+  phase = "subset";
+  await h.api.budget.plaidReconnect({ connectionId: linked.id });
+  assert.equal((await h.state()).connections[0]!.accounts.length, 5);
+  assert.equal(
+    await db.bankAccount.count({
+      where: { connectionId: linked.id, status: "unavailable" },
+    }),
+    4,
+  );
+  phase = "reshared";
+  await h.api.budget.plaidReconnect({ connectionId: linked.id });
+  await h.api.budget.sync();
+  const accounts = response()
+    .accounts.slice(1)
+    .map((account, index) => ({
+      providerAccountId: account.account_id,
+      name: account.name,
+      expectedBalance: 10,
+      existingAccountId: originalLinks.find(
+        (link) => link.bankAccount.providerAccountId === `card-${index + 1}`,
+      )!.accountId,
+    }));
+  await h.api.budget.setupBankAccounts({
+    connectionId: linked.id,
+    operationId: randomUUID(),
+    expectedRevision: await h.revision(),
+    accounts,
+  });
+  const after = (await h.state()).view!.budget;
+  assert.deepEqual(after.accounts, before.accounts);
+  assert.deepEqual(after.transactions, before.transactions);
+  assert.equal(
+    await db.bankAccountLink.count({
+      where: { userId: alice, unlinkedAt: null },
+    }),
+    5,
+  );
+  const retired = await db.bankAccount.findMany({
+    where: { connectionId: linked.id, status: "retired" },
+  });
+  assert.equal(retired.length, 4);
+  assert.ok(retired.every((account) => account.supersededById));
+  assert.deepEqual(
+    bankAccountDetails(
+      (await db.bankConnection.findUniqueOrThrow({ where: { id: linked.id } }))
+        .imports,
+    ).accounts,
+    [],
+  );
+});
+
+void test("superseded ids keep their old inbox through a chain and cannot become live again", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("old-id-purchase")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    records: [record],
+    accounts: [
+      {
+        accountId: "provider-checking",
+        persistentAccountId: "stable-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: null,
+        currency: "USD",
+      },
+    ],
+  });
+  await h.state();
+  const before = await bankInbox(db, alice);
+  assert.equal(before.length, 1);
+  const importRows = (
+    await loadRows(db, (await readHouseholdRevision(db, alice))!.workspaceId)
+  ).filter((row) => row.table === "bankImport");
+  let providerId = "replacement-one";
+  mockPlaid(async () =>
+    Response.json({
+      ...accountsResponse(),
+      accounts: [
+        {
+          ...accountsResponse().accounts[0]!,
+          account_id: providerId,
+          persistent_account_id: "stable-checking",
+        },
+      ],
+    }),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  providerId = "replacement-two";
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  providerId = "provider-checking";
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  assert.deepEqual(await bankInbox(db, alice), before);
+  assert.deepEqual(
+    (
+      await loadRows(db, (await readHouseholdRevision(db, alice))!.workspaceId)
+    ).filter((row) => row.table === "bankImport"),
+    importRows,
+  );
+  const links = await db.bankAccountLink.findMany({
+    where: { userId: alice, unlinkedAt: null },
+    include: { bankAccount: true },
+  });
+  assert.equal(links.length, 1);
+  assert.equal(links[0]!.bankAccount.providerAccountId, "replacement-two");
+  assert.equal(
+    await db.bankAccount.count({
+      where: { connectionId: h.connection.id, status: "retired" },
+    }),
+    2,
+  );
+});
+
+void test("table-backed update Link and disconnect keep feeds and history while stopping balances", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currency: "USD",
+        currentBalance: 100,
+        availableBalance: 100,
+      },
+    ],
+    synchronizedAccountIds: ["provider-checking"],
+  });
+  await h.state();
+  const before = await h.book();
+  const legacy = await h.saved();
+  mockPlaid(async (url) =>
+    requestUrl(url).pathname === "/link/token/create"
+      ? Response.json({
+          link_token: "update-token",
+          expiration: "2026-10-26T00:00:00Z",
+        })
+      : Response.json({ removed: true }),
+  );
+  const token = await linkBankToken(db, alice, h.connection.id);
+  assert.equal(token.linkToken, "update-token");
+  await h.api.budget.disconnectBank({
+    connectionId: h.connection.id,
+    operationId: randomUUID(),
+    expectedRevision: await h.revision(),
+  });
+  assert.equal(
+    (
+      await db.bankAccount.findFirstOrThrow({
+        where: { connectionId: h.connection.id },
+      })
+    ).status,
+    "unavailable",
+  );
+  assert.equal(
+    await db.bankAccountLink.count({
+      where: { userId: alice, unlinkedAt: null },
+    }),
+    1,
+  );
+  assert.deepEqual(
+    bankAccountDetails((await h.saved()).imports).accounts,
+    bankAccountDetails(legacy.imports).accounts,
+  );
+  assert.deepEqual((await h.saved()).accountMappings, legacy.accountMappings);
+  assert.deepEqual(await h.book(), before);
+});
+
+void test("a persistent identity is superseded before the user adds any budget account", async () => {
+  const h = await harness();
+  const before = (await h.state()).view!.budget;
+  let providerId = "first-provider";
+  mockPlaid(async () =>
+    Response.json({
+      ...accountsResponse(),
+      accounts: [
+        {
+          ...accountsResponse().accounts[0]!,
+          account_id: providerId,
+          persistent_account_id: "stable-unlinked",
+        },
+      ],
+    }),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  providerId = "next-provider";
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  const rows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    orderBy: { providerAccountId: "asc" },
+  });
+  assert.deepEqual(
+    rows.map((row) => [row.providerAccountId, row.status]),
+    [
+      ["first-provider", "retired"],
+      ["next-provider", "shared"],
+    ],
+  );
+  assert.equal(rows[0]!.supersededById, rows[1]!.id);
+  assert.equal(await db.bankAccountLink.count({ where: { userId: alice } }), 0);
+  assert.deepEqual((await h.state()).view!.budget.accounts, before.accounts);
+  const decisions = await recordedDecisions("bank.accounts.supersede");
+  assert.deepEqual(decisions, [
+    {
+      connectionId: h.connection.id,
+      decisions: [{ rung: 2, from: "first-provider", to: "next-provider" }],
+    },
+  ]);
 });
