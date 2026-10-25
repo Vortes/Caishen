@@ -108,3 +108,38 @@ export async function recordBankLinkOutcome(
     },
   });
 }
+
+/**
+ * A webhook Plaid delivered, verified or not. The route that verifies and
+ * handles webhooks (#146) calls this for every receipt; an unverified body
+ * is recorded without a type or code, since nothing in it can be trusted.
+ */
+export async function recordBankWebhookReceipt(
+  db: Database,
+  receipt: {
+    webhookType: string | null;
+    webhookCode: string | null;
+    verification: string;
+    connectionId?: string | null;
+    userId?: string | null;
+    requestId?: string | null;
+    errorCode?: string | null;
+  },
+) {
+  const named = [receipt.webhookType, receipt.webhookCode].filter(
+    (part): part is string => !!part,
+  );
+  await recordEvent(db, {
+    kind: "webhook",
+    method: named.length ? named.join("/") : "unverified",
+    connectionId: receipt.connectionId,
+    userId: receipt.userId,
+    requestId: receipt.requestId,
+    errorCode: receipt.errorCode,
+    detail: {
+      webhookType: receipt.webhookType,
+      webhookCode: receipt.webhookCode,
+      verification: receipt.verification,
+    },
+  });
+}

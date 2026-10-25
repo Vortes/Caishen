@@ -34,6 +34,7 @@ import {
   resolveImport,
   syncBanks,
 } from "../../src/server/services/banks";
+import { recordBankWebhookReceipt } from "../../src/server/services/bank-provider-events";
 import { onboard } from "../../src/server/services/household-operations";
 import * as banks from "../../src/server/services/banks";
 import { households } from "../../src/server/storage/households";
@@ -2964,4 +2965,63 @@ void test("completing an update-mode Link records a success event against the re
       },
     ],
   );
+});
+
+void test("a received webhook is recorded with its type, code, and verification result", async () => {
+  const h = await harness();
+  await recordBankWebhookReceipt(db, {
+    connectionId: h.connection.id,
+    userId: alice,
+    webhookType: "ITEM",
+    webhookCode: "ERROR",
+    verification: "verified",
+    errorCode: "ITEM_LOGIN_REQUIRED",
+  });
+  await recordBankWebhookReceipt(db, {
+    webhookType: null,
+    webhookCode: null,
+    verification: "invalid_signature",
+  });
+  const receipts = (
+    await db.bankProviderEvent.findMany({ where: { kind: "webhook" } })
+  )
+    .filter(
+      (event) =>
+        event.connectionId === h.connection.id || event.connectionId === null,
+    )
+    .map(({ method, connectionId, clerkUserId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      clerkUserId,
+      errorCode,
+      detail,
+    }))
+    .sort((left, right) => left.method.localeCompare(right.method));
+  assert.deepEqual(receipts, [
+    {
+      method: "ITEM/ERROR",
+      connectionId: h.connection.id,
+      clerkUserId: alice,
+      errorCode: "ITEM_LOGIN_REQUIRED",
+      detail: {
+        webhookType: "ITEM",
+        webhookCode: "ERROR",
+        verification: "verified",
+      },
+    },
+    {
+      method: "unverified",
+      connectionId: null,
+      clerkUserId: null,
+      errorCode: null,
+      detail: {
+        webhookType: null,
+        webhookCode: null,
+        verification: "invalid_signature",
+      },
+    },
+  ]);
+  await db.bankProviderEvent.deleteMany({
+    where: { kind: "webhook", clerkUserId: null },
+  });
 });
