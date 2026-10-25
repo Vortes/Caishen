@@ -906,11 +906,7 @@ export async function setupBankAccounts(
     });
     const identities = connections.map((saved, index) => ({
       ...details[index]!,
-      disconnectedAt:
-        details[index]!.disconnectedAt ??
-        (["revoked", "disconnected"].includes(saved.status)
-          ? saved.updatedAt.toISOString()
-          : undefined),
+      status: saved.status,
       accountMappings: allMappings[index]!,
       unavailableAccountIds:
         readBankAccountRows(saved)?.unavailableAccountIds ?? [],
