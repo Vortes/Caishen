@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { PlaidRequestRecorder } from "~/server/integrations/plaid";
+import {
+  createPlaidClient,
+  type PlaidRequestRecorder,
+} from "~/server/integrations/plaid";
 import { providerIdSchema } from "~/server/integrations/validation";
 import type { Database } from "./household";
 import { jsonValue } from "./safety";
@@ -156,4 +159,23 @@ export async function purgeBankProviderEvents(db: Database, now: Date) {
     where: { createdAt: { lt: cutoff } },
   });
   return count;
+}
+
+export function bankClient(
+  db: Database,
+  userId: string | null,
+  connectionId?: string | null,
+) {
+  return createPlaidClient(
+    {
+      clientId: process.env.PLAID_CLIENT_ID ?? "",
+      secret: process.env.PLAID_SECRET ?? "",
+      environment: z
+        .enum(["sandbox", "production"])
+        .parse(process.env.PLAID_ENV ?? "sandbox"),
+      redirectUri: process.env.PLAID_REDIRECT_URI,
+    },
+    undefined,
+    plaidRequestRecorder(db, { userId, connectionId }),
+  );
 }
