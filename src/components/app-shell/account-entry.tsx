@@ -92,6 +92,7 @@ export function AccountEntry() {
           className={styles.popover}
           side="top"
           align="start"
+          sideOffset={6}
           collisionPadding={12}
         >
           <form
