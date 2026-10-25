@@ -228,15 +228,6 @@
 .action:disabled {
   opacity: 0.45;
 }
-.outside {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-inset);
-  min-height: var(--size-control-xs);
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
 .accounts {
   display: flex;
   flex-direction: column;
@@ -266,6 +257,46 @@
   flex: none;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+}
+/* What the bank still has outside the budget; the ⋯ menu acts on it. */
+.meta {
+  margin: 0;
+  padding-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+/* Each bank's actions, two lines a row: what it does, then why. */
+.bankMenu {
+  width: 248px;
+}
+.bankMenu .bankMenuItem {
+  align-items: flex-start;
+  height: auto;
+  min-height: var(--size-row-sm);
+  padding-block: 8px;
+}
+.bankMenuItem + .bankMenuItem {
+  margin-top: 2px;
+}
+.bankMenu .bankMenuItem > svg {
+  margin-top: 2px;
+}
+.bankMenuItem[data-disabled] {
+  opacity: 0.45;
+}
+.bankMenuText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.bankMenuTitle {
+  color: var(--text-primary);
+}
+.bankMenuDetail {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
 }
 .empty {
   margin: 0;

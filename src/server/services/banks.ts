@@ -429,7 +429,7 @@ export async function exchangeBankToken(
             throw new TRPCError({
               code: "CONFLICT",
               message:
-                "This bank account is already connected. Use Choose accounts on the existing bank to share additional accounts.",
+                "This bank account is already connected. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
             });
         }
         const result = await client().exchangePublicToken(publicToken);
@@ -1311,7 +1311,7 @@ export async function setupBankAccounts(
         throw new TRPCError({
           code: "CONFLICT",
           message:
-            "This bank account is already added through another connection. Use Choose accounts on the existing bank instead.",
+            "This bank account is already added through another connection. Use Choose shared accounts in the existing bank’s ⋯ menu instead.",
         });
       if (provider.currentBalance !== selected.expectedBalance)
         throw new TRPCError({

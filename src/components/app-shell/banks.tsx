@@ -4,12 +4,15 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  EllipsisIcon,
   InfoIcon,
   LandmarkIcon,
+  ListChecksIcon,
   LoaderCircleIcon,
   PlusIcon,
+  UnlinkIcon,
 } from "lucide-react";
-import { AlertDialog, Dialog, Popover } from "radix-ui";
+import { AlertDialog, Dialog, DropdownMenu, Popover } from "radix-ui";
 import { createPortal } from "react-dom";
 import {
   createContext,
@@ -18,7 +21,9 @@ import {
   useId,
   useRef,
   useState,
+  type ComponentProps,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import {
   accountSetupType,
@@ -35,10 +40,12 @@ import { usePlaidLink } from "~/components/banks/use-plaid-link";
 import type { State } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { syncedLabel } from "./model";
 import { api } from "~/trpc/react";
 import styles from "./banks.module.css";
+import shell from "./shell.module.css";
 
 type Connection = State["connections"][number];
 type BankAccount = Connection["accounts"][number];
@@ -333,6 +340,7 @@ export function BankItem({
   onAction: () => void;
 }) {
   const banks = useBanks();
+  const container = usePortalContainer();
   const mappings = bankAccountMappings(connection.accountMappings);
   const budget = banks.state.view?.budget;
   // A partial bank response changes access, not membership in the budget.
@@ -349,56 +357,121 @@ export function BankItem({
       !connection.unavailableAccountIds?.includes(providerId);
     return name ? [{ providerId, account, name, shared }] : [];
   });
-  const missing = inBudget.some(({ shared }) => !shared);
+  const notShared = inBudget.filter(({ shared }) => !shared).length;
   const outside = connection.accounts.filter(
     (account) => !mappings.has(account.accountId),
   ).length;
   const addable = addableAccounts(connection).length > 0;
   const reconnecting = banks.reconnecting === connection.id;
+  const institution = bankName(connection);
+  // Plaid's script is large; fetch it while the pointer is on the way.
+  const preload = () => void loadPlaid().catch(() => undefined);
   return (
     <li className={styles.bank}>
       <div className={styles.bankHeader}>
         <div className={styles.bankTitle}>
-          <strong className={styles.bankName}>{bankName(connection)}</strong>
+          <strong className={styles.bankName}>{institution}</strong>
           {connection.disconnectedAt ? (
             <span className={styles.note}>Disconnected</span>
           ) : (
             <BankStatus connection={connection} />
           )}
         </div>
-        <Button
-          size="sm"
-          // Repairing the sole broken connection is the popover's main action.
-          variant={
-            connection.error &&
-            banks.connections.filter((item) => item.error).length === 1
-              ? "quiet-primary"
-              : "quiet"
-          }
-          disabled={!banks.available || banks.busy}
-          // Plaid's script is large; fetch it while the pointer is on the
-          // way.
-          onPointerEnter={() => void loadPlaid().catch(() => undefined)}
-          onClick={() => {
-            onAction();
-            banks.start(connection.disconnectedAt ? undefined : connection.id);
-          }}
-        >
-          {connection.disconnectedAt
-            ? "Link again"
-            : connection.error
-              ? reconnecting
-                ? "Reconnecting…"
-                : "Reconnect"
+        {(connection.disconnectedAt ?? connection.error) && (
+          <Button
+            size="sm"
+            // Repairing the sole broken connection is the popover's main
+            // action.
+            variant={
+              connection.error &&
+              !connection.disconnectedAt &&
+              banks.connections.filter((item) => item.error).length === 1
+                ? "quiet-primary"
+                : "quiet"
+            }
+            disabled={!banks.available || banks.busy}
+            onPointerEnter={preload}
+            onClick={() => {
+              onAction();
+              banks.start(
+                connection.disconnectedAt ? undefined : connection.id,
+              );
+            }}
+          >
+            {connection.disconnectedAt
+              ? "Link again"
               : reconnecting
-                ? "Opening…"
-                : "Choose accounts"}
-        </Button>
+                ? "Reconnecting…"
+                : "Reconnect"}
+          </Button>
+        )}
+        {!connection.disconnectedAt && (
+          <DropdownMenu.Root modal={false}>
+            <DropdownMenu.Trigger asChild>
+              <IconButton size="sm" label={`${institution} options`}>
+                <EllipsisIcon aria-hidden />
+              </IconButton>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal container={container}>
+              <DropdownMenu.Content
+                className={`${shell.menu} ${styles.bankMenu}`}
+                align="end"
+                sideOffset={4}
+                collisionPadding={12}
+              >
+                {outside > 0 && (
+                  <BankMenuItem
+                    icon={<PlusIcon size={14} aria-hidden />}
+                    title={`${addable ? "Add" : "Review"} ${outside} ${outside === 1 ? "account" : "accounts"}`}
+                    detail={
+                      addable
+                        ? "Bring them into your budget"
+                        : "See why they can’t be added yet"
+                    }
+                    disabled={banks.busy}
+                    onSelect={() => {
+                      onAction();
+                      banks.setUp(connection.id);
+                    }}
+                  />
+                )}
+                {!connection.error && (
+                  <BankMenuItem
+                    icon={<ListChecksIcon size={14} aria-hidden />}
+                    title="Choose shared accounts"
+                    detail={
+                      notShared
+                        ? `Restore updates for ${notShared} not shared`
+                        : `Change what ${institution} shares`
+                    }
+                    disabled={!banks.available || banks.busy}
+                    onPointerEnter={preload}
+                    onSelect={() => {
+                      onAction();
+                      banks.start(connection.id);
+                    }}
+                  />
+                )}
+                <DropdownMenu.Separator className={shell.menuSeparator} />
+                <BankMenuItem
+                  icon={<UnlinkIcon size={14} aria-hidden />}
+                  title="Disconnect…"
+                  detail="Your accounts and history stay"
+                  disabled={banks.busy}
+                  onSelect={() => {
+                    onAction();
+                    banks.disconnect(connection.id);
+                  }}
+                />
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        )}
       </div>
       {inBudget.length > 0 && (
         <ul
           className={styles.accounts}
-          aria-label={`${bankName(connection)} accounts in your budget`}
+          aria-label={`${institution} accounts in your budget`}
         >
           {inBudget.map(({ providerId, account, name, shared }) => (
             <li key={providerId} className={styles.account}>
@@ -413,54 +486,46 @@ export function BankItem({
                   ? (bankBalance(account) ?? "Balance unavailable")
                   : connection.disconnectedAt
                     ? "Disconnected"
-                    : "Not currently shared"}
+                    : "Not shared"}
               </span>
             </li>
           ))}
         </ul>
       )}
-      {missing && !connection.disconnectedAt && (
-        <p className={styles.note}>
-          Your saved accounts and history are kept. Choose accounts to restore
-          updates for accounts that aren’t currently shared.
+      {!connection.disconnectedAt && outside > 0 && (
+        <p className={styles.meta}>
+          {inBudget.length
+            ? `${outside} more not added`
+            : `${outside} ${outside === 1 ? "account" : "accounts"} not added`}
         </p>
       )}
-      {!connection.disconnectedAt && outside > 0 && (
-        <div className={styles.outside}>
-          <span>
-            {inBudget.length
-              ? `${outside} more not added`
-              : `${outside} ${outside === 1 ? "account" : "accounts"} not added`}
-          </span>
-          <Button
-            size="sm"
-            variant="quiet"
-            disabled={banks.busy}
-            onClick={() => {
-              onAction();
-              banks.setUp(connection.id);
-            }}
-          >
-            {addable ? "Add accounts" : "Review accounts"}
-          </Button>
-        </div>
-      )}
-      {!connection.disconnectedAt && (
-        <div className={styles.outside}>
-          <span>Keep your accounts and history</span>
-          <Button
-            size="sm"
-            disabled={banks.busy}
-            onClick={() => {
-              onAction();
-              banks.disconnect(connection.id);
-            }}
-          >
-            Disconnect
-          </Button>
-        </div>
-      )}
     </li>
+  );
+}
+
+// A menu row that says why you'd pick it, so the popover itself can stay
+// balances only.
+function BankMenuItem({
+  icon,
+  title,
+  detail,
+  ...props
+}: Omit<ComponentProps<typeof DropdownMenu.Item>, "className" | "title"> & {
+  icon: ReactNode;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <DropdownMenu.Item
+      className={`${shell.menuItem} ${styles.bankMenuItem}`}
+      {...props}
+    >
+      {icon}
+      <span className={styles.bankMenuText}>
+        <span className={styles.bankMenuTitle}>{title}</span>
+        <span className={styles.bankMenuDetail}>{detail}</span>
+      </span>
+    </DropdownMenu.Item>
   );
 }
 
