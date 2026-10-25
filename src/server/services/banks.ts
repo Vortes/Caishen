@@ -1,5 +1,6 @@
 import {
   bankAccountRowsSelection,
+  lockBankConnections,
   readBankAccountRows,
 } from "./bank-account-rows";
 import { isRejectedSettlementImport } from "~/domain/partner-settlements";
@@ -363,6 +364,28 @@ function requireAccountWrites(connection: StoredConnection) {
     });
 }
 
+async function lockLegacyBankConnections(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  connectionIds: string[],
+) {
+  const locked = await lockBankConnections(tx, userId, connectionIds);
+  if (locked.length !== new Set(connectionIds).size)
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "A bank connection changed. Refresh and try again.",
+    });
+  if (
+    await tx.bankAccount.count({
+      where: { connectionId: { in: connectionIds } },
+    })
+  )
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message: accountWritesUnavailable,
+    });
+}
+
 function requireConnected(connection: StoredConnection) {
   const details = readColumn(
     connection,
@@ -496,7 +519,10 @@ export async function exchangeBankToken(
             code: "CONFLICT",
             message: "This connection is already in use.",
           });
-        if (existing) requireAccountWrites(existing);
+        if (existing) {
+          requireAccountWrites(existing);
+          await lockLegacyBankConnections(tx, userId, [existing.id]);
+        }
         return tx.bankConnection.upsert({
           where: { itemId: result.itemId },
           create: {
@@ -623,12 +649,14 @@ async function refreshBankAccounts(
   );
   // Saved only over the connection the response was requested for, so an
   // older response cannot overwrite a newer update.
-  const save = async (tx: Prisma.TransactionClient | Database) => {
+  const save = async (tx: Prisma.TransactionClient) => {
+    await lockLegacyBankConnections(tx, userId, [requested.id]);
     const saved = await tx.bankConnection.updateMany({
       where: {
         id: requested.id,
         clerkUserId: userId,
         updatedAt: requested.updatedAt,
+        bankAccounts: { none: {} },
       },
       data: {
         imports: detailsColumn(requested.imports, {
@@ -652,7 +680,8 @@ async function refreshBankAccounts(
         message: "Another bank update finished first. Refresh and try again.",
       });
   };
-  if (!identity.decisions.length) return save(db);
+  if (!identity.decisions.length)
+    return db.$transaction(save, { timeout: 30_000, maxWait: 10_000 });
   const operationId = randomUUID();
   await writeServerOperation(db, await requireHousehold(db, userId), {
     actorId: userId,
@@ -717,10 +746,6 @@ export async function disconnectBank(
         "Your budget changed. Refresh before disconnecting.",
         opened.household.revision,
       );
-    if (!state.disconnectedAt)
-      await client().removeItem(
-        decryptBankToken(connection.encryptedToken, userId),
-      );
     return await writeServerOperation(db, opened, {
       actorId: userId,
       operationId: input.operationId,
@@ -729,8 +754,17 @@ export async function disconnectBank(
       submitted,
       changeSet: composeChangeSets(input.operationId, []),
       alongside: async (tx) => {
+        await lockLegacyBankConnections(tx, userId, [connection.id]);
+        if (!state.disconnectedAt)
+          await client().removeItem(
+            decryptBankToken(connection.encryptedToken, userId),
+          );
         const saved = await tx.bankConnection.updateMany({
-          where: { id: connection.id, updatedAt: connection.updatedAt },
+          where: {
+            id: connection.id,
+            updatedAt: connection.updatedAt,
+            bankAccounts: { none: {} },
+          },
           data: {
             imports: detailsColumn(connection.imports, {
               ...state,
@@ -1039,11 +1073,6 @@ export async function repairDuplicateBankAccounts(
     throw new Error(
       "The replacement bank accounts changed. Sync and preview the repair again.",
     );
-  // Revocation happens first: if the database write conflicts, retrying
-  // /item/remove is safe and the credential is still available for cleanup.
-  await plaid.removeItem(
-    decryptBankToken(retired.connection.encryptedToken, userId),
-  );
   return writeServerOperation(db, opened, {
     actorId: userId,
     operationId: parsed.operationId,
@@ -1052,11 +1081,21 @@ export async function repairDuplicateBankAccounts(
     submitted,
     changeSet,
     alongside: async (tx) => {
+      await lockLegacyBankConnections(tx, userId, [
+        retired.connection.id,
+        replacement.connection.id,
+      ]);
+      // A successful removal is not undone if a later database write fails;
+      // the stored credential stays available for an idempotent retry.
+      await plaid.removeItem(
+        decryptBankToken(retired.connection.encryptedToken, userId),
+      );
       const saved = await tx.bankConnection.updateMany({
         where: {
           id: replacement.connection.id,
           clerkUserId: userId,
           updatedAt: replacement.connection.updatedAt,
+          bankAccounts: { none: {} },
         },
         data: { accountMappings: jsonValue(mappings) },
       });
@@ -1065,6 +1104,7 @@ export async function repairDuplicateBankAccounts(
           id: retired.connection.id,
           clerkUserId: userId,
           updatedAt: retired.connection.updatedAt,
+          bankAccounts: { none: {} },
         },
       });
       if (saved.count !== 1 || removed.count !== 1)
@@ -1462,6 +1502,8 @@ export async function setupBankAccounts(
             : [],
         ),
       );
+      for (const { index } of sources)
+        requireAccountWrites(connections[index]!);
       if (sources.length) {
         const existing = budget.accounts.find(
           (account) => account.id === selected.existingAccountId,
@@ -1668,10 +1710,18 @@ export async function setupBankAccounts(
       submitted: submittedOperation,
       changeSet: composeChangeSets(input.operationId, changeSets),
       alongside: async (tx) => {
+        await lockLegacyBankConnections(tx, userId, [
+          connection.id,
+          ...[...retired].map((index) => connections[index]!.id),
+        ]);
         for (const index of retired) {
           const source = connections[index]!;
           const saved = await tx.bankConnection.updateMany({
-            where: { id: source.id, updatedAt: source.updatedAt },
+            where: {
+              id: source.id,
+              updatedAt: source.updatedAt,
+              bankAccounts: { none: {} },
+            },
             data: { accountMappings: jsonValue(remainingMappings[index]!) },
           });
           if (saved.count !== 1)
@@ -1681,7 +1731,11 @@ export async function setupBankAccounts(
             });
         }
         const saved = await tx.bankConnection.updateMany({
-          where: { id: connection.id, updatedAt: connection.updatedAt },
+          where: {
+            id: connection.id,
+            updatedAt: connection.updatedAt,
+            bankAccounts: { none: {} },
+          },
           data: {
             accountMappings: jsonValue(mappings),
             ...(retiredProviderIds.size
@@ -2104,9 +2158,15 @@ async function applyBankUpdate(
     ...changeSets,
     importStateChange(opened.household.rows, userId, fresh.id, state),
   ]);
-  const saveConnection = async (tx: Prisma.TransactionClient | Database) => {
+  const saveConnection = async (tx: Prisma.TransactionClient) => {
+    await lockLegacyBankConnections(tx, userId, [fresh.id]);
     const saved = await tx.bankConnection.updateMany({
-      where: { id: fresh.id, cursor: fresh.cursor, updatedAt: fresh.updatedAt },
+      where: {
+        id: fresh.id,
+        cursor: fresh.cursor,
+        updatedAt: fresh.updatedAt,
+        bankAccounts: { none: {} },
+      },
       data: {
         imports: detailsColumn(fresh.imports, state),
         unavailableAccountIds: identity.unavailableAccountIds,
@@ -2140,7 +2200,8 @@ async function applyBankUpdate(
       changeSet,
       alongside: saveConnection,
     });
-  else await saveConnection(db);
+  else
+    await db.$transaction(saveConnection, { timeout: 30_000, maxWait: 10_000 });
   return {
     imported: plan.changes.filter((c) => !c.before).length,
     updated: operations.length,

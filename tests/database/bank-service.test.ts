@@ -3448,3 +3448,205 @@ void test("broken provider supersession raises an alert and isolates the connect
     ),
   );
 });
+
+void test("reader rollback refuses recovery from a table-backed source into a JSON connection", async () => {
+  const h = await linkedHarness();
+  const today = bankSetupDate("America/Los_Angeles");
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "account.reconcile",
+      id: randomUUID(),
+      accountId: "cash",
+      date: today,
+      balance: 10000,
+    }),
+  );
+  await h.setImports({ institutionId: "ins-chase", institutionName: "Chase" });
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      subtype: "checking",
+      mask: "1234",
+      currency: "USD",
+      currentBalance: 100,
+      status: "unavailable",
+      historyComplete: true,
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  const target = await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: `recovery-target-${randomUUID()}`,
+      encryptedToken: "",
+      accountMappings: {},
+      lastSyncedAt: new Date(),
+      imports: {
+        institutionId: "ins-chase",
+        institutionName: "Chase",
+        transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+        synchronizedAccountIds: ["provider-new"],
+        accounts: [
+          {
+            accountId: "provider-new",
+            name: "Checking",
+            officialName: null,
+            mask: "1234",
+            type: "depository",
+            subtype: "checking",
+            currency: "USD",
+            currentBalance: 100,
+            availableBalance: 100,
+          },
+        ],
+      },
+    },
+  });
+  const before = await h.state();
+  await assert.rejects(
+    h.api.budget.setupBankAccounts({
+      connectionId: target.id,
+      operationId: randomUUID(),
+      expectedRevision: before.revision,
+      accounts: [
+        {
+          providerAccountId: "provider-new",
+          name: "Checking",
+          expectedBalance: 100,
+          existingAccountId: "cash",
+        },
+      ],
+    }),
+    /temporarily unavailable.*upgrade/i,
+  );
+  const after = await h.state();
+  assert.equal(after.revision, before.revision);
+  assert.deepEqual(after.view, before.view);
+  assert.deepEqual(after.connections, before.connections);
+});
+
+void test(
+  "a reconnect paused at Plaid refuses its JSON write if provider rows arrive meanwhile",
+  { timeout: 30000 },
+  async () => {
+    const h = await linkedHarness();
+    let entered!: () => void;
+    let resume!: () => void;
+    const requested = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const response = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    mock.method(globalThis, "fetch", async () => {
+      entered();
+      await response;
+      return Response.json(accountsResponse());
+    });
+    const pending = h.api.budget.plaidReconnect({
+      connectionId: h.connection.id,
+    });
+    const refusal = assert.rejects(
+      pending,
+      /temporarily unavailable.*upgrade/i,
+    );
+    await requested;
+    await db.bankAccount.create({
+      data: {
+        connectionId: h.connection.id,
+        providerAccountId: "provider-checking",
+        name: "Checking",
+        type: "depository",
+        currency: "USD",
+        currentBalance: 100,
+      },
+    });
+    const before = await h.state();
+    resume();
+    await refusal;
+    const after = await h.state();
+    assert.equal(after.revision, before.revision);
+    assert.deepEqual(after.view, before.view);
+    assert.deepEqual(after.connections, before.connections);
+  },
+);
+
+void test(
+  "repair paused at Plaid never revokes a connection migrated before apply",
+  { timeout: 30000 },
+  async () => {
+    const h = await duplicatedCards();
+    const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+    let entered!: () => void;
+    let resume!: () => void;
+    const requested = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const response = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const paths: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+      const path = requestUrl(url).pathname;
+      paths.push(path);
+      if (path !== "/accounts/get") return Response.json({ removed: true });
+      entered();
+      await response;
+      return Response.json({
+        item: { institution_id: "ins-amex", institution_name: "Amex" },
+        accounts: bankAccountDetails(h.replacement.imports).accounts.map(
+          (account) => ({
+            account_id: account.accountId,
+            name: account.name,
+            official_name: account.officialName,
+            mask: account.mask,
+            type: account.type,
+            subtype: account.subtype,
+            balances: {
+              current: account.currentBalance,
+              available: account.availableBalance,
+              iso_currency_code: account.currency,
+              unofficial_currency_code: null,
+            },
+          }),
+        ),
+      });
+    });
+    const pending = banks
+      .repairDuplicateBankAccounts(db, alice, {
+        ...h.selection,
+        operationId: randomUUID(),
+        expectedPlanHash: plan.hash,
+      })
+      .catch((error: unknown) => error);
+    await requested;
+    await db.bankAccount.create({
+      data: {
+        connectionId: h.connection.id,
+        providerAccountId: "old-gold",
+        name: "Gold",
+        type: "credit",
+      },
+    });
+    const before = await h.state();
+    resume();
+    const error: unknown = await pending;
+    assert.deepEqual(paths, ["/accounts/get"]);
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /temporarily unavailable.*upgrade/i);
+    const after = await h.state();
+    assert.equal(after.revision, before.revision);
+    assert.deepEqual(after.view, before.view);
+    assert.deepEqual(after.connections, before.connections);
+  },
+);

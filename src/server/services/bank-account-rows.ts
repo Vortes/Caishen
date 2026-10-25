@@ -190,3 +190,19 @@ export function readBankAccountRows(connection: {
       .map((row) => row.providerAccountId),
   };
 }
+
+// Both the legacy writer and the table writer must hold these parent locks
+// before changing or copying account data. The writer release must acquire
+// them before its first child-row insert, then read the latest legacy lists.
+export async function lockBankConnections(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  connectionIds: string[],
+) {
+  const ids = [...new Set(connectionIds)].sort();
+  return tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+    SELECT "id" FROM "BankConnection"
+    WHERE "clerkUserId" = ${userId} AND "id" IN (${Prisma.join(ids)})
+    ORDER BY "id" FOR UPDATE
+  `);
+}
