@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Command } from "~/domain/engine";
 import { reviewImportsBeforeReconciliation } from "~/domain/bank-import-balances";
@@ -52,6 +53,7 @@ export function ReconcilePopover({
 }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const { holdOpen } = reconciling;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (
@@ -59,6 +61,7 @@ export function ReconcilePopover({
       <Popover.Trigger asChild>{children}</Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           side="bottom"
           align="end"

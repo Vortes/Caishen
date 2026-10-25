@@ -1,0 +1,44 @@
+.content {
+  --popover-enter-x: 0px;
+  --popover-enter-y: 0px;
+  transform-origin: var(--radix-popper-transform-origin);
+}
+.content[data-side="top"] {
+  --popover-enter-y: var(--distance-popover);
+}
+.content[data-side="bottom"] {
+  --popover-enter-y: calc(-1 * var(--distance-popover));
+}
+.content[data-side="left"] {
+  --popover-enter-x: var(--distance-popover);
+}
+.content[data-side="right"] {
+  --popover-enter-x: calc(-1 * var(--distance-popover));
+}
+.content[data-state="open"] {
+  animation: popover-in var(--duration-popover-enter) var(--ease-panel);
+}
+.content[data-state="closed"] {
+  animation: popover-out var(--duration-popover-exit) ease-in forwards;
+}
+.content[data-instant] {
+  animation: none;
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--popover-enter-x), var(--popover-enter-y))
+      scale(var(--scale-popover));
+  }
+}
+@keyframes popover-out {
+  to {
+    opacity: 0;
+    transform: scale(var(--scale-popover));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .content[data-state] {
+    animation: none;
+  }
+}

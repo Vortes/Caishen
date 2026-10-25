@@ -12,6 +12,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { useShellData } from "../shell-data";
 import {
@@ -158,8 +159,17 @@ function FilterPopover({
   onOpenChange?: (open: boolean) => void;
 }) {
   const container = usePortalContainer();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const shown = open ?? internalOpen;
+  const motion = usePopoverMotion(shown);
   return (
-    <Popover.Root open={open} onOpenChange={onOpenChange}>
+    <Popover.Root
+      open={shown}
+      onOpenChange={(next) => {
+        setInternalOpen(next);
+        onOpenChange?.(next);
+      }}
+    >
       <Popover.Trigger asChild>
         <Button
           size="sm"
@@ -174,6 +184,7 @@ function FilterPopover({
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={styles.popover}
           align="start"
           sideOffset={POPOVER_GAP}

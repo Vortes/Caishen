@@ -10,6 +10,7 @@ import {
 } from "~/components/transactions/transaction-share";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { money, type Transaction } from "./model";
 import { ShareChoices, useShareParties } from "./share-field";
@@ -35,6 +36,7 @@ export function ShareSelection({
   const categoryInput = useRef<HTMLInputElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const [targets, setTargets] = useState<Transaction[]>([]);
   const [choice, setChoice] = useState<ShareChoice | null>(null);
   const [categoryId, setCategoryId] = useState("");
@@ -117,6 +119,7 @@ export function ShareSelection({
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={`${moveStyles.popover} ${styles.sharePopover}`}
           side="top"
           align="end"

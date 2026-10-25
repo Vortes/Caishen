@@ -8,6 +8,7 @@ import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import {
   planAutoAssign,
@@ -38,6 +39,7 @@ export function AssignMoneyPopover({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(
     () => new URLSearchParams(window.location.search).get("assign") === "1",
   );
+  const motion = usePopoverMotion(open);
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.has("assign")) {
@@ -52,6 +54,7 @@ export function AssignMoneyPopover({ children }: { children: ReactNode }) {
       <Popover.Trigger asChild>{children}</Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           side="bottom"
           align="center"

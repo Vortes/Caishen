@@ -134,6 +134,9 @@ export function BreakdownChart({
     x: number;
     y: number;
   } | null>(null);
+  const [lastOpen, setLastOpen] = useState(open);
+  if (open && open !== lastOpen) setLastOpen(open);
+  const displayed = open ?? lastOpen;
   const focused =
     open?.item ??
     hovered ??
@@ -151,11 +154,11 @@ export function BreakdownChart({
           }}
         >
           <div className={styles.stage} style={{ height }} aria-hidden>
-            {open && (
+            {displayed && (
               <Popover.Anchor asChild>
                 <span
                   className={styles.anchor}
-                  style={{ left: open.x, top: open.y }}
+                  style={{ left: displayed.x, top: displayed.y }}
                 />
               </Popover.Anchor>
             )}
@@ -231,10 +234,11 @@ export function BreakdownChart({
               </div>
             ))}
           </div>
-          {open && (
+          {displayed && (
             <SlicePopover
-              item={open.item}
-              entries={itemEntries[open.item.id] ?? []}
+              open={Boolean(open)}
+              item={displayed.item}
+              entries={itemEntries[displayed.item.id] ?? []}
               onOpenEntry={(entry) => {
                 setOpen(null);
                 onOpenEntry(entry);

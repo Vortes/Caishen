@@ -113,6 +113,14 @@ skeleton's shine takes `--duration-shimmer` (1600ms) per pass. Under
 never add animation that ignores it.
 
 All popovers and dropdown menus use the [surface motion pattern](surfaces.md#popover-and-dropdown-menu-motion):
-180ms enter with `--ease-panel`, 120ms exit with `ease-in`, and no animation
-when opened by keyboard or under `prefers-reduced-motion: reduce`. Keep
-popup triggers stationary during press so the positioned surface cannot jump.
+
+| Token                      | Value | Use                                |
+| -------------------------- | ----- | ---------------------------------- |
+| `--duration-popover-enter` | 180ms | Entrance with `--ease-panel`       |
+| `--duration-popover-exit`  | 120ms | Exit with `ease-in`                |
+| `--scale-popover`          | 0.97  | Starting and exiting scale         |
+| `--distance-popover`       | 4px   | Entrance offset toward the trigger |
+
+Use the shared motion stylesheet and hook rather than copying keyframes or
+timings. Keyboard opening and `prefers-reduced-motion: reduce` are instant.
+Keep popup triggers stationary during press so the positioned surface cannot jump.

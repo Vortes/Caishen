@@ -8,6 +8,7 @@ import { newId, parseMoney, today } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Command } from "~/domain/engine";
 import { useTransactionEntry } from "./transaction-entry";
@@ -21,8 +22,7 @@ export function AccountEntry() {
   const container = usePortalContainer();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const [byKeyboard, setByKeyboard] = useState(false);
-  const pointer = useRef(false);
+  const motion = usePopoverMotion(open);
   const { holdOpen } = entry;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const [name, setName] = useState("");
@@ -81,27 +81,19 @@ export function AccountEntry() {
     <Popover.Root
       open={open}
       onOpenChange={(next) => {
-        const byPointer = pointer.current;
-        pointer.current = false;
-        if (next) {
-          if (entry.holdForDraft()) return;
-          setByKeyboard(!byPointer);
-        }
+        if (next && entry.holdForDraft()) return;
         setOpen(next);
       }}
     >
       <Popover.Trigger asChild>
-        <IconButton
-          label="Add account"
-          onPointerDown={() => (pointer.current = true)}
-        >
+        <IconButton label="Add account">
           <PlusIcon aria-hidden />
         </IconButton>
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
           className={styles.popover}
-          data-instant={byKeyboard || undefined}
+          {...motion}
           side="top"
           align="start"
           sideOffset={POPOVER_GAP}

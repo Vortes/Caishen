@@ -49,6 +49,7 @@
    fades, since attention has already moved on. Laid out like the shell's
    menus: a 4px frame, rows inset 8px inside it, separators edge to edge. */
 .popover {
+  composes: content from "../ui/popover-motion.module.css";
   z-index: 60;
   display: flex;
   flex-direction: column;
@@ -62,31 +63,9 @@
   box-shadow: var(--shadow-drawer);
   color: var(--text-primary);
   font-size: var(--type-body);
-  transform-origin: var(--radix-popover-content-transform-origin);
 }
 .popover:focus-visible {
   outline: none;
-}
-.popover[data-state="open"] {
-  animation: popover-in 180ms var(--ease-panel);
-}
-.popover[data-state="closed"] {
-  animation: popover-out 120ms ease-in forwards;
-}
-.popover[data-instant] {
-  animation: none;
-}
-@keyframes popover-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.97);
-  }
-}
-@keyframes popover-out {
-  to {
-    opacity: 0;
-    transform: scale(0.97);
-  }
 }
 .popoverTitle {
   margin: 0;
@@ -165,6 +144,7 @@
   color: var(--feedback-attention);
 }
 .tip {
+  composes: content from "../ui/popover-motion.module.css";
   z-index: 70;
   display: flex;
   flex-direction: column;
@@ -179,20 +159,12 @@
   font-size: var(--type-small);
   line-height: 1.4;
   text-wrap: pretty;
-  transform-origin: var(--radix-popover-content-transform-origin);
-  animation: tooltip-in 120ms var(--ease-panel);
 }
 .tip p {
   margin: 0;
 }
 .tipMeta {
   color: var(--text-secondary);
-}
-@keyframes tooltip-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
 }
 .separator {
   height: 1px;
@@ -638,8 +610,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .popover[data-state],
-  .tip,
   .overlay[data-state],
   .dialog[data-state] {
     animation: none;

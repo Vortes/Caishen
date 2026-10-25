@@ -79,9 +79,43 @@ left-aligned surface away from a trigger near the left edge.
 
 ## Popover and dropdown menu motion
 
-Apply this pattern to all popovers and dropdown menus. The references are
-`banks.module.css`, `account-entry.module.css`, and the profile menu in
-`shell.module.css`, all under `src/components/app-shell/`.
+Use `src/components/ui/popover-motion.module.css` and `usePopoverMotion`
+from `src/components/ui/popover-motion.tsx` for popovers and dropdown menus.
+The shared stylesheet owns the keyframes and reads the four popover motion
+tokens in [scale.md](scale.md#motion); do not duplicate them in feature CSS.
+
+```css
+/* In an app-shell surface module; adjust the relative path as needed. */
+.popover {
+  composes: content from "../ui/popover-motion.module.css";
+}
+```
+
+```tsx
+const [open, setOpen] = useState(false);
+const motion = usePopoverMotion(open);
+
+<Popover.Root open={open} onOpenChange={setOpen}>
+  {/* Trigger and themed portal */}
+  <Popover.Content
+    {...motion}
+    className={styles.popover}
+    sideOffset={POPOVER_GAP}
+  >
+    …
+  </Popover.Content>
+</Popover.Root>;
+```
+
+`TooltipProvider` installs the motion provider once for the shell. The hook
+captures the input method when opening, so typing inside a form cannot
+change its entrance or exit. Keep content and its anchor mounted while
+Radix completes the exit animation.
+
+The existing transaction option lists (`transaction-fields.tsx`), date
+calendar (`transaction-date.tsx`), and bulk Categorize form
+(`transaction-review.tsx`) remain unanimated pending separate review.
+Do not add motion to these three surfaces as part of other styling changes.
 
 - Enter over **180ms** with **`var(--ease-panel)`**, fading from opacity 0
   and scaling from **0.97** to 1. Start **4px toward the trigger**: translate
@@ -89,13 +123,12 @@ Apply this pattern to all popovers and dropdown menus. The references are
   transform. Follow the resolved placement if collision handling flips it.
 - Exit over **120ms** with **`ease-in`**, fading to opacity 0 and scaling
   to **0.97**. Use `forwards` so it stays faded until Radix unmounts it.
-- Set `transform-origin` to
-  `var(--radix-popover-content-transform-origin)` for a popover or
-  `var(--radix-dropdown-menu-content-transform-origin)` for a dropdown.
+- The shared stylesheet sets `transform-origin` to
+  `var(--radix-popper-transform-origin)`, inherited from Radix's wrapper
+  for both popovers and dropdown menus.
   Animate the content, never Radix's positioning wrapper.
-- Pointer opening animates. Keyboard opening is instant: track pointer
-  intent on the trigger, set `data-instant` on the content for keyboard
-  opening, and disable animation for that attribute. Preserve the normal
+- Pointer opening animates. Keyboard opening is instant: spread the hook's
+  `data-instant` attribute onto the content. Preserve the normal
   keyboard focus behavior; do not wait for an animation to focus a field.
 - Under **`prefers-reduced-motion: reduce`**, disable both enter and exit
   animation. Tooltip motion remains the shared `Tooltip` component's own

@@ -17,6 +17,7 @@ import { moveMonth } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { ShellData } from "./model";
 import shellStyles from "./shell.module.css";
@@ -66,6 +67,7 @@ export function MonthNav({
 }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const away = month.key !== month.current;
   const pick = (next: string) => {
     setOpen(false);
@@ -92,6 +94,7 @@ export function MonthNav({
         </Popover.Trigger>
         <Popover.Portal container={container}>
           <Popover.Content
+            {...motion}
             className={styles.popover}
             align="start"
             sideOffset={POPOVER_GAP}

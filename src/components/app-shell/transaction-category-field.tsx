@@ -5,6 +5,7 @@ import { useState, type ComponentProps } from "react";
 import type { DraftShare } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { parseCents, useShareParties } from "./share-field";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
@@ -28,6 +29,7 @@ export function TransactionCategoryField({
   const { partner, reimbursements, people, who } = useShareParties();
   const container = usePortalContainer();
   const [adding, setAdding] = useState(false);
+  const motion = usePopoverMotion(adding);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const full = share && parseCents(share.amount) === Math.abs(amount);
@@ -100,6 +102,7 @@ export function TransactionCategoryField({
       </Popover.Anchor>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           align="start"
           sideOffset={POPOVER_GAP}

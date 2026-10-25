@@ -42,6 +42,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { syncedLabel } from "./model";
 import { api } from "~/trpc/react";
@@ -226,26 +227,17 @@ export function BanksPopover() {
   const container = usePortalContainer();
   const id = useId();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   // Opened from the keyboard it appears at once and focuses its first
   // control; a click animates and leaves focus on the popover itself.
-  const [byKeyboard, setByKeyboard] = useState(false);
-  const pointer = useRef(false);
   const attention = banks.connections.some((item) => item.error);
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(next) => {
-        if (next) setByKeyboard(!pointer.current);
-        pointer.current = false;
-        setOpen(next);
-      }}
-    >
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
           type="button"
           className={styles.trigger}
           aria-busy={banks.opening || undefined}
-          onPointerDown={() => (pointer.current = true)}
         >
           {/* Plaid opens from inside the popover, which closes first, so the
               trigger carries the wait. */}
@@ -274,15 +266,15 @@ export function BanksPopover() {
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={styles.popover}
-          data-instant={byKeyboard || undefined}
           side="top"
           align="start"
           sideOffset={POPOVER_GAP}
           collisionPadding={{ top: 12, right: 12, bottom: 12, left: 0 }}
           aria-labelledby={`${id}-title`}
           onOpenAutoFocus={(event) => {
-            if (byKeyboard) return;
+            if (motion["data-instant"]) return;
             event.preventDefault();
             (event.currentTarget as HTMLElement).focus();
           }}
@@ -342,6 +334,8 @@ export function BankItem({
 }) {
   const banks = useBanks();
   const container = usePortalContainer();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuMotion = usePopoverMotion(menuOpen);
   const mappings = bankAccountMappings(connection.accountMappings);
   const budget = banks.state.view?.budget;
   // A partial bank response changes access, not membership in the budget.
@@ -407,7 +401,11 @@ export function BankItem({
           </Button>
         )}
         {!connection.disconnectedAt && (
-          <DropdownMenu.Root modal={false}>
+          <DropdownMenu.Root
+            modal={false}
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+          >
             <DropdownMenu.Trigger asChild>
               <IconButton size="sm" label={`${institution} options`}>
                 <EllipsisIcon aria-hidden />
@@ -415,6 +413,7 @@ export function BankItem({
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal container={container}>
               <DropdownMenu.Content
+                {...menuMotion}
                 className={`${shell.menu} ${styles.bankMenu}`}
                 align="end"
                 sideOffset={POPOVER_GAP}
@@ -537,6 +536,7 @@ function BankMenuItem({
 export function BankStatus({ connection }: { connection: Connection }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const pinned = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const later = (next: boolean, delay: number) => {
@@ -592,6 +592,7 @@ export function BankStatus({ connection }: { connection: Connection }) {
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={styles.tip}
           side="top"
           sideOffset={POPOVER_GAP}

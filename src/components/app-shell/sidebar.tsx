@@ -20,7 +20,6 @@ import {
 import { MotionConfig, motion } from "motion/react";
 import { DropdownMenu } from "radix-ui";
 import {
-  useRef,
   useState,
   type ComponentProps,
   type KeyboardEvent,
@@ -30,6 +29,7 @@ import { newId } from "~/components/budget/format";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { AccountEntry } from "./account-entry";
 import { useAddCategory } from "./add-category";
@@ -325,23 +325,12 @@ function ProfileMenu({
   const { budgetName, partner } = useShellData();
   const { signOut } = useClerk();
   const container = usePortalContainer();
-  // A menu opened from the keyboard appears at once; only a click animates.
-  const [byKeyboard, setByKeyboard] = useState(false);
-  const pointer = useRef(false);
+  const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   return (
-    <DropdownMenu.Root
-      modal={false}
-      onOpenChange={(open) => {
-        if (open) setByKeyboard(!pointer.current);
-        pointer.current = false;
-      }}
-    >
+    <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          className={styles.switcher}
-          onPointerDown={() => (pointer.current = true)}
-        >
+        <button type="button" className={styles.switcher}>
           <UserAvatar fallback={budgetName} />
           <span className={styles.switcherName}>{budgetName}</span>
           <ChevronDownIcon size={12} aria-hidden />
@@ -350,7 +339,7 @@ function ProfileMenu({
       <DropdownMenu.Portal container={container}>
         <DropdownMenu.Content
           className={styles.menu}
-          data-instant={byKeyboard || undefined}
+          {...motion}
           align="start"
           sideOffset={POPOVER_GAP}
           // The switcher sits nearer the window edge than 12px; padding the

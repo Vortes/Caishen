@@ -3,6 +3,7 @@
 import { Tooltip as Primitive } from "radix-ui";
 import { createContext, useContext, type ReactNode } from "react";
 import { POPOVER_GAP } from "~/components/ui/tokens";
+import { PopoverMotionProvider } from "./popover-motion";
 import styles from "./tooltip.module.css";
 
 // Tooltips and popovers render through a portal so panels that clip their
@@ -19,9 +20,11 @@ export function TooltipProvider({
 }) {
   return (
     <PortalContainer.Provider value={container}>
-      <Primitive.Provider delayDuration={500} skipDelayDuration={300}>
-        {children}
-      </Primitive.Provider>
+      <PopoverMotionProvider>
+        <Primitive.Provider delayDuration={500} skipDelayDuration={300}>
+          {children}
+        </Primitive.Provider>
+      </PopoverMotionProvider>
     </PortalContainer.Provider>
   );
 }

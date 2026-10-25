@@ -6,6 +6,7 @@ import { money, shortDay } from "../model";
 import { useShellData } from "../shell-data";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import shell from "../shell.module.css";
 import { seriesColor } from "./chart-utils";
@@ -16,17 +17,20 @@ import styles from "./reflect.module.css";
 // open in their account's register; a partner's shared purchases aren't in
 // your register, so they're listed but not openable.
 export function SlicePopover({
+  open,
   item,
   entries,
   onOpenEntry,
   onDrill,
 }: {
+  open: boolean;
   item: ChartItem;
   entries: SpendingEntry[];
   onOpenEntry: (entry: SpendingEntry) => void;
   onDrill?: () => void;
 }) {
   const container = usePortalContainer();
+  const motion = usePopoverMotion(open);
   const { accounts, partner } = useShellData();
   const accountName = (entry: SpendingEntry) =>
     entry.paidByYou
@@ -36,6 +40,7 @@ export function SlicePopover({
   return (
     <Popover.Portal container={container}>
       <Popover.Content
+        {...motion}
         className={`${styles.popover} ${styles.slicePopover}`}
         side="top"
         sideOffset={POPOVER_GAP}

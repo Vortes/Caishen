@@ -8,6 +8,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import {
   halfOf,
@@ -110,11 +111,13 @@ export function ShareMenu({
 }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>{children}</Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           align="start"
           sideOffset={POPOVER_GAP}

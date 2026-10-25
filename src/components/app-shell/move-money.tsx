@@ -17,6 +17,7 @@ import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { useShellData } from "./shell-data";
 import shell from "./shell.module.css";
@@ -61,6 +62,7 @@ export function MoveMoneyPopover({
 }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const [side, setSide] = useState<"top" | "bottom">("bottom");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listOpen = useRef(false);
@@ -89,6 +91,7 @@ export function MoveMoneyPopover({
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={styles.popover}
           side={side}
           align={align}

@@ -18,8 +18,9 @@ import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, usePortalContainer } from "~/components/ui/tooltip";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
-// The move-money popover's form surface and fields.
+import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
+// The move-money popover's form surface and fields.
 import styles from "./move-money.module.css";
 
 // What was just added, for the plan to bring into view.
@@ -87,6 +88,7 @@ function AddPopover({
   children: ReactNode;
 }) {
   const container = usePortalContainer();
+  const motion = usePopoverMotion(open);
   const { holdOpen, reveal } = useAddCategory();
   // Where focus goes once the form closes: what it added, after an add,
   // otherwise back to the button that opened it.
@@ -106,6 +108,7 @@ function AddPopover({
       )}
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={styles.popover}
           side="bottom"
           align={align}
@@ -316,6 +319,7 @@ export function NewCategoryPopover({
   children: ReactNode;
 }) {
   const container = usePortalContainer();
+  const motion = usePopoverMotion(open);
   const added = useRef<NewCategory | null>(null);
   const { groups } = useShellData();
   const choices = groups.filter((item) => !isSystemGroup(item));
@@ -326,6 +330,7 @@ export function NewCategoryPopover({
       <Popover.Anchor asChild>{children}</Popover.Anchor>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={styles.popover}
           side="bottom"
           align="start"

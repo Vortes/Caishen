@@ -1,6 +1,7 @@
 /* The move-money popover, on the same surface as the Reflect filter menus. */
 
 .popover {
+  composes: content from "../ui/popover-motion.module.css";
   z-index: 60;
   width: var(--size-popover);
   /* Not capped to the room on its side: a capped popover always fits, so
@@ -11,14 +12,6 @@
   box-shadow: var(--shadow-drawer);
   color: var(--text-secondary);
   font-size: var(--type-body);
-  transform-origin: var(--radix-popover-content-transform-origin);
-  animation: popover-in 150ms var(--ease-panel);
-}
-@keyframes popover-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
 }
 .arrow {
   fill: var(--surface-raised);
@@ -333,9 +326,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .popover {
-    animation: none;
-  }
   .listFrame,
   .list {
     transition: none;
