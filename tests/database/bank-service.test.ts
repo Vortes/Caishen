@@ -1708,7 +1708,7 @@ void test("a mapped account with missing cached identity routes a fresh Link bac
   });
   await assert.rejects(
     exchangeBankToken(db, alice, "public-duplicate", linkMetadata()),
-    /Choose accounts/,
+    /Choose shared accounts/,
   );
   assert.equal(fetcher.mock.callCount(), 0);
   assert.deepEqual(await h.state(), before);
@@ -1974,7 +1974,7 @@ void test("Link metadata rejects duplicate cards before exchanging a public toke
         ],
       },
     }),
-    /already connected.*Choose accounts/i,
+    /already connected.*Choose shared accounts/i,
   );
   assert.deepEqual(requests, []);
   assert.equal((await h.state()).connections.length, 1);
@@ -1992,7 +1992,7 @@ void test("Link metadata rejects duplicate cards before exchanging a public toke
         ],
       },
     }),
-    /already connected.*Choose accounts/i,
+    /already connected.*Choose shared accounts/i,
   );
   assert.deepEqual(requests, []);
   await h.api.budget.plaidExchange({
