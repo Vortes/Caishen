@@ -241,3 +241,19 @@ test("a loan balance arriving during setup replaces the missing balance field", 
       .getAttribute("value"),
   ).toBe("123.45");
 });
+
+test("a failed bank update's status names the Plaid request id for support", async () => {
+  const bank = connection();
+  bank.error =
+    "Bank update failed. Reconnect or try again; previous records were preserved. (Plaid request id: req-7f3a)";
+  const shell = await renderShell({
+    overview: () => readyOverview({ connections: [bank] }),
+  });
+  await shell.user.click(screen.getByRole("button", { name: "Banks" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Why Discover needs attention" }),
+  );
+  expect(
+    await screen.findByText(/\(Plaid request id: req-7f3a\)/),
+  ).toBeTruthy();
+});
