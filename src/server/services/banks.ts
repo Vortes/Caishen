@@ -8,10 +8,11 @@ import {
   type PlaidLinkMetadata,
 } from "~/lib/plaid-link-metadata";
 import {
+  bankLinkVerdict,
   bankRecoveryCandidates,
   bankAccountNeedsRecovery,
   sameBankAccount,
-  supersededBankAccounts,
+  resolveBankAccountIdentity,
 } from "~/lib/bank-account-identity";
 import {
   applyChangeSet,
@@ -510,29 +511,36 @@ export async function exchangeBankToken(
           if (!details) throw connectionMaintenance();
           if (details.disconnectedAt) continue;
           if (details.institutionId !== institutionId) continue;
-          if (
-            details.accounts.length === 0 ||
-            Object.keys(mappings(saved)).some(
+          // A mapped account the catalog no longer describes still counts:
+          // the ladder can only call it unknown.
+          const lost = Object.keys(mappings(saved))
+            .filter(
               (id) =>
                 !details.accounts.some((account) => account.accountId === id),
-            ) ||
-            linked.accounts.some((account) =>
-              details.accounts.some(
-                (existing) =>
-                  account.id === existing.accountId ||
-                  !account.name?.trim() ||
-                  !account.mask?.trim() ||
-                  !existing.mask?.trim() ||
-                  (account.name.trim().toLowerCase() ===
-                    existing.name.trim().toLowerCase() &&
-                    account.mask === existing.mask),
-              ),
             )
-          )
+            .map((accountId) => ({ accountId, name: null, mask: null }));
+          const { verdict } = bankLinkVerdict(
+            linked.accounts.map(({ id, ...account }) => ({
+              accountId: id,
+              ...account,
+            })),
+            institutionId,
+            {
+              institutionId: details.institutionId,
+              accounts: [...details.accounts, ...lost],
+            },
+          );
+          if (verdict === "all" || verdict === "some")
             throw new TRPCError({
               code: "CONFLICT",
               message:
                 "This bank account is already connected. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
+            });
+          if (verdict === "unknown")
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "Caishen couldn’t tell whether this bank account is already connected, because the account details to compare are incomplete or ambiguous. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
             });
         }
         const result = await client(db, userId).exchangePublicToken(
@@ -654,30 +662,46 @@ function mergeAccountCatalog(
 
 /** An automatic identity decision, recorded on the operation that made it. */
 type IdentityDecision = {
-  rung: 2;
+  rung: 1 | 2;
   from: string;
   to: string;
   accountId: string;
 };
 
-// Rung 2 of the identity ladder: a mapped account Plaid now reports under a
-// new id with the same persistent id keeps its budget account. Its mapping
-// moves to the new id, so the old id leaves the catalog with the merge.
-function followPersistentIds(
+// Only rungs 1 and 2 preserve a mapped account automatically. Rung 2 moves
+// its mapping to the new id, so the old id leaves the catalog with the merge.
+function followAccountIdentities(
   previous: ConnectionDetails["accounts"],
   reported: ConnectionDetails["accounts"],
   mappings: Mappings,
 ) {
   const next = { ...mappings };
   const decisions: IdentityDecision[] = [];
-  for (const { from, to } of supersededBankAccounts(
-    previous,
-    reported,
-    mappings,
-  )) {
+  const candidates = previous
+    .filter((account) => mappings[account.accountId])
+    .map((account) => ({
+      account,
+      institutionId: null,
+      sameConnection: true,
+      absent: !reported.some((item) => item.accountId === account.accountId),
+    }));
+  for (const account of reported) {
+    const resolution = resolveBankAccountIdentity(account, {
+      institutionId: null,
+      reported,
+      candidates,
+    });
+    if (resolution.rung !== 1 && resolution.rung !== 2) continue;
+    const from = resolution.existing.accountId;
+    const to = account.accountId;
     next[to] = next[from]!;
-    delete next[from];
-    decisions.push({ rung: 2, from, to, accountId: next[to].accountId });
+    if (from !== to) delete next[from];
+    decisions.push({
+      rung: resolution.rung,
+      from,
+      to,
+      accountId: next[to].accountId,
+    });
   }
   return {
     mappings: next,
@@ -706,7 +730,7 @@ async function refreshBankAccounts(
     requested.imports,
   );
   if (!column) throw connectionMaintenance();
-  const identity = followPersistentIds(
+  const identity = followAccountIdentities(
     column.accounts,
     accounts.accounts,
     mappings(requested),
@@ -750,7 +774,9 @@ async function refreshBankAccounts(
     actorId: userId,
     operationId,
     source: "provider",
-    type: "bank.accounts.supersede",
+    type: identity.decisions.some((decision) => decision.rung === 2)
+      ? "bank.accounts.supersede"
+      : "bank.accounts.identify",
     submitted: { connectionId: requested.id, decisions: identity.decisions },
     changeSet: composeChangeSets(operationId, []),
     alongside: save,
@@ -1980,7 +2006,11 @@ async function applyBankUpdate(
     readImportStates(opened.household.rows, userId),
   );
   if (old.disconnectedAt) return { imported: 0, updated: 0 };
-  const identity = followPersistentIds(old.accounts, accounts.accounts, saved);
+  const identity = followAccountIdentities(
+    old.accounts,
+    accounts.accounts,
+    saved,
+  );
   const { mappings } = identity;
   const plan = applyTransactionSync(old.records, delta, fresh.id);
   const changedAccounts = new Set(

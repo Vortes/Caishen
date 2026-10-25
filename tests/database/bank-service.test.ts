@@ -1964,6 +1964,30 @@ async function recordedDecisions(type: string) {
   );
 }
 
+void test("reconnect records rung 1 when the same provider account retains its live link", async () => {
+  const h = await linkedHarness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(accountsResponse()),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  const before = (await h.state()).view!.budget;
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  assert.deepEqual(await recordedDecisions("bank.accounts.identify"), [
+    {
+      connectionId: h.connection.id,
+      decisions: [
+        {
+          rung: 1,
+          from: "provider-checking",
+          to: "provider-checking",
+          accountId: "cash",
+        },
+      ],
+    },
+  ]);
+  assert.deepEqual((await h.state()).view!.budget, before);
+});
+
 void test("a re-shared account with a new Plaid id and the same persistent id keeps its budget account without a question", async () => {
   const h = await persistentHarness("persistent-checking");
   const followed = {
@@ -2260,6 +2284,80 @@ void test("Link metadata rejects duplicate cards before exchanging a public toke
         },
       ],
     },
+  });
+  assert.deepEqual(requests, ["/item/public_token/exchange", "/accounts/get"]);
+  assert.equal((await h.state()).connections.length, 2);
+});
+
+void test("Link completion treats a same-named card with a different account type as a different account", async () => {
+  const h = await harness();
+  await h.setImports({
+    institutionId: "ins-amex",
+    institutionName: "American Express",
+    accounts: [
+      {
+        accountId: "old-gold",
+        name: "American Express Gold Card",
+        officialName: null,
+        mask: "1234",
+        type: "credit",
+        subtype: "credit card",
+        currentBalance: 435.08,
+        availableBalance: null,
+        currency: "USD",
+      },
+    ],
+  });
+  const requests: string[] = [];
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const path = requestUrl(url).pathname;
+    requests.push(path);
+    if (path === "/item/public_token/exchange")
+      return Response.json({
+        access_token: "savings-token",
+        item_id: `savings-${run}`,
+      });
+    return Response.json({
+      item: {
+        institution_id: "ins-amex",
+        institution_name: "American Express",
+      },
+      accounts: [
+        {
+          ...accountsResponse().accounts[0]!,
+          account_id: "gold-savings",
+          name: "American Express Gold Card",
+          mask: "1234",
+          type: "depository",
+          subtype: "savings",
+        },
+      ],
+    });
+  });
+  const metadata = (type: string, subtype: string) => ({
+    institution: { institution_id: "ins-amex" },
+    accounts: [
+      {
+        id: "gold-again",
+        name: "American Express Gold Card",
+        mask: "1234",
+        type,
+        subtype,
+      },
+    ],
+  });
+  await assert.rejects(
+    h.api.budget.plaidExchange({
+      publicToken: "same-card",
+      metadata: metadata("credit", "credit card"),
+    }),
+    /already connected.*Choose shared accounts/i,
+    "the same name, mask, type, and subtype is the connected card",
+  );
+  assert.deepEqual(requests, [], "a duplicate is refused before the exchange");
+  await h.api.budget.plaidExchange({
+    publicToken: "savings-account",
+    metadata: metadata("depository", "savings"),
   });
   assert.deepEqual(requests, ["/item/public_token/exchange", "/accounts/get"]);
   assert.equal((await h.state()).connections.length, 2);
@@ -3027,6 +3125,82 @@ void test("pay remembered as Ready to Assign arrives there, and money going out 
     (await bankInbox(h.db, alice)).map((item) => [item.payee, item.amount]),
     [["Acme Payroll", -4000]],
   );
+});
+
+void test("ambiguous Link identities ask for review instead of proposing either stored account", async () => {
+  const h = await harness();
+  const stored = {
+    name: "Gold Card",
+    officialName: null,
+    mask: "1234",
+    type: "credit",
+    subtype: "credit card",
+    currentBalance: 50,
+    availableBalance: null,
+    currency: "USD",
+  };
+  await h.setImports({
+    institutionId: "ins-amex",
+    institutionName: "American Express",
+    accounts: [
+      { ...stored, accountId: "old-one" },
+      { ...stored, accountId: "old-two" },
+    ],
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("No exchange before review");
+  });
+  await assert.rejects(
+    h.api.budget.plaidExchange({
+      publicToken: "public-token",
+      metadata: {
+        institution: { institution_id: "ins-amex" },
+        accounts: [
+          {
+            id: "new-id",
+            name: "Gold Card",
+            mask: "1234",
+            type: "credit",
+            subtype: "credit card",
+          },
+        ],
+      },
+    }),
+    /couldn’t tell.*already connected/i,
+  );
+  assert.equal(fetcher.mock.callCount(), 0);
+  assert.equal((await h.state()).connections.length, 1);
+});
+
+void test("missing Link masks report an unknown comparison before token exchange", async () => {
+  const h = await linkedHarness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(accountsResponse()),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  mock.restoreAll();
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("No exchange before review");
+  });
+  await assert.rejects(
+    h.api.budget.plaidExchange({
+      publicToken: "public-token",
+      metadata: {
+        institution: { institution_id: "ins-chase" },
+        accounts: [
+          {
+            id: "new-id",
+            name: "Chase checking",
+            mask: null,
+            type: "depository",
+            subtype: "checking",
+          },
+        ],
+      },
+    }),
+    /couldn’t tell.*details.*incomplete/i,
+  );
+  assert.equal(fetcher.mock.callCount(), 0);
 });
 
 // The provider event audit trail (spec #139): what an operator can query
