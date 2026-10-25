@@ -243,9 +243,10 @@ export function useBankAccountSetupForm({
       ),
   );
   const synchronized = (account: BankAccount) =>
-    account.type === "loan"
+    !connection.unavailableAccountIds?.includes(account.accountId) &&
+    (account.type === "loan"
       ? ready
-      : synchronizedAccountIds.has(account.accountId);
+      : synchronizedAccountIds.has(account.accountId));
   const selected = connection.accounts.filter(
     (account) =>
       !mappings.has(account.accountId) &&
