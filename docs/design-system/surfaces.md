@@ -50,6 +50,61 @@ written ("⌘K", "]"). The tooltip wraps exactly one focusable element.
 </Tooltip>
 ```
 
+## Popovers and dropdown menus
+
+Use a popover for a small form or contextual detail attached to a trigger;
+use a dropdown menu for a list of actions. These are shell patterns, not
+shared primitives. Follow `account-entry.tsx` and `banks.tsx` in
+`src/components/app-shell/`, or `ProfileMenu` in `sidebar.tsx` for a menu.
+
+Every popover, dropdown menu, and tooltip uses `POPOVER_GAP` (6px) from
+`src/components/ui/tokens.ts` for the space between its button and surface:
+
+```tsx
+import { POPOVER_GAP } from "~/components/ui/tokens";
+
+// Correct: the shared trigger gap, independent of viewport collision padding.
+<Popover.Content side="top" align="start" sideOffset={POPOVER_GAP} collisionPadding={12}>
+  …
+</Popover.Content>
+
+// Incorrect: omitting sideOffset makes the surface touch its button.
+<Popover.Content side="top" align="start">…</Popover.Content>
+```
+
+Do not simulate the gap with margin, padding, or a positioning transform.
+Radix must include it when calculating placement and available height.
+Use collision padding for viewport clearance; it must not shift a
+left-aligned surface away from a trigger near the left edge.
+
+## Popover and dropdown menu motion
+
+Apply this pattern to all popovers and dropdown menus. The references are
+`banks.module.css`, `account-entry.module.css`, and the profile menu in
+`shell.module.css`, all under `src/components/app-shell/`.
+
+- Enter over **180ms** with **`var(--ease-panel)`**, fading from opacity 0
+  and scaling from **0.97** to 1. Start **4px toward the trigger**: translate
+  down for a surface above its trigger, up for one below it. Finish with no
+  transform. Follow the resolved placement if collision handling flips it.
+- Exit over **120ms** with **`ease-in`**, fading to opacity 0 and scaling
+  to **0.97**. Use `forwards` so it stays faded until Radix unmounts it.
+- Set `transform-origin` to
+  `var(--radix-popover-content-transform-origin)` for a popover or
+  `var(--radix-dropdown-menu-content-transform-origin)` for a dropdown.
+  Animate the content, never Radix's positioning wrapper.
+- Pointer opening animates. Keyboard opening is instant: track pointer
+  intent on the trigger, set `data-instant` on the content for keyboard
+  opening, and disable animation for that attribute. Preserve the normal
+  keyboard focus behavior; do not wait for an animation to focus a field.
+- Under **`prefers-reduced-motion: reduce`**, disable both enter and exit
+  animation. Tooltip motion remains the shared `Tooltip` component's own
+  behavior; it shares the gap token, not this menu animation.
+- Never scale or translate a popup trigger during press, including while
+  it is still closed. Radix can measure the pressed button before it
+  settles, then snap the surface sideways as its anchor changes. The
+  shared `IconButton` excludes `[aria-haspopup]` from press scaling.
+
 ## Portals
 
 Tooltips and popovers render through a portal so a panel that clips its
