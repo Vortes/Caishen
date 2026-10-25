@@ -85,6 +85,18 @@ A daily summary of spending, suggested categories, and automatic transaction upd
 **Review inbox**:
 A single current list of unresolved items, including transactions awaiting category approval, uncertain matches, and unexplained discrepancies. Items remain until resolved, so missed daily reviews do not create separate reports that must each be cleared.
 
+**Bank connection**:
+One login at one financial institution, authorized through Plaid, through which Caishen receives account updates for the accounts the user shares. Its status is connected, login required, pending disconnect, revoked, or disconnected, and is set from what the institution reports, never inferred from an account going unmentioned.
+_Avoid_: Item, bank, Plaid connection
+
+**Provider account**:
+One account at the institution as Plaid reports it inside a bank connection, with its own identity and state. It is shared (the user shares it and updates arrive), unavailable (the user stopped sharing it and updates stopped), revoked (the user withdrew access at the institution), or retired (a newer provider account for the same account took its place).
+_Avoid_: Cache entry, catalog entry, ready or unavailable list entry, Plaid account
+
+**Linked account**:
+A budget account that one provider account feeds. A budget account has at most one live feed, and the feed never changes the account's history, transactions, or reconciliation, whatever state its provider account is in.
+_Avoid_: Mapping, mapped account, synchronized account
+
 **Account update**:
 A refresh of recorded account activity using the latest available records from the financial institution. Daily updates are sufficient for the budgeting workflow; instantaneous transaction visibility is not required.
 
