@@ -2,6 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import {
   addMember,
+  createBook,
+  execute,
   withCounterpartyAccounts,
   type Command,
 } from "~/domain/engine";
@@ -34,6 +36,84 @@ const purchase = (
 });
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
+
+test("the opening balance is read-only and excluded from purchase selection and review", async () => {
+  const shell = await renderShell({ seedCommands: [purchase()] });
+  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  const opening = screen.getByRole("group", {
+    name: "Starting Balance for Checking",
+  });
+  expect(within(opening).getByText("$1,000.00", { exact: true })).toBeTruthy();
+  expect(within(opening).getByLabelText("Cleared")).toBeTruthy();
+  expect(within(opening).queryByRole("button")).toBeNull();
+  expect(within(opening).queryByRole("checkbox")).toBeNull();
+  await shell.user.click(
+    within(opening).getByText("Starting Balance", { exact: true }),
+  );
+  await shell.user.keyboard("ex");
+  expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
+  await shell.user.click(screen.getByRole("checkbox", { name: "Select all" }));
+  expect(
+    screen.getByRole("toolbar", { name: "Selected transactions" }).textContent,
+  ).toContain("1 transaction");
+  await shell.user.click(screen.getByRole("checkbox", { name: "Select all" }));
+  await shell.user.click(screen.getByRole("button", { name: /To review/ }));
+  expect(
+    screen.queryByRole("group", { name: "Starting Balance for Checking" }),
+  ).toBeNull();
+});
+
+test("opening balances follow account and search filters, including zero balances from earlier months", async () => {
+  let book = createBook("owner", "Opening balances", "2026-09");
+  book = execute(book, "owner", {
+    type: "account.add",
+    id: "checking-opening",
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+    date: "2026-10-01",
+  });
+  book = execute(book, "owner", {
+    type: "account.add",
+    id: "card-opening",
+    accountId: "card",
+    name: "Travel card",
+    kind: "credit",
+    openingBalance: 0,
+    date: "2026-09-30",
+  });
+  const shell = await renderShell({ book });
+  await shell.user.click(screen.getByRole("button", { name: "All accounts" }));
+  expect(
+    screen.getByRole("group", { name: "Starting Balance for Checking" }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("group", { name: "Starting Balance for Travel card" }),
+  ).toBeNull();
+  const search = screen.getByPlaceholderText("Search all accounts");
+  await shell.user.type(search, "Travel card");
+  const opening = screen.getByRole("group", {
+    name: "Starting Balance for Travel card",
+  });
+  expect(within(opening).getByText("$0.00", { exact: true })).toBeTruthy();
+  expect(
+    within(opening).getByText("Travel card", { exact: true }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("group", { name: "Starting Balance for Checking" }),
+  ).toBeNull();
+  await shell.user.clear(search);
+  await shell.user.type(search, "Starting Balance");
+  expect(
+    screen.getAllByRole("group", { name: /^Starting Balance for/ }),
+  ).toHaveLength(2);
+  await shell.user.clear(search);
+  await shell.user.type(search, "no-such-merchant");
+  expect(
+    screen.queryByRole("group", { name: /^Starting Balance for/ }),
+  ).toBeNull();
+});
 
 test.each(["pending", "posted"] as const)(
   "a first click selects a %s purchase, a second edits its field, and the keyboard action corrects the same transaction",

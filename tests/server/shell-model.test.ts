@@ -102,6 +102,50 @@ function bankImport(
   };
 }
 
+void test("account openings are visible separately from spending and never fund existing card debt", () => {
+  const { data } = setup(-120_000);
+  const shell = data();
+  assert.deepEqual(shell.openingBalances, [
+    {
+      source: "opening",
+      id: "opening:checking",
+      accountId: "checking",
+      date: "2026-10-01",
+      payee: "Starting Balance",
+      amount: 100_000,
+    },
+    {
+      source: "opening",
+      id: "opening:card",
+      accountId: "card",
+      date: "2026-10-01",
+      payee: "Starting Balance",
+      amount: -120_000,
+    },
+  ]);
+  assert.deepEqual(shell.transactions, []);
+  assert.equal(shell.readyToAssign, 100_000);
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "checking")!.cleared,
+    100_000,
+  );
+  assert.equal(
+    shell.accounts.find(({ id }) => id === "card")!.cleared,
+    -120_000,
+  );
+  assert.equal(
+    shell.categories.find((category) => category.pays?.id === "card")!
+      .available,
+    0,
+  );
+  assert.equal(
+    setup()
+      .data()
+      .openingBalances.find(({ accountId }) => accountId === "card")!.amount,
+    0,
+  );
+});
+
 void test("a bank purchase counts toward account balances while it waits for review", () => {
   const { data } = setup();
   const shell = data(month, month, [bankImport()]);
