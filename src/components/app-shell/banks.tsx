@@ -9,7 +9,7 @@ import {
   LoaderCircleIcon,
   PlusIcon,
 } from "lucide-react";
-import { Dialog, Popover } from "radix-ui";
+import { AlertDialog, Dialog, Popover } from "radix-ui";
 import { createPortal } from "react-dom";
 import {
   createContext,
@@ -37,6 +37,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { syncedLabel } from "./model";
+import { api } from "~/trpc/react";
 import styles from "./banks.module.css";
 
 type Connection = State["connections"][number];
@@ -96,6 +97,7 @@ export function useBankConnections({
     return cancel;
   }, [resumeReturn, isLoaded, userId, resume, cancel]);
   const [setupId, setSetupId] = useState<string | null>(null);
+  const [disconnectId, setDisconnectId] = useState<string | null>(null);
   // The user closed the dialog for the flow that's running; reopen it for the
   // next one.
   const [dismissed, setDismissed] = useState(false);
@@ -131,17 +133,20 @@ export function useBankConnections({
   }, [link.phase]);
 
   const setup = state.connections.find((item) => item.id === setupId);
-  const view: DialogView | null = setup
-    ? { type: "setup", connection: setup }
-    : dismissed
-      ? null
-      : link.phase === "saving" || link.phase === "syncing"
-        ? { type: "progress", phase: link.phase }
-        : link.phase === "complete" && link.needsSync
-          ? { type: "sync-failed", error: link.error }
-          : link.canonicalOrigin
-            ? { type: "elsewhere", origin: link.canonicalOrigin }
-            : null;
+  const disconnect = state.connections.find((item) => item.id === disconnectId);
+  const view: DialogView | null = disconnect
+    ? { type: "disconnect", connection: disconnect }
+    : setup
+      ? { type: "setup", connection: setup }
+      : dismissed
+        ? null
+        : link.phase === "saving" || link.phase === "syncing"
+          ? { type: "progress", phase: link.phase }
+          : link.phase === "complete" && link.needsSync
+            ? { type: "sync-failed", error: link.error }
+            : link.canonicalOrigin
+              ? { type: "elsewhere", origin: link.canonicalOrigin }
+              : null;
 
   // Undo and redo wait while the dialog is up.
   const showing = view !== null;
@@ -150,7 +155,11 @@ export function useBankConnections({
   return {
     error: link.error,
     saved: link.saved,
-    connections: state.connections,
+    connections: state.connections.filter(
+      (item) =>
+        !item.disconnectedAt ||
+        bankAccountMappings(item.accountMappings).size > 0,
+    ),
     available,
     // Getting Plaid ready: the link token and its script, before its window.
     opening: link.phase === "loading",
@@ -169,15 +178,18 @@ export function useBankConnections({
       void link.start(connectionId);
     },
     setUp: (connectionId: string) => setSetupId(connectionId),
+    disconnect: (connectionId: string) => setDisconnectId(connectionId),
     retrySync: () => void link.retrySync(),
     close: () => {
       setSetupId(null);
+      setDisconnectId(null);
       setDismissed(true);
     },
   };
 }
 
 type DialogView =
+  | { type: "disconnect"; connection: Connection }
   | { type: "progress"; phase: "saving" | "syncing" }
   | { type: "sync-failed"; error: string }
   | { type: "elsewhere"; origin: string }
@@ -335,30 +347,40 @@ export function BankItem({
       <div className={styles.bankHeader}>
         <div className={styles.bankTitle}>
           <strong className={styles.bankName}>{bankName(connection)}</strong>
-          <BankStatus connection={connection} />
+          {connection.disconnectedAt ? (
+            <span className={styles.note}>Disconnected</span>
+          ) : (
+            <BankStatus connection={connection} />
+          )}
         </div>
-        {connection.error && (
-          <Button
-            size="sm"
-            // The fix for what this popover is showing, so its main action,
-            // unless several banks need it and none is the one main action.
-            variant={
-              banks.connections.filter((item) => item.error).length === 1
-                ? "quiet-primary"
-                : "quiet"
-            }
-            disabled={!banks.available || banks.busy}
-            // Plaid's script is large; fetch it while the pointer is on the
-            // way.
-            onPointerEnter={() => void loadPlaid().catch(() => undefined)}
-            onClick={() => {
-              onAction();
-              banks.start(connection.id);
-            }}
-          >
-            {reconnecting ? "Reconnecting…" : "Reconnect"}
-          </Button>
-        )}
+        <Button
+          size="sm"
+          // Repairing the sole broken connection is the popover's main action.
+          variant={
+            connection.error &&
+            banks.connections.filter((item) => item.error).length === 1
+              ? "quiet-primary"
+              : "quiet"
+          }
+          disabled={!banks.available || banks.busy}
+          // Plaid's script is large; fetch it while the pointer is on the
+          // way.
+          onPointerEnter={() => void loadPlaid().catch(() => undefined)}
+          onClick={() => {
+            onAction();
+            banks.start(connection.disconnectedAt ? undefined : connection.id);
+          }}
+        >
+          {connection.disconnectedAt
+            ? "Link again"
+            : connection.error
+              ? reconnecting
+                ? "Reconnecting…"
+                : "Reconnect"
+              : reconnecting
+                ? "Opening…"
+                : "Choose accounts"}
+        </Button>
       </div>
       {inBudget.length > 0 && (
         <ul
@@ -380,7 +402,7 @@ export function BankItem({
           ))}
         </ul>
       )}
-      {outside > 0 && (
+      {!connection.disconnectedAt && outside > 0 && (
         <div className={styles.outside}>
           <span>
             {inBudget.length
@@ -397,6 +419,21 @@ export function BankItem({
             }}
           >
             {addable ? "Add accounts" : "Review accounts"}
+          </Button>
+        </div>
+      )}
+      {!connection.disconnectedAt && (
+        <div className={styles.outside}>
+          <span>Keep your accounts and history</span>
+          <Button
+            size="sm"
+            disabled={banks.busy}
+            onClick={() => {
+              onAction();
+              banks.disconnect(connection.id);
+            }}
+          >
+            Disconnect
           </Button>
         </div>
       )}
@@ -497,6 +534,8 @@ export function BankDialog() {
   const [continued, setContinued] = useState(false);
   if (banks.plaidOpen && !continued) setContinued(true);
   if (!banks.plaidOpen && !view && continued) setContinued(false);
+  if (view?.type === "disconnect")
+    return <DisconnectDialog connection={view.connection} />;
   return (
     <>
       {banks.plaidOpen &&
@@ -607,6 +646,85 @@ function ErrorText({ children }: { children: string }) {
   );
 }
 
+function DisconnectDialog({ connection }: { connection: Connection }) {
+  const banks = useBanks();
+  const container = usePortalContainer();
+  const utils = api.useUtils();
+  const disconnect = api.budget.disconnectBank.useMutation();
+  const [operationId] = useState(() => crypto.randomUUID());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const saving = useRef(false);
+  const submit = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await banks.runOnServer(
+        operationId,
+        (expectedRevision) =>
+          disconnect.mutateAsync({
+            connectionId: connection.id,
+            operationId,
+            expectedRevision,
+          }),
+        "Disconnected bank",
+      );
+      await utils.budget.invalidate();
+      banks.close();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Your bank couldn’t be disconnected. Try again.",
+      );
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  };
+  return (
+    <AlertDialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving.current) banks.close();
+      }}
+    >
+      <AlertDialog.Portal container={container}>
+        <AlertDialog.Overlay className={styles.overlay} />
+        <AlertDialog.Content className={styles.dialog}>
+          <div className={styles.header}>
+            <AlertDialog.Title className={styles.title}>
+              Disconnect {bankName(connection)}?
+            </AlertDialog.Title>
+            <AlertDialog.Description className={styles.description}>
+              Bank updates will stop. Your accounts, transactions, and activity
+              awaiting review will stay in your budget. To replace this
+              connection, choose Link again afterward. Review outstanding
+              activity and reconcile your cash and credit accounts to today’s
+              bank balances before linking them to the new connection.
+            </AlertDialog.Description>
+          </div>
+          {error && <ErrorText>{error}</ErrorText>}
+          <div className={styles.footer}>
+            <AlertDialog.Cancel asChild>
+              <Button disabled={busy}>Cancel</Button>
+            </AlertDialog.Cancel>
+            <Button
+              variant="danger"
+              disabled={busy}
+              onClick={() => void submit()}
+            >
+              {busy ? "Disconnecting…" : "Disconnect"}
+            </Button>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
 function SetupForm({
   connection,
   locked,
@@ -655,7 +773,9 @@ function SetupForm({
     >
       <div className={styles.header}>
         <Dialog.Title className={styles.title}>
-          Add {bankName(connection)} to your budget
+          {form.rows.some((row) => row.recovery || row.requiresExisting)
+            ? `Set up ${bankName(connection)} accounts`
+            : `Add ${bankName(connection)} to your budget`}
         </Dialog.Title>
         <p className={styles.description}>
           Checking and savings go in Cash, credit cards in Credit, and loans in
@@ -674,12 +794,16 @@ function SetupForm({
               fieldError,
               addedAs,
               existingAccounts,
+              recovery,
+              requiresExisting,
             }) => {
               const fieldId = `${id}-${account.accountId}`;
               const selectable = !addedAs && synchronized && Boolean(draft);
-              const hint = draft?.existingAccountId
-                ? "Keeps its name and balance. Bank activity from this date on comes in for review."
-                : null;
+              const hint = recovery
+                ? "Keeps this account’s history and balance. Review outstanding bank activity and reconcile it to today’s bank balance first. Earlier posted activity won’t be imported again."
+                : draft?.existingAccountId
+                  ? "Keeps its name and balance. Bank activity from this date on comes in for review."
+                  : null;
               return (
                 <li key={account.accountId} className={styles.setupRow}>
                   <label
@@ -721,7 +845,9 @@ function SetupForm({
                   )}
                   {selectable && draft?.selected && (
                     <div className={styles.fields}>
-                      {draft.existingAccountId ? (
+                      {recovery ? (
+                        <p className={styles.note}>Link to existing account</p>
+                      ) : draft.existingAccountId ? (
                         <div className={styles.field}>
                           <label htmlFor={`${fieldId}-start`}>
                             Import from
@@ -766,7 +892,11 @@ function SetupForm({
                       )}
                       {existingAccounts.length > 0 && (
                         <div className={styles.field}>
-                          <label htmlFor={`${fieldId}-as`}>Add as</label>
+                          <label htmlFor={`${fieldId}-as`}>
+                            {requiresExisting || recovery
+                              ? "Link to"
+                              : "Add as"}
+                          </label>
                           <select
                             id={`${fieldId}-as`}
                             value={draft.existingAccountId}
@@ -777,10 +907,12 @@ function SetupForm({
                               })
                             }
                           >
-                            <option value="">
-                              {account.type === "loan"
-                                ? "New loan"
-                                : "New account"}
+                            <option value="" disabled={requiresExisting}>
+                              {requiresExisting
+                                ? "Choose an existing account"
+                                : account.type === "loan"
+                                  ? "New loan"
+                                  : "New account"}
                             </option>
                             {existingAccounts.map((existing) => (
                               <option key={existing.id} value={existing.id}>

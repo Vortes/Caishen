@@ -8,6 +8,7 @@ import {
 } from "~/server/services/email-preferences";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { plaidLinkMetadataSchema } from "~/lib/plaid-link-metadata";
 import {
   commandSchema,
   ledgerCommandSchema,
@@ -46,6 +47,7 @@ import {
   syncBanks,
   resolveImport,
   reconnectBank,
+  disconnectBank,
   setupBankAccounts,
 } from "~/server/services/banks";
 import { setupBankAccountsSchema } from "~/server/services/bank-account-setup";
@@ -297,15 +299,29 @@ export const budgetRouter = createTRPCRouter({
       linkBankToken(ctx.db, ctx.userId, input?.connectionId),
     ),
   plaidExchange: protectedProcedure
-    .input(z.object({ publicToken: z.string().min(1).max(2048) }))
+    .input(
+      z.object({
+        publicToken: z.string().min(1).max(2048),
+        metadata: plaidLinkMetadataSchema,
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      exchangeBankToken(ctx.db, ctx.userId, input.publicToken),
+      exchangeBankToken(ctx.db, ctx.userId, input.publicToken, input.metadata),
     ),
   plaidReconnect: protectedProcedure
     .input(z.object({ connectionId: z.string().min(1).max(256) }))
     .mutation(({ ctx, input }) =>
       reconnectBank(ctx.db, ctx.userId, input.connectionId),
     ),
+  disconnectBank: protectedProcedure
+    .input(
+      z.object({
+        connectionId: z.string().min(1).max(256),
+        operationId: z.string().uuid(),
+        expectedRevision: revision,
+      }),
+    )
+    .mutation(({ ctx, input }) => disconnectBank(ctx.db, ctx.userId, input)),
   setupBankAccounts: submittedInputProcedure
     .input(setupBankAccountsSchema)
     .mutation(({ ctx, input }) =>

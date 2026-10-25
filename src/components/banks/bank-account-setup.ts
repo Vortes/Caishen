@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { State } from "~/components/budget/types";
 import type { ExecuteResult } from "~/components/sync/transport";
 import { api } from "~/trpc/react";
+import {
+  possibleBankAccount,
+  sameBankAccount,
+} from "~/lib/bank-account-identity";
 
 type Connection = State["connections"][number];
 
@@ -98,6 +102,36 @@ export function useBankAccountSetupForm({
   const save = api.budget.setupBankAccounts.useMutation();
   const sync = api.budget.sync.useMutation();
   const initialMappings = bankAccountMappings(connection.accountMappings);
+  const recoveryAccounts = (account: BankAccount, exact = false) => [
+    ...new Set(
+      state.connections
+        .filter((item) => item.disconnectedAt)
+        .flatMap((item) => {
+          const mappings = bankAccountMappings(item.accountMappings);
+          return item.accounts.flatMap((saved) => {
+            const mapping = mappings.get(saved.accountId);
+            return mapping &&
+              (exact ? sameBankAccount : possibleBankAccount)(
+                account,
+                saved,
+                connection.institutionId,
+                item.institutionId,
+              )
+              ? [mapping.accountId]
+              : [];
+          });
+        }),
+    ),
+  ];
+  const disconnectedAccountIds = new Set(
+    state.connections
+      .filter((item) => item.disconnectedAt)
+      .flatMap((item) =>
+        [...bankAccountMappings(item.accountMappings).values()].map(
+          (mapping) => mapping.accountId,
+        ),
+      ),
+  );
   const [drafts, setDrafts] = useState<Record<string, AccountDraft>>(() =>
     Object.fromEntries(
       connection.accounts.map((account) => [
@@ -107,7 +141,11 @@ export function useBankAccountSetupForm({
             !initialMappings.has(account.accountId) &&
             Boolean(accountSetupType(account).kind),
           name: account.name.trim().slice(0, 120),
-          existingAccountId: "",
+          existingAccountId:
+            recoveryAccounts(account, true).length === 1 &&
+            recoveryAccounts(account).length === 1
+              ? recoveryAccounts(account, true)[0]!
+              : "",
           startDate: "",
           loanBalance: account.currentBalance?.toString() ?? "",
           annualRate: "",
@@ -196,11 +234,13 @@ export function useBankAccountSetupForm({
   }
 
   const mappedAccountIds = new Set(
-    state.connections.flatMap((item) =>
-      [...bankAccountMappings(item.accountMappings).values()].map(
-        (mapping) => mapping.accountId,
+    state.connections
+      .filter((item) => !item.disconnectedAt)
+      .flatMap((item) =>
+        [...bankAccountMappings(item.accountMappings).values()].map(
+          (mapping) => mapping.accountId,
+        ),
       ),
-    ),
   );
   const synchronized = (account: BankAccount) =>
     account.type === "loan"
@@ -234,6 +274,10 @@ export function useBankAccountSetupForm({
       synchronized: synchronized(account),
       draft: drafts[account.accountId],
       fieldError: fieldErrors[account.accountId],
+      recovery: disconnectedAccountIds.has(
+        drafts[account.accountId]?.existingAccountId ?? "",
+      ),
+      requiresExisting: recoveryAccounts(account).length > 0,
       // The budget account a bank account was already added as.
       addedAs: mapping
         ? ((account.type === "loan"
@@ -253,6 +297,8 @@ export function useBankAccountSetupForm({
         )?.filter(
           (existing) =>
             existing.kind === type.kind &&
+            (!recoveryAccounts(account).length ||
+              recoveryAccounts(account).includes(existing.id)) &&
             !mappedAccountIds.has(existing.id) &&
             !selectedElsewhere.has(existing.id),
         ) ?? [],
@@ -264,6 +310,9 @@ export function useBankAccountSetupForm({
     const errors: Record<string, string> = {};
     for (const account of selected) {
       const draft = drafts[account.accountId]!;
+      if (recoveryAccounts(account).length && !draft.existingAccountId)
+        errors[account.accountId] =
+          "Choose the existing budget account for this bank account.";
       if (!draft.name.trim() || draft.name.trim().length > 120)
         errors[account.accountId] =
           "Enter an account name with 1 to 120 characters.";
@@ -281,7 +330,10 @@ export function useBankAccountSetupForm({
           ("rates" in existing
             ? existing.rates.map((rate) => rate.effectiveDate).sort()[0]!
             : existing.date);
-        if (!draft.startDate || !openingDate || draft.startDate <= openingDate)
+        if (
+          !disconnectedAccountIds.has(draft.existingAccountId) &&
+          (!draft.startDate || !openingDate || draft.startDate <= openingDate)
+        )
           errors[account.accountId] =
             "Choose an import date after this account’s opening balance date.";
       } else if (account.type === "loan") {
@@ -330,7 +382,9 @@ export function useBankAccountSetupForm({
           ...(draft.existingAccountId
             ? {
                 existingAccountId: draft.existingAccountId,
-                startDate: draft.startDate,
+                ...(disconnectedAccountIds.has(draft.existingAccountId)
+                  ? {}
+                  : { startDate: draft.startDate }),
               }
             : account.type === "loan"
               ? {

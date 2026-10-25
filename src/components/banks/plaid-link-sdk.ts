@@ -1,9 +1,11 @@
+import type { PlaidLinkMetadata } from "~/lib/plaid-link-metadata";
+
 export type PlaidHandler = { open: () => void; destroy: () => void };
 export type PlaidSdk = {
   create: (options: {
     token: string;
     receivedRedirectUri?: string;
-    onSuccess: (publicToken: string) => void;
+    onSuccess: (publicToken: string, metadata: PlaidLinkMetadata) => void;
     onExit: (
       error: { display_message?: string; error_message?: string } | null,
     ) => void;

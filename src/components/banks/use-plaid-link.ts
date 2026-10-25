@@ -1,5 +1,7 @@
 "use client";
 
+import type { PlaidLinkMetadata } from "~/lib/plaid-link-metadata";
+
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "~/trpc/react";
@@ -72,7 +74,10 @@ export function usePlaidLink() {
         handler.current = null;
         previous?.destroy();
       };
-      const finish = async (publicToken: string) => {
+      const finish = async (
+        publicToken: string,
+        metadata: PlaidLinkMetadata,
+      ) => {
         let saved = Boolean(session.connectionId);
         try {
           setState((value) => ({ ...value, phase: "saving" }));
@@ -80,7 +85,10 @@ export function usePlaidLink() {
             ? await operations.current.reconnect.mutateAsync({
                 connectionId: session.connectionId,
               })
-            : await operations.current.exchange.mutateAsync({ publicToken });
+            : await operations.current.exchange.mutateAsync({
+                publicToken,
+                metadata,
+              });
           saved = true;
           if (generation.current !== current) return;
           setState((value) => ({
@@ -126,12 +134,12 @@ export function usePlaidLink() {
       handler.current = sdk.create({
         token: session.linkToken,
         ...(receivedRedirectUri ? { receivedRedirectUri } : {}),
-        onSuccess: (publicToken) => {
+        onSuccess: (publicToken, metadata) => {
           if (finished || generation.current !== current) return;
           finished = true;
           clearPlaidLinkSession(storage, session.linkToken);
           release();
-          void finish(publicToken);
+          void finish(publicToken, metadata);
         },
         onExit: (error) => {
           if (finished || generation.current !== current) return;
