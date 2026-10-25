@@ -1,8 +1,15 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { createBook, execute, type Command } from "~/domain/engine";
+import {
+  addMember,
+  createBook,
+  execute,
+  withCounterpartyAccounts,
+  type Command,
+} from "~/domain/engine";
 import { SyncError } from "~/components/sync/transport";
 import {
+  budgetFixture,
   findToast,
   findTransactionRow as findRow,
   readyOverview,
@@ -32,7 +39,7 @@ const editor = () =>
 
 test("the opening balance is read-only and excluded from purchase selection and review", async () => {
   const shell = await renderShell({ seedCommands: [purchase()] });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   const opening = screen.getByRole("group", {
     name: "Starting Balance for Checking",
   });
@@ -77,7 +84,7 @@ test("opening balances follow account and search filters, including zero balance
     date: "2026-09-30",
   });
   const shell = await renderShell({ book });
-  await shell.user.click(screen.getByRole("button", { name: "All accounts" }));
+  await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
   expect(
     screen.getByRole("group", { name: "Starting Balance for Checking" }),
   ).toBeTruthy();
@@ -208,6 +215,7 @@ test.each([
         history: [],
         reviewEvidence: [],
         quarantined: false,
+        eligibility: "eligible",
       },
     ];
     // The first save is refused; the next one resolves the import.
@@ -317,12 +325,15 @@ const cardSeeds: Command[] = [
     month: "2026-10",
   },
   {
-    type: "card.payment",
+    type: "transaction.upsert",
+    transactionId: `${"card-payment"}:cash`,
     id: "card-payment",
-    cashAccountId: "checking",
-    cardAccountId: "visa",
     date: "2026-10-10",
-    amount: 5000,
+    accountId: "checking",
+    transferAccountId: "visa",
+    amount: -5000,
+    payee: "Credit card payment",
+    status: "posted",
   },
 ];
 
@@ -358,8 +369,8 @@ test("payment payees exclude the current account and a receiving-side edit submi
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.save",
-    transactionId: "card-payment:card",
+    type: "transaction.upsert",
+    transactionId: "card-payment:counterpart",
     accountId: "visa",
     transferAccountId: "checking",
     amount: 6001,
@@ -372,7 +383,9 @@ test("a payment link selects its counterpart without opening an editor or offeri
   const link = screen.getByRole("link", { name: "View in Visa" });
   const address = new URL(link.getAttribute("href")!, window.location.origin);
   expect(address.pathname).toBe("/app/accounts/visa");
-  expect(address.searchParams.get("transaction")).toBe("card-payment:card");
+  expect(address.searchParams.get("transaction")).toBe(
+    "card-payment:counterpart",
+  );
   expect(address.searchParams.get("month")).toBe("2026-10");
   await shell.user.click(link);
   expect(screen.getByRole("heading", { name: "Visa" })).toBeTruthy();
@@ -467,7 +480,7 @@ test("editing a brokerage transfer from the tracking register retains its requir
       date: "2026-10-01",
     },
     {
-      type: "transaction.save",
+      type: "transaction.upsert",
       id: "seed-tracking",
       transactionId: "tracking",
       accountId: "brokerage",
@@ -494,7 +507,7 @@ test("editing a brokerage transfer from the tracking register retains its requir
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "tracking",
     accountId: "brokerage",
     transferAccountId: "checking",
@@ -525,13 +538,16 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
       amount: 10000,
     },
     {
-      type: "loan.payment",
+      type: "transaction.upsert",
+      transactionId: `${"loan-payment"}:payment`,
       id: "loan-payment",
       loanId: "loan",
-      accountId: "checking",
       date: "2026-10-10",
-      principal: 4000,
       interest: 1000,
+      accountId: "checking",
+      amount: -(4000 + 1000),
+      payee: "Loan payment",
+      status: "posted",
     },
   ];
   const shell = await renderShell({ seedCommands: seeds });
@@ -552,7 +568,7 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
   await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "loan-payment:payment",
     loanId: "loan",
     amount: -7000,
@@ -655,4 +671,25 @@ test("choosing and removing a transfer payee changes category requirements witho
   expect(
     within(screen.getByRole("link", { name: /^Savings/ })).getByText("$0.00"),
   ).toBeTruthy();
+});
+
+test("F3: the new transaction account picker excludes Partner and Reimbursements", async () => {
+  const book = withCounterpartyAccounts(
+    addMember(budgetFixture(), "partner", "Anna", "2026-10"),
+  );
+  const shell = await renderShell({
+    book,
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Add transaction" }),
+  );
+  await shell.user.keyboard("{Escape}");
+  const form = within(screen.getByRole("form", { name: "New transaction" }));
+  await shell.user.click(form.getByRole("combobox", { name: "Account" }));
+  expect(screen.getByRole("option", { name: /Checking/ })).toBeTruthy();
+  expect(
+    screen.queryByRole("option", { name: /Partner|Anna|Reimbursements/ }),
+  ).toBeNull();
 });

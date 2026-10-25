@@ -13,7 +13,7 @@ import { newId } from "~/components/budget/format";
 import { useBudgetSelector } from "~/components/sync/hooks";
 import type { BudgetSnapshot } from "~/components/sync/budget-store";
 import type { Command } from "~/domain/engine";
-import { TRANSACTION_ACTION_LIMIT } from "~/domain/transaction-actions";
+import { TRANSACTION_ACTION_LIMIT } from "~/domain/register-entry";
 import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";

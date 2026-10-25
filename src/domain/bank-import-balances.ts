@@ -1,4 +1,8 @@
 import type { Budget } from "./engine";
+import {
+  importEligibilityIssue,
+  type ImportEligibility,
+} from "./register-entry";
 
 // The matching window for a bank import and activity entered by hand.
 export const MANUAL_MATCH_DAYS = 10;
@@ -7,6 +11,7 @@ export const reviewImportsBeforeReconciliation =
   "Review imported bank activity before reconciling this account so it is not counted again as an adjustment.";
 
 export type BalanceImport = {
+  eligibility: ImportEligibility;
   accountId: string | null;
   transactionId?: string;
   date: string;
@@ -23,8 +28,8 @@ export type BalanceImport = {
   }[];
 };
 
-// The inbox has already left out opening history and dismissed imports.
-// Bank activity can affect an account before its purpose is decided.
+// Eligible bank activity can affect an account before its purpose is decided.
+// Opening history in review must not count a second time.
 export function balanceImports(
   budget: Pick<Budget, "accounts" | "transactions">,
   imports: readonly BalanceImport[],
@@ -51,6 +56,7 @@ export function balanceImports(
     );
     return (
       (account?.kind === "cash" || account?.kind === "credit") &&
+      !importEligibilityIssue(item.eligibility) &&
       !item.transactionId &&
       !item.removed &&
       !item.pending &&

@@ -488,7 +488,7 @@ void test("new loan activity asks for confirmed principal and interest without b
     (item) => item.providerAccountId === "loan",
   )!;
   assert.equal(activity.accountId, null);
-  assert.match(activity.error!, /principal and interest/);
+  assert.equal(activity.eligibility, "loan_activity");
   assert.equal(saved.view!.loans[0]!.balance, 500_000);
   assert.equal(
     saved.view!.accounts.filter((account) => !isCounterparty(account)).length,

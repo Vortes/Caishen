@@ -406,20 +406,26 @@ export function buildDevelopmentSeed({
         "amex",
       );
       run(actorId, {
-        type: "loan.payment",
+        type: "transaction.upsert",
+        transactionId: `register-payment-1:${date(period, 12)}:student`,
         loanId: "student",
-        accountId: "checking",
         date: date(period, 12),
-        principal: 19225,
         interest: 12775,
+        accountId: "checking",
+        amount: -(19225 + 12775),
+        payee: "Loan payment",
+        status: "posted",
       });
       run(actorId, {
-        type: "loan.payment",
+        type: "transaction.upsert",
+        transactionId: `register-payment-2:${date(period, 13)}:personal`,
         loanId: "personal",
-        accountId: "checking",
         date: date(period, 13),
-        principal: 18125,
         interest: 6375,
+        accountId: "checking",
+        amount: -(18125 + 6375),
+        payee: "Loan payment",
+        status: "posted",
       });
     }
     if (current) {
@@ -510,11 +516,14 @@ export function buildDevelopmentSeed({
     if (current) break;
     for (const actorId of [userId, partnerId])
       run(actorId, {
-        type: "card.payment",
-        cashAccountId: "checking",
-        cardAccountId: "amex",
+        type: "transaction.upsert",
+        transactionId: `register-payment-3:${date(period, 27)}`,
         date: date(period, 27),
-        amount: 35000,
+        accountId: "checking",
+        transferAccountId: "amex",
+        amount: -35000,
+        payee: "Credit card payment",
+        status: "posted",
       });
   }
 
@@ -576,11 +585,13 @@ export function buildDevelopmentSeed({
     "amex",
   );
   run(userId, {
-    type: "card.credit",
-    accountId: "amex",
+    type: "transaction.upsert",
+    transactionId: `register-payment-4:${date(month, 12)}`,
     date: date(month, 12),
+    accountId: "amex",
     amount: 1000,
-    posted: true,
+    payee: "Posted statement credit",
+    status: "posted",
   });
   run(userId, {
     type: "transaction.upsert",
@@ -767,11 +778,14 @@ export function buildDevelopmentSeed({
   );
   for (const actorId of [userId, partnerId])
     run(actorId, {
-      type: "card.payment",
-      cashAccountId: "checking",
-      cardAccountId: "amex",
+      type: "transaction.upsert",
+      transactionId: `register-payment-5:${asOf}`,
       date: asOf,
-      amount: 30000,
+      accountId: "checking",
+      transferAccountId: "amex",
+      amount: -30000,
+      payee: "Credit card payment",
+      status: "posted",
     });
 
   const parsed = bookSchema.parse(book);

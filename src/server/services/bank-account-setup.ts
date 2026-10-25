@@ -123,9 +123,6 @@ function unchangedOpeningActivity(mapping: BankMapping, record: StoredImport) {
   return false;
 }
 
-export const openingSnapshotChangedMessage =
-  "This activity may already be included in this account's opening balance. Investigate the bank's changes or uncertain matches before recording an adjustment; importing it could count it twice.";
-
 export function bankImportEligibility(
   mapping: BankMapping | undefined,
   record: StoredImport,

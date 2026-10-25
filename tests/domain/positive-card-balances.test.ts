@@ -93,7 +93,10 @@ void test("statement credits reaching and crossing zero preserve the payment res
     const f = fixture(-5000);
     f.run({ type: "assign", categoryId: "card:card", month, amount: 5000 });
     f.run({
-      type: "card.credit",
+      type: "transaction.upsert",
+      transactionId: "statement-credit",
+      payee: "Posted statement credit",
+      status: "posted",
       accountId: "card",
       date: "2026-10-05",
       amount: credit,

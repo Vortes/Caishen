@@ -35,7 +35,9 @@
   ],
   "source": {
     "transactionId": "market-import",
-    "lineId": "market-import"
+    "lineId": "market-import",
+    "hasPurposeCategory": true,
+    "onSplitPurchase": false
   },
   "sort": 0
 }

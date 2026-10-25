@@ -4,7 +4,10 @@ export function isTransfer(transaction: Pick<Transaction, "kind">) {
   return transaction.kind === "transfer" || transaction.kind === "card-payment";
 }
 
-export function transferCounterparts(budget: Budget, transaction: Transaction) {
+export function transferCounterparts(
+  budget: Pick<Budget, "transactions">,
+  transaction: Transaction,
+) {
   if (!isTransfer(transaction) || !transaction.linkedId) return [];
   return budget.transactions.filter(
     (item) =>

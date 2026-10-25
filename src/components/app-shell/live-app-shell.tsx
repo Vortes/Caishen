@@ -499,10 +499,7 @@ function LiveWorkspace({
     summary: string,
     onSettled: (result: Settled) => void,
   ): RunResult => {
-    if (
-      command.type !== "transaction.upsert" &&
-      command.type !== "transaction.save"
-    )
+    if (command.type !== "transaction.upsert")
       return { ok: false, message: "This bank operation cannot be previewed." };
     const result = client.run(command, {
       summary,
@@ -540,10 +537,7 @@ function LiveWorkspace({
         if (!saved) refused?.();
       }),
     saveImport: (item, command, summary, refused) => {
-      if (
-        command.type === "transaction.upsert" ||
-        command.type === "transaction.save"
-      )
+      if (command.type === "transaction.upsert")
         return message(
           previewImport(item, command, summary, (settled) => {
             if (settled.ok) notify(summary, "neutral", command.id);

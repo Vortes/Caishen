@@ -13,11 +13,12 @@ import {
 } from "~/domain/payee-memory";
 import { READY_TO_ASSIGN } from "~/domain/transfers";
 import {
-  bankImportActionIssue,
+  classifyRegisterEntry,
+  type ImportEligibility,
+  type BankInboxItem,
   alreadyLinkedImportMessage,
-  loanActivityReviewMessage,
   quarantinedImportMessage,
-} from "~/domain/transaction-actions";
+} from "~/domain/register-entry";
 import { prepareUserCommand } from "~/domain/user-command";
 import { Prisma } from "~/generated/prisma";
 import {
@@ -74,7 +75,6 @@ import {
   bankMappingsSchema as mappingsSchema,
   bankSetupDate,
   openingSnapshot,
-  openingSnapshotChangedMessage,
   setupBankAccountsSchema,
   type SetupBankAccountsInput,
 } from "./bank-account-setup";
@@ -487,6 +487,11 @@ export function bankInboxItems(
                 record,
               )
             : [];
+        const eligibility: ImportEligibility = loanId
+          ? "loan_activity"
+          : !mapping
+            ? "unmapped"
+            : bankImportEligibility(mapping, record);
         return {
           ...category,
           categoryId,
@@ -504,14 +509,8 @@ export function bankInboxItems(
           removed: record.removed,
           needsMatchReview: record.matchStatus === "needs_review",
           ...(partnerMatches.length ? { partnerMatches } : {}),
-          error: loanId
-            ? loanActivityReviewMessage
-            : bankImportEligibility(
-                  mappings[record.current.providerAccountId],
-                  record,
-                ) === "opening_snapshot_changed"
-              ? openingSnapshotChangedMessage
-              : (state.errors[record.id] ?? null),
+          eligibility,
+          error: state.errors[record.id] ?? null,
           history: record.history,
           reviewEvidence: state.reviews[record.id] ?? [],
           quarantined: false,
@@ -530,6 +529,11 @@ export function bankInboxItems(
         const loanId = budget?.loans.find(
           (loan) => loan.id === mapping?.accountId,
         )?.id;
+        const eligibility: ImportEligibility = loanId
+          ? "loan_activity"
+          : !mapping
+            ? "unmapped"
+            : "eligible";
         return {
           categoryName: null,
           categoryId: null,
@@ -547,6 +551,7 @@ export function bankInboxItems(
           pending: transaction.pending,
           removed: false,
           needsMatchReview: false,
+          eligibility,
           error: quarantineMessage(transaction),
           history: [],
           reviewEvidence: [review],
@@ -1108,8 +1113,6 @@ async function applyBankUpdate(
     const mapped = mappings[record.current.providerAccountId];
     const resolution = old.resolved[record.id];
     const eligibility = bankImportEligibility(mapped, record);
-    if (eligibility === "opening_snapshot_changed")
-      state.errors[record.id] = openingSnapshotChangedMessage;
     if (
       !mapped ||
       opened.ledger.budget.loans.some((loan) => loan.id === mapped.accountId) ||
@@ -1415,24 +1418,27 @@ export async function resolveImport(
         decidedAt: new Date().toISOString(),
       };
     else {
-      const imported = {
+      const imported: BankInboxItem = {
         accountId: mapping?.accountId ?? null,
         transactionId: state.resolved[record.id]?.transactionId,
         removed: record.removed,
         quarantined: false,
+        amount: -record.current.amountCents,
+        eligibility: (!mapping
+          ? "unmapped"
+          : ledger.budget.loans.some((loan) => loan.id === mapping.accountId)
+            ? "loan_activity"
+            : bankImportEligibility(
+                mapping,
+                record,
+              )) satisfies ImportEligibility,
       };
-      const linkIssue = bankImportActionIssue(ledger.budget, imported, "link");
-      if (linkIssue) throw new Error(linkIssue);
+      const link = classifyRegisterEntry(ledger.budget, imported).capabilities
+        .link;
+      if (!link.ok) throw new Error(link.reason);
       if (!mapping)
         throw new Error(
           "Map this provider account to your own ledger account first.",
-        );
-      const eligibility = bankImportEligibility(mapping, record);
-      if (eligibility !== "eligible")
-        throw new Error(
-          eligibility === "opening_snapshot_changed"
-            ? openingSnapshotChangedMessage
-            : "This activity is already included in the opening balance or predates the import start date. Ignore it rather than duplicating opening history.",
         );
       if (opened.requestRevision !== input.expectedRevision)
         throw refusal(
@@ -1472,15 +1478,11 @@ export async function resolveImport(
         submitted = saveIdentity(submittedCommand);
       } else {
         const command = input.command;
-        const recordIssue = bankImportActionIssue(budget, imported, "record");
-        if (recordIssue) throw new Error(recordIssue);
-        if (
-          command?.type !== "transaction.upsert" &&
-          !(input.expectedFingerprint && command?.type === "transaction.save")
-        )
-          throw new Error(
-            "Record specialized payments or credits using their dedicated operation, then link the existing ledger record.",
-          );
+        const recordCapability = classifyRegisterEntry(budget, imported)
+          .capabilities.record;
+        if (!recordCapability.ok) throw new Error(recordCapability.reason);
+        if (command?.type !== "transaction.upsert")
+          throw new Error("Choose a transaction to record this bank activity.");
         if (
           budget.transactions.some((item) => item.id === command.transactionId)
         )

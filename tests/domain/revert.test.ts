@@ -119,7 +119,12 @@ void test("an undo is refused when a row it restores changed since, including by
     /changed again since/,
   );
   // Moving the transfer again changed the rows the first save wrote.
-  const firstSave = find("transaction.save");
+  const firstSave = written.find(
+    (item) =>
+      item.command.type === "transaction.upsert" &&
+      item.command.transactionId === "move" &&
+      item.command.transferAccountId === "savings",
+  )!;
   assert.match(
     refusal(() => executeRevert(final, revertOf(firstSave), firstSave.stamped)),
     /changed again since/,

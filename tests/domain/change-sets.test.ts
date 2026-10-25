@@ -58,7 +58,9 @@ void test("every corpus change set equals a full comparison of the household's r
     assert.equal(item.changeSet.operationId, item.command.id);
     // Only an unposted card credit is checked without being recorded.
     const recorded = !(
-      item.command.type === "card.credit" && item.command.posted === false
+      item.command.type === "transaction.upsert" &&
+      item.command.status === "pending" &&
+      item.command.payee === "Posted statement credit"
     );
     assert.equal(
       item.changeSet.after.length > 0,
@@ -113,7 +115,12 @@ void test("change sets include the rows a command changes far from itself", () =
   );
   // Editing a loan payment from the register re-adds its payment, which
   // moves it after later payments.
-  const loanEdit = step("transaction.save", 4);
+  const loanEdit = corpus.steps.find(
+    (item) =>
+      item.command.type === "transaction.upsert" &&
+      item.command.transactionId === "car-payment" &&
+      item.command.revision !== undefined,
+  )!;
   const paymentId = loanEdit.after.budgets.alex!.transactions.find(
     (transaction) => transaction.id === "car-payment",
   )!.linkedId!;
@@ -125,11 +132,19 @@ void test("change sets include the rows a command changes far from itself", () =
     ["loanPayment", 2],
   );
   // Moving a transfer to another account retires the old counterpart.
-  const moved = step("transaction.save", 1);
+  const moved = corpus.steps.find(
+    (item) =>
+      item.command.type === "transaction.upsert" &&
+      item.command.transactionId === "move" &&
+      item.command.transferAccountId === "brokerage",
+  )!;
   const retired = moved.changeSet.after.find(
     (row) =>
       row.id ===
-      rowKey("alex", `${step("transaction.save").command.id}:counterpart`),
+      rowKey(
+        "alex",
+        `${corpus.steps.find((item) => item.command.type === "transaction.upsert" && item.command.transactionId === "move" && item.command.transferAccountId === "savings")!.command.id}:counterpart`,
+      ),
   );
   assert.equal(
     (retired?.data as { removed?: boolean } | undefined)?.removed,

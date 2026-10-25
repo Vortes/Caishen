@@ -215,7 +215,7 @@ void test("editing a transfer keeps both sides' locks, and a reconciled side kee
     openingBalance: 0,
   });
   setup.run({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "to-savings",
     accountId: "checking",
     date: "2026-10-06",
@@ -237,7 +237,7 @@ void test("editing a transfer keeps both sides' locks, and a reconciled side kee
   });
   const save = (changes: { date?: string; amount?: number }) =>
     setup.run({
-      type: "transaction.save",
+      type: "transaction.upsert",
       transactionId: "to-savings",
       accountId: "checking",
       date: "2026-10-06",

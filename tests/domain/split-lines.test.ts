@@ -320,7 +320,7 @@ void test("a split works on a card refund, but not as a transfer or on a trackin
   assert.throws(
     () =>
       budget.run({
-        type: "transaction.save",
+        type: "transaction.upsert",
         transactionId: "costco-to-savings",
         accountId: "checking",
         date,

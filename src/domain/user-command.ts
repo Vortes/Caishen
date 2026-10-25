@@ -26,15 +26,11 @@ export function prepareUserCommand(
   const today = budgetDay(budget.settings.timezone, now);
   const datedActivity = [
     "transaction.upsert",
-    "transaction.save",
-    "card.payment",
-    "card.credit",
     "counterparty.receive",
     "partner.edit",
     "partner.request",
     "partner.record",
     "partner.match",
-    "loan.payment",
     "account.add",
   ].includes(command.type);
   const date =
@@ -48,7 +44,6 @@ export function prepareUserCommand(
       "Record confirmed activity on or before today in your budget's timezone. Future activity cannot create or consume available cash.",
     );
   if (
-    command.type === "transaction.save" ||
     command.type === "transaction.upsert" ||
     command.type === "counterparty.receive" ||
     command.type === "partner.edit" ||

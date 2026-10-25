@@ -172,7 +172,7 @@ void test("nothing is recorded on a counterparty account directly", () => {
   assert.throws(
     () =>
       budget.run({
-        type: "transaction.save",
+        type: "transaction.upsert",
         transactionId: "repaid",
         accountId: "checking",
         transferAccountId: "counterparty:reimbursements",
