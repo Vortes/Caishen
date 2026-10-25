@@ -3673,7 +3673,14 @@ function applyCommand(
           loanId: command.loanId,
         },
       );
-      if (existing && !entry.capabilities.edit.ok)
+      // A bank update may restore a removed transaction: a posting replaces
+      // the removed pending purchase it came from (banks.ts restoresPending).
+      // The user may not.
+      if (
+        existing &&
+        !(existing.removed && source !== "user") &&
+        !entry.capabilities.edit.ok
+      )
         fail(entry.capabilities.edit.reason);
       if (
         command.transferAccountId ||
