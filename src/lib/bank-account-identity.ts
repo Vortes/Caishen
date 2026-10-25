@@ -40,7 +40,8 @@ export function possibleBankAccount(
       institutionId === existingInstitutionId &&
       incoming.type === existing.type &&
       incoming.subtype === existing.subtype &&
-      (!incoming.mask?.trim() ||
+      ((Boolean(incoming.mask?.trim()) && incoming.mask === existing.mask) ||
+        !incoming.mask?.trim() ||
         !existing.mask?.trim() ||
         !incoming.name.trim() ||
         !existing.name.trim()),
@@ -75,6 +76,7 @@ export function bankRecoveryCandidates(
   incoming: BankAccountIdentity,
   institutionId: string | null,
   connections: BankAccountLinks[],
+  budgetAccountKinds: ReadonlyMap<string, string>,
 ) {
   return connections.flatMap((connection) => {
     if (!institutionId || institutionId !== connection.institutionId) return [];
@@ -83,6 +85,9 @@ export function bankRecoveryCandidates(
         const saved = connection.accounts.find(
           (account) => account.accountId === providerId,
         );
+        const kind = incoming.type === "depository" ? "cash" : incoming.type;
+        const savedKind = budgetAccountKinds.get(mapping.accountId);
+        if (!saved && savedKind && savedKind !== kind) return [];
         if (
           !bankAccountNeedsRecovery(connection, providerId) ||
           (saved &&

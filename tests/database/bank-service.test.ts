@@ -359,7 +359,7 @@ void test("disconnecting a bank preserves the account, reviewed history, and out
   assert.deepEqual(paths, ["/item/remove"]);
 });
 
-for (const mode of ["disconnected", "unavailable"] as const)
+for (const mode of ["disconnected", "unavailable", "renamed"] as const)
   void test(`relinking a ${mode} account preserves its reconciled history and excludes the replacement's historical imports`, async () => {
     const h = await linkedHarness();
     const today = bankSetupDate("America/Los_Angeles");
@@ -370,6 +370,10 @@ for (const mode of ["disconnected", "unavailable"] as const)
       accounts: [
         {
           ...accountsResponse().accounts[0]!,
+          name:
+            replacement && mode === "renamed"
+              ? "Chase checking renamed"
+              : "Chase checking",
           account_id: replacement
             ? "replacement-checking"
             : "provider-checking",
@@ -480,6 +484,12 @@ for (const mode of ["disconnected", "unavailable"] as const)
     assert.deepEqual(after.accounts, before.accounts);
     assert.deepEqual(after.transactions, before.transactions);
     assert.deepEqual(await bankInbox(db, alice), []);
+    if (mode !== "disconnected")
+      assert.deepEqual(
+        (await h.details()).accounts.map((account) => account.accountId),
+        ["replacement-checking"],
+        "retired provider identity must not be offered as another account",
+      );
     later = true;
     await h.api.budget.sync();
     const inbox = await bankInbox(db, alice);
@@ -1574,6 +1584,57 @@ void test("concurrent initial Link completions cannot exchange the same bank twi
     1,
   );
   assert.equal(exchanges, 1);
+});
+
+void test("missing identity for a cash account does not block adding a new credit card", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [],
+  });
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const response = accountsResponse();
+    Object.assign(response.accounts[0]!, {
+      account_id: "new-credit",
+      name: "New credit card",
+      type: "credit",
+      subtype: "credit card",
+    });
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        accounts: response.accounts,
+        next_cursor: "credit",
+        has_more: false,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      });
+    return Response.json(response);
+  });
+  await syncBanks(db, alice);
+  const before = (await h.state()).view!.budget.accounts.find(
+    (account) => account.id === "cash",
+  );
+  await h.api.budget.setupBankAccounts({
+    connectionId: h.connection.id,
+    operationId: randomUUID(),
+    expectedRevision: await h.revision(),
+    accounts: [
+      {
+        providerAccountId: "new-credit",
+        name: "New credit card",
+        expectedBalance: 123.45,
+      },
+    ],
+  });
+  const after = (await h.state()).view!.budget.accounts;
+  assert.deepEqual(
+    after.find((account) => account.id === "cash"),
+    before,
+  );
+  assert.equal(after.filter((account) => account.kind === "credit").length, 1);
 });
 
 void test("Add accounts cannot duplicate a mapped card whose Plaid ID changed after its cached identity was lost", async () => {

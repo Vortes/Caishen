@@ -406,8 +406,7 @@ export async function exchangeBankToken(
           );
           if (!details) throw connectionMaintenance();
           if (details.disconnectedAt) continue;
-          if (details.institutionId !== linked.institution.institution_id)
-            continue;
+          if (details.institutionId !== institutionId) continue;
           if (
             details.accounts.length === 0 ||
             Object.keys(mappings(saved)).some(
@@ -1257,6 +1256,7 @@ export async function setupBankAccounts(
       ),
     );
     const retired = new Set<number>();
+    const retiredProviderIds = new Set<string>();
     const linkedAccounts = identities.map((saved, index) => ({
       institutionId: saved.institutionId,
       accounts: saved.accounts.filter(
@@ -1268,6 +1268,10 @@ export async function setupBankAccounts(
         Object.values(saved).map((mapping) => mapping.accountId),
       ),
     );
+    const budgetAccountKinds = new Map([
+      ...budget.accounts.map((account) => [account.id, account.kind] as const),
+      ...budget.loans.map((loan) => [loan.id, "loan"] as const),
+    ]);
     const accountIds: string[] = [];
     const commands: Command[] = [];
     for (const selected of input.accounts) {
@@ -1319,6 +1323,7 @@ export async function setupBankAccounts(
         provider,
         state.institutionId,
         identities,
+        budgetAccountKinds,
       ).map((candidate) => candidate.accountId);
       if (
         recognized.length &&
@@ -1406,9 +1411,10 @@ export async function setupBankAccounts(
           ),
         };
         for (const { index, providerId } of sources) {
-          if (connections[index]!.id === connection.id)
+          if (connections[index]!.id === connection.id) {
             delete mappings[providerId];
-          else {
+            retiredProviderIds.add(providerId);
+          } else {
             delete remainingMappings[index]![providerId];
             retired.add(index);
           }
@@ -1557,6 +1563,16 @@ export async function setupBankAccounts(
           where: { id: connection.id, updatedAt: connection.updatedAt },
           data: {
             accountMappings: jsonValue(mappings),
+            ...(retiredProviderIds.size
+              ? {
+                  imports: detailsColumn(connection.imports, {
+                    ...state,
+                    accounts: state.accounts.filter(
+                      (account) => !retiredProviderIds.has(account.accountId),
+                    ),
+                  }),
+                }
+              : {}),
             unavailableAccountIds: connection.unavailableAccountIds.filter(
               (id) => mappings[id],
             ),

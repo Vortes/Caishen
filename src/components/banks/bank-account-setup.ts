@@ -108,9 +108,22 @@ export function useBankAccountSetupForm({
       bankAccountMappings(item.accountMappings),
     ),
   }));
+  const budgetAccountKinds = new Map([
+    ...(state.view?.budget.accounts ?? []).map(
+      (account) => [account.id, account.kind] as const,
+    ),
+    ...(state.view?.budget.loans ?? []).map(
+      (loan) => [loan.id, "loan"] as const,
+    ),
+  ]);
   const recoveryAccounts = (account: BankAccount, exact = false) => [
     ...new Set(
-      bankRecoveryCandidates(account, connection.institutionId, identities)
+      bankRecoveryCandidates(
+        account,
+        connection.institutionId,
+        identities,
+        budgetAccountKinds,
+      )
         .filter((candidate) => !exact || candidate.exact)
         .map((candidate) => candidate.accountId),
     ),
