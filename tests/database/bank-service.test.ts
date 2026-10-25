@@ -2909,3 +2909,34 @@ void test("completing Link records a success event with the institution and acco
     ],
   );
 });
+
+void test("leaving Link early records an exit event with Plaid's error code and request id", async () => {
+  const h = await harness();
+  await h.api.budget.plaidLinkExit({
+    connectionId: h.connection.id,
+    institutionId: "ins-chase",
+    errorCode: "INVALID_CREDENTIALS",
+    requestId: "req-link-exit-1",
+  });
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, requestId, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      requestId,
+      detail,
+    })),
+    [
+      {
+        method: "exit",
+        connectionId: h.connection.id,
+        errorCode: "INVALID_CREDENTIALS",
+        requestId: "req-link-exit-1",
+        detail: { institutionId: "ins-chase", accountCount: null },
+      },
+    ],
+  );
+});

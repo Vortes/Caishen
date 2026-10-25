@@ -7,7 +7,15 @@ export type PlaidSdk = {
     receivedRedirectUri?: string;
     onSuccess: (publicToken: string, metadata: PlaidLinkMetadata) => void;
     onExit: (
-      error: { display_message?: string; error_message?: string } | null,
+      error: {
+        error_code?: string;
+        display_message?: string;
+        error_message?: string;
+      } | null,
+      metadata: {
+        institution?: { institution_id?: string | null } | null;
+        request_id?: string;
+      },
     ) => void;
   }) => PlaidHandler;
 };

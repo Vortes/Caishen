@@ -49,6 +49,8 @@ import {
   reconnectBank,
   disconnectBank,
   setupBankAccounts,
+  bankLinkExitSchema,
+  recordBankLinkExit,
 } from "~/server/services/banks";
 import { setupBankAccountsSchema } from "~/server/services/bank-account-setup";
 
@@ -308,6 +310,11 @@ export const budgetRouter = createTRPCRouter({
     )
     .mutation(({ ctx, input }) =>
       exchangeBankToken(ctx.db, ctx.userId, input.publicToken, input.metadata),
+    ),
+  plaidLinkExit: protectedProcedure
+    .input(bankLinkExitSchema)
+    .mutation(({ ctx, input }) =>
+      recordBankLinkExit(ctx.db, ctx.userId, input),
     ),
   plaidReconnect: protectedProcedure
     .input(z.object({ connectionId: z.string().min(1).max(256) }))

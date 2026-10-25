@@ -41,13 +41,21 @@ export function usePlaidLink() {
   const token = api.budget.plaidLinkToken.useMutation();
   const exchange = api.budget.plaidExchange.useMutation();
   const reconnect = api.budget.plaidReconnect.useMutation();
+  const linkExit = api.budget.plaidLinkExit.useMutation();
   const sync = api.budget.sync.useMutation();
   const [state, setState] = useState<FlowState>(initial);
   const generation = useRef(0);
   const busy = useRef(false);
   const handler = useRef<PlaidHandler | null>(null);
-  const operations = useRef({ token, exchange, reconnect, sync, utils });
-  operations.current = { token, exchange, reconnect, sync, utils };
+  const operations = useRef({
+    token,
+    exchange,
+    reconnect,
+    linkExit,
+    sync,
+    utils,
+  });
+  operations.current = { token, exchange, reconnect, linkExit, sync, utils };
 
   const cancel = useCallback(() => {
     generation.current += 1;
@@ -141,12 +149,24 @@ export function usePlaidLink() {
           release();
           void finish(publicToken, metadata);
         },
-        onExit: (error) => {
+        onExit: (error, metadata) => {
           if (finished || generation.current !== current) return;
           finished = true;
           clearPlaidLinkSession(storage, session.linkToken);
           release();
           busy.current = false;
+          // The exit is in the audit trail for support; the user already
+          // sees the outcome, so a failed record changes nothing here.
+          operations.current.linkExit
+            .mutateAsync({
+              connectionId: session.connectionId,
+              institutionId: metadata?.institution?.institution_id ?? null,
+              errorCode: error?.error_code ?? null,
+              requestId: metadata?.request_id ?? null,
+            })
+            .catch((failure: unknown) =>
+              console.error("Link exit could not be recorded", failure),
+            );
           setState((value) => ({
             ...value,
             phase: "idle",

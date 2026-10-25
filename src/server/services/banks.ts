@@ -521,6 +521,37 @@ export async function exchangeBankToken(
   }
 }
 
+export const bankLinkExitSchema = z.object({
+  connectionId: z.string().min(1).max(256).optional(),
+  institutionId: z.string().min(1).max(256).nullable().optional(),
+  errorCode: z.string().min(1).max(100).nullable().optional(),
+  requestId: z.string().min(1).max(256).nullable().optional(),
+});
+
+/** Where a member's Link attempt ended when it did not complete. */
+export async function recordBankLinkExit(
+  db: Database,
+  userId: string,
+  exit: z.infer<typeof bankLinkExitSchema>,
+) {
+  // A connection id from the browser counts only when it is the member's own.
+  const connection = exit.connectionId
+    ? await db.bankConnection.findFirst({
+        where: { id: exit.connectionId, clerkUserId: userId },
+        select: { id: true },
+      })
+    : null;
+  await recordBankLinkOutcome(db, {
+    userId,
+    method: "exit",
+    connectionId: connection?.id ?? null,
+    institutionId: exit.institutionId ?? null,
+    accountCount: null,
+    errorCode: exit.errorCode ?? null,
+    requestId: exit.requestId ?? null,
+  });
+}
+
 // Missing provider accounts retain their identity for display and duplicate checks.
 // Only a response from Plaid can make their balances current again.
 function mergeAccountCatalog(
