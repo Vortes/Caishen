@@ -3,8 +3,9 @@
 import type { PlaidLinkMetadata } from "~/lib/plaid-link-metadata";
 
 import { useAuth } from "@clerk/nextjs";
+import { TRPCClientError } from "@trpc/client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "~/trpc/react";
+import { api, type RouterOutputs } from "~/trpc/react";
 import { loadPlaid, type PlaidHandler } from "./plaid-link-sdk";
 import {
   clearPlaidLinkSession,
@@ -15,7 +16,8 @@ import {
   type PlaidLinkSession,
 } from "./plaid-link-session";
 
-type Phase = "idle" | "loading" | "link" | "saving" | "syncing" | "complete";
+type Phase =
+  "idle" | "loading" | "link" | "review" | "saving" | "syncing" | "complete";
 type FlowState = {
   phase: Phase;
   error: string;
@@ -24,6 +26,7 @@ type FlowState = {
   needsSync: boolean;
   connectionId?: string;
   canonicalOrigin?: string;
+  review?: RouterOutputs["budget"]["plaidLinkReview"];
 };
 const initial: FlowState = {
   phase: "idle",
@@ -40,6 +43,7 @@ export function usePlaidLink() {
   const utils = api.useUtils();
   const token = api.budget.plaidLinkToken.useMutation();
   const exchange = api.budget.plaidExchange.useMutation();
+  const review = api.budget.plaidLinkReview.useMutation();
   const reconnect = api.budget.plaidReconnect.useMutation();
   const linkExit = api.budget.plaidLinkExit.useMutation();
   const sync = api.budget.sync.useMutation();
@@ -47,18 +51,31 @@ export function usePlaidLink() {
   const generation = useRef(0);
   const busy = useRef(false);
   const handler = useRef<PlaidHandler | null>(null);
+  const pendingReview = useRef<((reviewId: string) => Promise<void>) | null>(
+    null,
+  );
   const operations = useRef({
     token,
+    review,
     exchange,
     reconnect,
     linkExit,
     sync,
     utils,
   });
-  operations.current = { token, exchange, reconnect, linkExit, sync, utils };
+  operations.current = {
+    token,
+    review,
+    exchange,
+    reconnect,
+    linkExit,
+    sync,
+    utils,
+  };
 
   const cancel = useCallback(() => {
     generation.current += 1;
+    pendingReview.current = null;
     busy.current = false;
     const previous = handler.current;
     handler.current = null;
@@ -85,10 +102,33 @@ export function usePlaidLink() {
       const finish = async (
         publicToken: string,
         metadata: PlaidLinkMetadata,
+        reviewId?: string,
       ) => {
         let saved = Boolean(session.connectionId);
         try {
-          setState((value) => ({ ...value, phase: "saving" }));
+          setState((value) => ({
+            ...value,
+            phase: "saving",
+            error: "",
+            review: undefined,
+          }));
+          if (!session.connectionId && !reviewId) {
+            const checked = await operations.current.review.mutateAsync({
+              metadata,
+            });
+            if (generation.current !== current) return;
+            if (checked.connections.length) {
+              pendingReview.current = (confirmed) =>
+                finish(publicToken, metadata, confirmed);
+              setState((value) => ({
+                ...value,
+                phase: "review",
+                review: checked,
+              }));
+              return;
+            }
+            reviewId = checked.reviewId;
+          }
           const result = session.connectionId
             ? await operations.current.reconnect.mutateAsync({
                 connectionId: session.connectionId,
@@ -97,8 +137,10 @@ export function usePlaidLink() {
             : await operations.current.exchange.mutateAsync({
                 publicToken,
                 metadata,
+                reviewId,
               });
           saved = true;
+          pendingReview.current = null;
           if (generation.current !== current) return;
           setState((value) => ({
             ...value,
@@ -118,6 +160,35 @@ export function usePlaidLink() {
                 : "Bank connected. Name your accounts to add them to Cash or Credit. Transactions can take a few minutes to become available.",
             }));
         } catch (error) {
+          if (
+            !saved &&
+            reviewId &&
+            error instanceof TRPCClientError &&
+            (error.data as { code?: unknown } | undefined)?.code === "CONFLICT"
+          ) {
+            try {
+              const checked = await operations.current.review.mutateAsync({
+                metadata,
+                recordCompletion: false,
+              });
+              if (generation.current !== current) return;
+              pendingReview.current = (confirmed) =>
+                finish(publicToken, metadata, confirmed);
+              setState((value) => ({
+                ...value,
+                phase: "review",
+                review: checked,
+                error: failureMessage(
+                  error,
+                  "Review the updated bank accounts before continuing.",
+                ),
+              }));
+              return;
+            } catch (reviewFailure) {
+              error = reviewFailure;
+            }
+          }
+          pendingReview.current = null;
           if (saved) {
             await operations.current.utils.budget
               .invalidate()
@@ -192,6 +263,7 @@ export function usePlaidLink() {
     async (connectionId?: string) => {
       if (!userId || busy.current) return;
       busy.current = true;
+      pendingReview.current = null;
       const current = ++generation.current;
       setState({ ...initial, phase: "loading", connectionId });
       let pendingSession: { storage: Storage; linkToken: string } | undefined;
@@ -321,6 +393,21 @@ export function usePlaidLink() {
     start,
     resume,
     retrySync,
+    confirmReview: () => {
+      if (
+        busy.current ||
+        !state.review ||
+        state.review.verdict === "all" ||
+        !pendingReview.current
+      )
+        return;
+      busy.current = true;
+      void pendingReview.current(state.review.reviewId);
+    },
+    dismissReview: () => {
+      cancel();
+      setState(initial);
+    },
     cancel,
   };
 }

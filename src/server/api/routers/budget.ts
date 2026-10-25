@@ -308,9 +308,19 @@ export const budgetRouter = createTRPCRouter({
       linkBankToken(ctx.db, ctx.userId, input?.connectionId),
     ),
   plaidLinkReview: protectedProcedure
-    .input(z.object({ metadata: plaidLinkMetadataSchema }))
+    .input(
+      z.object({
+        metadata: plaidLinkMetadataSchema,
+        recordCompletion: z.boolean().default(true),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      reviewBankLink(ctx.db, ctx.userId, input.metadata),
+      reviewBankLink(
+        ctx.db,
+        ctx.userId,
+        input.metadata,
+        input.recordCompletion,
+      ),
     ),
   plaidExchange: protectedProcedure
     .input(

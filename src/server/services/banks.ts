@@ -477,7 +477,12 @@ function reviewBankLinkConnections(
         connection.imports,
       );
       if (!details) throw connectionMaintenance();
-      if (details.disconnectedAt || details.institutionId !== institutionId)
+      if (
+        details.disconnectedAt ||
+        connection.status === "revoked" ||
+        connection.status === "disconnected" ||
+        details.institutionId !== institutionId
+      )
         return [];
       const lost = Object.keys(mappings(connection))
         .filter(
@@ -521,7 +526,11 @@ function reviewBankLinkConnections(
         connection.institutionName ?? "",
       ),
     ),
-    reviewId: operationHash({ metadata: linked, connections: matching }),
+    reviewId: operationHash({
+      metadata: linked,
+      connections: visible,
+      verdict,
+    }),
   };
 }
 
@@ -529,14 +538,22 @@ export async function reviewBankLink(
   db: Database,
   userId: string,
   metadata: unknown,
+  recordCompletion = true,
 ) {
   const linked = plaidLinkMetadataSchema.parse(metadata);
   const connections = await db.bankConnection.findMany({
     where: { clerkUserId: userId },
   });
-  return reviewBankLinkConnections(connections, linked);
+  const review = reviewBankLinkConnections(connections, linked);
+  if (recordCompletion)
+    await recordBankLinkOutcome(db, {
+      userId,
+      method: "success",
+      institutionId: linked.institution?.institution_id ?? null,
+      accountCount: linked.accounts.length,
+    });
+  return review;
 }
-
 export async function exchangeBankToken(
   db: Database,
   userId: string,
@@ -655,7 +672,7 @@ export async function exchangeBankToken(
   } catch (error) {
     return domainError(error);
   } finally {
-    if (completed)
+    if (completed && !reviewId)
       await recordBankLinkOutcome(db, {
         userId,
         method: "success",
