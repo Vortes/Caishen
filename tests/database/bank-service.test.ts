@@ -359,127 +359,134 @@ void test("disconnecting a bank preserves the account, reviewed history, and out
   assert.deepEqual(paths, ["/item/remove"]);
 });
 
-void test("relinking a disconnected account preserves its reconciled history and excludes the replacement's historical imports", async () => {
-  const h = await linkedHarness();
-  const today = bankSetupDate("America/Los_Angeles");
-  let replacement = false;
-  let later = false;
-  const response = () => ({
-    ...accountsResponse(),
-    accounts: [
-      {
-        ...accountsResponse().accounts[0]!,
-        account_id: replacement ? "replacement-checking" : "provider-checking",
-        balances: {
-          ...accountsResponse().accounts[0]!.balances,
-          current: later ? 93 : 95,
+for (const mode of ["disconnected", "unavailable"] as const)
+  void test(`relinking a ${mode} account preserves its reconciled history and excludes the replacement's historical imports`, async () => {
+    const h = await linkedHarness();
+    const today = bankSetupDate("America/Los_Angeles");
+    let replacement = false;
+    let later = false;
+    const response = () => ({
+      ...accountsResponse(),
+      accounts: [
+        {
+          ...accountsResponse().accounts[0]!,
+          account_id: replacement
+            ? "replacement-checking"
+            : "provider-checking",
+          balances: {
+            ...accountsResponse().accounts[0]!.balances,
+            current: later ? 93 : 95,
+          },
         },
-      },
-    ],
-  });
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
-    switch (requestUrl(url).pathname) {
-      case "/item/remove":
-        return Response.json({ removed: true });
-      case "/item/public_token/exchange":
-        return Response.json({
-          access_token: "replacement-token",
-          item_id: `replacement-${run}`,
-        });
-      case "/accounts/get":
-        return Response.json(response());
-      case "/transactions/sync":
-        return Response.json({
-          added: [
-            {
-              transaction_id: later ? "new-purchase" : "replacement-history",
-              account_id: "replacement-checking",
-              pending: false,
-              amount: later ? 2 : 5,
-              iso_currency_code: "USD",
-              date: later ? today : "2026-10-10",
-              name: later ? "New purchase" : "Recorded purchase",
-            },
-          ],
-          modified: [],
-          removed: [],
-          accounts: response().accounts,
-          has_more: false,
-          next_cursor: later ? "later" : "replacement",
-          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
-        });
-      default:
-        throw new Error("Unexpected provider request");
-    }
-  });
-  await reconnectBank(db, alice, h.connection.id);
-  await h.setBook(
-    execute(await h.book(), alice, {
-      type: "transaction.upsert",
-      id: randomUUID(),
-      transactionId: "history",
-      accountId: "cash",
-      date: "2026-10-10",
-      amount: -500,
-      payee: "Recorded purchase",
-      categoryId: "dining",
-      status: "posted",
-    }),
-  );
-  await h.setBook(
-    execute(await h.book(), alice, {
-      type: "account.reconcile",
-      id: randomUUID(),
-      accountId: "cash",
-      date: today,
-      balance: 9500,
-    }),
-  );
-  const before = (await h.state()).view!.budget;
-  await h.api.budget.disconnectBank({
-    connectionId: h.connection.id,
-    operationId: randomUUID(),
-    expectedRevision: await h.revision(),
-  });
-  replacement = true;
-  const linked = await h.api.budget.plaidExchange({
-    publicToken: "replacement-public",
-    metadata: linkMetadata(response()),
-  });
-  await h.api.budget.sync();
-  const selected = {
-    providerAccountId: "replacement-checking",
-    name: "Checking",
-    expectedBalance: 95,
-  };
-  await assert.rejects(
-    h.api.budget.setupBankAccounts({
+      ],
+    });
+    mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+      switch (requestUrl(url).pathname) {
+        case "/item/remove":
+          return Response.json({ removed: true });
+        case "/item/public_token/exchange":
+          return Response.json({
+            access_token: "replacement-token",
+            item_id: `replacement-${run}`,
+          });
+        case "/accounts/get":
+          return Response.json(response());
+        case "/transactions/sync":
+          return Response.json({
+            added: [
+              {
+                transaction_id: later ? "new-purchase" : "replacement-history",
+                account_id: "replacement-checking",
+                pending: false,
+                amount: later ? 2 : 5,
+                iso_currency_code: "USD",
+                date: later ? today : "2026-10-10",
+                name: later ? "New purchase" : "Recorded purchase",
+              },
+            ],
+            modified: [],
+            removed: [],
+            accounts: response().accounts,
+            has_more: false,
+            next_cursor: later ? "later" : "replacement",
+            transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+          });
+        default:
+          throw new Error("Unexpected provider request");
+      }
+    });
+    await reconnectBank(db, alice, h.connection.id);
+    await h.setBook(
+      execute(await h.book(), alice, {
+        type: "transaction.upsert",
+        id: randomUUID(),
+        transactionId: "history",
+        accountId: "cash",
+        date: "2026-10-10",
+        amount: -500,
+        payee: "Recorded purchase",
+        categoryId: "dining",
+        status: "posted",
+      }),
+    );
+    await h.setBook(
+      execute(await h.book(), alice, {
+        type: "account.reconcile",
+        id: randomUUID(),
+        accountId: "cash",
+        date: today,
+        balance: 9500,
+      }),
+    );
+    const before = (await h.state()).view!.budget;
+    if (mode === "disconnected")
+      await h.api.budget.disconnectBank({
+        connectionId: h.connection.id,
+        operationId: randomUUID(),
+        expectedRevision: await h.revision(),
+      });
+    replacement = true;
+    const linked =
+      mode === "disconnected"
+        ? await h.api.budget.plaidExchange({
+            publicToken: "replacement-public",
+            metadata: linkMetadata(response()),
+          })
+        : await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+    await h.api.budget.sync();
+    const selected = {
+      providerAccountId: "replacement-checking",
+      name: "Checking",
+      expectedBalance: 95,
+    };
+    await assert.rejects(
+      h.api.budget.setupBankAccounts({
+        connectionId: linked.id,
+        operationId: randomUUID(),
+        expectedRevision: await h.revision(),
+        accounts: [selected],
+      }),
+      /existing.*account|already added/i,
+    );
+    const input = {
       connectionId: linked.id,
       operationId: randomUUID(),
       expectedRevision: await h.revision(),
-      accounts: [selected],
-    }),
-    /existing.*account/i,
-  );
-  const input = {
-    connectionId: linked.id,
-    operationId: randomUUID(),
-    expectedRevision: await h.revision(),
-    accounts: [{ ...selected, existingAccountId: "cash" }],
-  };
-  await h.api.budget.setupBankAccounts(input);
-  await h.api.budget.setupBankAccounts(input);
-  const after = (await h.state()).view!.budget;
-  assert.deepEqual(after.accounts, before.accounts);
-  assert.deepEqual(after.transactions, before.transactions);
-  assert.deepEqual(await bankInbox(db, alice), []);
-  later = true;
-  await h.api.budget.sync();
-  const inbox = await bankInbox(db, alice);
-  assert.equal(inbox.length, 1);
-  assert.equal(inbox[0]!.accountId, "cash");
-  assert.equal(inbox[0]!.amount, -200);
-});
+      accounts: [{ ...selected, existingAccountId: "cash" }],
+    };
+    await h.api.budget.setupBankAccounts(input);
+    await h.api.budget.setupBankAccounts(input);
+    const after = (await h.state()).view!.budget;
+    assert.deepEqual(after.accounts, before.accounts);
+    assert.deepEqual(after.transactions, before.transactions);
+    assert.deepEqual(await bankInbox(db, alice), []);
+    later = true;
+    await h.api.budget.sync();
+    const inbox = await bankInbox(db, alice);
+    assert.equal(inbox.length, 1);
+    assert.equal(inbox[0]!.accountId, "cash");
+    assert.equal(inbox[0]!.amount, -200);
+  });
 
 void test("recovery with missing bank identifiers requires an explicit existing account and reconciliation", async () => {
   const h = await linkedHarness();
@@ -1437,6 +1444,195 @@ for (const delivery of [
       updated: 0,
     });
   });
+
+void test("an older reconnect response cannot overwrite a newer bank refresh", async () => {
+  const h = await linkedHarness();
+  let started!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let release!: () => void;
+  const firstRelease = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    assert.equal(requestUrl(url).pathname, "/accounts/get");
+    const first = ++calls === 1;
+    if (first) {
+      started();
+      await firstRelease;
+    }
+    const response = accountsResponse();
+    response.accounts[0]!.balances.current = first ? 100 : 200;
+    return Response.json(response);
+  });
+  const earlier = Promise.allSettled([
+    reconnectBank(db, alice, h.connection.id),
+  ]);
+  await firstStarted;
+  try {
+    await reconnectBank(db, alice, h.connection.id);
+  } finally {
+    release();
+  }
+  await earlier;
+  assert.equal((await h.details()).accounts[0]!.currentBalance, 200);
+});
+
+void test("an older transaction sync cannot overwrite a completed reconnect", async () => {
+  const h = await linkedHarness();
+  let started!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let release!: () => void;
+  const firstRelease = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        accounts: accountsResponse().accounts,
+        next_cursor: "next",
+        has_more: false,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      });
+    assert.equal(requestUrl(url).pathname, "/accounts/get");
+    const first = ++calls === 1;
+    if (first) {
+      started();
+      await firstRelease;
+    }
+    const response = accountsResponse();
+    response.accounts[0]!.balances.current = first ? 100 : 200;
+    return Response.json(response);
+  });
+  const earlier = Promise.allSettled([syncBanks(db, alice)]);
+  await firstStarted;
+  let current;
+  try {
+    await reconnectBank(db, alice, h.connection.id);
+    current = await h.details();
+  } finally {
+    release();
+  }
+  await earlier;
+  assert.deepEqual(await h.details(), current);
+});
+
+void test("concurrent initial Link completions cannot exchange the same bank twice", async () => {
+  const h = await harness();
+  let started!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let release!: () => void;
+  const firstRelease = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let exchanges = 0;
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/item/public_token/exchange") {
+      const number = ++exchanges;
+      if (number === 1) {
+        started();
+        await firstRelease;
+      }
+      return Response.json({
+        access_token: `concurrent-token-${number}`,
+        item_id: `concurrent-${run}-${number}`,
+      });
+    }
+    assert.equal(requestUrl(url).pathname, "/accounts/get");
+    return Response.json(accountsResponse());
+  });
+  const earlier = Promise.allSettled([
+    exchangeBankToken(db, alice, "first-public", linkMetadata()),
+  ]);
+  await firstStarted;
+  let later;
+  try {
+    later = await Promise.allSettled([
+      exchangeBankToken(db, alice, "second-public", linkMetadata()),
+    ]);
+  } finally {
+    release();
+  }
+  const results = [...(await earlier), ...later];
+  assert.equal(
+    (await h.state()).connections.filter((c) => c.institutionId === "ins-chase")
+      .length,
+    1,
+  );
+  assert.equal(
+    results.filter((result) => result.status === "fulfilled").length,
+    1,
+  );
+  assert.equal(exchanges, 1);
+});
+
+void test("Add accounts cannot duplicate a mapped card whose Plaid ID changed after its cached identity was lost", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [],
+  });
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const response = accountsResponse();
+    response.accounts[0]!.account_id = "provider-checking-reauthorized";
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        accounts: response.accounts,
+        next_cursor: "reauthorized",
+        has_more: false,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      });
+    assert.equal(requestUrl(url).pathname, "/accounts/get");
+    return Response.json(response);
+  });
+  await reconnectBank(db, alice, h.connection.id);
+  await syncBanks(db, alice);
+  const before = await h.state();
+  const [attempt] = await Promise.allSettled([
+    h.api.budget.setupBankAccounts({
+      connectionId: h.connection.id,
+      operationId: randomUUID(),
+      expectedRevision: before.revision,
+      accounts: [
+        {
+          providerAccountId: "provider-checking-reauthorized",
+          name: "Checking",
+          expectedBalance: 123.45,
+        },
+      ],
+    }),
+  ]);
+  const after = await h.state();
+  assert.equal(
+    after.view!.budget.accounts.filter((a) => a.kind === "cash").length,
+    1,
+    "the returned card must not create a second budget account",
+  );
+  assert.equal(
+    attempt.status,
+    "rejected",
+    "missing identity must require review, not guess a new account",
+  );
+  assert.deepEqual(after.view, before.view);
+  assert.deepEqual(
+    after.connections[0]!.accountMappings,
+    before.connections[0]!.accountMappings,
+  );
+});
 
 void test("a mapped account with missing cached identity routes a fresh Link back to the existing bank", async () => {
   const h = await linkedHarness();

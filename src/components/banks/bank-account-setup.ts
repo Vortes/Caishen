@@ -5,8 +5,8 @@ import type { State } from "~/components/budget/types";
 import type { ExecuteResult } from "~/components/sync/transport";
 import { api } from "~/trpc/react";
 import {
-  possibleBankAccount,
-  sameBankAccount,
+  bankRecoveryCandidates,
+  bankAccountNeedsRecovery,
 } from "~/lib/bank-account-identity";
 
 type Connection = State["connections"][number];
@@ -102,35 +102,25 @@ export function useBankAccountSetupForm({
   const save = api.budget.setupBankAccounts.useMutation();
   const sync = api.budget.sync.useMutation();
   const initialMappings = bankAccountMappings(connection.accountMappings);
+  const identities = state.connections.map((item) => ({
+    ...item,
+    accountMappings: Object.fromEntries(
+      bankAccountMappings(item.accountMappings),
+    ),
+  }));
   const recoveryAccounts = (account: BankAccount, exact = false) => [
     ...new Set(
-      state.connections
-        .filter((item) => item.disconnectedAt)
-        .flatMap((item) => {
-          const mappings = bankAccountMappings(item.accountMappings);
-          return item.accounts.flatMap((saved) => {
-            const mapping = mappings.get(saved.accountId);
-            return mapping &&
-              (exact ? sameBankAccount : possibleBankAccount)(
-                account,
-                saved,
-                connection.institutionId,
-                item.institutionId,
-              )
-              ? [mapping.accountId]
-              : [];
-          });
-        }),
+      bankRecoveryCandidates(account, connection.institutionId, identities)
+        .filter((candidate) => !exact || candidate.exact)
+        .map((candidate) => candidate.accountId),
     ),
   ];
-  const disconnectedAccountIds = new Set(
-    state.connections
-      .filter((item) => item.disconnectedAt)
-      .flatMap((item) =>
-        [...bankAccountMappings(item.accountMappings).values()].map(
-          (mapping) => mapping.accountId,
-        ),
-      ),
+  const recoveryAccountIds = new Set(
+    identities.flatMap((item) =>
+      Object.entries(item.accountMappings)
+        .filter(([providerId]) => bankAccountNeedsRecovery(item, providerId))
+        .map(([, mapping]) => mapping.accountId),
+    ),
   );
   const [drafts, setDrafts] = useState<Record<string, AccountDraft>>(() =>
     Object.fromEntries(
@@ -234,13 +224,11 @@ export function useBankAccountSetupForm({
   }
 
   const mappedAccountIds = new Set(
-    state.connections
-      .filter((item) => !item.disconnectedAt)
-      .flatMap((item) =>
-        [...bankAccountMappings(item.accountMappings).values()].map(
-          (mapping) => mapping.accountId,
-        ),
-      ),
+    identities.flatMap((item) =>
+      Object.entries(item.accountMappings)
+        .filter(([providerId]) => !bankAccountNeedsRecovery(item, providerId))
+        .map(([, mapping]) => mapping.accountId),
+    ),
   );
   const synchronized = (account: BankAccount) =>
     !connection.unavailableAccountIds?.includes(account.accountId) &&
@@ -275,7 +263,7 @@ export function useBankAccountSetupForm({
       synchronized: synchronized(account),
       draft: drafts[account.accountId],
       fieldError: fieldErrors[account.accountId],
-      recovery: disconnectedAccountIds.has(
+      recovery: recoveryAccountIds.has(
         drafts[account.accountId]?.existingAccountId ?? "",
       ),
       requiresExisting: recoveryAccounts(account).length > 0,
@@ -332,7 +320,7 @@ export function useBankAccountSetupForm({
             ? existing.rates.map((rate) => rate.effectiveDate).sort()[0]!
             : existing.date);
         if (
-          !disconnectedAccountIds.has(draft.existingAccountId) &&
+          !recoveryAccountIds.has(draft.existingAccountId) &&
           (!draft.startDate || !openingDate || draft.startDate <= openingDate)
         )
           errors[account.accountId] =
@@ -383,7 +371,7 @@ export function useBankAccountSetupForm({
           ...(draft.existingAccountId
             ? {
                 existingAccountId: draft.existingAccountId,
-                ...(disconnectedAccountIds.has(draft.existingAccountId)
+                ...(recoveryAccountIds.has(draft.existingAccountId)
                   ? {}
                   : { startDate: draft.startDate }),
               }
