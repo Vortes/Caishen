@@ -1118,7 +1118,7 @@ export async function disconnectBank(
           where: {
             id: connection.id,
             updatedAt: connection.updatedAt,
-              },
+          },
           data: {
             imports: connectionMetadata(connection.imports, {
               ...state,
@@ -1148,10 +1148,21 @@ export async function disconnectBank(
   }
 }
 
-const duplicateRepairSelectionSchema = z.object({
-  retiredConnectionId: z.string().min(1).max(256),
-  replacementConnectionId: z.string().min(1).max(256),
-});
+const duplicateRepairSelectionSchema = z.union([
+  z
+    .object({
+      retiredConnectionId: z.string().min(1).max(256),
+      replacementConnectionId: z.string().min(1).max(256),
+    })
+    .strict(),
+  z
+    .object({
+      connectionId: z.string().min(1).max(256),
+      keepProviderAccountId: z.string().min(1).max(256),
+      removeProviderAccountId: z.string().min(1).max(256),
+    })
+    .strict(),
+]);
 type DuplicateRepairSelection = z.infer<typeof duplicateRepairSelectionSchema>;
 
 /** Administrative repair for duplicate starting balances that have never been used. */
@@ -1162,7 +1173,17 @@ async function prepareDuplicateBankRepair(
 ) {
   await migrateBankAccounts(db, userId);
   selection = duplicateRepairSelectionSchema.parse(selection);
-  if (selection.retiredConnectionId === selection.replacementConnectionId)
+  const sameConnection = "connectionId" in selection ? selection : undefined;
+  if (
+    sameConnection &&
+    sameConnection.keepProviderAccountId ===
+      sameConnection.removeProviderAccountId
+  )
+    throw new Error("Choose two different provider accounts.");
+  if (
+    "retiredConnectionId" in selection &&
+    selection.retiredConnectionId === selection.replacementConnectionId
+  )
     throw new Error("Choose two different connections.");
   const opened = await openHousehold(db, userId);
   if (opened?.ledger.status !== "ready") throw budgetMaintenance();
@@ -1176,12 +1197,21 @@ async function prepareDuplicateBankRepair(
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
     return readyConnection(connection, imports);
   };
-  const retired = read(selection.retiredConnectionId);
-  const replacement = read(selection.replacementConnectionId);
+  const retired = read(
+    "connectionId" in selection
+      ? selection.connectionId
+      : selection.retiredConnectionId,
+  );
+  const replacement = read(
+    "connectionId" in selection
+      ? selection.connectionId
+      : selection.replacementConnectionId,
+  );
   if (
     !retired.state.institutionId ||
     retired.state.institutionId !== replacement.state.institutionId ||
-    retired.connection.createdAt >= replacement.connection.createdAt ||
+    (!sameConnection &&
+      retired.connection.createdAt >= replacement.connection.createdAt) ||
     replacement.state.disconnectedAt ||
     replacement.state.transactionStatus !== "HISTORICAL_UPDATE_COMPLETE" ||
     !replacement.connection.lastSyncedAt
@@ -1195,22 +1225,35 @@ async function prepareDuplicateBankRepair(
     name: string;
     keepAccountId: string;
     removeAccountId: string;
+    keepAccountName?: string;
+    removeAccountName?: string;
+    keepProviderAccountId?: string;
+    removeProviderAccountId?: string;
+    keepMask?: string | null;
+    removeMask?: string | null;
   }[] = [];
   const removedIds = new Set<string>();
   for (const [providerId, mapping] of Object.entries(retired.mappings)) {
+    if (sameConnection && providerId !== sameConnection.keepProviderAccountId)
+      continue;
     const source = retired.state.accounts.find(
       (account) => account.accountId === providerId,
     );
-    const candidates = source
-      ? replacement.state.accounts.filter((account) =>
-          sameBankAccount(
-            source,
-            account,
-            retired.state.institutionId,
-            replacement.state.institutionId,
-          ),
+    const candidates = sameConnection
+      ? replacement.state.accounts.filter(
+          (account) =>
+            account.accountId === sameConnection.removeProviderAccountId,
         )
-      : [];
+      : source
+        ? replacement.state.accounts.filter((account) =>
+            sameBankAccount(
+              source,
+              account,
+              retired.state.institutionId,
+              replacement.state.institutionId,
+            ),
+          )
+        : [];
     const target = candidates.length === 1 ? candidates[0] : undefined;
     const targetMapping = target && mappings[target.accountId];
     if (
@@ -1242,15 +1285,18 @@ async function prepareDuplicateBankRepair(
       );
     if (
       source.currentBalance !== target.currentBalance ||
-      keep.openingBalance !== remove.openingBalance ||
-      bankAccountOpening(target).openingBalance !== keep.openingBalance
+      (!sameConnection && keep.openingBalance !== remove.openingBalance) ||
+      bankAccountOpening(target).openingBalance !==
+        (sameConnection ? remove.openingBalance : keep.openingBalance)
     )
       throw new Error(
         "The duplicate starting balances disagree. Review these accounts manually.",
       );
     if (
       budget.transactions.some((transaction) =>
-        [keep.id, remove.id].includes(transaction.accountId),
+        (sameConnection ? [remove.id] : [keep.id, remove.id]).includes(
+          transaction.accountId,
+        ),
       ) ||
       remove.reconciled
     )
@@ -1275,8 +1321,19 @@ async function prepareDuplicateBankRepair(
       name: keep.name,
       keepAccountId: keep.id,
       removeAccountId: remove.id,
+      ...(sameConnection
+        ? {
+            keepAccountName: keep.name,
+            removeAccountName: remove.name,
+            keepProviderAccountId: source.accountId,
+            removeProviderAccountId: target.accountId,
+            keepMask: source.mask,
+            removeMask: target.mask,
+          }
+        : {}),
     });
-    mappings[target.accountId] = { ...targetMapping, accountId: keep.id };
+    if (sameConnection) delete mappings[target.accountId];
+    else mappings[target.accountId] = { ...targetMapping, accountId: keep.id };
   }
   if (!accounts.length)
     throw new Error("There are no duplicate accounts to repair.");
@@ -1287,17 +1344,33 @@ async function prepareDuplicateBankRepair(
     ]),
   );
   if (
-    bankInboxItems([retired, replacement], budget, opened.ledger.state).some(
-      (item) => affected.has(item.accountId ?? item.loanId ?? ""),
+    bankInboxItems(
+      sameConnection ? [retired] : [retired, replacement],
+      budget,
+      opened.ledger.state,
+    ).some((item) =>
+      (sameConnection ? removedIds : affected).has(
+        item.accountId ?? item.loanId ?? "",
+      ),
     )
   )
     throw new Error(
       "Review outstanding bank activity before repairing these duplicates.",
     );
+  const importMappings = replacement.importMappings ?? replacement.mappings;
+  const reviewedImport = replacement.state.records.some(
+    (record) =>
+      removedIds.has(
+        importMappings[record.current.providerAccountId]?.accountId ?? "",
+      ) &&
+      (Boolean(replacement.state.resolved[record.id]) ||
+        Boolean(replacement.state.reviews[record.id]?.length)),
+  );
   if (
-    await db.reviewEvidence.count({
+    reviewedImport ||
+    (await db.reviewEvidence.count({
       where: { clerkUserId: userId, accountId: { in: [...removedIds] } },
-    })
+    }))
   )
     throw new Error(
       "A duplicate account has review evidence. Preserve it with a manual repair.",
@@ -1317,7 +1390,8 @@ async function prepareDuplicateBankRepair(
         (row.table === "category" &&
           row.data !== null &&
           categoryIds.has(row.data.id)) ||
-        (row.table === "bankImport" &&
+        (!sameConnection &&
+          row.table === "bankImport" &&
           row.data?.connectionId === retired.connection.id)),
   );
   const removedRows = new Set(before);
@@ -1361,6 +1435,7 @@ async function prepareDuplicateBankRepair(
         updatedAt: connection.updatedAt.toISOString(),
         imports: connection.imports,
         accountMappings: connection.accountMappings,
+        bankAccounts: connection.bankAccounts,
       })),
       accounts,
     }),
@@ -1384,12 +1459,16 @@ export async function repairDuplicateBankAccounts(
     expectedPlanHash: string;
   },
 ): Promise<OperationResult> {
-  const parsed = duplicateRepairSelectionSchema
-    .extend({
-      operationId: z.string().uuid(),
-      expectedPlanHash: z.string().regex(/^[a-f0-9]{64}$/),
-    })
-    .parse(input);
+  const { operationId, expectedPlanHash, ...selection } = input;
+  const parsed = {
+    ...duplicateRepairSelectionSchema.parse(selection),
+    ...z
+      .object({
+        operationId: z.string().uuid(),
+        expectedPlanHash: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .parse({ operationId, expectedPlanHash }),
+  };
   const household = await readHouseholdRevision(db, userId);
   if (!household) throw budgetMaintenance();
   const submitted = { type: "bank.duplicates.repair", ...parsed };
@@ -1399,7 +1478,7 @@ export async function repairDuplicateBankAccounts(
     parsed.operationId,
   );
   if (previous) return earlierResult(previous, userId, submitted, submitted);
-  const prepared = await prepareDuplicateBankRepair(db, userId, parsed);
+  const prepared = await prepareDuplicateBankRepair(db, userId, selection);
   if (prepared.plan.hash !== parsed.expectedPlanHash)
     throw new Error(
       "The repair plan changed. Preview it again before applying.",
@@ -1440,6 +1519,69 @@ export async function repairDuplicateBankAccounts(
         retired.connection.id,
         replacement.connection.id,
       ]);
+      const currentConnections = await tx.bankConnection.findMany({
+        where: {
+          clerkUserId: userId,
+          id: { in: [retired.connection.id, replacement.connection.id] },
+        },
+        include: { bankAccounts: bankAccountRowsSelection },
+      });
+      if (
+        [retired, replacement].some(({ connection }) => {
+          const current = currentConnections.find(
+            (item) => item.id === connection.id,
+          );
+          return (
+            current?.updatedAt.getTime() !== connection.updatedAt.getTime() ||
+            commandHash(current.bankAccounts) !==
+              commandHash(connection.bankAccounts)
+          );
+        })
+      )
+        throw new Error("A bank connection changed. Preview the repair again.");
+      if ("connectionId" in parsed) {
+        const saved = await tx.bankConnection.updateMany({
+          where: {
+            id: replacement.connection.id,
+            clerkUserId: userId,
+            updatedAt: replacement.connection.updatedAt,
+          },
+          data: { updatedAt: new Date() },
+        });
+        if (saved.count !== 1)
+          throw new Error(
+            "A bank connection changed. Preview the repair again.",
+          );
+        await writeBankLinks(
+          tx,
+          userId,
+          opened.household.workspaceId,
+          replacement.connection.id,
+          mappings,
+        );
+        const kept = await tx.bankAccount.findUniqueOrThrow({
+          where: {
+            connectionId_providerAccountId: {
+              connectionId: parsed.connectionId,
+              providerAccountId: parsed.keepProviderAccountId,
+            },
+          },
+        });
+        await tx.bankAccount.update({
+          where: {
+            connectionId_providerAccountId: {
+              connectionId: parsed.connectionId,
+              providerAccountId: parsed.removeProviderAccountId,
+            },
+          },
+          data: {
+            status: "retired",
+            historyComplete: false,
+            supersededById: kept.id,
+          },
+        });
+        return;
+      }
       // A successful removal is not undone if a later database write fails;
       // the stored credential stays available for an idempotent retry.
       await client(db, userId, retired.connection.id).removeItem(
@@ -1450,7 +1592,7 @@ export async function repairDuplicateBankAccounts(
           id: replacement.connection.id,
           clerkUserId: userId,
           updatedAt: replacement.connection.updatedAt,
-          },
+        },
         data: { updatedAt: new Date() },
       });
       const removed = await tx.bankConnection.deleteMany({
@@ -1458,7 +1600,7 @@ export async function repairDuplicateBankAccounts(
           id: retired.connection.id,
           clerkUserId: userId,
           updatedAt: retired.connection.updatedAt,
-          },
+        },
       });
       await writeBankLinks(
         tx,
