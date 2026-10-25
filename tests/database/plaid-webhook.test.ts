@@ -295,3 +295,29 @@ void test("LOGIN_REPAIRED returns a login-required connection to connected; unkn
   assert.equal((await h.saved()).status, "connected");
   assert.deepEqual(h.scheduled, []);
 });
+
+void test("a webhook issued in the future is refused before changing Item health", async () => {
+  const h = await harness();
+  const response = await respondToPlaidWebhook(
+    signedRequest(
+      JSON.stringify({
+        webhook_type: "ITEM",
+        webhook_code: "USER_PERMISSION_REVOKED",
+        item_id: h.connection.itemId,
+      }),
+      key.privateKey,
+      {
+        keyId: key.key.kid,
+        issuedAt: now.getTime() / 1000 + 3600,
+      },
+    ),
+    {
+      db,
+      fetchKey,
+      now: () => now,
+      schedule: () => assert.fail("Must not schedule an unverified webhook"),
+    },
+  );
+  assert.equal(response.status, 401);
+  assert.equal((await h.saved()).status, "connected");
+});

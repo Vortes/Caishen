@@ -186,7 +186,7 @@ export async function verifyPlaidWebhook(
     throw refused();
   const claims = decodeSegment(encodedClaims, claimsSchema);
   const age = now().getTime() / 1000 - claims.iat;
-  if (age > REPLAY_WINDOW_SECONDS) throw refused();
+  if (age < 0 || age > REPLAY_WINDOW_SECONDS) throw refused();
   const body = await boundedBody(request);
   const digest = Buffer.from(
     createHash("sha256").update(body).digest("hex"),
