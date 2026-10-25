@@ -1059,7 +1059,7 @@ button.actionItem:disabled {
   .register .row > [data-column="share"],
   .register .columnHeader > [data-column="share"],
   .register .txColumns > [data-wide],
-  .register [data-row] > [data-empty] {
+  .register .row > [data-empty] {
     display: none;
   }
   .register .txColumns > [data-narrow] {
@@ -1236,6 +1236,9 @@ button.actionItem:disabled {
 }
 .row:hover {
   background: var(--surface-hover);
+}
+.row.openingBalance:hover {
+  background: transparent;
 }
 .row[aria-current="true"] {
   background: var(--surface-selected);

@@ -659,7 +659,9 @@ function SetupForm({
         </Dialog.Title>
         <p className={styles.description}>
           Checking and savings go in Cash, credit cards in Credit, and loans in
-          Loans. Review opening balances and loan terms before adding.
+          Loans. New cash and credit accounts start with your current balance.
+          Earlier purchases are included in your Starting Balance. Review loan
+          balances and terms before adding.
         </p>
       </div>
       <div className={styles.body}>
