@@ -79,6 +79,30 @@ model BankConnection {
   @@index([clerkUserId])
 }
 
+// The audit trail of every exchange with Plaid (spec #139): each request the
+// adapter makes, each webhook received, and each Link success or exit.
+// `method` names what happened: the Plaid endpoint, the webhook type and
+// code, or the Link outcome. Holds ids and outcomes only, never tokens,
+// account numbers, or bodies. Not tied to BankConnection or User rows: an
+// investigation of a removed connection still needs its trail, so the daily
+// job purges rows past the retention window instead of a cascade.
+model BankProviderEvent {
+  id           String   @id @default(cuid())
+  kind         String
+  method       String
+  requestId    String?
+  errorCode    String?
+  connectionId String?
+  clerkUserId  String?
+  durationMs   Int?
+  detail       Json?
+  createdAt    DateTime @default(now())
+
+  @@index([connectionId, createdAt])
+  @@index([clerkUserId, createdAt])
+  @@index([createdAt])
+}
+
 model ReviewEvidence {
   id          String   @id @default(cuid())
   clerkUserId String

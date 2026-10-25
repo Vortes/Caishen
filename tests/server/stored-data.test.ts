@@ -18,6 +18,7 @@ import { plaidLinkMetadataSchema } from "../../src/lib/plaid-link-metadata";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
 import { connectionColumnSchema } from "../../src/server/services/banks";
+import { bankProviderEventDetailSchema } from "../../src/server/services/bank-provider-events";
 import { dailyDeliveryPayloadSchema } from "../../src/server/services/daily-delivery";
 import {
   changeSetSchema,
@@ -30,6 +31,7 @@ import {
 const jsonColumns: Record<string, ZodTypeAny> = {
   "BankConnection.imports": connectionColumnSchema,
   "BankConnection.accountMappings": bankMappingsSchema,
+  "BankProviderEvent.detail": bankProviderEventDetailSchema.nullable(),
   "ReviewEvidence.evidence": savedEvidenceSchema,
   "ReviewEvidence.result": reconciliationResultSchema,
   "DailyDelivery.payload": dailyDeliveryPayloadSchema,

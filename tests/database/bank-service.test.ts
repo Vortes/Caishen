@@ -34,6 +34,7 @@ import {
   resolveImport,
   syncBanks,
 } from "../../src/server/services/banks";
+import { recordBankWebhookReceipt } from "../../src/server/services/bank-provider-events";
 import { onboard } from "../../src/server/services/household-operations";
 import * as banks from "../../src/server/services/banks";
 import { households } from "../../src/server/storage/households";
@@ -124,6 +125,9 @@ async function startOver() {
     where: { id: { in: memberships.map((member) => member.workspaceId) } },
   });
   await db.bankConnection.deleteMany({
+    where: { clerkUserId: { in: [alice, bob] } },
+  });
+  await db.bankProviderEvent.deleteMany({
     where: { clerkUserId: { in: [alice, bob] } },
   });
 }
@@ -3176,4 +3180,240 @@ void test("missing Link masks report an unknown comparison before token exchange
     /couldn’t tell.*details.*incomplete/i,
   );
   assert.equal(fetcher.mock.callCount(), 0);
+});
+
+// The provider event audit trail (spec #139): what an operator can query
+// about one connection's exchanges with Plaid.
+const providerEvents = async (connectionId: string) =>
+  (await db.bankProviderEvent.findMany({ where: { connectionId } })).sort(
+    (left, right) => left.method.localeCompare(right.method),
+  );
+
+void test("one account update records a provider event for each Plaid request with its request id", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        next_cursor: "next",
+        has_more: false,
+        accounts: accountsResponse().accounts,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        request_id: "req-sync-1",
+      });
+    return Response.json({
+      ...accountsResponse(),
+      request_id: "req-accounts-1",
+    });
+  });
+  await syncBanks(h.db, alice);
+  const events = await providerEvents(h.connection.id);
+  assert.deepEqual(
+    events.map(({ kind, method, requestId, errorCode, clerkUserId }) => ({
+      kind,
+      method,
+      requestId,
+      errorCode,
+      clerkUserId,
+    })),
+    [
+      {
+        kind: "request",
+        method: "/accounts/get",
+        requestId: "req-accounts-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+      {
+        kind: "request",
+        method: "/transactions/sync",
+        requestId: "req-sync-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+    ],
+  );
+  assert.ok(
+    events.every((event) => event.durationMs !== null && event.durationMs >= 0),
+  );
+});
+
+void test("a failed account update stores an error naming the Plaid request id and records the failure", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        error_code: "INSTITUTION_DOWN",
+        error_message: "private provider details",
+        request_id: "req-down-7",
+      },
+      { status: 503 },
+    ),
+  );
+  await assert.rejects(syncBanks(h.db, alice));
+  const details = await h.details();
+  assert.match(details.error!, /Plaid request id: req-down-7/);
+  assert.ok(!details.error!.includes("private provider details"));
+  assert.deepEqual(
+    (await providerEvents(h.connection.id)).map(
+      ({ method, requestId, errorCode }) => ({ method, requestId, errorCode }),
+    ),
+    [
+      {
+        method: "/transactions/sync",
+        requestId: "req-down-7",
+        errorCode: "INSTITUTION_DOWN",
+      },
+    ],
+  );
+});
+
+void test("completing Link records a success event with the institution and account count", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
+    requestUrl(url).pathname === "/item/public_token/exchange"
+      ? Response.json({
+          access_token: "new-private-token",
+          item_id: h.connection.itemId,
+          request_id: "req-exchange-1",
+        })
+      : Response.json({ ...accountsResponse(), request_id: "req-accounts-2" }),
+  );
+  await exchangeBankToken(h.db, alice, "public-token", linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        errorCode: null,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});
+
+void test("leaving Link early records an exit event with Plaid's error code and request id", async () => {
+  const h = await harness();
+  await h.api.budget.plaidLinkExit({
+    connectionId: h.connection.id,
+    institutionId: "ins-chase",
+    errorCode: "INVALID_CREDENTIALS",
+    requestId: "req-link-exit-1",
+  });
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, requestId, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      requestId,
+      detail,
+    })),
+    [
+      {
+        method: "exit",
+        connectionId: h.connection.id,
+        errorCode: "INVALID_CREDENTIALS",
+        requestId: "req-link-exit-1",
+        detail: { institutionId: "ins-chase", accountCount: null },
+      },
+    ],
+  );
+});
+
+void test("completing an update-mode Link records a success event against the reconnected bank", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json({ ...accountsResponse(), request_id: "req-accounts-3" }),
+  );
+  await reconnectBank(h.db, alice, h.connection.id, linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, detail }) => ({
+      method,
+      connectionId,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});
+
+void test("a received webhook is recorded with its type, code, and verification result", async () => {
+  const h = await harness();
+  await recordBankWebhookReceipt(db, {
+    connectionId: h.connection.id,
+    userId: alice,
+    webhookType: "ITEM",
+    webhookCode: "ERROR",
+    verification: "verified",
+    errorCode: "ITEM_LOGIN_REQUIRED",
+  });
+  await recordBankWebhookReceipt(db, {
+    webhookType: null,
+    webhookCode: null,
+    verification: "invalid_signature",
+  });
+  const receipts = (
+    await db.bankProviderEvent.findMany({ where: { kind: "webhook" } })
+  )
+    .filter(
+      (event) =>
+        event.connectionId === h.connection.id || event.connectionId === null,
+    )
+    .map(({ method, connectionId, clerkUserId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      clerkUserId,
+      errorCode,
+      detail,
+    }))
+    .sort((left, right) => left.method.localeCompare(right.method));
+  assert.deepEqual(receipts, [
+    {
+      method: "ITEM/ERROR",
+      connectionId: h.connection.id,
+      clerkUserId: alice,
+      errorCode: "ITEM_LOGIN_REQUIRED",
+      detail: {
+        webhookType: "ITEM",
+        webhookCode: "ERROR",
+        verification: "verified",
+      },
+    },
+    {
+      method: "unverified",
+      connectionId: null,
+      clerkUserId: null,
+      errorCode: null,
+      detail: {
+        webhookType: null,
+        webhookCode: null,
+        verification: "invalid_signature",
+      },
+    },
+  ]);
+  await db.bankProviderEvent.deleteMany({
+    where: { kind: "webhook", clerkUserId: null },
+  });
 });

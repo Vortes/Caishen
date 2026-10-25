@@ -35,6 +35,7 @@ export async function removePersonalData(
       });
       await tx.reviewEvidence.deleteMany({ where: { clerkUserId: userId } });
       await tx.dailyDelivery.deleteMany({ where: { clerkUserId: userId } });
+      await tx.bankProviderEvent.deleteMany({ where: { clerkUserId: userId } });
       await tx.bankConnection.deleteMany({ where: { clerkUserId: userId } });
       await tx.crudItem.deleteMany({ where: { clerkUserId: userId } });
       await tx.workspace.deleteMany({

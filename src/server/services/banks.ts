@@ -3,7 +3,10 @@ import { MANUAL_MATCH_DAYS } from "~/domain/bank-import-balances";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { plaidLinkMetadataSchema } from "~/lib/plaid-link-metadata";
+import {
+  plaidLinkMetadataSchema,
+  type PlaidLinkMetadata,
+} from "~/lib/plaid-link-metadata";
 import {
   bankLinkVerdict,
   bankRecoveryCandidates,
@@ -53,7 +56,7 @@ import {
   applyTransactionSync,
   type StoredImport,
 } from "~/server/integrations/transactions";
-import { usdToCents } from "~/server/integrations/validation";
+import { IntegrationError, usdToCents } from "~/server/integrations/validation";
 import {
   findOperation,
   readHouseholdRevision,
@@ -74,6 +77,10 @@ import {
   readImportStates,
   type ImportRowState,
 } from "./bank-import-rows";
+import {
+  plaidRequestRecorder,
+  recordBankLinkOutcome,
+} from "./bank-provider-events";
 import {
   earlierResult,
   openHousehold,
@@ -305,15 +312,29 @@ function overlappingBankAccount(
 export function bankAccountDetails(value: unknown) {
   return connectionDetails(connectionColumnSchema.parse(value));
 }
-function client() {
-  return createPlaidClient({
-    clientId: process.env.PLAID_CLIENT_ID ?? "",
-    secret: process.env.PLAID_SECRET ?? "",
-    environment: z
-      .enum(["sandbox", "production"])
-      .parse(process.env.PLAID_ENV ?? "sandbox"),
-    redirectUri: process.env.PLAID_REDIRECT_URI,
-  });
+// The request id is what Plaid support can act on, so a failed update
+// names it where the Banks panel shows the failure.
+function withPlaidRequestId(message: string, error: unknown) {
+  return error instanceof IntegrationError && error.requestId
+    ? `${message} (Plaid request id: ${error.requestId})`
+    : message;
+}
+
+// Every request the client makes lands in the audit trail against the
+// member and, once one exists, the connection it concerns.
+function client(db: Database, userId: string, connectionId?: string | null) {
+  return createPlaidClient(
+    {
+      clientId: process.env.PLAID_CLIENT_ID ?? "",
+      secret: process.env.PLAID_SECRET ?? "",
+      environment: z
+        .enum(["sandbox", "production"])
+        .parse(process.env.PLAID_ENV ?? "sandbox"),
+      redirectUri: process.env.PLAID_REDIRECT_URI,
+    },
+    undefined,
+    plaidRequestRecorder(db, { userId, connectionId }),
+  );
 }
 
 function requireConnected(connection: StoredConnection) {
@@ -345,7 +366,7 @@ export async function linkBankToken(
     if (connection) requireConnected(connection);
     // Verify token encryption is configured before starting a bank connection.
     encryptBankToken("configuration-check", userId);
-    const token = await client().createLinkToken(
+    const token = await client(db, userId, connection?.id).createLinkToken(
       userId,
       connection
         ? decryptBankToken(connection.encryptedToken, userId)
@@ -367,6 +388,10 @@ export async function exchangeBankToken(
   publicToken: string,
   metadata: unknown,
 ): Promise<{ id: string; warning?: string }> {
+  // Link completed in the browser whatever the exchange makes of it; the
+  // trail records that outcome once, with the connection when one results.
+  let completed: PlaidLinkMetadata | undefined;
+  let connectionId: string | null = null;
   try {
     if (!(await readHouseholdRevision(db, userId)))
       throw new TRPCError({
@@ -377,6 +402,7 @@ export async function exchangeBankToken(
     // Check Link metadata before exchange: exchanging a duplicate creates a
     // second Plaid Item, even if budget-account setup later refuses it.
     const linked = plaidLinkMetadataSchema.parse(metadata);
+    completed = linked;
     if (!linked.institution)
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
@@ -441,7 +467,9 @@ export async function exchangeBankToken(
                 "Caishen couldn’t tell whether this bank account is already connected, because the account details to compare are incomplete or ambiguous. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
             });
         }
-        const result = await client().exchangePublicToken(publicToken);
+        const result = await client(db, userId).exchangePublicToken(
+          publicToken,
+        );
         const existing = await tx.bankConnection.findUnique({
           where: { itemId: result.itemId },
         });
@@ -473,12 +501,15 @@ export async function exchangeBankToken(
       },
       { timeout: 30_000, maxWait: 10_000 },
     );
+    connectionId = connection.id;
     try {
       await refreshBankAccounts(db, userId, connection.id);
       return { id: connection.id };
-    } catch {
-      const warning =
-        "Your bank is connected, but account details are still unavailable. Request an update to try again.";
+    } catch (error) {
+      const warning = withPlaidRequestId(
+        "Your bank is connected, but account details are still unavailable. Request an update to try again.",
+        error,
+      );
       await db.bankConnection.updateMany({
         where: { id: connection.id, updatedAt: connection.updatedAt },
         data: { error: warning, lastAttemptAt: new Date() },
@@ -486,8 +517,48 @@ export async function exchangeBankToken(
       return { id: connection.id, warning };
     }
   } catch (error) {
-    domainError(error);
+    return domainError(error);
+  } finally {
+    if (completed)
+      await recordBankLinkOutcome(db, {
+        userId,
+        method: "success",
+        connectionId,
+        institutionId: completed.institution?.institution_id ?? null,
+        accountCount: completed.accounts.length,
+      });
   }
+}
+
+export const bankLinkExitSchema = z.object({
+  connectionId: z.string().min(1).max(256).optional(),
+  institutionId: z.string().min(1).max(256).nullable().optional(),
+  errorCode: z.string().min(1).max(100).nullable().optional(),
+  requestId: z.string().min(1).max(256).nullable().optional(),
+});
+
+/** Where a member's Link attempt ended when it did not complete. */
+export async function recordBankLinkExit(
+  db: Database,
+  userId: string,
+  exit: z.infer<typeof bankLinkExitSchema>,
+) {
+  // A connection id from the browser counts only when it is the member's own.
+  const connection = exit.connectionId
+    ? await db.bankConnection.findFirst({
+        where: { id: exit.connectionId, clerkUserId: userId },
+        select: { id: true },
+      })
+    : null;
+  await recordBankLinkOutcome(db, {
+    userId,
+    method: "exit",
+    connectionId: connection?.id ?? null,
+    institutionId: exit.institutionId ?? null,
+    accountCount: null,
+    errorCode: exit.errorCode ?? null,
+    requestId: exit.requestId ?? null,
+  });
 }
 
 // Missing provider accounts retain their identity for display and duplicate checks.
@@ -573,7 +644,7 @@ async function refreshBankAccounts(
   });
   if (!requested) throw new TRPCError({ code: "NOT_FOUND" });
   requireConnected(requested);
-  const accounts = await client().getAccounts(
+  const accounts = await client(db, userId, requested.id).getAccounts(
     decryptBankToken(requested.encryptedToken, userId),
   );
   const column = readColumn(
@@ -638,17 +709,34 @@ export async function reconnectBank(
   db: Database,
   userId: string,
   connectionId: string,
+  metadata?: unknown,
 ): Promise<{ id: string; warning?: string }> {
+  // Update-mode Link completed in the browser before this refresh; the trail
+  // records that against the member's own connection whatever follows.
+  let completed: PlaidLinkMetadata | undefined;
+  let owned: string | null = null;
   try {
     const connection = await db.bankConnection.findFirst({
       where: { id: connectionId, clerkUserId: userId },
     });
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+    owned = connection.id;
+    if (metadata !== undefined)
+      completed = plaidLinkMetadataSchema.parse(metadata);
     requireConnected(connection);
     await refreshBankAccounts(db, userId, connection.id);
     return { id: connection.id };
   } catch (error) {
-    domainError(error);
+    return domainError(error);
+  } finally {
+    if (completed)
+      await recordBankLinkOutcome(db, {
+        userId,
+        method: "success",
+        connectionId: owned,
+        institutionId: completed.institution?.institution_id ?? null,
+        accountCount: completed.accounts.length,
+      });
   }
 }
 
@@ -684,7 +772,7 @@ export async function disconnectBank(
         opened.household.revision,
       );
     if (!state.disconnectedAt)
-      await client().removeItem(
+      await client(db, userId, connection.id).removeItem(
         decryptBankToken(connection.encryptedToken, userId),
       );
     return await writeServerOperation(db, opened, {
@@ -978,8 +1066,7 @@ export async function repairDuplicateBankAccounts(
       "The repair plan changed. Preview it again before applying.",
     );
   const { retired, replacement, opened, mappings, changeSet } = prepared;
-  const plaid = client();
-  const live = await plaid.getAccounts(
+  const live = await client(db, userId, replacement.connection.id).getAccounts(
     decryptBankToken(replacement.connection.encryptedToken, userId),
   );
   if (
@@ -1004,7 +1091,7 @@ export async function repairDuplicateBankAccounts(
     );
   // Revocation happens first: if the database write conflicts, retrying
   // /item/remove is safe and the credential is still available for cleanup.
-  await plaid.removeItem(
+  await client(db, userId, retired.connection.id).removeItem(
     decryptBankToken(retired.connection.encryptedToken, userId),
   );
   return writeServerOperation(db, opened, {
@@ -1688,7 +1775,7 @@ export async function syncBanks(db: Database, userId: string) {
     const read = readBankConnection(connection, readable);
     if (read.status === "maintenance" || read.state.disconnectedAt) continue;
     try {
-      const plaid = client();
+      const plaid = client(db, userId, connection.id);
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
       let delta = await plaid.syncTransactions(accessToken, connection.cursor);
       const accounts = await plaid.getAccounts(accessToken);
@@ -1780,7 +1867,10 @@ export async function syncBanks(db: Database, userId: string) {
           error:
             error instanceof TRPCError
               ? error.message
-              : "Bank update failed. Reconnect or try again; previous records were preserved.",
+              : withPlaidRequestId(
+                  "Bank update failed. Reconnect or try again; previous records were preserved.",
+                  error,
+                ),
         },
       });
       domainError(error);
