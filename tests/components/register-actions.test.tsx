@@ -254,11 +254,9 @@ test.each([
         actions.getByRole("button", { name: "Categorize" }),
       );
       await shell.user.click(
-        screen.getByRole("menuitem", { name: "Everyday", exact: true }),
+        screen.getByRole("menuitem", { name: "Everyday" }),
       );
-      expect(
-        screen.getByRole("menuitem", { name: "Food", exact: true }),
-      ).toBeTruthy();
+      expect(screen.getByRole("menuitem", { name: "Food" })).toBeTruthy();
       await shell.user.keyboard("{ArrowRight}{End}{Enter}");
       await findToast("Categorized 1 transaction");
       expect(
@@ -385,25 +383,24 @@ test("bulk category menus support keyboard selection and change only the selecte
   );
   const trigger = screen.getByRole("button", {
     name: "Categorize",
-    exact: true,
   });
   await shell.user.click(trigger);
   await shell.user.keyboard("{Escape}");
   await waitFor(() => expect(document.activeElement).toBe(trigger));
   await shell.user.keyboard("{ArrowDown}");
   expect(document.activeElement).toBe(
-    screen.getByRole("menuitem", { name: "Everyday", exact: true }),
+    screen.getByRole("menuitem", { name: "Everyday" }),
   );
   await shell.user.keyboard("{ArrowDown}");
   await waitFor(() =>
     expect(document.activeElement).toBe(
-      screen.getByRole("menuitem", { name: "Essentials", exact: true }),
+      screen.getByRole("menuitem", { name: "Essentials" }),
     ),
   );
   await shell.user.keyboard("{ArrowRight}");
   await waitFor(() =>
     expect(document.activeElement).toBe(
-      screen.getByRole("menuitem", { name: "Food", exact: true }),
+      screen.getByRole("menuitem", { name: "Food" }),
     ),
   );
   await shell.user.keyboard("{Enter}");
