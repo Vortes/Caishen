@@ -5140,3 +5140,300 @@ void test("an ended provider feed preserves old import eligibility across a succ
     "cash",
   );
 });
+
+void test("cross-connection recovery retires each source and keeps original import boundaries through later replacements", async () => {
+  const h = await linkedHarness();
+  const today = bankSetupDate("America/Los_Angeles");
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "recovery-history",
+      accountId: "cash",
+      date: "2026-10-10",
+      amount: -500,
+      payee: "Recorded purchase",
+      categoryId: "dining",
+      status: "posted",
+    }),
+  );
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "account.reconcile",
+      id: randomUUID(),
+      accountId: "cash",
+      date: today,
+      balance: 9500,
+    }),
+  );
+  const original = {
+    accountId: "provider-checking",
+    name: "Checking",
+    officialName: null,
+    mask: "1234",
+    type: "depository",
+    subtype: "checking",
+    currency: "USD",
+    currentBalance: 95,
+    availableBalance: 95,
+  };
+  const historical = applyTransactionSync(
+    [],
+    {
+      added: [{ ...importFact("before-original-start"), date: "2026-09-01" }],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [original],
+    records: [historical],
+  });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { unavailableAccountIds: [original.accountId], error: null },
+  });
+  const before = (await h.state()).view!.budget;
+  const workspaceId = (await readHouseholdRevision(db, alice))!.workspaceId;
+  const originalImports = async () =>
+    (await loadRows(db, workspaceId)).filter(
+      (row) =>
+        row.table === "bankImport" &&
+        row.data?.connectionId === h.connection.id,
+    );
+  const originals = await originalImports();
+  let sourceId = h.connection.id;
+  const chain: string[] = [];
+  for (const providerId of ["replacement-checking", "final-checking"]) {
+    const target = await db.bankConnection.create({
+      data: {
+        clerkUserId: alice,
+        itemId: randomUUID(),
+        encryptedToken: encryptBankToken("replacement-access", alice),
+        lastSyncedAt: new Date(),
+        accountMappings: {},
+        imports: {
+          institutionId: "ins-chase",
+          institutionName: "Chase",
+          accounts: [{ ...original, accountId: providerId }],
+          synchronizedAccountIds: [providerId],
+          transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+        },
+      },
+    });
+    await h.api.budget.setupBankAccounts({
+      connectionId: target.id,
+      operationId: randomUUID(),
+      expectedRevision: await h.revision(),
+      accounts: [
+        {
+          providerAccountId: providerId,
+          name: "Checking",
+          expectedBalance: 95,
+          existingAccountId: "cash",
+        },
+      ],
+    });
+    const source = await db.bankAccount.findFirstOrThrow({
+      where: { connectionId: sourceId },
+    });
+    const successor = await db.bankAccount.findFirstOrThrow({
+      where: { connectionId: target.id },
+    });
+    assert.equal(source.status, "retired");
+    assert.equal(source.supersededById, successor.id);
+    chain.push(source.id);
+    const after = await h.state();
+    assert.deepEqual(after.view!.budget, before);
+    assert.deepEqual(after.imports, []);
+    assert.ok(
+      after.connections.every((connection) => connection.error === null),
+    );
+    await db.bankAccount.update({
+      where: { id: successor.id },
+      data: { status: "unavailable" },
+    });
+    sourceId = target.id;
+  }
+  assert.equal(chain.length, 2);
+  assert.deepEqual(await originalImports(), originals);
+  const eligible = applyTransactionSync(
+    [historical],
+    {
+      added: [
+        { ...importFact("original-boundary-purchase"), date: "2026-10-20" },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records;
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [original],
+    records: eligible,
+  });
+  const inbox = (await h.state()).imports;
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0]!.accountId, "cash");
+  const record = eligible.find((item) => item.id !== historical.id)!;
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record.id,
+    expectedFingerprint: bankImportFingerprint(record),
+    expectedRevision: await h.revision(),
+    ignore: true,
+  });
+  assert.deepEqual((await h.state()).imports, []);
+  assert.deepEqual((await h.state()).view!.budget, before);
+});
+
+void test("duplicate repair preserves older provider chains when it removes their intermediate connection", async () => {
+  const h = await duplicatedCards();
+  const oldDetails = bankAccountDetails((await h.saved()).imports);
+  const historical = applyTransactionSync(
+    [],
+    {
+      added: [
+        {
+          ...importFact("ancestor-history"),
+          providerAccountId: "old-gold",
+          date: "2026-09-01",
+        },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({ ...oldDetails, records: [historical] });
+  await h.state();
+  const ancestor = await db.bankAccount.findFirstOrThrow({
+    where: { connectionId: h.connection.id },
+  });
+  await db.bankAccountLink.update({
+    where: { bankAccountId: ancestor.id },
+    data: { unlinkedAt: new Date() },
+  });
+  const middle = await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: randomUUID(),
+      encryptedToken: encryptBankToken("intermediate-access", alice),
+      createdAt: h.connection.createdAt,
+      lastSyncedAt: new Date(),
+      accountMappings: {},
+      imports: {
+        institutionId: "ins-amex",
+        institutionName: "Amex",
+        transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+      },
+      bankAccounts: {
+        create: {
+          providerAccountId: "middle-gold",
+          name: "Gold",
+          mask: "1001",
+          type: "credit",
+          subtype: "credit card",
+          currency: "USD",
+          currentBalance: 435.08,
+          historyComplete: true,
+          link: {
+            create: {
+              workspaceId: (await readHouseholdRevision(db, alice))!
+                .workspaceId,
+              userId: alice,
+              accountId: "original-gold",
+              startDate: "2026-10-01",
+            },
+          },
+        },
+      },
+    },
+    include: { bankAccounts: true },
+  });
+  const middleRetired = await db.bankAccount.create({
+    data: {
+      connectionId: middle.id,
+      providerAccountId: "middle-old-gold",
+      name: "Gold",
+      mask: "1001",
+      type: "credit",
+      subtype: "credit card",
+      currency: "USD",
+      currentBalance: 435.08,
+      status: "retired",
+      supersededById: middle.bankAccounts[0]!.id,
+    },
+  });
+  await db.bankAccount.update({
+    where: { id: ancestor.id },
+    data: { status: "retired", supersededById: middleRetired.id },
+  });
+  mockPlaid(async (url) =>
+    requestUrl(url).pathname === "/accounts/get"
+      ? Response.json({
+          item: { institution_id: "ins-amex", institution_name: "Amex" },
+          accounts: bankAccountDetails(h.replacement.imports).accounts.map(
+            (account) => ({
+              account_id: account.accountId,
+              name: account.name,
+              official_name: account.officialName,
+              mask: account.mask,
+              type: account.type,
+              subtype: account.subtype,
+              balances: {
+                current: account.currentBalance,
+                available: account.availableBalance,
+                iso_currency_code: account.currency,
+                unofficial_currency_code: null,
+              },
+            }),
+          ),
+        })
+      : Response.json({ removed: true }),
+  );
+  const selection = {
+    retiredConnectionId: middle.id,
+    replacementConnectionId: h.replacement.id,
+  };
+  const plan = await banks.previewDuplicateBankRepair(db, alice, selection);
+  await banks.repairDuplicateBankAccounts(db, alice, {
+    ...selection,
+    operationId: randomUUID(),
+    expectedPlanHash: plan.hash,
+  });
+  const target = await db.bankAccount.findFirstOrThrow({
+    where: { connectionId: h.replacement.id, providerAccountId: "new-gold" },
+  });
+  assert.equal(
+    (await db.bankAccount.findUniqueOrThrow({ where: { id: ancestor.id } }))
+      .supersededById,
+    target.id,
+  );
+  await h.setImports({
+    ...oldDetails,
+    records: applyTransactionSync(
+      [historical],
+      {
+        added: [
+          {
+            ...importFact("ancestor-post-start"),
+            providerAccountId: "old-gold",
+            date: "2026-10-20",
+          },
+        ],
+        modified: [],
+        removed: [],
+      },
+      h.connection.id,
+    ).records,
+  });
+  const state = await h.state();
+  assert.equal(state.imports.length, 1);
+  assert.equal(state.imports[0]!.accountId, "original-gold");
+});

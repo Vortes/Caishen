@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "./bank-account-rows";
 import {
   bankAccountRowsSelection,
   readBankAccountRows,
@@ -148,15 +149,18 @@ async function ensureBankReferencesKept(
   const transactions = removed("transaction");
   if (!accounts.size && !transactions.size) return;
   const linked = (
-    await db.bankConnection.findMany({
-      where: { clerkUserId: actorId },
-      select: {
-        id: true,
-        clerkUserId: true,
-        accountMappings: true,
-        bankAccounts: bankAccountRowsSelection,
-      },
-    })
+    await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        where: { clerkUserId: actorId },
+        select: {
+          id: true,
+          clerkUserId: true,
+          accountMappings: true,
+          bankAccounts: bankAccountRowsSelection,
+        },
+      }),
+    )
   ).some((connection) =>
     Object.values(
       readBankAccountRows(connection)?.mappings ??
@@ -220,15 +224,18 @@ async function commandChangeSet(
   if (command.type === "partner.match")
     throw new AccountingError("Match a bank import from the import itself");
   if (command.type === "account.reconcile") {
-    const connections = await db.bankConnection.findMany({
-      where: { clerkUserId: actorId },
-      select: {
-        id: true,
-        clerkUserId: true,
-        accountMappings: true,
-        bankAccounts: bankAccountRowsSelection,
-      },
-    });
+    const connections = await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        where: { clerkUserId: actorId },
+        select: {
+          id: true,
+          clerkUserId: true,
+          accountMappings: true,
+          bankAccounts: bankAccountRowsSelection,
+        },
+      }),
+    );
     const imports = readImportStates(household.rows, actorId);
     for (const connection of connections) {
       const mappings =

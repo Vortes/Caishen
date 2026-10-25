@@ -4,7 +4,7 @@ import {
   reportUnreadable,
   zodIssues,
 } from "./stored-data";
-import { Prisma } from "~/generated/prisma";
+import { Prisma, type PrismaClient } from "~/generated/prisma";
 import { bankAccountSchema } from "~/server/integrations/plaid";
 import { bankMappingsSchema, type BankMapping } from "./bank-account-setup";
 
@@ -71,12 +71,67 @@ const accountWithLinkSchema = bankAccountRowSchema.extend({
 
 type AccountRow = Prisma.BankAccountGetPayload<{ include: { link: true } }>;
 
+export type BankAccountSuccessor = { ownerId: string; row: AccountRow };
+type ConnectionRows = {
+  clerkUserId: string;
+  bankAccounts?: AccountRow[];
+};
+
+/** Load only missing successor rows, in batches, without crossing an owner's budget. */
+export async function withBankAccountSuccessors<
+  T extends ConnectionRows | ConnectionRows[] | null,
+>(db: Pick<PrismaClient, "bankAccount">, query: Promise<T>): Promise<T> {
+  const result = await query;
+  const connections: ConnectionRows[] =
+    result === null ? [] : "clerkUserId" in result ? [result] : result;
+  const owners = [
+    ...new Set(connections.map((connection) => connection.clerkUserId)),
+  ];
+  const graph = new Map<string, BankAccountSuccessor>();
+  for (const connection of connections)
+    for (const row of connection.bankAccounts ?? [])
+      graph.set(row.id, { ownerId: connection.clerkUserId, row });
+  const attempted = new Set<string>();
+  while (true) {
+    const missing = [
+      ...new Set(
+        [...graph.values()].flatMap(({ row }) =>
+          row.supersededById &&
+          !graph.has(row.supersededById) &&
+          !attempted.has(row.supersededById)
+            ? [row.supersededById]
+            : [],
+        ),
+      ),
+    ];
+    if (!missing.length) break;
+    missing.forEach((id) => attempted.add(id));
+    const successors = await db.bankAccount.findMany({
+      where: {
+        id: { in: missing },
+        connection: { clerkUserId: { in: owners } },
+      },
+      include: { link: true, connection: { select: { clerkUserId: true } } },
+    });
+    for (const { connection, ...row } of successors)
+      graph.set(row.id, { ownerId: connection.clerkUserId, row });
+  }
+  for (const connection of connections)
+    Object.assign(connection, {
+      bankAccountSuccessors: [...graph.values()].filter(
+        ({ ownerId }) => ownerId === connection.clerkUserId,
+      ),
+    });
+  return result;
+}
+
 // The reader release projects the new rows onto the existing service's
 // account view. An empty table still uses the connection's legacy lists.
 export function readBankAccountRows(connection: {
   id: string;
   clerkUserId: string;
   bankAccounts?: AccountRow[];
+  bankAccountSuccessors?: BankAccountSuccessor[];
 }) {
   if (!connection.bankAccounts?.length) return undefined;
   const result = z
@@ -171,11 +226,38 @@ export function readBankAccountRows(connection: {
     while (successor.supersededById) {
       if (visited.has(successor.id)) unreadableSuccessor(row.id);
       visited.add(successor.id);
-      const next =
-        byId.get(successor.supersededById) ?? unreadableSuccessor(row.id);
+      let next = byId.get(successor.supersededById);
+      if (!next) {
+        const external = connection.bankAccountSuccessors?.find(
+          (candidate) => candidate.row.id === successor.supersededById,
+        );
+        const parsed = accountWithLinkSchema.safeParse(external?.row);
+        const parsedRow = parsed.success
+          ? parsed.data
+          : unreadableSuccessor(row.id);
+        if (
+          external?.ownerId !== connection.clerkUserId ||
+          (parsedRow.link &&
+            (parsedRow.link.userId !== connection.clerkUserId ||
+              parsedRow.link.bankAccountId !== parsedRow.id))
+        )
+          unreadableSuccessor(row.id);
+        next = parsedRow;
+        byId.set(next.id, next);
+      }
       successor = next;
     }
-    const mapping = mappings[successor.providerAccountId];
+    const link = successor.link;
+    const mapping =
+      link && !link.unlinkedAt
+        ? {
+            accountId: link.accountId,
+            startDate: link.startDate,
+            ...(link.openingSnapshot
+              ? { openingSnapshot: link.openingSnapshot }
+              : {}),
+          }
+        : undefined;
     if (mapping)
       importMappings[row.providerAccountId] = row.link
         ? {
