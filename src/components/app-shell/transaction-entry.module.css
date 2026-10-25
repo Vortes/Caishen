@@ -243,6 +243,20 @@
 
 /* The option list under a field, on the same surface as the move-money
    popover. */
+.inlineChoice {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 6px;
+}
+.inlineOptions {
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-row);
+  font-size: var(--type-body);
+}
 .listPopover {
   z-index: 70;
   width: min(

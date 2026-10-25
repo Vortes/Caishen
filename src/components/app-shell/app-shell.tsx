@@ -320,7 +320,7 @@ export function AppShell({
       // A popover handles its own keys; Escape there closes it and nothing else.
       if (
         event.target instanceof Element &&
-        event.target.closest('[role="dialog"]')
+        event.target.closest('[role="dialog"], [role="menu"]')
       )
         return;
       if (settingsOpen) {

@@ -77,6 +77,19 @@ Radix must include it when calculating placement and available height.
 Use collision padding for viewport clearance; it must not shift a
 left-aligned surface away from a trigger near the left edge.
 
+For actions inside the transaction selection pill, measure the gap from
+the pill's outer border, not its inset buttons. Both bulk-action popovers
+use an anchor spanning that border. Bulk Categorize opens category groups,
+with each group's categories in a submenu beside it. Choosing a category
+applies it immediately to the selected transactions; there is no Apply step.
+Use Radix menu navigation for pointer, touch, arrow keys, and typeahead.
+Escape dismisses the menu without clearing the transaction selection.
+Both menu levels open and close instantly.
+
+The Share confirmation uses `ChoiceField placement="inline"`: focus still
+opens the category list, but it stays in the form's layout above Cancel/Apply
+instead of covering the pill.
+
 ## Popover and dropdown menu motion
 
 Use `src/components/ui/popover-motion.module.css` and `usePopoverMotion`

@@ -117,6 +117,8 @@ export function ShareSelection({
           Share
         </Button>
       </Popover.Trigger>
+      {/* Register after Trigger to replace its default anchor. */}
+      <Popover.Anchor className={styles.islandAnchor} aria-hidden />
       <Popover.Portal container={container}>
         <Popover.Content
           {...motion}
@@ -164,6 +166,7 @@ export function ShareSelection({
                         value={categoryId}
                         options={options}
                         wide={false}
+                        placement="inline"
                         placeholder="Choose a category"
                         onChange={setCategoryId}
                         inputRef={categoryInput}
