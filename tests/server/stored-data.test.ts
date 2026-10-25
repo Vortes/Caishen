@@ -15,6 +15,7 @@ import {
   savedEvidenceSchema,
 } from "../../src/server/storage/review-evidence";
 import { plaidLinkMetadataSchema } from "../../src/lib/plaid-link-metadata";
+import { bankConnectionStatusSchema } from "../../src/server/services/bank-connection-status";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
 import { connectionColumnSchema } from "../../src/server/services/banks";
@@ -59,7 +60,12 @@ const rowTables: Record<string, ZodTypeAny> = Object.fromEntries(
 const requestShapes: Record<string, ZodTypeAny> = {
   "PlaidLink.metadata": plaidLinkMetadataSchema,
 };
-const columns = { ...jsonColumns, ...rowTables, ...requestShapes };
+const columns: Record<string, ZodTypeAny> = {
+  ...jsonColumns,
+  ...rowTables,
+  ...requestShapes,
+  "BankConnection.status": bankConnectionStatusSchema,
+};
 
 const directory = new URL("../stored-data/", import.meta.url);
 type Contract = {

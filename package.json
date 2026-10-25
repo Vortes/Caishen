@@ -31,7 +31,8 @@
     "test:domain": "node --import tsx --import ./tests/change-set-oracle.ts --test tests/domain/*.test.ts",
     "test:services": "node --import tsx --import ./tests/change-set-oracle.ts --test tests/integrations/*.test.ts tests/server/*.test.ts",
     "test:db": "node --env-file=.env.local --import tsx --import ./tests/change-set-oracle.ts --test --test-concurrency=1 tests/database/*.test.ts",
-    "benchmark:rows": "node --import tsx scripts/benchmark-rows.ts"
+    "benchmark:rows": "node --import tsx scripts/benchmark-rows.ts",
+    "test:sandbox": "node --env-file=.env.local --import tsx --test tests/sandbox/*.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.7.5",
