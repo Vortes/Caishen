@@ -142,16 +142,37 @@ export function readBankAccountRows(connection: {
     };
   }
   const importMappings = { ...mappings };
+  const unreadableSuccessor = (accountId: string): never => {
+    reportUnreadable(
+      {
+        record: "BankAccount",
+        connectionId: connection.id,
+        userId: connection.clerkUserId,
+      },
+      [
+        {
+          issues: [
+            {
+              path: [accountId, "supersededById"],
+              code: "custom",
+              message: "Missing or cyclic provider account successor.",
+            },
+          ],
+        },
+      ],
+    );
+    throw connectionMaintenance();
+  };
   const byId = new Map(rows.map((row) => [row.id, row]));
   for (const row of rows) {
     if (row.status !== "retired") continue;
     let successor = row;
     const visited = new Set<string>();
     while (successor.supersededById) {
-      if (visited.has(successor.id)) throw connectionMaintenance();
+      if (visited.has(successor.id)) unreadableSuccessor(row.id);
       visited.add(successor.id);
       const next = byId.get(successor.supersededById);
-      if (!next) throw connectionMaintenance();
+      if (!next) unreadableSuccessor(row.id);
       successor = next;
     }
     const mapping = mappings[successor.providerAccountId];

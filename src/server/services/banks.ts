@@ -169,8 +169,8 @@ function readColumn<T>(
   record: "BankConnection.imports" | "BankConnection.accountMappings",
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   value: unknown,
+  providerRows = readBankAccountRows(connection),
 ): T | undefined {
-  const providerRows = readBankAccountRows(connection);
   if (providerRows) {
     value =
       record === "BankConnection.accountMappings"
@@ -230,13 +230,14 @@ export function readBankConnection<C extends StoredConnection>(
   imports: ImportStates,
 ): ReadConnection<C> {
   try {
+    const providerRows = readBankAccountRows(connection);
     const column = readColumn(
       connection,
       "BankConnection.imports",
       connectionColumnSchema,
       connection.imports,
+      providerRows,
     );
-    const providerRows = readBankAccountRows(connection);
     const mappings =
       providerRows?.mappings ??
       readColumn(
@@ -255,16 +256,7 @@ export function readBankConnection<C extends StoredConnection>(
                 unavailableAccountIds: providerRows.unavailableAccountIds,
               }
             : connection,
-          state: {
-            ...connectionDetails(column),
-            ...(providerRows
-              ? {
-                  accounts: providerRows.accounts,
-                  synchronizedAccountIds: providerRows.synchronizedAccountIds,
-                }
-              : {}),
-            ...rows,
-          },
+          state: { ...connectionDetails(column), ...rows },
           mappings,
           importMappings: providerRows?.importMappings ?? mappings,
         }
@@ -360,6 +352,17 @@ function client() {
   });
 }
 
+const accountWritesUnavailable =
+  "Updates to this bank connection are temporarily unavailable during a server upgrade. Your accounts and saved activity are still available.";
+
+function requireAccountWrites(connection: StoredConnection) {
+  if (connection.bankAccounts?.length)
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message: accountWritesUnavailable,
+    });
+}
+
 function requireConnected(connection: StoredConnection) {
   const details = readColumn(
     connection,
@@ -387,7 +390,10 @@ export async function linkBankToken(
         })
       : null;
     if (connectionId && !connection) throw new TRPCError({ code: "NOT_FOUND" });
-    if (connection) requireConnected(connection);
+    if (connection) {
+      requireAccountWrites(connection);
+      requireConnected(connection);
+    }
     // Verify token encryption is configured before starting a bank connection.
     encryptBankToken("configuration-check", userId);
     const token = await client().createLinkToken(
@@ -490,6 +496,7 @@ export async function exchangeBankToken(
             code: "CONFLICT",
             message: "This connection is already in use.",
           });
+        if (existing) requireAccountWrites(existing);
         return tx.bankConnection.upsert({
           where: { itemId: result.itemId },
           create: {
@@ -597,6 +604,7 @@ async function refreshBankAccounts(
     where: { id: connectionId, clerkUserId: userId },
   });
   if (!requested) throw new TRPCError({ code: "NOT_FOUND" });
+  requireAccountWrites(requested);
   requireConnected(requested);
   const accounts = await client().getAccounts(
     decryptBankToken(requested.encryptedToken, userId),
@@ -668,6 +676,7 @@ export async function reconnectBank(
       where: { id: connectionId, clerkUserId: userId },
     });
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+    requireAccountWrites(connection);
     requireConnected(connection);
     await refreshBankAccounts(db, userId, connection.id);
     return { id: connection.id };
@@ -690,6 +699,7 @@ export async function disconnectBank(
       db,
       userId,
       input.connectionId,
+      { writeAccountDetails: true },
     );
     const submitted = {
       type: "bank.disconnect",
@@ -773,6 +783,7 @@ async function prepareDuplicateBankRepair(
   const read = (id: string) => {
     const connection = connections.find((item) => item.id === id);
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+    requireAccountWrites(connection);
     return readyConnection(connection, imports);
   };
   const retired = read(selection.retiredConnectionId);
@@ -1221,12 +1232,14 @@ async function openConnection(
   db: Database,
   userId: string,
   connectionId: string,
+  options: { writeAccountDetails?: boolean } = {},
 ) {
   const connection = await db.bankConnection.findFirst({
     include: { bankAccounts: bankAccountRowsSelection },
     where: { id: connectionId, clerkUserId: userId },
   });
   if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+  if (options.writeAccountDetails) requireAccountWrites(connection);
   const opened = await requireHousehold(db, userId);
   const imports = readImportStates(opened.household.rows, userId);
   return { opened, ...readyConnection(connection, imports) };
@@ -1274,6 +1287,7 @@ export async function setupBankAccounts(
       db,
       userId,
       input.connectionId,
+      { writeAccountDetails: true },
     );
     const { household, ledger } = opened;
     if (state.disconnectedAt)
@@ -1722,6 +1736,13 @@ export async function syncBanks(db: Database, userId: string) {
   for (const connection of connections) {
     const read = readBankConnection(connection, readable);
     if (read.status === "maintenance" || read.state.disconnectedAt) continue;
+    if (connection.bankAccounts.length) {
+      await db.bankConnection.updateMany({
+        where: { id: connection.id, updatedAt: connection.updatedAt },
+        data: { lastAttemptAt: new Date(), error: accountWritesUnavailable },
+      });
+      continue;
+    }
     try {
       const plaid = client();
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
@@ -1856,6 +1877,7 @@ async function applyBankUpdate(
       code: "CONFLICT",
       message: "Another bank update finished first. Try again.",
     });
+  requireAccountWrites(fresh);
   const { state: old, mappings: saved } = readyConnection(
     fresh,
     readImportStates(opened.household.rows, userId),
