@@ -445,8 +445,8 @@ export function toShellData(
         (account) => account.id === counterpart?.accountId,
       );
       const boundary = other && transferNeedsCategory(account, other);
-      // Only a cash account's adjustment reaches Ready to Assign; on a card
-      // or tracking account it just corrects the balance.
+      // Card adjustments need no spending category. Only the portion that
+      // changes a positive card balance changes the budget's backing.
       const categoryNotNeeded =
         (isTransfer(item) ||
           account.kind === "tracking" ||
