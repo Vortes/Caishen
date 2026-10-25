@@ -40,6 +40,7 @@ import { budgetMaintenance } from "~/server/services/stored-data";
 import { readImportStates } from "~/server/services/bank-import-rows";
 import { readHouseholdRevision } from "~/server/storage/rows";
 import {
+  migrateBankAccounts,
   bankInboxItems,
   bankConnectionView,
   readBankConnection,
@@ -64,8 +65,9 @@ function currentMonth(zone: string) {
   return budgetDay(zone).slice(0, 7);
 }
 // A user's bank connections as the app reads them with their imports.
-const savedBankConnections = (db: Database, userId: string) =>
-  db.bankConnection.findMany({
+const savedBankConnections = async (db: Database, userId: string) => {
+  await migrateBankAccounts(db, userId);
+  return db.bankConnection.findMany({
     where: { clerkUserId: userId },
     select: {
       id: true,
@@ -85,6 +87,7 @@ const savedBankConnections = (db: Database, userId: string) =>
       bankAccounts: bankAccountRowsSelection,
     },
   });
+};
 
 // The partner's first name from their profile, which names the partner
 // account in the shell.
