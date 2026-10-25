@@ -40,6 +40,9 @@ async function member(name: string) {
 
 test.after(async () => {
   await db.workspace.deleteMany({ where: { id: { in: [...workspaces] } } });
+  await db.bankProviderEvent.deleteMany({
+    where: { clerkUserId: { in: users } },
+  });
   await db.user.deleteMany({ where: { clerkUserId: { in: users } } });
   await db.$disconnect();
 });
