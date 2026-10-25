@@ -17,7 +17,8 @@ type StoredRecord =
       record:
         | "BankConnection.imports"
         | "BankConnection.accountMappings"
-        | "BankImport";
+        | "BankImport"
+        | "BankAccount";
       connectionId: string;
       userId: string;
     }

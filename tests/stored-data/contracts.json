@@ -67,7 +67,8 @@
         "accounts[].name",
         "accounts[].officialName",
         "accounts[].subtype",
-        "accounts[].type"
+        "accounts[].type",
+        "accounts[].persistentAccountId"
       ],
       "optional": [
         "accounts",
@@ -81,7 +82,8 @@
         "transactionStatus",
         "resolved.*.decidedAt",
         "resolved.*.ignored",
-        "resolved.*.transactionId"
+        "resolved.*.transactionId",
+        "accounts[].persistentAccountId"
       ],
       "nullable": [
         "records[].current.pendingTransactionId",
@@ -107,9 +109,16 @@
         "transactionStatus"
       ],
       "values": {
-        "records[].current.provider": ["plaid"],
-        "records[].current.currency": ["USD"],
-        "records[].matchStatus": ["confirmed", "needs_review"],
+        "records[].current.provider": [
+          "plaid"
+        ],
+        "records[].current.currency": [
+          "USD"
+        ],
+        "records[].matchStatus": [
+          "confirmed",
+          "needs_review"
+        ],
         "records[].history[].kind": [
           "added",
           "modified",
@@ -117,10 +126,18 @@
           "removed",
           "restored"
         ],
-        "records[].history[].before.provider": ["plaid"],
-        "records[].history[].before.currency": ["USD"],
-        "records[].history[].after.provider": ["plaid"],
-        "records[].history[].after.currency": ["USD"]
+        "records[].history[].before.provider": [
+          "plaid"
+        ],
+        "records[].history[].before.currency": [
+          "USD"
+        ],
+        "records[].history[].after.provider": [
+          "plaid"
+        ],
+        "records[].history[].after.currency": [
+          "USD"
+        ]
       }
     }
   ],
@@ -146,7 +163,9 @@
   ],
   "ReviewEvidence.evidence": [
     {
-      "fields": ["revision"],
+      "fields": [
+        "revision"
+      ],
       "optional": [],
       "nullable": [],
       "values": {}
@@ -177,9 +196,15 @@
         "missingFromStatement[].pending",
         "missingFromStatement[].reference"
       ],
-      "nullable": ["differenceCents"],
+      "nullable": [
+        "differenceCents"
+      ],
       "values": {
-        "status": ["discrepancy", "insufficient_evidence", "reconciled"]
+        "status": [
+          "discrepancy",
+          "insufficient_evidence",
+          "reconciled"
+        ]
       }
     }
   ],
@@ -195,7 +220,10 @@
         "message.subject",
         "message.text"
       ],
-      "optional": ["scheduledAt", "unsubscribeUrl"],
+      "optional": [
+        "scheduledAt",
+        "unsubscribeUrl"
+      ],
       "nullable": [],
       "values": {}
     }
@@ -264,9 +292,16 @@
         "history[].after.merchantName"
       ],
       "values": {
-        "current.provider": ["plaid"],
-        "current.currency": ["USD"],
-        "matchStatus": ["confirmed", "needs_review"],
+        "current.provider": [
+          "plaid"
+        ],
+        "current.currency": [
+          "USD"
+        ],
+        "matchStatus": [
+          "confirmed",
+          "needs_review"
+        ],
         "history[].kind": [
           "added",
           "modified",
@@ -274,17 +309,34 @@
           "removed",
           "restored"
         ],
-        "history[].before.provider": ["plaid"],
-        "history[].before.currency": ["USD"],
-        "history[].after.provider": ["plaid"],
-        "history[].after.currency": ["USD"]
+        "history[].before.provider": [
+          "plaid"
+        ],
+        "history[].before.currency": [
+          "USD"
+        ],
+        "history[].after.provider": [
+          "plaid"
+        ],
+        "history[].after.currency": [
+          "USD"
+        ]
       }
     }
   ],
   "BankImport.resolved": [
     {
-      "fields": ["decidedAt", "fingerprint", "ignored", "transactionId"],
-      "optional": ["decidedAt", "ignored", "transactionId"],
+      "fields": [
+        "decidedAt",
+        "fingerprint",
+        "ignored",
+        "transactionId"
+      ],
+      "optional": [
+        "decidedAt",
+        "ignored",
+        "transactionId"
+      ],
       "nullable": [],
       "values": {}
     }
@@ -324,7 +376,10 @@
         "before[].table"
       ],
       "optional": [],
-      "nullable": ["after[].data", "before[].data"],
+      "nullable": [
+        "after[].data",
+        "before[].data"
+      ],
       "values": {
         "after[].table": [
           "account",
@@ -377,25 +432,49 @@
   ],
   "Transaction.counterpartyShare": [
     {
-      "fields": ["accountId", "amount", "counterpartyName"],
-      "optional": ["counterpartyName"],
-      "nullable": [""],
+      "fields": [
+        "accountId",
+        "amount",
+        "counterpartyName"
+      ],
+      "optional": [
+        "counterpartyName"
+      ],
+      "nullable": [
+        ""
+      ],
       "values": {}
     }
   ],
   "TransactionLine.counterpartyShare": [
     {
-      "fields": ["accountId", "amount", "counterpartyName"],
-      "optional": ["counterpartyName"],
-      "nullable": [""],
+      "fields": [
+        "accountId",
+        "amount",
+        "counterpartyName"
+      ],
+      "optional": [
+        "counterpartyName"
+      ],
+      "nullable": [
+        ""
+      ],
       "values": {}
     }
   ],
   "PayeeMemory.counterpartyShare": [
     {
-      "fields": ["accountId", "amount", "counterpartyName"],
-      "optional": ["counterpartyName"],
-      "nullable": [""],
+      "fields": [
+        "accountId",
+        "amount",
+        "counterpartyName"
+      ],
+      "optional": [
+        "counterpartyName"
+      ],
+      "nullable": [
+        ""
+      ],
       "values": {}
     }
   ],
@@ -412,8 +491,15 @@
         "[].next.amount",
         "[].next.counterpartyName"
       ],
-      "optional": ["[].previous.counterpartyName", "[].next.counterpartyName"],
-      "nullable": ["", "[].previous", "[].next"],
+      "optional": [
+        "[].previous.counterpartyName",
+        "[].next.counterpartyName"
+      ],
+      "nullable": [
+        "",
+        "[].previous",
+        "[].next"
+      ],
       "values": {}
     }
   ],
@@ -429,7 +515,10 @@
         "[].changes[].next",
         "[].changes[].previous"
       ],
-      "optional": ["[].at", "[].changes"],
+      "optional": [
+        "[].at",
+        "[].changes"
+      ],
       "nullable": [],
       "values": {
         "[].reason": [
@@ -440,23 +529,44 @@
           "restored",
           "updated"
         ],
-        "[].changes[].field": ["amount", "date", "payee", "share", "status"]
+        "[].changes[].field": [
+          "amount",
+          "date",
+          "payee",
+          "share",
+          "status"
+        ]
       }
     }
   ],
   "PartnerSettlement.history": [
     {
-      "fields": ["[].actorId", "[].at", "[].operationId", "[].reason"],
-      "optional": ["[].at"],
+      "fields": [
+        "[].actorId",
+        "[].at",
+        "[].operationId",
+        "[].reason"
+      ],
+      "optional": [
+        "[].at"
+      ],
       "nullable": [],
       "values": {
-        "[].reason": ["confirmed", "matched", "removed"]
+        "[].reason": [
+          "confirmed",
+          "matched",
+          "removed"
+        ]
       }
     }
   ],
   "rows.member": [
     {
-      "fields": ["name", "sort", "userId"],
+      "fields": [
+        "name",
+        "sort",
+        "userId"
+      ],
       "optional": [],
       "nullable": [],
       "values": {}
@@ -490,16 +600,28 @@
         "reconciled.balance",
         "reconciled.date"
       ],
-      "optional": ["reconciled"],
+      "optional": [
+        "reconciled"
+      ],
       "nullable": [],
       "values": {
-        "kind": ["cash", "credit", "partner", "reimbursements", "tracking"]
+        "kind": [
+          "cash",
+          "credit",
+          "partner",
+          "reimbursements",
+          "tracking"
+        ]
       }
     }
   ],
   "rows.categoryGroup": [
     {
-      "fields": ["name", "sort", "userId"],
+      "fields": [
+        "name",
+        "sort",
+        "userId"
+      ],
       "optional": [],
       "nullable": [],
       "values": {}
@@ -517,7 +639,11 @@
         "sort",
         "userId"
       ],
-      "optional": ["counterpartyAccountId", "pairedAccountId", "pairedLoanId"],
+      "optional": [
+        "counterpartyAccountId",
+        "pairedAccountId",
+        "pairedLoanId"
+      ],
       "nullable": [],
       "values": {}
     }
@@ -557,14 +683,28 @@
           "weekly",
           "yearly"
         ],
-        "behavior": ["balance", "contribution", "refill"],
-        "repeatUnit": ["months", "years"]
+        "behavior": [
+          "balance",
+          "contribution",
+          "refill"
+        ],
+        "repeatUnit": [
+          "months",
+          "years"
+        ]
       }
     }
   ],
   "rows.assignment": [
     {
-      "fields": ["amount", "categoryId", "id", "month", "sort", "userId"],
+      "fields": [
+        "amount",
+        "categoryId",
+        "id",
+        "month",
+        "sort",
+        "userId"
+      ],
       "optional": [],
       "nullable": [],
       "values": {}
@@ -572,7 +712,11 @@
   ],
   "rows.expectedIncome": [
     {
-      "fields": ["amount", "month", "userId"],
+      "fields": [
+        "amount",
+        "month",
+        "userId"
+      ],
       "optional": [],
       "nullable": [],
       "values": {}
@@ -622,7 +766,10 @@
       ],
       "nullable": [],
       "values": {
-        "status": ["pending", "posted"],
+        "status": [
+          "pending",
+          "posted"
+        ],
         "kind": [
           "adjustment",
           "card-payment",
@@ -672,9 +819,15 @@
         "shareChanges[].previous.counterpartyName",
         "shareChanges[].next.counterpartyName"
       ],
-      "nullable": ["shareChanges[].previous", "shareChanges[].next"],
+      "nullable": [
+        "shareChanges[].previous",
+        "shareChanges[].next"
+      ],
       "values": {
-        "status": ["pending", "posted"],
+        "status": [
+          "pending",
+          "posted"
+        ],
         "reason": [
           "categorized",
           "created",
@@ -761,7 +914,12 @@
         "sort",
         "userId"
       ],
-      "optional": ["error", "record", "resolved", "reviews"],
+      "optional": [
+        "error",
+        "record",
+        "resolved",
+        "reviews"
+      ],
       "nullable": [],
       "values": {}
     }
@@ -780,7 +938,10 @@
         "counterpartyShare.amount",
         "counterpartyShare.counterpartyName"
       ],
-      "optional": ["counterpartyShare", "counterpartyShare.counterpartyName"],
+      "optional": [
+        "counterpartyShare",
+        "counterpartyShare.counterpartyName"
+      ],
       "nullable": [],
       "values": {}
     }
@@ -805,7 +966,10 @@
       ],
       "nullable": [],
       "values": {
-        "kind": ["category", "readyToAssign"]
+        "kind": [
+          "category",
+          "readyToAssign"
+        ]
       }
     }
   ],
@@ -836,10 +1000,18 @@
         "history[].changes[].next",
         "history[].changes[].previous"
       ],
-      "optional": ["removed", "source", "history[].at", "history[].changes"],
+      "optional": [
+        "removed",
+        "source",
+        "history[].at",
+        "history[].changes"
+      ],
       "nullable": [],
       "values": {
-        "status": ["pending", "posted"],
+        "status": [
+          "pending",
+          "posted"
+        ],
         "history[].reason": [
           "created",
           "matched",
@@ -860,8 +1032,14 @@
   ],
   "rows.partnerEntrySide": [
     {
-      "fields": ["categoryId", "entryId", "userId"],
-      "optional": ["categoryId"],
+      "fields": [
+        "categoryId",
+        "entryId",
+        "userId"
+      ],
+      "optional": [
+        "categoryId"
+      ],
       "nullable": [],
       "values": {}
     }
@@ -883,18 +1061,146 @@
         "history[].operationId",
         "history[].reason"
       ],
-      "optional": ["removed", "history[].at"],
+      "optional": [
+        "removed",
+        "history[].at"
+      ],
       "nullable": [],
       "values": {
-        "history[].reason": ["confirmed", "matched", "removed"]
+        "history[].reason": [
+          "confirmed",
+          "matched",
+          "removed"
+        ]
       }
     }
   ],
   "rows.partnerRequest": [
     {
-      "fields": ["amount", "date", "id", "requesterId", "sort"],
+      "fields": [
+        "amount",
+        "date",
+        "id",
+        "requesterId",
+        "sort"
+      ],
       "optional": [],
       "nullable": [],
+      "values": {}
+    }
+  ],
+  "PlaidLink.metadata": [
+    {
+      "fields": [
+        "institution",
+        "institution.institution_id",
+        "accounts",
+        "accounts[].id",
+        "accounts[].name",
+        "accounts[].mask",
+        "accounts[].type",
+        "accounts[].subtype"
+      ],
+      "optional": [
+        "accounts[].type",
+        "accounts[].subtype"
+      ],
+      "nullable": [
+        "institution",
+        "accounts[].name",
+        "accounts[].mask",
+        "accounts[].type",
+        "accounts[].subtype"
+      ],
+      "values": {}
+    }
+  ],
+  "BankAccountLink.openingSnapshot": [
+    {
+      "fields": [
+        "postedImportIds",
+        "fingerprints",
+        "financialFingerprints",
+        "reviewImportIds"
+      ],
+      "optional": [
+        "financialFingerprints",
+        "reviewImportIds"
+      ],
+      "nullable": [
+        ""
+      ],
+      "values": {}
+    }
+  ],
+  "BankAccount": [
+    {
+      "fields": [
+        "id",
+        "connectionId",
+        "providerAccountId",
+        "persistentAccountId",
+        "name",
+        "officialName",
+        "mask",
+        "type",
+        "subtype",
+        "currency",
+        "currentBalance",
+        "availableBalance",
+        "balancesAsOf",
+        "status",
+        "historyComplete",
+        "firstSeenAt",
+        "lastSeenAt",
+        "supersededById",
+        "createdAt",
+        "updatedAt"
+      ],
+      "optional": [],
+      "nullable": [
+        "persistentAccountId",
+        "officialName",
+        "mask",
+        "subtype",
+        "currency",
+        "currentBalance",
+        "availableBalance",
+        "balancesAsOf",
+        "supersededById"
+      ],
+      "values": {
+        "status": [
+          "shared",
+          "unavailable",
+          "revoked",
+          "retired"
+        ],
+        "historyComplete": [
+          true,
+          false
+        ]
+      }
+    }
+  ],
+  "BankAccountLink": [
+    {
+      "fields": [
+        "id",
+        "bankAccountId",
+        "workspaceId",
+        "userId",
+        "accountId",
+        "startDate",
+        "openingSnapshot",
+        "linkedAt",
+        "unlinkedAt"
+      ],
+      "optional": [],
+      "nullable": [
+        "openingSnapshot",
+        "unlinkedAt"
+      ],
       "values": {}
     }
   ]

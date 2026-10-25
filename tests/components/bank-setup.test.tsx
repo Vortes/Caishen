@@ -104,15 +104,77 @@ test.each([false, true])(
     for (const { name } of cards)
       expect(within(accounts).getByText(name)).toBeTruthy();
     expect(within(accounts).getByText("-$123.45")).toBeTruthy();
-    expect(within(accounts).getAllByText("Not currently shared")).toHaveLength(
-      4,
+    expect(within(accounts).getAllByText("Not shared")).toHaveLength(4);
+    await shell.user.click(
+      screen.getByRole("button", { name: "American Express options" }),
     );
-    expect(screen.queryByRole("button", { name: "Add accounts" })).toBeNull();
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).queryByRole("menuitem", { name: /^Add / })).toBeNull();
     expect(
-      screen.getByText(/Your saved accounts and history are kept/),
+      within(menu).getByText("Restore updates for 4 not shared"),
+    ).toBeTruthy();
+    expect(
+      within(menu).getByText("Your accounts and history stay"),
     ).toBeTruthy();
   },
 );
+
+test("a re-shared checking account whose Plaid id changed shows as shared with its fresh balance and is not offered again", async () => {
+  // After the server recognized the account by its persistent id, the mapping
+  // names the new Plaid id and the old id is gone from the catalog.
+  const bank: State["connections"][number] = {
+    ...connection(),
+    institutionName: "Chase",
+    synchronizedAccountIds: ["provider-checking-reissued"],
+    accountMappings: {
+      "provider-checking-reissued": {
+        accountId: "cash",
+        startDate: "2026-10-01",
+      },
+    },
+    accounts: [
+      {
+        accountId: "provider-checking-reissued",
+        persistentAccountId: "persistent-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 93,
+        availableBalance: 93,
+        currency: "USD",
+      },
+    ],
+  };
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.add",
+        id: "add-cash",
+        accountId: "cash",
+        name: "Checking",
+        kind: "cash",
+        date: "2026-10-01",
+        openingBalance: 10000,
+      },
+    ],
+    overview: () => readyOverview({ connections: [bank] }),
+  });
+  await shell.user.click(screen.getByRole("button", { name: "Banks" }));
+  const accounts = screen.getByRole("list", {
+    name: "Chase accounts in your budget",
+  });
+  const row = within(accounts).getByRole("listitem");
+  expect(within(row).getByText("Checking")).toBeTruthy();
+  expect(within(row).getByText("$93.00")).toBeTruthy();
+  expect(within(row).queryByText("Not shared")).toBeNull();
+  expect(screen.queryByText(/not added/)).toBeNull();
+  await shell.user.click(screen.getByRole("button", { name: "Chase options" }));
+  const menu = await screen.findByRole("menu");
+  expect(within(menu).queryByText(/^(Add|Review) 1 account/)).toBeNull();
+  expect(within(menu).getByText("Choose shared accounts")).toBeTruthy();
+});
 
 test("a loan with no bank balance offers setup and asks for confirmed lender terms", async () => {
   const bank = connection();
@@ -141,7 +203,12 @@ test("a loan with no bank balance offers setup and asks for confirmed lender ter
     },
   });
   await shell.user.click(screen.getByRole("button", { name: "Banks" }));
-  await shell.user.click(screen.getByRole("button", { name: "Add accounts" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Add 1 account/ }),
+  );
   const dialog = await screen.findByRole("dialog", {
     name: "Add Discover to your budget",
   });
@@ -189,7 +256,10 @@ test("an account missing required bank data has a review action that explains wh
   });
   await shell.user.click(screen.getByRole("button", { name: "Banks" }));
   await shell.user.click(
-    screen.getByRole("button", { name: "Review accounts" }),
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Review 1 account/ }),
   );
   const dialog = await screen.findByRole("dialog", {
     name: "Add Discover to your budget",
@@ -228,7 +298,12 @@ test("a loan balance arriving during setup replaces the missing balance field", 
     },
   });
   await shell.user.click(screen.getByRole("button", { name: "Banks" }));
-  await shell.user.click(screen.getByRole("button", { name: "Add accounts" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Add 1 account/ }),
+  );
   const dialog = await screen.findByRole("dialog", {
     name: "Add Discover to your budget",
   });

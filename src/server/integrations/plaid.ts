@@ -61,6 +61,11 @@ export function validatePlaidRedirectUri(
 
 export const bankAccountSchema = z.object({
   accountId: providerIdSchema,
+  /**
+   * Plaid's identity for the account across Items and account_id changes,
+   * reported only by institutions with tokenized account numbers.
+   */
+  persistentAccountId: providerIdSchema.optional(),
   name: z.string().min(1).max(1024),
   officialName: z.string().max(1024).nullable(),
   mask: z.string().max(20).nullable(),
@@ -74,6 +79,7 @@ export type BankAccount = z.infer<typeof bankAccountSchema>;
 
 const rawAccountSchema = z.object({
   account_id: providerIdSchema,
+  persistent_account_id: providerIdSchema.nullish(),
   name: bankAccountSchema.shape.name,
   official_name: bankAccountSchema.shape.officialName,
   mask: bankAccountSchema.shape.mask,
@@ -92,6 +98,9 @@ function normalizeAccount(
 ): BankAccount {
   return {
     accountId: account.account_id,
+    ...(account.persistent_account_id
+      ? { persistentAccountId: account.persistent_account_id }
+      : {}),
     name: account.name,
     officialName: account.official_name,
     mask: account.mask,

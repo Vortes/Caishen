@@ -1,3 +1,4 @@
+import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
 import {
   createPartnerInvite,
   checkPartnerInvite,
@@ -73,6 +74,7 @@ const savedBankConnections = (db: Database, userId: string) =>
       accountMappings: true,
       unavailableAccountIds: true,
       imports: true,
+      bankAccounts: bankAccountRowsSelection,
     },
   });
 

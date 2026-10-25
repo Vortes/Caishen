@@ -1,0 +1,11 @@
+{
+  "id": "link-current",
+  "bankAccountId": "bank-account-current",
+  "workspaceId": "household",
+  "userId": "alice",
+  "accountId": "checking",
+  "startDate": "2026-10-01",
+  "openingSnapshot": null,
+  "linkedAt": "2026-10-25T12:00:00.000Z",
+  "unlinkedAt": "2026-10-25T12:00:00.000Z"
+}
