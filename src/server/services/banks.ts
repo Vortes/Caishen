@@ -1,3 +1,4 @@
+import { writeProviderAccounts, writeBankLinks } from "./bank-account-writes";
 import {
   bankAccountRowsSelection,
   lockBankConnections,
@@ -100,7 +101,13 @@ import {
   type Database,
   type OperationResult,
 } from "./household";
-import { commandHash, domainError, jsonValue, operationHash } from "./safety";
+import {
+  commandHash,
+  domainError,
+  isPrismaError,
+  jsonValue,
+  operationHash,
+} from "./safety";
 import { settleFromImports } from "./partner-settlements";
 import {
   budgetMaintenance,
@@ -235,18 +242,16 @@ function connectionDetails(column: ConnectionDetails) {
   };
 }
 
-/**
- * The BankConnection.imports value holding these details. Import state a
- * connection saved before rows is kept as it was, for the one-time copy.
- */
-function detailsColumn(stored: unknown, details: ConnectionDetails) {
-  const legacy = connectionColumnSchema.safeParse(stored);
-  const { records, resolved, errors, reviews } = legacy.success
-    ? legacy.data
-    : ({} as Partial<ImportRowState>);
+function connectionMetadata(stored: unknown, details: ConnectionDetails) {
+  const legacy = typeof stored === "object" && stored !== null ? stored : {};
   return jsonValue({
-    ...(records ? { records, resolved, errors, reviews } : {}),
-    ...connectionDetails(details),
+    ...legacy,
+    institutionId: details.institutionId,
+    institutionName: details.institutionName,
+    transactionStatus: details.transactionStatus,
+    ...(details.disconnectedAt
+      ? { disconnectedAt: details.disconnectedAt }
+      : {}),
   });
 }
 
@@ -440,37 +445,109 @@ export function fetchPlaidWebhookKey(db: Database, keyId: string) {
   return client(db, null).getWebhookVerificationKey(keyId);
 }
 
-const accountWritesUnavailable =
-  "Updates to this bank connection are temporarily unavailable during a server upgrade. Your accounts and saved activity are still available.";
-
-function requireAccountWrites(connection: StoredConnection) {
-  if (connection.bankAccounts?.length)
-    throw new TRPCError({
-      code: "SERVICE_UNAVAILABLE",
-      message: accountWritesUnavailable,
-    });
-}
-
-async function lockLegacyBankConnections(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  connectionIds: string[],
-) {
-  const locked = await lockBankConnections(tx, userId, connectionIds);
-  if (locked.length !== new Set(connectionIds).size)
-    throw new TRPCError({
-      code: "CONFLICT",
-      message: "A bank connection changed. Refresh and try again.",
-    });
-  if (
-    await tx.bankAccount.count({
-      where: { connectionId: { in: connectionIds } },
-    })
-  )
-    throw new TRPCError({
-      code: "SERVICE_UNAVAILABLE",
-      message: accountWritesUnavailable,
-    });
+/** Copy legacy identities and links once, while the rollback writer is locked out. */
+export async function migrateBankAccounts(db: Database, userId: string) {
+  const legacy = await db.bankConnection.findMany({
+    where: { clerkUserId: userId, bankAccounts: { none: {} } },
+    select: { id: true },
+  });
+  if (!legacy.length) return;
+  const household = await readHouseholdRevision(db, userId);
+  if (!household) return;
+  try {
+    await db.$transaction(
+      async (tx) => {
+        await lockBankConnections(
+          tx,
+          userId,
+          legacy.map(({ id }) => id),
+        );
+        const connections = await tx.bankConnection.findMany({
+          where: {
+            id: { in: legacy.map(({ id }) => id) },
+            clerkUserId: userId,
+            bankAccounts: { none: {} },
+          },
+        });
+        for (const connection of connections) {
+          const column = readColumn(
+            connection,
+            "BankConnection.imports",
+            connectionColumnSchema,
+            connection.imports,
+          );
+          const links = readColumn(
+            connection,
+            "BankConnection.accountMappings",
+            mappingsSchema,
+            connection.accountMappings,
+          );
+          if (!column || !links) continue;
+          const accounts = new Map(
+            column.accounts.map((account) => [account.accountId, account]),
+          );
+          for (const providerId of Object.keys(links))
+            if (!accounts.has(providerId))
+              accounts.set(providerId, {
+                accountId: providerId,
+                name: "Previously linked account",
+                officialName: null,
+                mask: null,
+                type: "unknown",
+                subtype: null,
+                currency: null,
+                currentBalance: null,
+                availableBalance: null,
+              });
+          for (const account of accounts.values()) {
+            const missing = !column.accounts.some(
+              (saved) => saved.accountId === account.accountId,
+            );
+            const { accountId, persistentAccountId, ...details } = account;
+            const mapping = links[accountId];
+            await tx.bankAccount.create({
+              data: {
+                connectionId: connection.id,
+                providerAccountId: accountId,
+                persistentAccountId: persistentAccountId ?? null,
+                ...details,
+                status:
+                  missing ||
+                  column.disconnectedAt ||
+                  connection.unavailableAccountIds.includes(accountId)
+                    ? "unavailable"
+                    : "shared",
+                historyComplete:
+                  column.synchronizedAccountIds.includes(accountId),
+                ...(mapping
+                  ? {
+                      link: {
+                        create: {
+                          workspaceId: household.workspaceId,
+                          userId,
+                          accountId: mapping.accountId,
+                          startDate: mapping.startDate,
+                          ...(mapping.openingSnapshot
+                            ? {
+                                openingSnapshot: jsonValue(
+                                  mapping.openingSnapshot,
+                                ),
+                              }
+                            : {}),
+                        },
+                      },
+                    }
+                  : {}),
+              },
+            });
+          }
+        }
+      },
+      { timeout: 30_000 },
+    );
+  } catch (error) {
+    domainError(error);
+  }
 }
 
 function requireConnected(connection: StoredConnection) {
@@ -501,7 +578,6 @@ export async function linkBankToken(
       : null;
     if (connectionId && !connection) throw new TRPCError({ code: "NOT_FOUND" });
     if (connection) {
-      requireAccountWrites(connection);
       requireConnected(connection);
     }
     // Verify token encryption is configured before starting a bank connection.
@@ -705,8 +781,7 @@ export async function exchangeBankToken(
             message: "This connection is already in use.",
           });
         if (existing) {
-          requireAccountWrites(existing);
-          await lockLegacyBankConnections(tx, userId, [existing.id]);
+          await lockBankConnections(tx, userId, [existing.id]);
         }
         return tx.bankConnection.upsert({
           where: { itemId: result.itemId },
@@ -714,12 +789,9 @@ export async function exchangeBankToken(
             clerkUserId: userId,
             itemId: result.itemId,
             encryptedToken: encryptBankToken(result.accessToken, userId),
-            imports: jsonValue(
-              connectionDetails(
-                connectionColumnSchema.parse({
-                  institutionId: institutionId,
-                }),
-              ),
+            imports: connectionMetadata(
+              {},
+              connectionColumnSchema.parse({ institutionId }),
             ),
             accountMappings: {},
           },
@@ -819,7 +891,7 @@ type IdentityDecision = {
   rung: 1 | 2;
   from: string;
   to: string;
-  accountId: string;
+  accountId?: string;
 };
 
 // Only rungs 1 and 2 preserve a mapped account automatically. Rung 2 moves
@@ -831,14 +903,12 @@ function followAccountIdentities(
 ) {
   const next = { ...mappings };
   const decisions: IdentityDecision[] = [];
-  const candidates = previous
-    .filter((account) => mappings[account.accountId])
-    .map((account) => ({
-      account,
-      institutionId: null,
-      sameConnection: true,
-      absent: !reported.some((item) => item.accountId === account.accountId),
-    }));
+  const candidates = previous.map((account) => ({
+    account,
+    institutionId: null,
+    sameConnection: true,
+    absent: !reported.some((item) => item.accountId === account.accountId),
+  }));
   for (const account of reported) {
     const resolution = resolveBankAccountIdentity(account, {
       institutionId: null,
@@ -848,13 +918,15 @@ function followAccountIdentities(
     if (resolution.rung !== 1 && resolution.rung !== 2) continue;
     const from = resolution.existing.accountId;
     const to = account.accountId;
-    next[to] = next[from]!;
-    if (from !== to) delete next[from];
+    if (next[from]) {
+      next[to] = next[from]!;
+      if (from !== to) delete next[from];
+    }
     decisions.push({
       rung: resolution.rung,
       from,
       to,
-      accountId: next[to].accountId,
+      ...(next[to] ? { accountId: next[to].accountId } : {}),
     });
   }
   return {
@@ -864,21 +936,34 @@ function followAccountIdentities(
   };
 }
 
+function currentProviderAccounts(
+  connection: StoredConnection,
+  accounts: z.infer<typeof bankAccountSchema>[],
+) {
+  const retired = new Set(
+    connection.bankAccounts
+      ?.filter((row) => row.status === "retired")
+      .map((row) => row.providerAccountId),
+  );
+  return accounts.filter((account) => !retired.has(account.accountId));
+}
+
 async function refreshBankAccounts(
   db: Database,
   userId: string,
   connectionId: string,
 ) {
+  await migrateBankAccounts(db, userId);
   const requested = await db.bankConnection.findFirst({
     include: { bankAccounts: bankAccountRowsSelection },
     where: { id: connectionId, clerkUserId: userId },
   });
   if (!requested) throw new TRPCError({ code: "NOT_FOUND" });
-  requireAccountWrites(requested);
   requireConnected(requested);
   const accounts = await client(db, userId, requested.id).getAccounts(
     decryptBankToken(requested.encryptedToken, userId),
   );
+  accounts.accounts = currentProviderAccounts(requested, accounts.accounts);
   const column = readColumn(
     requested,
     "BankConnection.imports",
@@ -894,26 +979,19 @@ async function refreshBankAccounts(
   // Saved only over the connection the response was requested for, so an
   // older response cannot overwrite a newer update.
   const save = async (tx: Prisma.TransactionClient) => {
-    await lockLegacyBankConnections(tx, userId, [requested.id]);
+    await lockBankConnections(tx, userId, [requested.id]);
     const saved = await tx.bankConnection.updateMany({
       where: {
         id: requested.id,
         clerkUserId: userId,
         updatedAt: requested.updatedAt,
-        bankAccounts: { none: {} },
       },
       data: {
-        imports: detailsColumn(requested.imports, {
-          ...connectionDetails(column),
+        imports: connectionMetadata(requested.imports, {
+          ...column,
           ...accounts,
-          accounts: identity.accounts,
           transactionStatus: null,
-          synchronizedAccountIds: [],
         }),
-        unavailableAccountIds: identity.unavailableAccountIds,
-        ...(identity.decisions.length
-          ? { accountMappings: jsonValue(identity.mappings) }
-          : {}),
         status: "connected",
         newAccountsAvailable: false,
         lastAttemptAt: new Date(),
@@ -925,6 +1003,23 @@ async function refreshBankAccounts(
         code: "CONFLICT",
         message: "Another bank update finished first. Refresh and try again.",
       });
+    await writeProviderAccounts(
+      tx,
+      userId,
+      requested.id,
+      accounts.accounts,
+      [],
+      identity.decisions,
+    );
+    const household = await readHouseholdRevision(db, userId);
+    if (household)
+      await writeBankLinks(
+        tx,
+        userId,
+        household.workspaceId,
+        requested.id,
+        identity.mappings,
+      );
   };
   if (!identity.decisions.length)
     return db.$transaction(save, { timeout: 30_000, maxWait: 10_000 });
@@ -961,7 +1056,6 @@ export async function reconnectBank(
     owned = connection.id;
     if (metadata !== undefined)
       completed = plaidLinkMetadataSchema.parse(metadata);
-    requireAccountWrites(connection);
     requireConnected(connection);
     await refreshBankAccounts(db, userId, connection.id);
     return { id: connection.id };
@@ -993,7 +1087,6 @@ export async function disconnectBank(
       db,
       userId,
       input.connectionId,
-      { writeAccountDetails: true },
     );
     const submitted = {
       type: "bank.disconnect",
@@ -1019,7 +1112,7 @@ export async function disconnectBank(
       submitted,
       changeSet: composeChangeSets(input.operationId, []),
       alongside: async (tx) => {
-        await lockLegacyBankConnections(tx, userId, [connection.id]);
+        await lockBankConnections(tx, userId, [connection.id]);
         if (!state.disconnectedAt)
           await client(db, userId, connection.id).removeItem(
             decryptBankToken(connection.encryptedToken, userId),
@@ -1028,10 +1121,9 @@ export async function disconnectBank(
           where: {
             id: connection.id,
             updatedAt: connection.updatedAt,
-            bankAccounts: { none: {} },
           },
           data: {
-            imports: detailsColumn(connection.imports, {
+            imports: connectionMetadata(connection.imports, {
               ...state,
               disconnectedAt: state.disconnectedAt ?? new Date().toISOString(),
             }),
@@ -1040,6 +1132,7 @@ export async function disconnectBank(
             error: null,
           },
         });
+        await writeProviderAccounts(tx, userId, connection.id, [], []);
         if (saved.count !== 1)
           throw new TRPCError({
             code: "CONFLICT",
@@ -1070,6 +1163,7 @@ async function prepareDuplicateBankRepair(
   userId: string,
   selection: DuplicateRepairSelection,
 ) {
+  await migrateBankAccounts(db, userId);
   selection = duplicateRepairSelectionSchema.parse(selection);
   if (selection.retiredConnectionId === selection.replacementConnectionId)
     throw new Error("Choose two different connections.");
@@ -1083,7 +1177,6 @@ async function prepareDuplicateBankRepair(
   const read = (id: string) => {
     const connection = connections.find((item) => item.id === id);
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
-    requireAccountWrites(connection);
     return readyConnection(connection, imports);
   };
   const retired = read(selection.retiredConnectionId);
@@ -1346,7 +1439,7 @@ export async function repairDuplicateBankAccounts(
     submitted,
     changeSet,
     alongside: async (tx) => {
-      await lockLegacyBankConnections(tx, userId, [
+      await lockBankConnections(tx, userId, [
         retired.connection.id,
         replacement.connection.id,
       ]);
@@ -1360,18 +1453,23 @@ export async function repairDuplicateBankAccounts(
           id: replacement.connection.id,
           clerkUserId: userId,
           updatedAt: replacement.connection.updatedAt,
-          bankAccounts: { none: {} },
         },
-        data: { accountMappings: jsonValue(mappings) },
+        data: { updatedAt: new Date() },
       });
       const removed = await tx.bankConnection.deleteMany({
         where: {
           id: retired.connection.id,
           clerkUserId: userId,
           updatedAt: retired.connection.updatedAt,
-          bankAccounts: { none: {} },
         },
       });
+      await writeBankLinks(
+        tx,
+        userId,
+        opened.household.workspaceId,
+        replacement.connection.id,
+        mappings,
+      );
       if (saved.count !== 1 || removed.count !== 1)
         throw new Error("A bank connection changed. Preview the repair again.");
     },
@@ -1537,14 +1635,13 @@ async function openConnection(
   db: Database,
   userId: string,
   connectionId: string,
-  options: { writeAccountDetails?: boolean } = {},
 ) {
+  await migrateBankAccounts(db, userId);
   const connection = await db.bankConnection.findFirst({
     include: { bankAccounts: bankAccountRowsSelection },
     where: { id: connectionId, clerkUserId: userId },
   });
   if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
-  if (options.writeAccountDetails) requireAccountWrites(connection);
   const opened = await requireHousehold(db, userId);
   const imports = readImportStates(opened.household.rows, userId);
   return { opened, ...readyConnection(connection, imports) };
@@ -1592,7 +1689,6 @@ export async function setupBankAccounts(
       db,
       userId,
       input.connectionId,
-      { writeAccountDetails: true },
     );
     const { household, ledger } = opened;
     if (state.disconnectedAt)
@@ -1668,6 +1764,11 @@ export async function setupBankAccounts(
     });
     const identities = connections.map((saved, index) => ({
       ...details[index]!,
+      disconnectedAt:
+        details[index]!.disconnectedAt ??
+        (["revoked", "disconnected"].includes(saved.status)
+          ? saved.updatedAt.toISOString()
+          : undefined),
       accountMappings: allMappings[index]!,
       unavailableAccountIds:
         readBankAccountRows(saved)?.unavailableAccountIds ??
@@ -1682,7 +1783,6 @@ export async function setupBankAccounts(
       ),
     );
     const retired = new Set<number>();
-    const retiredProviderIds = new Set<string>();
     const linkedAccounts = identities.map((saved, index) => ({
       institutionId: saved.institutionId,
       accounts: saved.accounts.filter(
@@ -1767,8 +1867,6 @@ export async function setupBankAccounts(
             : [],
         ),
       );
-      for (const { index } of sources)
-        requireAccountWrites(connections[index]!);
       if (sources.length) {
         const existing = budget.accounts.find(
           (account) => account.id === selected.existingAccountId,
@@ -1841,7 +1939,6 @@ export async function setupBankAccounts(
         for (const { index, providerId } of sources) {
           if (connections[index]!.id === connection.id) {
             delete mappings[providerId];
-            retiredProviderIds.add(providerId);
           } else {
             delete remainingMappings[index]![providerId];
             retired.add(index);
@@ -1975,20 +2072,23 @@ export async function setupBankAccounts(
       submitted: submittedOperation,
       changeSet: composeChangeSets(input.operationId, changeSets),
       alongside: async (tx) => {
-        await lockLegacyBankConnections(tx, userId, [
+        await lockBankConnections(tx, userId, [
           connection.id,
           ...[...retired].map((index) => connections[index]!.id),
         ]);
         for (const index of retired) {
           const source = connections[index]!;
           const saved = await tx.bankConnection.updateMany({
-            where: {
-              id: source.id,
-              updatedAt: source.updatedAt,
-              bankAccounts: { none: {} },
-            },
-            data: { accountMappings: jsonValue(remainingMappings[index]!) },
+            where: { id: source.id, updatedAt: source.updatedAt },
+            data: { updatedAt: new Date() },
           });
+          await writeBankLinks(
+            tx,
+            userId,
+            household.workspaceId,
+            source.id,
+            remainingMappings[index]!,
+          );
           if (saved.count !== 1)
             throw new TRPCError({
               code: "CONFLICT",
@@ -1996,28 +2096,16 @@ export async function setupBankAccounts(
             });
         }
         const saved = await tx.bankConnection.updateMany({
-          where: {
-            id: connection.id,
-            updatedAt: connection.updatedAt,
-            bankAccounts: { none: {} },
-          },
-          data: {
-            accountMappings: jsonValue(mappings),
-            ...(retiredProviderIds.size
-              ? {
-                  imports: detailsColumn(connection.imports, {
-                    ...state,
-                    accounts: state.accounts.filter(
-                      (account) => !retiredProviderIds.has(account.accountId),
-                    ),
-                  }),
-                }
-              : {}),
-            unavailableAccountIds: connection.unavailableAccountIds.filter(
-              (id) => mappings[id],
-            ),
-          },
+          where: { id: connection.id, updatedAt: connection.updatedAt },
+          data: { updatedAt: new Date() },
         });
+        await writeBankLinks(
+          tx,
+          userId,
+          household.workspaceId,
+          connection.id,
+          mappings,
+        );
         if (saved.count !== 1)
           throw new TRPCError({
             code: "CONFLICT",
@@ -2038,6 +2126,7 @@ export async function setupBankAccounts(
 }
 
 export async function syncBanks(db: Database, userId: string) {
+  await migrateBankAccounts(db, userId);
   const connections = await db.bankConnection.findMany({
     include: { bankAccounts: bankAccountRowsSelection },
     where: { clerkUserId: userId },
@@ -2055,13 +2144,6 @@ export async function syncBanks(db: Database, userId: string) {
   for (const connection of connections) {
     const read = readBankConnection(connection, readable);
     if (read.status === "maintenance" || read.state.disconnectedAt) continue;
-    if (connection.bankAccounts.length) {
-      await db.bankConnection.updateMany({
-        where: { id: connection.id, updatedAt: connection.updatedAt },
-        data: { lastAttemptAt: new Date(), error: accountWritesUnavailable },
-      });
-      continue;
-    }
     // No update can reach an Item the user has revoked or disconnected.
     if (["revoked", "disconnected"].includes(connection.status)) continue;
     // The Item's health is read first, so a sign-in problem it reports is
@@ -2166,10 +2248,13 @@ export async function syncBanks(db: Database, userId: string) {
           error:
             error instanceof TRPCError
               ? error.message
-              : withPlaidRequestId(
-                  "Bank update failed. Reconnect or try again; previous records were preserved.",
-                  error,
-                ),
+              : isPrismaError(error) &&
+                  (error.code === "P2002" || error.code === "P2034")
+                ? "Your budget changed. Refresh and try again."
+                : withPlaidRequestId(
+                    "Bank update failed. Reconnect or try again; previous records were preserved.",
+                    error,
+                  ),
         },
       });
       domainError(error);
@@ -2211,12 +2296,12 @@ async function applyBankUpdate(
       code: "CONFLICT",
       message: "Another bank update finished first. Try again.",
     });
-  requireAccountWrites(fresh);
   const { state: old, mappings: saved } = readyConnection(
     fresh,
     readImportStates(opened.household.rows, userId),
   );
   if (old.disconnectedAt) return { imported: 0, updated: 0 };
+  accounts.accounts = currentProviderAccounts(fresh, accounts.accounts);
   const identity = followAccountIdentities(
     old.accounts,
     accounts.accounts,
@@ -2443,21 +2528,16 @@ async function applyBankUpdate(
     importStateChange(opened.household.rows, userId, fresh.id, state),
   ]);
   const saveConnection = async (tx: Prisma.TransactionClient) => {
-    await lockLegacyBankConnections(tx, userId, [fresh.id]);
+    await lockBankConnections(tx, userId, [fresh.id]);
     const saved = await tx.bankConnection.updateMany({
       where: {
         id: fresh.id,
         cursor: fresh.cursor,
         updatedAt: fresh.updatedAt,
-        bankAccounts: { none: {} },
       },
       data: {
         ...health,
-        imports: detailsColumn(fresh.imports, state),
-        unavailableAccountIds: identity.unavailableAccountIds,
-        ...(identity.decisions.length
-          ? { accountMappings: jsonValue(mappings) }
-          : {}),
+        imports: connectionMetadata(fresh.imports, state),
         cursor: delta.nextCursor,
         lastSyncedAt: new Date(),
         lastAttemptAt: new Date(),
@@ -2469,6 +2549,25 @@ async function applyBankUpdate(
         code: "CONFLICT",
         message: "Another bank update finished first. Try again.",
       });
+    await writeProviderAccounts(
+      tx,
+      userId,
+      fresh.id,
+      state.accounts.filter((account) =>
+        accounts.accounts.some(
+          (reported) => reported.accountId === account.accountId,
+        ),
+      ),
+      state.synchronizedAccountIds,
+      identity.decisions,
+    );
+    await writeBankLinks(
+      tx,
+      userId,
+      opened.household.workspaceId,
+      fresh.id,
+      mappings,
+    );
   };
   if (changeSet.after.length || identity.decisions.length)
     await writeServerOperation(db, opened, {
