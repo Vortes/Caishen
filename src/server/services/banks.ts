@@ -3,7 +3,10 @@ import { MANUAL_MATCH_DAYS } from "~/domain/bank-import-balances";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { plaidLinkMetadataSchema } from "~/lib/plaid-link-metadata";
+import {
+  plaidLinkMetadataSchema,
+  type PlaidLinkMetadata,
+} from "~/lib/plaid-link-metadata";
 import {
   bankRecoveryCandidates,
   bankAccountNeedsRecovery,
@@ -72,7 +75,10 @@ import {
   readImportStates,
   type ImportRowState,
 } from "./bank-import-rows";
-import { plaidRequestRecorder } from "./bank-provider-events";
+import {
+  plaidRequestRecorder,
+  recordBankLinkOutcome,
+} from "./bank-provider-events";
 import {
   earlierResult,
   openHousehold,
@@ -380,6 +386,10 @@ export async function exchangeBankToken(
   publicToken: string,
   metadata: unknown,
 ): Promise<{ id: string; warning?: string }> {
+  // Link completed in the browser whatever the exchange makes of it; the
+  // trail records that outcome once, with the connection when one results.
+  let completed: PlaidLinkMetadata | undefined;
+  let connectionId: string | null = null;
   try {
     if (!(await readHouseholdRevision(db, userId)))
       throw new TRPCError({
@@ -390,6 +400,7 @@ export async function exchangeBankToken(
     // Check Link metadata before exchange: exchanging a duplicate creates a
     // second Plaid Item, even if budget-account setup later refuses it.
     const linked = plaidLinkMetadataSchema.parse(metadata);
+    completed = linked;
     if (!linked.institution)
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
@@ -481,6 +492,7 @@ export async function exchangeBankToken(
       },
       { timeout: 30_000, maxWait: 10_000 },
     );
+    connectionId = connection.id;
     try {
       await refreshBankAccounts(db, userId, connection.id);
       return { id: connection.id };
@@ -496,7 +508,16 @@ export async function exchangeBankToken(
       return { id: connection.id, warning };
     }
   } catch (error) {
-    domainError(error);
+    return domainError(error);
+  } finally {
+    if (completed)
+      await recordBankLinkOutcome(db, {
+        userId,
+        method: "success",
+        connectionId,
+        institutionId: completed.institution?.institution_id ?? null,
+        accountCount: completed.accounts.length,
+      });
   }
 }
 

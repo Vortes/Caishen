@@ -897,5 +897,24 @@
       "nullable": [],
       "values": {}
     }
+  ],
+  "BankProviderEvent.detail": [
+    {
+      "fields": [
+        "accountCount",
+        "institutionId",
+        "verification",
+        "webhookCode",
+        "webhookType"
+      ],
+      "optional": [],
+      "nullable": [
+        "accountCount",
+        "institutionId",
+        "webhookCode",
+        "webhookType"
+      ],
+      "values": {}
+    }
   ]
 }

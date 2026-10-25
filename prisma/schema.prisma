@@ -95,6 +95,7 @@ model BankProviderEvent {
   connectionId String?
   clerkUserId  String?
   durationMs   Int?
+  detail       Json?
   createdAt    DateTime @default(now())
 
   @@index([connectionId, createdAt])

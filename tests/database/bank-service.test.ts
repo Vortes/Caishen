@@ -2876,3 +2876,36 @@ void test("a failed account update stores an error naming the Plaid request id a
     ],
   );
 });
+
+void test("completing Link records a success event with the institution and account count", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
+    requestUrl(url).pathname === "/item/public_token/exchange"
+      ? Response.json({
+          access_token: "new-private-token",
+          item_id: h.connection.itemId,
+          request_id: "req-exchange-1",
+        })
+      : Response.json({ ...accountsResponse(), request_id: "req-accounts-2" }),
+  );
+  await exchangeBankToken(h.db, alice, "public-token", linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        errorCode: null,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});
