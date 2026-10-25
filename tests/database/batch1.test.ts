@@ -266,3 +266,30 @@ void test("deleting a personal budget erases private data and freezes the partne
     { message: /frozen/ },
   );
 });
+
+void test("full account deletion erases the owner's provider events and preserves another user's audit trail", async () => {
+  const owner = await member("Private budget");
+  const other = await member("Another budget");
+  for (const person of [owner, other])
+    await db.bankProviderEvent.create({
+      data: {
+        clerkUserId: person.id,
+        connectionId: `former-connection-${person.id}`,
+        kind: "request",
+        method: "/accounts/get",
+        requestId: `request-${person.id}`,
+      },
+    });
+  await db.user.update({
+    where: { clerkUserId: owner.id },
+    data: { active: false, deletedAt: new Date() },
+  });
+
+  await deletePersonalBudget(db, owner.id);
+
+  const remaining = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: { in: [owner.id, other.id] } },
+    select: { clerkUserId: true },
+  });
+  assert.deepEqual(remaining, [{ clerkUserId: other.id }]);
+});
