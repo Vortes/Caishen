@@ -726,6 +726,350 @@ async function duplicatedCards() {
   };
 }
 
+async function sameConnectionDuplicateCards() {
+  const h = await duplicatedCards();
+  const original = bankAccountDetails((await h.saved()).imports).accounts[0]!;
+  const duplicate = bankAccountDetails(h.replacement.imports).accounts[0]!;
+  const record = applyTransactionSync(
+    [],
+    {
+      added: [
+        { ...importFact("kept-card-import"), providerAccountId: "old-gold" },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    institutionId: "ins-amex",
+    institutionName: "Amex",
+    accounts: [original, duplicate],
+    transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+    synchronizedAccountIds: ["old-gold", "new-gold"],
+    records: [record],
+  });
+  await h.setMappings({
+    "old-gold": { accountId: "original-gold", startDate: "2026-10-01" },
+    "new-gold": { accountId: "duplicate-gold", startDate: "2026-10-01" },
+  });
+  await db.bankConnection.delete({ where: { id: h.replacement.id } });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { lastSyncedAt: new Date() },
+  });
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "kept-history",
+      accountId: "original-gold",
+      date: "2026-10-10",
+      amount: -500,
+      payee: "Recorded purchase",
+      categoryId: "dining",
+      status: "posted",
+    }),
+  );
+  return {
+    ...h,
+    selection: {
+      connectionId: h.connection.id,
+      keepProviderAccountId: "old-gold",
+      removeProviderAccountId: "new-gold",
+    },
+    providerAccounts: [original, duplicate],
+  };
+}
+
+void test("same-connection repair retires only the unused duplicate and preserves imports and kept history", async () => {
+  const h = await sameConnectionDuplicateCards();
+  const before = await h.state();
+  const paths: string[] = [];
+  mockPlaid(async (url) => {
+    paths.push(requestUrl(url).pathname);
+    if (requestUrl(url).pathname !== "/accounts/get")
+      throw new Error("Same-Item repair must never revoke the Item");
+    return Response.json({
+      item: { institution_id: "ins-amex", institution_name: "Amex" },
+      accounts: h.providerAccounts.map((account) => ({
+        account_id: account.accountId,
+        name: account.name,
+        official_name: account.officialName,
+        mask: account.mask,
+        type: account.type,
+        subtype: account.subtype,
+        balances: {
+          current: account.currentBalance,
+          available: account.availableBalance,
+          iso_currency_code: account.currency,
+          unofficial_currency_code: null,
+        },
+      })),
+    });
+  });
+  const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  assert.deepEqual(plan.accounts[0], {
+    name: "Gold",
+    keepAccountId: "original-gold",
+    removeAccountId: "duplicate-gold",
+    keepAccountName: "Gold",
+    removeAccountName: "Gold",
+    keepProviderAccountId: "old-gold",
+    removeProviderAccountId: "new-gold",
+    keepMask: "1001",
+    removeMask: "1001",
+  });
+  assert.equal(plan.retiredImportCount, 0);
+  const result = await banks.repairDuplicateBankAccounts(db, alice, {
+    ...h.selection,
+    operationId: randomUUID(),
+    expectedPlanHash: plan.hash,
+  });
+  const after = await h.state();
+  assert.deepEqual(
+    after.view!.budget.accounts,
+    before.view!.budget.accounts.filter(
+      (account) => account.id !== "duplicate-gold",
+    ),
+  );
+  assert.deepEqual(
+    after.view!.budget.transactions,
+    before.view!.budget.transactions,
+  );
+  assert.deepEqual(after.imports, before.imports);
+  assert.deepEqual(after.connections[0]!.accountMappings, {
+    "old-gold": { accountId: "original-gold", startDate: "2026-10-01" },
+  });
+  assert.ok(
+    result.changeSet?.after.some(
+      (row) => row.table === "account" && row.deleted,
+    ),
+  );
+  assert.ok(
+    result.changeSet?.after.every(
+      (row) => row.table === "account" || row.table === "category",
+    ),
+  );
+  const providerRows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    include: { link: true },
+  });
+  const kept = providerRows.find(
+    (row) => row.providerAccountId === "old-gold",
+  )!;
+  const removed = providerRows.find(
+    (row) => row.providerAccountId === "new-gold",
+  )!;
+  assert.equal(removed.status, "retired");
+  assert.equal(removed.supersededById, kept.id);
+  assert.ok(removed.link!.unlinkedAt);
+  assert.equal(
+    providerRows.filter((row) => row.link && !row.link.unlinkedAt).length,
+    1,
+  );
+  assert.deepEqual(paths, ["/accounts/get"]);
+});
+
+void test("same-connection repair requires the current provider preview and retries one operation only once", async () => {
+  const h = await sameConnectionDuplicateCards();
+  const paths: string[] = [];
+  mockPlaid(async (url) => {
+    paths.push(requestUrl(url).pathname);
+    if (requestUrl(url).pathname !== "/accounts/get")
+      throw new Error("Unexpected provider request");
+    return Response.json({
+      item: { institution_id: "ins-amex", institution_name: "Amex" },
+      accounts: h.providerAccounts.map((account) => ({
+        account_id: account.accountId,
+        name: account.name,
+        official_name: account.officialName,
+        mask: account.mask,
+        type: account.type,
+        subtype: account.subtype,
+        balances: {
+          current: account.currentBalance,
+          available: account.availableBalance,
+          iso_currency_code: account.currency,
+          unofficial_currency_code: null,
+        },
+      })),
+    });
+  });
+  const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  await db.bankAccount.update({
+    where: {
+      connectionId_providerAccountId: {
+        connectionId: h.connection.id,
+        providerAccountId: "new-gold",
+      },
+    },
+    data: { name: "Gold duplicate renamed" },
+  });
+  const before = await h.state();
+  const input = {
+    ...h.selection,
+    operationId: randomUUID(),
+    expectedPlanHash: plan.hash,
+  };
+  await assert.rejects(
+    banks.repairDuplicateBankAccounts(db, alice, input),
+    /plan changed/i,
+  );
+  assert.deepEqual(await h.state(), before);
+  assert.deepEqual(paths, []);
+  const fresh = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  input.expectedPlanHash = fresh.hash;
+  const result = await banks.repairDuplicateBankAccounts(db, alice, input);
+  const retry = await banks.repairDuplicateBankAccounts(db, alice, input);
+  assert.equal(retry.revision, result.revision);
+  assert.equal((await h.state()).revision, result.revision);
+  assert.deepEqual(paths, ["/accounts/get"]);
+});
+
+void test("same-connection repair refuses transaction, reconciliation, assignment, and reviewed-import activity on the removed account", async () => {
+  for (const activity of [
+    "transaction",
+    "reconciliation",
+    "assignment",
+    "review",
+  ] as const) {
+    const h = await sameConnectionDuplicateCards();
+    if (activity === "transaction")
+      await h.setBook(
+        execute(await h.book(), alice, {
+          type: "transaction.upsert",
+          id: randomUUID(),
+          transactionId: "duplicate-history",
+          accountId: "duplicate-gold",
+          date: "2026-10-10",
+          amount: -500,
+          payee: "Duplicate card purchase",
+          categoryId: "dining",
+          status: "posted",
+        }),
+      );
+    if (activity === "reconciliation")
+      await h.setBook(
+        execute(await h.book(), alice, {
+          type: "account.reconcile",
+          id: randomUUID(),
+          accountId: "duplicate-gold",
+          date: "2026-10-24",
+          balance: -43508,
+        }),
+      );
+    if (activity === "assignment") {
+      const category = (await h.state()).view!.budget.categories.find(
+        (item) => item.pairedAccountId === "duplicate-gold",
+      )!;
+      await h.setBook(
+        execute(await h.book(), alice, {
+          type: "assign.set",
+          id: randomUUID(),
+          categoryId: category.id,
+          month: "2026-10",
+          amount: 100,
+        }),
+      );
+    }
+    if (activity === "review") {
+      const record = applyTransactionSync(
+        [],
+        {
+          added: [
+            {
+              ...importFact("reviewed-duplicate"),
+              providerAccountId: "new-gold",
+            },
+          ],
+          modified: [],
+          removed: [],
+        },
+        h.connection.id,
+      ).records[0]!;
+      await h.setImports({
+        ...bankAccountDetails((await h.saved()).imports),
+        records: [record],
+        resolved: {
+          [record.id]: {
+            fingerprint: bankImportFingerprint(record),
+            ignored: true,
+            decidedAt: "2026-10-24T12:00:00Z",
+          },
+        },
+        reviews: {
+          [record.id]: [{ message: "Operator reviewed this duplicate import" }],
+        },
+      });
+    }
+    const before = await h.state();
+    const fetcher = mockPlaid(async () => {
+      throw new Error("Unsafe repair must not contact Plaid");
+    });
+    await assert.rejects(
+      banks.previewDuplicateBankRepair(db, alice, h.selection),
+      /transaction|reconciliation|budget activity|review/i,
+      activity,
+    );
+    assert.deepEqual(await h.state(), before, activity);
+    assert.equal(fetcher.mock.callCount(), 0);
+    mock.restoreAll();
+  }
+});
+
+void test("same-connection repair refuses provider changes while its live check is pending", async () => {
+  const h = await sameConnectionDuplicateCards();
+  const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  const before = await h.state();
+  mockPlaid(async (url) => {
+    if (requestUrl(url).pathname !== "/accounts/get")
+      throw new Error("Unexpected provider request");
+    await db.bankAccount.update({
+      where: {
+        connectionId_providerAccountId: {
+          connectionId: h.connection.id,
+          providerAccountId: "new-gold",
+        },
+      },
+      data: { name: "Changed during live check" },
+    });
+    return Response.json({
+      item: { institution_id: "ins-amex", institution_name: "Amex" },
+      accounts: h.providerAccounts.map((account) => ({
+        account_id: account.accountId,
+        name: account.name,
+        official_name: account.officialName,
+        mask: account.mask,
+        type: account.type,
+        subtype: account.subtype,
+        balances: {
+          current: account.currentBalance,
+          available: account.availableBalance,
+          iso_currency_code: account.currency,
+          unofficial_currency_code: null,
+        },
+      })),
+    });
+  });
+  await assert.rejects(
+    banks.repairDuplicateBankAccounts(db, alice, {
+      ...h.selection,
+      operationId: randomUUID(),
+      expectedPlanHash: plan.hash,
+    }),
+    /changed.*preview/i,
+  );
+  const after = await h.state();
+  assert.equal(after.revision, before.revision);
+  assert.deepEqual(after.view, before.view);
+  assert.deepEqual(after.imports, before.imports);
+  assert.deepEqual(
+    after.connections[0]!.accountMappings,
+    before.connections[0]!.accountMappings,
+  );
+});
+
 void test("repairing untouched duplicate cards keeps the original accounts and the newly discovered Platinum", async () => {
   const h = await duplicatedCards();
   const before = (await h.state()).view!.budget;
