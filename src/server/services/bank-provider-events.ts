@@ -68,7 +68,7 @@ async function recordEvent(db: Database, event: ProviderEvent) {
 /** Records each Plaid request a client makes on behalf of one member. */
 export function plaidRequestRecorder(
   db: Database,
-  on: { userId: string; connectionId?: string | null },
+  on: { userId: string | null; connectionId?: string | null },
 ): PlaidRequestRecorder {
   return (event) =>
     writeEvent(db, {

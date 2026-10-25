@@ -74,6 +74,11 @@ const savedBankConnections = (db: Database, userId: string) =>
       error: true,
       accountMappings: true,
       unavailableAccountIds: true,
+      status: true,
+      consentExpiresAt: true,
+      lastSuccessfulUpdateAt: true,
+      lastFailedUpdateAt: true,
+      newAccountsAvailable: true,
       imports: true,
     },
   });

@@ -941,5 +941,21 @@
       ],
       "values": {}
     }
+  ],
+  "BankConnection.status": [
+    {
+      "fields": [],
+      "optional": [],
+      "nullable": [],
+      "values": {
+        "": [
+          "connected",
+          "login_required",
+          "pending_disconnect",
+          "revoked",
+          "disconnected"
+        ]
+      }
+    }
   ]
 }

@@ -39,6 +39,7 @@ import { loadPlaid } from "~/components/banks/plaid-link-sdk";
 import { usePlaidLink } from "~/components/banks/use-plaid-link";
 import type { State } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
+import { Tag } from "~/components/ui/tag";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
@@ -62,6 +63,66 @@ function addableAccounts(connection: Connection) {
       !mappings.has(account.accountId) && accountSetupType(account).kind,
   );
 }
+
+const consentDate = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+const DAY = 24 * 60 * 60 * 1000;
+
+// What the bank reported about the connection that the user has to act on,
+// from its stored status (ADR 0009): the state the panel names, the action
+// that fixes it, and the sentence the status tip explains it with.
+function connectionAttention(connection: Connection): {
+  label: string;
+  action: "reconnect" | "link-again" | "choose";
+  detail: string;
+} | null {
+  if (connection.disconnectedAt) return null;
+  const bank = bankName(connection);
+  switch (connection.status) {
+    case "login_required":
+      return {
+        label: "Sign in again",
+        action: "reconnect",
+        detail: `${bank} needs you to sign in again before updates continue.`,
+      };
+    case "pending_disconnect": {
+      // Plaid warns a week ahead; a consent date within that week is the
+      // reason, and a later one is unrelated to this disconnect.
+      const expires = connection.consentExpiresAt;
+      return expires && expires.getTime() - Date.now() <= 8 * DAY
+        ? {
+            label: `Consent expires on ${consentDate.format(expires)}`,
+            action: "reconnect",
+            detail: `Reconnect before then to keep ${bank} updating.`,
+          }
+        : {
+            label: "Disconnects in 7 days",
+            action: "reconnect",
+            detail: `${bank} will stop updating unless you reconnect.`,
+          };
+    }
+    case "revoked":
+      return {
+        label: "Access revoked",
+        action: "link-again",
+        detail: `Access to ${bank} was revoked at the bank. Link again to continue updates.`,
+      };
+    default:
+      return connection.newAccountsAvailable
+        ? {
+            label: "New accounts available",
+            action: "choose",
+            detail: `${bank} reports accounts you haven’t shared yet.`,
+          }
+        : null;
+  }
+}
+
+// Whether the connection has something for the user to fix.
+const needsAttention = (connection: Connection) =>
+  Boolean(connection.error) || connectionAttention(connection) !== null;
 
 // Plaid reports balances in dollars, and a card's balance as the amount owed.
 // The sidebar shows card debt as negative, so the popover does too.
@@ -229,7 +290,7 @@ export function BanksPopover() {
   // control; a click animates and leaves focus on the popover itself.
   const [byKeyboard, setByKeyboard] = useState(false);
   const pointer = useRef(false);
-  const attention = banks.connections.some((item) => item.error);
+  const attention = banks.connections.some(needsAttention);
   return (
     <Popover.Root
       open={open}
@@ -364,6 +425,14 @@ export function BankItem({
   const addable = addableAccounts(connection).length > 0;
   const reconnecting = banks.reconnecting === connection.id;
   const institution = bankName(connection);
+  const attention = connectionAttention(connection);
+  // A revoked or disconnected connection can only be linked afresh; new
+  // accounts are chosen on the existing one.
+  const action = connection.disconnectedAt
+    ? "link-again"
+    : connection.error
+      ? "reconnect"
+      : attention?.action;
   // Plaid's script is large; fetch it while the pointer is on the way.
   const preload = () => void loadPlaid().catch(() => undefined);
   return (
@@ -374,18 +443,24 @@ export function BankItem({
           {connection.disconnectedAt ? (
             <span className={styles.note}>Disconnected</span>
           ) : (
-            <BankStatus connection={connection} />
+            <>
+              {attention && (
+                <span className={styles.bankState}>
+                  <Tag tone="attention">{attention.label}</Tag>
+                </span>
+              )}
+              <BankStatus connection={connection} />
+            </>
           )}
         </div>
-        {(connection.disconnectedAt ?? connection.error) && (
+        {action && (
           <Button
             size="sm"
-            // Repairing the sole broken connection is the popover's main
-            // action.
+            // Repairing the sole connection needing attention is the
+            // popover's main action.
             variant={
-              connection.error &&
               !connection.disconnectedAt &&
-              banks.connections.filter((item) => item.error).length === 1
+              banks.connections.filter(needsAttention).length === 1
                 ? "quiet-primary"
                 : "quiet"
             }
@@ -393,16 +468,16 @@ export function BankItem({
             onPointerEnter={preload}
             onClick={() => {
               onAction();
-              banks.start(
-                connection.disconnectedAt ? undefined : connection.id,
-              );
+              banks.start(action === "link-again" ? undefined : connection.id);
             }}
           >
-            {connection.disconnectedAt
+            {action === "link-again"
               ? "Link again"
-              : reconnecting
-                ? "Reconnecting…"
-                : "Reconnect"}
+              : action === "choose"
+                ? "Choose shared accounts"
+                : reconnecting
+                  ? "Reconnecting…"
+                  : "Reconnect"}
           </Button>
         )}
         {!connection.disconnectedAt && (
@@ -543,10 +618,12 @@ export function BankStatus({ connection }: { connection: Connection }) {
     timer.current = setTimeout(() => setOpen(next), delay);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+  const attention = connectionAttention(connection);
+  const alert = Boolean(connection.error) || attention !== null;
   const updated = connection.lastSyncedAt
-    ? `${connection.error ? "Last updated" : "Updated"} ${syncedLabel(connection.lastSyncedAt, null)}`
+    ? `${alert ? "Last updated" : "Updated"} ${syncedLabel(connection.lastSyncedAt, null)}`
     : "Not updated yet";
-  const Icon = connection.error ? CircleAlertIcon : InfoIcon;
+  const Icon = alert ? CircleAlertIcon : InfoIcon;
   // Hover only previews; leaving closes it unless a click pinned it.
   const hover = {
     onPointerEnter: (event: PointerEvent) => {
@@ -570,9 +647,9 @@ export function BankStatus({ connection }: { connection: Connection }) {
         <button
           type="button"
           className={styles.status}
-          data-attention={connection.error ? true : undefined}
+          data-attention={alert ? true : undefined}
           aria-label={
-            connection.error
+            alert
               ? `Why ${bankName(connection)} needs attention`
               : `When ${bankName(connection)} last updated`
           }
@@ -601,6 +678,7 @@ export function BankStatus({ connection }: { connection: Connection }) {
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
           {connection.error && <p>{connection.error}</p>}
+          {attention && <p>{attention.detail}</p>}
           <p className={styles.tipMeta}>{updated}</p>
         </Popover.Content>
       </Popover.Portal>
