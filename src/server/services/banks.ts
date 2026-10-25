@@ -101,7 +101,13 @@ import {
   type Database,
   type OperationResult,
 } from "./household";
-import { commandHash, domainError, jsonValue, operationHash } from "./safety";
+import {
+  commandHash,
+  domainError,
+  isPrismaError,
+  jsonValue,
+  operationHash,
+} from "./safety";
 import { settleFromImports } from "./partner-settlements";
 import {
   budgetMaintenance,
@@ -783,12 +789,9 @@ export async function exchangeBankToken(
             clerkUserId: userId,
             itemId: result.itemId,
             encryptedToken: encryptBankToken(result.accessToken, userId),
-            imports: jsonValue(
-              connectionDetails(
-                connectionColumnSchema.parse({
-                  institutionId: institutionId,
-                }),
-              ),
+            imports: connectionMetadata(
+              {},
+              connectionColumnSchema.parse({ institutionId }),
             ),
             accountMappings: {},
           },
@@ -1118,7 +1121,7 @@ export async function disconnectBank(
           where: {
             id: connection.id,
             updatedAt: connection.updatedAt,
-              },
+          },
           data: {
             imports: connectionMetadata(connection.imports, {
               ...state,
@@ -1450,7 +1453,7 @@ export async function repairDuplicateBankAccounts(
           id: replacement.connection.id,
           clerkUserId: userId,
           updatedAt: replacement.connection.updatedAt,
-          },
+        },
         data: { updatedAt: new Date() },
       });
       const removed = await tx.bankConnection.deleteMany({
@@ -1458,7 +1461,7 @@ export async function repairDuplicateBankAccounts(
           id: retired.connection.id,
           clerkUserId: userId,
           updatedAt: retired.connection.updatedAt,
-          },
+        },
       });
       await writeBankLinks(
         tx,
@@ -2245,10 +2248,13 @@ export async function syncBanks(db: Database, userId: string) {
           error:
             error instanceof TRPCError
               ? error.message
-              : withPlaidRequestId(
-                  "Bank update failed. Reconnect or try again; previous records were preserved.",
-                  error,
-                ),
+              : isPrismaError(error) &&
+                  (error.code === "P2002" || error.code === "P2034")
+                ? "Your budget changed. Refresh and try again."
+                : withPlaidRequestId(
+                    "Bank update failed. Reconnect or try again; previous records were preserved.",
+                    error,
+                  ),
         },
       });
       domainError(error);

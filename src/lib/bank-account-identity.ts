@@ -46,7 +46,9 @@ function compareFields(
 ): "same" | "unknown" | "different" {
   const typeKnown =
     incoming.type != null &&
+    incoming.type !== "unknown" &&
     stored.type != null &&
+    stored.type !== "unknown" &&
     incoming.subtype !== undefined &&
     stored.subtype !== undefined;
   if (
@@ -236,7 +238,12 @@ export function bankRecoveryCandidates(
         );
         const kind = incoming.type === "depository" ? "cash" : incoming.type;
         const savedKind = budgetAccountKinds.get(mapping.accountId);
-        if (!saved && savedKind && savedKind !== kind) return [];
+        if (
+          (!saved || saved.type === "unknown") &&
+          savedKind &&
+          savedKind !== kind
+        )
+          return [];
         return [
           {
             account: {

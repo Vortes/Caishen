@@ -1982,8 +1982,10 @@ void test("reconnect records rung 1 when the same provider account retains its l
   await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
   const before = (await h.state()).view!.budget;
   await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
-  assert.deepEqual(await recordedDecisions("bank.accounts.identify"), [
-    {
+  const decisions = await recordedDecisions("bank.accounts.identify");
+  assert.equal(decisions.length, 2);
+  for (const decision of decisions)
+    assert.deepEqual(decision, {
       connectionId: h.connection.id,
       decisions: [
         {
@@ -1993,8 +1995,7 @@ void test("reconnect records rung 1 when the same provider account retains its l
           accountId: "cash",
         },
       ],
-    },
-  ]);
+    });
   assert.deepEqual((await h.state()).view!.budget, before);
 });
 
@@ -2085,11 +2086,12 @@ void test("a new Plaid id without a persistent id still needs the user to confir
     name: "Checking",
     expectedBalance: 93,
   };
+  const expectedRevision = await h.revision();
   const attempt = (existingAccountId?: string) =>
     h.api.budget.setupBankAccounts({
       connectionId: h.connection.id,
       operationId: randomUUID(),
-      expectedRevision: h.before.revision,
+      expectedRevision,
       accounts: [{ ...selected, existingAccountId }],
     });
   await assert.rejects(attempt(), /existing.*account/i);
@@ -4364,4 +4366,314 @@ void test("a persistent identity is superseded before the user adds any budget a
       decisions: [{ rung: 2, from: "first-provider", to: "next-provider" }],
     },
   ]);
+});
+
+void test("seeded bank lifecycles never create implicit budget accounts or duplicate feeds", async () => {
+  for (const seed of [147, 20261025]) {
+    const h = await harness();
+    await db.bankConnection.delete({ where: { id: h.connection.id } });
+    let randomState = seed;
+    const random = () => {
+      randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+      return randomState;
+    };
+    type Item = {
+      number: number;
+      version: number;
+      shared: boolean;
+      removed: boolean;
+      name: string;
+      connectionId?: string;
+    };
+    const items: Item[] = [];
+    let current: Item | undefined;
+    const response = (item: Item) => ({
+      item: {
+        institution_id: "ins-sequence",
+        institution_name: "Sequence bank",
+      },
+      accounts: item.shared
+        ? [
+            {
+              account_id: `provider-${item.number}-${item.version}`,
+              persistent_account_id: `persistent-${item.number}`,
+              name: item.name,
+              official_name: null,
+              mask: String(1000 + item.number),
+              type: "depository",
+              subtype: "checking",
+              balances: {
+                current: 0,
+                available: 0,
+                iso_currency_code: "USD",
+                unofficial_currency_code: null,
+              },
+            },
+          ]
+        : [],
+    });
+    mockPlaid(async (url, init) => {
+      assert.equal(typeof init?.body, "string");
+      const body = JSON.parse(init!.body as string) as {
+        public_token?: string;
+        access_token?: string;
+      };
+      if (requestUrl(url).pathname === "/item/public_token/exchange") {
+        const number = Number(body.public_token);
+        return Response.json({
+          access_token: `access-${number}`,
+          item_id: `sequence-${run}-${seed}-${number}`,
+        });
+      }
+      const item = items[Number(body.access_token?.replace("access-", ""))]!;
+      if (requestUrl(url).pathname === "/item/remove") {
+        item.removed = true;
+        return Response.json({ removed: true });
+      }
+      if (requestUrl(url).pathname === "/accounts/get")
+        return Response.json(response(item));
+      if (requestUrl(url).pathname === "/transactions/sync")
+        return Response.json({
+          ...response(item),
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: `cursor-${item.number}-${item.version}`,
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      throw new Error("Unexpected Plaid request");
+    });
+    const choices = [
+      "link",
+      "subset",
+      "update",
+      "add",
+      "disconnect",
+      "id",
+      "rename",
+    ] as const;
+    const shuffled = [...choices, ...choices];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = random() % (i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+    }
+    const trace: string[] = [];
+    try {
+      for (const action of ["link", "update", "add", ...shuffled] as const) {
+        const before = (await h.state()).view!.budget.accounts.length;
+        trace.push(action);
+        if (action === "link") {
+          current = {
+            number: items.length,
+            version: 0,
+            shared: true,
+            removed: false,
+            name: `Checking ${items.length}`,
+          };
+          items.push(current);
+          const data = response(current);
+          const linked = await h.api.budget.plaidExchange({
+            publicToken: String(current.number),
+            metadata: {
+              institution: { institution_id: "ins-sequence" },
+              accounts: data.accounts.map((account) => ({
+                id: account.account_id,
+                name: account.name,
+                mask: account.mask,
+                type: account.type,
+                subtype: account.subtype,
+              })),
+            },
+          });
+          current.connectionId = linked.id;
+        } else if (current?.connectionId && !current.removed) {
+          if (action === "update") await h.api.budget.sync();
+          if (action === "disconnect")
+            await h.api.budget.disconnectBank({
+              connectionId: current.connectionId,
+              operationId: randomUUID(),
+              expectedRevision: await h.revision(),
+            });
+          if (action === "subset" || action === "id" || action === "rename") {
+            current.shared = action !== "subset";
+            if (action === "id") current.version++;
+            if (action === "rename") current.name = `Renamed ${random()}`;
+            await h.api.budget.plaidReconnect({
+              connectionId: current.connectionId,
+            });
+          }
+          if (action === "add" && current.shared) {
+            await h.api.budget.sync();
+            const details = (await h.state()).connections.find(
+              (connection) => connection.id === current!.connectionId,
+            )!;
+            const mappings = details.accountMappings as Record<string, unknown>;
+            const account = details.accounts.find(
+              (candidate) =>
+                !mappings[candidate.accountId] &&
+                !details.unavailableAccountIds?.includes(candidate.accountId),
+            );
+            if (account)
+              await h.api.budget.setupBankAccounts({
+                connectionId: current.connectionId,
+                operationId: randomUUID(),
+                expectedRevision: await h.revision(),
+                accounts: [
+                  {
+                    providerAccountId: account.accountId,
+                    name: account.name,
+                    expectedBalance: 0,
+                  },
+                ],
+              });
+          }
+        }
+        const after = (await h.state()).view!.budget.accounts.length;
+        assert.ok(
+          action === "add"
+            ? after >= before && after <= before + 1
+            : after === before,
+        );
+        const links = await db.bankAccountLink.findMany({
+          where: { userId: alice, unlinkedAt: null },
+          include: { bankAccount: true },
+        });
+        assert.ok(
+          links.every((link) => link.bankAccount.id === link.bankAccountId),
+        );
+        assert.equal(
+          new Set(
+            links.map(
+              (link) => `${link.workspaceId}:${link.userId}:${link.accountId}`,
+            ),
+          ).size,
+          links.length,
+        );
+        const connections = await db.bankConnection.findMany({
+          where: { clerkUserId: alice },
+        });
+        for (const connection of connections) {
+          assert.deepEqual(connection.accountMappings, {});
+          assert.equal(
+            Object.hasOwn(connection.imports as object, "accounts"),
+            false,
+          );
+          assert.equal(
+            Object.hasOwn(
+              connection.imports as object,
+              "synchronizedAccountIds",
+            ),
+            false,
+          );
+        }
+      }
+    } catch (error) {
+      throw new Error(`seed=${seed}; operations=${trace.join(",")}`, {
+        cause: error,
+      });
+    }
+    mock.restoreAll();
+  }
+});
+
+void test("a provider identity uniqueness failure refuses the update with a friendly conflict", async () => {
+  const h = await harness();
+  const before = (await h.state()).view!.budget;
+  const accounts = ["first", "second"].map((account_id) => ({
+    ...accountsResponse().accounts[0]!,
+    account_id,
+    persistent_account_id: "duplicate-persistent",
+  }));
+  mockPlaid(async (url) =>
+    requestUrl(url).pathname === "/accounts/get"
+      ? Response.json({ ...accountsResponse(), accounts })
+      : Response.json({
+          accounts,
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: "duplicate",
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        }),
+  );
+  await assert.rejects(h.api.budget.sync(), {
+    code: "CONFLICT",
+    message: "Your budget changed. Refresh and try again.",
+  });
+  const state = await h.state();
+  assert.equal(
+    state.connections[0]!.error,
+    "Your budget changed. Refresh and try again.",
+  );
+  assert.equal(
+    await db.bankAccount.count({ where: { connectionId: h.connection.id } }),
+    0,
+  );
+  assert.deepEqual(state.view!.budget, before);
+});
+
+void test("an ended provider feed preserves old import eligibility across a successor with a later start date", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("corrected-old-import")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({ records: [record] });
+  const before = await h.state();
+  assert.equal(before.imports.length, 1);
+  const old = await db.bankAccount.findFirstOrThrow({
+    where: { connectionId: h.connection.id },
+    include: { link: true },
+  });
+  await db.bankAccountLink.update({
+    where: { id: old.link!.id },
+    data: { unlinkedAt: new Date() },
+  });
+  const successor = await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "recovered-provider",
+      name: "Checking",
+      type: "depository",
+      link: {
+        create: {
+          workspaceId: old.link!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-25",
+        },
+      },
+    },
+  });
+  await db.bankAccount.update({
+    where: { id: old.id },
+    data: { status: "retired", supersededById: successor.id },
+  });
+  const after = await h.state();
+  assert.deepEqual(after.imports, before.imports);
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record.id,
+    expectedRevision: after.revision,
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "corrected-old-entry",
+      accountId: "cash",
+      date: record.current.date,
+      amount: -record.current.amountCents,
+      payee: "Coffee shop",
+      categoryId: "dining",
+      status: "posted",
+    },
+  });
+  assert.equal(
+    (await h.state()).view!.budget.transactions.find(
+      (transaction) => transaction.id === "corrected-old-entry",
+    )!.accountId,
+    "cash",
+  );
 });

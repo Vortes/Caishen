@@ -176,7 +176,16 @@ export function readBankAccountRows(connection: {
       successor = next;
     }
     const mapping = mappings[successor.providerAccountId];
-    if (mapping) importMappings[row.providerAccountId] = mapping;
+    if (mapping)
+      importMappings[row.providerAccountId] = row.link
+        ? {
+            accountId: mapping.accountId,
+            startDate: row.link.startDate,
+            ...(row.link.openingSnapshot
+              ? { openingSnapshot: row.link.openingSnapshot }
+              : {}),
+          }
+        : mapping;
   }
   return {
     accounts,
