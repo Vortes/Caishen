@@ -108,7 +108,7 @@ export async function renderShell(
       server: FakeServer,
     ) => Answer<Executed & { accountIds: string[] }>;
     sync?: (server: FakeServer) => Answer<RouterOutputs["budget"]["sync"]>;
-    // Whether to wait for the plan; off for screens shown in its place.
+    // Wait for the budget navigation; off for screens shown in its place.
     plan?: boolean;
   } = {},
 ) {
@@ -171,15 +171,17 @@ export async function renderShell(
       }),
     }),
   });
-  const rendered = render(
+  let generation = 0;
+  const shell = () => (
     <QueryClientProvider client={queryClient}>
       <api.Provider client={client} queryClient={queryClient}>
-        <LiveAppShell />
+        <LiveAppShell key={generation} />
       </api.Provider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const rendered = render(shell());
   if (options.plan !== false)
-    await screen.findByRole("heading", { name: "Plan" });
+    await screen.findByRole("navigation", { name: "Budget navigation" });
   return {
     user: userEvent.setup(),
     server,
@@ -188,9 +190,11 @@ export async function renderShell(
     resolveImport,
     queryClient,
     reload: async (): Promise<void> => {
-      rendered.unmount();
+      generation++;
       queryClient.clear();
-      await renderShell({ ...options, server });
+      rendered.rerender(shell());
+      if (options.plan !== false)
+        await screen.findByRole("navigation", { name: "Budget navigation" });
     },
   };
 }
@@ -241,7 +245,7 @@ export async function refocus() {
 }
 
 export async function openPurchase(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await user.click(screen.getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Add transaction" }));
   await user.keyboard("{Escape}");
   const form = screen.getByRole("form", { name: "New transaction" });

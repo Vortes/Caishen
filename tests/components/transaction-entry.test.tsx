@@ -50,7 +50,7 @@ test("a save closes the editor at once, and a draft the server refuses comes bac
 test("a dirty transaction holds shell navigation until canceled; a pristine editor can leave", async () => {
   const shell = await renderShell();
   const form = await openPurchase(shell.user);
-  await shell.user.click(screen.getByRole("button", { name: "Plan" }));
+  await shell.user.click(screen.getByRole("link", { name: "Plan" }));
   expect(screen.getByRole("heading", { name: "Checking" })).toBeTruthy();
   expect(
     within(form).getByText("Save or cancel this transaction first."),
@@ -65,7 +65,7 @@ test("a dirty transaction holds shell navigation until canceled; a pristine edit
     screen.getByRole("button", { name: "Add transaction" }),
   );
   await shell.user.keyboard("{Escape}");
-  await shell.user.click(screen.getByRole("button", { name: "Plan" }));
+  await shell.user.click(screen.getByRole("link", { name: "Plan" }));
   expect(screen.getByRole("heading", { name: "Plan" })).toBeTruthy();
   expect(screen.queryByRole("form", { name: "New transaction" })).toBeNull();
   expect(shell.execute).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ test("choosing a person under People categorizes the whole purchase and survives
   const shell = await renderShell({
     book: withCounterpartyAccounts(budgetFixture()),
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
   );
@@ -104,7 +104,7 @@ test("choosing a person under People categorizes the whole purchase and survives
     within(transactionRow("Noodles Plus")).queryByText("Needs category"),
   ).toBeNull();
   await shell.reload();
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   expect(within(transactionRow("Noodles Plus")).getByText("Mom")).toBeTruthy();
 });
 
@@ -112,7 +112,7 @@ test("a person picked before the amount keeps the full share as the amount chang
   const shell = await renderShell({
     book: withCounterpartyAccounts(budgetFixture()),
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
   );
@@ -147,9 +147,7 @@ test("a person picked before the amount keeps the full share as the amount chang
   ).toContain("$20.00");
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "New transaction" })).toBeNull();
-  await shell.user.click(
-    screen.getByRole("button", { name: /^Reimbursements/ }),
-  );
+  await shell.user.click(screen.getByRole("link", { name: /^Reimbursements/ }));
   expect(screen.getByRole("heading", { name: "Reimbursements" })).toBeTruthy();
   expect(screen.getAllByText("$20.00").length).toBeGreaterThan(0);
 });
@@ -165,7 +163,7 @@ test("a full share saves from the register and reducing it asks for a personal c
     payee: "Noodles Plus",
   });
   const shell = await renderShell({ book });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
     screen.getByRole("button", { name: "Share Noodles Plus" }),
   );
@@ -215,7 +213,7 @@ test("a split line can go entirely to someone under People", async () => {
     ],
   });
   const shell = await renderShell({ book });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(transactionRow("Noodles Plus"));
   await shell.user.keyboard("e");
   const form = screen.getByRole("form", { name: "Edit transaction" });
@@ -228,7 +226,7 @@ test("a split line can go entirely to someone under People", async () => {
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   await shell.reload();
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(transactionRow("Noodles Plus"));
   await shell.user.keyboard("e");
   const saved = screen.getByRole("form", { name: "Edit transaction" });
@@ -283,7 +281,7 @@ test("a fully reimbursable refund reopens with its person and saves without a ca
   await shell.user.click(
     within(
       screen.getByRole("navigation", { name: "Budget navigation" }),
-    ).getByRole("button", { name: /^Card/ }),
+    ).getByRole("link", { name: /^Card/ }),
   );
   await shell.user.click(transactionRow("Noodles refund"));
   await shell.user.keyboard("e");
@@ -312,7 +310,7 @@ test("writing off a full reimbursement opens the editor to categorize the new pe
     },
   });
   const shell = await renderShell({ book });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(transactionRow("Noodles Plus"));
   expect(screen.queryByRole("button", { name: "Write off" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Details" })).toBeNull();

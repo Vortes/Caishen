@@ -131,7 +131,10 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
         return;
       }
       // The release would click the row it was dragged by.
-      const swallow = (click: MouseEvent) => click.stopPropagation();
+      const swallow = (click: MouseEvent) => {
+        click.preventDefault();
+        click.stopPropagation();
+      };
       window.addEventListener("click", swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener("click", swallow, true));
       const final = keep ? order : ids;

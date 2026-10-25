@@ -195,7 +195,7 @@ for (const scenario of cases) {
     }
     await page
       .getByRole("navigation", { name: "Budget navigation" })
-      .getByRole("button", { name: /^Reimbursements/ })
+      .getByRole("link", { name: /^Reimbursements/ })
       .click();
     await expect(
       page.getByRole("heading", { name: "Reimbursements", exact: true }),
