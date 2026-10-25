@@ -78,6 +78,7 @@ async function clearOwnedData(db: PrismaClient, userId: string) {
       const where = { clerkUserId: userId };
       await tx.clerkWebhookEvent.deleteMany({ where });
       await tx.bankConnection.deleteMany({ where });
+      await tx.bankProviderEvent.deleteMany({ where });
       await tx.reviewEvidence.deleteMany({ where });
       await tx.dailyDelivery.deleteMany({ where });
       await tx.crudItem.deleteMany({ where });
