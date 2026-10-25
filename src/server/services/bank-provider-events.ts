@@ -143,3 +143,17 @@ export async function recordBankWebhookReceipt(
     },
   });
 }
+
+/** Operational records (data-retention policy, section 4). */
+export const BANK_PROVIDER_EVENT_RETENTION_DAYS = 90;
+
+/** Removes events past the retention window; the daily job's scheduled purge. */
+export async function purgeBankProviderEvents(db: Database, now: Date) {
+  const cutoff = new Date(
+    now.getTime() - BANK_PROVIDER_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const { count } = await db.bankProviderEvent.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+  return count;
+}

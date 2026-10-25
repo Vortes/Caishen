@@ -6,6 +6,7 @@ import {
   dailyReviewSchedule,
 } from "~/server/integrations/daily-review";
 import { bankInbox, syncBanks } from "./banks";
+import { purgeBankProviderEvents } from "./bank-provider-events";
 import {
   cancelScheduledDailyReviews,
   claimDailyDelivery,
@@ -238,7 +239,16 @@ export async function runDailyJob(
     synced = 0,
     scheduled = 0,
     canceled = recovered.canceled,
-    failed = recovered.failed;
+    failed = recovered.failed,
+    purgedEvents = 0;
+  // The audit trail's retention purge runs with the daily backstop; a failed
+  // purge is reported like any other failure and never holds up delivery.
+  try {
+    purgedEvents = await purgeBankProviderEvents(db, now);
+  } catch (error) {
+    console.error("Bank provider events could not be purged", error);
+    failed++;
+  }
   const emailReady = !!(
     process.env.RESEND_API_KEY &&
     process.env.EMAIL_FROM &&
@@ -371,6 +381,7 @@ export async function runDailyJob(
     scheduled,
     canceled,
     failed,
+    purgedEvents,
     emailConfigured: emailReady,
   };
 }

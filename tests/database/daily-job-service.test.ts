@@ -73,6 +73,9 @@ async function fixture(
     () => `test-daily-${randomUUID()}`,
   );
   t.after(async () => {
+    await base.bankProviderEvent.deleteMany({
+      where: { clerkUserId: { in: users } },
+    });
     await base.dailyDelivery.deleteMany({
       where: { clerkUserId: { in: users } },
     });
@@ -559,3 +562,30 @@ for (const failedCancel of [false, true])
     assert.deepEqual(h.canceled, ["email_1"]);
     assert.equal(h.accepted.size, 1);
   });
+
+void test("the daily job purges provider events older than the 90-day retention window and keeps newer ones", async (t) => {
+  const h = await fixture(t);
+  const day = 24 * 60 * 60 * 1000;
+  const event = (requestId: string, ageDays: number) => ({
+    kind: "request",
+    method: "/accounts/get",
+    requestId,
+    clerkUserId: h.userId,
+    createdAt: new Date(now.getTime() - ageDays * day),
+  });
+  await base.bankProviderEvent.createMany({
+    data: [
+      event("req-expired", 91),
+      event("req-last-day", 89),
+      event("req-today", 0),
+    ],
+  });
+  await runDailyJob(h.db, now, h.dependencies);
+  const kept = await base.bankProviderEvent.findMany({
+    where: { clerkUserId: h.userId },
+  });
+  assert.deepEqual(kept.map((row) => row.requestId).sort(), [
+    "req-last-day",
+    "req-today",
+  ]);
+});
