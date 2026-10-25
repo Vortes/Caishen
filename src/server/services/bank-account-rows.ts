@@ -171,8 +171,8 @@ export function readBankAccountRows(connection: {
     while (successor.supersededById) {
       if (visited.has(successor.id)) unreadableSuccessor(row.id);
       visited.add(successor.id);
-      const next = byId.get(successor.supersededById);
-      if (!next) unreadableSuccessor(row.id);
+      const next =
+        byId.get(successor.supersededById) ?? unreadableSuccessor(row.id);
       successor = next;
     }
     const mapping = mappings[successor.providerAccountId];
