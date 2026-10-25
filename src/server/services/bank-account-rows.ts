@@ -188,6 +188,9 @@ export function readBankAccountRows(connection: {
     unavailableAccountIds: rows
       .filter((row) => row.status !== "shared" && row.status !== "retired")
       .map((row) => row.providerAccountId),
+    revokedAccountIds: rows
+      .filter((row) => row.status === "revoked")
+      .map((row) => row.providerAccountId),
   };
 }
 

@@ -165,6 +165,7 @@ type StoredConnection = {
   imports: unknown;
   accountMappings: unknown;
   unavailableAccountIds?: string[];
+  revokedAccountIds?: string[];
   status?: string;
   consentExpiresAt?: Date | null;
   lastSuccessfulUpdateAt?: Date | null;
@@ -311,6 +312,7 @@ export function readBankConnection<C extends StoredConnection>(
             ? {
                 ...connection,
                 unavailableAccountIds: providerRows.unavailableAccountIds,
+                revokedAccountIds: providerRows.revokedAccountIds,
               }
             : connection,
           state: { ...connectionDetails(column), ...rows },
@@ -348,6 +350,9 @@ export function bankConnectionView(
         accountMappings: read.mappings,
         ...(read.connection.unavailableAccountIds?.length
           ? { unavailableAccountIds: read.connection.unavailableAccountIds }
+          : {}),
+        ...(read.connection.revokedAccountIds?.length
+          ? { revokedAccountIds: read.connection.revokedAccountIds }
           : {}),
         ...bankAccountDetails(read.state),
       }
@@ -1118,7 +1123,7 @@ export async function disconnectBank(
           where: {
             id: connection.id,
             updatedAt: connection.updatedAt,
-              },
+          },
           data: {
             imports: connectionMetadata(connection.imports, {
               ...state,
@@ -1450,7 +1455,7 @@ export async function repairDuplicateBankAccounts(
           id: replacement.connection.id,
           clerkUserId: userId,
           updatedAt: replacement.connection.updatedAt,
-          },
+        },
         data: { updatedAt: new Date() },
       });
       const removed = await tx.bankConnection.deleteMany({
@@ -1458,7 +1463,7 @@ export async function repairDuplicateBankAccounts(
           id: retired.connection.id,
           clerkUserId: userId,
           updatedAt: retired.connection.updatedAt,
-          },
+        },
       });
       await writeBankLinks(
         tx,
@@ -2306,6 +2311,40 @@ async function applyBankUpdate(
     ...readBankAccountRows(fresh)?.importMappings,
     ...mappings,
   };
+  const revoked = new Set(
+    fresh.bankAccounts
+      .filter(
+        (account) =>
+          account.status === "revoked" &&
+          !accounts.accounts.some(
+            (reported) => reported.accountId === account.providerAccountId,
+          ),
+      )
+      .map((account) => account.providerAccountId),
+  );
+  if (revoked.size) {
+    const allowed = (record: { providerAccountId: string }) =>
+      !revoked.has(record.providerAccountId);
+    delta = {
+      ...delta,
+      added: delta.added.filter(allowed),
+      modified: delta.modified.filter(allowed),
+      removed: delta.removed.filter((removed) => {
+        const accountId =
+          removed.providerAccountId ??
+          old.records.find((record) =>
+            record.providerTransactionIds.includes(
+              removed.providerTransactionId,
+            ),
+          )?.current.providerAccountId;
+        return !accountId || !revoked.has(accountId);
+      }),
+      skipped: {
+        ...delta.skipped,
+        quarantined: delta.skipped.quarantined.filter(allowed),
+      },
+    };
+  }
   const plan = applyTransactionSync(old.records, delta, fresh.id);
   const changedAccounts = new Set(
     [

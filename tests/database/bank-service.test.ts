@@ -35,6 +35,8 @@ import {
   syncBanks,
 } from "../../src/server/services/banks";
 import { recordBankWebhookReceipt } from "../../src/server/services/bank-provider-events";
+import { respondToPlaidWebhook } from "../../src/server/plaid-webhook";
+import { signedRequest, signingKey } from "../plaid-webhook-fixture";
 import { onboard } from "../../src/server/services/household-operations";
 import * as banks from "../../src/server/services/banks";
 import { households } from "../../src/server/storage/households";
@@ -337,6 +339,123 @@ async function linkedHarness() {
   });
   return h;
 }
+
+void test("account revocation preserves existing inbox activity, blocks new imports, and permits re-sharing", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    {
+      added: [importFact("before-revocation")],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    records: [record],
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currency: "USD",
+        currentBalance: 100,
+        availableBalance: 100,
+      },
+    ],
+    synchronizedAccountIds: ["provider-checking"],
+  });
+  await h.state();
+  const before = await bankInbox(db, alice);
+  const budgetBefore = await h.book();
+  const key = signingKey("revocation-key");
+  const now = new Date();
+  const response = await respondToPlaidWebhook(
+    signedRequest(
+      JSON.stringify({
+        webhook_type: "ITEM",
+        webhook_code: "USER_ACCOUNT_REVOKED",
+        item_id: h.connection.itemId,
+        account_id: "provider-checking",
+        environment: "sandbox",
+      }),
+      key.privateKey,
+      { keyId: key.key.kid, issuedAt: Math.floor(now.getTime() / 1000) },
+    ),
+    {
+      db,
+      fetchKey: async () => key.key,
+      now: () => now,
+      schedule: () => assert.fail("revocation must not schedule a refresh"),
+    },
+  );
+  assert.equal(response.status, 200);
+  let shared = false;
+  const raw = (id: string, amount: unknown = 30) => ({
+    transaction_id: id,
+    account_id: "provider-checking",
+    pending: false,
+    amount,
+    iso_currency_code: "USD",
+    date: "2026-10-21",
+    name: "New purchase",
+  });
+  mockPlaid(async (url) => {
+    if (requestUrl(url).pathname === "/accounts/get")
+      return Response.json({
+        ...accountsResponse(),
+        accounts: shared ? accountsResponse().accounts : [],
+      });
+    return Response.json({
+      added: [
+        raw("after-revocation"),
+        ...(shared ? [] : [raw("invalid-revoked", "bad")]),
+      ],
+      modified: [],
+      removed: [],
+      accounts: shared ? accountsResponse().accounts : [],
+      next_cursor: shared ? "re-granted" : "revoked-update",
+      has_more: false,
+      transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+    });
+  });
+  await h.api.budget.sync();
+  assert.deepEqual(await bankInbox(db, alice), before);
+  assert.deepEqual(await h.book(), budgetBefore);
+  assert.deepEqual((await h.details()).revokedAccountIds, [
+    "provider-checking",
+  ]);
+  assert.equal((await h.details()).status, "connected");
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record.id,
+    expectedFingerprint: bankImportFingerprint(record),
+    expectedRevision: await h.revision(),
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "reviewed-before-revocation",
+      accountId: "cash",
+      date: "2026-10-20",
+      amount: -2000,
+      payee: "Coffee shop",
+      categoryId: "dining",
+      status: "posted",
+    },
+  });
+  assert.equal((await bankInbox(db, alice)).length, 0);
+  shared = true;
+  await h.api.budget.sync();
+  assert.equal((await h.details()).revokedAccountIds, undefined);
+  assert.equal((await bankInbox(db, alice)).length, 1);
+  assert.equal(
+    (await h.book()).budgets[alice]!.accounts.length,
+    budgetBefore.budgets[alice]!.accounts.length,
+  );
+});
 
 void test("disconnecting a bank preserves the account, reviewed history, and outstanding imports", async () => {
   const h = await linkedHarness();

@@ -118,6 +118,120 @@ void test("ITEM ERROR with ITEM_LOGIN_REQUIRED marks the connection login requir
   assert.equal((await h.saved()).status, "login_required");
 });
 
+void test("revoking one provider account preserves the Item and the other accounts", async () => {
+  const h = await harness();
+  await db.bankAccount.createMany({
+    data: ["revoked-card", "other-card"].map((providerAccountId) => ({
+      connectionId: h.connection.id,
+      providerAccountId,
+      name: providerAccountId,
+      type: "credit",
+      subtype: "credit card",
+      status: "shared",
+      currentBalance: 125,
+    })),
+  });
+  const response = await h.deliver({
+    webhook_type: "ITEM",
+    webhook_code: "USER_ACCOUNT_REVOKED",
+    item_id: h.connection.itemId,
+    account_id: "revoked-card",
+    environment: "sandbox",
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    await db.bankAccount.findMany({
+      where: { connectionId: h.connection.id },
+      select: { providerAccountId: true, status: true },
+      orderBy: { providerAccountId: "asc" },
+    }),
+    [
+      { providerAccountId: "other-card", status: "shared" },
+      { providerAccountId: "revoked-card", status: "revoked" },
+    ],
+  );
+  const saved = await h.saved();
+  assert.equal(saved.status, "connected");
+  assert.ok(
+    saved.updatedAt > h.connection.updatedAt,
+    "fence earlier account updates",
+  );
+  assert.equal(
+    await db.bankProviderEvent.count({
+      where: {
+        connectionId: h.connection.id,
+        method: "ITEM/USER_ACCOUNT_REVOKED",
+      },
+    }),
+    1,
+  );
+  assert.deepEqual(h.scheduled, []);
+});
+
+void test("an account revocation without Plaid's singular account_id is refused", async (t) => {
+  const h = await harness();
+  const receipts = await db.bankProviderEvent.findMany({
+    select: { id: true },
+  });
+  t.after(() =>
+    db.bankProviderEvent.deleteMany({
+      where: {
+        kind: "webhook",
+        id: { notIn: receipts.map(({ id }) => id) },
+      },
+    }),
+  );
+  const response = await h.deliver({
+    webhook_type: "ITEM",
+    webhook_code: "USER_ACCOUNT_REVOKED",
+    item_id: h.connection.itemId,
+    account_ids: ["some-card"],
+    environment: "sandbox",
+  });
+  assert.equal(response.status, 401);
+  assert.equal((await h.saved()).status, "connected");
+});
+
+void test("an account revocation arriving before the first table read survives migration", async () => {
+  const h = await harness();
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: {
+      imports: {
+        accounts: [
+          {
+            accountId: "legacy-card",
+            name: "Legacy card",
+            officialName: null,
+            mask: "1234",
+            type: "credit",
+            subtype: "credit card",
+            currency: "USD",
+            currentBalance: 100,
+            availableBalance: null,
+          },
+        ],
+      },
+    },
+  });
+  const response = await h.deliver({
+    webhook_type: "ITEM",
+    webhook_code: "USER_ACCOUNT_REVOKED",
+    item_id: h.connection.itemId,
+    account_id: "legacy-card",
+    environment: "sandbox",
+  });
+  assert.equal(response.status, 200);
+  const accounts = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    select: { providerAccountId: true, status: true },
+  });
+  assert.deepEqual(accounts, [
+    { providerAccountId: "legacy-card", status: "revoked" },
+  ]);
+  assert.equal((await h.saved()).status, "connected");
+});
+
 void test("pending disconnect, pending expiration, revoked permission, and new accounts each set what the Banks panel shows", async () => {
   const h = await harness();
   const item = (webhook: Record<string, unknown>) => ({

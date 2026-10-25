@@ -9,6 +9,34 @@ import { readyOverview, renderShell } from "./shell-harness";
 const today = new Date("2026-10-25T12:00:00Z");
 afterEach(() => vi.restoreAllMocks());
 
+test("a revoked account keeps its budget row and offers re-sharing without a stale bank balance", async () => {
+  const bank = {
+    ...chase({}),
+    unavailableAccountIds: ["provider-checking"],
+    revokedAccountIds: ["provider-checking"],
+  };
+  const shell = await renderShell({
+    overview: () =>
+      readyOverview({
+        connections: [bank],
+        services: [{ name: "Plaid", status: "configured", detail: "Ready" }],
+      }),
+  });
+  await shell.user.click(screen.getByRole("button", { name: "Banks" }));
+  const banks = screen.getByRole("dialog", { name: "Connected banks" });
+  expect(within(banks).getByText("Access revoked at the bank")).toBeTruthy();
+  expect(within(banks).queryByText("$1,000.00")).toBeNull();
+  expect(
+    within(banks).getByRole("button", { name: "Choose shared accounts" }),
+  ).toBeTruthy();
+  expect(
+    within(
+      screen.getByRole("navigation", { name: "Budget navigation" }),
+    ).getByRole("link", { name: "Checking $1,000.00" }),
+  ).toBeTruthy();
+  expect(shell.execute).not.toHaveBeenCalled();
+});
+
 function chase(
   health: Partial<
     Pick<
