@@ -143,6 +143,7 @@ type StoredConnection = {
   clerkUserId: string;
   imports: unknown;
   accountMappings: unknown;
+  unavailableAccountIds?: string[];
 };
 export type ReadConnection<C extends StoredConnection = StoredConnection> =
   | { status: "ready"; connection: C; state: ImportState; mappings: Mappings }
@@ -247,6 +248,9 @@ export function bankConnectionView(
         ...connection,
         error,
         accountMappings,
+        ...(read.connection.unavailableAccountIds?.length
+          ? { unavailableAccountIds: read.connection.unavailableAccountIds }
+          : {}),
         ...bankAccountDetails(read.state),
       }
     : {
@@ -389,6 +393,9 @@ export async function exchangeBankToken(
       if (details.disconnectedAt) continue;
       if (details.institutionId !== linked.institution.institution_id) continue;
       if (
+        Object.keys(mappings(saved)).some(
+          (id) => !details.accounts.some((account) => account.accountId === id),
+        ) ||
         linked.accounts.some((account) =>
           details.accounts.some(
             (existing) =>
@@ -448,6 +455,29 @@ export async function exchangeBankToken(
   }
 }
 
+// Missing provider accounts retain their identity for display and duplicate checks.
+// Only a response from Plaid can make their balances current again.
+function mergeAccountCatalog(
+  previous: ConnectionDetails["accounts"],
+  reported: ConnectionDetails["accounts"],
+  mappings: Mappings,
+) {
+  const reportedIds = new Set(reported.map((account) => account.accountId));
+  return {
+    accounts: [
+      ...new Map(
+        [
+          ...previous.filter((account) => mappings[account.accountId]),
+          ...reported,
+        ].map((account) => [account.accountId, account]),
+      ).values(),
+    ],
+    unavailableAccountIds: Object.keys(mappings).filter(
+      (id) => !reportedIds.has(id),
+    ),
+  };
+}
+
 async function refreshBankAccounts(
   db: Database,
   userId: string,
@@ -469,15 +499,22 @@ async function refreshBankAccounts(
         fresh.imports,
       );
       if (!column) throw connectionMaintenance();
+      const catalog = mergeAccountCatalog(
+        column.accounts,
+        accounts.accounts,
+        mappings(fresh),
+      );
       await tx.bankConnection.update({
         where: { id: fresh.id },
         data: {
           imports: detailsColumn(fresh.imports, {
             ...connectionDetails(column),
             ...accounts,
+            accounts: catalog.accounts,
             transactionStatus: null,
             synchronizedAccountIds: [],
           }),
+          unavailableAccountIds: catalog.unavailableAccountIds,
           lastAttemptAt: new Date(),
           error: null,
         },
@@ -1677,6 +1714,7 @@ async function applyBankUpdate(
   const retainedAccounts = old.accounts.filter((account) => {
     const reported = reportedAccounts.get(account.accountId);
     return (
+      reported !== undefined &&
       old.synchronizedAccountIds.includes(account.accountId) &&
       !changedAccounts.has(account.accountId) &&
       (fresh.cursor === delta.nextCursor ||
@@ -1687,10 +1725,9 @@ async function applyBankUpdate(
     );
   });
   const synchronizedAccounts = new Map(
-    [...retainedAccounts, ...delta.accounts].map((account) => [
-      account.accountId,
-      account,
-    ]),
+    [...retainedAccounts, ...delta.accounts]
+      .filter((account) => reportedAccounts.has(account.accountId))
+      .map((account) => [account.accountId, account]),
   );
   // Plaid omits accounts without transactions from /transactions/sync.
   // A completed, empty history with a reported zero balance can start at zero.
@@ -1713,11 +1750,16 @@ async function applyBankUpdate(
         !accountsWithActivity.has(account.accountId)
       )
         synchronizedAccounts.set(account.accountId, account);
+  const catalog = mergeAccountCatalog(
+    old.accounts,
+    accounts.accounts,
+    mappings,
+  );
   const state: ImportState = {
     ...accounts,
     accounts: [
       ...new Map(
-        [...accounts.accounts, ...synchronizedAccounts.values()].map(
+        [...catalog.accounts, ...synchronizedAccounts.values()].map(
           (account) => [account.accountId, account],
         ),
       ).values(),
@@ -1882,6 +1924,7 @@ async function applyBankUpdate(
       where: { id: fresh.id, cursor: fresh.cursor, updatedAt: fresh.updatedAt },
       data: {
         imports: detailsColumn(fresh.imports, state),
+        unavailableAccountIds: catalog.unavailableAccountIds,
         cursor: delta.nextCursor,
         lastSyncedAt: new Date(),
         lastAttemptAt: new Date(),

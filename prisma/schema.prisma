@@ -69,6 +69,7 @@ model BankConnection {
   cursor          String?
   imports         Json
   accountMappings Json
+  unavailableAccountIds String[] @default([])
   lastSyncedAt    DateTime?
   lastAttemptAt   DateTime?
   error           String?
