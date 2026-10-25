@@ -25,18 +25,26 @@
 /* A popover surface. Its corners are a pill, concentric with the pill
    buttons inside. */
 .island {
+  --island-border-width: 1px;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   max-width: calc(100% - 16px);
   padding: 6px;
-  border: 1px solid var(--border-strong);
+  border: var(--island-border-width) solid var(--border-strong);
   border-radius: 999px;
   background: var(--surface-raised);
   box-shadow: var(--shadow-drawer);
   color: var(--text-secondary);
   font-size: var(--type-small);
   pointer-events: auto;
+}
+/* Each action measures the island's outer border, including when its rows wrap. */
+.islandAnchor {
+  position: absolute;
+  inset: calc(-1 * var(--island-border-width));
+  pointer-events: none;
 }
 .summary {
   display: flex;
@@ -69,24 +77,22 @@
 .island > .actions:empty {
   display: none;
 }
-.categoryPopover {
-  z-index: 40;
-  width: min(300px, calc(100vw - 24px));
-  padding: 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-primary);
-  font-size: var(--type-small);
+.categoryMenu {
+  width: min(240px, calc(100vw - 24px));
+  min-width: 0;
+  max-height: var(--radix-popper-available-height);
+  overflow-y: auto;
 }
-.categoryForm {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.categoryMenu .categoryGroup {
+  height: auto;
+  min-height: var(--size-row-sm);
+  padding-block: 8px;
 }
-.categoryForm > .actions {
-  justify-content: flex-end;
+.categoryGroup > span {
+  flex: 1;
+}
+.menuError {
+  padding: var(--space-inset);
 }
 .shareConfirmation {
   display: flex;
@@ -96,7 +102,7 @@
 }
 .sharePopover {
   width: min(var(--size-popover), calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
+  max-height: var(--radix-popover-content-available-height);
   overflow-y: auto;
 }
 .shareConfirmation > strong {
@@ -150,7 +156,7 @@
 }
 @media (pointer: coarse) {
   .island,
-  .categoryPopover,
+  .categoryMenu,
   .sharePopover {
     --size-control-xs: var(--size-row-lg);
     --size-control: var(--size-row-lg);

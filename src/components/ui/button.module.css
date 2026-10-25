@@ -34,7 +34,7 @@
   width: 13px;
   height: 13px;
 }
-.button:active:not(:disabled) {
+.button:active:not(:disabled, [aria-haspopup], [aria-expanded="true"]) {
   transform: scale(0.97);
 }
 .button:disabled {

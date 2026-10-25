@@ -34,9 +34,9 @@
   background: var(--surface-hover);
   color: var(--text-primary);
 }
-/* A menu opens on press, so its trigger stays put rather than shift the
-   anchor the menu was just placed against. */
-.iconButton:active:not(:disabled, [aria-expanded="true"]) {
+/* Popup triggers stay still throughout the press, including before they
+   open, so their surfaces never anchor to a shrinking button. */
+.iconButton:active:not(:disabled, [aria-haspopup], [aria-expanded="true"]) {
   transform: scale(0.94);
 }
 .iconButton[aria-expanded="true"],
@@ -60,6 +60,7 @@
 }
 .iconButton[data-variant="secondary"]:active:not(
     :disabled,
+    [aria-haspopup],
     [aria-expanded="true"]
   ) {
   transform: scale(0.97);

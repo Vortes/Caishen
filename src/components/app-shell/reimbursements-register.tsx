@@ -8,6 +8,8 @@ import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
 import { parseAmount } from "./move-money";
@@ -321,6 +323,7 @@ function RecordRepayment({
   const timezone = view.budget.settings.timezone;
   const amountInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const [who, setWho] = useState("");
   const [amount, setAmount] = useState("");
   const [cashAccountId, setCashAccountId] = useState("");
@@ -358,9 +361,10 @@ function RecordRepayment({
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Record a repayment"
           // Who is usually known from the filter, so the amount is what's

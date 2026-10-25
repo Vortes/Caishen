@@ -22,6 +22,8 @@ import {
 } from "~/components/ui/segmented-control";
 import { Tag } from "~/components/ui/tag";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Category } from "./model";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
@@ -607,12 +609,14 @@ function BehaviorField({
   const container = usePortalContainer();
   const id = useId();
   const chosen = behaviorCopy(value, schedule, amount);
+  const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   return (
     <div className={styles.field}>
       <span className={styles.label} id={`${id}-label`}>
         {label}
       </span>
-      <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
         <DropdownMenu.Trigger
           className={`${entry.well} ${styles.trigger}`}
           aria-labelledby={`${id}-label ${id}-value`}
@@ -624,9 +628,10 @@ function BehaviorField({
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal container={container}>
           <DropdownMenu.Content
+            {...motion}
             className={styles.menu}
             align="start"
-            sideOffset={4}
+            sideOffset={POPOVER_GAP}
             collisionPadding={12}
             aria-label={label}
             // Escape closes only the menu; the editor around it stays open.

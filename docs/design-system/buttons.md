@@ -50,6 +50,10 @@ Put the icon in `children`, before or after the label; the button sizes it.
 A secondary button that toggles something on (a filter, a setting) gets
 `aria-pressed`, which gives it the pressed look.
 
+Popup triggers (`aria-haspopup`) never scale on press, for either `Button`
+or `IconButton`. Radix measures the trigger during the press; shrinking it
+moves the anchored surface before it closes and again when the press ends.
+
 ```tsx
 // Correct: one primary, the rest secondary, icon as a child
 <Button size="sm" aria-pressed={reviewOnly} onClick={toggleReview}>

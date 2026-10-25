@@ -15,6 +15,8 @@ import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { PartnerEntryChange } from "~/domain/partner-ledger";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
@@ -139,6 +141,7 @@ function RequestPopover({ account }: { account: Account }) {
   const { view, saveCommand } = useTransactionEntry();
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   return (
@@ -158,9 +161,10 @@ function RequestPopover({ account }: { account: Account }) {
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={`Request money from ${account.name}`}
         >
@@ -229,6 +233,7 @@ function PayPopover({ account }: { account: Account }) {
   const { view } = useTransactionEntry();
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const [copied, setCopied] = useState(false);
   const amount = -account.balance;
   const request = view.partnerRequest;
@@ -246,9 +251,10 @@ function PayPopover({ account }: { account: Account }) {
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={`Pay ${account.name}`}
         >

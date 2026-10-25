@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import {
   findToast,
@@ -219,7 +219,13 @@ test.each([
           openingBalance: 0,
           date: "2026-10-01",
         },
-        { type: "category.add", id: "food", categoryId: "food", name: "Food" },
+        {
+          type: "category.add",
+          id: "food",
+          categoryId: "food",
+          name: "Food",
+          group: "Everyday",
+        },
         {
           type: "transaction.upsert",
           id: "transfer",
@@ -247,14 +253,11 @@ test.each([
       await shell.user.click(
         actions.getByRole("button", { name: "Categorize" }),
       );
-      const form = within(
-        screen.getByRole("form", { name: "Categorize transactions" }),
+      await shell.user.click(
+        screen.getByRole("menuitem", { name: "Everyday" }),
       );
-      await shell.user.type(
-        form.getByRole("combobox", { name: "Category" }),
-        "Food{Enter}",
-      );
-      await shell.user.click(form.getByRole("button", { name: "Apply" }));
+      expect(screen.getByRole("menuitem", { name: "Food" })).toBeTruthy();
+      await shell.user.keyboard("{ArrowRight}{End}{Enter}");
       await findToast("Categorized 1 transaction");
       expect(
         within(await findTransactionRow("Transfer from Checking")).getByText(
@@ -348,3 +351,70 @@ test.each([true, false])(
     expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   },
 );
+
+test("bulk category menus support keyboard selection and change only the selected rows", async () => {
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "category.add",
+        id: "food",
+        categoryId: "food",
+        name: "Food",
+        group: "Essentials",
+      },
+      ...["Coffee", "Lunch", "Book"].map((payee) => ({
+        type: "transaction.upsert" as const,
+        id: payee,
+        transactionId: payee,
+        accountId: "checking",
+        date: "2026-10-10",
+        payee,
+        amount: -500,
+        categoryId: "gifts",
+      })),
+    ],
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Coffee" }),
+  );
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Lunch" }),
+  );
+  const trigger = screen.getByRole("button", {
+    name: "Categorize",
+  });
+  await shell.user.click(trigger);
+  await shell.user.keyboard("{Escape}");
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await shell.user.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(
+    screen.getByRole("menuitem", { name: "Everyday" }),
+  );
+  await shell.user.keyboard("{ArrowDown}");
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole("menuitem", { name: "Essentials" }),
+    ),
+  );
+  await shell.user.keyboard("{ArrowRight}");
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole("menuitem", { name: "Food" }),
+    ),
+  );
+  await shell.user.keyboard("{Enter}");
+  await findToast("Categorized 2 transactions");
+  for (const payee of ["Coffee", "Lunch"])
+    expect(
+      within(await findTransactionRow(payee)).getByText("Food", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+  expect(
+    within(transactionRow("Book")).getByText("Gifts", { exact: true }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("menu", { name: "Categorize transactions" }),
+  ).toBeNull();
+});
