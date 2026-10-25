@@ -1,14 +1,22 @@
 "use client";
 
 import {
+  ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleXIcon,
   TagsIcon,
   XIcon,
 } from "lucide-react";
-import { Popover } from "radix-ui";
-import { createContext, useContext, useEffect, useId, useState } from "react";
+import * as Menu from "@radix-ui/react-menu";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { newId } from "~/components/budget/format";
 import { useBudgetSelector } from "~/components/sync/hooks";
 import type { BudgetSnapshot } from "~/components/sync/budget-store";
@@ -19,10 +27,10 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Transaction } from "./model";
 import shell from "./shell.module.css";
 import { useTransactionEntry } from "./transaction-entry";
-import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import styles from "./transaction-review.module.css";
 import { ShareSelection } from "./share-selection";
 
@@ -208,100 +216,141 @@ function CategorizeAction({
   const { view, holdOpen } = useTransactionEntry();
   const container = usePortalContainer();
   const id = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const interactedOutside = useRef(false);
   const [open, setOpen] = useState(false);
-  const [categoryId, setCategoryId] = useState("");
+  const [groupOpen, setGroupOpen] = useState<string | null>(null);
   const [error, setError] = useState("");
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
-  const options: ChoiceOption[] = view.categories
-    .filter(
-      (category) =>
-        !category.pairedAccountId &&
-        !category.pairedLoanId &&
-        !category.counterpartyAccountId,
-    )
-    .map((category) => ({ value: category.id, label: category.name }));
-  const submit = () => {
-    if (!categoryId || disabled) return;
-    const blocked = review.categorize(
-      selected.map((item) => item.id),
-      categoryId,
-    );
-    if (blocked) setError(blocked);
-    else setOpen(false);
+  const categories = view.categories.filter(
+    (category) =>
+      !category.pairedAccountId &&
+      !category.pairedLoanId &&
+      !category.counterpartyAccountId,
+  );
+  const groups = new Map<string, typeof categories>();
+  for (const category of categories) {
+    const group = groups.get(category.group) ?? [];
+    group.push(category);
+    groups.set(category.group, group);
+  }
+  const changeOpen = (next: boolean) => {
+    if (next) {
+      setError("");
+      interactedOutside.current = false;
+    }
+    if (!next) setGroupOpen(null);
+    setOpen(next);
   };
   if (
     !open &&
     (disabled ||
       !available ||
       selected.length > TRANSACTION_ACTION_LIMIT ||
-      !options.length)
+      !categories.length)
   )
     return null;
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(next) => {
-        if (next) {
-          setCategoryId("");
-          setError("");
-        }
-        setOpen(next);
-      }}
-    >
-      <Popover.Trigger asChild>
-        <Button size="sm" disabled={disabled}>
-          <TagsIcon aria-hidden />
-          Categorize
-        </Button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          className={styles.categoryPopover}
+    <Menu.Root open={open} onOpenChange={changeOpen} modal={false}>
+      <Button
+        ref={trigger}
+        size="sm"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={() => changeOpen(!open)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            event.stopPropagation();
+            changeOpen(true);
+          }
+        }}
+      >
+        <TagsIcon aria-hidden />
+        Categorize
+      </Button>
+      <Menu.Anchor className={styles.islandAnchor} aria-hidden />
+      <Menu.Portal container={container}>
+        <Menu.Content
+          id={id}
+          className={`${shell.menu} ${styles.categoryMenu}`}
+          aria-label="Categorize transactions"
           side="top"
           align="end"
-          sideOffset={8}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
-        >
-          <form
-            className={styles.categoryForm}
-            aria-label="Categorize transactions"
-            onSubmit={(event) => {
+          onKeyDown={(event) => event.stopPropagation()}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (!interactedOutside.current)
+              trigger.current?.focus({ preventScroll: true });
+          }}
+          onInteractOutside={(event) => {
+            if (trigger.current?.contains(event.target as Node))
               event.preventDefault();
-              submit();
-            }}
-          >
-            <label htmlFor={id}>Category</label>
-            <ChoiceField
-              id={id}
-              label="Category"
-              value={categoryId}
-              options={options}
-              wide={false}
-              placeholder="Choose a category"
-              onChange={setCategoryId}
-            />
-            {error && (
-              <p className={styles.error} role="alert">
-                <CircleAlertIcon aria-hidden size={14} />
-                {error}
-              </p>
-            )}
-            <div className={styles.actions}>
-              <Button size="sm" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                type="submit"
-                disabled={!categoryId || disabled}
+            else interactedOutside.current = true;
+          }}
+        >
+          {Array.from(groups, ([name, choices]) => (
+            <Menu.Sub
+              key={name}
+              open={groupOpen === name}
+              onOpenChange={(next) =>
+                setGroupOpen((current) =>
+                  next ? name : current === name ? null : current,
+                )
+              }
+            >
+              <Menu.SubTrigger
+                className={`${shell.menuItem} ${styles.categoryGroup}`}
+                textValue={name}
+                disabled={disabled}
               >
-                Apply
-              </Button>
-            </div>
-          </form>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+                <span>{name}</span>
+                <ChevronRightIcon size={14} aria-hidden />
+              </Menu.SubTrigger>
+              <Menu.Portal container={container}>
+                <Menu.SubContent
+                  className={`${shell.menu} ${styles.categoryMenu}`}
+                  aria-label={`${name} categories`}
+                  sideOffset={POPOVER_GAP}
+                  collisionPadding={12}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  {choices.map((category) => (
+                    <Menu.Item
+                      key={category.id}
+                      className={shell.menuItem}
+                      disabled={disabled}
+                      textValue={category.name}
+                      onSelect={(event) => {
+                        const blocked = review.categorize(
+                          selected.map((item) => item.id),
+                          category.id,
+                        );
+                        if (blocked) {
+                          event.preventDefault();
+                          setError(blocked);
+                        }
+                      }}
+                    >
+                      {category.name}
+                    </Menu.Item>
+                  ))}
+                </Menu.SubContent>
+              </Menu.Portal>
+            </Menu.Sub>
+          ))}
+          {error && (
+            <p className={`${styles.error} ${styles.menuError}`} role="alert">
+              <CircleAlertIcon aria-hidden size={14} />
+              {error}
+            </p>
+          )}
+        </Menu.Content>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }

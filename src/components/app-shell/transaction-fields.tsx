@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { money } from "./model";
 import shell from "./shell.module.css";
 import styles from "./transaction-entry.module.css";
@@ -46,6 +47,7 @@ function OptionList({
   label,
   anchor,
   wide = false,
+  placement = "floating",
   children,
   footer,
 }: {
@@ -56,11 +58,47 @@ function OptionList({
   anchor: ReactNode;
   // Room for a long name beside its balance.
   wide?: boolean;
+  placement?: "floating" | "inline";
   children: ReactNode;
   footer?: ReactNode;
 }) {
   const container = usePortalContainer();
   const anchorRef = useRef<HTMLDivElement>(null);
+  const content = footer ? (
+    <>
+      <div
+        id={listId}
+        role="listbox"
+        aria-label={label}
+        className={styles.listOptions}
+      >
+        {children}
+      </div>
+      <hr className={styles.listDivider} />
+      <div className={styles.listFooter}>{footer}</div>
+    </>
+  ) : (
+    children
+  );
+  // Inside a bottom-anchored form, the list participates in layout so the
+  // form grows upward and keeps its footer and toolbar unobstructed.
+  if (placement === "inline")
+    return (
+      <div className={styles.inlineChoice}>
+        {anchor}
+        {open && (
+          <div
+            id={footer ? `${listId}-popover` : listId}
+            role={footer ? "group" : "listbox"}
+            aria-label={label}
+            className={styles.inlineOptions}
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            {content}
+          </div>
+        )}
+      </div>
+    );
   return (
     <Popover.Root
       open={open}
@@ -80,7 +118,7 @@ function OptionList({
           data-wide={wide || undefined}
           data-footer={footer ? "" : undefined}
           align="start"
-          sideOffset={4}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
@@ -94,22 +132,7 @@ function OptionList({
           // Keeps focus in the field while the pointer picks.
           onMouseDown={(event) => event.preventDefault()}
         >
-          {footer ? (
-            <>
-              <div
-                id={listId}
-                role="listbox"
-                aria-label={label}
-                className={styles.listOptions}
-              >
-                {children}
-              </div>
-              <hr className={styles.listDivider} />
-              <div className={styles.listFooter}>{footer}</div>
-            </>
-          ) : (
-            children
-          )}
+          {content}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -187,6 +210,7 @@ export function ChoiceField({
   onPicked,
   onCreate,
   wide = true,
+  placement = "floating",
   displayValue,
   footerAction,
 }: FieldProps & {
@@ -197,6 +221,8 @@ export function ChoiceField({
   // Adds an option named for the typed text, like YNAB's Create Category.
   onCreate?: { noun: string; create: (name: string) => void };
   wide?: boolean;
+  // Keep choices within a containing popover instead of covering its footer.
+  placement?: "floating" | "inline";
   displayValue?: string;
   footerAction?: { label: string; onClick: () => void };
 }) {
@@ -305,6 +331,7 @@ export function ChoiceField({
       listId={listId}
       label={label}
       wide={wide}
+      placement={placement}
       footer={
         footerAction && (
           <Button

@@ -1,4 +1,5 @@
 .popover {
+  composes: content from "../ui/popover-motion.module.css";
   z-index: 60;
   width: min(var(--size-popover), calc(100vw - 24px));
   max-height: var(--radix-popover-content-available-height);

@@ -1685,6 +1685,7 @@ button.actionItem:disabled {
 /* Grows from the budget name it drops from; the exit is quicker and only
    fades and shrinks, since attention has already moved on. */
 .menu {
+  composes: content from "../ui/popover-motion.module.css";
   z-index: 60;
   min-width: 220px;
   padding: 4px;
@@ -1694,29 +1695,6 @@ button.actionItem:disabled {
   box-shadow: var(--shadow-drawer);
   color: var(--text-secondary);
   font-size: var(--type-body);
-  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
-  will-change: transform, opacity;
-}
-.menu[data-state="open"] {
-  animation: menu-in 180ms var(--ease-panel);
-}
-.menu[data-state="closed"] {
-  animation: menu-out 120ms ease-in forwards;
-}
-.menu[data-instant] {
-  animation: none;
-}
-@keyframes menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.97);
-  }
-}
-@keyframes menu-out {
-  to {
-    opacity: 0;
-    transform: scale(0.97);
-  }
 }
 /* The highlight follows the pointer and arrow keys instantly. */
 .menuItem {
@@ -1991,8 +1969,7 @@ button.actionItem:disabled {
   .root *::after {
     transition-duration: 0ms !important;
   }
-  .empty > .spin,
-  .menu[data-state] {
+  .empty > .spin {
     animation: none;
   }
 }

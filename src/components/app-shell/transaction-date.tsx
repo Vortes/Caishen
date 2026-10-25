@@ -11,6 +11,7 @@ import {
 import { Calendar, type CalendarHandle } from "~/components/ui/calendar";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import styles from "./transaction-entry.module.css";
 
 // What the form can ask of the date field once it's on screen.
@@ -264,7 +265,7 @@ export function DateField({
           aria-label={`${label} calendar`}
           className={styles.calendar}
           align="start"
-          sideOffset={4}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
