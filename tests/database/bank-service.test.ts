@@ -62,6 +62,7 @@ const environmentKeys = [
   "PLAID_ENV",
   "PLAID_REDIRECT_URI",
   "BANK_TOKEN_ENCRYPTION_KEY",
+  "APP_BASE_URL",
 ] as const;
 const originalEnvironment = Object.fromEntries(
   environmentKeys.map((key) => [key, process.env[key]]),
@@ -106,6 +107,31 @@ const linkMetadata = (response = accountsResponse()) => ({
 
 const requestUrl = (input: string | URL | Request) =>
   new URL(input instanceof Request ? input.url : input);
+
+// A healthy Item, as /item/get reports it during every account update.
+const itemResponse = () => ({
+  item: { consent_expiration_time: null, error: null },
+  status: {
+    transactions: { last_successful_update: null, last_failed_update: null },
+  },
+});
+
+/** Plaid answered by `answer`, with the Item's health read every update. */
+function mockPlaid(
+  answer: (
+    url: string | URL | Request,
+    init?: RequestInit,
+  ) => Promise<Response>,
+) {
+  return mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, init?: RequestInit) =>
+      requestUrl(url).pathname === "/item/get"
+        ? Response.json(itemResponse())
+        : answer(url, init),
+  );
+}
 
 test.before(async () => {
   await db.user.createMany({
@@ -236,7 +262,7 @@ void test("stored disconnected connections remain readable without contacting th
     where: { id: h.connection.id },
     data: { encryptedToken: "", error: null },
   });
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("Disconnected banks must not be contacted");
   });
   const before = await h.state();
@@ -258,7 +284,7 @@ void test("stored disconnected connections remain readable without contacting th
 void test("bank update Link tokens and completion enforce connection ownership before accessing Plaid", async () => {
   const h = await harness();
   const before = await h.details();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("Provider must not be called");
   });
   await assert.rejects(linkBankToken(h.db, bob, h.connection.id), {
@@ -335,7 +361,7 @@ void test("disconnecting a bank preserves the account, reviewed history, and out
   const before = await h.state();
   const beforeInbox = await bankInbox(db, alice);
   const paths: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     paths.push(requestUrl(url).pathname);
     return Response.json({ removed: true });
   });
@@ -354,6 +380,7 @@ void test("disconnecting a bank preserves the account, reviewed history, and out
   );
   assert.deepEqual(await bankInbox(db, alice), beforeInbox);
   assert.ok(after.connections[0]!.disconnectedAt);
+  assert.equal(after.connections[0]!.status, "disconnected");
   assert.deepEqual(paths, ["/item/remove"]);
   await h.api.budget.sync();
   assert.deepEqual(paths, ["/item/remove"]);
@@ -384,7 +411,7 @@ for (const mode of ["disconnected", "unavailable", "renamed"] as const)
         },
       ],
     });
-    mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    mockPlaid(async (url: string | URL | Request) => {
       switch (requestUrl(url).pathname) {
         case "/item/remove":
           return Response.json({ removed: true });
@@ -529,7 +556,7 @@ void test("recovery with missing bank identifiers requires an explicit existing 
       },
     ],
   };
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     switch (requestUrl(url).pathname) {
       case "/item/public_token/exchange":
         return Response.json({
@@ -587,9 +614,7 @@ void test("recovery with missing bank identifiers requires an explicit existing 
 
 void test("a disconnected bank requires fresh Link rather than update mode", async () => {
   const h = await linkedHarness();
-  const fetcher = mock.method(globalThis, "fetch", async () =>
-    Response.json({ removed: true }),
-  );
+  const fetcher = mockPlaid(async () => Response.json({ removed: true }));
   await h.api.budget.disconnectBank({
     connectionId: h.connection.id,
     operationId: randomUUID(),
@@ -689,7 +714,7 @@ void test("repairing untouched duplicate cards keeps the original accounts and t
   const h = await duplicatedCards();
   const before = (await h.state()).view!.budget;
   const paths: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     paths.push(requestUrl(url).pathname);
     if (requestUrl(url).pathname === "/accounts/get")
       return Response.json({
@@ -758,7 +783,7 @@ void test("duplicate repair refuses a replacement without a matching balance and
     },
   });
   const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("Must not revoke an unsafe replacement");
   });
   await assert.rejects(
@@ -773,7 +798,7 @@ void test("duplicate repair keeps the old connection when the replacement cannot
   const h = await duplicatedCards();
   const before = await h.state();
   const paths: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const path = requestUrl(url).pathname;
     paths.push(path);
     return path === "/accounts/get"
@@ -990,7 +1015,7 @@ void test("entering a pending import counts it once, removes its review dot, and
 void test("an edited pending import posts to the same transaction and keeps the user's payee and category", async () => {
   const h = await pendingImport();
   await resolveImport(h.db, alice, h.input);
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
         added: [
@@ -1390,7 +1415,7 @@ for (const delivery of [
       reviews: {},
     });
     let syncCount = 0;
-    mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    mockPlaid(async (url: string | URL | Request) => {
       if (requestUrl(url).pathname === "/transactions/sync") {
         syncCount++;
         const removalOnly = delivery !== "same sync" && syncCount === 1;
@@ -1466,7 +1491,7 @@ void test("an older reconnect response cannot overwrite a newer bank refresh", a
     release = resolve;
   });
   let calls = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     assert.equal(requestUrl(url).pathname, "/accounts/get");
     const first = ++calls === 1;
     if (first) {
@@ -1501,7 +1526,7 @@ void test("an older transaction sync cannot overwrite a completed reconnect", as
     release = resolve;
   });
   let calls = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
         added: [],
@@ -1546,7 +1571,7 @@ void test("concurrent initial Link completions cannot exchange the same bank twi
     release = resolve;
   });
   let exchanges = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/item/public_token/exchange") {
       const number = ++exchanges;
       if (number === 1) {
@@ -1593,7 +1618,7 @@ void test("missing identity for a cash account does not block adding a new credi
     institutionName: "Chase",
     accounts: [],
   });
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const response = accountsResponse();
     Object.assign(response.accounts[0]!, {
       account_id: "new-credit",
@@ -1644,7 +1669,7 @@ void test("Add accounts cannot duplicate a mapped card whose Plaid ID changed af
     institutionName: "Chase",
     accounts: [],
   });
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const response = accountsResponse();
     response.accounts[0]!.account_id = "provider-checking-reauthorized";
     if (requestUrl(url).pathname === "/transactions/sync")
@@ -1703,7 +1728,7 @@ void test("a mapped account with missing cached identity routes a fresh Link bac
     accounts: [],
   });
   const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("A potential duplicate must not be exchanged");
   });
   await assert.rejects(
@@ -1760,7 +1785,7 @@ void test("a partial reconnect merges fresh details without forgetting other map
   });
   const before = await h.state();
   let shareSavings = false;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const response = accountsResponse();
     if (shareSavings)
       response.accounts.push({
@@ -1821,8 +1846,13 @@ void test("a partial reconnect merges fresh details without forgetting other map
   assert.deepEqual((await h.state()).view, before.view);
 });
 
-void test("update mode reuses the private Item token and refreshes metadata without exchanging a public token", async () => {
+void test("update mode reuses the private Item token, registers the webhook, and a completed reconnect returns the connection to connected", async () => {
   const h = await harness();
+  process.env.APP_BASE_URL = "https://caishen.example";
+  await h.db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { status: "login_required", newAccountsAvailable: true },
+  });
   await h.setMappings({
     "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
   });
@@ -1845,30 +1875,27 @@ void test("update mode reuses the private Item token and refreshes metadata with
   assert.equal(priorInbox.length, 1);
   assert.equal(priorInbox[0]!.error, "Review an earlier import");
   const paths: string[] = [];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      const path = requestUrl(url).pathname;
-      paths.push(path);
-      const request = JSON.parse(init?.body as string) as Record<
-        string,
-        unknown
-      >;
-      assert.equal(request.access_token, "private-access-token");
-      if (path === "/link/token/create") {
-        assert.equal(request.products, undefined);
-        assert.deepEqual(request.update, { account_selection_enabled: true });
-        assert.equal(request.redirect_uri, process.env.PLAID_REDIRECT_URI);
-        return Response.json({
-          link_token: "link-update",
-          expiration: "2026-10-20T12:00:00Z",
-        });
-      }
-      assert.equal(path, "/accounts/get");
-      return Response.json(accountsResponse());
-    },
-  );
+  mockPlaid(async (url: string | URL | Request, init?: RequestInit) => {
+    const path = requestUrl(url).pathname;
+    paths.push(path);
+    const request = JSON.parse(init?.body as string) as Record<string, unknown>;
+    assert.equal(request.access_token, "private-access-token");
+    if (path === "/link/token/create") {
+      assert.equal(request.products, undefined);
+      assert.deepEqual(request.update, { account_selection_enabled: true });
+      assert.equal(request.redirect_uri, process.env.PLAID_REDIRECT_URI);
+      assert.equal(
+        request.webhook,
+        "https://caishen.example/api/webhooks/plaid",
+      );
+      return Response.json({
+        link_token: "link-update",
+        expiration: "2026-10-20T12:00:00Z",
+      });
+    }
+    assert.equal(path, "/accounts/get");
+    return Response.json(accountsResponse());
+  });
   const link = await linkBankToken(h.db, alice, h.connection.id);
   assert.deepEqual(link, {
     linkToken: "link-update",
@@ -1879,6 +1906,8 @@ void test("update mode reuses the private Item token and refreshes metadata with
   assert.deepEqual(result, { id: h.connection.id });
   assert.deepEqual(paths, ["/link/token/create", "/accounts/get"]);
   assert.equal((await h.details()).error, null);
+  assert.equal((await h.details()).status, "connected");
+  assert.equal((await h.details()).newAccountsAvailable, false);
   assert.deepEqual(await bankInbox(h.db, alice), priorInbox);
   assert.deepEqual(
     (await h.details()).accounts.map((a) => [a.name, a.currentBalance]),
@@ -1903,7 +1932,7 @@ void test("exchange refuses an Item already owned by another user without replac
     timezone: "America/Los_Angeles",
   });
   const before = (await h.saved()).encryptedToken;
-  mock.method(globalThis, "fetch", async () =>
+  mockPlaid(async () =>
     Response.json({
       access_token: "new-private-token",
       item_id: h.connection.itemId,
@@ -1938,7 +1967,7 @@ void test("Link metadata rejects duplicate cards before exchanging a public toke
     ],
   });
   const requests: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const path = requestUrl(url).pathname;
     requests.push(path);
     if (path === "/item/public_token/exchange")
@@ -2039,40 +2068,36 @@ void test("a second Plaid connection cannot add the same Amex card to the budget
         ]
       : []),
   ];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      const request = JSON.parse(init?.body as string) as {
-        access_token?: string;
-      };
-      const newConnection = request.access_token === "fixture-amex-new";
-      switch (requestUrl(url).pathname) {
-        case "/item/public_token/exchange":
-          return Response.json({
-            access_token: secondLink ? "fixture-amex-new" : "fixture-amex-old",
-            item_id: secondLink ? `amex-new-${run}` : h.connection.itemId,
-          });
-        case "/accounts/get":
-          return Response.json({
-            accounts: accounts(newConnection),
-            item: { institution_id: "ins-amex", institution_name: "Amex" },
-          });
-        case "/transactions/sync":
-          return Response.json({
-            added: [],
-            modified: [],
-            removed: [],
-            accounts: accounts(newConnection),
-            next_cursor: "amex-cursor",
-            has_more: false,
-            transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
-          });
-        default:
-          throw new Error("Unexpected provider request");
-      }
-    },
-  );
+  mockPlaid(async (url: string | URL | Request, init?: RequestInit) => {
+    const request = JSON.parse(init?.body as string) as {
+      access_token?: string;
+    };
+    const newConnection = request.access_token === "fixture-amex-new";
+    switch (requestUrl(url).pathname) {
+      case "/item/public_token/exchange":
+        return Response.json({
+          access_token: secondLink ? "fixture-amex-new" : "fixture-amex-old",
+          item_id: secondLink ? `amex-new-${run}` : h.connection.itemId,
+        });
+      case "/accounts/get":
+        return Response.json({
+          accounts: accounts(newConnection),
+          item: { institution_id: "ins-amex", institution_name: "Amex" },
+        });
+      case "/transactions/sync":
+        return Response.json({
+          added: [],
+          modified: [],
+          removed: [],
+          accounts: accounts(newConnection),
+          next_cursor: "amex-cursor",
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      default:
+        throw new Error("Unexpected provider request");
+    }
+  });
   const first = await h.api.budget.plaidExchange({
     publicToken: "first",
     metadata: {
@@ -2182,7 +2207,7 @@ void test("sandbox Link response omits redirectUri when no redirect is configure
   const h = await harness();
   process.env.PLAID_ENV = "sandbox";
   delete process.env.PLAID_REDIRECT_URI;
-  mock.method(globalThis, "fetch", async () =>
+  mockPlaid(async () =>
     Response.json({
       link_token: "link-sandbox",
       expiration: "2026-10-20T12:00:00Z",
@@ -2196,7 +2221,7 @@ void test("sandbox Link response omits redirectUri when no redirect is configure
 
 void test("successful public token exchange remains saved if account metadata is temporarily unavailable", async () => {
   const h = await harness();
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/item/public_token/exchange")
       return Response.json({
         access_token: "new-private-token",
@@ -2228,7 +2253,7 @@ void test("successful public token exchange remains saved if account metadata is
 
 void test("bank sync updates cached account details without creating ledger accounts or balances", async () => {
   const h = await harness();
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
         added: [],
@@ -2258,7 +2283,7 @@ void test("bank sync updates cached account details without creating ledger acco
 
 void test("opening metadata uses the balance paired with sync activity rather than a newer accounts/get balance", async () => {
   const h = await harness();
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const result = accountsResponse();
     result.accounts[0]!.balances.current =
       requestUrl(url).pathname === "/transactions/sync" ? 100 : 80;
@@ -2283,7 +2308,7 @@ void test("opening metadata uses the balance paired with sync activity rather th
 void test("a prior sync balance is retained only when its cursor and account activity are unchanged", async () => {
   const h = await harness();
   let updates = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync") {
       updates++;
       return Response.json({
@@ -2314,7 +2339,7 @@ void test("a prior sync balance is retained only when its cursor and account act
 void test("an account delta without its matching sync balance invalidates the prior balance source", async () => {
   const h = await harness();
   let updates = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync") {
       updates++;
       return Response.json({
@@ -2356,27 +2381,21 @@ const plaidTransaction = (overrides: Record<string, unknown> = {}) => ({
 function syncPages(pages: Record<string, unknown>[]) {
   let call = 0;
   const requests: Record<string, unknown>[] = [];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      if (requestUrl(url).pathname !== "/transactions/sync")
-        return Response.json(accountsResponse());
-      requests.push(
-        JSON.parse(init!.body as string) as Record<string, unknown>,
-      );
-      const page = pages[Math.min(call++, pages.length - 1)]!;
-      return Response.json({
-        added: [],
-        modified: [],
-        removed: [],
-        accounts: accountsResponse().accounts,
-        has_more: false,
-        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
-        ...page,
-      });
-    },
-  );
+  mockPlaid(async (url: string | URL | Request, init?: RequestInit) => {
+    if (requestUrl(url).pathname !== "/transactions/sync")
+      return Response.json(accountsResponse());
+    requests.push(JSON.parse(init!.body as string) as Record<string, unknown>);
+    const page = pages[Math.min(call++, pages.length - 1)]!;
+    return Response.json({
+      added: [],
+      modified: [],
+      removed: [],
+      accounts: accountsResponse().accounts,
+      has_more: false,
+      transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      ...page,
+    });
+  });
   return requests;
 }
 

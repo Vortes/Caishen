@@ -95,12 +95,21 @@ async function connection(t: TestContext) {
   };
 }
 
+// A healthy Item, as /item/get reports it during every account update.
+const itemResponse = () => ({
+  item: { consent_expiration_time: null, error: null },
+  status: {
+    transactions: { last_successful_update: null, last_failed_update: null },
+  },
+});
+
 function plaid(
   accounts: ReturnType<typeof providerAccount>[],
   sync: Record<string, unknown> = {},
 ) {
   mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
     const path = new URL(input instanceof Request ? input.url : input).pathname;
+    if (path === "/item/get") return Response.json(itemResponse());
     if (path === "/accounts/get")
       return Response.json({
         accounts,
@@ -236,6 +245,7 @@ void test("a card with stored history recovers lost readiness only from a matchi
     async (input: string | URL | Request, init?: RequestInit) => {
       const path = new URL(input instanceof Request ? input.url : input)
         .pathname;
+      if (path === "/item/get") return Response.json(itemResponse());
       if (path === "/accounts/get")
         return Response.json({
           accounts: [platinum],

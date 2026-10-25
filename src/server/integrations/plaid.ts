@@ -158,6 +158,33 @@ const plaidErrorSchema = z.object({
     .max(100),
 });
 
+// /item/get: the Item's consent and update health. Unknown fields are left
+// alone; the error is read for its code only.
+const itemResponseSchema = z.object({
+  item: z.object({
+    consent_expiration_time: z.string().datetime().nullish(),
+    error: plaidErrorSchema.nullish(),
+  }),
+  status: z
+    .object({
+      transactions: z
+        .object({
+          last_successful_update: z.string().datetime().nullish(),
+          last_failed_update: z.string().datetime().nullish(),
+        })
+        .nullish(),
+    })
+    .nullish(),
+});
+export interface PlaidItemHealth {
+  errorCode: string | null;
+  consentExpiresAt: Date | null;
+  lastSuccessfulUpdateAt: Date | null;
+  lastFailedUpdateAt: Date | null;
+}
+const instant = (value: string | null | undefined) =>
+  value ? new Date(value) : null;
+
 export function createPlaidClient(
   config: PlaidConfig,
   fetcher: typeof fetch = fetch,
@@ -222,9 +249,35 @@ export function createPlaidClient(
           throw error;
       }
     },
+    async getItem(accessToken: string): Promise<PlaidItemHealth> {
+      const result = itemResponseSchema.parse(
+        await request("/item/get", {
+          access_token: z.string().min(1).max(2048).parse(accessToken),
+        }),
+      );
+      return {
+        errorCode: result.item.error?.error_code ?? null,
+        consentExpiresAt: instant(result.item.consent_expiration_time),
+        lastSuccessfulUpdateAt: instant(
+          result.status?.transactions?.last_successful_update,
+        ),
+        lastFailedUpdateAt: instant(
+          result.status?.transactions?.last_failed_update,
+        ),
+      };
+    },
+    async getWebhookVerificationKey(keyId: string): Promise<unknown> {
+      const result = z.object({ key: z.unknown() }).parse(
+        await request("/webhook_verification_key/get", {
+          key_id: z.string().min(1).max(256).parse(keyId),
+        }),
+      );
+      return result.key;
+    },
     async createLinkToken(
       clientUserId: string,
       accessToken?: string,
+      webhook?: string,
     ): Promise<{ linkToken: string; expiration: string }> {
       const result = z
         .object({
@@ -243,6 +296,7 @@ export function createPlaidClient(
                 }
               : { products: ["transactions"] }),
             ...(redirectUri ? { redirect_uri: redirectUri } : {}),
+            ...(webhook ? { webhook: z.string().url().parse(webhook) } : {}),
             user: { client_user_id: providerIdSchema.parse(clientUserId) },
           }),
         );

@@ -53,6 +53,11 @@ import {
 } from "~/server/integrations/transactions";
 import { usdToCents } from "~/server/integrations/validation";
 import {
+  bankConnectionStatusSchema,
+  itemHealthChange,
+  type BankConnectionStatus,
+} from "./bank-connection-status";
+import {
   findOperation,
   readHouseholdRevision,
   RevisionConflictError,
@@ -145,9 +150,28 @@ type StoredConnection = {
   imports: unknown;
   accountMappings: unknown;
   unavailableAccountIds?: string[];
+  status?: string;
+  consentExpiresAt?: Date | null;
+  lastSuccessfulUpdateAt?: Date | null;
+  lastFailedUpdateAt?: Date | null;
+  newAccountsAvailable?: boolean;
 };
+/** The connection's status and what Plaid last reported about the Item. */
+export interface ConnectionHealth {
+  status: BankConnectionStatus;
+  consentExpiresAt: Date | null;
+  lastSuccessfulUpdateAt: Date | null;
+  lastFailedUpdateAt: Date | null;
+  newAccountsAvailable: boolean;
+}
 export type ReadConnection<C extends StoredConnection = StoredConnection> =
-  | { status: "ready"; connection: C; state: ImportState; mappings: Mappings }
+  | {
+      status: "ready";
+      connection: C;
+      state: ImportState;
+      mappings: Mappings;
+      health: ConnectionHealth;
+    }
   | { status: "maintenance"; connection: C };
 /** Each connection's import state from rows (readImportStates). */
 export type ImportStates = ReadonlyMap<string, ImportRowState | "unreadable">;
@@ -199,6 +223,35 @@ function detailsColumn(stored: unknown, details: ConnectionDetails) {
   });
 }
 
+// A connection selected without its health columns reads as connected; one
+// whose stored status this release does not know is under maintenance.
+function connectionHealth(
+  connection: StoredConnection,
+): ConnectionHealth | undefined {
+  const status =
+    connection.status === undefined
+      ? { success: true as const, data: "connected" as const }
+      : bankConnectionStatusSchema.safeParse(connection.status);
+  if (!status.success) {
+    reportUnreadable(
+      {
+        record: "BankConnection.status",
+        connectionId: connection.id,
+        userId: connection.clerkUserId,
+      },
+      [{ issues: zodIssues(status.error) }],
+    );
+    return undefined;
+  }
+  return {
+    status: status.data,
+    consentExpiresAt: connection.consentExpiresAt ?? null,
+    lastSuccessfulUpdateAt: connection.lastSuccessfulUpdateAt ?? null,
+    lastFailedUpdateAt: connection.lastFailedUpdateAt ?? null,
+    newAccountsAvailable: connection.newAccountsAvailable ?? false,
+  };
+}
+
 // A connection whose saved details or import rows can't be read is left
 // alone and shown as under maintenance; the budget and other connections
 // still work.
@@ -206,6 +259,7 @@ export function readBankConnection<C extends StoredConnection>(
   connection: C,
   imports: ImportStates,
 ): ReadConnection<C> {
+  const health = connectionHealth(connection);
   const column = readColumn(
     connection,
     "BankConnection.imports",
@@ -219,12 +273,13 @@ export function readBankConnection<C extends StoredConnection>(
     connection.accountMappings,
   );
   const rows = imports.get(connection.id) ?? emptyState();
-  return column && mappings && rows !== "unreadable"
+  return column && mappings && health && rows !== "unreadable"
     ? {
         status: "ready",
         connection,
         state: { ...connectionDetails(column), ...rows },
         mappings,
+        health,
       }
     : { status: "maintenance", connection };
 }
@@ -247,6 +302,7 @@ export function bankConnectionView(
   return read.status === "ready"
     ? {
         ...connection,
+        ...read.health,
         error,
         accountMappings,
         ...(read.connection.unavailableAccountIds?.length
@@ -256,6 +312,11 @@ export function bankConnectionView(
       }
     : {
         ...connection,
+        status: "connected" as const,
+        consentExpiresAt: null,
+        lastSuccessfulUpdateAt: null,
+        lastFailedUpdateAt: null,
+        newAccountsAvailable: false,
         error: CONNECTION_MAINTENANCE_MESSAGE,
         accountMappings: {},
         ...bankAccountDetails({}),
@@ -314,6 +375,11 @@ function client() {
   });
 }
 
+/** Plaid's webhook signing key for a key id, for the webhook route. */
+export function fetchPlaidWebhookKey(keyId: string) {
+  return client().getWebhookVerificationKey(keyId);
+}
+
 function requireConnected(connection: StoredConnection) {
   const details = readColumn(
     connection,
@@ -343,11 +409,17 @@ export async function linkBankToken(
     if (connection) requireConnected(connection);
     // Verify token encryption is configured before starting a bank connection.
     encryptBankToken("configuration-check", userId);
+    // The Item reports its health to the webhook route once the app has a
+    // public address; without one the daily job remains the only source.
+    const webhook = process.env.APP_BASE_URL
+      ? new URL("/api/webhooks/plaid", process.env.APP_BASE_URL).toString()
+      : undefined;
     const token = await client().createLinkToken(
       userId,
       connection
         ? decryptBankToken(connection.encryptedToken, userId)
         : undefined,
+      webhook,
     );
     return {
       ...token,
@@ -552,6 +624,9 @@ async function refreshBankAccounts(
             synchronizedAccountIds: [],
           }),
           unavailableAccountIds: catalog.unavailableAccountIds,
+          // Update mode finished: the user signed in and chose what to share.
+          status: "connected",
+          newAccountsAvailable: false,
           lastAttemptAt: new Date(),
           error: null,
         },
@@ -630,6 +705,7 @@ export async function disconnectBank(
               disconnectedAt: state.disconnectedAt ?? new Date().toISOString(),
             }),
             encryptedToken: "",
+            status: "disconnected",
             error: null,
           },
         });
@@ -1614,9 +1690,18 @@ export async function syncBanks(db: Database, userId: string) {
   for (const connection of connections) {
     const read = readBankConnection(connection, readable);
     if (read.status === "maintenance" || read.state.disconnectedAt) continue;
+    // No update can reach an Item the user has revoked or disconnected.
+    if (["revoked", "disconnected"].includes(connection.status)) continue;
+    // The Item's health is read first, so a sign-in problem it reports is
+    // recorded even when the update itself fails.
+    let health: ReturnType<typeof itemHealthChange> | undefined;
     try {
       const plaid = client();
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
+      health = itemHealthChange(
+        await plaid.getItem(accessToken),
+        read.health.status,
+      );
       let delta = await plaid.syncTransactions(accessToken, connection.cursor);
       const accounts = await plaid.getAccounts(accessToken);
       const missingBalanceIds = new Set(
@@ -1680,6 +1765,7 @@ export async function syncBanks(db: Database, userId: string) {
             connection,
             delta,
             accounts,
+            health,
           );
         } catch (error) {
           if (!(error instanceof RevisionConflictError) || attempt >= 4)
@@ -1703,6 +1789,7 @@ export async function syncBanks(db: Database, userId: string) {
       await db.bankConnection.updateMany({
         where: { id: connection.id, updatedAt: connection.updatedAt },
         data: {
+          ...health,
           lastAttemptAt: new Date(),
           error:
             error instanceof TRPCError
@@ -1732,6 +1819,7 @@ async function applyBankUpdate(
   connection: { id: string; cursor: string | null; updatedAt: Date },
   delta: Awaited<ReturnType<PlaidClient["syncTransactions"]>>,
   accounts: Awaited<ReturnType<PlaidClient["getAccounts"]>>,
+  health: ReturnType<typeof itemHealthChange>,
 ) {
   const [fresh, opened] = await Promise.all([
     db.bankConnection.findFirstOrThrow({
@@ -1976,6 +2064,7 @@ async function applyBankUpdate(
     const saved = await tx.bankConnection.updateMany({
       where: { id: fresh.id, cursor: fresh.cursor, updatedAt: fresh.updatedAt },
       data: {
+        ...health,
         imports: detailsColumn(fresh.imports, state),
         unavailableAccountIds: catalog.unavailableAccountIds,
         cursor: delta.nextCursor,
