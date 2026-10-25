@@ -108,6 +108,20 @@ export async function renderShell(
       server: FakeServer,
     ) => Answer<Executed & { accountIds: string[] }>;
     sync?: (server: FakeServer) => Answer<RouterOutputs["budget"]["sync"]>;
+    bankLink?: {
+      token: (
+        input: RouterInputs["budget"]["plaidLinkToken"],
+      ) => Answer<RouterOutputs["budget"]["plaidLinkToken"]>;
+      review: (
+        input: RouterInputs["budget"]["plaidLinkReview"],
+      ) => Answer<RouterOutputs["budget"]["plaidLinkReview"]>;
+      exchange: (
+        input: RouterInputs["budget"]["plaidExchange"],
+      ) => Answer<RouterOutputs["budget"]["plaidExchange"]>;
+      reconnect?: (
+        input: RouterInputs["budget"]["plaidReconnect"],
+      ) => Answer<RouterOutputs["budget"]["plaidReconnect"]>;
+    };
     // Wait for the budget navigation; off for screens shown in its place.
     plan?: boolean;
   } = {},
@@ -163,6 +177,31 @@ export async function renderShell(
                 changeSet: null,
                 rebased: false,
               },
+        "budget.plaidLinkToken": (input) => {
+          if (!options.bankLink) throw new Error("Unexpected bank Link");
+          return options.bankLink.token(
+            input as RouterInputs["budget"]["plaidLinkToken"],
+          );
+        },
+        "budget.plaidLinkReview": (input) => {
+          if (!options.bankLink) throw new Error("Unexpected bank review");
+          return options.bankLink.review(
+            input as RouterInputs["budget"]["plaidLinkReview"],
+          );
+        },
+        "budget.plaidExchange": (input) => {
+          if (!options.bankLink) throw new Error("Unexpected bank exchange");
+          return options.bankLink.exchange(
+            input as RouterInputs["budget"]["plaidExchange"],
+          );
+        },
+        "budget.plaidReconnect": (input) => {
+          if (!options.bankLink?.reconnect)
+            throw new Error("Unexpected bank reconnect");
+          return options.bankLink.reconnect(
+            input as RouterInputs["budget"]["plaidReconnect"],
+          );
+        },
         "budget.setupBankAccounts": (input) => {
           if (!options.setupBankAccounts)
             throw new Error("Unexpected bank setup");
