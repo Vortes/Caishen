@@ -36,7 +36,7 @@ import { composeChangeSets } from "~/domain/change-sets";
 import { bankClient as client } from "../bank-provider-events";
 import {
   type StoredConnection,
-  readColumn,
+  readConnectionColumn,
   connectionColumnSchema,
   mappings,
   connectionMetadata,
@@ -62,12 +62,7 @@ export function fetchPlaidWebhookKey(db: Database, keyId: string) {
 }
 
 function requireConnected(connection: StoredConnection) {
-  const details = readColumn(
-    connection,
-    "BankConnection.imports",
-    connectionColumnSchema,
-    connection.imports,
-  );
+  const details = readConnectionColumn(connection);
   if (!details) throw connectionMaintenance();
   if (details.disconnectedAt)
     throw new Error(
@@ -93,6 +88,7 @@ export async function linkBankToken(
     }
     // Verify token encryption is configured before starting a bank connection.
     encryptBankToken("configuration-check", userId);
+    await migrateBankAccounts(db, userId);
     // The Item reports its health to the webhook route once the app has a
     // public address; without one the daily job remains the only source.
     const webhook = process.env.APP_BASE_URL
@@ -128,12 +124,7 @@ function reviewBankLinkConnections(
     });
   const matching = connections
     .flatMap((connection) => {
-      const details = readColumn(
-        connection,
-        "BankConnection.imports",
-        connectionColumnSchema,
-        connection.imports,
-      );
+      const details = readConnectionColumn(connection);
       if (!details) throw connectionMaintenance();
       if (
         details.disconnectedAt ||
@@ -199,6 +190,7 @@ export async function reviewBankLink(
   recordCompletion = true,
 ) {
   const linked = plaidLinkMetadataSchema.parse(metadata);
+  await migrateBankAccounts(db, userId);
   const connections = await db.bankConnection.findMany({
     include: { bankAccounts: bankAccountRowsSelection },
     where: { clerkUserId: userId },
@@ -232,6 +224,7 @@ export async function exchangeBankToken(
         message: "Create your personal budget first.",
       });
     encryptBankToken("configuration-check", userId);
+    await migrateBankAccounts(db, userId);
     // Check Link metadata before exchange: exchanging a duplicate creates a
     // second Plaid Item, even if budget-account setup later refuses it.
     const linked = plaidLinkMetadataSchema.parse(metadata);
@@ -306,7 +299,6 @@ export async function exchangeBankToken(
               {},
               connectionColumnSchema.parse({ institutionId }),
             ),
-            accountMappings: {},
           },
           update: {
             encryptedToken: encryptBankToken(result.accessToken, userId),
@@ -392,12 +384,7 @@ async function refreshBankAccounts(
     decryptBankToken(requested.encryptedToken, userId),
   );
   accounts.accounts = currentProviderAccounts(requested, accounts.accounts);
-  const column = readColumn(
-    requested,
-    "BankConnection.imports",
-    connectionColumnSchema,
-    requested.imports,
-  );
+  const column = readConnectionColumn(requested);
   if (!column) throw connectionMaintenance();
   const identity = followAccountIdentities(
     column.accounts,

@@ -1,15 +1,24 @@
 /** Inbox projection: validates connection metadata and provider rows, then presents their account and import state to callers. It produces maintenance results for unreadable connections and the public inbox without writing budget data. */
 
-import { z } from "zod";
-import { bankAccountSchema } from "~/server/integrations/plaid";
 import {
-  importRowStateShape,
+  type importStateSchema,
+  connectionColumnSchema,
+  decodeLegacyBankAccounts,
+  migrateBankAccounts,
+} from "../bank-account-migration";
+export {
+  importStateSchema,
+  connectionColumnSchema,
+} from "../bank-account-migration";
+
+import { type z } from "zod";
+import {
   type ImportRowState,
   emptyState,
   readImportStates,
 } from "../bank-import-rows";
 import {
-  bankMappingsSchema as mappingsSchema,
+  type bankMappingsSchema as mappingsSchema,
   bankImportEligibility,
   bankImportFingerprint as fingerprint,
 } from "../bank-account-setup";
@@ -44,38 +53,6 @@ import {
   quarantineFingerprint,
   quarantineMessage,
 } from "../bank-quarantine";
-
-const connectionDetailsShape = {
-  disconnectedAt: z.string().datetime().optional(),
-  accounts: z.array(bankAccountSchema).max(1000).default([]),
-  institutionId: z.string().max(256).nullable().default(null),
-  institutionName: z.string().max(1024).nullable().default(null),
-  transactionStatus: z.string().max(100).nullable().default(null),
-  synchronizedAccountIds: z
-    .array(z.string().min(1).max(256))
-    .max(1000)
-    .default([]),
-};
-
-/** A connection's whole import state, as the bank code works with it. */
-export const importStateSchema = z
-  .object({ ...importRowStateShape, ...connectionDetailsShape })
-  .strict();
-
-/**
- * BankConnection.imports: the connection's own details. Import state moved
- * to bankImport rows (ADR 0006); connections saved before keep it here for
- * the one-time copy into rows, and nothing else reads it.
- */
-export const connectionColumnSchema = z
-  .object({
-    records: importRowStateShape.records.optional(),
-    resolved: importRowStateShape.resolved.optional(),
-    errors: importRowStateShape.errors.optional(),
-    reviews: importRowStateShape.reviews,
-    ...connectionDetailsShape,
-  })
-  .strict();
 
 export type ImportState = z.infer<typeof importStateSchema>;
 
@@ -121,27 +98,43 @@ export type ReadConnection<C extends StoredConnection = StoredConnection> =
 /** Each connection's import state from rows (readImportStates). */
 export type ImportStates = ReadonlyMap<string, ImportRowState | "unreadable">;
 
-export function readColumn<T>(
-  connection: Pick<StoredConnection, "id" | "clerkUserId" | "bankAccounts">,
-  record: "BankConnection.imports" | "BankConnection.accountMappings",
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
-  value: unknown,
-  providerRows = readBankAccountRows(connection),
-): T | undefined {
-  if (providerRows) {
-    value =
-      record === "BankConnection.accountMappings"
-        ? providerRows.mappings
-        : {
-            ...(typeof value === "object" && value !== null ? value : {}),
-            accounts: providerRows.accounts,
-            synchronizedAccountIds: providerRows.synchronizedAccountIds,
-          };
-  }
-  const result = schema.safeParse(value);
+export function providerAccountProjection(connection: StoredConnection) {
+  const rows = readBankAccountRows(connection);
+  if (rows) return rows;
+  // Unconverted malformed records stay under maintenance; valid empty rows
+  // never borrow identities or links from the retired lists.
+  if (!decodeLegacyBankAccounts(connection)) return undefined;
+  return {
+    accounts: [],
+    mappings: {},
+    importMappings: {},
+    synchronizedAccountIds: [],
+    unavailableAccountIds: [],
+    revokedAccountIds: [],
+  };
+}
+export function readConnectionColumn(
+  connection: StoredConnection,
+  providerRows = providerAccountProjection(connection),
+) {
+  if (!providerRows) return undefined;
+  const stored = connection.imports;
+  const result = connectionColumnSchema.safeParse(
+    typeof stored === "object" && stored !== null
+      ? {
+          ...stored,
+          accounts: providerRows.accounts,
+          synchronizedAccountIds: providerRows.synchronizedAccountIds,
+        }
+      : stored,
+  );
   if (result.success) return result.data;
   reportUnreadable(
-    { record, connectionId: connection.id, userId: connection.clerkUserId },
+    {
+      record: "BankConnection.imports",
+      connectionId: connection.id,
+      userId: connection.clerkUserId,
+    },
     [{ issues: zodIssues(result.error) }],
   );
 }
@@ -168,9 +161,16 @@ export function connectionMetadata(
   stored: unknown,
   details: ConnectionDetails,
 ) {
-  const legacy = typeof stored === "object" && stored !== null ? stored : {};
+  const metadata =
+    typeof stored === "object" && stored !== null
+      ? Object.fromEntries(
+          Object.entries(stored).filter(
+            ([key]) => key !== "accounts" && key !== "synchronizedAccountIds",
+          ),
+        )
+      : {};
   return jsonValue({
-    ...legacy,
+    ...metadata,
     institutionId: details.institutionId,
     institutionName: details.institutionName,
     transactionStatus: details.transactionStatus,
@@ -218,22 +218,9 @@ export function readBankConnection<C extends StoredConnection>(
 ): ReadConnection<C> {
   try {
     const health = connectionHealth(connection);
-    const providerRows = readBankAccountRows(connection);
-    const column = readColumn(
-      connection,
-      "BankConnection.imports",
-      connectionColumnSchema,
-      connection.imports,
-      providerRows,
-    );
-    const mappings =
-      providerRows?.mappings ??
-      readColumn(
-        connection,
-        "BankConnection.accountMappings",
-        mappingsSchema,
-        connection.accountMappings,
-      );
+    const providerRows = providerAccountProjection(connection);
+    const column = readConnectionColumn(connection, providerRows);
+    const mappings = providerRows?.mappings;
     const rows = imports.get(connection.id) ?? emptyState();
     return column && mappings && health && rows !== "unreadable"
       ? {
@@ -308,19 +295,8 @@ export function readyConnection<C extends StoredConnection>(
   return read;
 }
 
-export function connectionMappings(
-  connections: Omit<StoredConnection, "imports">[],
-) {
-  return connections.map((saved) => {
-    const mappings = readColumn(
-      saved,
-      "BankConnection.accountMappings",
-      mappingsSchema,
-      saved.accountMappings,
-    );
-    if (!mappings) throw connectionMaintenance();
-    return mappings;
-  });
+export function connectionMappings(connections: StoredConnection[]) {
+  return connections.map(mappings);
 }
 
 export function bankAccountDetails(value: unknown) {
@@ -328,6 +304,7 @@ export function bankAccountDetails(value: unknown) {
 }
 
 export async function bankInbox(db: Database, userId: string) {
+  await migrateBankAccounts(db, userId);
   const [connections, opened] = await Promise.all([
     db.bankConnection.findMany({
       include: { bankAccounts: bankAccountRowsSelection },
@@ -482,8 +459,7 @@ export function bankInboxItems(
 }
 
 export function mappings(connection: StoredConnection): Mappings {
-  return (
-    readBankAccountRows(connection)?.mappings ??
-    mappingsSchema.parse(connection.accountMappings)
-  );
+  const rows = providerAccountProjection(connection);
+  if (!rows) throw connectionMaintenance();
+  return rows.mappings;
 }

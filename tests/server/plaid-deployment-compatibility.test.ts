@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Prisma } from "../../src/generated/prisma";
+import { decodeLegacyBankAccounts } from "../../src/server/services/bank-account-migration";
 
 import {
   applyTransactionSync,
@@ -27,10 +29,72 @@ function inbox(
     imports: column,
     accountMappings,
   };
+  const legacy = decodeLegacyBankAccounts(connection);
+  assert.ok(legacy);
+  const now = new Date("2026-10-25T12:00:00Z");
+  const catalog = new Map(
+    legacy.column.accounts.map((account) => [account.accountId, account]),
+  );
+  for (const providerId of Object.keys(legacy.links)) {
+    if (!catalog.has(providerId))
+      catalog.set(providerId, {
+        accountId: providerId,
+        name: "Previously linked account",
+        officialName: null,
+        mask: null,
+        type: "unknown",
+        subtype: null,
+        currency: null,
+        currentBalance: null,
+        availableBalance: null,
+      });
+  }
+  const bankAccounts = [...catalog.values()].map((account) => {
+    const {
+      accountId,
+      persistentAccountId,
+      currentBalance,
+      availableBalance,
+      ...details
+    } = account;
+    const mapping = legacy.links[accountId];
+    return {
+      ...details,
+      id: accountId,
+      connectionId: connection.id,
+      providerAccountId: accountId,
+      persistentAccountId: persistentAccountId ?? null,
+      currentBalance:
+        currentBalance === null ? null : new Prisma.Decimal(currentBalance),
+      availableBalance:
+        availableBalance === null ? null : new Prisma.Decimal(availableBalance),
+      balancesAsOf: null,
+      status: "shared",
+      historyComplete: legacy.column.synchronizedAccountIds.includes(accountId),
+      firstSeenAt: now,
+      lastSeenAt: now,
+      createdAt: now,
+      updatedAt: now,
+      supersededById: null,
+      link: mapping
+        ? {
+            id: `link-${accountId}`,
+            bankAccountId: accountId,
+            workspaceId: "workspace-alice",
+            userId: connection.clerkUserId,
+            accountId: mapping.accountId,
+            startDate: mapping.startDate,
+            openingSnapshot: mapping.openingSnapshot ?? null,
+            linkedAt: now,
+            unlinkedAt: null,
+          }
+        : null,
+    };
+  });
   return bankInboxItems(
     [
       readBankConnection(
-        connection,
+        { ...connection, bankAccounts },
         new Map(
           rows
             ? [
@@ -226,4 +290,39 @@ void test("F4: bank inbox items carry eligible and changed opening-snapshot fact
   );
   assert.equal(changed[0]!.eligibility, "opening_snapshot_changed");
   assert.equal(changed[0]!.error, null);
+});
+
+void test("a valid empty provider-row projection never revives legacy account lists", () => {
+  const connection = {
+    id: "empty-provider-rows",
+    clerkUserId: "alice",
+    bankAccounts: [],
+    imports: {
+      accounts: [
+        {
+          accountId: "old-checking",
+          name: "Old checking",
+          officialName: null,
+          mask: "1234",
+          type: "depository",
+          subtype: "checking",
+          currency: "USD",
+          currentBalance: 100,
+          availableBalance: 100,
+        },
+      ],
+      synchronizedAccountIds: ["old-checking"],
+    },
+    accountMappings: {
+      "old-checking": { accountId: "checking", startDate: "2026-10-01" },
+    },
+    unavailableAccountIds: ["old-checking"],
+  };
+  const read = readBankConnection(connection, new Map());
+  assert.equal(read.status, "ready");
+  if (read.status !== "ready") assert.fail("Valid empty rows should load");
+  assert.deepEqual(read.state.accounts, []);
+  assert.deepEqual(read.state.synchronizedAccountIds, []);
+  assert.deepEqual(read.mappings, {});
+  assert.deepEqual(read.connection.unavailableAccountIds, []);
 });
