@@ -6,10 +6,12 @@ import {
   PanelRightIcon,
   PlusIcon,
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -45,7 +47,7 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
-import { SettingsNav, Sidebar, type Screen } from "./sidebar";
+import { SettingsNav, Sidebar } from "./sidebar";
 import { PanelWidthDials, usePanelWidths } from "./panel-widths";
 import { usePanel } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
@@ -77,8 +79,12 @@ import {
 } from "./settings";
 import {
   settingsPageAt,
-  settingsPages,
+  settingsHref,
+  settingsReturnHref,
+  screenAt,
+  screenHref,
   SHELL_PATH,
+  type Screen,
   type SettingsPage,
 } from "~/components/workspace/routes";
 import styles from "./shell.module.css";
@@ -136,15 +142,22 @@ export function AppShell({
   // from the saved layout the loading skeleton already showed.
   const [settings, setSettings] = useState<Settings>(readSettings);
   const [ready, setReady] = useState(false);
-  const [screen, setScreen] = useState<Screen>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const accountId =
-      params.get("account") ?? (params.get("view") === "review" ? "all" : null);
-    return accountId &&
-      (accountId === "all" || accounts.some((item) => item.id === accountId))
-      ? { type: "register", accountId: accountId === "all" ? null : accountId }
-      : { type: "plan" };
-  });
+  const pathname = usePathname() ?? SHELL_PATH;
+  const searchParams = useSearchParams();
+  const search = new URLSearchParams(searchParams?.toString());
+  const settingsPage = settingsPageAt(pathname);
+  const settingsOpen = settingsPage !== null;
+  const returnHref = settingsReturnHref(search);
+  const budgetAddress = new URL(
+    settingsOpen ? returnHref : `${pathname}?${search}`,
+    window.location.origin,
+  );
+  const budgetHref = `${budgetAddress.pathname}${budgetAddress.search}`;
+  const budgetPathname = budgetAddress.pathname;
+  const screen = useMemo<Screen>(
+    () => screenAt(budgetPathname) ?? { type: "plan" },
+    [budgetPathname],
+  );
   const account =
     screen.type === "register"
       ? accounts.find((item) => item.id === screen.accountId)
@@ -175,12 +188,17 @@ export function AppShell({
       setPath(next);
     },
   };
+  const routeSelection =
+    screen.type === "loans"
+      ? screen.loanId
+      : budgetAddress.searchParams.get("transaction");
   const [selectedId, setSelectedId] = useState<string | null>(() => {
-    const id = new URLSearchParams(window.location.search).get("transaction");
+    const id = routeSelection;
+    if (screen.type === "loans") return id;
     return transactions.some((item) => item.id === id) ? id : null;
   });
   const [checked, setChecked] = useState<string[]>(() =>
-    selectedId ? [selectedId] : [],
+    screen.type === "register" && selectedId ? [selectedId] : [],
   );
   const check = (ids: string[], value: boolean) =>
     setChecked((current) =>
@@ -191,16 +209,29 @@ export function AppShell({
   const selectedActions = transactionSelectionActions(
     transactions.filter((transaction) => checked.includes(transaction.id)),
   );
-  const [reviewOnly, setReviewOnly] = useState(
-    () => new URLSearchParams(window.location.search).get("view") === "review",
-  );
-  const [query, setQuery] = useState("");
+  const reviewOnly = budgetAddress.searchParams.get("view") === "review";
+  const routeQuery = budgetAddress.searchParams.get("q") ?? "";
+  // Keep the input responsive while Next applies its URL transition.
+  const [query, setQuery] = useState(routeQuery);
+  const deferredQuery = useDeferredValue(query);
+  const registerPath = budgetAddress.pathname;
+  useEffect(() => setQuery(routeQuery), [registerPath, routeQuery]);
   // The person or organization the Reimbursements register is narrowed to.
   const [owedBy, setOwedBy] = useState<string | null>(null);
-  // Settings cover the shell while the address is theirs; the screen behind
-  // them stays as it was, so Back to app returns to it.
-  const settingsPage = settingsPageAt(usePathname());
-  const settingsOpen = settingsPage !== null;
+  // Transient selections and filters belong to the address they were opened on.
+  const selectionSearch = new URLSearchParams(budgetAddress.searchParams);
+  selectionSearch.delete("month");
+  const selectionAddress = `${budgetAddress.pathname}?${selectionSearch}`;
+  const previousAddress = useRef(selectionAddress);
+  useEffect(() => {
+    if (previousAddress.current === selectionAddress) return;
+    previousAddress.current = selectionAddress;
+    setSelectedId(routeSelection);
+    setChecked(
+      routeSelection && screen.type === "register" ? [routeSelection] : [],
+    );
+    setOwedBy(null);
+  }, [selectionAddress, routeSelection, screen.type]);
   const [addingGroup, setAddingGroup] = useState(false);
   const [revealed, setRevealed] = useState<Added | null>(null);
   // Below this width both panels float over the content instead of
@@ -279,8 +310,8 @@ export function AppShell({
   });
 
   const closeSettings = useCallback(
-    () => window.history.pushState(null, "", SHELL_PATH),
-    [],
+    () => window.history.pushState(null, "", returnHref),
+    [returnHref],
   );
 
   useEffect(() => {
@@ -317,6 +348,15 @@ export function AppShell({
         if (peekOpen) setPeek(false);
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
           setDrawer({ sidebar: false, inspector: false });
+        } else if (screen.type === "loans" && screen.loanId) {
+          window.history.pushState(
+            null,
+            "",
+            screenHref(
+              { type: "loans", loanId: null },
+              new URLSearchParams(window.location.search),
+            ),
+          );
         } else if (checked.length) {
           setChecked([]);
           setSelectedId(null);
@@ -346,20 +386,43 @@ export function AppShell({
     closeSettings,
   ]);
 
-  const navigate = (next: Screen, id?: string) => {
+  const navigateTo = (href: string) => {
     if (entry.holdForDraft()) return;
-    setScreen(next);
-    setSelectedId(id ?? null);
-    setChecked([]);
-    setReviewOnly(false);
-    setQuery("");
-    setOwedBy(null);
+    if (`${window.location.pathname}${window.location.search}` !== href)
+      window.history.pushState(null, "", href);
+    const next = screenAt(href.split("?")[0]!);
     if (narrow)
       setDrawer({
         sidebar: false,
-        inspector: next.type !== "register" && Boolean(id),
+        inspector: next?.type === "loans" && Boolean(next.loanId),
       });
     closePeek(0);
+  };
+
+  const hrefFor = (next: Screen) => {
+    const query = new URLSearchParams(budgetAddress.searchParams);
+    query.set("month", data.month.key);
+    return screenHref(next, query);
+  };
+  const navigate = (next: Screen, id?: string, month?: string) => {
+    const address = new URL(hrefFor(next), window.location.origin);
+    if (id) address.searchParams.set("transaction", id);
+    if (month) address.searchParams.set("month", month);
+    navigateTo(`${address.pathname}${address.search}`);
+  };
+
+  const setRegisterFilter = (
+    key: "view" | "q",
+    value: string,
+    replace = false,
+  ) => {
+    const address = new URL(window.location.href);
+    if (value) address.searchParams.set(key, value);
+    else address.searchParams.delete(key);
+    address.searchParams.delete("transaction");
+    const href = `${address.pathname}${address.search}`;
+    if (replace) window.history.replaceState(null, "", href);
+    else window.history.pushState(null, "", href);
   };
 
   // Opens a transaction in its own account's register, selected, for the
@@ -373,19 +436,10 @@ export function AppShell({
     navigate(
       { type: "register", accountId: transaction.accountId },
       transaction.id,
+      transaction.date.slice(0, 7),
     );
-    onMonthChange(transaction.date.slice(0, 7));
-    setChecked([transaction.id]);
   };
 
-  const openSettings = (page: SettingsPage) => {
-    if (entry.holdForDraft()) return;
-    window.history.pushState(null, "", settingsPages[page]);
-    if (narrow) setDrawer({ sidebar: false, inspector: false });
-    closePeek(0);
-  };
-
-  const select = (id: string) => setSelectedId(id);
   // Like YNAB, clicking a row selects just that row: its checkbox ticks and
   // any others clear. Clicking a selected row deselects it. Checkboxes add
   // to or remove from the selection.
@@ -418,11 +472,8 @@ export function AppShell({
   const reset = () => {
     localStorage.removeItem(STORAGE_KEY);
     switchColors(defaults);
-    setScreen({ type: "plan" });
     setSelectedId(null);
     setChecked([]);
-    setReviewOnly(false);
-    setQuery("");
     setReportKind("breakdown");
     setFilters(defaultFilters);
     setPath({});
@@ -452,20 +503,22 @@ export function AppShell({
         toggleLabel={toggleLabel}
         onToggle={onToggle}
         page={settingsPage}
-        onBack={closeSettings}
-        onSelect={(page) => {
-          window.history.pushState(null, "", settingsPages[page]);
-          if (narrow) setDrawer({ sidebar: false, inspector: false });
-        }}
+        returnHref={returnHref}
+        hrefFor={(page) => settingsHref(page, returnHref)}
+        onNavigate={navigateTo}
       />
     ) : (
       <Sidebar
         screen={screen}
-        selectedId={selectedId}
-        onNavigate={navigate}
+        hrefFor={hrefFor}
+        onNavigate={navigateTo}
         toggleLabel={toggleLabel}
         onToggle={onToggle}
-        onOpenSettings={openSettings}
+        settingsHref={(page) => {
+          const address = new URL(budgetHref, window.location.origin);
+          address.searchParams.set("month", data.month.key);
+          return settingsHref(page, `${address.pathname}${address.search}`);
+        }}
       />
     );
 
@@ -684,7 +737,10 @@ export function AppShell({
                           size="sm"
                           aria-pressed={reviewOnly}
                           onClick={() => {
-                            setReviewOnly((value) => !value);
+                            setRegisterFilter(
+                              "view",
+                              reviewOnly ? "" : "review",
+                            );
                             setSelectedId(null);
                             setChecked([]);
                           }}
@@ -729,6 +785,7 @@ export function AppShell({
                             value={query}
                             onChange={(next) => {
                               setQuery(next);
+                              setRegisterFilter("q", next, true);
                               setSelectedId(null);
                               setChecked([]);
                             }}
@@ -779,14 +836,14 @@ export function AppShell({
                               <PartnerRegister
                                 key={account.id}
                                 account={account}
-                                query={query}
+                                query={deferredQuery}
                               />
                             ) : account?.kind === "reimbursements" ? (
                               <ReimbursementsRegister
                                 key={account.id}
                                 account={account}
                                 who={owedBy}
-                                query={query}
+                                query={deferredQuery}
                                 onJump={jump}
                               />
                             ) : (
@@ -794,7 +851,7 @@ export function AppShell({
                                 key={screen.accountId ?? "all"}
                                 accountId={screen.accountId}
                                 reviewOnly={reviewOnly}
-                                query={query}
+                                query={deferredQuery}
                                 selectedId={selectedId}
                                 onSelect={selectOnly}
                                 checked={checked}
@@ -807,7 +864,9 @@ export function AppShell({
                         {screen.type === "loans" && (
                           <LoansView
                             selectedId={selectedId}
-                            onSelect={select}
+                            onSelect={(id) =>
+                              navigate({ type: "loans", loanId: id })
+                            }
                           />
                         )}
                         {screen.type === "reflect" && (
@@ -828,13 +887,13 @@ export function AppShell({
                             onOpenTransaction={(entry) => {
                               // Like YNAB: the transaction, selected, in its own
                               // account's register for the month it happened.
-                              onMonthChange(entry.date.slice(0, 7));
                               navigate(
                                 {
                                   type: "register",
                                   accountId: entry.accountId ?? null,
                                 },
                                 entry.transactionId,
+                                entry.date.slice(0, 7),
                               );
                             }}
                           />

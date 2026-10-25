@@ -1,13 +1,16 @@
 import { screen } from "@testing-library/react";
 import { TRPCError } from "@trpc/server";
 import { expect, test, vi } from "vitest";
+import type * as NextNavigation from "next/navigation";
 import { SyncError } from "~/components/sync/transport";
 import { readyOverview, refocus, renderShell } from "./shell-harness";
 
 const router = vi.hoisted(() => ({ replace: vi.fn() }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof NextNavigation>()),
   useRouter: () => router,
   usePathname: () => "/app",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 test("a budget the server can't read shows maintenance in place of the plan, then the plan once it reads again", async () => {

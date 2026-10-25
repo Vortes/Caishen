@@ -24,6 +24,7 @@ import {
   useState,
   type ComponentProps,
   type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 import { newId } from "~/components/budget/format";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
@@ -33,32 +34,26 @@ import { AccountEntry } from "./account-entry";
 import { useAddCategory } from "./add-category";
 import { BanksPopover } from "./banks";
 import { money } from "./model";
-import { type SettingsPage } from "~/components/workspace/routes";
+import { type Screen, type SettingsPage } from "~/components/workspace/routes";
 import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
 import { useShellData } from "./shell-data";
 import { UserAvatar } from "./user-avatar";
 import styles from "./shell.module.css";
 
-export type Screen =
-  | { type: "plan" }
-  | { type: "reflect" }
-  | { type: "register"; accountId: string | null }
-  | { type: "loans" };
-
 export function Sidebar({
   screen,
-  selectedId,
+  hrefFor,
   onNavigate,
   toggleLabel,
   onToggle,
-  onOpenSettings,
+  settingsHref,
 }: {
   screen: Screen;
-  selectedId: string | null;
-  onNavigate: (screen: Screen, selectedId?: string) => void;
+  hrefFor: (screen: Screen) => string;
+  onNavigate: (href: string) => void;
   toggleLabel: string;
   onToggle: () => void;
-  onOpenSettings: (page: SettingsPage) => void;
+  settingsHref: (page: SettingsPage) => string;
 }) {
   const { accounts, loans, transactions } = useShellData();
   const reviewCount = transactions.filter((item) => item.needsReview).length;
@@ -85,7 +80,7 @@ export function Sidebar({
           warning: Boolean(account.connection?.needsAttention),
           current:
             screen.type === "register" && screen.accountId === account.id,
-          go: () => onNavigate({ type: "register", accountId: account.id }),
+          href: hrefFor({ type: "register", accountId: account.id }),
         })),
     },
     {
@@ -102,7 +97,7 @@ export function Sidebar({
           warning: Boolean(account.connection?.needsAttention),
           current:
             screen.type === "register" && screen.accountId === account.id,
-          go: () => onNavigate({ type: "register", accountId: account.id }),
+          href: hrefFor({ type: "register", accountId: account.id }),
         })),
     },
     {
@@ -119,7 +114,7 @@ export function Sidebar({
           warning: false,
           current:
             screen.type === "register" && screen.accountId === account.id,
-          go: () => onNavigate({ type: "register", accountId: account.id }),
+          href: hrefFor({ type: "register", accountId: account.id }),
         })),
     },
     {
@@ -140,7 +135,7 @@ export function Sidebar({
           warning: false,
           current:
             screen.type === "register" && screen.accountId === account.id,
-          go: () => onNavigate({ type: "register", accountId: account.id }),
+          href: hrefFor({ type: "register", accountId: account.id }),
         })),
     },
     {
@@ -152,8 +147,8 @@ export function Sidebar({
         label: loan.name,
         value: -loan.balance,
         warning: false,
-        current: screen.type === "loans" && selectedId === loan.id,
-        go: () => onNavigate({ type: "loans" }, loan.id),
+        current: screen.type === "loans" && screen.loanId === loan.id,
+        href: hrefFor({ type: "loans", loanId: loan.id }),
       })),
     },
   ].filter((section) => section.items.length || section.empty);
@@ -161,7 +156,7 @@ export function Sidebar({
   return (
     <nav className={styles.sidebarNav} aria-label="Budget navigation">
       <div className={styles.sidebarHeader}>
-        <ProfileMenu onOpenSettings={onOpenSettings} />
+        <ProfileMenu hrefFor={settingsHref} onNavigate={onNavigate} />
         <IconButton label={toggleLabel} shortcut="[" onClick={onToggle}>
           <PanelLeftIcon aria-hidden />
         </IconButton>
@@ -173,26 +168,30 @@ export function Sidebar({
             icon={WalletCardsIcon}
             label="Plan"
             current={screen.type === "plan"}
-            onClick={() => onNavigate({ type: "plan" })}
+            href={hrefFor({ type: "plan" })}
+            onNavigate={onNavigate}
           />
           <NavItem
             icon={ChartPieIcon}
             label="Reflect"
             current={screen.type === "reflect"}
-            onClick={() => onNavigate({ type: "reflect" })}
+            href={hrefFor({ type: "reflect" })}
+            onNavigate={onNavigate}
           />
           <NavItem
             icon={ArrowLeftRightIcon}
             label="All accounts"
             toReview={reviewCount > 0}
             current={screen.type === "register" && !screen.accountId}
-            onClick={() => onNavigate({ type: "register", accountId: null })}
+            href={hrefFor({ type: "register", accountId: null })}
+            onNavigate={onNavigate}
           />
           <NavItem
             icon={ChartNoAxesCombinedIcon}
             label="Loans"
-            current={screen.type === "loans" && !selectedId}
-            onClick={() => onNavigate({ type: "loans" })}
+            current={screen.type === "loans" && !screen.loanId}
+            href={hrefFor({ type: "loans", loanId: null })}
+            onNavigate={onNavigate}
           />
         </ul>
 
@@ -232,6 +231,7 @@ export function Sidebar({
                     <AccountList
                       items={section.items}
                       loans={section.id === "loans"}
+                      onNavigate={onNavigate}
                     />
                   ) : (
                     <p className={styles.navEmpty}>{section.empty}</p>
@@ -256,22 +256,28 @@ export function SettingsNav({
   toggleLabel,
   onToggle,
   page,
-  onBack,
-  onSelect,
+  returnHref,
+  hrefFor,
+  onNavigate,
 }: {
   toggleLabel: string;
   onToggle: () => void;
   page: SettingsPage;
-  onBack: () => void;
-  onSelect: (page: SettingsPage) => void;
+  returnHref: string;
+  hrefFor: (page: SettingsPage) => string;
+  onNavigate: (href: string) => void;
 }) {
   return (
     <nav className={styles.sidebarNav} aria-label="Settings navigation">
       <div className={styles.sidebarHeader}>
-        <button type="button" className={styles.switcher} onClick={onBack}>
+        <a
+          href={returnHref}
+          className={styles.switcher}
+          onClick={(event) => followLink(event, onNavigate)}
+        >
           <ChevronLeftIcon size={14} aria-hidden />
           <span className={styles.switcherName}>Back to app</span>
-        </button>
+        </a>
         <IconButton label={toggleLabel} shortcut="[" onClick={onToggle}>
           <PanelLeftIcon aria-hidden />
         </IconButton>
@@ -283,19 +289,22 @@ export function SettingsNav({
             icon={CircleUserRoundIcon}
             label="Profile"
             current={page === "profile"}
-            onClick={() => onSelect("profile")}
+            href={hrefFor("profile")}
+            onNavigate={onNavigate}
           />
           <NavItem
             icon={PaletteIcon}
             label="Appearance"
             current={page === "appearance"}
-            onClick={() => onSelect("appearance")}
+            href={hrefFor("appearance")}
+            onNavigate={onNavigate}
           />
           <NavItem
             icon={HeartHandshakeIcon}
             label="Partner"
             current={page === "partner"}
-            onClick={() => onSelect("partner")}
+            href={hrefFor("partner")}
+            onNavigate={onNavigate}
           />
         </ul>
       </div>
@@ -306,9 +315,11 @@ export function SettingsNav({
 // Linear's workspace menu: the budget's name opens settings, the partner
 // invitation, and sign out.
 function ProfileMenu({
-  onOpenSettings,
+  hrefFor,
+  onNavigate,
 }: {
-  onOpenSettings: (page: SettingsPage) => void;
+  hrefFor: (page: SettingsPage) => string;
+  onNavigate: (href: string) => void;
 }) {
   const { budgetName, partner } = useShellData();
   const { signOut } = useClerk();
@@ -343,19 +354,23 @@ function ProfileMenu({
           sideOffset={4}
           collisionPadding={12}
         >
-          <DropdownMenu.Item
-            className={styles.menuItem}
-            onSelect={() => onOpenSettings("profile")}
-          >
-            <SettingsIcon size={14} aria-hidden />
-            Settings
+          <DropdownMenu.Item className={styles.menuItem} asChild>
+            <a
+              href={hrefFor("profile")}
+              onClick={(event) => followLink(event, onNavigate)}
+            >
+              <SettingsIcon size={14} aria-hidden />
+              Settings
+            </a>
           </DropdownMenu.Item>
-          <DropdownMenu.Item
-            className={styles.menuItem}
-            onSelect={() => onOpenSettings("partner")}
-          >
-            <UserPlusIcon size={14} aria-hidden />
-            {partner ? "Partner" : "Invite partner"}
+          <DropdownMenu.Item className={styles.menuItem} asChild>
+            <a
+              href={hrefFor("partner")}
+              onClick={(event) => followLink(event, onNavigate)}
+            >
+              <UserPlusIcon size={14} aria-hidden />
+              {partner ? "Partner" : "Invite partner"}
+            </a>
           </DropdownMenu.Item>
           <DropdownMenu.Separator className={styles.menuSeparator} />
           <DropdownMenu.Item
@@ -399,12 +414,20 @@ type Item = {
   warning: boolean;
   toReview?: boolean;
   current: boolean;
-  go: () => void;
+  href: string;
 };
 
 // A section's accounts or loans. Dragging one moves it within its section,
 // like the plan's groups, and Alt+Up and Alt+Down move the focused one.
-function AccountList({ items, loans }: { items: Item[]; loans: boolean }) {
+function AccountList({
+  items,
+  loans,
+  onNavigate,
+}: {
+  items: Item[];
+  loans: boolean;
+  onNavigate: (href: string) => void;
+}) {
   const { add } = useAddCategory();
   const byId = new Map(items.map((item) => [item.id, item]));
   const drag = useReorderDrag<HTMLUListElement>({
@@ -462,13 +485,15 @@ function AccountList({ items, loans }: { items: Item[]; loans: boolean }) {
               {drag.drag?.id === id ? (
                 <div className={styles.navDropSlot} aria-hidden />
               ) : (
-                <NavButton
+                <NavLink
                   label={item.label}
                   value={item.value}
                   warning={item.warning}
                   toReview={item.toReview}
                   current={item.current}
-                  onClick={item.go}
+                  href={item.href}
+                  onNavigate={onNavigate}
+                  draggable={false}
                   data-account={id}
                   aria-keyshortcuts={
                     drag.enabled ? "Alt+ArrowUp Alt+ArrowDown" : undefined
@@ -506,30 +531,32 @@ type NavProps = {
   toReview?: boolean;
   value?: number;
   warning?: boolean;
-  onClick: () => void;
+  href: string;
+  onNavigate: (href: string) => void;
 };
 
 function NavItem(props: NavProps) {
   return (
     <li>
-      <NavButton {...props} />
+      <NavLink {...props} />
     </li>
   );
 }
 
-function NavButton({
+function NavLink({
   icon,
   label,
   current,
   toReview,
   value,
   warning,
+  onNavigate,
   ...rest
-}: NavProps & Omit<ComponentProps<"button">, "value">) {
+}: NavProps & Omit<ComponentProps<"a">, "onClick">) {
   return (
-    <button
+    <a
       {...rest}
-      type="button"
+      onClick={(event) => followLink(event, onNavigate)}
       className={styles.navItem}
       aria-label={value === undefined ? label : `${label} ${money(value)}`}
       aria-description={
@@ -549,7 +576,7 @@ function NavButton({
         warning={warning}
         toReview={toReview}
       />
-    </button>
+    </a>
   );
 }
 
@@ -559,7 +586,7 @@ function NavContents({
   toReview,
   value,
   warning,
-}: Omit<NavProps, "current" | "onClick">) {
+}: Omit<NavProps, "current" | "href" | "onNavigate">) {
   return (
     <>
       {Icon && <Icon size={14} className={styles.navIcon} aria-hidden />}
@@ -590,4 +617,20 @@ function NavContents({
       )}
     </>
   );
+}
+
+function followLink(
+  event: MouseEvent<HTMLAnchorElement>,
+  navigate: (href: string) => void,
+) {
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  )
+    return;
+  event.preventDefault();
+  navigate(event.currentTarget.getAttribute("href")!);
 }

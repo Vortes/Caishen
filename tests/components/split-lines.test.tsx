@@ -25,7 +25,7 @@ const categories: Command[] = [
   },
 ];
 async function newTransaction(shell: Awaited<ReturnType<typeof renderShell>>) {
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
   );
@@ -134,7 +134,7 @@ test("a saved split opens with its lines, and removing one leaves a single-categ
   const shell = await renderShell({
     seedCommands: [...categories, costcoSplit],
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(transactionRow("Costco"));
   await shell.user.keyboard("e");
   const form = within(screen.getByRole("form", { name: "Edit transaction" }));
@@ -181,7 +181,7 @@ test("a split that leaves part of the amount unsplit doesn't save, and Add line 
   const shell = await renderShell({
     seedCommands: [...categories, costcoSplit],
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(transactionRow("Costco"));
   await shell.user.keyboard("e");
   const form = within(screen.getByRole("form", { name: "Edit transaction" }));
@@ -195,7 +195,7 @@ test("a split that leaves part of the amount unsplit doesn't save, and Add line 
     ),
   ).toBeTruthy();
   expect(
-    within(screen.getByRole("button", { name: /^Checking/ })).getByText(
+    within(screen.getByRole("link", { name: /^Checking/ })).getByText(
       "$800.00",
     ),
   ).toBeTruthy();

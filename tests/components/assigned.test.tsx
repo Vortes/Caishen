@@ -68,6 +68,10 @@ test("changing month discards an unsaved assignment instead of applying it to th
     screen.queryByRole("textbox", { name: "Assigned amount for Gifts" }),
   ).toBeNull();
   await shell.reload();
+  expect(amount().textContent).toBe("$0.00");
+  await shell.user.click(
+    screen.getByRole("button", { name: "Previous month" }),
+  );
   expect(amount().textContent).toBe("$100.00");
   await shell.user.click(screen.getByRole("button", { name: "Next month" }));
   expect(amount().textContent).toBe("$0.00");

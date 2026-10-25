@@ -86,6 +86,9 @@ export async function showMonth(page: Page, month: string) {
 
 export async function reloadBudget(page: Page, budget: TestBudget) {
   await page.reload();
+  // These data checks run from Plan; a reload now preserves the current screen.
+  const navigation = await budgetNavigation(page);
+  await navigation.getByRole("link", { name: "Plan", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Plan", exact: true }),
   ).toBeVisible();
@@ -93,8 +96,18 @@ export async function reloadBudget(page: Page, budget: TestBudget) {
 }
 
 export async function openRegister(page: Page, account: string) {
+  const navigation = await budgetNavigation(page);
+  await navigation
+    .getByRole("link", { name: new RegExp(`^${account}`) })
+    .click();
   await expect(
-    page.getByRole("heading", { name: "Plan", exact: true }),
+    page.getByRole("heading", { name: account, exact: true }),
+  ).toBeVisible();
+}
+
+async function budgetNavigation(page: Page) {
+  await expect(
+    page.getByRole("button", { name: /, choose a month$/ }),
   ).toBeVisible();
   const navigation = page.getByRole("navigation", {
     name: "Budget navigation",
@@ -104,10 +117,5 @@ export async function openRegister(page: Page, account: string) {
       .getByRole("button", { name: "Show sidebar", exact: true })
       .first()
       .click();
-  await navigation
-    .getByRole("button", { name: new RegExp(`^${account}`) })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: account, exact: true }),
-  ).toBeVisible();
+  return navigation;
 }

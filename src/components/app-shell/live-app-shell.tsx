@@ -2,8 +2,9 @@
 
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { LogInIcon, RotateCwIcon, WrenchIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -46,6 +47,7 @@ import type { Command } from "~/domain/engine";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { serverRevisions } from "~/trpc/links";
 import { AppShell, type CategoryAdder } from "./app-shell";
+import { settingsReturnHref } from "~/components/workspace/routes";
 import { AssignMoneyProvider, type AssignMoney } from "./assigned";
 import type { ServerRunner } from "~/components/banks/bank-account-setup";
 import {
@@ -77,9 +79,38 @@ type Overview = RouterOutputs["budget"]["overview"];
 // editing Assigned, adding category groups and categories, editing targets,
 // reviewing and editing transactions, reconciling accounts, and connecting
 // banks use the same command path.
-export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
+export function LiveAppShell() {
+  const searchParams = useSearchParams();
+  const search = new URLSearchParams(searchParams?.toString());
+  const returnSearch = new URLSearchParams(
+    settingsReturnHref(search).split("?")[1],
+  );
+  const requestedMonth = search.get("month") ?? returnSearch.get("month");
+  const month =
+    requestedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)
+      ? requestedMonth
+      : currentMonth();
+  const setMonth = useCallback((next: string) => {
+    const address = new URL(window.location.href);
+    address.searchParams.set("month", next);
+    window.history.replaceState(
+      null,
+      "",
+      `${address.pathname}${address.search}`,
+    );
+  }, []);
+  return <BudgetSession month={month} onMonthChange={setMonth} />;
+}
+
+// Route and filter updates reach AppShell without rerendering the budget session.
+const BudgetSession = memo(function BudgetSession({
+  month,
+  onMonthChange,
+}: {
+  month: string;
+  onMonthChange: (month: string) => void;
+}) {
   const { isLoaded, userId } = useAuth();
-  const [month, setMonth] = useState(() => initialMonth ?? currentMonth());
   const settings = useSavedSettings();
   const renewSession = useRenewSession();
   const client = useBudgetClientFor(userId, renewSession);
@@ -101,14 +132,14 @@ export function LiveAppShell({ initialMonth }: { initialMonth?: string }) {
       <LiveBudget
         client={client}
         month={month}
-        onMonthChange={setMonth}
+        onMonthChange={onMonthChange}
         overview={overview.data}
         overviewError={overview.error?.message}
         skeleton={skeleton}
       />
     </BudgetClientProvider>
   );
-}
+});
 
 // Asks Clerk for a fresh session token, which also renews the session
 // cookie the API reads. Stays the same function, so the budget client
