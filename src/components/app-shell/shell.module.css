@@ -1179,6 +1179,9 @@ button.actionItem:disabled {
 .planList {
   position: relative;
 }
+.planList .rowName {
+  padding-left: 20px;
+}
 .planList[data-dragging],
 .planList[data-dragging] * {
   cursor: grabbing;
