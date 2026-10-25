@@ -352,7 +352,9 @@ function ProfileMenu({
           data-instant={byKeyboard || undefined}
           align="start"
           sideOffset={4}
-          collisionPadding={12}
+          // The switcher sits nearer the window edge than 12px; padding the
+          // left side would shift the menu off the switcher's left edge.
+          collisionPadding={{ top: 12, right: 12, bottom: 12 }}
         >
           <DropdownMenu.Item className={styles.menuItem} asChild>
             <a
