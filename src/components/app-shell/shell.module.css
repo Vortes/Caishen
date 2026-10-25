@@ -1065,6 +1065,12 @@ button.actionItem:disabled {
   .register .txColumns > [data-narrow] {
     display: block;
   }
+  .register .openingBalance > [data-column="account"] {
+    grid-area: 1 / 2;
+  }
+  .register[data-accounts] .openingBalance > [data-column="payee"] {
+    grid-area: 1 / 1;
+  }
 }
 .columnHeader {
   position: sticky;
@@ -1389,6 +1395,10 @@ button.actionItem:disabled {
   .register .row > [data-column="category"] {
     grid-column: 1;
     grid-row: 2;
+    font-size: var(--type-small);
+  }
+  .register .openingBalance > [data-column="account"] {
+    grid-area: 2 / 1;
     font-size: var(--type-small);
   }
   .register .row > [data-narrow] {

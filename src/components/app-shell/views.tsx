@@ -1164,7 +1164,6 @@ function OpeningBalanceRow({
         <span
           className={`${styles.truncate} ${styles.faint}`}
           data-column="account"
-          data-optional
         >
           {accountName}
         </span>
@@ -1178,6 +1177,7 @@ function OpeningBalanceRow({
       <span
         className={`${styles.truncate} ${styles.muted}`}
         data-column="category"
+        data-wide={accountColumn || undefined}
         title="Read-only balance when this account was added"
       >
         Balance when added
@@ -1194,6 +1194,7 @@ function OpeningBalanceRow({
         className={styles.numeric}
         data-column="inflow"
         data-empty={opening.amount >= 0 ? undefined : true}
+        data-inflow={opening.amount > 0 || undefined}
       >
         {opening.amount >= 0 && money(opening.amount)}
       </span>

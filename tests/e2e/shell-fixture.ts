@@ -29,6 +29,12 @@ type BudgetOptions = {
   category?: string;
   account?: string;
   cash?: number;
+  additionalAccounts?: {
+    id: string;
+    name: string;
+    kind: "cash" | "credit";
+    openingBalance: number;
+  }[];
   purchase?: { payee: string; amount: number; reviewed?: boolean };
   uncategorizedPurchases?: { payee: string; amount: number }[];
 };
@@ -189,6 +195,14 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
                 amount: 10_000,
               },
             ];
+            for (const account of options.additionalAccounts ?? [])
+              commands.push({
+                ...account,
+                type: "account.add",
+                accountId: account.id,
+                id: randomUUID(),
+                date: budget.date,
+              });
             if (options.purchase)
               commands.push({
                 type: "transaction.upsert",
