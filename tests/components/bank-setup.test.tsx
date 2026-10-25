@@ -104,12 +104,17 @@ test.each([false, true])(
     for (const { name } of cards)
       expect(within(accounts).getByText(name)).toBeTruthy();
     expect(within(accounts).getByText("-$123.45")).toBeTruthy();
-    expect(within(accounts).getAllByText("Not currently shared")).toHaveLength(
-      4,
+    expect(within(accounts).getAllByText("Not shared")).toHaveLength(4);
+    await shell.user.click(
+      screen.getByRole("button", { name: "American Express options" }),
     );
-    expect(screen.queryByRole("button", { name: "Add accounts" })).toBeNull();
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).queryByRole("menuitem", { name: /^Add / })).toBeNull();
     expect(
-      screen.getByText(/Your saved accounts and history are kept/),
+      within(menu).getByText("Restore updates for 4 not shared"),
+    ).toBeTruthy();
+    expect(
+      within(menu).getByText("Your accounts and history stay"),
     ).toBeTruthy();
   },
 );
@@ -198,7 +203,12 @@ test("a loan with no bank balance offers setup and asks for confirmed lender ter
     },
   });
   await shell.user.click(screen.getByRole("button", { name: "Banks" }));
-  await shell.user.click(screen.getByRole("button", { name: "Add accounts" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Add 1 account/ }),
+  );
   const dialog = await screen.findByRole("dialog", {
     name: "Add Discover to your budget",
   });
@@ -246,7 +256,10 @@ test("an account missing required bank data has a review action that explains wh
   });
   await shell.user.click(screen.getByRole("button", { name: "Banks" }));
   await shell.user.click(
-    screen.getByRole("button", { name: "Review accounts" }),
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Review 1 account/ }),
   );
   const dialog = await screen.findByRole("dialog", {
     name: "Add Discover to your budget",
@@ -285,7 +298,12 @@ test("a loan balance arriving during setup replaces the missing balance field", 
     },
   });
   await shell.user.click(screen.getByRole("button", { name: "Banks" }));
-  await shell.user.click(screen.getByRole("button", { name: "Add accounts" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Add 1 account/ }),
+  );
   const dialog = await screen.findByRole("dialog", {
     name: "Add Discover to your budget",
   });
