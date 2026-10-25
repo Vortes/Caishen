@@ -8,6 +8,7 @@ import {
   bankRecoveryCandidates,
   bankAccountNeedsRecovery,
   sameBankAccount,
+  supersededBankAccounts,
 } from "~/lib/bank-account-identity";
 import {
   applyChangeSet,
@@ -42,7 +43,7 @@ import {
   quarantinedImportMessage,
 } from "~/domain/register-entry";
 import { prepareUserCommand } from "~/domain/user-command";
-import { Prisma } from "~/generated/prisma";
+import type { Prisma } from "~/generated/prisma";
 import {
   bankAccountSchema,
   createPlaidClient,
@@ -504,6 +505,40 @@ function mergeAccountCatalog(
   };
 }
 
+/** An automatic identity decision, recorded on the operation that made it. */
+type IdentityDecision = {
+  rung: 2;
+  from: string;
+  to: string;
+  accountId: string;
+};
+
+// Rung 2 of the identity ladder: a mapped account Plaid now reports under a
+// new id with the same persistent id keeps its budget account. Its mapping
+// moves to the new id, so the old id leaves the catalog with the merge.
+function followPersistentIds(
+  previous: ConnectionDetails["accounts"],
+  reported: ConnectionDetails["accounts"],
+  mappings: Mappings,
+) {
+  const next = { ...mappings };
+  const decisions: IdentityDecision[] = [];
+  for (const { from, to } of supersededBankAccounts(
+    previous,
+    reported,
+    mappings,
+  )) {
+    next[to] = next[from]!;
+    delete next[from];
+    decisions.push({ rung: 2, from, to, accountId: next[to].accountId });
+  }
+  return {
+    mappings: next,
+    decisions,
+    ...mergeAccountCatalog(previous, reported, next),
+  };
+}
+
 async function refreshBankAccounts(
   db: Database,
   userId: string,
@@ -517,48 +552,60 @@ async function refreshBankAccounts(
   const accounts = await client().getAccounts(
     decryptBankToken(requested.encryptedToken, userId),
   );
-  await db.$transaction(
-    async (tx) => {
-      const fresh = await tx.bankConnection.findFirst({
-        where: { id: connectionId, clerkUserId: userId },
-      });
-      if (!fresh) throw new TRPCError({ code: "NOT_FOUND" });
-      if (fresh.updatedAt.getTime() !== requested.updatedAt.getTime())
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Another bank update finished first. Refresh and try again.",
-        });
-      requireConnected(fresh);
-      const column = readColumn(
-        fresh,
-        "BankConnection.imports",
-        connectionColumnSchema,
-        fresh.imports,
-      );
-      if (!column) throw connectionMaintenance();
-      const catalog = mergeAccountCatalog(
-        column.accounts,
-        accounts.accounts,
-        mappings(fresh),
-      );
-      await tx.bankConnection.update({
-        where: { id: fresh.id },
-        data: {
-          imports: detailsColumn(fresh.imports, {
-            ...connectionDetails(column),
-            ...accounts,
-            accounts: catalog.accounts,
-            transactionStatus: null,
-            synchronizedAccountIds: [],
-          }),
-          unavailableAccountIds: catalog.unavailableAccountIds,
-          lastAttemptAt: new Date(),
-          error: null,
-        },
-      });
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  const column = readColumn(
+    requested,
+    "BankConnection.imports",
+    connectionColumnSchema,
+    requested.imports,
   );
+  if (!column) throw connectionMaintenance();
+  const identity = followPersistentIds(
+    column.accounts,
+    accounts.accounts,
+    mappings(requested),
+  );
+  // Saved only over the connection the response was requested for, so an
+  // older response cannot overwrite a newer update.
+  const save = async (tx: Prisma.TransactionClient | Database) => {
+    const saved = await tx.bankConnection.updateMany({
+      where: {
+        id: requested.id,
+        clerkUserId: userId,
+        updatedAt: requested.updatedAt,
+      },
+      data: {
+        imports: detailsColumn(requested.imports, {
+          ...connectionDetails(column),
+          ...accounts,
+          accounts: identity.accounts,
+          transactionStatus: null,
+          synchronizedAccountIds: [],
+        }),
+        unavailableAccountIds: identity.unavailableAccountIds,
+        ...(identity.decisions.length
+          ? { accountMappings: jsonValue(identity.mappings) }
+          : {}),
+        lastAttemptAt: new Date(),
+        error: null,
+      },
+    });
+    if (saved.count !== 1)
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "Another bank update finished first. Refresh and try again.",
+      });
+  };
+  if (!identity.decisions.length) return save(db);
+  const operationId = randomUUID();
+  await writeServerOperation(db, await requireHousehold(db, userId), {
+    actorId: userId,
+    operationId,
+    source: "provider",
+    type: "bank.accounts.supersede",
+    submitted: { connectionId: requested.id, decisions: identity.decisions },
+    changeSet: composeChangeSets(operationId, []),
+    alongside: save,
+  });
 }
 
 export async function reconnectBank(
@@ -1747,11 +1794,13 @@ async function applyBankUpdate(
       code: "CONFLICT",
       message: "Another bank update finished first. Try again.",
     });
-  const { state: old, mappings } = readyConnection(
+  const { state: old, mappings: saved } = readyConnection(
     fresh,
     readImportStates(opened.household.rows, userId),
   );
   if (old.disconnectedAt) return { imported: 0, updated: 0 };
+  const identity = followPersistentIds(old.accounts, accounts.accounts, saved);
+  const { mappings } = identity;
   const plan = applyTransactionSync(old.records, delta, fresh.id);
   const changedAccounts = new Set(
     [
@@ -1803,16 +1852,11 @@ async function applyBankUpdate(
         !accountsWithActivity.has(account.accountId)
       )
         synchronizedAccounts.set(account.accountId, account);
-  const catalog = mergeAccountCatalog(
-    old.accounts,
-    accounts.accounts,
-    mappings,
-  );
   const state: ImportState = {
     ...accounts,
     accounts: [
       ...new Map(
-        [...catalog.accounts, ...synchronizedAccounts.values()].map(
+        [...identity.accounts, ...synchronizedAccounts.values()].map(
           (account) => [account.accountId, account],
         ),
       ).values(),
@@ -1977,7 +2021,10 @@ async function applyBankUpdate(
       where: { id: fresh.id, cursor: fresh.cursor, updatedAt: fresh.updatedAt },
       data: {
         imports: detailsColumn(fresh.imports, state),
-        unavailableAccountIds: catalog.unavailableAccountIds,
+        unavailableAccountIds: identity.unavailableAccountIds,
+        ...(identity.decisions.length
+          ? { accountMappings: jsonValue(mappings) }
+          : {}),
         cursor: delta.nextCursor,
         lastSyncedAt: new Date(),
         lastAttemptAt: new Date(),
@@ -1990,7 +2037,7 @@ async function applyBankUpdate(
         message: "Another bank update finished first. Try again.",
       });
   };
-  if (changeSet.after.length)
+  if (changeSet.after.length || identity.decisions.length)
     await writeServerOperation(db, opened, {
       actorId: userId,
       operationId,
@@ -2000,6 +2047,7 @@ async function applyBankUpdate(
         connectionId: fresh.id,
         cursor: delta.nextCursor,
         commands: operations.map((command) => command.id),
+        ...(identity.decisions.length ? { decisions: identity.decisions } : {}),
       },
       changeSet,
       alongside: saveConnection,

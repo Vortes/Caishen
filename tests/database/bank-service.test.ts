@@ -38,8 +38,10 @@ import { onboard } from "../../src/server/services/household-operations";
 import * as banks from "../../src/server/services/banks";
 import { households } from "../../src/server/storage/households";
 import {
+  findOperation,
   loadRows,
   readHouseholdRevision,
+  recentOperations,
   writeChangeSet,
 } from "../../src/server/storage/rows";
 import {
@@ -1819,6 +1821,222 @@ void test("a partial reconnect merges fresh details without forgetting other map
   );
   assert.deepEqual(details.accountMappings, mappings);
   assert.deepEqual((await h.state()).view, before.view);
+});
+
+// A connection whose one mapped checking account Plaid reports with the
+// persistent id its institution assigns, and recorded history on it.
+async function persistentHarness(persistentAccountId?: string) {
+  const h = await linkedHarness();
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "history",
+      accountId: "cash",
+      date: "2026-10-10",
+      amount: -500,
+      payee: "Recorded purchase",
+      categoryId: "dining",
+      status: "posted",
+    }),
+  );
+  await h.setImports({
+    accounts: [
+      {
+        accountId: "provider-checking",
+        ...(persistentAccountId ? { persistentAccountId } : {}),
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 95,
+        availableBalance: 95,
+        currency: "USD",
+      },
+    ],
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+    synchronizedAccountIds: ["provider-checking"],
+  });
+  const today = bankSetupDate("America/Los_Angeles");
+  let later = false;
+  const response = () => ({
+    ...accountsResponse(),
+    accounts: [
+      {
+        ...accountsResponse().accounts[0]!,
+        account_id: "provider-checking-reissued",
+        ...(persistentAccountId
+          ? { persistent_account_id: persistentAccountId }
+          : {}),
+        balances: {
+          ...accountsResponse().accounts[0]!.balances,
+          current: later ? 91 : 93,
+          available: later ? 91 : 93,
+        },
+      },
+    ],
+  });
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    switch (requestUrl(url).pathname) {
+      case "/accounts/get":
+        return Response.json(response());
+      case "/transactions/sync":
+        return Response.json({
+          added: later
+            ? [
+                {
+                  transaction_id: "new-purchase",
+                  account_id: "provider-checking-reissued",
+                  pending: false,
+                  amount: 2,
+                  iso_currency_code: "USD",
+                  date: today,
+                  name: "New purchase",
+                },
+              ]
+            : [],
+          modified: [],
+          removed: [],
+          accounts: response().accounts,
+          has_more: false,
+          next_cursor: later ? "later" : "reissued",
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      default:
+        throw new Error("Unexpected provider request");
+    }
+  });
+  const state = await h.state();
+  return {
+    ...h,
+    before: { ...state.view!.budget, revision: state.revision },
+    newActivity: () => {
+      later = true;
+    },
+  };
+}
+
+// The identity decisions recorded on Alice's operations of one type.
+async function recordedDecisions(type: string) {
+  const workspaceId = (await readHouseholdRevision(db, alice))!.workspaceId;
+  const operations = (await recentOperations(db, workspaceId, 100)).filter(
+    (operation) => operation.type === type,
+  );
+  return Promise.all(
+    operations.map(
+      async ({ operationId }) =>
+        (await findOperation(db, workspaceId, operationId))!.command,
+    ),
+  );
+}
+
+void test("a re-shared account with a new Plaid id and the same persistent id keeps its budget account without a question", async () => {
+  const h = await persistentHarness("persistent-checking");
+  const followed = {
+    "provider-checking-reissued": {
+      accountId: "cash",
+      startDate: "2026-10-01",
+    },
+  };
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  let details = await h.details();
+  assert.deepEqual(details.accountMappings, followed);
+  assert.deepEqual(
+    details.accounts.map((a) => [a.accountId, a.currentBalance]),
+    [["provider-checking-reissued", 93]],
+    "the retired id leaves the catalog and the account shows a fresh balance",
+  );
+  assert.deepEqual(details.unavailableAccountIds ?? [], []);
+  await h.api.budget.sync();
+  details = await h.details();
+  assert.deepEqual(details.accountMappings, followed);
+  assert.deepEqual(
+    details.accounts.map((a) => [a.accountId, a.currentBalance]),
+    [["provider-checking-reissued", 93]],
+  );
+  const after = (await h.state()).view!.budget;
+  assert.deepEqual(after.accounts, h.before.accounts);
+  assert.deepEqual(after.transactions, h.before.transactions);
+  assert.deepEqual(await bankInbox(db, alice), []);
+  await assert.rejects(
+    h.api.budget.setupBankAccounts({
+      connectionId: h.connection.id,
+      operationId: randomUUID(),
+      expectedRevision: await h.revision(),
+      accounts: [
+        {
+          providerAccountId: "provider-checking-reissued",
+          name: "Checking",
+          expectedBalance: 93,
+        },
+      ],
+    }),
+    /already added/i,
+    "the re-shared account is not addable as a second budget account",
+  );
+  assert.deepEqual(
+    await recordedDecisions("bank.accounts.supersede"),
+    [
+      {
+        connectionId: h.connection.id,
+        decisions: [
+          {
+            rung: 2,
+            from: "provider-checking",
+            to: "provider-checking-reissued",
+            accountId: "cash",
+          },
+        ],
+      },
+    ],
+    "the automatic decision is recorded with the rung that fired",
+  );
+  h.newActivity();
+  await h.api.budget.sync();
+  const inbox = await bankInbox(db, alice);
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0]!.accountId, "cash");
+  assert.equal(inbox[0]!.amount, -200);
+});
+
+void test("a new Plaid id without a persistent id still needs the user to confirm recovery", async () => {
+  const h = await persistentHarness();
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  await h.api.budget.sync();
+  const details = await h.details();
+  assert.deepEqual(details.accountMappings, {
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
+  assert.deepEqual(details.unavailableAccountIds, ["provider-checking"]);
+  assert.deepEqual(details.accounts.map((a) => a.accountId).sort(), [
+    "provider-checking",
+    "provider-checking-reissued",
+  ]);
+  const selected = {
+    providerAccountId: "provider-checking-reissued",
+    name: "Checking",
+    expectedBalance: 93,
+  };
+  const attempt = (existingAccountId?: string) =>
+    h.api.budget.setupBankAccounts({
+      connectionId: h.connection.id,
+      operationId: randomUUID(),
+      expectedRevision: h.before.revision,
+      accounts: [{ ...selected, existingAccountId }],
+    });
+  await assert.rejects(attempt(), /existing.*account/i);
+  await assert.rejects(attempt("cash"), /reconcile/i);
+  const after = (await h.state()).view!.budget;
+  assert.deepEqual(after.accounts, h.before.accounts);
+  assert.deepEqual(after.transactions, h.before.transactions);
+  assert.deepEqual(
+    await recordedDecisions("bank.accounts.supersede"),
+    [],
+    "no automatic identity decision is made without a persistent id",
+  );
 });
 
 void test("update mode reuses the private Item token and refreshes metadata without exchanging a public token", async () => {
