@@ -1,6 +1,8 @@
 import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Import application: fetches account activity and applies each provider update or user inbox decision as a household operation. It owns transaction matching, reconciliation, quarantine, and the corresponding change sets. */
 
+import { isBankAccountLive } from "~/lib/bank-account-identity";
+
 import {
   type Database,
   requireHousehold,
@@ -272,9 +274,7 @@ async function applyBankUpdate(
       .filter(
         (account) =>
           account.status === "revoked" &&
-          !accounts.accounts.some(
-            (reported) => reported.accountId === account.providerAccountId,
-          ),
+          !isBankAccountLive(accounts, account.providerAccountId),
       )
       .map((account) => account.providerAccountId),
   );
@@ -543,9 +543,7 @@ async function applyBankUpdate(
       userId,
       fresh.id,
       state.accounts.filter((account) =>
-        accounts.accounts.some(
-          (reported) => reported.accountId === account.accountId,
-        ),
+        isBankAccountLive(accounts, account.accountId),
       ),
       state.synchronizedAccountIds,
       identity.decisions,

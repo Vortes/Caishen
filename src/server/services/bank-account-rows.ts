@@ -125,8 +125,8 @@ export async function withBankAccountSuccessors<
   return result;
 }
 
-// The reader release projects the new rows onto the existing service's
-// account view. An empty table still uses the connection's legacy lists.
+// Project provider rows onto the public account view. Legacy copy and
+// compatibility checks are isolated in bank-account-migration.
 export function readBankAccountRows(connection: {
   id: string;
   clerkUserId: string;

@@ -1,5 +1,7 @@
 "use client";
 
+import { isBankAccountLive } from "~/lib/bank-account-identity";
+
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -422,9 +424,7 @@ export function BankItem({
       budget?.accounts.find((item) => item.id === mapping.accountId) ??
       budget?.loans.find((item) => item.id === mapping.accountId);
     const name = saved?.name ?? account?.name;
-    const shared =
-      Boolean(account) &&
-      !connection.unavailableAccountIds?.includes(providerId);
+    const shared = isBankAccountLive(connection, providerId);
     return name ? [{ providerId, account, name, shared }] : [];
   });
   const notShared = inBudget.filter(({ shared }) => !shared).length;

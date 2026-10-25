@@ -5,7 +5,73 @@ import { readHouseholdRevision } from "~/server/storage/rows";
 import { lockBankConnections } from "./bank-account-rows";
 import { bankMappingsSchema as mappingsSchema } from "./bank-account-setup";
 import { jsonValue, domainError } from "./safety";
-import { readColumn, connectionColumnSchema } from "./banks/inbox";
+import { z } from "zod";
+import { bankAccountSchema } from "~/server/integrations/plaid";
+import { importRowStateShape } from "./bank-import-rows";
+import { reportUnreadable, zodIssues } from "./stored-data";
+
+const connectionDetailsShape = {
+  disconnectedAt: z.string().datetime().optional(),
+  accounts: z.array(bankAccountSchema).max(1000).default([]),
+  institutionId: z.string().max(256).nullable().default(null),
+  institutionName: z.string().max(1024).nullable().default(null),
+  transactionStatus: z.string().max(100).nullable().default(null),
+  synchronizedAccountIds: z
+    .array(z.string().min(1).max(256))
+    .max(1000)
+    .default([]),
+};
+
+/** A connection's whole import state, as the bank code works with it. */
+export const importStateSchema = z
+  .object({ ...importRowStateShape, ...connectionDetailsShape })
+  .strict();
+
+/**
+ * BankConnection.imports: the connection's own details. Import state moved
+ * to bankImport rows (ADR 0006); connections saved before keep it here for
+ * the one-time copy into rows, and nothing else reads it.
+ */
+export const connectionColumnSchema = z
+  .object({
+    records: importRowStateShape.records.optional(),
+    resolved: importRowStateShape.resolved.optional(),
+    errors: importRowStateShape.errors.optional(),
+    reviews: importRowStateShape.reviews,
+    ...connectionDetailsShape,
+  })
+  .strict();
+
+export function decodeLegacyBankAccounts(connection: {
+  id: string;
+  clerkUserId: string;
+  imports: unknown;
+  accountMappings?: unknown;
+}) {
+  const column = connectionColumnSchema.safeParse(connection.imports);
+  const links = mappingsSchema.safeParse(connection.accountMappings ?? {});
+  if (!column.success)
+    reportUnreadable(
+      {
+        record: "BankConnection.imports",
+        connectionId: connection.id,
+        userId: connection.clerkUserId,
+      },
+      [{ issues: zodIssues(column.error) }],
+    );
+  if (!links.success)
+    reportUnreadable(
+      {
+        record: "BankConnection.accountMappings",
+        connectionId: connection.id,
+        userId: connection.clerkUserId,
+      },
+      [{ issues: zodIssues(links.error) }],
+    );
+  return column.success && links.success
+    ? { column: column.data, links: links.data }
+    : undefined;
+}
 
 /** Copy legacy identities and links once, while the rollback writer is locked out. */
 export async function migrateBankAccounts(db: Database, userId: string) {
@@ -32,19 +98,9 @@ export async function migrateBankAccounts(db: Database, userId: string) {
           },
         });
         for (const connection of connections) {
-          const column = readColumn(
-            connection,
-            "BankConnection.imports",
-            connectionColumnSchema,
-            connection.imports,
-          );
-          const links = readColumn(
-            connection,
-            "BankConnection.accountMappings",
-            mappingsSchema,
-            connection.accountMappings,
-          );
-          if (!column || !links) continue;
+          const legacy = decodeLegacyBankAccounts(connection);
+          if (!legacy) continue;
+          const { column, links } = legacy;
           const accounts = new Map(
             column.accounts.map((account) => [account.accountId, account]),
           );

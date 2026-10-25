@@ -68,7 +68,7 @@ model BankConnection {
   encryptedToken         String
   cursor                 String?
   imports                Json
-  accountMappings        Json
+  accountMappings        Json     @default("{}")
   unavailableAccountIds  String[]      @default([])
   status                 String        @default("connected")
   consentExpiresAt       DateTime?

@@ -5,6 +5,7 @@ import {
   sameBankAccount,
   resolveBankAccountIdentity,
   bankAccountNeedsRecovery,
+  isBankAccountLive,
   bankRecoveryCandidates,
 } from "~/lib/bank-account-identity";
 import { z } from "zod";
@@ -28,7 +29,6 @@ import { readImportStates } from "../bank-import-rows";
 import { TRPCError } from "@trpc/server";
 import {
   bankAccountOpening,
-  bankMappingsSchema as mappingsSchema,
   type SetupBankAccountsInput,
   setupBankAccountsSchema,
   bankSetupDate,
@@ -69,8 +69,8 @@ import {
   readyConnection,
   bankInboxItems,
   connectionMappings,
-  readColumn,
-  connectionColumnSchema,
+  readConnectionColumn,
+  connectionMetadata,
 } from "./inbox";
 import { migrateBankAccounts } from "../bank-account-migration";
 import { bankClient as client } from "../bank-provider-events";
@@ -342,10 +342,9 @@ async function prepareDuplicateBankRepair(
           ![retired.connection.id, replacement.connection.id].includes(
             connection.id,
           ) &&
-          Object.values(
-            readBankAccountRows(connection)?.mappings ??
-              mappingsSchema.parse(connection.accountMappings),
-          ).some((saved) => [keep.id, remove.id].includes(saved.accountId)),
+          Object.values(connectionMappings([connection])[0]!).some((saved) =>
+            [keep.id, remove.id].includes(saved.accountId),
+          ),
       )
     )
       throw new Error("Another bank connection uses these accounts.");
@@ -521,13 +520,15 @@ async function prepareDuplicateBankRepair(
       userId,
       selection,
       revision: opened.household.revision,
-      connections: [retired, replacement].map(({ connection }) => ({
-        id: connection.id,
-        updatedAt: connection.updatedAt.toISOString(),
-        imports: connection.imports,
-        accountMappings: connection.accountMappings,
-        bankAccounts: connection.bankAccounts,
-      })),
+      connections: [retired, replacement].map(
+        ({ connection, state, mappings }) => ({
+          id: connection.id,
+          updatedAt: connection.updatedAt.toISOString(),
+          imports: connectionMetadata(connection.imports, state),
+          links: mappings,
+          bankAccounts: connection.bankAccounts,
+        }),
+      ),
       accounts,
       successorRedirects,
     }),
@@ -899,12 +900,7 @@ export async function setupBankAccounts(
     const allMappings = connectionMappings(connections);
     const remainingMappings = allMappings.map((mapping) => ({ ...mapping }));
     const details = connections.map((saved) => {
-      const parsed = readColumn(
-        saved,
-        "BankConnection.imports",
-        connectionColumnSchema,
-        saved.imports,
-      );
+      const parsed = readConnectionColumn(saved);
       if (!parsed) throw connectionMaintenance();
       return parsed;
     });
@@ -917,8 +913,7 @@ export async function setupBankAccounts(
           : undefined),
       accountMappings: allMappings[index]!,
       unavailableAccountIds:
-        readBankAccountRows(saved)?.unavailableAccountIds ??
-        saved.unavailableAccountIds,
+        readBankAccountRows(saved)?.unavailableAccountIds ?? [],
     }));
     const activeMappings = allMappings.map((saved, index) =>
       Object.fromEntries(
@@ -954,7 +949,10 @@ export async function setupBankAccounts(
       );
       if (
         !provider ||
-        connection.unavailableAccountIds.includes(provider.accountId)
+        !isBankAccountLive(
+          { ...state, unavailableAccountIds: connection.unavailableAccountIds },
+          provider.accountId,
+        )
       )
         throw new TRPCError({
           code: "NOT_FOUND",

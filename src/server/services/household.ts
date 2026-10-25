@@ -1,5 +1,9 @@
 import { withBankAccountSuccessors } from "./bank-account-rows";
 import {
+  migrateBankAccounts,
+  decodeLegacyBankAccounts,
+} from "./bank-account-migration";
+import {
   bankAccountRowsSelection,
   readBankAccountRows,
 } from "./bank-account-rows";
@@ -40,7 +44,6 @@ import { findOperation, RevisionConflictError } from "~/server/storage/rows";
 import {
   bankImportEligibility,
   bankImportFingerprint,
-  bankMappingsSchema,
 } from "./bank-account-setup";
 import { bankImportColumnSchemas, readImportStates } from "./bank-import-rows";
 import { addCounterpartyAccounts } from "./household-operations";
@@ -48,7 +51,11 @@ import { matchesSavedOperation, operationHash } from "./safety";
 import { refusal } from "./sync-refusal";
 
 export { refusal, SyncRefusal, type SyncErrorKind } from "./sync-refusal";
-import { budgetMaintenance, reportUnreadable } from "./stored-data";
+import {
+  budgetMaintenance,
+  connectionMaintenance,
+  reportUnreadable,
+} from "./stored-data";
 
 // Running operations against a household's rows (ADR 0006): user commands
 // with the sync contract's rules (idempotent retries, re-running commands
@@ -148,6 +155,7 @@ async function ensureBankReferencesKept(
   const accounts = removed("account");
   const transactions = removed("transaction");
   if (!accounts.size && !transactions.size) return;
+  await migrateBankAccounts(db, actorId);
   const linked = (
     await withBankAccountSuccessors(
       db,
@@ -156,18 +164,20 @@ async function ensureBankReferencesKept(
         select: {
           id: true,
           clerkUserId: true,
+          imports: true,
           accountMappings: true,
           bankAccounts: bankAccountRowsSelection,
         },
       }),
     )
-  ).some((connection) =>
-    Object.values(
-      readBankAccountRows(connection)?.mappings ??
-        bankMappingsSchema.safeParse(connection.accountMappings).data ??
-        {},
-    ).some((mapping) => accounts.has(mapping.accountId)),
-  );
+  ).some((connection) => {
+    const rows = readBankAccountRows(connection);
+    if (!rows && !decodeLegacyBankAccounts(connection))
+      throw connectionMaintenance();
+    return Object.values(rows?.mappings ?? {}).some((mapping) =>
+      accounts.has(mapping.accountId),
+    );
+  });
   const matched = [
     ...(applyChangeSet(household.rows, changeSet).get("bankImport")?.values() ??
       []),
@@ -224,6 +234,7 @@ async function commandChangeSet(
   if (command.type === "partner.match")
     throw new AccountingError("Match a bank import from the import itself");
   if (command.type === "account.reconcile") {
+    await migrateBankAccounts(db, actorId);
     const connections = await withBankAccountSuccessors(
       db,
       db.bankConnection.findMany({
@@ -231,6 +242,7 @@ async function commandChangeSet(
         select: {
           id: true,
           clerkUserId: true,
+          imports: true,
           accountMappings: true,
           bankAccounts: bankAccountRowsSelection,
         },
@@ -238,9 +250,10 @@ async function commandChangeSet(
     );
     const imports = readImportStates(household.rows, actorId);
     for (const connection of connections) {
-      const mappings =
-        readBankAccountRows(connection)?.importMappings ??
-        bankMappingsSchema.parse(connection.accountMappings);
+      const rows = readBankAccountRows(connection);
+      if (!rows && !decodeLegacyBankAccounts(connection))
+        throw connectionMaintenance();
+      const mappings = rows?.importMappings ?? {};
       if (
         !Object.values(mappings).some(
           (mapping) => mapping.accountId === command.accountId,
