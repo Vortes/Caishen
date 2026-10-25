@@ -1,3 +1,8 @@
+import {
+  bankOpeningSnapshotSchema,
+  bankAccountRowSchema,
+  bankAccountLinkRowSchema,
+} from "../../src/server/services/bank-account-rows";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
@@ -28,6 +33,7 @@ import {
 // suspends ADR 0006's additive-only rule until the first production launch;
 // removed shapes must be removed from these contracts and samples as well.
 const jsonColumns: Record<string, ZodTypeAny> = {
+  "BankAccountLink.openingSnapshot": bankOpeningSnapshotSchema,
   "BankConnection.imports": connectionColumnSchema,
   "BankConnection.accountMappings": bankMappingsSchema,
   "ReviewEvidence.evidence": savedEvidenceSchema,
@@ -57,7 +63,13 @@ const rowTables: Record<string, ZodTypeAny> = Object.fromEntries(
 const requestShapes: Record<string, ZodTypeAny> = {
   "PlaidLink.metadata": plaidLinkMetadataSchema,
 };
-const columns = { ...jsonColumns, ...rowTables, ...requestShapes };
+const columns: Record<string, ZodTypeAny> = {
+  ...jsonColumns,
+  ...rowTables,
+  ...requestShapes,
+  BankAccount: bankAccountRowSchema,
+  BankAccountLink: bankAccountLinkRowSchema,
+};
 
 const directory = new URL("../stored-data/", import.meta.url);
 type Contract = {

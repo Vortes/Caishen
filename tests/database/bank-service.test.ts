@@ -3003,3 +3003,258 @@ void test("pay remembered as Ready to Assign arrives there, and money going out 
     [["Acme Payroll", -4000]],
   );
 });
+
+void test("row-backed provider accounts show the same linked accounts and inbox as legacy JSON", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("row-reader-purchase")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  const account = {
+    accountId: "provider-checking",
+    persistentAccountId: "persistent-checking",
+    name: "Checking",
+    officialName: "Everyday Checking",
+    mask: "1234",
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 100,
+    availableBalance: 95,
+    currency: "USD",
+  };
+  const details = {
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+    accounts: [account],
+    synchronizedAccountIds: [account.accountId],
+  };
+  await h.setImports({ ...details, records: [record] });
+  const legacy = await h.state();
+  assert.equal(legacy.imports.length, 1);
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: account.accountId,
+      persistentAccountId: account.persistentAccountId,
+      name: account.name,
+      officialName: account.officialName,
+      mask: account.mask,
+      type: account.type,
+      subtype: account.subtype,
+      currentBalance: account.currentBalance,
+      availableBalance: account.availableBalance,
+      currency: account.currency,
+      historyComplete: true,
+      balancesAsOf: new Date("2026-10-25T12:00:00Z"),
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: {
+      imports: { ...details, accounts: [], synchronizedAccountIds: [] },
+      accountMappings: {},
+    },
+  });
+  const rows = await h.state();
+  assert.deepEqual(rows.connections, legacy.connections);
+  assert.deepEqual(rows.imports, legacy.imports);
+  assert.deepEqual(rows.view, legacy.view);
+});
+
+void test("account updates keep applying to a row-backed linked account", async () => {
+  const h = await linkedHarness();
+  syncPages([
+    { added: [groceryRun("row-first-run", "2026-10-02")], next_cursor: "1" },
+    { added: [groceryRun("row-second-run", "2026-10-19")], next_cursor: "2" },
+  ]);
+  await h.api.budget.sync();
+  await saveImport(h, (await h.state()).imports[0]!.logicalId, "dining");
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      subtype: "checking",
+      mask: "1234",
+      currency: "USD",
+      currentBalance: 100,
+      historyComplete: true,
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  await h.setMappings({});
+  await h.api.budget.sync();
+  const result = await h.state();
+  const recorded = result.view!.budget.transactions.find(
+    (transaction) => transaction.providerId === "row-second-run",
+  );
+  assert.ok(
+    recorded,
+    "the new import still applies the remembered category to its linked account",
+  );
+  assert.equal(recorded.accountId, "cash");
+  assert.equal(recorded.amount, -4210);
+  assert.equal(recorded.categoryId, "dining");
+  assert.equal(
+    result.view!.budget.accounts.filter((account) => !isCounterparty(account))
+      .length,
+    1,
+  );
+});
+
+void test("an unreadable provider account puts only its connection under maintenance", async () => {
+  const h = await linkedHarness();
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      status: "not-a-readable-state",
+    },
+  });
+  const result = await h.state();
+  assert.equal(result.status, "ready");
+  assert.match(result.connections[0]!.error!, /under maintenance/);
+  assert.deepEqual(result.connections[0]!.accounts, []);
+  assert.equal(
+    result.view.budget.accounts.some((account) => account.id === "cash"),
+    true,
+  );
+  await db.bankAccount.updateMany({
+    where: { connectionId: h.connection.id },
+    data: { status: "shared", name: "x".repeat(1025) },
+  });
+  assert.match((await h.state()).connections[0]!.error!, /under maintenance/);
+});
+
+void test("imports naming a retired provider id still reach its live linked account", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("retired-id-purchase")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({ records: [record] });
+  await h.setMappings({});
+  const replacement = await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-replacement",
+      name: "Checking",
+      type: "depository",
+      subtype: "checking",
+      mask: "1234",
+      currency: "USD",
+      currentBalance: 100,
+      historyComplete: true,
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      status: "retired",
+      supersededById: replacement.id,
+    },
+  });
+  const result = await h.state();
+  assert.equal(result.imports[0]?.accountId, "cash");
+  assert.equal(result.imports[0]?.providerAccountId, "provider-checking");
+  assert.deepEqual(Object.keys(result.connections[0]!.accountMappings), [
+    "provider-replacement",
+  ]);
+  await assert.rejects(
+    h.api.budget.execute({
+      baseRevision: result.revision,
+      clientId: "reader-test",
+      command: {
+        type: "account.reconcile",
+        id: randomUUID(),
+        accountId: "cash",
+        date: "2026-10-25",
+        balance: 10000,
+      },
+    }),
+    /review/i,
+  );
+  const item = result.imports[0]!;
+  await h.api.budget.resolveImport({
+    connectionId: item.connectionId,
+    logicalId: item.logicalId,
+    expectedFingerprint: item.fingerprint,
+    expectedRevision: result.revision,
+    ignore: false,
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "retired-id-recorded",
+      accountId: "cash",
+      date: item.date,
+      amount: item.amount,
+      payee: item.payee,
+      categoryId: "dining",
+      status: "posted",
+    },
+  });
+  const confirmed = await h.state();
+  assert.equal(confirmed.status, "ready");
+  assert.equal(
+    confirmed.view.budget.transactions.find(
+      (item) => item.id === "retired-id-recorded",
+    )?.accountId,
+    "cash",
+  );
+});
+
+void test("a provider link owned by another budget is refused by the connection reader", async () => {
+  const h = await linkedHarness();
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: bob,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  const result = await h.state();
+  assert.equal(result.status, "ready");
+  assert.match(result.connections[0]!.error!, /under maintenance/);
+  assert.deepEqual(result.connections[0]!.accountMappings, {});
+});

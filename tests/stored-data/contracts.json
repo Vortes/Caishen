@@ -1114,5 +1114,94 @@
       ],
       "values": {}
     }
+  ],
+  "BankAccountLink.openingSnapshot": [
+    {
+      "fields": [
+        "postedImportIds",
+        "fingerprints",
+        "financialFingerprints",
+        "reviewImportIds"
+      ],
+      "optional": [
+        "financialFingerprints",
+        "reviewImportIds"
+      ],
+      "nullable": [
+        ""
+      ],
+      "values": {}
+    }
+  ],
+  "BankAccount": [
+    {
+      "fields": [
+        "id",
+        "connectionId",
+        "providerAccountId",
+        "persistentAccountId",
+        "name",
+        "officialName",
+        "mask",
+        "type",
+        "subtype",
+        "currency",
+        "currentBalance",
+        "availableBalance",
+        "balancesAsOf",
+        "status",
+        "historyComplete",
+        "firstSeenAt",
+        "lastSeenAt",
+        "supersededById",
+        "createdAt",
+        "updatedAt"
+      ],
+      "optional": [],
+      "nullable": [
+        "persistentAccountId",
+        "officialName",
+        "mask",
+        "subtype",
+        "currency",
+        "currentBalance",
+        "availableBalance",
+        "balancesAsOf",
+        "supersededById"
+      ],
+      "values": {
+        "status": [
+          "shared",
+          "unavailable",
+          "revoked",
+          "retired"
+        ],
+        "historyComplete": [
+          true,
+          false
+        ]
+      }
+    }
+  ],
+  "BankAccountLink": [
+    {
+      "fields": [
+        "id",
+        "bankAccountId",
+        "workspaceId",
+        "userId",
+        "accountId",
+        "startDate",
+        "openingSnapshot",
+        "linkedAt",
+        "unlinkedAt"
+      ],
+      "optional": [],
+      "nullable": [
+        "openingSnapshot",
+        "unlinkedAt"
+      ],
+      "values": {}
+    }
   ]
 }

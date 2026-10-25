@@ -1,3 +1,7 @@
+import {
+  bankAccountRowsSelection,
+  readBankAccountRows,
+} from "./bank-account-rows";
 import { isRejectedSettlementImport } from "~/domain/partner-settlements";
 import { MANUAL_MATCH_DAYS } from "~/domain/bank-import-balances";
 import { randomUUID } from "node:crypto";
@@ -146,19 +150,37 @@ type StoredConnection = {
   imports: unknown;
   accountMappings: unknown;
   unavailableAccountIds?: string[];
+  bankAccounts?: Prisma.BankAccountGetPayload<{ include: { link: true } }>[];
 };
 export type ReadConnection<C extends StoredConnection = StoredConnection> =
-  | { status: "ready"; connection: C; state: ImportState; mappings: Mappings }
+  | {
+      status: "ready";
+      connection: C;
+      state: ImportState;
+      mappings: Mappings;
+      importMappings?: Mappings;
+    }
   | { status: "maintenance"; connection: C };
 /** Each connection's import state from rows (readImportStates). */
 export type ImportStates = ReadonlyMap<string, ImportRowState | "unreadable">;
 
 function readColumn<T>(
-  connection: Pick<StoredConnection, "id" | "clerkUserId">,
+  connection: Pick<StoredConnection, "id" | "clerkUserId" | "bankAccounts">,
   record: "BankConnection.imports" | "BankConnection.accountMappings",
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   value: unknown,
 ): T | undefined {
+  const providerRows = readBankAccountRows(connection);
+  if (providerRows) {
+    value =
+      record === "BankConnection.accountMappings"
+        ? providerRows.mappings
+        : {
+            ...(typeof value === "object" && value !== null ? value : {}),
+            accounts: providerRows.accounts,
+            synchronizedAccountIds: providerRows.synchronizedAccountIds,
+          };
+  }
   const result = schema.safeParse(value);
   if (result.success) return result.data;
   reportUnreadable(
@@ -207,27 +229,51 @@ export function readBankConnection<C extends StoredConnection>(
   connection: C,
   imports: ImportStates,
 ): ReadConnection<C> {
-  const column = readColumn(
-    connection,
-    "BankConnection.imports",
-    connectionColumnSchema,
-    connection.imports,
-  );
-  const mappings = readColumn(
-    connection,
-    "BankConnection.accountMappings",
-    mappingsSchema,
-    connection.accountMappings,
-  );
-  const rows = imports.get(connection.id) ?? emptyState();
-  return column && mappings && rows !== "unreadable"
-    ? {
-        status: "ready",
+  try {
+    const column = readColumn(
+      connection,
+      "BankConnection.imports",
+      connectionColumnSchema,
+      connection.imports,
+    );
+    const providerRows = readBankAccountRows(connection);
+    const mappings =
+      providerRows?.mappings ??
+      readColumn(
         connection,
-        state: { ...connectionDetails(column), ...rows },
-        mappings,
-      }
-    : { status: "maintenance", connection };
+        "BankConnection.accountMappings",
+        mappingsSchema,
+        connection.accountMappings,
+      );
+    const rows = imports.get(connection.id) ?? emptyState();
+    return column && mappings && rows !== "unreadable"
+      ? {
+          status: "ready",
+          connection: providerRows
+            ? {
+                ...connection,
+                unavailableAccountIds: providerRows.unavailableAccountIds,
+              }
+            : connection,
+          state: {
+            ...connectionDetails(column),
+            ...(providerRows
+              ? {
+                  accounts: providerRows.accounts,
+                  synchronizedAccountIds: providerRows.synchronizedAccountIds,
+                }
+              : {}),
+            ...rows,
+          },
+          mappings,
+          importMappings: providerRows?.importMappings ?? mappings,
+        }
+      : { status: "maintenance", connection };
+  } catch (error) {
+    if (error instanceof TRPCError && error.code === "SERVICE_UNAVAILABLE")
+      return { status: "maintenance", connection };
+    throw error;
+  }
 }
 
 // A connection as the app shows it. One under maintenance shows its
@@ -242,14 +288,13 @@ export function bankConnectionView(
     }
   >,
 ) {
-  const { id, itemId, lastSyncedAt, lastAttemptAt, error, accountMappings } =
-    read.connection;
+  const { id, itemId, lastSyncedAt, lastAttemptAt, error } = read.connection;
   const connection = { id, itemId, lastSyncedAt, lastAttemptAt };
   return read.status === "ready"
     ? {
         ...connection,
         error,
-        accountMappings,
+        accountMappings: read.mappings,
         ...(read.connection.unavailableAccountIds?.length
           ? { unavailableAccountIds: read.connection.unavailableAccountIds }
           : {}),
@@ -337,6 +382,7 @@ export async function linkBankToken(
   try {
     const connection = connectionId
       ? await db.bankConnection.findFirst({
+          include: { bankAccounts: bankAccountRowsSelection },
           where: { id: connectionId, clerkUserId: userId },
         })
       : null;
@@ -396,6 +442,7 @@ export async function exchangeBankToken(
               "Another bank connection is being saved. Wait for it to finish and try again.",
           });
         const connections = await tx.bankConnection.findMany({
+          include: { bankAccounts: bankAccountRowsSelection },
           where: { clerkUserId: userId },
         });
         for (const saved of connections) {
@@ -435,6 +482,7 @@ export async function exchangeBankToken(
         }
         const result = await client().exchangePublicToken(publicToken);
         const existing = await tx.bankConnection.findUnique({
+          include: { bankAccounts: bankAccountRowsSelection },
           where: { itemId: result.itemId },
         });
         if (existing && existing.clerkUserId !== userId)
@@ -545,6 +593,7 @@ async function refreshBankAccounts(
   connectionId: string,
 ) {
   const requested = await db.bankConnection.findFirst({
+    include: { bankAccounts: bankAccountRowsSelection },
     where: { id: connectionId, clerkUserId: userId },
   });
   if (!requested) throw new TRPCError({ code: "NOT_FOUND" });
@@ -615,6 +664,7 @@ export async function reconnectBank(
 ): Promise<{ id: string; warning?: string }> {
   try {
     const connection = await db.bankConnection.findFirst({
+      include: { bankAccounts: bankAccountRowsSelection },
       where: { id: connectionId, clerkUserId: userId },
     });
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
@@ -716,6 +766,7 @@ async function prepareDuplicateBankRepair(
   const opened = await openHousehold(db, userId);
   if (opened?.ledger.status !== "ready") throw budgetMaintenance();
   const connections = await db.bankConnection.findMany({
+    include: { bankAccounts: bankAccountRowsSelection },
     where: { clerkUserId: userId },
   });
   const imports = readImportStates(opened.household.rows, userId);
@@ -811,9 +862,10 @@ async function prepareDuplicateBankRepair(
           ![retired.connection.id, replacement.connection.id].includes(
             connection.id,
           ) &&
-          Object.values(mappingsSchema.parse(connection.accountMappings)).some(
-            (saved) => [keep.id, remove.id].includes(saved.accountId),
-          ),
+          Object.values(
+            readBankAccountRows(connection)?.mappings ??
+              mappingsSchema.parse(connection.accountMappings),
+          ).some((saved) => [keep.id, remove.id].includes(saved.accountId)),
       )
     )
       throw new Error("Another bank connection uses these accounts.");
@@ -1012,7 +1064,10 @@ export async function repairDuplicateBankAccounts(
 
 export async function bankInbox(db: Database, userId: string) {
   const [connections, opened] = await Promise.all([
-    db.bankConnection.findMany({ where: { clerkUserId: userId } }),
+    db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { clerkUserId: userId },
+    }),
     openHousehold(db, userId),
   ]);
   if (opened && opened.ledger.status !== "ready") throw budgetMaintenance();
@@ -1040,7 +1095,8 @@ export function bankInboxItems(
   );
   return connections.flatMap((read) => {
     if (read.status === "maintenance") return [];
-    const { connection, state, mappings } = read;
+    const { connection, state } = read;
+    const mappings = read.importMappings ?? read.mappings;
     const imports = state.records
       .filter((record) => {
         const mapping = mappings[record.current.providerAccountId];
@@ -1167,6 +1223,7 @@ async function openConnection(
   connectionId: string,
 ) {
   const connection = await db.bankConnection.findFirst({
+    include: { bankAccounts: bankAccountRowsSelection },
     where: { id: connectionId, clerkUserId: userId },
   });
   if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1275,6 +1332,7 @@ export async function setupBankAccounts(
           "Update your bank accounts before setup so today's opening balances include the latest activity.",
       });
     const connections = await db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
       where: { clerkUserId: userId },
     });
     const allMappings = connectionMappings(connections);
@@ -1292,7 +1350,9 @@ export async function setupBankAccounts(
     const identities = connections.map((saved, index) => ({
       ...details[index]!,
       accountMappings: allMappings[index]!,
-      unavailableAccountIds: saved.unavailableAccountIds,
+      unavailableAccountIds:
+        readBankAccountRows(saved)?.unavailableAccountIds ??
+        saved.unavailableAccountIds,
     }));
     const activeMappings = allMappings.map((saved, index) =>
       Object.fromEntries(
@@ -1646,6 +1706,7 @@ export async function setupBankAccounts(
 
 export async function syncBanks(db: Database, userId: string) {
   const connections = await db.bankConnection.findMany({
+    include: { bankAccounts: bankAccountRowsSelection },
     where: { clerkUserId: userId },
   });
   if (!connections.length)
@@ -1782,6 +1843,7 @@ async function applyBankUpdate(
 ) {
   const [fresh, opened] = await Promise.all([
     db.bankConnection.findFirstOrThrow({
+      include: { bankAccounts: bankAccountRowsSelection },
       where: { id: connection.id, clerkUserId: userId },
     }),
     requireHousehold(db, userId),
@@ -1801,6 +1863,10 @@ async function applyBankUpdate(
   if (old.disconnectedAt) return { imported: 0, updated: 0 };
   const identity = followPersistentIds(old.accounts, accounts.accounts, saved);
   const { mappings } = identity;
+  const importMappings = {
+    ...readBankAccountRows(fresh)?.importMappings,
+    ...mappings,
+  };
   const plan = applyTransactionSync(old.records, delta, fresh.id);
   const changedAccounts = new Set(
     [
@@ -1896,13 +1962,13 @@ async function applyBankUpdate(
     book,
     budgetOf(book, userId),
     plan.records,
-    mappings,
+    importMappings,
     old.resolved,
     (record) => `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
   );
   for (const change of plan.changes) {
     const record = change.after;
-    const mapped = mappings[record.current.providerAccountId];
+    const mapped = importMappings[record.current.providerAccountId];
     const resolution = old.resolved[record.id];
     const eligibility = bankImportEligibility(mapped, record);
     if (
@@ -2204,7 +2270,8 @@ export async function resolveImport(
         "Your bank updated this transaction. Reopen it before saving.",
         household.revision,
       );
-    const mapping = mappings(connection)[record.current.providerAccountId];
+    const mapping = (readBankAccountRows(connection)?.importMappings ??
+      mappings(connection))[record.current.providerAccountId];
     let operationId: string = randomUUID();
     let submitted: unknown = { ...input, operationId };
     const changeSets: ChangeSet[] = [];
@@ -2352,5 +2419,8 @@ export async function resolveImport(
 }
 
 function mappings(connection: StoredConnection): Mappings {
-  return mappingsSchema.parse(connection.accountMappings);
+  return (
+    readBankAccountRows(connection)?.mappings ??
+    mappingsSchema.parse(connection.accountMappings)
+  );
 }
