@@ -168,18 +168,14 @@
   font-size: var(--type-small);
 }
 
-/* The destination list opens by growing its row from 0fr to 1fr while the
-   options fade in and settle 4px down; it closes about 30% faster. The
-   negative margin cancels the field's gap while the list is closed. */
+/* The negative margin cancels the field's gap while the list is closed. */
 .listFrame {
   display: grid;
   grid-template-rows: 0fr;
   margin: -6px -8px 0;
-  transition: grid-template-rows 140ms var(--ease-panel);
 }
 .listFrame[data-open] {
   grid-template-rows: 1fr;
-  transition-duration: 200ms;
 }
 .listClip {
   min-height: 0;
@@ -190,19 +186,9 @@
   overflow-y: auto;
   padding: 6px 4px 0;
   opacity: 0;
-  transform: translateY(-4px);
-  transition:
-    opacity 140ms var(--ease-panel),
-    transform 140ms var(--ease-panel);
 }
 .listFrame[data-open] .list {
   opacity: 1;
-  transform: none;
-  transition-duration: 200ms;
-}
-.listFrame[data-instant],
-.listFrame[data-instant] .list {
-  transition: none;
 }
 
 .group {
@@ -322,12 +308,5 @@
   }
   .select select {
     height: 44px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .listFrame,
-  .list {
-    transition: none;
   }
 }

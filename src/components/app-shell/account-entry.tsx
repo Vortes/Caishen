@@ -22,7 +22,7 @@ export function AccountEntry() {
   const container = usePortalContainer();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
+  const motion = usePopoverMotion(open, "occasional");
   const { holdOpen } = entry;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const [name, setName] = useState("");

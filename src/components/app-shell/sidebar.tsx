@@ -326,7 +326,7 @@ function ProfileMenu({
   const { signOut } = useClerk();
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
+  const motion = usePopoverMotion(open, "occasional");
   return (
     <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>

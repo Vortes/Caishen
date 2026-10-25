@@ -1,7 +1,15 @@
 .content {
   --popover-enter-x: 0px;
   --popover-enter-y: 0px;
+}
+.content[data-motion="occasional"]:not([data-instant]) {
   transform-origin: var(--radix-popper-transform-origin);
+  transform: translate(0, 0) scale(1);
+  opacity: 1;
+  will-change: transform, opacity;
+  transition:
+    transform var(--duration-popover-enter) var(--ease-panel),
+    opacity var(--duration-popover-enter) var(--ease-panel);
 }
 .content[data-side="top"] {
   --popover-enter-y: var(--distance-popover);
@@ -15,30 +23,33 @@
 .content[data-side="right"] {
   --popover-enter-x: calc(-1 * var(--distance-popover));
 }
-.content[data-state="open"] {
-  animation: popover-in var(--duration-popover-enter) var(--ease-panel);
+.content[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
+  opacity: 0;
+  transform: translate(0, 0) scale(var(--scale-popover));
+  transition-duration: var(--duration-popover-exit);
+  transition-timing-function: ease-in;
+  pointer-events: none;
+  /* Radix Presence waits for animationend, not transitionend. This keeps
+     content mounted for the exit; the transitions own all visible motion. */
+  animation: popover-exit var(--duration-popover-exit);
 }
-.content[data-state="closed"] {
-  animation: popover-out var(--duration-popover-exit) ease-in forwards;
-}
-.content[data-instant] {
-  animation: none;
-}
-@keyframes popover-in {
-  from {
+@starting-style {
+  .content[data-motion="occasional"][data-state="open"]:not([data-instant]) {
     opacity: 0;
     transform: translate(var(--popover-enter-x), var(--popover-enter-y))
       scale(var(--scale-popover));
   }
 }
-@keyframes popover-out {
+@keyframes popover-exit {
+  from,
   to {
-    opacity: 0;
-    transform: scale(var(--scale-popover));
+    pointer-events: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .content[data-state] {
+  .content[data-motion="occasional"][data-state]:not([data-instant]) {
     animation: none;
+    transition: none;
+    will-change: auto;
   }
 }

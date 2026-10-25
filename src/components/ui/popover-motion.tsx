@@ -37,7 +37,10 @@ export function PopoverMotionProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function usePopoverMotion(open: boolean) {
+export function usePopoverMotion(
+  open: boolean,
+  frequency: "frequent" | "occasional" = "frequent",
+) {
   const input = useContext(InputMethodContext);
   if (!input)
     throw new Error("usePopoverMotion needs a PopoverMotionProvider.");
@@ -53,5 +56,8 @@ export function usePopoverMotion(open: boolean) {
       instant: open ? input.current === "keyboard" : opening.instant,
     });
   }
-  return { "data-instant": opening.instant || undefined };
+  return {
+    "data-motion": frequency,
+    "data-instant": frequency === "frequent" || opening.instant || undefined,
+  };
 }

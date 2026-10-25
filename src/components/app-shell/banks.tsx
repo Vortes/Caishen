@@ -227,7 +227,7 @@ export function BanksPopover() {
   const container = usePortalContainer();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
+  const motion = usePopoverMotion(open, "occasional");
   // Opened from the keyboard it appears at once and focuses its first
   // control; a click animates and leaves focus on the popover itself.
   const attention = banks.connections.some((item) => item.error);
@@ -335,7 +335,7 @@ export function BankItem({
   const banks = useBanks();
   const container = usePortalContainer();
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuMotion = usePopoverMotion(menuOpen);
+  const menuMotion = usePopoverMotion(menuOpen, "occasional");
   const mappings = bankAccountMappings(connection.accountMappings);
   const budget = banks.state.view?.budget;
   // A partial bank response changes access, not membership in the budget.
@@ -536,7 +536,7 @@ function BankMenuItem({
 export function BankStatus({ connection }: { connection: Connection }) {
   const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
+  const motion = usePopoverMotion(open, "occasional");
   const pinned = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const later = (next: boolean, delay: number) => {

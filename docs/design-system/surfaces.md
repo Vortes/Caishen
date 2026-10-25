@@ -81,8 +81,20 @@ left-aligned surface away from a trigger near the left edge.
 
 Use `src/components/ui/popover-motion.module.css` and `usePopoverMotion`
 from `src/components/ui/popover-motion.tsx` for popovers and dropdown menus.
-The shared stylesheet owns the keyframes and reads the four popover motion
+**Default to instant.** Animation is reserved for occasional secondary
+actions where the entrance helps connect the surface to its trigger.
+
+| Frequency                    | Surfaces                                                                                                                                                                                                                                                         | Motion                            |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Frequent work                | Ready to Assign, move money / cover overspending, create category/group, target behavior, reconcile, transaction entry and sharing, bulk categorizing/sharing, record purchases/repayments, request/pay partner, month picker, Reflect filters and chart details | Instant open and close            |
+| Occasional secondary actions | Profile, Banks, bank options, bank status, Add account                                                                                                                                                                                                           | Shared motion for pointer opening |
+
+The shared stylesheet owns the transitions and reads the four popover motion
 tokens in [scale.md](scale.md#motion); do not duplicate them in feature CSS.
+New surfaces are instant unless their frequency justifies opting in.
+This also applies inside frequent-use forms: destination lists and sharing
+or reconciliation steps change immediately, without height animation or
+cross-fades.
 
 ```css
 /* In an app-shell surface module; adjust the relative path as needed. */
@@ -93,7 +105,10 @@ tokens in [scale.md](scale.md#motion); do not duplicate them in feature CSS.
 
 ```tsx
 const [open, setOpen] = useState(false);
+// Frequent work is instant by default.
 const motion = usePopoverMotion(open);
+// For an occasional secondary surface only:
+// const motion = usePopoverMotion(open, "occasional");
 
 <Popover.Root open={open} onOpenChange={setOpen}>
   {/* Trigger and themed portal */}
@@ -112,17 +127,26 @@ captures the input method when opening, so typing inside a form cannot
 change its entrance or exit. Keep content and its anchor mounted while
 Radix completes the exit animation.
 
-The existing transaction option lists (`transaction-fields.tsx`), date
-calendar (`transaction-date.tsx`), and bulk Categorize form
-(`transaction-review.tsx`) remain unanimated pending separate review.
-Do not add motion to these three surfaces as part of other styling changes.
+Transaction option lists (`transaction-fields.tsx`), the date calendar
+(`transaction-date.tsx`), and bulk Categorize (`transaction-review.tsx`)
+remain unanimated. They belong to the frequent-work rule above.
+
+For the occasional surfaces:
 
 - Enter over **180ms** with **`var(--ease-panel)`**, fading from opacity 0
   and scaling from **0.97** to 1. Start **4px toward the trigger**: translate
   down for a surface above its trigger, up for one below it. Finish with no
-  transform. Follow the resolved placement if collision handling flips it.
+  offset and scale 1. Follow the resolved placement if collision handling flips it.
 - Exit over **120ms** with **`ease-in`**, fading to opacity 0 and scaling
-  to **0.97**. Use `forwards` so it stays faded until Radix unmounts it.
+  to **0.97**.
+- Use CSS transitions so closing or reopening mid-motion continues from
+  the current rendered state. `@starting-style` supplies the initial entrance.
+  Radix Presence waits for `animationend`, so a separate exit animation
+  controls only the mounted lifetime and pointer events; it must not set
+  opacity or transform. All visible motion belongs to the transitions.
+- Keep an identity transform and `will-change: transform, opacity` on
+  animated content while mounted, avoiding a render-layer change when
+  closing starts. Instant surfaces do not need this promotion.
 - The shared stylesheet sets `transform-origin` to
   `var(--radix-popper-transform-origin)`, inherited from Radix's wrapper
   for both popovers and dropdown menus.
@@ -136,7 +160,7 @@ Do not add motion to these three surfaces as part of other styling changes.
 - Never scale or translate a popup trigger during press, including while
   it is still closed. Radix can measure the pressed button before it
   settles, then snap the surface sideways as its anchor changes. The
-  shared `IconButton` excludes `[aria-haspopup]` from press scaling.
+  shared `Button` and `IconButton` exclude `[aria-haspopup]` from press scaling.
 
 ## Portals
 

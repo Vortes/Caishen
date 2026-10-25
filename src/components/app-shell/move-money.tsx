@@ -355,22 +355,16 @@ export function Destination({
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [active, setActive] = useState<string | null>(null);
-  // The list animates open and closed when the pointer does it, and changes
-  // at once from the keyboard, so keyboard use never waits on motion.
-  const [instant, setInstant] = useState(false);
-  const pointer = usePointerModality();
   useEffect(() => {
     listOpen.current = expanded;
   }, [listOpen, expanded]);
   const show = () => {
     if (expanded) return;
-    setInstant(!pointer.current);
     setQuery("");
     setActive(null);
     setExpanded(true);
   };
   const hide = () => {
-    setInstant(!pointer.current);
     setExpanded(false);
   };
 
@@ -473,7 +467,6 @@ export function Destination({
       <div
         className={styles.listFrame}
         data-open={expanded || undefined}
-        data-instant={instant || undefined}
         aria-hidden={!expanded || undefined}
         inert={!expanded}
       >
@@ -542,22 +535,6 @@ export function Destination({
       </div>
     </div>
   );
-}
-
-// Whether the latest input was a pointer rather than the keyboard.
-function usePointerModality() {
-  const pointer = useRef(false);
-  useEffect(() => {
-    const onPointer = () => (pointer.current = true);
-    const onKey = () => (pointer.current = false);
-    window.addEventListener("pointerdown", onPointer, true);
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointer, true);
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, []);
-  return pointer;
 }
 
 function tone(value: number) {
