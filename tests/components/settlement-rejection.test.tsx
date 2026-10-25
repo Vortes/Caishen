@@ -70,7 +70,7 @@ test("a partner settlement can be rejected from its ledger", async () => {
   await shell.user.click(
     await within(
       screen.getByRole("navigation", { name: "Budget navigation" }),
-    ).findByRole("button", { name: /^Anna/ }),
+    ).findByRole("link", { name: /^Anna/ }),
   );
   await shell.user.click(
     within(screen.getByRole("group", { name: "Anna ledger" })).getByRole(
@@ -82,11 +82,11 @@ test("a partner settlement can be rejected from its ledger", async () => {
   await findToast("Match rejected. Both bank imports are back in review.");
   expect(screen.queryByText("Venmo from Anna", { exact: true })).toBeNull();
   expect(
-    within(screen.getByRole("button", { name: /^Checking/ })).getByText(
+    within(screen.getByRole("link", { name: /^Checking/ })).getByText(
       "$1,000.00",
     ),
   ).toBeTruthy();
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   expect(screen.queryByText("Venmo from Anna", { exact: true })).toBeNull();
 });
 
@@ -98,8 +98,8 @@ test("a settlement can be rejected from its bank transaction", async () => {
   const navigation = within(
     screen.getByRole("navigation", { name: "Budget navigation" }),
   );
-  await navigation.findByRole("button", { name: /^Anna/ });
-  await shell.user.click(navigation.getByRole("button", { name: /^Checking/ }));
+  await navigation.findByRole("link", { name: /^Anna/ });
+  await shell.user.click(navigation.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(transactionRow("Venmo from Anna"));
   await shell.user.keyboard("e");
   const form = within(
@@ -112,7 +112,7 @@ test("a settlement can be rejected from its bank transaction", async () => {
   ).toBeNull();
   expect(screen.queryByText("Venmo from Anna", { exact: true })).toBeNull();
   expect(
-    within(navigation.getByRole("button", { name: /^Checking/ })).getByText(
+    within(navigation.getByRole("link", { name: /^Checking/ })).getByText(
       "$1,000.00",
     ),
   ).toBeTruthy();

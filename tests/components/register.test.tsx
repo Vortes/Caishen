@@ -39,7 +39,7 @@ const editor = () =>
 
 test("the opening balance is read-only and excluded from purchase selection and review", async () => {
   const shell = await renderShell({ seedCommands: [purchase()] });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   const opening = screen.getByRole("group", {
     name: "Starting Balance for Checking",
   });
@@ -84,7 +84,7 @@ test("opening balances follow account and search filters, including zero balance
     date: "2026-09-30",
   });
   const shell = await renderShell({ book });
-  await shell.user.click(screen.getByRole("button", { name: "All accounts" }));
+  await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
   expect(
     screen.getByRole("group", { name: "Starting Balance for Checking" }),
   ).toBeTruthy();
@@ -121,7 +121,7 @@ test.each(["pending", "posted"] as const)(
     const shell = await renderShell({
       seedCommands: [{ ...purchase(), status }],
     });
-    await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+    await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
     await shell.user.click(
       within(row("Market")).getByText("Market", { exact: true }),
     );
@@ -242,7 +242,7 @@ test.each([
     await shell.user.click(
       within(
         screen.getByRole("navigation", { name: "Budget navigation" }),
-      ).getByRole("button", { name: new RegExp(`^${accountName}`) }),
+      ).getByRole("link", { name: new RegExp(`^${accountName}`) }),
     );
     await shell.user.click(
       within(row("Imported coffee")).getByText("Imported coffee"),
@@ -339,7 +339,7 @@ const cardSeeds: Command[] = [
 
 test("payment payees exclude the current account and a receiving-side edit submits the existing payment", async () => {
   const shell = await renderShell({ seedCommands: cardSeeds });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
   );
@@ -351,7 +351,7 @@ test("payment payees exclude the current account and a receiving-side edit submi
     screen.queryByRole("option", { name: "Transfer to Checking" }),
   ).toBeNull();
   await shell.user.click(form.getByRole("button", { name: "Cancel" }));
-  await shell.user.click(screen.getByRole("button", { name: /^Visa/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Visa/ }));
   await shell.user.click(row("Payment from Checking"));
   await shell.user.keyboard("e");
   expect(editor().getByLabelText("Payee", { exact: true })).toBe(
@@ -379,8 +379,15 @@ test("payment payees exclude the current account and a receiving-side edit submi
 
 test("a payment link selects its counterpart without opening an editor or offering categorization", async () => {
   const shell = await renderShell({ seedCommands: cardSeeds });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
-  await shell.user.click(screen.getByRole("link", { name: "View in Visa" }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  const link = screen.getByRole("link", { name: "View in Visa" });
+  const address = new URL(link.getAttribute("href")!, window.location.origin);
+  expect(address.pathname).toBe("/app/accounts/visa");
+  expect(address.searchParams.get("transaction")).toBe(
+    "card-payment:counterpart",
+  );
+  expect(address.searchParams.get("month")).toBe("2026-10");
+  await shell.user.click(link);
   expect(screen.getByRole("heading", { name: "Visa" })).toBeTruthy();
   expect(
     screen
@@ -414,7 +421,7 @@ test("categorization applies to both selected purchases at once", async () => {
     { type: "category.add", id: "food", categoryId: "food", name: "Food" },
   ];
   const shell = await renderShell({ seedCommands: seeds });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(row("Market"));
   const actions = within(
     screen.getByRole("toolbar", { name: "Selected transactions" }),
@@ -449,7 +456,7 @@ test("Reject removes only the unreviewed purchase in a mixed selection", async (
   const shell = await renderShell({
     seedCommands: [purchase(), purchase("coffee", false)],
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(row("Market"));
   await shell.user.click(
     screen.getByRole("checkbox", { name: "Select Coffee" }),
@@ -485,7 +492,7 @@ test("editing a brokerage transfer from the tracking register retains its requir
     },
   ];
   const shell = await renderShell({ seedCommands: seeds });
-  await shell.user.click(screen.getByRole("button", { name: /^Brokerage/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Brokerage/ }));
   await shell.user.click(row("Transfer from Checking"));
   await shell.user.keyboard("e");
   expect(editor().getByLabelText("Category", { exact: true })).toHaveProperty(
@@ -544,7 +551,7 @@ test("editing a loan payment loads confirmed interest and sends the corrected to
     },
   ];
   const shell = await renderShell({ seedCommands: seeds });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(row("Payment to Student loan"));
   await shell.user.keyboard("e");
   const interest = editor().getByLabelText("Lender-confirmed interest", {
@@ -618,7 +625,7 @@ test("choosing and removing a transfer payee changes category requirements witho
       return server.execute("owner", input);
     },
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(row("Market"));
   await shell.user.keyboard("e");
   await shell.user.click(editor().getByLabelText("Payee", { exact: true }));
@@ -662,7 +669,7 @@ test("choosing and removing a transfer payee changes category requirements witho
     screen.getAllByRole("checkbox", { name: "Select Merchant purchase" }),
   ).toHaveLength(1);
   expect(
-    within(screen.getByRole("button", { name: /^Savings/ })).getByText("$0.00"),
+    within(screen.getByRole("link", { name: /^Savings/ })).getByText("$0.00"),
   ).toBeTruthy();
 });
 
@@ -674,7 +681,7 @@ test("F3: the new transaction account picker excludes Partner and Reimbursements
     book,
     overview: () => readyOverview({ partnerFirstName: "Anna" }),
   });
-  await shell.user.click(screen.getByRole("button", { name: "All accounts" }));
+  await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
   );

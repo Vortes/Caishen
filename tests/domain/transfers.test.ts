@@ -191,12 +191,17 @@ void test("card payment edits preserve both IDs and consume reserve without new 
     13500,
   );
   assert.equal(f.view().personalSpending, 0);
-  const before = f.book;
-  assert.throws(
-    () => f.save({ inflow: "201.00", outflow: "" }, original.id),
-    /exceeds card debt/,
+  f.save({ inflow: "201.00", outflow: "" }, original.id);
+  assert.equal(f.transaction(sent.id).amount, -20_100);
+  assert.equal(
+    f.view().accounts.find((item) => item.id === "visa")!.balance,
+    100,
   );
-  assert.deepEqual(f.book, before);
+  assert.equal(
+    f.view().accounts.find((item) => item.id === "visa")!.reserve,
+    -100,
+  );
+  assert.equal(f.view().personalSpending, 0);
 });
 
 void test("import conversion preserves bank identity and approval propagates to both transfer entries", () => {

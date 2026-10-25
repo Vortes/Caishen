@@ -63,7 +63,7 @@ test("a waiting bank import from a remembered payee shows and saves its remember
         ],
       }),
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   const held = row("Trader Joe's");
   expect(within(held).getByText("Gifts")).toBeTruthy();
   expect(within(held).queryByText("Needs category")).toBeNull();
@@ -91,7 +91,7 @@ const household: Command = {
 };
 
 async function newTransaction(shell: Awaited<ReturnType<typeof renderShell>>) {
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
   );
@@ -206,7 +206,7 @@ test("editing a transaction never takes a remembered category", async () => {
       },
     ],
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(within(row("Corner Deli")).getByText("Corner Deli"));
   await shell.user.click(within(row("Corner Deli")).getByText("Corner Deli"));
   const payee = editor().getByLabelText("Payee", { exact: true });

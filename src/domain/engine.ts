@@ -1320,7 +1320,7 @@ type Materialized = {
 // month touches only its own rows, with ID lookups that keep the first match
 // as a list search would.
 type MonthRows = {
-  // Active transactions dated in the month, by date and then ID.
+  // Same-day outflows precede inflows; IDs only break ties within each side.
   transactions: Transaction[];
   assignments: Assignment[];
   // The partner's ledger entries dated in the month, by date and then ID.
@@ -1361,7 +1361,10 @@ function indexReplay(book: AccountingState, budget: Budget): ReplayIndex {
       rows(monthOf(entry.date)).mirrored.push(entry);
   for (const { transactions, mirrored } of months.values()) {
     transactions.sort(
-      (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        Math.sign(a.amount) - Math.sign(b.amount) ||
+        a.id.localeCompare(b.id),
     );
     mirrored.sort(
       (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
@@ -1423,12 +1426,19 @@ function cashPosition(
   const allocated = sum(
     [...categories.values()].map((state) => Math.max(0, state.available)),
   );
+  const positiveCardBalances = sum(
+    budget.accounts
+      .filter((account) => account.kind === "credit")
+      .map((account) => Math.max(0, accounts.get(account.id)!.balance)),
+  );
   const currentCashOverspending = sum(
     [...categories.values()].map((state) => state.cashOverspending),
   );
   return {
     cash,
-    readyToAssign: safe(cash - allocated + currentCashOverspending),
+    readyToAssign: safe(
+      cash + positiveCardBalances - allocated + currentCashOverspending,
+    ),
   };
 }
 
@@ -1647,9 +1657,7 @@ function replay(
     carriedCounterpartyCredit.clear();
     const repaidByKey = new Map<string, number>();
     const cashByCategory = new Map<string, number>();
-    const credits: Transaction[] = [];
     const payments: Transaction[] = [];
-    const positiveCardCreditSpent = new Set<string>();
     const debtTransfers: { from: string; to: string; amount: number }[] = [];
     for (const assignment of rows.assignments) {
       const state = categories.get(assignment.categoryId)!;
@@ -1666,12 +1674,7 @@ function replay(
       const account = index.account(transaction.accountId);
       if (isPending(transaction) && transaction.amount > 0) continue;
       const accountState = accounts.get(account.id)!;
-      if (
-        account.kind === "credit" &&
-        accountState.balance > 0 &&
-        transaction.amount < 0
-      )
-        positiveCardCreditSpent.add(account.id);
+      let lineBalance = accountState.balance;
       accountState.balance = safe(accountState.balance + transaction.amount);
       if (transaction.amount < 0)
         accountState.outflows = safe(
@@ -1694,7 +1697,6 @@ function replay(
           });
       }
       if (transaction.kind === "statement-credit") {
-        credits.push(transaction);
         continue;
       }
       if (transaction.kind === "card-payment") {
@@ -1765,17 +1767,30 @@ function replay(
         const state = categories.get(categoryId)!;
         state.activity = safe(state.activity + amount);
         state.available = safe(state.available + amount);
-        if (account.kind === "cash") {
-          state.cashActivity = safe(state.cashActivity + amount);
+        // The change above zero spends or restores existing card credit;
+        // only the remainder changes debt and its payment funding.
+        const nextLineBalance = safe(lineBalance + amount);
+        const cashAmount =
+          account.kind === "cash"
+            ? amount
+            : Math.max(0, nextLineBalance) - Math.max(0, lineBalance);
+        lineBalance = nextLineBalance;
+        if (cashAmount) {
+          state.cashActivity = safe(state.cashActivity + cashAmount);
           cashByCategory.set(
             categoryId,
-            safe((cashByCategory.get(categoryId) ?? 0) + amount),
+            safe((cashByCategory.get(categoryId) ?? 0) + cashAmount),
           );
-        } else {
+        }
+        const creditAmount = safe(amount - cashAmount);
+        if (creditAmount) {
           const cards =
             creditByCategory.get(key ?? categoryId) ??
             new Map<string, number>();
-          cards.set(account.id, safe((cards.get(account.id) ?? 0) - amount));
+          cards.set(
+            account.id,
+            safe((cards.get(account.id) ?? 0) - creditAmount),
+          );
           creditByCategory.set(key ?? categoryId, cards);
         }
       }
@@ -2005,26 +2020,6 @@ function replay(
     for (const [cardId, shortfall] of paidCashShortfall) {
       const state = accounts.get(cardId)!;
       if (state.reserve < 0) state.reserve = -shortfall;
-    }
-    for (const credit of credits) {
-      const state = accounts.get(credit.accountId)!;
-      const reserve = Math.min(state.reserve, Math.max(0, -state.balance));
-      state.creditsReleased = safe(
-        state.creditsReleased + reserve - state.reserve,
-      );
-      state.reserve = reserve;
-    }
-    for (const account of budget.accounts.filter(
-      (item) => item.kind === "credit",
-    )) {
-      const state = accounts.get(account.id)!;
-      if (state.balance > 0 || positiveCardCreditSpent.has(account.id)) {
-        const reserve = Math.min(state.reserve, Math.max(0, -state.balance));
-        state.creditsReleased = safe(
-          state.creditsReleased + reserve - state.reserve,
-        );
-        state.reserve = reserve;
-      }
     }
     for (const category of budget.categories)
       if (category.pairedAccountId) {
@@ -2584,14 +2579,6 @@ function validateCardPayment(
   if (accountAtDate(budget, cardAccountId, date).kind !== "credit")
     fail("Select a credit-card account");
   const calculated = materialize(book, budget.userId, monthOf(date), date);
-  const state = calculated.accounts.get(cardAccountId)!;
-  const remaining = materialize(
-    book,
-    budget.userId,
-    monthOf(date),
-  ).accounts.get(cardAccountId)!;
-  if (amount > Math.min(-state.balance, -remaining.balance))
-    fail("Card payment exceeds card debt");
   if (amount > calculated.accounts.get(cashAccountId)!.balance)
     fail("Card payment requires cash already received by its payment date");
 }
@@ -2684,49 +2671,16 @@ function requireDate(budget: Budget, date: string): void {
 }
 /**
  * The checks a ledger restored by a revert passes before it is saved: every
- * stored reference holds and no card balance turns positive. Restored rows can be
- * ones later changes rely on, so the checks cover the whole ledger.
+ * stored reference holds. Later changes may rely on restored rows, so the
+ * checks cover the whole ledger.
  */
 export function checkRestoredLedger(state: AccountingState): void {
   const readable = isPersonalLedger(state)
     ? budgetSchema.safeParse(state.budget).success &&
       householdSchema.safeParse(state).success
     : bookSchema.safeParse(state).success;
-  const budgets = isPersonalLedger(state)
-    ? [state.budget]
-    : Object.values(state.budgets);
   if (!readable)
     fail("This can't be undone because later changes depend on it");
-  for (const budget of budgets) ensureSupportedCardBalances(budget);
-}
-
-function ensureSupportedCardBalances(budget: Budget): void {
-  for (const account of budget.accounts.filter(
-    (item) => item.kind === "credit",
-  )) {
-    const activity = new Map<string, number>();
-    for (const transaction of budget.transactions.filter(
-      (item) =>
-        active(item) &&
-        item.accountId === account.id &&
-        !(isPending(item) && item.amount > 0),
-    )) {
-      const month = monthOf(transaction.date);
-      activity.set(
-        month,
-        safe((activity.get(month) ?? 0) + transaction.amount),
-      );
-    }
-    let balance = account.openingBalance;
-    for (const month of [...activity.keys()].sort()) {
-      const priorCredit = Math.max(0, balance);
-      balance = safe(balance + activity.get(month)!);
-      if (balance > priorCredit)
-        fail(
-          "This change would create a positive card balance; investigate recorded credits and payments first",
-        );
-    }
-  }
 }
 
 /**
@@ -2866,15 +2820,6 @@ function executeAccountingState<T extends AccountingState>(
       command.type === "transaction.categorize" ||
         command.type === "transaction.categorize.batch",
     );
-  if (
-    [
-      "transaction.upsert",
-      "transaction.remove",
-      "transaction.reject",
-      "transaction.merge",
-    ].includes(command.type)
-  )
-    ensureSupportedCardBalances(budget);
   book.audit.push({
     id: command.id,
     actorId,
@@ -3106,7 +3051,6 @@ function editPartnerEntry(
     source,
     changes,
   );
-  ensureSupportedCardBalances(payer);
   // The payer's history names who made the change.
   const saved = getTransaction(payer, transaction.id);
   changes.transaction(payer, saved).history.at(-1)!.actorId = budget.userId;
@@ -3403,10 +3347,6 @@ function applyCommand(
         fail("Account ID already exists");
       const date = command.date ?? `${budget.startMonth}-01`;
       requireDate(budget, date);
-      if (command.kind === "credit" && command.openingBalance > 0)
-        fail(
-          "Positive credit-card balances require bank evidence and are not supported by manual setup",
-        );
       changes.addAccount(budget, {
         id: command.accountId,
         name: command.name,
@@ -4086,24 +4026,7 @@ function applyCommand(
         !categoryId &&
         !lines &&
         !counterpartyShare;
-      if (statementCredit) {
-        if (command.status !== "posted") break;
-        const state = materialize(
-          book,
-          actorId,
-          monthOf(command.date),
-          command.date,
-        ).accounts.get(account.id)!;
-        const remaining = materialize(
-          book,
-          actorId,
-          monthOf(command.date),
-        ).accounts.get(account.id)!;
-        if (command.amount > Math.min(-state.balance, -remaining.balance))
-          fail(
-            "Credit exceeds card debt; positive card balances require bank evidence",
-          );
-      }
+      if (statementCredit && command.status !== "posted") break;
       if (
         counterpartyShare &&
         ((!categoryId &&
@@ -4203,16 +4126,6 @@ function applyCommand(
         ],
       };
       changes.putTransaction(budget, transaction);
-      if (
-        account.kind === "credit" &&
-        command.amount > 0 &&
-        materialize(book, actorId, monthOf(command.date)).accounts.get(
-          account.id,
-        )!.balance > 0
-      )
-        fail(
-          "Positive card balances require bank evidence and manual investigation",
-        );
       break;
     }
     case "transaction.remove": {

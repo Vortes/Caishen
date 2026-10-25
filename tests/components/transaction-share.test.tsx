@@ -87,7 +87,7 @@ test("sharing previews the whole selection before the server answers and restore
       return { ...result, resolved: true };
     },
   });
-  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  await user.click(screen.getByRole("link", { name: "All accounts" }));
   for (const payee of ["Market", "Imported coffee", "Imported lunch"])
     await user.click(screen.getByRole("checkbox", { name: `Select ${payee}` }));
   await user.click(
@@ -167,7 +167,7 @@ test("sharing previews the whole selection before the server answers and restore
   await user.click(
     within(
       screen.getByRole("navigation", { name: "Budget navigation" }),
-    ).getByRole("button", { name: /^Reimbursements/ }),
+    ).getByRole("link", { name: /^Reimbursements/ }),
   );
   expect(screen.getByText("$50.02", { selector: "dd" })).toBeTruthy();
 });
@@ -186,7 +186,7 @@ test("a rejected import also rolls back edits made to its preview instead of cre
       );
     },
   });
-  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  await user.click(screen.getByRole("link", { name: "All accounts" }));
   await user.click(
     screen.getByRole("button", { name: "Share Imported coffee" }),
   );
@@ -258,7 +258,7 @@ test("the island fully reimburses unequal imports to someone else without requir
       return { ...result, resolved: true };
     },
   });
-  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  await user.click(screen.getByRole("link", { name: "All accounts" }));
   await user.click(
     screen.getByRole("checkbox", { name: "Select Imported coffee" }),
   );
@@ -324,7 +324,7 @@ test("the selection island splits each uncategorized import and categorizes only
       return { ...result, resolved: true };
     },
   });
-  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  await user.click(screen.getByRole("link", { name: "All accounts" }));
   await user.click(
     screen.getByRole("checkbox", { name: "Select Imported coffee" }),
   );
@@ -371,7 +371,7 @@ test("the selection island splits each uncategorized import and categorizes only
   await user.click(
     within(
       screen.getByRole("navigation", { name: "Budget navigation" }),
-    ).getByRole("button", { name: /^Anna/ }),
+    ).getByRole("link", { name: /^Anna/ }),
   );
   const ledger = within(screen.getByRole("group", { name: "Anna ledger" }));
   expect(ledger.getByText("Imported coffee", { exact: true })).toBeTruthy();
@@ -406,7 +406,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
       return { ...result, resolved: true };
     },
   });
-  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  await user.click(screen.getByRole("link", { name: "All accounts" }));
   await user.click(
     screen.getByRole("checkbox", { name: "Select Imported coffee" }),
   );
@@ -496,7 +496,7 @@ test("sharing a saved purchase and a bank import keeps keyboard focus and needs 
       return { ...result, resolved: true };
     },
   });
-  await user.click(screen.getByRole("button", { name: "All accounts" }));
+  await user.click(screen.getByRole("link", { name: "All accounts" }));
   await user.click(screen.getByRole("checkbox", { name: "Select Market" }));
   await user.click(
     screen.getByRole("checkbox", { name: "Select Imported coffee" }),
@@ -572,7 +572,7 @@ test.each([
     await shell.user.click(
       within(
         screen.getByRole("navigation", { name: "Budget navigation" }),
-      ).getByRole("button", {
+      ).getByRole("link", {
         name: accountId === "card" ? /^Card/ : /^Checking/,
       }),
     );
@@ -613,7 +613,7 @@ test.each([
     await shell.user.click(
       within(
         screen.getByRole("navigation", { name: "Budget navigation" }),
-      ).getByRole("button", { name: /^Anna/ }),
+      ).getByRole("link", { name: /^Anna/ }),
     );
     const ledger = within(screen.getByRole("group", { name: "Anna ledger" }));
     expect(ledger.getByText("Imported coffee", { exact: true })).toBeTruthy();
@@ -682,7 +682,7 @@ test("the register offers Share for purchases and categorized refunds while bloc
         ],
       }),
   });
-  await shell.user.click(screen.getByRole("button", { name: "All accounts" }));
+  await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
   expect(
     screen.getByRole("button", { name: "Share Uncategorized purchase" }),
   ).toBeTruthy();

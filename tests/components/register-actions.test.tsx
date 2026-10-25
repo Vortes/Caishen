@@ -74,7 +74,7 @@ test.each([
         return { ...saved, resolved: true };
       },
     });
-    await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+    await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
     await shell.user.click(transactionRow("Coffee"));
     const actions = within(
       screen.getByRole("toolbar", { name: "Selected transactions" }),
@@ -157,7 +157,7 @@ test.each(["manual", "bank"] as const)(
       overview: () =>
         readyOverview({ imports: source === "bank" ? [bankImport()] : [] }),
     });
-    await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+    await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
     await shell.user.click(transactionRow("Coffee"));
     await shell.user.click(
       screen.getByRole("checkbox", { name: "Select Market" }),
@@ -188,9 +188,7 @@ test.each([
     const shell = await renderShell({
       overview: () => readyOverview({ imports: [bankImport(extra)] }),
     });
-    await shell.user.click(
-      screen.getByRole("button", { name: "All accounts" }),
-    );
+    await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
     expect(
       screen.queryByRole("checkbox", { name: "Select Coffee" }),
     ).toBeNull();
@@ -239,7 +237,7 @@ test.each([
     await shell.user.click(
       within(
         screen.getByRole("navigation", { name: "Budget navigation" }),
-      ).getByRole("button", { name: new RegExp(`^${accountName}`) }),
+      ).getByRole("link", { name: new RegExp(`^${accountName}`) }),
     );
     await shell.user.click(transactionRow("Transfer from Checking"));
     const actions = within(
@@ -271,7 +269,7 @@ test.each([
       );
       await findToast("Marked 1 transaction reviewed");
     }
-    await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+    await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
     const sentPayee = `Transfer to ${accountName}`;
     await shell.user.click(transactionRow(sentPayee));
     expect(
@@ -327,7 +325,7 @@ test.each([true, false])(
           ],
         }),
     });
-    await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+    await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
     await shell.user.click(transactionRow(pending ? "Coffee" : "Market"));
     await shell.user.keyboard("{Shift>}");
     await shell.user.click(transactionRow("Bakery"));

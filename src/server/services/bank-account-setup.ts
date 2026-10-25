@@ -74,10 +74,6 @@ export function bankAccountOpening(account: BankAccount): {
     );
   const balance = usdToCents(account.currentBalance);
   const openingBalance = kind === "credit" ? -balance : balance;
-  if (kind === "credit" && openingBalance > 0)
-    throw new Error(
-      "This credit card has a positive balance. Setting up overpaid credit cards is not supported yet.",
-    );
   return { kind, openingBalance: openingBalance === 0 ? 0 : openingBalance };
 }
 

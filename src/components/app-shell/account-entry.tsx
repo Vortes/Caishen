@@ -43,7 +43,7 @@ export function AccountEntry() {
       const facts = {
         name: name.trim(),
         kind,
-        openingBalance: kind === "credit" ? -Math.abs(amount) : amount,
+        openingBalance: kind === "credit" ? -amount : amount,
         date,
       };
       const previous = attempt.current;
@@ -138,7 +138,7 @@ export function AccountEntry() {
                 {kind === "tracking"
                   ? "Track an investment or other account outside your budget. Its balance is not available to assign."
                   : kind === "credit"
-                    ? "Enter the amount owed as a positive number."
+                    ? "Enter the amount owed as a positive number, or an overpaid credit as a negative number."
                     : "The opening balance becomes available to assign."}
               </p>
             </div>
