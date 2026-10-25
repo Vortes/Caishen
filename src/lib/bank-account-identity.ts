@@ -117,3 +117,49 @@ export function bankRecoveryCandidates(
     );
   });
 }
+
+type PersistentBankIdentity = {
+  accountId: string;
+  persistentAccountId?: string;
+};
+
+function byPersistentId(accounts: readonly PersistentBankIdentity[]) {
+  const groups = new Map<string, string[]>();
+  for (const account of accounts)
+    if (account.persistentAccountId)
+      groups.set(account.persistentAccountId, [
+        ...(groups.get(account.persistentAccountId) ?? []),
+        account.accountId,
+      ]);
+  return groups;
+}
+
+/**
+ * Rung 2 of the identity ladder: on one connection, an account the response
+ * names under a new Plaid id but the persistent id of a mapped account it no
+ * longer names is that account, and the old id is superseded. Two candidates
+ * on either side are left for the user; this never guesses.
+ */
+export function supersededBankAccounts(
+  previous: readonly PersistentBankIdentity[],
+  reported: readonly PersistentBankIdentity[],
+  accountMappings: Readonly<Record<string, unknown>>,
+): { from: string; to: string }[] {
+  const reportedIds = new Set(reported.map((account) => account.accountId));
+  const absent = byPersistentId(
+    previous.filter(
+      (account) =>
+        accountMappings[account.accountId] &&
+        !reportedIds.has(account.accountId),
+    ),
+  );
+  const arrived = byPersistentId(
+    reported.filter((account) => !accountMappings[account.accountId]),
+  );
+  return [...absent].flatMap(([persistentId, from]) => {
+    const to = arrived.get(persistentId);
+    return from.length === 1 && to?.length === 1
+      ? [{ from: from[0]!, to: to[0]! }]
+      : [];
+  });
+}

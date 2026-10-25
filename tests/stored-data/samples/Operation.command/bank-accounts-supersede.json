@@ -1,0 +1,11 @@
+{
+  "connectionId": "connection-sample",
+  "decisions": [
+    {
+      "rung": 2,
+      "from": "plaid-checking",
+      "to": "plaid-checking-v2",
+      "accountId": "bank:setup-sample:checking"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import {
   reconciliationResultSchema,
   savedEvidenceSchema,
 } from "../../src/server/storage/review-evidence";
+import { plaidLinkMetadataSchema } from "../../src/lib/plaid-link-metadata";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
 import { connectionColumnSchema } from "../../src/server/services/banks";
@@ -53,7 +54,12 @@ const jsonColumns: Record<string, ZodTypeAny> = {
 const rowTables: Record<string, ZodTypeAny> = Object.fromEntries(
   tableNames.map((table) => [`rows.${table}`, rowDataSchemas[table]]),
 );
-const columns = { ...jsonColumns, ...rowTables };
+// Shapes the browser sends that a deployed client may keep sending after the
+// server changes: Plaid Link's completion metadata. Fields are added only.
+const requestShapes: Record<string, ZodTypeAny> = {
+  "PlaidLink.metadata": plaidLinkMetadataSchema,
+};
+const columns = { ...jsonColumns, ...rowTables, ...requestShapes };
 
 const directory = new URL("../stored-data/", import.meta.url);
 type Contract = {

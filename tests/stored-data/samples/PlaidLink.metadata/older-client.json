@@ -1,0 +1,7 @@
+{
+  "institution": { "institution_id": "ins_3" },
+  "accounts": [
+    { "id": "plaid-checking", "name": "Total Checking", "mask": "0042" },
+    { "id": "plaid-card", "name": "Sapphire", "mask": null }
+  ]
+}

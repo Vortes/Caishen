@@ -67,7 +67,8 @@
         "accounts[].name",
         "accounts[].officialName",
         "accounts[].subtype",
-        "accounts[].type"
+        "accounts[].type",
+        "accounts[].persistentAccountId"
       ],
       "optional": [
         "accounts",
@@ -81,7 +82,8 @@
         "transactionStatus",
         "resolved.*.decidedAt",
         "resolved.*.ignored",
-        "resolved.*.transactionId"
+        "resolved.*.transactionId",
+        "accounts[].persistentAccountId"
       ],
       "nullable": [
         "records[].current.pendingTransactionId",
@@ -913,6 +915,29 @@
         "institutionId",
         "webhookCode",
         "webhookType"
+      ],
+      "values": {}
+    }
+  ],
+  "PlaidLink.metadata": [
+    {
+      "fields": [
+        "institution",
+        "institution.institution_id",
+        "accounts",
+        "accounts[].id",
+        "accounts[].name",
+        "accounts[].mask",
+        "accounts[].type",
+        "accounts[].subtype"
+      ],
+      "optional": ["accounts[].type", "accounts[].subtype"],
+      "nullable": [
+        "institution",
+        "accounts[].name",
+        "accounts[].mask",
+        "accounts[].type",
+        "accounts[].subtype"
       ],
       "values": {}
     }
