@@ -317,9 +317,14 @@ export const budgetRouter = createTRPCRouter({
       recordBankLinkExit(ctx.db, ctx.userId, input),
     ),
   plaidReconnect: protectedProcedure
-    .input(z.object({ connectionId: z.string().min(1).max(256) }))
+    .input(
+      z.object({
+        connectionId: z.string().min(1).max(256),
+        metadata: plaidLinkMetadataSchema.optional(),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      reconnectBank(ctx.db, ctx.userId, input.connectionId),
+      reconnectBank(ctx.db, ctx.userId, input.connectionId, input.metadata),
     ),
   disconnectBank: protectedProcedure
     .input(

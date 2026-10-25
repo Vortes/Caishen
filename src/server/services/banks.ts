@@ -636,17 +636,34 @@ export async function reconnectBank(
   db: Database,
   userId: string,
   connectionId: string,
+  metadata?: unknown,
 ): Promise<{ id: string; warning?: string }> {
+  // Update-mode Link completed in the browser before this refresh; the trail
+  // records that against the member's own connection whatever follows.
+  let completed: PlaidLinkMetadata | undefined;
+  let owned: string | null = null;
   try {
     const connection = await db.bankConnection.findFirst({
       where: { id: connectionId, clerkUserId: userId },
     });
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+    owned = connection.id;
+    if (metadata !== undefined)
+      completed = plaidLinkMetadataSchema.parse(metadata);
     requireConnected(connection);
     await refreshBankAccounts(db, userId, connection.id);
     return { id: connection.id };
   } catch (error) {
-    domainError(error);
+    return domainError(error);
+  } finally {
+    if (completed)
+      await recordBankLinkOutcome(db, {
+        userId,
+        method: "success",
+        connectionId: owned,
+        institutionId: completed.institution?.institution_id ?? null,
+        accountCount: completed.accounts.length,
+      });
   }
 }
 

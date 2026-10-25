@@ -2940,3 +2940,28 @@ void test("leaving Link early records an exit event with Plaid's error code and 
     ],
   );
 });
+
+void test("completing an update-mode Link records a success event against the reconnected bank", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json({ ...accountsResponse(), request_id: "req-accounts-3" }),
+  );
+  await reconnectBank(h.db, alice, h.connection.id, linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, detail }) => ({
+      method,
+      connectionId,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});

@@ -92,6 +92,7 @@ export function usePlaidLink() {
           const result = session.connectionId
             ? await operations.current.reconnect.mutateAsync({
                 connectionId: session.connectionId,
+                metadata,
               })
             : await operations.current.exchange.mutateAsync({
                 publicToken,
