@@ -1,0 +1,10 @@
+{
+  "postedImportIds": ["opening-import"],
+  "fingerprints": {
+    "opening-import": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "financialFingerprints": {
+    "opening-import": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "reviewImportIds": ["pending-import"]
+}

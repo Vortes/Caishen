@@ -1,3 +1,4 @@
+import { bankAccountRowsSelection } from "./bank-account-rows";
 import { createHash } from "node:crypto";
 import { composeChangeSets } from "~/domain/change-sets";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
@@ -75,6 +76,7 @@ async function settleOnce(db: Database, userId: string) {
     : Object.keys((ledger.state as Book).budgets);
   const [stored, profiles] = await Promise.all([
     db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
       where: { clerkUserId: { in: memberIds } },
     }),
     db.workspaceMember.findMany({
@@ -260,7 +262,8 @@ function unrecorded(
   read: Extract<Connections[number], { status: "ready" }>,
   budget: Budget,
 ): Candidate[] {
-  const { connection, state, mappings } = read;
+  const { connection, state } = read;
+  const mappings = read.importMappings ?? read.mappings;
   return state.records.flatMap((record): Candidate[] => {
     const mapping = mappings[record.current.providerAccountId];
     const account = budget.accounts.find(

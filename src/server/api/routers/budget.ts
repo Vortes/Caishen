@@ -1,3 +1,4 @@
+import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
 import {
   createPartnerInvite,
   checkPartnerInvite,
@@ -81,6 +82,7 @@ const savedBankConnections = (db: Database, userId: string) =>
       lastFailedUpdateAt: true,
       newAccountsAvailable: true,
       imports: true,
+      bankAccounts: bankAccountRowsSelection,
     },
   });
 

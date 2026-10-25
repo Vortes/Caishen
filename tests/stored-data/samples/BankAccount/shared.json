@@ -1,0 +1,22 @@
+{
+  "id": "bank-account-shared",
+  "connectionId": "connection-alice",
+  "providerAccountId": "provider-checking",
+  "persistentAccountId": "persistent-checking",
+  "name": "Checking",
+  "officialName": "Everyday Checking",
+  "mask": "1234",
+  "type": "depository",
+  "subtype": "checking",
+  "currency": "USD",
+  "currentBalance": 1234.56,
+  "availableBalance": 1200,
+  "balancesAsOf": "2026-10-25T12:00:00.000Z",
+  "status": "shared",
+  "historyComplete": true,
+  "firstSeenAt": "2026-10-25T12:00:00.000Z",
+  "lastSeenAt": "2026-10-25T12:00:00.000Z",
+  "supersededById": null,
+  "createdAt": "2026-10-25T12:00:00.000Z",
+  "updatedAt": "2026-10-25T12:00:00.000Z"
+}

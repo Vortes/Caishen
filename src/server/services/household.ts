@@ -1,3 +1,7 @@
+import {
+  bankAccountRowsSelection,
+  readBankAccountRows,
+} from "./bank-account-rows";
 import { TRPCError } from "@trpc/server";
 import {
   applyChangeSet,
@@ -146,11 +150,18 @@ async function ensureBankReferencesKept(
   const linked = (
     await db.bankConnection.findMany({
       where: { clerkUserId: actorId },
-      select: { accountMappings: true },
+      select: {
+        id: true,
+        clerkUserId: true,
+        accountMappings: true,
+        bankAccounts: bankAccountRowsSelection,
+      },
     })
   ).some((connection) =>
     Object.values(
-      bankMappingsSchema.safeParse(connection.accountMappings).data ?? {},
+      readBankAccountRows(connection)?.mappings ??
+        bankMappingsSchema.safeParse(connection.accountMappings).data ??
+        {},
     ).some((mapping) => accounts.has(mapping.accountId)),
   );
   const matched = [
@@ -211,11 +222,18 @@ async function commandChangeSet(
   if (command.type === "account.reconcile") {
     const connections = await db.bankConnection.findMany({
       where: { clerkUserId: actorId },
-      select: { id: true, accountMappings: true },
+      select: {
+        id: true,
+        clerkUserId: true,
+        accountMappings: true,
+        bankAccounts: bankAccountRowsSelection,
+      },
     });
     const imports = readImportStates(household.rows, actorId);
     for (const connection of connections) {
-      const mappings = bankMappingsSchema.parse(connection.accountMappings);
+      const mappings =
+        readBankAccountRows(connection)?.importMappings ??
+        bankMappingsSchema.parse(connection.accountMappings);
       if (
         !Object.values(mappings).some(
           (mapping) => mapping.accountId === command.accountId,
