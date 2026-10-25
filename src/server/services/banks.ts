@@ -3,9 +3,30 @@ import { MANUAL_MATCH_DAYS } from "~/domain/bank-import-balances";
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { composeChangeSets } from "~/domain/change-sets";
-import { executeWithChanges, type Budget, type Command } from "~/domain/engine";
-import type { ChangeSet } from "~/domain/rows";
+import { plaidLinkMetadataSchema } from "~/lib/plaid-link-metadata";
+import {
+  possibleBankAccount,
+  sameBankAccount,
+} from "~/lib/bank-account-identity";
+import {
+  applyChangeSet,
+  composeChangeSets,
+  rowsIn,
+} from "~/domain/change-sets";
+import {
+  executeWithChanges,
+  checkRestoredLedger,
+  isCleared,
+  projectBook,
+  type Budget,
+  type Command,
+} from "~/domain/engine";
+import {
+  rowOwner,
+  rowsToPersonalLedger,
+  tombstone,
+  type ChangeSet,
+} from "~/domain/rows";
 import type { AccountingState } from "~/domain/shared-ledger";
 import {
   rememberedCategory,
@@ -86,6 +107,7 @@ import {
 } from "./partner-imports";
 
 const connectionDetailsShape = {
+  disconnectedAt: z.string().datetime().optional(),
   accounts: z.array(bankAccountSchema).max(1000).default([]),
   institutionId: z.string().max(256).nullable().default(null),
   institutionName: z.string().max(1024).nullable().default(null),
@@ -151,6 +173,7 @@ function connectionDetails(column: ConnectionDetails) {
     synchronizedAccountIds,
   } = column;
   return {
+    ...(column.disconnectedAt ? { disconnectedAt: column.disconnectedAt } : {}),
     accounts,
     institutionId,
     institutionName,
@@ -256,6 +279,22 @@ function connectionMappings(connections: Omit<StoredConnection, "imports">[]) {
   });
 }
 
+function overlappingBankAccount(
+  incoming: Pick<ConnectionDetails, "institutionId" | "accounts">,
+  existing: Pick<ConnectionDetails, "institutionId" | "accounts">,
+) {
+  return incoming.accounts.find((account) =>
+    existing.accounts.some((saved) =>
+      sameBankAccount(
+        account,
+        saved,
+        incoming.institutionId,
+        existing.institutionId,
+      ),
+    ),
+  );
+}
+
 export function bankAccountDetails(value: unknown) {
   return connectionDetails(connectionColumnSchema.parse(value));
 }
@@ -270,6 +309,20 @@ function client() {
   });
 }
 
+function requireConnected(connection: StoredConnection) {
+  const details = readColumn(
+    connection,
+    "BankConnection.imports",
+    connectionColumnSchema,
+    connection.imports,
+  );
+  if (!details) throw connectionMaintenance();
+  if (details.disconnectedAt)
+    throw new Error(
+      "This bank is disconnected. Choose Link again to authorize a new connection.",
+    );
+}
+
 export async function linkBankToken(
   db: Database,
   userId: string,
@@ -282,6 +335,7 @@ export async function linkBankToken(
         })
       : null;
     if (connectionId && !connection) throw new TRPCError({ code: "NOT_FOUND" });
+    if (connection) requireConnected(connection);
     // Verify token encryption is configured before starting a bank connection.
     encryptBankToken("configuration-check", userId);
     const token = await client().createLinkToken(
@@ -304,6 +358,7 @@ export async function exchangeBankToken(
   db: Database,
   userId: string,
   publicToken: string,
+  metadata: unknown,
 ): Promise<{ id: string; warning?: string }> {
   try {
     if (!(await readHouseholdRevision(db, userId)))
@@ -312,6 +367,47 @@ export async function exchangeBankToken(
         message: "Create your personal budget first.",
       });
     encryptBankToken("configuration-check", userId);
+    // Check Link metadata before exchange: exchanging a duplicate creates a
+    // second Plaid Item, even if budget-account setup later refuses it.
+    const linked = plaidLinkMetadataSchema.parse(metadata);
+    if (!linked.institution)
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Plaid did not identify the bank. Try connecting again.",
+      });
+    const connections = await db.bankConnection.findMany({
+      where: { clerkUserId: userId },
+    });
+    for (const saved of connections) {
+      const details = readColumn(
+        saved,
+        "BankConnection.imports",
+        connectionColumnSchema,
+        saved.imports,
+      );
+      if (!details) throw connectionMaintenance();
+      if (details.disconnectedAt) continue;
+      if (details.institutionId !== linked.institution.institution_id) continue;
+      if (
+        linked.accounts.some((account) =>
+          details.accounts.some(
+            (existing) =>
+              account.id === existing.accountId ||
+              !account.name?.trim() ||
+              !account.mask?.trim() ||
+              !existing.mask?.trim() ||
+              (account.name.trim().toLowerCase() ===
+                existing.name.trim().toLowerCase() &&
+                account.mask === existing.mask),
+          ),
+        )
+      )
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "This bank account is already connected. Use Choose accounts on the existing bank to share additional accounts.",
+        });
+    }
     const result = await client().exchangePublicToken(publicToken);
     const existing = await db.bankConnection.findUnique({
       where: { itemId: result.itemId },
@@ -365,6 +461,7 @@ async function refreshBankAccounts(
         where: { id: connectionId, clerkUserId: userId },
       });
       if (!fresh) throw new TRPCError({ code: "NOT_FOUND" });
+      requireConnected(fresh);
       const column = readColumn(
         fresh,
         "BankConnection.imports",
@@ -400,6 +497,7 @@ export async function reconnectBank(
       where: { id: connectionId, clerkUserId: userId },
     });
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+    requireConnected(connection);
     await refreshBankAccounts(
       db,
       userId,
@@ -410,6 +508,390 @@ export async function reconnectBank(
   } catch (error) {
     domainError(error);
   }
+}
+
+export async function disconnectBank(
+  db: Database,
+  userId: string,
+  input: {
+    connectionId: string;
+    operationId: string;
+    expectedRevision: number;
+  },
+): Promise<OperationResult> {
+  try {
+    const { connection, opened, state } = await openConnection(
+      db,
+      userId,
+      input.connectionId,
+    );
+    const submitted = {
+      type: "bank.disconnect",
+      connectionId: input.connectionId,
+    };
+    const previous = await findOperation(
+      db,
+      opened.household.workspaceId,
+      input.operationId,
+    );
+    if (previous) return earlierResult(previous, userId, submitted, submitted);
+    if (opened.requestRevision !== input.expectedRevision)
+      throw refusal(
+        "conflict",
+        "Your budget changed. Refresh before disconnecting.",
+        opened.household.revision,
+      );
+    if (!state.disconnectedAt)
+      await client().removeItem(
+        decryptBankToken(connection.encryptedToken, userId),
+      );
+    return await writeServerOperation(db, opened, {
+      actorId: userId,
+      operationId: input.operationId,
+      source: "user",
+      type: "bank.disconnect",
+      submitted,
+      changeSet: composeChangeSets(input.operationId, []),
+      alongside: async (tx) => {
+        const saved = await tx.bankConnection.updateMany({
+          where: { id: connection.id, updatedAt: connection.updatedAt },
+          data: {
+            imports: detailsColumn(connection.imports, {
+              ...state,
+              disconnectedAt: state.disconnectedAt ?? new Date().toISOString(),
+            }),
+            encryptedToken: "",
+            error: null,
+          },
+        });
+        if (saved.count !== 1)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Your bank changed. Try disconnecting again.",
+          });
+      },
+    });
+  } catch (error) {
+    if (error instanceof RevisionConflictError)
+      throw refusal(
+        "conflict",
+        "Your budget changed. Refresh before disconnecting.",
+        error.revision,
+      );
+    domainError(error);
+  }
+}
+
+const duplicateRepairSelectionSchema = z.object({
+  retiredConnectionId: z.string().min(1).max(256),
+  replacementConnectionId: z.string().min(1).max(256),
+});
+type DuplicateRepairSelection = z.infer<typeof duplicateRepairSelectionSchema>;
+
+/** Administrative repair for duplicate starting balances that have never been used. */
+async function prepareDuplicateBankRepair(
+  db: Database,
+  userId: string,
+  selection: DuplicateRepairSelection,
+) {
+  selection = duplicateRepairSelectionSchema.parse(selection);
+  if (selection.retiredConnectionId === selection.replacementConnectionId)
+    throw new Error("Choose two different connections.");
+  const opened = await openHousehold(db, userId);
+  if (opened?.ledger.status !== "ready") throw budgetMaintenance();
+  const connections = await db.bankConnection.findMany({
+    where: { clerkUserId: userId },
+  });
+  const imports = readImportStates(opened.household.rows, userId);
+  const read = (id: string) => {
+    const connection = connections.find((item) => item.id === id);
+    if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+    return readyConnection(connection, imports);
+  };
+  const retired = read(selection.retiredConnectionId);
+  const replacement = read(selection.replacementConnectionId);
+  if (
+    !retired.state.institutionId ||
+    retired.state.institutionId !== replacement.state.institutionId ||
+    retired.connection.createdAt >= replacement.connection.createdAt ||
+    replacement.state.disconnectedAt ||
+    replacement.state.transactionStatus !== "HISTORICAL_UPDATE_COMPLETE" ||
+    !replacement.connection.lastSyncedAt
+  )
+    throw new Error(
+      "Choose the newer, fully synchronized connection to the same bank.",
+    );
+  const budget = opened.ledger.budget;
+  const mappings = structuredClone(replacement.mappings);
+  const accounts: {
+    name: string;
+    keepAccountId: string;
+    removeAccountId: string;
+  }[] = [];
+  const removedIds = new Set<string>();
+  for (const [providerId, mapping] of Object.entries(retired.mappings)) {
+    const source = retired.state.accounts.find(
+      (account) => account.accountId === providerId,
+    );
+    const candidates = source
+      ? replacement.state.accounts.filter((account) =>
+          sameBankAccount(
+            source,
+            account,
+            retired.state.institutionId,
+            replacement.state.institutionId,
+          ),
+        )
+      : [];
+    const target = candidates.length === 1 ? candidates[0] : undefined;
+    const targetMapping = target && mappings[target.accountId];
+    if (
+      target &&
+      !replacement.state.synchronizedAccountIds.includes(target.accountId)
+    )
+      throw new Error(
+        "The replacement needs a matching balance and history snapshot before repair.",
+      );
+    const keep = budget.accounts.find(
+      (account) => account.id === mapping.accountId,
+    );
+    const remove = budget.accounts.find(
+      (account) => account.id === targetMapping?.accountId,
+    );
+    if (
+      !source ||
+      !target ||
+      !targetMapping ||
+      !keep ||
+      !remove ||
+      keep.id === remove.id ||
+      removedIds.has(remove.id) ||
+      !["cash", "credit"].includes(keep.kind) ||
+      keep.kind !== remove.kind
+    )
+      throw new Error(
+        "Every retired bank account must match exactly one separate duplicate budget account.",
+      );
+    if (
+      source.currentBalance !== target.currentBalance ||
+      keep.openingBalance !== remove.openingBalance ||
+      bankAccountOpening(target).openingBalance !== keep.openingBalance
+    )
+      throw new Error(
+        "The duplicate starting balances disagree. Review these accounts manually.",
+      );
+    if (
+      budget.transactions.some((transaction) =>
+        [keep.id, remove.id].includes(transaction.accountId),
+      ) ||
+      remove.reconciled
+    )
+      throw new Error(
+        "This account has transaction or reconciliation history. Automatic duplicate repair is not safe.",
+      );
+    if (
+      connections.some(
+        (connection) =>
+          ![retired.connection.id, replacement.connection.id].includes(
+            connection.id,
+          ) &&
+          Object.values(mappingsSchema.parse(connection.accountMappings)).some(
+            (saved) => [keep.id, remove.id].includes(saved.accountId),
+          ),
+      )
+    )
+      throw new Error("Another bank connection uses these accounts.");
+    removedIds.add(remove.id);
+    accounts.push({
+      name: keep.name,
+      keepAccountId: keep.id,
+      removeAccountId: remove.id,
+    });
+    mappings[target.accountId] = { ...targetMapping, accountId: keep.id };
+  }
+  if (!accounts.length)
+    throw new Error("There are no duplicate accounts to repair.");
+  const affected = new Set(
+    accounts.flatMap((account) => [
+      account.keepAccountId,
+      account.removeAccountId,
+    ]),
+  );
+  if (
+    bankInboxItems([retired, replacement], budget, opened.ledger.state).some(
+      (item) => affected.has(item.accountId ?? item.loanId ?? ""),
+    )
+  )
+    throw new Error(
+      "Review outstanding bank activity before repairing these duplicates.",
+    );
+  if (
+    await db.reviewEvidence.count({
+      where: { clerkUserId: userId, accountId: { in: [...removedIds] } },
+    })
+  )
+    throw new Error(
+      "A duplicate account has review evidence. Preserve it with a manual repair.",
+    );
+  const categoryIds = new Set(
+    budget.categories
+      .filter((category) => removedIds.has(category.pairedAccountId ?? ""))
+      .map((category) => category.id),
+  );
+  const rows = rowsIn(opened.household.rows).filter((row) => !row.deleted);
+  const before = rows.filter(
+    (row) =>
+      rowOwner(row) === userId &&
+      ((row.table === "account" &&
+        row.data !== null &&
+        removedIds.has(row.data.id)) ||
+        (row.table === "category" &&
+          row.data !== null &&
+          categoryIds.has(row.data.id)) ||
+        (row.table === "bankImport" &&
+          row.data?.connectionId === retired.connection.id)),
+  );
+  const removedRows = new Set(before);
+  const referencesRemoved = (value: unknown): boolean =>
+    typeof value === "string"
+      ? removedIds.has(value) || categoryIds.has(value)
+      : Array.isArray(value)
+        ? value.some(referencesRemoved)
+        : value !== null &&
+          typeof value === "object" &&
+          Object.values(value).some(referencesRemoved);
+  if (rows.some((row) => !removedRows.has(row) && referencesRemoved(row.data)))
+    throw new Error(
+      "A duplicate account or payment category has budget activity. Automatic repair is not safe.",
+    );
+  const changeSet: ChangeSet = {
+    operationId: "preview",
+    revision: 0,
+    before,
+    after: before.map((row) => tombstone(row)),
+  };
+  checkRestoredLedger(
+    rowsToPersonalLedger(
+      rowsIn(applyChangeSet(opened.household.rows, changeSet)),
+      userId,
+    ),
+  );
+  const plan = {
+    ...selection,
+    revision: opened.household.revision,
+    accounts,
+    retiredImportCount: before.filter((row) => row.table === "bankImport")
+      .length,
+    removedCategoryCount: categoryIds.size,
+    hash: commandHash({
+      userId,
+      selection,
+      revision: opened.household.revision,
+      connections: [retired, replacement].map(({ connection }) => ({
+        id: connection.id,
+        updatedAt: connection.updatedAt.toISOString(),
+        imports: connection.imports,
+        accountMappings: connection.accountMappings,
+      })),
+      accounts,
+    }),
+  };
+  return { plan, opened, retired, replacement, mappings, changeSet };
+}
+
+export async function previewDuplicateBankRepair(
+  db: Database,
+  userId: string,
+  selection: DuplicateRepairSelection,
+) {
+  return (await prepareDuplicateBankRepair(db, userId, selection)).plan;
+}
+
+export async function repairDuplicateBankAccounts(
+  db: Database,
+  userId: string,
+  input: DuplicateRepairSelection & {
+    operationId: string;
+    expectedPlanHash: string;
+  },
+): Promise<OperationResult> {
+  const parsed = duplicateRepairSelectionSchema
+    .extend({
+      operationId: z.string().uuid(),
+      expectedPlanHash: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .parse(input);
+  const household = await readHouseholdRevision(db, userId);
+  if (!household) throw budgetMaintenance();
+  const submitted = { type: "bank.duplicates.repair", ...parsed };
+  const previous = await findOperation(
+    db,
+    household.workspaceId,
+    parsed.operationId,
+  );
+  if (previous) return earlierResult(previous, userId, submitted, submitted);
+  const prepared = await prepareDuplicateBankRepair(db, userId, parsed);
+  if (prepared.plan.hash !== parsed.expectedPlanHash)
+    throw new Error(
+      "The repair plan changed. Preview it again before applying.",
+    );
+  const { retired, replacement, opened, mappings, changeSet } = prepared;
+  const plaid = client();
+  const live = await plaid.getAccounts(
+    decryptBankToken(replacement.connection.encryptedToken, userId),
+  );
+  if (
+    live.institutionId !== replacement.state.institutionId ||
+    Object.keys(replacement.mappings).some((providerId) => {
+      const saved = replacement.state.accounts.find(
+        (account) => account.accountId === providerId,
+      );
+      const current = live.accounts.find(
+        (account) => account.accountId === providerId,
+      );
+      if (!saved) return true;
+      if (!current) return true;
+      return (
+        saved.currentBalance !== current.currentBalance ||
+        saved.currency !== current.currency
+      );
+    })
+  )
+    throw new Error(
+      "The replacement bank accounts changed. Sync and preview the repair again.",
+    );
+  // Revocation happens first: if the database write conflicts, retrying
+  // /item/remove is safe and the credential is still available for cleanup.
+  await plaid.removeItem(
+    decryptBankToken(retired.connection.encryptedToken, userId),
+  );
+  return writeServerOperation(db, opened, {
+    actorId: userId,
+    operationId: parsed.operationId,
+    source: "user",
+    type: submitted.type,
+    submitted,
+    changeSet,
+    alongside: async (tx) => {
+      const saved = await tx.bankConnection.updateMany({
+        where: {
+          id: replacement.connection.id,
+          clerkUserId: userId,
+          updatedAt: replacement.connection.updatedAt,
+        },
+        data: { accountMappings: jsonValue(mappings) },
+      });
+      const removed = await tx.bankConnection.deleteMany({
+        where: {
+          id: retired.connection.id,
+          clerkUserId: userId,
+          updatedAt: retired.connection.updatedAt,
+        },
+      });
+      if (saved.count !== 1 || removed.count !== 1)
+        throw new Error("A bank connection changed. Preview the repair again.");
+    },
+  });
 }
 
 export async function bankInbox(db: Database, userId: string) {
@@ -616,6 +1098,10 @@ export async function setupBankAccounts(
       input.connectionId,
     );
     const { household, ledger } = opened;
+    if (state.disconnectedAt)
+      throw new Error(
+        "This bank is disconnected. Link it again before setting up accounts.",
+      );
     const previous = await findOperation(
       db,
       household.workspaceId,
@@ -667,11 +1153,42 @@ export async function setupBankAccounts(
         message:
           "Update your bank accounts before setup so today's opening balances include the latest activity.",
       });
-    const allMappings = connectionMappings(
-      await db.bankConnection.findMany({ where: { clerkUserId: userId } }),
+    const connections = await db.bankConnection.findMany({
+      where: { clerkUserId: userId },
+    });
+    const allMappings = connectionMappings(connections);
+    const remainingMappings = allMappings.map((mapping) => ({ ...mapping }));
+    const details = connections.map((saved) => {
+      const parsed = readColumn(
+        saved,
+        "BankConnection.imports",
+        connectionColumnSchema,
+        saved.imports,
+      );
+      if (!parsed) throw connectionMaintenance();
+      return parsed;
+    });
+    const activeMappings = allMappings.filter(
+      (_, index) => !details[index]!.disconnectedAt,
     );
+    const retired = new Set<number>();
+    const linkedAccounts = connections.map((saved, index) => {
+      const details = readColumn(
+        saved,
+        "BankConnection.imports",
+        connectionColumnSchema,
+        saved.imports,
+      );
+      return {
+        institutionId: details?.institutionId ?? null,
+        accounts: (details?.disconnectedAt
+          ? []
+          : (details?.accounts ?? [])
+        ).filter((account) => allMappings[index]![account.accountId]),
+      };
+    });
     const usedAccountIds = new Set(
-      allMappings.flatMap((saved) =>
+      activeMappings.flatMap((saved) =>
         Object.values(saved).map((mapping) => mapping.accountId),
       ),
     );
@@ -696,16 +1213,139 @@ export async function setupBankAccounts(
           code: "PRECONDITION_FAILED",
           message: `The bank is still preparing a matching balance and transaction history for ${provider.name}. Update accounts and try again before adding it.`,
         });
-      if (allMappings.some((saved) => saved[selected.providerAccountId]))
+      if (activeMappings.some((saved) => saved[selected.providerAccountId]))
         throw new Error(
           "This bank account is already added. Refresh to see its existing account.",
         );
+      if (
+        linkedAccounts.some((saved) =>
+          overlappingBankAccount(
+            { institutionId: state.institutionId, accounts: [provider] },
+            saved,
+          ),
+        )
+      )
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "This bank account is already added through another connection. Use Choose accounts on the existing bank instead.",
+        });
       if (provider.currentBalance !== selected.expectedBalance)
         throw new TRPCError({
           code: "CONFLICT",
           message:
             "The bank balance changed. Refresh and review the latest balance before adding this account.",
         });
+      const recognized = details.flatMap((saved, index) =>
+        !saved.disconnectedAt
+          ? []
+          : saved.accounts.flatMap((account) => {
+              const mapping = allMappings[index]![account.accountId];
+              return mapping &&
+                possibleBankAccount(
+                  provider,
+                  account,
+                  state.institutionId,
+                  saved.institutionId,
+                )
+                ? [mapping.accountId]
+                : [];
+            }),
+      );
+      if (
+        recognized.length &&
+        (!selected.existingAccountId ||
+          !recognized.includes(selected.existingAccountId))
+      )
+        throw new Error(
+          "Link this bank account to its existing budget account to keep its history.",
+        );
+      const sources = allMappings.flatMap((saved, index) =>
+        !details[index]!.disconnectedAt
+          ? []
+          : Object.entries(saved).flatMap(([providerId, mapping]) =>
+              mapping.accountId === selected.existingAccountId
+                ? [{ index, providerId }]
+                : [],
+            ),
+      );
+      if (sources.length) {
+        const existing = budget.accounts.find(
+          (account) => account.id === selected.existingAccountId,
+        );
+        if (!existing || !["cash", "credit"].includes(existing.kind))
+          throw new Error(
+            "Connection recovery currently supports cash accounts and credit cards.",
+          );
+        const opening = bankAccountOpening(provider);
+        if (
+          existing.kind !== opening.kind ||
+          sources.some(
+            ({ index }) =>
+              !state.institutionId ||
+              details[index]!.institutionId !== state.institutionId,
+          )
+        )
+          throw new Error("Choose the matching account from the same bank.");
+        if (usedAccountIds.has(existing.id))
+          throw new Error("This budget account is already linked to a bank.");
+        const imports = readImportStates(opened.household.rows, userId);
+        const outstanding = bankInboxItems(
+          [...new Set(sources.map(({ index }) => index))].map((index) =>
+            readyConnection(connections[index]!, imports),
+          ),
+          budget,
+          ledger.state,
+        );
+        if (outstanding.some((item) => item.accountId === existing.id))
+          throw new Error(
+            `Review the remaining bank activity for ${existing.name} before linking it again.`,
+          );
+        const cleared = projectBook(
+          ledger.state,
+          userId,
+          today.slice(0, 7),
+        ).accounts.find((account) => account.id === existing.id)!.cleared;
+        if (
+          existing.reconciled?.date !== today ||
+          existing.reconciled.balance !== opening.openingBalance ||
+          cleared !== opening.openingBalance ||
+          budget.transactions.some(
+            (transaction) =>
+              transaction.accountId === existing.id &&
+              !transaction.removed &&
+              !isCleared(transaction),
+          )
+        )
+          throw new Error(
+            `Reconcile ${existing.name} to today's bank balance and resolve uncleared transactions before linking it again. Its existing balance and history will be kept.`,
+          );
+        if (
+          bankSetupDate(budget.settings.timezone, connection.lastSyncedAt) !==
+            today ||
+          !state.synchronizedAccountIds.includes(provider.accountId) ||
+          state.transactionStatus !== "HISTORICAL_UPDATE_COMPLETE"
+        )
+          throw new Error(
+            "Update your bank accounts and wait for the complete history before linking this existing account.",
+          );
+        mappings[provider.accountId] = {
+          accountId: existing.id,
+          startDate: today,
+          openingSnapshot: openingSnapshot(
+            state.records,
+            provider.accountId,
+            state.reviews,
+          ),
+        };
+        for (const { index, providerId } of sources) {
+          delete remainingMappings[index]![providerId];
+          retired.add(index);
+        }
+        usedAccountIds.add(existing.id);
+        accountIds.push(existing.id);
+        continue;
+      }
       if (provider.type === "loan") {
         if (provider.currency !== "USD")
           throw new Error("Only bank accounts in USD are supported.");
@@ -830,6 +1470,18 @@ export async function setupBankAccounts(
       submitted: submittedOperation,
       changeSet: composeChangeSets(input.operationId, changeSets),
       alongside: async (tx) => {
+        for (const index of retired) {
+          const source = connections[index]!;
+          const saved = await tx.bankConnection.updateMany({
+            where: { id: source.id, updatedAt: source.updatedAt },
+            data: { accountMappings: jsonValue(remainingMappings[index]!) },
+          });
+          if (saved.count !== 1)
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "The previous bank link changed. Refresh and try again.",
+            });
+        }
         const saved = await tx.bankConnection.updateMany({
           where: { id: connection.id, updatedAt: connection.updatedAt },
           data: { accountMappings: jsonValue(mappings) },
@@ -869,7 +1521,7 @@ export async function syncBanks(db: Database, userId: string) {
     updated = 0;
   for (const connection of connections) {
     const read = readBankConnection(connection, readable);
-    if (read.status === "maintenance") continue;
+    if (read.status === "maintenance" || read.state.disconnectedAt) continue;
     try {
       const plaid = client();
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
@@ -1004,6 +1656,7 @@ async function applyBankUpdate(
     fresh,
     readImportStates(opened.household.rows, userId),
   );
+  if (old.disconnectedAt) return { imported: 0, updated: 0 };
   const plan = applyTransactionSync(old.records, delta, fresh.id);
   const changedAccounts = new Set(
     [
@@ -1223,7 +1876,7 @@ async function applyBankUpdate(
   ]);
   const saveConnection = async (tx: Prisma.TransactionClient | Database) => {
     const saved = await tx.bankConnection.updateMany({
-      where: { id: fresh.id, cursor: fresh.cursor },
+      where: { id: fresh.id, cursor: fresh.cursor, updatedAt: fresh.updatedAt },
       data: {
         imports: detailsColumn(fresh.imports, state),
         cursor: delta.nextCursor,

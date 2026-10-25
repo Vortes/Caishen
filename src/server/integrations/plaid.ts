@@ -239,6 +239,7 @@ export function createPlaidClient(
             ...(accessToken !== undefined
               ? {
                   access_token: z.string().min(1).max(2048).parse(accessToken),
+                  update: { account_selection_enabled: true },
                 }
               : { products: ["transactions"] }),
             ...(redirectUri ? { redirect_uri: redirectUri } : {}),
