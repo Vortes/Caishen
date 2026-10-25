@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "./bank-account-rows";
 import { bankAccountRowsSelection } from "./bank-account-rows";
 import { createHash } from "node:crypto";
 import { composeChangeSets } from "~/domain/change-sets";
@@ -75,10 +76,13 @@ async function settleOnce(db: Database, userId: string) {
     ? [userId]
     : Object.keys((ledger.state as Book).budgets);
   const [stored, profiles] = await Promise.all([
-    db.bankConnection.findMany({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { clerkUserId: { in: memberIds } },
-    }),
+    withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { clerkUserId: { in: memberIds } },
+      }),
+    ),
     db.workspaceMember.findMany({
       where: { workspaceId: household.workspaceId },
       select: { clerkUserId: true, user: { select: { firstName: true } } },

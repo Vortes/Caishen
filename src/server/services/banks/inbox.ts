@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Inbox projection: validates connection metadata and provider rows, then presents their account and import state to callers. It produces maintenance results for unreadable connections and the public inbox without writing budget data. */
 
 import {
@@ -28,6 +29,7 @@ import {
   bankConnectionStatusSchema,
 } from "../bank-connection-status";
 import {
+  type BankAccountSuccessor,
   readBankAccountRows,
   bankAccountRowsSelection,
 } from "../bank-account-rows";
@@ -73,6 +75,7 @@ export type StoredConnection = {
   lastFailedUpdateAt?: Date | null;
   newAccountsAvailable?: boolean;
   bankAccounts?: Prisma.BankAccountGetPayload<{ include: { link: true } }>[];
+  bankAccountSuccessors?: BankAccountSuccessor[];
 };
 
 /** The connection's status and what Plaid last reported about the Item. */
@@ -306,10 +309,13 @@ export function bankAccountDetails(value: unknown) {
 export async function bankInbox(db: Database, userId: string) {
   await migrateBankAccounts(db, userId);
   const [connections, opened] = await Promise.all([
-    db.bankConnection.findMany({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { clerkUserId: userId },
-    }),
+    withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { clerkUserId: userId },
+      }),
+    ),
     openHousehold(db, userId),
   ]);
   if (opened && opened.ledger.status !== "ready") throw budgetMaintenance();

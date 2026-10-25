@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Connection lifecycle: creates and reviews Link sessions, exchanges tokens, refreshes authorization, and disconnects a login. It owns provider credentials and connection health; account identity and budget links are delegated to the account module. */
 
 import { IntegrationError } from "~/server/integrations/validation";
@@ -77,10 +78,13 @@ export async function linkBankToken(
 ) {
   try {
     const connection = connectionId
-      ? await db.bankConnection.findFirst({
-          include: { bankAccounts: bankAccountRowsSelection },
-          where: { id: connectionId, clerkUserId: userId },
-        })
+      ? await withBankAccountSuccessors(
+          db,
+          db.bankConnection.findFirst({
+            include: { bankAccounts: bankAccountRowsSelection },
+            where: { id: connectionId, clerkUserId: userId },
+          }),
+        )
       : null;
     if (connectionId && !connection) throw new TRPCError({ code: "NOT_FOUND" });
     if (connection) {
@@ -94,12 +98,16 @@ export async function linkBankToken(
     const webhook = process.env.APP_BASE_URL
       ? new URL("/api/webhooks/plaid", process.env.APP_BASE_URL).toString()
       : undefined;
-    const token = await client(db, userId, connection?.id).createLinkToken(
+    const plaid = client(db, userId, connection?.id);
+    const accessToken = connection
+      ? decryptBankToken(connection.encryptedToken, userId)
+      : undefined;
+    // Link's webhook field has no effect on an existing Item.
+    if (accessToken && webhook) await plaid.updateWebhook(accessToken, webhook);
+    const token = await plaid.createLinkToken(
       userId,
-      connection
-        ? decryptBankToken(connection.encryptedToken, userId)
-        : undefined,
-      webhook,
+      accessToken,
+      connection ? undefined : webhook,
     );
     return {
       ...token,
@@ -191,10 +199,13 @@ export async function reviewBankLink(
 ) {
   const linked = plaidLinkMetadataSchema.parse(metadata);
   await migrateBankAccounts(db, userId);
-  const connections = await db.bankConnection.findMany({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { clerkUserId: userId },
-  });
+  const connections = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { clerkUserId: userId },
+    }),
+  );
   const review = reviewBankLinkConnections(connections, linked);
   if (recordCompletion)
     await recordBankLinkOutcome(db, {
@@ -248,10 +259,13 @@ export async function exchangeBankToken(
             message:
               "Another bank connection is being saved. Wait for it to finish and try again.",
           });
-        const connections = await tx.bankConnection.findMany({
-          include: { bankAccounts: bankAccountRowsSelection },
-          where: { clerkUserId: userId },
-        });
+        const connections = await withBankAccountSuccessors(
+          tx,
+          tx.bankConnection.findMany({
+            include: { bankAccounts: bankAccountRowsSelection },
+            where: { clerkUserId: userId },
+          }),
+        );
         const review = reviewBankLinkConnections(connections, linked);
         if (reviewId && reviewId !== review.reviewId)
           throw new TRPCError({
@@ -277,10 +291,13 @@ export async function exchangeBankToken(
         const result = await client(db, userId).exchangePublicToken(
           publicToken,
         );
-        const existing = await tx.bankConnection.findUnique({
-          include: { bankAccounts: bankAccountRowsSelection },
-          where: { itemId: result.itemId },
-        });
+        const existing = await withBankAccountSuccessors(
+          tx,
+          tx.bankConnection.findUnique({
+            include: { bankAccounts: bankAccountRowsSelection },
+            where: { itemId: result.itemId },
+          }),
+        );
         if (existing && existing.clerkUserId !== userId)
           throw new TRPCError({
             code: "CONFLICT",
@@ -374,10 +391,13 @@ async function refreshBankAccounts(
   connectionId: string,
 ) {
   await migrateBankAccounts(db, userId);
-  const requested = await db.bankConnection.findFirst({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { id: connectionId, clerkUserId: userId },
-  });
+  const requested = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findFirst({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { id: connectionId, clerkUserId: userId },
+    }),
+  );
   if (!requested) throw new TRPCError({ code: "NOT_FOUND" });
   requireConnected(requested);
   const accounts = await client(db, userId, requested.id).getAccounts(
@@ -463,10 +483,13 @@ export async function reconnectBank(
   let completed: PlaidLinkMetadata | undefined;
   let owned: string | null = null;
   try {
-    const connection = await db.bankConnection.findFirst({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { id: connectionId, clerkUserId: userId },
-    });
+    const connection = await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findFirst({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { id: connectionId, clerkUserId: userId },
+      }),
+    );
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
     owned = connection.id;
     if (metadata !== undefined)

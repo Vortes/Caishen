@@ -307,6 +307,12 @@ export function createPlaidClient(
           throw error;
       }
     },
+    async updateWebhook(accessToken: string, webhook: string): Promise<void> {
+      await request("/item/webhook/update", {
+        access_token: z.string().min(1).max(2048).parse(accessToken),
+        webhook: z.string().url().parse(webhook),
+      });
+    },
     async getItem(accessToken: string): Promise<PlaidItemHealth> {
       const result = itemResponseSchema.parse(
         await request("/item/get", {

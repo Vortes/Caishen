@@ -203,6 +203,7 @@ type BankAccountLinks = {
   institutionId: string | null;
   accounts: BankAccountIdentity[];
   accountMappings: Record<string, { accountId: string }>;
+  status?: string;
   disconnectedAt?: string;
   unavailableAccountIds?: string[];
 };
@@ -210,11 +211,13 @@ type BankAccountLinks = {
 export function isBankAccountLive(
   connection: Pick<
     BankAccountLinks,
-    "disconnectedAt" | "unavailableAccountIds" | "accounts"
+    "status" | "disconnectedAt" | "unavailableAccountIds" | "accounts"
   >,
   providerId: string,
 ) {
   return (
+    connection.status !== "revoked" &&
+    connection.status !== "disconnected" &&
     !connection.disconnectedAt &&
     !connection.unavailableAccountIds?.includes(providerId) &&
     connection.accounts.some((account) => account.accountId === providerId)

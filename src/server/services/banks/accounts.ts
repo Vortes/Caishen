@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Account identity and links: resolves provider identities, validates explicit account setup and recovery, and plans or applies conservative duplicate repairs. It preserves budget history while row writers enforce one live feed per budget account. */
 
 import {
@@ -8,7 +9,7 @@ import {
   bankRecoveryCandidates,
 } from "~/lib/bank-account-identity";
 import { z } from "zod";
-import { type bankAccountSchema } from "~/server/integrations/plaid";
+import type { bankAccountSchema } from "~/server/integrations/plaid";
 import {
   type Database,
   openHousehold,
@@ -215,10 +216,13 @@ async function prepareDuplicateBankRepair(
     throw new Error("Choose two different connections.");
   const opened = await openHousehold(db, userId);
   if (opened?.ledger.status !== "ready") throw budgetMaintenance();
-  const connections = await db.bankConnection.findMany({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { clerkUserId: userId },
-  });
+  const connections = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { clerkUserId: userId },
+    }),
+  );
   const imports = readImportStates(opened.household.rows, userId);
   const read = (id: string) => {
     const connection = connections.find((item) => item.id === id);
@@ -261,6 +265,7 @@ async function prepareDuplicateBankRepair(
     removeMask?: string | null;
   }[] = [];
   const removedIds = new Set<string>();
+  const replacementRows = new Map<string, string>();
   for (const [providerId, mapping] of Object.entries(retired.mappings)) {
     if (sameConnection && providerId !== sameConnection.keepProviderAccountId)
       continue;
@@ -343,6 +348,16 @@ async function prepareDuplicateBankRepair(
       )
     )
       throw new Error("Another bank connection uses these accounts.");
+    if (!sameConnection) {
+      const sourceRow = retired.connection.bankAccounts.find(
+        (row) => row.providerAccountId === source.accountId,
+      );
+      const targetRow = replacement.connection.bankAccounts.find(
+        (row) => row.providerAccountId === target.accountId,
+      );
+      if (!sourceRow || !targetRow) throw connectionMaintenance();
+      replacementRows.set(sourceRow.id, targetRow.id);
+    }
     removedIds.add(remove.id);
     accounts.push({
       name: keep.name,
@@ -446,6 +461,54 @@ async function prepareDuplicateBankRepair(
       userId,
     ),
   );
+  const deletedRows = sameConnection ? [] : retired.connection.bankAccounts;
+  const deletedIds = new Set(deletedRows.map((row) => row.id));
+  const graph = new Map(
+    connections.flatMap((connection) =>
+      connection.bankAccounts.map((row) => [row.id, row] as const),
+    ),
+  );
+  for (const row of deletedRows) {
+    let successor = row;
+    const visited = new Set<string>();
+    while (deletedIds.has(successor.id) && !replacementRows.has(successor.id)) {
+      if (visited.has(successor.id) || !successor.supersededById) break;
+      visited.add(successor.id);
+      const next = graph.get(successor.supersededById);
+      if (!next) break;
+      successor = next;
+    }
+    const to =
+      replacementRows.get(successor.id) ??
+      (!deletedIds.has(successor.id) ? successor.id : undefined);
+    if (to) replacementRows.set(row.id, to);
+  }
+  const successorRedirects = connections
+    .flatMap((connection) =>
+      connection.bankAccounts.flatMap((row) => {
+        if (
+          connection.id === retired.connection.id ||
+          !row.supersededById ||
+          !deletedIds.has(row.supersededById)
+        )
+          return [];
+        const to = replacementRows.get(row.supersededById);
+        if (!to)
+          throw new Error(
+            "Provider history cannot be redirected safely. Review these connections manually.",
+          );
+        return [
+          {
+            id: row.id,
+            connectionId: connection.id,
+            from: row.supersededById,
+            to,
+            updatedAt: row.updatedAt,
+          },
+        ];
+      }),
+    )
+    .sort((left, right) => left.id.localeCompare(right.id));
   const plan = {
     ...selection,
     revision: opened.household.revision,
@@ -467,9 +530,19 @@ async function prepareDuplicateBankRepair(
         }),
       ),
       accounts,
+      successorRedirects,
     }),
   };
-  return { plan, opened, retired, replacement, mappings, changeSet };
+  return {
+    plan,
+    opened,
+    retired,
+    replacement,
+    mappings,
+    changeSet,
+    deletedIds,
+    successorRedirects,
+  };
 }
 
 export async function previewDuplicateBankRepair(
@@ -512,7 +585,15 @@ export async function repairDuplicateBankAccounts(
     throw new Error(
       "The repair plan changed. Preview it again before applying.",
     );
-  const { retired, replacement, opened, mappings, changeSet } = prepared;
+  const {
+    retired,
+    replacement,
+    opened,
+    mappings,
+    changeSet,
+    deletedIds,
+    successorRedirects,
+  } = prepared;
   const live = await client(db, userId, replacement.connection.id).getAccounts(
     decryptBankToken(replacement.connection.encryptedToken, userId),
   );
@@ -547,14 +628,18 @@ export async function repairDuplicateBankAccounts(
       await lockBankConnections(tx, userId, [
         retired.connection.id,
         replacement.connection.id,
+        ...successorRedirects.map((row) => row.connectionId),
       ]);
-      const currentConnections = await tx.bankConnection.findMany({
-        where: {
-          clerkUserId: userId,
-          id: { in: [retired.connection.id, replacement.connection.id] },
-        },
-        include: { bankAccounts: bankAccountRowsSelection },
-      });
+      const currentConnections = await withBankAccountSuccessors(
+        tx,
+        tx.bankConnection.findMany({
+          where: {
+            clerkUserId: userId,
+            id: { in: [retired.connection.id, replacement.connection.id] },
+          },
+          include: { bankAccounts: bankAccountRowsSelection },
+        }),
+      );
       if (
         [retired, replacement].some(({ connection }) => {
           const current = currentConnections.find(
@@ -611,6 +696,48 @@ export async function repairDuplicateBankAccounts(
         });
         return;
       }
+      const incoming = await tx.bankAccount.findMany({
+        where: {
+          supersededById: { in: [...deletedIds] },
+          connectionId: { not: retired.connection.id },
+          connection: { clerkUserId: userId },
+        },
+        select: {
+          id: true,
+          connectionId: true,
+          supersededById: true,
+          updatedAt: true,
+        },
+      });
+      if (
+        incoming.length !== successorRedirects.length ||
+        successorRedirects.some((expected) => {
+          const current = incoming.find((row) => row.id === expected.id);
+          return (
+            current?.connectionId !== expected.connectionId ||
+            current.supersededById !== expected.from ||
+            current.updatedAt.getTime() !== expected.updatedAt.getTime()
+          );
+        })
+      )
+        throw new Error("A bank connection changed. Preview the repair again.");
+      for (const redirect of successorRedirects) {
+        await tx.bankAccount.update({
+          where: { id: redirect.id },
+          data: { supersededById: redirect.to },
+        });
+      }
+      await tx.bankConnection.updateMany({
+        where: {
+          clerkUserId: userId,
+          id: {
+            in: successorRedirects
+              .map((row) => row.connectionId)
+              .filter((id) => id !== replacement.connection.id),
+          },
+        },
+        data: { updatedAt: new Date() },
+      });
       // A successful removal is not undone if a later database write fails;
       // the stored credential stays available for an idempotent retry.
       await client(db, userId, retired.connection.id).removeItem(
@@ -651,10 +778,13 @@ export async function openConnection(
   connectionId: string,
 ) {
   await migrateBankAccounts(db, userId);
-  const connection = await db.bankConnection.findFirst({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { id: connectionId, clerkUserId: userId },
-  });
+  const connection = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findFirst({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { id: connectionId, clerkUserId: userId },
+    }),
+  );
   if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
   const opened = await requireHousehold(db, userId);
   const imports = readImportStates(opened.household.rows, userId);
@@ -760,10 +890,13 @@ export async function setupBankAccounts(
         message:
           "Update your bank accounts before setup so today's opening balances include the latest activity.",
       });
-    const connections = await db.bankConnection.findMany({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { clerkUserId: userId },
-    });
+    const connections = await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { clerkUserId: userId },
+      }),
+    );
     const allMappings = connectionMappings(connections);
     const remainingMappings = allMappings.map((mapping) => ({ ...mapping }));
     const details = connections.map((saved) => {
@@ -773,11 +906,7 @@ export async function setupBankAccounts(
     });
     const identities = connections.map((saved, index) => ({
       ...details[index]!,
-      disconnectedAt:
-        details[index]!.disconnectedAt ??
-        (["revoked", "disconnected"].includes(saved.status)
-          ? saved.updatedAt.toISOString()
-          : undefined),
+      status: saved.status,
       accountMappings: allMappings[index]!,
       unavailableAccountIds:
         readBankAccountRows(saved)?.unavailableAccountIds ?? [],
@@ -791,6 +920,8 @@ export async function setupBankAccounts(
       ),
     );
     const retired = new Set<number>();
+    const supersessions: { connectionId: string; from: string; to: string }[] =
+      [];
     const linkedAccounts = identities.map((saved, index) => ({
       institutionId: saved.institutionId,
       accounts: saved.accounts.filter(
@@ -953,6 +1084,11 @@ export async function setupBankAccounts(
           } else {
             delete remainingMappings[index]![providerId];
             retired.add(index);
+            supersessions.push({
+              connectionId: connections[index]!.id,
+              from: providerId,
+              to: provider.accountId,
+            });
           }
         }
         usedAccountIds.add(existing.id);
@@ -1122,6 +1258,29 @@ export async function setupBankAccounts(
             code: "CONFLICT",
             message: "Account setup changed. Refresh your bank accounts.",
           });
+        for (const edge of supersessions) {
+          const successor = await tx.bankAccount.findUniqueOrThrow({
+            where: {
+              connectionId_providerAccountId: {
+                connectionId: connection.id,
+                providerAccountId: edge.to,
+              },
+            },
+          });
+          await tx.bankAccount.update({
+            where: {
+              connectionId_providerAccountId: {
+                connectionId: edge.connectionId,
+                providerAccountId: edge.from,
+              },
+            },
+            data: {
+              status: "retired",
+              historyComplete: false,
+              supersededById: successor.id,
+            },
+          });
+        }
       },
     });
     return { ...written, accountIds };

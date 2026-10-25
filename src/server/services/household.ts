@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "./bank-account-rows";
 import {
   migrateBankAccounts,
   decodeLegacyBankAccounts,
@@ -156,16 +157,19 @@ async function ensureBankReferencesKept(
   if (!accounts.size && !transactions.size) return;
   await migrateBankAccounts(db, actorId);
   const linked = (
-    await db.bankConnection.findMany({
-      where: { clerkUserId: actorId },
-      select: {
-        id: true,
-        clerkUserId: true,
-        imports: true,
-        accountMappings: true,
-        bankAccounts: bankAccountRowsSelection,
-      },
-    })
+    await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        where: { clerkUserId: actorId },
+        select: {
+          id: true,
+          clerkUserId: true,
+          imports: true,
+          accountMappings: true,
+          bankAccounts: bankAccountRowsSelection,
+        },
+      }),
+    )
   ).some((connection) => {
     const rows = readBankAccountRows(connection);
     if (!rows && !decodeLegacyBankAccounts(connection))
@@ -231,16 +235,19 @@ async function commandChangeSet(
     throw new AccountingError("Match a bank import from the import itself");
   if (command.type === "account.reconcile") {
     await migrateBankAccounts(db, actorId);
-    const connections = await db.bankConnection.findMany({
-      where: { clerkUserId: actorId },
-      select: {
-        id: true,
-        clerkUserId: true,
-        imports: true,
-        accountMappings: true,
-        bankAccounts: bankAccountRowsSelection,
-      },
-    });
+    const connections = await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        where: { clerkUserId: actorId },
+        select: {
+          id: true,
+          clerkUserId: true,
+          imports: true,
+          accountMappings: true,
+          bankAccounts: bankAccountRowsSelection,
+        },
+      }),
+    );
     const imports = readImportStates(household.rows, actorId);
     for (const connection of connections) {
       const rows = readBankAccountRows(connection);

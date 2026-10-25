@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Import application: fetches account activity and applies each provider update or user inbox decision as a household operation. It owns transaction matching, reconciliation, quarantine, and the corresponding change sets. */
 
 import { isBankAccountLive } from "~/lib/bank-account-identity";
@@ -77,10 +78,13 @@ import {
 
 export async function syncBanks(db: Database, userId: string) {
   await migrateBankAccounts(db, userId);
-  const connections = await db.bankConnection.findMany({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { clerkUserId: userId },
-  });
+  const connections = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { clerkUserId: userId },
+    }),
+  );
   if (!connections.length)
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
@@ -232,10 +236,13 @@ async function applyBankUpdate(
   health: ReturnType<typeof itemHealthChange>,
 ) {
   const [fresh, opened] = await Promise.all([
-    db.bankConnection.findFirstOrThrow({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { id: connection.id, clerkUserId: userId },
-    }),
+    withBankAccountSuccessors(
+      db,
+      db.bankConnection.findFirstOrThrow({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { id: connection.id, clerkUserId: userId },
+      }),
+    ),
     requireHousehold(db, userId),
   ]);
   if (
