@@ -21,6 +21,12 @@ test("a purchase created on a phone persists exactly once with account and categ
   budget,
 }) => {
   await openRegister(page, budget.account);
+  const panelWidths = page.getByRole("button", {
+    name: "Panel widths",
+    exact: true,
+    expanded: true,
+  });
+  if (await panelWidths.isVisible()) await panelWidths.click();
   const form = await fillPurchase(page, budget, "Phone market", "12.50");
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await expect(form).toHaveCount(0);

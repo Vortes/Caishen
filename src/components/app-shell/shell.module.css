@@ -1059,11 +1059,17 @@ button.actionItem:disabled {
   .register .row > [data-column="share"],
   .register .columnHeader > [data-column="share"],
   .register .txColumns > [data-wide],
-  .register [data-row] > [data-empty] {
+  .register .row > [data-empty] {
     display: none;
   }
   .register .txColumns > [data-narrow] {
     display: block;
+  }
+  .register .openingBalance > [data-column="account"] {
+    grid-area: 1 / 2;
+  }
+  .register[data-accounts] .openingBalance > [data-column="payee"] {
+    grid-area: 1 / 1;
   }
 }
 .columnHeader {
@@ -1237,6 +1243,9 @@ button.actionItem:disabled {
 .row:hover {
   background: var(--surface-hover);
 }
+.row.openingBalance:hover {
+  background: transparent;
+}
 .row[aria-current="true"] {
   background: var(--surface-selected);
 }
@@ -1386,6 +1395,10 @@ button.actionItem:disabled {
   .register .row > [data-column="category"] {
     grid-column: 1;
     grid-row: 2;
+    font-size: var(--type-small);
+  }
+  .register .openingBalance > [data-column="account"] {
+    grid-area: 2 / 1;
     font-size: var(--type-small);
   }
   .register .row > [data-narrow] {
