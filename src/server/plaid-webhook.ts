@@ -10,6 +10,7 @@ import {
   webhookChange,
 } from "./services/bank-connection-status";
 import { syncBanks } from "./services/banks";
+import { recordBankWebhookReceipt } from "./services/bank-provider-events";
 import type { Database } from "./services/household";
 import {
   CONNECTION_MAINTENANCE_MESSAGE,
@@ -228,8 +229,14 @@ export async function respondToPlaidWebhook(
   try {
     webhook = await verifyPlaidWebhook(request, fetchKey, now);
   } catch (error) {
-    if (error instanceof PlaidWebhookError)
+    if (error instanceof PlaidWebhookError) {
+      await recordBankWebhookReceipt(db, {
+        webhookType: null,
+        webhookCode: null,
+        verification: "failed",
+      });
       return Response.json({ error: error.message }, { status: error.status });
+    }
     throw error;
   }
   const connection = webhook.item_id
@@ -243,6 +250,14 @@ export async function respondToPlaidWebhook(
     code: webhook.webhook_code,
     itemId: webhook.item_id ?? null,
   };
+  await recordBankWebhookReceipt(db, {
+    webhookType: webhook.webhook_type,
+    webhookCode: webhook.webhook_code,
+    verification: "verified",
+    connectionId: connection?.id,
+    userId: connection?.clerkUserId,
+    errorCode: webhook.error?.error_code,
+  });
   if (!connection) {
     console.warn("Plaid webhook for an unknown Item was ignored", receipt);
     return Response.json({ received: true, ignored: true });

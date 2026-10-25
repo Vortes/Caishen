@@ -6,6 +6,7 @@ import nextEnv from "@next/env";
 import { PrismaClient } from "../../src/generated/prisma";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { respondToPlaidWebhook } from "../../src/server/plaid-webhook";
+import { fetchPlaidWebhookKey } from "../../src/server/services/banks";
 import { onboard } from "../../src/server/services/household-operations";
 import { encryptBankToken } from "../../src/server/token-crypto";
 import { signedRequest, signingKey } from "../plaid-webhook-fixture";
@@ -46,6 +47,7 @@ afterEach(async () => {
     where: { id: { in: memberships.map((member) => member.workspaceId) } },
   });
   await db.bankConnection.deleteMany({ where: { clerkUserId: alice } });
+  await db.bankProviderEvent.deleteMany({ where: { clerkUserId: alice } });
 });
 test.before(() => db.user.create({ data: { clerkUserId: alice } }));
 test.after(async () => {
@@ -320,4 +322,175 @@ void test("a webhook issued in the future is refused before changing Item health
   );
   assert.equal(response.status, 401);
   assert.equal((await h.saved()).status, "connected");
+});
+
+void test("a webhook verification key request is audited before the sender has an authenticated user", async () => {
+  const h = await harness();
+  const requestId = `key-request-${randomUUID()}`;
+  mock.method(globalThis, "fetch", async () =>
+    Response.json({ key: key.key, request_id: requestId }),
+  );
+  const response = await respondToPlaidWebhook(
+    signedRequest(
+      JSON.stringify({
+        webhook_type: "ITEM",
+        webhook_code: "ERROR",
+        item_id: h.connection.itemId,
+      }),
+      key.privateKey,
+      { keyId: key.key.kid, issuedAt: now.getTime() / 1000 },
+    ),
+    {
+      db,
+      fetchKey: (keyId) => fetchPlaidWebhookKey(db, keyId),
+      now: () => now,
+      schedule: () => assert.fail("scheduled"),
+    },
+  );
+  assert.equal(response.status, 200);
+  const events = await db.bankProviderEvent.findMany({ where: { requestId } });
+  assert.deepEqual(
+    events.map(({ kind, method, clerkUserId, connectionId }) => ({
+      kind,
+      method,
+      clerkUserId,
+      connectionId,
+    })),
+    [
+      {
+        kind: "request",
+        method: "/webhook_verification_key/get",
+        clerkUserId: null,
+        connectionId: null,
+      },
+    ],
+  );
+  await db.bankProviderEvent.deleteMany({ where: { requestId } });
+});
+
+void test("a verified webhook records only its outcome and the owning connection in the audit trail", async () => {
+  const h = await harness();
+  const response = await h.deliver({
+    webhook_type: "ITEM",
+    webhook_code: "ERROR",
+    item_id: h.connection.itemId,
+    error: {
+      error_code: "ITEM_LOGIN_REQUIRED",
+      error_message: "private bank details",
+    },
+    access_token: "must-not-be-recorded",
+  });
+  assert.equal(response.status, 200);
+  const events = await db.bankProviderEvent.findMany({
+    where: { connectionId: h.connection.id, kind: "webhook" },
+  });
+  assert.deepEqual(
+    events.map(({ method, clerkUserId, errorCode, detail }) => ({
+      method,
+      clerkUserId,
+      errorCode,
+      detail,
+    })),
+    [
+      {
+        method: "ITEM/ERROR",
+        clerkUserId: alice,
+        errorCode: "ITEM_LOGIN_REQUIRED",
+        detail: {
+          webhookType: "ITEM",
+          webhookCode: "ERROR",
+          verification: "verified",
+        },
+      },
+    ],
+  );
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /private bank details|must-not-be-recorded/,
+  );
+});
+
+void test("a verified webhook for an unknown Item is audited without attributing it to a user", async (t) => {
+  const h = await harness();
+  const code = `UNKNOWN_${randomUUID()}`;
+  t.after(() =>
+    db.bankProviderEvent.deleteMany({ where: { method: `ITEM/${code}` } }),
+  );
+  const response = await h.deliver({
+    webhook_type: "ITEM",
+    webhook_code: code,
+    item_id: "unknown-item",
+  });
+  assert.deepEqual(await response.json(), { received: true, ignored: true });
+  const events = await db.bankProviderEvent.findMany({
+    where: { method: `ITEM/${code}` },
+  });
+  assert.deepEqual(
+    events.map(({ clerkUserId, connectionId, detail }) => ({
+      clerkUserId,
+      connectionId,
+      detail,
+    })),
+    [
+      {
+        clerkUserId: null,
+        connectionId: null,
+        detail: {
+          webhookType: "ITEM",
+          webhookCode: code,
+          verification: "verified",
+        },
+      },
+    ],
+  );
+});
+
+void test("an unverified webhook is audited without trusting the Item or fields in its body", async (t) => {
+  const h = await harness();
+  const existing = await db.bankProviderEvent.findMany({
+    select: { id: true },
+  });
+  const newReceipts = {
+    kind: "webhook",
+    id: { notIn: existing.map(({ id }) => id) },
+  };
+  t.after(() => db.bankProviderEvent.deleteMany({ where: newReceipts }));
+  const stranger = signingKey("key-current");
+  const response = await respondToPlaidWebhook(
+    signedRequest(
+      JSON.stringify({
+        webhook_type: "ITEM",
+        webhook_code: "USER_PERMISSION_REVOKED",
+        item_id: h.connection.itemId,
+        access_token: "untrusted-token",
+      }),
+      stranger.privateKey,
+      { keyId: key.key.kid, issuedAt: now.getTime() / 1000 },
+    ),
+    { db, fetchKey, now: () => now, schedule: () => assert.fail("scheduled") },
+  );
+  assert.equal(response.status, 401);
+  const events = await db.bankProviderEvent.findMany({ where: newReceipts });
+  assert.deepEqual(
+    events.map(({ method, connectionId, clerkUserId, detail }) => ({
+      method,
+      connectionId,
+      clerkUserId,
+      detail,
+    })),
+    [
+      {
+        method: "unverified",
+        connectionId: null,
+        clerkUserId: null,
+        detail: {
+          webhookType: null,
+          webhookCode: null,
+          verification: "failed",
+        },
+      },
+    ],
+  );
+  assert.equal((await h.saved()).status, "connected");
+  assert.doesNotMatch(JSON.stringify(events), /untrusted-token/);
 });

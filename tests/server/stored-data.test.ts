@@ -14,9 +14,12 @@ import {
   reconciliationResultSchema,
   savedEvidenceSchema,
 } from "../../src/server/storage/review-evidence";
+import { plaidLinkMetadataSchema } from "../../src/lib/plaid-link-metadata";
+import { bankConnectionStatusSchema } from "../../src/server/services/bank-connection-status";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
 import { connectionColumnSchema } from "../../src/server/services/banks";
+import { bankProviderEventDetailSchema } from "../../src/server/services/bank-provider-events";
 import { dailyDeliveryPayloadSchema } from "../../src/server/services/daily-delivery";
 import {
   changeSetSchema,
@@ -29,6 +32,7 @@ import {
 const jsonColumns: Record<string, ZodTypeAny> = {
   "BankConnection.imports": connectionColumnSchema,
   "BankConnection.accountMappings": bankMappingsSchema,
+  "BankProviderEvent.detail": bankProviderEventDetailSchema.nullable(),
   "ReviewEvidence.evidence": savedEvidenceSchema,
   "ReviewEvidence.result": reconciliationResultSchema,
   "DailyDelivery.payload": dailyDeliveryPayloadSchema,
@@ -51,7 +55,17 @@ const jsonColumns: Record<string, ZodTypeAny> = {
 const rowTables: Record<string, ZodTypeAny> = Object.fromEntries(
   tableNames.map((table) => [`rows.${table}`, rowDataSchemas[table]]),
 );
-const columns = { ...jsonColumns, ...rowTables };
+// Shapes the browser sends that a deployed client may keep sending after the
+// server changes: Plaid Link's completion metadata. Fields are added only.
+const requestShapes: Record<string, ZodTypeAny> = {
+  "PlaidLink.metadata": plaidLinkMetadataSchema,
+};
+const columns: Record<string, ZodTypeAny> = {
+  ...jsonColumns,
+  ...rowTables,
+  ...requestShapes,
+  "BankConnection.status": bankConnectionStatusSchema,
+};
 
 const directory = new URL("../stored-data/", import.meta.url);
 type Contract = {

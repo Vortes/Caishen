@@ -1,0 +1,19 @@
+{
+  "institution": { "institution_id": "ins_3" },
+  "accounts": [
+    {
+      "id": "plaid-checking-v2",
+      "name": "Total Checking",
+      "mask": "0042",
+      "type": "depository",
+      "subtype": "checking"
+    },
+    {
+      "id": "plaid-card",
+      "name": null,
+      "mask": "9911",
+      "type": "credit",
+      "subtype": "credit card"
+    }
+  ]
+}

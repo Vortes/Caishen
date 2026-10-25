@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 // Plaid's signing keys, fetched once per key id for the life of the instance.
-const fetchKey = cachedKeyFetcher(fetchPlaidWebhookKey);
+const fetchKey = cachedKeyFetcher((keyId) => fetchPlaidWebhookKey(db, keyId));
 
 export async function POST(request: Request) {
   try {

@@ -34,12 +34,15 @@ import {
   resolveImport,
   syncBanks,
 } from "../../src/server/services/banks";
+import { recordBankWebhookReceipt } from "../../src/server/services/bank-provider-events";
 import { onboard } from "../../src/server/services/household-operations";
 import * as banks from "../../src/server/services/banks";
 import { households } from "../../src/server/storage/households";
 import {
+  findOperation,
   loadRows,
   readHouseholdRevision,
+  recentOperations,
   writeChangeSet,
 } from "../../src/server/storage/rows";
 import {
@@ -148,6 +151,9 @@ async function startOver() {
     where: { id: { in: memberships.map((member) => member.workspaceId) } },
   });
   await db.bankConnection.deleteMany({
+    where: { clerkUserId: { in: [alice, bob] } },
+  });
+  await db.bankProviderEvent.deleteMany({
     where: { clerkUserId: { in: [alice, bob] } },
   });
 }
@@ -1846,6 +1852,222 @@ void test("a partial reconnect merges fresh details without forgetting other map
   assert.deepEqual((await h.state()).view, before.view);
 });
 
+// A connection whose one mapped checking account Plaid reports with the
+// persistent id its institution assigns, and recorded history on it.
+async function persistentHarness(persistentAccountId?: string) {
+  const h = await linkedHarness();
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "history",
+      accountId: "cash",
+      date: "2026-10-10",
+      amount: -500,
+      payee: "Recorded purchase",
+      categoryId: "dining",
+      status: "posted",
+    }),
+  );
+  await h.setImports({
+    accounts: [
+      {
+        accountId: "provider-checking",
+        ...(persistentAccountId ? { persistentAccountId } : {}),
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 95,
+        availableBalance: 95,
+        currency: "USD",
+      },
+    ],
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+    synchronizedAccountIds: ["provider-checking"],
+  });
+  const today = bankSetupDate("America/Los_Angeles");
+  let later = false;
+  const response = () => ({
+    ...accountsResponse(),
+    accounts: [
+      {
+        ...accountsResponse().accounts[0]!,
+        account_id: "provider-checking-reissued",
+        ...(persistentAccountId
+          ? { persistent_account_id: persistentAccountId }
+          : {}),
+        balances: {
+          ...accountsResponse().accounts[0]!.balances,
+          current: later ? 91 : 93,
+          available: later ? 91 : 93,
+        },
+      },
+    ],
+  });
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    switch (requestUrl(url).pathname) {
+      case "/accounts/get":
+        return Response.json(response());
+      case "/transactions/sync":
+        return Response.json({
+          added: later
+            ? [
+                {
+                  transaction_id: "new-purchase",
+                  account_id: "provider-checking-reissued",
+                  pending: false,
+                  amount: 2,
+                  iso_currency_code: "USD",
+                  date: today,
+                  name: "New purchase",
+                },
+              ]
+            : [],
+          modified: [],
+          removed: [],
+          accounts: response().accounts,
+          has_more: false,
+          next_cursor: later ? "later" : "reissued",
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      default:
+        throw new Error("Unexpected provider request");
+    }
+  });
+  const state = await h.state();
+  return {
+    ...h,
+    before: { ...state.view!.budget, revision: state.revision },
+    newActivity: () => {
+      later = true;
+    },
+  };
+}
+
+// The identity decisions recorded on Alice's operations of one type.
+async function recordedDecisions(type: string) {
+  const workspaceId = (await readHouseholdRevision(db, alice))!.workspaceId;
+  const operations = (await recentOperations(db, workspaceId, 100)).filter(
+    (operation) => operation.type === type,
+  );
+  return Promise.all(
+    operations.map(
+      async ({ operationId }) =>
+        (await findOperation(db, workspaceId, operationId))!.command,
+    ),
+  );
+}
+
+void test("a re-shared account with a new Plaid id and the same persistent id keeps its budget account without a question", async () => {
+  const h = await persistentHarness("persistent-checking");
+  const followed = {
+    "provider-checking-reissued": {
+      accountId: "cash",
+      startDate: "2026-10-01",
+    },
+  };
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  let details = await h.details();
+  assert.deepEqual(details.accountMappings, followed);
+  assert.deepEqual(
+    details.accounts.map((a) => [a.accountId, a.currentBalance]),
+    [["provider-checking-reissued", 93]],
+    "the retired id leaves the catalog and the account shows a fresh balance",
+  );
+  assert.deepEqual(details.unavailableAccountIds ?? [], []);
+  await h.api.budget.sync();
+  details = await h.details();
+  assert.deepEqual(details.accountMappings, followed);
+  assert.deepEqual(
+    details.accounts.map((a) => [a.accountId, a.currentBalance]),
+    [["provider-checking-reissued", 93]],
+  );
+  const after = (await h.state()).view!.budget;
+  assert.deepEqual(after.accounts, h.before.accounts);
+  assert.deepEqual(after.transactions, h.before.transactions);
+  assert.deepEqual(await bankInbox(db, alice), []);
+  await assert.rejects(
+    h.api.budget.setupBankAccounts({
+      connectionId: h.connection.id,
+      operationId: randomUUID(),
+      expectedRevision: await h.revision(),
+      accounts: [
+        {
+          providerAccountId: "provider-checking-reissued",
+          name: "Checking",
+          expectedBalance: 93,
+        },
+      ],
+    }),
+    /already added/i,
+    "the re-shared account is not addable as a second budget account",
+  );
+  assert.deepEqual(
+    await recordedDecisions("bank.accounts.supersede"),
+    [
+      {
+        connectionId: h.connection.id,
+        decisions: [
+          {
+            rung: 2,
+            from: "provider-checking",
+            to: "provider-checking-reissued",
+            accountId: "cash",
+          },
+        ],
+      },
+    ],
+    "the automatic decision is recorded with the rung that fired",
+  );
+  h.newActivity();
+  await h.api.budget.sync();
+  const inbox = await bankInbox(db, alice);
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0]!.accountId, "cash");
+  assert.equal(inbox[0]!.amount, -200);
+});
+
+void test("a new Plaid id without a persistent id still needs the user to confirm recovery", async () => {
+  const h = await persistentHarness();
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  await h.api.budget.sync();
+  const details = await h.details();
+  assert.deepEqual(details.accountMappings, {
+    "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
+  });
+  assert.deepEqual(details.unavailableAccountIds, ["provider-checking"]);
+  assert.deepEqual(details.accounts.map((a) => a.accountId).sort(), [
+    "provider-checking",
+    "provider-checking-reissued",
+  ]);
+  const selected = {
+    providerAccountId: "provider-checking-reissued",
+    name: "Checking",
+    expectedBalance: 93,
+  };
+  const attempt = (existingAccountId?: string) =>
+    h.api.budget.setupBankAccounts({
+      connectionId: h.connection.id,
+      operationId: randomUUID(),
+      expectedRevision: h.before.revision,
+      accounts: [{ ...selected, existingAccountId }],
+    });
+  await assert.rejects(attempt(), /existing.*account/i);
+  await assert.rejects(attempt("cash"), /reconcile/i);
+  const after = (await h.state()).view!.budget;
+  assert.deepEqual(after.accounts, h.before.accounts);
+  assert.deepEqual(after.transactions, h.before.transactions);
+  assert.deepEqual(
+    await recordedDecisions("bank.accounts.supersede"),
+    [],
+    "no automatic identity decision is made without a persistent id",
+  );
+});
+
 void test("update mode reuses the private Item token, registers the webhook, and a completed reconnect returns the connection to connected", async () => {
   const h = await harness();
   process.env.APP_BASE_URL = "https://caishen.example";
@@ -2803,4 +3025,256 @@ void test("pay remembered as Ready to Assign arrives there, and money going out 
     (await bankInbox(h.db, alice)).map((item) => [item.payee, item.amount]),
     [["Acme Payroll", -4000]],
   );
+});
+
+// The provider event audit trail (spec #139): what an operator can query
+// about one connection's exchanges with Plaid.
+const providerEvents = async (connectionId: string) =>
+  (await db.bankProviderEvent.findMany({ where: { connectionId } })).sort(
+    (left, right) => left.method.localeCompare(right.method),
+  );
+
+void test("one account update records a provider event for each Plaid request with its request id", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/item/get")
+      return Response.json({ item: { error: null }, request_id: "req-item-1" });
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        next_cursor: "next",
+        has_more: false,
+        accounts: accountsResponse().accounts,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        request_id: "req-sync-1",
+      });
+    return Response.json({
+      ...accountsResponse(),
+      request_id: "req-accounts-1",
+    });
+  });
+  await syncBanks(h.db, alice);
+  const events = await providerEvents(h.connection.id);
+  assert.deepEqual(
+    events.map(({ kind, method, requestId, errorCode, clerkUserId }) => ({
+      kind,
+      method,
+      requestId,
+      errorCode,
+      clerkUserId,
+    })),
+    [
+      {
+        kind: "request",
+        method: "/accounts/get",
+        requestId: "req-accounts-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+      {
+        kind: "request",
+        method: "/item/get",
+        requestId: "req-item-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+      {
+        kind: "request",
+        method: "/transactions/sync",
+        requestId: "req-sync-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+    ],
+  );
+  assert.ok(
+    events.every((event) => event.durationMs !== null && event.durationMs >= 0),
+  );
+});
+
+void test("a failed account update stores an error naming the Plaid request id and records the failure", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        error_code: "INSTITUTION_DOWN",
+        error_message: "private provider details",
+        request_id: "req-down-7",
+      },
+      { status: 503 },
+    ),
+  );
+  await assert.rejects(syncBanks(h.db, alice));
+  const details = await h.details();
+  assert.match(details.error!, /Plaid request id: req-down-7/);
+  assert.ok(!details.error!.includes("private provider details"));
+  assert.deepEqual(
+    (await providerEvents(h.connection.id)).map(
+      ({ method, requestId, errorCode }) => ({ method, requestId, errorCode }),
+    ),
+    [
+      {
+        method: "/item/get",
+        requestId: "req-down-7",
+        errorCode: "INSTITUTION_DOWN",
+      },
+    ],
+  );
+});
+
+void test("completing Link records a success event with the institution and account count", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
+    requestUrl(url).pathname === "/item/public_token/exchange"
+      ? Response.json({
+          access_token: "new-private-token",
+          item_id: h.connection.itemId,
+          request_id: "req-exchange-1",
+        })
+      : Response.json({ ...accountsResponse(), request_id: "req-accounts-2" }),
+  );
+  await exchangeBankToken(h.db, alice, "public-token", linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        errorCode: null,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});
+
+void test("leaving Link early records an exit event with Plaid's error code and request id", async () => {
+  const h = await harness();
+  await h.api.budget.plaidLinkExit({
+    connectionId: h.connection.id,
+    institutionId: "ins-chase",
+    errorCode: "INVALID_CREDENTIALS",
+    requestId: "req-link-exit-1",
+  });
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, requestId, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      requestId,
+      detail,
+    })),
+    [
+      {
+        method: "exit",
+        connectionId: h.connection.id,
+        errorCode: "INVALID_CREDENTIALS",
+        requestId: "req-link-exit-1",
+        detail: { institutionId: "ins-chase", accountCount: null },
+      },
+    ],
+  );
+});
+
+void test("completing an update-mode Link records a success event against the reconnected bank", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json({ ...accountsResponse(), request_id: "req-accounts-3" }),
+  );
+  await reconnectBank(h.db, alice, h.connection.id, linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, detail }) => ({
+      method,
+      connectionId,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});
+
+void test("a received webhook is recorded with its type, code, and verification result", async (t) => {
+  const h = await harness();
+  const verification = `invalid_signature:${randomUUID()}`;
+  const anonymousReceipt = {
+    detail: { path: ["verification"], equals: verification },
+  };
+  t.after(() => db.bankProviderEvent.deleteMany({ where: anonymousReceipt }));
+  await recordBankWebhookReceipt(db, {
+    connectionId: h.connection.id,
+    userId: alice,
+    webhookType: "ITEM",
+    webhookCode: "ERROR",
+    verification: "verified",
+    errorCode: "ITEM_LOGIN_REQUIRED",
+  });
+  await recordBankWebhookReceipt(db, {
+    webhookType: null,
+    webhookCode: null,
+    verification,
+  });
+  const receipts = (
+    await db.bankProviderEvent.findMany({
+      where: {
+        kind: "webhook",
+        OR: [{ connectionId: h.connection.id }, anonymousReceipt],
+      },
+    })
+  )
+    .filter(
+      (event) =>
+        event.connectionId === h.connection.id || event.connectionId === null,
+    )
+    .map(({ method, connectionId, clerkUserId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      clerkUserId,
+      errorCode,
+      detail,
+    }))
+    .sort((left, right) => left.method.localeCompare(right.method));
+  assert.deepEqual(receipts, [
+    {
+      method: "ITEM/ERROR",
+      connectionId: h.connection.id,
+      clerkUserId: alice,
+      errorCode: "ITEM_LOGIN_REQUIRED",
+      detail: {
+        webhookType: "ITEM",
+        webhookCode: "ERROR",
+        verification: "verified",
+      },
+    },
+    {
+      method: "unverified",
+      connectionId: null,
+      clerkUserId: null,
+      errorCode: null,
+      detail: {
+        webhookType: null,
+        webhookCode: null,
+        verification,
+      },
+    },
+  ]);
 });

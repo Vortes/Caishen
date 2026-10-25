@@ -1,0 +1,21 @@
+{
+  "reviews": {},
+  "accounts": [
+    {
+      "accountId": "plaid-checking-v2",
+      "persistentAccountId": "persistent-checking",
+      "name": "Total Checking",
+      "officialName": "Chase Total Checking",
+      "mask": "0042",
+      "type": "depository",
+      "subtype": "checking",
+      "currentBalance": 412345,
+      "availableBalance": 409900,
+      "currency": "USD"
+    }
+  ],
+  "institutionId": "ins_3",
+  "institutionName": "Chase",
+  "transactionStatus": "HISTORICAL_UPDATE_COMPLETE",
+  "synchronizedAccountIds": ["plaid-checking-v2"]
+}

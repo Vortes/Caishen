@@ -61,6 +61,11 @@ export function validatePlaidRedirectUri(
 
 export const bankAccountSchema = z.object({
   accountId: providerIdSchema,
+  /**
+   * Plaid's identity for the account across Items and account_id changes,
+   * reported only by institutions with tokenized account numbers.
+   */
+  persistentAccountId: providerIdSchema.optional(),
   name: z.string().min(1).max(1024),
   officialName: z.string().max(1024).nullable(),
   mask: z.string().max(20).nullable(),
@@ -74,6 +79,7 @@ export type BankAccount = z.infer<typeof bankAccountSchema>;
 
 const rawAccountSchema = z.object({
   account_id: providerIdSchema,
+  persistent_account_id: providerIdSchema.nullish(),
   name: bankAccountSchema.shape.name,
   official_name: bankAccountSchema.shape.officialName,
   mask: bankAccountSchema.shape.mask,
@@ -92,6 +98,9 @@ function normalizeAccount(
 ): BankAccount {
   return {
     accountId: account.account_id,
+    ...(account.persistent_account_id
+      ? { persistentAccountId: account.persistent_account_id }
+      : {}),
     name: account.name,
     officialName: account.official_name,
     mask: account.mask,
@@ -157,6 +166,17 @@ const plaidErrorSchema = z.object({
     .regex(/^[A-Z_]+$/)
     .max(100),
 });
+// Every Plaid response body, including errors, names its request.
+const requestIdSchema = z.object({ request_id: z.string().min(1).max(256) });
+
+/** One Plaid request as the audit trail records it: never its body. */
+export interface PlaidRequestEvent {
+  path: string;
+  requestId: string | null;
+  errorCode: string | null;
+  durationMs: number;
+}
+export type PlaidRequestRecorder = (event: PlaidRequestEvent) => Promise<void>;
 
 // /item/get: the Item's consent and update health. Unknown fields are left
 // alone; the error is read for its code only.
@@ -188,6 +208,7 @@ const instant = (value: string | null | undefined) =>
 export function createPlaidClient(
   config: PlaidConfig,
   fetcher: typeof fetch = fetch,
+  recorder?: PlaidRequestRecorder,
 ) {
   if (!config.clientId || !config.secret)
     throw new IntegrationError(
@@ -204,35 +225,72 @@ export function createPlaidClient(
       ? "https://production.plaid.com"
       : "https://sandbox.plaid.com";
 
+  // The audit trail must never fail a bank operation, so a failed event
+  // write is the one error this adapter swallows; it is logged instead.
+  async function record(event: PlaidRequestEvent) {
+    if (!recorder) return;
+    try {
+      await recorder(event);
+    } catch (error) {
+      console.error("Plaid request could not be recorded", {
+        ...event,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function request(
     path: string,
     body: Record<string, unknown>,
   ): Promise<unknown> {
-    const response = await fetcher(`${baseUrl}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Plaid-Version": "2020-09-14",
-      },
-      body: JSON.stringify({
-        ...body,
-        client_id: config.clientId,
-        secret: config.secret,
-      }),
-      signal: AbortSignal.timeout(20_000),
-      cache: "no-store",
-    });
-    const result = await readJsonResponse(response, "Plaid");
-    if (!response.ok) {
-      const error = plaidErrorSchema.safeParse(result);
-      const code = error.success ? error.data.error_code : "REQUEST_FAILED";
-      throw new IntegrationError(
-        "Plaid",
-        code,
-        `Plaid request failed (${code}).`,
-      );
+    const started = performance.now();
+    let requestId: string | null = null;
+    let errorCode: string | null = null;
+    try {
+      const response = await fetcher(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Plaid-Version": "2020-09-14",
+        },
+        body: JSON.stringify({
+          ...body,
+          client_id: config.clientId,
+          secret: config.secret,
+        }),
+        signal: AbortSignal.timeout(20_000),
+        cache: "no-store",
+      });
+      const result = await readJsonResponse(response, "Plaid");
+      const identified = requestIdSchema.safeParse(result);
+      requestId = identified.success ? identified.data.request_id : null;
+      if (!response.ok) {
+        const error = plaidErrorSchema.safeParse(result);
+        const code = error.success ? error.data.error_code : "REQUEST_FAILED";
+        throw new IntegrationError(
+          "Plaid",
+          code,
+          `Plaid request failed (${code}).`,
+          requestId,
+        );
+      }
+      return result;
+    } catch (error) {
+      errorCode =
+        error instanceof IntegrationError
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : "REQUEST_FAILED";
+      throw error;
+    } finally {
+      await record({
+        path,
+        requestId,
+        errorCode,
+        durationMs: Math.round(performance.now() - started),
+      });
     }
-    return result;
   }
 
   return {
