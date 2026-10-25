@@ -34,9 +34,12 @@
   background: var(--surface-hover);
   color: var(--text-primary);
 }
-.iconButton:active:not(:disabled) {
+/* A menu opens on press, so its trigger stays put rather than shift the
+   anchor the menu was just placed against. */
+.iconButton:active:not(:disabled, [aria-expanded="true"]) {
   transform: scale(0.94);
 }
+.iconButton[aria-expanded="true"],
 .iconButton[aria-pressed="true"] {
   background: var(--surface-selected);
   color: var(--text-primary);
@@ -55,7 +58,10 @@
 .iconButton[data-variant="secondary"]:hover:not(:disabled) {
   background: var(--control-bg-hover);
 }
-.iconButton[data-variant="secondary"]:active:not(:disabled) {
+.iconButton[data-variant="secondary"]:active:not(
+    :disabled,
+    [aria-expanded="true"]
+  ) {
   transform: scale(0.97);
 }
 .iconButton[data-variant="secondary"][aria-pressed="true"] {
