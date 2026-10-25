@@ -37,8 +37,7 @@
     "transactionId": "market-import",
     "lineId": "market-import",
     "hasPurposeCategory": true,
-    "onSplitPurchase": false,
-    "linkedRefund": false
+    "onSplitPurchase": false
   },
   "sort": 0
 }

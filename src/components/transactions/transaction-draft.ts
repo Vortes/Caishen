@@ -46,10 +46,10 @@ export type TransactionDraft = {
   outflow: string;
   inflow: string;
   status: "pending" | "posted";
+  // YNAB's C column. A new transaction starts uncleared, like YNAB's.
   cleared: boolean;
   expenseMonth: string;
   counterpartyShare?: DraftShare | null;
-  refundOfTransactionId?: string;
   // Two or more when the amount is split across categories; none otherwise.
   lines: DraftLine[];
 };
@@ -142,7 +142,6 @@ export function createTransactionDraft(
         : undefined) ??
       (transaction &&
       !transaction.counterpartyShare &&
-      entry?.fields.category !== "linked" &&
       (entry?.fields.budgetSide === "other" && counterpart
         ? counterpart.amount
         : transaction.amount) > 0
@@ -169,7 +168,6 @@ export function createTransactionDraft(
         ? { ...share, amount: (share.amount / 100).toFixed(2) }
         : undefined;
     })(),
-    refundOfTransactionId: transaction?.refundOfTransactionId,
     lines: (transaction?.lines?.length === 1
       ? []
       : (transaction?.lines ?? [])
@@ -188,6 +186,31 @@ export function createTransactionDraft(
 }
 
 /** The draft's amount in signed cents, or undefined while it doesn't read. */
+// The shares and split lines a draft already carries, so classifying it names
+// a shared card inflow a refund rather than a statement credit. Amounts are
+// validated later; here they only describe the shape.
+export function draftShareFacts(draft: TransactionDraft) {
+  const share = (share: DraftShare | null | undefined) =>
+    share
+      ? {
+          accountId: share.accountId,
+          counterpartyName: share.counterpartyName,
+          amount: parseAmount(share.amount.trim()) ?? 0,
+        }
+      : undefined;
+  return {
+    counterpartyShare: share(draft.counterpartyShare),
+    lines: draft.lines.length
+      ? draft.lines.map((line) => ({
+          id: line.lineId,
+          categoryId: line.categoryId || undefined,
+          amount: draftAmount(line) ?? 0,
+          counterpartyShare: share(line.counterpartyShare),
+        }))
+      : undefined,
+  };
+}
+
 export function draftAmount(draft: { outflow: string; inflow: string }) {
   const outflow = draft.outflow.trim();
   const inflow = draft.inflow.trim();
@@ -259,7 +282,7 @@ export function buildTransactionDraftCommand({
           categoryId === READY_TO_ASSIGN ? undefined : categoryId || undefined,
         transferAccountId: draft.transferAccountId || undefined,
         loanId: draft.loanId || undefined,
-        refundOfTransactionId: draft.refundOfTransactionId,
+        ...draftShareFacts(draft),
       })
     : undefined;
   if (draft.transferAccountId && (!other || other.id === account?.id))
@@ -426,11 +449,7 @@ export function buildTransactionDraftCommand({
     )
       fields.remaining =
         "Split the whole amount: the lines must add up to the total.";
-  } else if (
-    !transfer &&
-    entry?.fields.category !== "none" &&
-    entry?.fields.category !== "linked"
-  ) {
+  } else if (!transfer && entry?.fields.category !== "none") {
     const category = view.categories.find((item) => item.id === categoryId);
     if (categoryId === READY_TO_ASSIGN) {
       if (outflowText)
@@ -498,7 +517,6 @@ export function buildTransactionDraftCommand({
           ? undefined
           : categoryId || undefined,
     ...(split ? { lines } : { counterpartyShare }),
-    refundOfTransactionId: draft.refundOfTransactionId,
     recordedAt: new Date().toISOString(),
     status: draft.status,
     cleared: draft.cleared,

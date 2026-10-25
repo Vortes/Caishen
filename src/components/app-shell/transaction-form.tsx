@@ -22,6 +22,7 @@ import {
   SPLIT,
   amountFields,
   draftAmount,
+  draftShareFacts,
   lineField,
   paymentPayees,
   splitRemaining,
@@ -29,7 +30,6 @@ import {
   type DraftShare,
 } from "~/components/transactions/transaction-draft";
 import type { CounterpartyShare } from "~/domain/engine";
-import { proportionalRefundLines } from "~/domain/linked-refunds";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { partnerMatchesOf } from "~/components/transactions/import-draft";
@@ -137,7 +137,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           draft.categoryId === READY_TO_ASSIGN
             ? undefined
             : draft.categoryId || undefined,
-        refundOfTransactionId: draft.refundOfTransactionId,
+        ...draftShareFacts(draft),
       })
     : undefined;
   const initialEntry = initial
@@ -156,44 +156,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     !session.initial && !session.shareChosen && draft.counterpartyShare
       ? draft.payee.trim()
       : undefined;
-  // A linked refund's share follows its purchase, in proportion to what's
-  // refunded so far.
-  const linkedTo =
-    draftEntry && "linkedTo" in draftEntry.shape
-      ? draftEntry.shape.linkedTo
-      : null;
-  const refundOf = linkedTo
-    ? view.budget.transactions.find((item) => item.id === linkedTo)
-    : undefined;
-  const refundShares = (() => {
-    const refunded = draftAmount(draft);
-    if (!refundOf || !refunded || refunded < 0) return null;
-    const earlier = view.budget.transactions
-      .filter(
-        (item) =>
-          !item.removed &&
-          (() => {
-            const entry = classifyRegisterEntry(view.budget, item);
-            return (
-              "linkedTo" in entry.shape && entry.shape.linkedTo === refundOf.id
-            );
-          })() &&
-          item.id !== session.initial?.id,
-      )
-      .reduce((sum, item) => sum + item.amount, 0);
-    const lines = proportionalRefundLines(refundOf, earlier, refunded);
-    const shares = lines.flatMap((line) =>
-      line.counterpartyShare?.amount ? [line.counterpartyShare] : [],
-    );
-    return shares.length ? (
-      <ShareLabel
-        share={{
-          ...shares[0]!,
-          amount: shares.reduce((sum, share) => sum + share.amount, 0),
-        }}
-      />
-    ) : null;
-  })();
   const accountOptions = useMemo<ChoiceOption[]>(
     () =>
       directEntryAccounts(view.accounts).map((item) => ({
@@ -570,8 +532,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           id={id("categoryId")}
           amount={draftAmount(draft) ?? 0}
           share={draft.counterpartyShare}
-          peopleEnabled={shareable && !split && !refundOf}
-          readOnly={Boolean(refundOf)}
+          peopleEnabled={shareable && !split}
           label="Category"
           value={split ? SPLIT : draft.categoryId}
           displayValue={split ? "Split" : undefined}
@@ -749,7 +710,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
                 : (remaining ?? 0)
             }
             share={line.counterpartyShare}
-            peopleEnabled={shareable && !refundOf}
+            peopleEnabled={shareable}
             label={`Line ${number} category`}
             value={line.categoryId}
             options={spendingOptions}
@@ -897,18 +858,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         {cell("categoryId", "category", "Category", categoryControl)}
         {split || !shareable ? (
           <span className={styles.spacer} data-column="share" />
-        ) : refundOf ? (
-          <div className={styles.cell} data-column="share">
-            <span className={styles.cellLabel}>Share</span>
-            <span
-              className={`${styles.well} ${shareStyles.shareWell}`}
-              data-static
-            >
-              {refundShares ?? (
-                <span className={shell.faint}>Nothing shared</span>
-              )}
-            </span>
-          </div>
         ) : (
           shareCell(
             "counterpartyShare",
@@ -1019,16 +968,10 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       )}
       {matches.length > 0 && <PartnerMatches matches={matches} />}
       <div className={styles.rowFooter}>
-        {refundOf ? (
+        {remembered && (
           <span className={shareStyles.footerHint}>
-            A refund of {refundOf.payee}: its share comes back in proportion
+            Category and share filled in from {remembered} last time
           </span>
-        ) : (
-          remembered && (
-            <span className={shareStyles.footerHint}>
-              Category and share filled in from {remembered} last time
-            </span>
-          )
         )}
         {error}
         {actions}

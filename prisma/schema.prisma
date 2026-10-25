@@ -521,7 +521,6 @@ model PartnerEntry {
   sourceLineId        String?
   sourceHasPurposeCategory Boolean?
   sourceOnSplitPurchase Boolean?
-  sourceLinkedRefund Boolean?
   date                String
   payee               String
   status              String

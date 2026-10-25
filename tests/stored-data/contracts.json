@@ -829,7 +829,6 @@
         "source.transactionId",
         "source.hasPurposeCategory",
         "source.onSplitPurchase",
-        "source.linkedRefund",
         "history[].actorId",
         "history[].at",
         "history[].changes",

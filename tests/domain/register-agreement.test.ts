@@ -153,13 +153,6 @@ function agreementBook() {
     });
     run(actor, {
       ...base,
-      transactionId: "linked-refund",
-      amount: 500,
-      categoryId: undefined,
-      refundOfTransactionId: "partial",
-    });
-    run(actor, {
-      ...base,
       transactionId: "transfer",
       categoryId: undefined,
       transferAccountId: "savings",
@@ -331,20 +324,6 @@ void test("register capabilities and UI commands agree across both members' Pers
           entry.capabilities.categorize,
           `${id}:categorize`,
         );
-        agree(
-          {
-            ...common,
-            type: "transaction.upsert",
-            transactionId: `${id}:refund`,
-            accountId: transaction.accountId,
-            date: transaction.date,
-            amount: 1,
-            payee: "Refund",
-            refundOfTransactionId: transaction.id,
-          },
-          entry.capabilities.refund,
-          `${id}:refund`,
-        );
         if (entry.capabilities.share.mode === "edit") {
           const share =
             transaction.counterpartyShare ??
@@ -420,7 +399,7 @@ void test("register capabilities and UI commands agree across both members' Pers
     "statement-credit",
     "transfer",
   ]);
-  assert.ok(comparisons > 400);
+  assert.ok(comparisons > 350);
 });
 
 void test("source line facts follow a non-payer's full-share edit before the next preview", () => {

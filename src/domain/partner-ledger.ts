@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-  classifyRegisterEntry,
-  linkedRefundShareMessage,
-} from "./register-entry";
+import { classifyRegisterEntry } from "./register-entry";
 import type { Changes } from "./changes";
 import type { Budget, Transaction, TransactionLine } from "./engine";
 import { isPending } from "./cleared";
@@ -83,7 +80,6 @@ export type PartnerEntry = {
     lineId: string;
     hasPurposeCategory: boolean;
     onSplitPurchase: boolean;
-    linkedRefund: boolean;
   };
   date: string;
   payee: string;
@@ -135,7 +131,6 @@ export const partnerEntryObject = z.object({
       lineId: identifier,
       hasPurposeCategory: z.boolean(),
       onSplitPurchase: z.boolean(),
-      linkedRefund: z.boolean(),
     })
     .optional(),
   date: day,
@@ -440,9 +435,7 @@ export function partnerLedgerRows(
       entryId: entry.id,
       awaitingImport: awaitingImport(entry),
       recordedBy: recordedBy(entry),
-      shareMode: entry.source?.linkedRefund
-        ? { mode: "read", reason: linkedRefundShareMessage }
-        : { mode: "edit" },
+      shareMode: { mode: "edit" },
       history: entry.history,
     });
   }
@@ -495,7 +488,6 @@ export function lineFacts(
       lineId: line.id,
       hasPurposeCategory: Boolean(line.categoryId),
       onSplitPurchase: Boolean(transaction.lines),
-      linkedRefund: Boolean(transaction.refundOfTransactionId),
     },
     date: transaction.date,
     payee: transaction.payee,
@@ -541,8 +533,7 @@ export function writeEntry(
     entry.source?.transactionId !== facts.source?.transactionId ||
     entry.source?.lineId !== facts.source?.lineId ||
     entry.source?.hasPurposeCategory !== facts.source?.hasPurposeCategory ||
-    entry.source?.onSplitPurchase !== facts.source?.onSplitPurchase ||
-    entry.source?.linkedRefund !== facts.source?.linkedRefund;
+    entry.source?.onSplitPurchase !== facts.source?.onSplitPurchase;
   if (!changed.length && !entry.removed) {
     if (sourceChanged) changes.partnerEntry(entry).source = facts.source;
     return;

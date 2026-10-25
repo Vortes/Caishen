@@ -351,12 +351,6 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
         within: "source",
         type: "bool",
       },
-      {
-        name: "sourceLinkedRefund",
-        field: "linkedRefund",
-        within: "source",
-        type: "bool",
-      },
       text("date"),
       text("payee"),
       text("status"),

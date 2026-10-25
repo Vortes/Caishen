@@ -64,8 +64,7 @@ export type Capabilities = {
   approve: Capability;
   reject: Capability;
   categorize: Capability;
-  refund: Capability;
-  share: { mode: "edit" } | { mode: "read"; reason: string } | { mode: "none" };
+  share: { mode: "edit" } | { mode: "none" };
   record: Capability;
   link: Capability;
 };
@@ -81,10 +80,14 @@ export type TransactionShape =
       uncategorized: boolean;
     }
   | { kind: "income" }
-  | { kind: "refund"; share: ShareState; linkedTo: string | null } // linkedTo = refundOfTransactionId
+  | { kind: "refund"; share: ShareState }
   // counterpart is the single other side; null when it is missing or
   // ambiguous. counterparts lists everything that matched.
-  | { kind: "transfer"; counterpart: Transaction | null; counterparts: Transaction[] }
+  | {
+      kind: "transfer";
+      counterpart: Transaction | null;
+      counterparts: Transaction[];
+    }
   | {
       kind: "card-payment";
       counterpart: Transaction | null;
@@ -117,7 +120,7 @@ export type RegisterEntry =
       account: Account;
       capabilities: Capabilities;
       fields: {
-        category: "purpose" | "none" | "boundary" | "linked" | "payment";
+        category: "purpose" | "none" | "boundary" | "payment";
         split: boolean;
         needsCategory: boolean;
         clearCategory: boolean;
@@ -134,8 +137,6 @@ export type RegisterEntry =
       item: BankInboxItem;
       capabilities: Capabilities;
     };
-export const linkedRefundShareMessage =
-  "A linked refund's share follows its purchase. Change the purchase";
 export const splitPurchaseAmountMessage =
   "Change a split purchase's amounts on the purchase itself";
 export const purposeCategoryMessage =
@@ -204,11 +205,7 @@ function shapeOf(
         uncategorized: lines.length === 0,
       };
     case "refund":
-      return {
-        kind: item.kind,
-        share,
-        linkedTo: item.refundOfTransactionId ?? null,
-      };
+      return { kind: item.kind, share };
     case "transfer":
     case "card-payment": {
       const counterparts = transferCounterparts(budget, item);
@@ -233,9 +230,6 @@ function transactionCapabilities(
 ): Capabilities {
   const removed = item.removed ? removedMessage : null;
   const counterparts = "counterparts" in shape ? shape.counterparts : [];
-  const linkedRefunds = budget.transactions.some(
-    (other) => !other.removed && other.refundOfTransactionId === item.id,
-  );
 
   const edit = (): EditCapability => {
     if (removed) return { ok: false, reason: removed };
@@ -260,8 +254,6 @@ function transactionCapabilities(
 
   const reject = (): string | null => {
     if (removed) return removed;
-    if (linkedRefunds)
-      return "Remove linked refunds before rejecting their purchase";
     if ("counterparts" in shape && counterparts.length !== 1)
       return otherSideAmbiguousMessage;
     for (const side of [item, ...counterparts]) {
@@ -289,16 +281,8 @@ function transactionCapabilities(
       return "Use the dedicated operation for transfers and repayments";
     if (account.kind === "tracking")
       return "Tracking activity does not use budget categories";
-    return shape.kind === "refund" && shape.linkedTo
-      ? "Edit the original purchase to change linked refund categories"
-      : null;
+    return null;
   };
-
-  const refund = (): string | null =>
-    removed ??
-    (shape.kind === "purchase" && item.amount < 0
-      ? null
-      : "Link refunds to an original purchase");
 
   const share = (): Capabilities["share"] => {
     if (
@@ -307,9 +291,7 @@ function transactionCapabilities(
       (shape.kind !== "purchase" && shape.kind !== "refund")
     )
       return { mode: "none" };
-    return shape.kind === "refund" && shape.linkedTo
-      ? { mode: "read", reason: linkedRefundShareMessage }
-      : { mode: "edit" };
+    return { mode: "edit" };
   };
 
   return {
@@ -317,7 +299,6 @@ function transactionCapabilities(
     approve: capability(approve()),
     reject: capability(reject()),
     categorize: capability(categorize()),
-    refund: capability(refund()),
     share: share(),
     record: unavailable,
     link: unavailable,
@@ -355,7 +336,6 @@ export function classifyRegisterEntry(
         approve: unavailable,
         reject: unavailable,
         categorize: unavailable,
-        refund: unavailable,
         record,
         link: capability(bankImportActionIssue(budget, item, "link")),
         share:
@@ -402,10 +382,7 @@ export function classifyRegisterEntry(
             : "transfer"
           : input.amount < 0
             ? "purchase"
-            : input.categoryId ||
-                input.lines ||
-                input.counterpartyShare ||
-                input.refundOfTransactionId
+            : input.categoryId || input.lines || input.counterpartyShare
               ? "refund"
               : account.kind === "credit"
                 ? "statement-credit"
@@ -422,19 +399,16 @@ export function classifyRegisterEntry(
     destination ??
     budget.accounts.find((account) => account.id === counterpart?.accountId);
   const boundary = Boolean(other && transferNeedsCategory(account, other));
-  const category =
-    shape.kind === "refund" && shape.linkedTo
-      ? "linked"
-      : isTransfer(item)
-        ? boundary
-          ? "boundary"
-          : "none"
-        : shape.kind === "loan-payment"
-          ? "payment"
-          : account.kind === "tracking" ||
-              (shape.kind === "adjustment" && account.kind !== "cash")
-            ? "none"
-            : "purpose";
+  const category = isTransfer(item)
+    ? boundary
+      ? "boundary"
+      : "none"
+    : shape.kind === "loan-payment"
+      ? "payment"
+      : account.kind === "tracking" ||
+          (shape.kind === "adjustment" && account.kind !== "cash")
+        ? "none"
+        : "purpose";
   return {
     origin: "transaction",
     transaction: item,

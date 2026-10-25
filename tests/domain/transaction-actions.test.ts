@@ -63,51 +63,13 @@ function purchaseAndRefund({ source, status }: Scenario) {
       date: "2026-10-11",
       payee: "Coffee refund",
       amount: 1000,
-      refundOfTransactionId: "purchase",
+      categoryId: "gifts",
       status,
       reviewed: false,
       ...(source === "bank" ? { providerId: "bank-refund" } : {}),
     },
     source === "bank" ? "provider" : "user",
   );
-}
-
-for (const scenario of scenarios) {
-  void test(`a ${scenario.status} ${scenario.source} linked refund is categorized through its original purchase`, () => {
-    const book = purchaseAndRefund(scenario);
-    assert.throws(
-      () =>
-        execute(book, "owner", {
-          type: "transaction.categorize.batch",
-          id: "categorize-refund",
-          transactionIds: ["refund"],
-          categoryId: "food",
-        }),
-      /Edit the original purchase/,
-    );
-    const changed = execute(book, "owner", {
-      type: "transaction.categorize.batch",
-      id: "categorize-purchase",
-      transactionIds: ["purchase"],
-      categoryId: "food",
-    });
-    const view = projectBook(changed, "owner", "2026-10");
-    assert.deepEqual(
-      view.budget.transactions.map(({ id, categoryId, status }) => ({
-        id,
-        categoryId,
-        status,
-      })),
-      [
-        { id: "purchase", categoryId: "food", status: scenario.status },
-        { id: "refund", categoryId: "food", status: scenario.status },
-      ],
-    );
-    assert.equal(
-      view.accounts.find(({ id }) => id === "checking")!.balance,
-      scenario.status === "pending" ? 97_500 : 98_500,
-    );
-  });
 }
 
 for (const scenario of scenarios) {
@@ -144,51 +106,6 @@ for (const scenario of scenarios) {
     assert.equal(
       view.accounts.find(({ id }) => id === "checking")!.balance,
       scenario.status === "pending" ? 97_500 : 98_500,
-    );
-  });
-}
-
-for (const scenario of scenarios) {
-  void test(`a ${scenario.status} ${scenario.source} purchase is rejected only after its linked refund`, () => {
-    const book = purchaseAndRefund(scenario);
-    assert.throws(
-      () =>
-        execute(book, "owner", {
-          type: "transaction.reject",
-          id: "reject-purchase-first",
-          transactionIds: ["purchase"],
-        }),
-      /Remove linked refunds before rejecting/,
-    );
-    const withoutRefund = execute(book, "owner", {
-      type: "transaction.reject",
-      id: "reject-refund",
-      transactionIds: ["refund"],
-    });
-    const remaining = projectBook(withoutRefund, "owner", "2026-10");
-    assert.deepEqual(
-      remaining.budget.transactions
-        .filter((item) => !item.removed)
-        .map(({ id }) => id),
-      ["purchase"],
-    );
-    assert.equal(
-      remaining.accounts.find(({ id }) => id === "checking")!.balance,
-      97_500,
-    );
-    const rejected = execute(withoutRefund, "owner", {
-      type: "transaction.reject",
-      id: "reject-purchase",
-      transactionIds: ["purchase"],
-    });
-    const view = projectBook(rejected, "owner", "2026-10");
-    assert.equal(
-      view.budget.transactions.filter((item) => !item.removed).length,
-      0,
-    );
-    assert.equal(
-      view.accounts.find(({ id }) => id === "checking")!.balance,
-      100_000,
     );
   });
 }

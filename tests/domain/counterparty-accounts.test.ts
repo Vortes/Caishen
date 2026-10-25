@@ -280,7 +280,11 @@ void test("repayment funds a fully shared card purchase and a later refund leave
     date: "2026-10-07",
     amount: 1_154,
     payee: "Noodles Plus",
-    refundOfTransactionId: "noodles",
+    counterpartyShare: {
+      accountId: "counterparty:reimbursements",
+      counterpartyName: "Mom",
+      amount: 1_154,
+    },
     recordedAt: "2026-10-07T12:00:00Z",
   });
   const view = budget.view();
@@ -565,57 +569,4 @@ void test("batch categorization leaves fully reimbursable lines without a purpos
   });
   assert.equal(budget.view().budget.transactions[0]!.categoryId, undefined);
   assert.equal(budget.view().personalSpending, 0);
-});
-
-void test("F2: linked refund rows explain that their share follows the purchase for both partners", () => {
-  let book = withCounterpartyAccounts(
-    addMember(createBook("alan", "Alan", month), "anna", "Anna", month),
-  );
-  book = execute(book, "alan", {
-    type: "account.add",
-    id: "cash",
-    accountId: "cash",
-    name: "Checking",
-    kind: "cash",
-    openingBalance: 100_000,
-  });
-  book = execute(book, "alan", {
-    type: "category.add",
-    id: "food",
-    categoryId: "food",
-    name: "Food",
-  });
-  book = execute(book, "alan", {
-    type: "transaction.upsert",
-    id: "purchase",
-    transactionId: "purchase",
-    accountId: "cash",
-    date: "2026-10-10",
-    payee: "Shared dinner",
-    amount: -5000,
-    categoryId: "food",
-    counterpartyShare: { accountId: "counterparty:partner", amount: 2500 },
-    recordedAt: "2026-10-10T12:00:00Z",
-  });
-  book = execute(book, "alan", {
-    type: "transaction.upsert",
-    id: "refund",
-    transactionId: "refund",
-    accountId: "cash",
-    date: "2026-10-11",
-    payee: "Dinner refund",
-    amount: 1000,
-    refundOfTransactionId: "purchase",
-    recordedAt: "2026-10-11T12:00:00Z",
-  });
-  for (const actor of ["alan", "anna"]) {
-    const row = projectBook(book, actor, month).partnerLedger.find(
-      (row) => row.payee === "Dinner refund",
-    )!;
-    assert.deepEqual(row.shareMode, {
-      mode: "read",
-      reason:
-        "A linked refund's share follows its purchase. Change the purchase",
-    });
-  }
 });

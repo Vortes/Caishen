@@ -86,9 +86,6 @@ test.each([
     expect(Boolean(actions.queryByRole("button", { name: "Categorize" }))).toBe(
       source === "manual",
     );
-    expect(Boolean(actions.queryByRole("button", { name: "Refund" }))).toBe(
-      source === "manual",
-    );
     await shell.user.keyboard("e");
     const editor = within(
       screen.getByRole("form", { name: "Edit transaction" }),
@@ -115,7 +112,6 @@ test.each([
     expect(
       savedActions.getByRole("button", { name: "Categorize" }),
     ).toBeTruthy();
-    expect(savedActions.getByRole("button", { name: "Refund" })).toBeTruthy();
     if (source === "manual") {
       await shell.user.click(
         savedActions.getByRole("button", { name: "Approve (1)" }),
@@ -127,64 +123,6 @@ test.each([
     ).toHaveLength(0);
   },
 );
-
-test("a linked refund is edited in place but categorized through its original purchase", async () => {
-  const shell = await renderShell({
-    seedCommands: [
-      {
-        type: "transaction.upsert",
-        id: "purchase",
-        transactionId: "purchase",
-        accountId: "checking",
-        date: "2026-10-10",
-        payee: "Coffee",
-        amount: -2500,
-        categoryId: "gifts",
-      },
-      {
-        type: "transaction.upsert",
-        id: "refund",
-        transactionId: "refund",
-        accountId: "checking",
-        date: "2026-10-11",
-        payee: "Coffee refund",
-        amount: 1000,
-        refundOfTransactionId: "purchase",
-      },
-      { type: "category.add", id: "food", categoryId: "food", name: "Food" },
-    ],
-  });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
-  await shell.user.click(transactionRow("Coffee refund"));
-  expect(
-    within(
-      screen.getByRole("toolbar", { name: "Selected transactions" }),
-    ).queryByRole("button", { name: "Categorize" }),
-  ).toBeNull();
-  await shell.user.keyboard("e");
-  await shell.user.click(
-    within(screen.getByRole("form", { name: "Edit transaction" })).getByRole(
-      "button",
-      { name: "Cancel" },
-    ),
-  );
-  await shell.user.click(transactionRow("Coffee"));
-  await shell.user.click(screen.getByRole("button", { name: "Categorize" }));
-  const form = within(
-    screen.getByRole("form", { name: "Categorize transactions" }),
-  );
-  await shell.user.type(
-    form.getByRole("combobox", { name: "Category" }),
-    "Food{Enter}",
-  );
-  await shell.user.click(form.getByRole("button", { name: "Apply" }));
-  await findToast("Categorized 1 transaction");
-  expect(
-    within(await findTransactionRow("Coffee refund")).getByText("Food", {
-      exact: true,
-    }),
-  ).toBeTruthy();
-});
 
 test.each(["manual", "bank"] as const)(
   "keyboard editing a %s purchase waits until it is the only selected row",
@@ -237,52 +175,6 @@ test.each(["manual", "bank"] as const)(
     ).toHaveProperty("value", "Coffee");
   },
 );
-
-test("a purchase can be rejected only after its linked refund is rejected", async () => {
-  const shell = await renderShell({
-    seedCommands: [
-      {
-        type: "transaction.upsert",
-        id: "purchase",
-        transactionId: "purchase",
-        accountId: "checking",
-        date: "2026-10-10",
-        payee: "Coffee",
-        amount: -2500,
-        categoryId: "gifts",
-        reviewed: false,
-      },
-      {
-        type: "transaction.upsert",
-        id: "refund",
-        transactionId: "refund",
-        accountId: "checking",
-        date: "2026-10-11",
-        payee: "Coffee refund",
-        amount: 1000,
-        refundOfTransactionId: "purchase",
-        reviewed: false,
-      },
-    ],
-  });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
-  await shell.user.click(transactionRow("Coffee"));
-  expect(
-    within(
-      screen.getByRole("toolbar", { name: "Selected transactions" }),
-    ).queryByRole("button", { name: "Reject" }),
-  ).toBeNull();
-  await shell.user.click(transactionRow("Coffee refund"));
-  await shell.user.click(screen.getByRole("button", { name: "Reject" }));
-  await findToast("Rejected 1 transaction");
-  expect(
-    screen.queryByRole("checkbox", { name: "Select Coffee refund" }),
-  ).toBeNull();
-  await shell.user.click(transactionRow("Coffee"));
-  await shell.user.click(screen.getByRole("button", { name: "Reject" }));
-  await findToast("Rejected 1 transaction");
-  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
-});
 
 test.each([
   { reason: "unmapped account", extra: { accountId: null } },

@@ -65,9 +65,6 @@ The private budget category for your portion of a transaction line. A line entir
 **Write-off**:
 Changing a share to zero, so the counterparty no longer owes it and the full line becomes your own spending, requiring a purpose category at that point. Every share change, including a write-off, is kept in the transaction history.
 
-**Linked refund**:
-A refund recorded against its original purchase, which returns each line's purpose category and share in proportion to the amount refunded.
-
 **Personal share**:
 The portion of an expense a person is responsible for, regardless of who paid the full charge: the line amount minus any share.
 _Avoid_: Amount paid
@@ -101,7 +98,7 @@ A difference between the recorded account and financial-institution records that
 The one record of what the partners owe each other, held by both budgets: each shared purchase's date, payee, amount, who paid, and the other partner's share, plus settlements between them. It shares no category, no line without a share, no other account, and nothing from Reimbursements.
 
 **Source line facts**:
-The facts inside a mirrored partner entry's source that let either partner's browser enforce share-edit rules: whether the payer's line has a purpose category, is on a split purchase, and is a linked refund. They disclose no category identifier or other private value. A recorded purchase awaiting its payer's import has no source yet.
+The facts inside a mirrored partner entry's source that let either partner's browser enforce share-edit rules: whether the payer's line has a purpose category and whether it is on a split purchase. They disclose no category identifier or other private value. A recorded purchase awaiting its payer's import has no source yet.
 _Avoid_: Shared category, provisional preview
 
 **Partner's purchase**:

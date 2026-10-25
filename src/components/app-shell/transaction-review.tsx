@@ -120,7 +120,7 @@ export function SelectionIsland({
   const review = useTransactionReview();
   const entry = useTransactionEntry();
   if (!selected.length) return null;
-  const { approve: approvable, reject: rejectable, refund: refundId } = actions;
+  const { approve: approvable, reject: rejectable } = actions;
   const overLimit =
     approvable.length > TRANSACTION_ACTION_LIMIT ||
     rejectable.length > TRANSACTION_ACTION_LIMIT;
@@ -177,21 +177,6 @@ export function SelectionIsland({
             >
               <CircleXIcon aria-hidden />
               Reject
-            </Button>
-          )}
-          {refundId && (
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() =>
-                entry.start({
-                  accountId: selected[0]!.accountId,
-                  refundOfTransactionId: refundId,
-                  field: "inflow",
-                })
-              }
-            >
-              Refund
             </Button>
           )}
           <CategorizeAction

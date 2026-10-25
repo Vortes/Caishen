@@ -9,7 +9,7 @@
       "deleted": false,
       "data": {
         "userId": "alex",
-        "name": "Demo \u00b7 Alex\u2019s budget",
+        "name": "Demo · Alex’s budget",
         "sort": 0
       }
     },
@@ -33,7 +33,7 @@
       "deleted": false,
       "data": {
         "id": "checking",
-        "name": "Demo \u00b7 Chase Total Checking",
+        "name": "Demo · Chase Total Checking",
         "kind": "cash",
         "openingBalance": 850000,
         "date": "2026-08-01",
@@ -59,7 +59,7 @@
       "deleted": false,
       "data": {
         "id": "card:amex",
-        "name": "Demo \u00b7 American Express payment",
+        "name": "Demo · American Express payment",
         "group": "Credit card payments",
         "pairedAccountId": "amex",
         "userId": "alex",
@@ -116,7 +116,7 @@
         "accountId": "checking",
         "date": "2026-08-01",
         "amount": 325000,
-        "payee": "Cedar Labs \u00b7 payroll",
+        "payee": "Cedar Labs · payroll",
         "status": "posted",
         "expenseMonth": "2026-08",
         "revision": 1,
@@ -136,7 +136,7 @@
         "amount": 325000,
         "status": "posted",
         "date": "2026-08-01",
-        "payee": "Cedar Labs \u00b7 payroll",
+        "payee": "Cedar Labs · payroll",
         "operationId": "dev-seed:44",
         "reason": "created",
         "userId": "alex",
@@ -292,7 +292,7 @@
       "revision": 7,
       "deleted": false,
       "data": {
-        "payee": "Cedar Labs \u00b7 payroll",
+        "payee": "Cedar Labs · payroll",
         "kind": "readyToAssign",
         "userId": "alex",
         "payeeKey": "cedarlabspayroll"
@@ -310,11 +310,10 @@
           "transactionId": "rent-2026-08",
           "lineId": "rent-2026-08",
           "hasPurposeCategory": true,
-          "onSplitPurchase": false,
-          "linkedRefund": false
+          "onSplitPurchase": false
         },
         "date": "2026-08-02",
-        "payee": "Parkside Apartments \u00b7 rent",
+        "payee": "Parkside Apartments · rent",
         "status": "posted",
         "amount": -260000,
         "share": 130000,

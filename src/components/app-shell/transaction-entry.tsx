@@ -63,6 +63,7 @@ export type TransactionSaver = {
   ) => { queuedIds: string[]; error?: string };
   // Holds the undo shortcut while the editor is open.
   holdOpen: () => () => void;
+  // Says why a change made outside the editor couldn't apply.
   alert: (message: string) => void;
 };
 
@@ -203,12 +204,10 @@ export function useTransactionEntryController({
     transactionId,
     accountId,
     field,
-    refundOfTransactionId,
     counterpartyShare,
     shareLineId,
   }: {
     transactionId?: string;
-    refundOfTransactionId?: string;
     accountId?: string | null;
     field?: DraftField;
     // A share picked before the editor opened, such as from the register's
@@ -239,25 +238,6 @@ export function useTransactionEntryController({
           transaction,
           accountId ?? undefined,
         );
-    if (refundOfTransactionId) {
-      const original = view.budget.transactions.find(
-        (item) => item.id === refundOfTransactionId && !item.removed,
-      );
-      if (!original || original.amount >= 0) return false;
-      draft.refundOfTransactionId = original.id;
-      draft.payee = original.payee;
-      draft.categoryId =
-        original.categoryId ?? original.lines?.[0]?.categoryId ?? "";
-      draft.outflow = "";
-      draft.inflow = (Math.abs(original.amount) / 100).toFixed(2);
-      draft.counterpartyShare = original.counterpartyShare
-        ? {
-            ...original.counterpartyShare,
-            amount: (original.counterpartyShare.amount / 100).toFixed(2),
-          }
-        : undefined;
-      draft.lines = [];
-    }
     const unremembered = transaction
       ? undefined
       : imported
