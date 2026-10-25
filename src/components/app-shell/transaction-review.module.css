@@ -58,9 +58,6 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.island:has(> .actions:empty) {
-  padding-right: var(--space-card);
-}
 .hint {
   color: var(--feedback-attention);
 }

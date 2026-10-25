@@ -8,7 +8,7 @@ import styles from "./button.module.css";
 // in a row, so quiet's shape with primary's color. danger: only the confirm
 // button of a destructive dialog.
 export type ButtonVariant =
-  "primary" | "secondary" | "quiet" | "quiet-primary" | "danger";
+  "primary" | "secondary" | "subtle" | "quiet" | "quiet-primary" | "danger";
 
 export type ButtonProps = Omit<
   ComponentProps<"button">,
