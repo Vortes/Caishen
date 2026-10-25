@@ -5,6 +5,7 @@ import { useState, type ComponentProps } from "react";
 import type { DraftShare } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { parseCents, useShareParties } from "./share-field";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import moveStyles from "./move-money.module.css";
@@ -101,7 +102,7 @@ export function TransactionCategoryField({
         <Popover.Content
           className={moveStyles.popover}
           align="start"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Who owes this purchase"
           onKeyDown={(event) => event.stopPropagation()}

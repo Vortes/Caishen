@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { money } from "./model";
 import shell from "./shell.module.css";
 import styles from "./transaction-entry.module.css";
@@ -80,7 +81,7 @@ function OptionList({
           data-wide={wide || undefined}
           data-footer={footer ? "" : undefined}
           align="start"
-          sideOffset={4}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}

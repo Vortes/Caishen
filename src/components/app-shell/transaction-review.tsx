@@ -19,6 +19,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Transaction } from "./model";
 import shell from "./shell.module.css";
 import { useTransactionEntry } from "./transaction-entry";
@@ -259,7 +260,7 @@ function CategorizeAction({
           className={styles.categoryPopover}
           side="top"
           align="end"
-          sideOffset={8}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
         >
           <form

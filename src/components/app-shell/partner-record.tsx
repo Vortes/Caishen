@@ -10,6 +10,7 @@ import {
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { rememberedSpendingCategory } from "~/domain/partner-ledger";
 import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
@@ -92,7 +93,7 @@ export function RecordPurchase({ account }: { account: Account }) {
         <Popover.Content
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Record a shared purchase"
           // The payee comes first; on touch, no keyboard until it's tapped.

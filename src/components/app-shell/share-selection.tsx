@@ -10,6 +10,7 @@ import {
 } from "~/components/transactions/transaction-share";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { money, type Transaction } from "./model";
 import { ShareChoices, useShareParties } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
@@ -119,7 +120,7 @@ export function ShareSelection({
           className={`${moveStyles.popover} ${styles.sharePopover}`}
           side="top"
           align="end"
-          sideOffset={8}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Share selected transactions"
           onKeyDown={(event) => event.stopPropagation()}

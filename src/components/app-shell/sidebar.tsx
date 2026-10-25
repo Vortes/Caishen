@@ -30,6 +30,7 @@ import { newId } from "~/components/budget/format";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { AccountEntry } from "./account-entry";
 import { useAddCategory } from "./add-category";
 import { BanksPopover } from "./banks";
@@ -351,7 +352,7 @@ function ProfileMenu({
           className={styles.menu}
           data-instant={byKeyboard || undefined}
           align="start"
-          sideOffset={4}
+          sideOffset={POPOVER_GAP}
           // The switcher sits nearer the window edge than 12px; padding the
           // left side would shift the menu off the switcher's left edge.
           collisionPadding={{ top: 12, right: 12, bottom: 12 }}

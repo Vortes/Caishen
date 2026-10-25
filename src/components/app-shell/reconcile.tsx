@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Command } from "~/domain/engine";
 import { reviewImportsBeforeReconciliation } from "~/domain/bank-import-balances";
 import { money, type Account } from "./model";
@@ -61,7 +62,7 @@ export function ReconcilePopover({
           className={moveStyles.popover}
           side="bottom"
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={`Reconcile ${account.name}`}
         >

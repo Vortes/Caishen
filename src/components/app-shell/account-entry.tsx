@@ -8,6 +8,7 @@ import { newId, parseMoney, today } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Command } from "~/domain/engine";
 import { useTransactionEntry } from "./transaction-entry";
 import styles from "./account-entry.module.css";
@@ -92,7 +93,7 @@ export function AccountEntry() {
           className={styles.popover}
           side="top"
           align="start"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
         >
           <form

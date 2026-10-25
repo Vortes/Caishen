@@ -8,6 +8,7 @@ import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import {
   planAutoAssign,
   optionAmount,
@@ -54,7 +55,7 @@ export function AssignMoneyPopover({ children }: { children: ReactNode }) {
           className={moveStyles.popover}
           side="bottom"
           align="center"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={
             readyToAssign < 0 ? "Fix overassigned money" : "Assign money"

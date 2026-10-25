@@ -22,6 +22,7 @@ import {
 } from "~/components/ui/segmented-control";
 import { Tag } from "~/components/ui/tag";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Category } from "./model";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
@@ -626,7 +627,7 @@ function BehaviorField({
           <DropdownMenu.Content
             className={styles.menu}
             align="start"
-            sideOffset={4}
+            sideOffset={POPOVER_GAP}
             collisionPadding={12}
             aria-label={label}
             // Escape closes only the menu; the editor around it stays open.

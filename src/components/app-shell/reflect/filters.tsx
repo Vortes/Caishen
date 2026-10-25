@@ -12,6 +12,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { useShellData } from "../shell-data";
 import {
   filterableCategories,
@@ -175,7 +176,7 @@ function FilterPopover({
         <Popover.Content
           className={styles.popover}
           align="start"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={8}
         >
           {children}

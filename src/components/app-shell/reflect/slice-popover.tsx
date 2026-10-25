@@ -6,6 +6,7 @@ import { money, shortDay } from "../model";
 import { useShellData } from "../shell-data";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import shell from "../shell.module.css";
 import { seriesColor } from "./chart-utils";
 import type { ChartItem } from "./report";
@@ -37,7 +38,7 @@ export function SlicePopover({
       <Popover.Content
         className={`${styles.popover} ${styles.slicePopover}`}
         side="top"
-        sideOffset={12}
+        sideOffset={POPOVER_GAP}
         collisionPadding={12}
         aria-label={`${item.name} transactions`}
       >

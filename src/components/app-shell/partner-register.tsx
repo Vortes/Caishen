@@ -15,6 +15,7 @@ import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { PartnerEntryChange } from "~/domain/partner-ledger";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
@@ -160,7 +161,7 @@ function RequestPopover({ account }: { account: Account }) {
         <Popover.Content
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={`Request money from ${account.name}`}
         >
@@ -248,7 +249,7 @@ function PayPopover({ account }: { account: Account }) {
         <Popover.Content
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={`Pay ${account.name}`}
         >

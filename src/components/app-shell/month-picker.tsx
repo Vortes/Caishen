@@ -17,6 +17,7 @@ import { moveMonth } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { ShellData } from "./model";
 import shellStyles from "./shell.module.css";
 import styles from "./month-picker.module.css";
@@ -93,7 +94,7 @@ export function MonthNav({
           <Popover.Content
             className={styles.popover}
             align="start"
-            sideOffset={6}
+            sideOffset={POPOVER_GAP}
             collisionPadding={12}
             aria-label="Choose a month"
             // The picker focuses the month on screen itself.

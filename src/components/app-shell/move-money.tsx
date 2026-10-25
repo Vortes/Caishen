@@ -17,6 +17,7 @@ import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { useShellData } from "./shell-data";
 import shell from "./shell.module.css";
 import styles from "./move-money.module.css";
@@ -91,7 +92,7 @@ export function MoveMoneyPopover({
           className={styles.popover}
           side={side}
           align={align}
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={
             cover

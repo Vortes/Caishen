@@ -42,6 +42,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { syncedLabel } from "./model";
 import { api } from "~/trpc/react";
 import styles from "./banks.module.css";
@@ -277,7 +278,7 @@ export function BanksPopover() {
           data-instant={byKeyboard || undefined}
           side="top"
           align="start"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={{ top: 12, right: 12, bottom: 12, left: 0 }}
           aria-labelledby={`${id}-title`}
           onOpenAutoFocus={(event) => {
@@ -416,7 +417,7 @@ export function BankItem({
               <DropdownMenu.Content
                 className={`${shell.menu} ${styles.bankMenu}`}
                 align="end"
-                sideOffset={4}
+                sideOffset={POPOVER_GAP}
                 collisionPadding={12}
               >
                 {outside > 0 && (
@@ -593,7 +594,7 @@ export function BankStatus({ connection }: { connection: Connection }) {
         <Popover.Content
           className={styles.tip}
           side="top"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={8}
           {...hover}
           // It only describes; focus stays where the user left it.

@@ -19,6 +19,7 @@ import { Tooltip, usePortalContainer } from "~/components/ui/tooltip";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
 // The move-money popover's form surface and fields.
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import styles from "./move-money.module.css";
 
 // What was just added, for the plan to bring into view.
@@ -108,7 +109,7 @@ function AddPopover({
           className={styles.popover}
           side="bottom"
           align={align}
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label={
             group ? `Add a category to ${group}` : "Add a category group"
@@ -328,7 +329,7 @@ export function NewCategoryPopover({
           className={styles.popover}
           side="bottom"
           align="start"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Add a category"
           onCloseAutoFocus={(event) => {

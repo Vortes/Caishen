@@ -2,6 +2,7 @@
 
 import { Tooltip as Primitive } from "radix-ui";
 import { createContext, useContext, type ReactNode } from "react";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import styles from "./tooltip.module.css";
 
 // Tooltips and popovers render through a portal so panels that clip their
@@ -60,7 +61,7 @@ export function Tooltip({
       <Primitive.Portal container={container}>
         <Primitive.Content
           className={styles.tooltip}
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={8}
         >
           {label}

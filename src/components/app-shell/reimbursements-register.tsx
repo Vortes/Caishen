@@ -8,6 +8,7 @@ import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
 import { parseAmount } from "./move-money";
@@ -360,7 +361,7 @@ function RecordRepayment({
         <Popover.Content
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Record a repayment"
           // Who is usually known from the filter, so the amount is what's
