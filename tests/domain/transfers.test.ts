@@ -167,14 +167,17 @@ void test("cash transfers conserve budget money and edit either side with one hi
   assert.doesNotThrow(() => bookSchema.parse(redone.book));
 });
 
-void test("legacy card payment edits preserve both IDs and consume reserve without new spending", () => {
+void test("card payment edits preserve both IDs and consume reserve without new spending", () => {
   const f = fixture();
   f.run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "visa",
+    type: "transaction.upsert",
+    transactionId: `register-payment-1:${date}`,
     date,
-    amount: 5000,
+    accountId: "checking",
+    transferAccountId: "visa",
+    amount: -5000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const original = f
     .view()
@@ -188,12 +191,17 @@ void test("legacy card payment edits preserve both IDs and consume reserve witho
     13500,
   );
   assert.equal(f.view().personalSpending, 0);
-  const before = f.book;
-  assert.throws(
-    () => f.save({ inflow: "201.00", outflow: "" }, original.id),
-    /exceeds card debt/,
+  f.save({ inflow: "201.00", outflow: "" }, original.id);
+  assert.equal(f.transaction(sent.id).amount, -20_100);
+  assert.equal(
+    f.view().accounts.find((item) => item.id === "visa")!.balance,
+    100,
   );
-  assert.deepEqual(f.book, before);
+  assert.equal(
+    f.view().accounts.find((item) => item.id === "visa")!.reserve,
+    -100,
+  );
+  assert.equal(f.view().personalSpending, 0);
 });
 
 void test("import conversion preserves bank identity and approval propagates to both transfer entries", () => {
@@ -338,12 +346,15 @@ void test("brokerage transfers require a category and spend it once, even when e
 void test("loan edits change confirmed principal and interest, and conversion restores the loan", () => {
   const f = fixture();
   f.run({
-    type: "loan.payment",
+    type: "transaction.upsert",
+    transactionId: `register-payment-2:${date}:loan`,
     loanId: "loan",
-    accountId: "checking",
     date,
-    principal: 4000,
     interest: 1000,
+    accountId: "checking",
+    amount: -(4000 + 1000),
+    payee: "Loan payment",
+    status: "posted",
   });
   const original = f
     .view()

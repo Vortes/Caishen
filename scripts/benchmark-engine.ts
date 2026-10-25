@@ -56,13 +56,16 @@ function scenario(book: Book, months: number) {
       payee: "Benchmark",
       categoryId: "groceries",
     }),
-    "execute card.payment": run({
-      type: "card.payment",
+    "execute register card payment": run({
+      type: "transaction.upsert",
+      transactionId: `${"benchmark-payment"}:cash`,
       id: "benchmark-payment",
-      cashAccountId: "checking",
-      cardAccountId: card.id,
       date: `${current}-28`,
-      amount: Math.min(100, card.reserve),
+      accountId: "checking",
+      transferAccountId: card.id,
+      amount: -Math.min(100, card.reserve),
+      payee: "Credit card payment",
+      status: "posted",
     }),
     "projectBook (current month)": () => projectBook(book, "alex", current),
     // Every execute starts by copying the whole household.

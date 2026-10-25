@@ -183,3 +183,47 @@ void test("budget loading still accepts connections saved before Plaid account m
   });
   assert.deepEqual(inbox(imports), []);
 });
+
+void test("F4: bank inbox items carry eligible and changed opening-snapshot facts without prose errors", () => {
+  const records = applyTransactionSync(
+    [],
+    {
+      added: [
+        normalizePlaidTransaction({
+          transaction_id: "opening",
+          account_id: "provider-checking",
+          pending: false,
+          amount: 12.5,
+          iso_currency_code: "USD",
+          date: "2026-10-20",
+          name: "Bookshop",
+        }),
+      ],
+      modified: [],
+      removed: [],
+    },
+    "connection-alice",
+  ).records;
+  const mapping: BankMapping = {
+    accountId: "checking",
+    startDate: "2026-10-01",
+  };
+  const eligible = inbox({}, { records }, { "provider-checking": mapping });
+  assert.equal(eligible[0]!.eligibility, "eligible");
+  const changed = inbox(
+    {},
+    { records },
+    {
+      "provider-checking": {
+        ...mapping,
+        openingSnapshot: {
+          postedImportIds: [],
+          fingerprints: {},
+          reviewImportIds: [records[0]!.id],
+        },
+      },
+    },
+  );
+  assert.equal(changed[0]!.eligibility, "opening_snapshot_changed");
+  assert.equal(changed[0]!.error, null);
+});

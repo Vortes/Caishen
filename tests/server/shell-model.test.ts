@@ -97,6 +97,7 @@ function bankImport(
     ],
     reviewEvidence: [],
     quarantined: false,
+    eligibility: "eligible",
     ...patch,
   };
 }
@@ -424,11 +425,14 @@ void test("a card payment consumes cash from the payment reserve", () => {
   const { run, data } = setup(-5_000);
   run({ type: "assign", categoryId: "card:card", month, amount: 5_000 });
   run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-1:2026-10-03`,
     date: "2026-10-03",
-    amount: 2_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -2_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const payment = data().categories.find(
     (category) => category.id === "card:card",
@@ -449,11 +453,14 @@ void test("paying the card does not count the purchase as a second expense", () 
     payee: "Store",
   });
   run({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "card",
+    type: "transaction.upsert",
+    transactionId: `register-payment-2:2026-10-03`,
     date: "2026-10-03",
-    amount: 2_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -2_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const spendingActivity = data()
     .categories.filter((category) => !category.pays)
@@ -542,4 +549,58 @@ void test("the register excludes pending inflows from its uncleared balance and 
     ),
     { posted: false, pending: true, refund: false },
   );
+});
+
+void test("changed opening history explains the domain refusal in its register row", () => {
+  let book = createBook("owner", "Imports", month);
+  book = execute(book, "owner", {
+    type: "account.add",
+    id: "cash",
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+  });
+  for (const pending of [false, true]) {
+    const shell = toShellData(
+      {
+        view: projectBook(book, "owner", month),
+        connections: [],
+        imports: [
+          {
+            eligibility: "opening_snapshot_changed",
+            connectionId: "bank",
+            logicalId: "opening",
+            fingerprint: "a".repeat(64),
+            providerAccountId: "provider",
+            accountId: "checking",
+            date: "2026-10-10",
+            payee: "Opening history",
+            amount: -2500,
+            pending,
+            removed: false,
+            needsMatchReview: false,
+            error: null,
+            history: [],
+            reviewEvidence: [],
+            quarantined: false,
+            categoryName: null,
+            categoryId: undefined,
+            transactionId: undefined,
+          },
+        ],
+      },
+      month,
+    );
+    assert.equal(
+      shell.accounts.find((account) => account.id === "checking")!.balance,
+      100_000,
+    );
+    assert.equal(shell.transactions[0]!.actions.edit, null);
+    assert.equal(shell.transactions[0]!.needsReview, true);
+    assert.equal(
+      shell.transactions[0]!.reviewReason,
+      "This activity may already be included in this account's opening balance. Investigate the bank's changes or uncertain matches before recording an adjustment; importing it could count it twice.",
+    );
+  }
 });

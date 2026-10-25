@@ -78,11 +78,6 @@ export function accountSetupType(
     };
   if (account.type === "depository") return { kind: "cash" };
   if (account.type === "credit" && account.subtype === "credit card") {
-    if (account.currentBalance < 0)
-      return {
-        reason:
-          "This card has a credit balance. Support for overpaid cards isn’t available yet.",
-      };
     return { kind: "credit" };
   }
   return {

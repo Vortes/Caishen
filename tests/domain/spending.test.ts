@@ -109,12 +109,15 @@ void test("only loan interest is spending, and income is not", () => {
     amount: 50_000,
   });
   setup.run({
-    type: "loan.payment",
+    type: "transaction.upsert",
+    transactionId: `register-payment-1:2026-10-15:student`,
     loanId: "student",
-    accountId: "checking",
     date: "2026-10-15",
-    principal: 45_000,
     interest: 5_000,
+    accountId: "checking",
+    amount: -(45_000 + 5_000),
+    payee: "Loan payment",
+    status: "posted",
   });
   setup.run({
     type: "transaction.upsert",

@@ -1,11 +1,12 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { isCleared, isCounterparty, type Command } from "~/domain/engine";
-import { transactionEditOperation } from "~/domain/transaction-actions";
 import {
-  isTransfer,
+  classifyRegisterEntry,
+  directEntryAccounts,
+} from "~/domain/register-entry";
+import {
   registerPayee,
-  transferCounterparts,
   transferPayee,
   transferNeedsCategory,
   READY_TO_ASSIGN,
@@ -114,15 +115,12 @@ export function createTransactionDraft(
   const account = view.accounts.find(
     (item) => item.id === (transaction?.accountId ?? defaultAccountId),
   );
-  const counterpart = transaction
-    ? transferCounterparts(view.budget, transaction)[0]
+  const entry = transaction
+    ? classifyRegisterEntry(view.budget, transaction)
     : undefined;
-  const loan =
-    transaction?.kind === "loan-payment"
-      ? view.budget.loans.find((item) =>
-          item.payments.some((payment) => payment.id === transaction.linkedId),
-        )
-      : undefined;
+  const counterpart =
+    entry && "counterpart" in entry.shape ? entry.shape.counterpart : undefined;
+  const loan = entry && "loan" in entry.shape ? entry.shape.loan : undefined;
   const payment = loan?.payments.find(
     (item) => item.id === transaction?.linkedId,
   );
@@ -131,7 +129,10 @@ export function createTransactionDraft(
     loanId: loan?.id ?? "",
     interest: payment ? (payment.interest / 100).toFixed(2) : "",
     accountId:
-      transaction?.accountId ?? account?.id ?? view.accounts[0]?.id ?? "",
+      transaction?.accountId ??
+      account?.id ??
+      directEntryAccounts(view.accounts)[0]?.id ??
+      "",
     date: transaction?.date ?? today(view.budget.settings.timezone),
     payee: transaction ? registerPayee(view.budget, transaction) : "",
     categoryId:
@@ -141,7 +142,7 @@ export function createTransactionDraft(
         : undefined) ??
       (transaction &&
       !transaction.counterpartyShare &&
-      (account?.kind === "tracking" && counterpart
+      (entry?.fields.budgetSide === "other" && counterpart
         ? counterpart.amount
         : transaction.amount) > 0
         ? READY_TO_ASSIGN
@@ -185,6 +186,31 @@ export function createTransactionDraft(
 }
 
 /** The draft's amount in signed cents, or undefined while it doesn't read. */
+// The shares and split lines a draft already carries, so classifying it names
+// a shared card inflow a refund rather than a statement credit. Amounts are
+// validated later; here they only describe the shape.
+export function draftShareFacts(draft: TransactionDraft) {
+  const share = (share: DraftShare | null | undefined) =>
+    share
+      ? {
+          accountId: share.accountId,
+          counterpartyName: share.counterpartyName,
+          amount: parseAmount(share.amount.trim()) ?? 0,
+        }
+      : undefined;
+  return {
+    counterpartyShare: share(draft.counterpartyShare),
+    lines: draft.lines.length
+      ? draft.lines.map((line) => ({
+          id: line.lineId,
+          categoryId: line.categoryId || undefined,
+          amount: draftAmount(line) ?? 0,
+          counterpartyShare: share(line.counterpartyShare),
+        }))
+      : undefined,
+  };
+}
+
 export function draftAmount(draft: { outflow: string; inflow: string }) {
   const outflow = draft.outflow.trim();
   const inflow = draft.inflow.trim();
@@ -227,7 +253,7 @@ export function buildTransactionDraftCommand({
   transaction?: Transaction;
   operationId: string;
   entityId: string;
-}): Extract<Command, { type: "transaction.upsert" | "transaction.save" }> {
+}): Extract<Command, { type: "transaction.upsert" }> {
   const fields: TransactionDraftFields = {};
   const account = view.accounts.find((item) => item.id === draft.accountId);
   const date = draft.date.trim();
@@ -244,9 +270,24 @@ export function buildTransactionDraftCommand({
   const boundary = Boolean(
     account && other && transferNeedsCategory(account, other),
   );
+  const entry = account
+    ? classifyRegisterEntry(view.budget, {
+        id: transaction?.id ?? entityId,
+        accountId: account.id,
+        date,
+        payee,
+        amount: draftAmount(draft) ?? 0,
+        status: draft.status,
+        categoryId:
+          categoryId === READY_TO_ASSIGN ? undefined : categoryId || undefined,
+        transferAccountId: draft.transferAccountId || undefined,
+        loanId: draft.loanId || undefined,
+        ...draftShareFacts(draft),
+      })
+    : undefined;
   if (draft.transferAccountId && (!other || other.id === account?.id))
     fields.payee = "Choose a different account.";
-  if (draft.loanId && (!loan || account?.kind !== "cash"))
+  if (draft.loanId && (!loan || !entry?.fields.loanPayment))
     fields.payee = "Choose a loan payment from a cash account.";
   if (draft.loanId && draft.transferAccountId)
     fields.payee = "Choose one destination.";
@@ -254,18 +295,11 @@ export function buildTransactionDraftCommand({
   if (!account) fields.accountId = "Choose an account.";
   else if (transaction && account.id !== transaction.accountId)
     fields.accountId = "An existing transaction cannot move between accounts.";
-  if (
-    transaction &&
-    ![
-      "purchase",
-      "refund",
-      "income",
-      "transfer",
-      "card-payment",
-      "loan-payment",
-    ].includes(transaction.kind)
-  )
-    fields.accountId = "This transaction cannot be edited in the register.";
+  const existingEntry = transaction
+    ? classifyRegisterEntry(view.budget, transaction)
+    : undefined;
+  if (existingEntry && !existingEntry.capabilities.edit.ok)
+    fields.accountId = existingEntry.capabilities.edit.reason;
   if (!payee) fields.payee = "Enter a payee.";
   else if (payee.length > 240)
     fields.payee = "Use no more than 240 characters for the payee.";
@@ -322,7 +356,9 @@ export function buildTransactionDraftCommand({
   }
   if (boundary) {
     const budgetAmount =
-      account?.kind === "tracking" ? outflow - inflow : inflow - outflow;
+      entry?.fields.budgetSide === "other"
+        ? outflow - inflow
+        : inflow - outflow;
     const category = view.categories.find((item) => item.id === categoryId);
     if (categoryId === READY_TO_ASSIGN) {
       if (budgetAmount < 0)
@@ -367,7 +403,7 @@ export function buildTransactionDraftCommand({
     counterpartyShare?: ReturnType<typeof shareInput>;
   }[] = [];
   if (split) {
-    if (transfer || account?.kind === "tracking")
+    if (!entry?.fields.split)
       fields.categoryId = "Only a purchase or refund can be split.";
     for (const line of draft.lines) {
       const category = view.categories.find(
@@ -413,12 +449,12 @@ export function buildTransactionDraftCommand({
     )
       fields.remaining =
         "Split the whole amount: the lines must add up to the total.";
-  } else if (!transfer && account?.kind !== "tracking") {
+  } else if (!transfer && entry?.fields.category !== "none") {
     const category = view.categories.find((item) => item.id === categoryId);
     if (categoryId === READY_TO_ASSIGN) {
       if (outflowText)
         fields.categoryId = "Choose a spending category for an outflow.";
-      else if (account?.kind === "credit")
+      else if (!entry?.fields.readyToAssign)
         fields.categoryId =
           "Use a card payment or statement credit for card inflows.";
     } else if (
@@ -436,8 +472,7 @@ export function buildTransactionDraftCommand({
       fields.categoryId = "Choose a spending category or Ready to Assign.";
     if (
       transaction?.categoryId &&
-      !isTransfer(transaction) &&
-      transaction.kind !== "loan-payment" &&
+      !existingEntry?.fields.clearCategory &&
       (categoryId === READY_TO_ASSIGN ||
         (!categoryId &&
           !(
@@ -454,16 +489,11 @@ export function buildTransactionDraftCommand({
     inflow || -outflow,
     "counterpartyShare",
   );
-  if (counterpartyShare && (transfer || loan || account?.kind === "tracking"))
+  if (counterpartyShare && entry?.capabilities.share.mode === "none")
     fields.counterpartyShare = "Shares apply to purchases and refunds.";
   if (Object.keys(fields).length) throw new TransactionDraftError(fields);
   return {
-    type:
-      transfer ||
-      (transaction &&
-        transactionEditOperation(transaction) === "transaction.save")
-        ? "transaction.save"
-        : "transaction.upsert",
+    type: "transaction.upsert",
     ...(transfer
       ? {
           transferAccountId: draft.transferAccountId || undefined,
@@ -482,7 +512,7 @@ export function buildTransactionDraftCommand({
       : boundary
         ? categoryId
         : draft.transferAccountId ||
-            account?.kind === "tracking" ||
+            entry?.fields.category === "none" ||
             categoryId === READY_TO_ASSIGN
           ? undefined
           : categoryId || undefined,
@@ -515,15 +545,29 @@ function parseAmount(text: string) {
 export function paymentPayees(view: View, draft: TransactionDraft) {
   const account = view.accounts.find((item) => item.id === draft.accountId);
   if (!account) return [];
+  const entry = classifyRegisterEntry(view.budget, {
+    id: "payment-choice",
+    accountId: account.id,
+    date: draft.date,
+    payee: draft.payee,
+    amount: draftAmount(draft) ?? 0,
+  });
   return [
-    ...view.accounts
-      .filter((item) => item.id !== account.id && !isCounterparty(item))
+    ...directEntryAccounts(view.accounts)
+      .filter((item) => item.id !== account.id)
       .map((other) => {
         const amount = draft.inflow
           ? 1
           : draft.outflow
             ? -1
-            : account.kind === "credit" && other.kind === "cash"
+            : !entry.fields.readyToAssign &&
+                classifyRegisterEntry(view.budget, {
+                  id: "payment-choice",
+                  accountId: other.id,
+                  date: draft.date,
+                  payee: draft.payee,
+                  amount: 0,
+                }).fields.loanPayment
               ? 1
               : -1;
         return {
@@ -533,7 +577,7 @@ export function paymentPayees(view: View, draft: TransactionDraft) {
           loanId: "",
         };
       }),
-    ...(account.kind === "cash"
+    ...(entry.fields.loanPayment
       ? view.budget.loans.map((loan) => ({
           value: `loan:${loan.id}`,
           label: `Payment to ${loan.name}`,

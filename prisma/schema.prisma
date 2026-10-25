@@ -317,7 +317,6 @@ model Transaction {
   kind                        String
   linkedId                    String?
   counterpartyShare           Json?
-  refundOfTransactionId       String?
   linkedCounterpartyAccountId String?
   counterpartyName            String?
   partnerSettlementId         String?
@@ -519,6 +518,8 @@ model PartnerEntry {
   payerId             String
   sourceTransactionId String?
   sourceLineId        String?
+  sourceHasPurposeCategory Boolean?
+  sourceOnSplitPurchase Boolean?
   date                String
   payee               String
   status              String

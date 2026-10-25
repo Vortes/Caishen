@@ -85,10 +85,7 @@ function everyRow(): WireRow[] {
   } as WireRow);
   extend("category", { counterpartyAccountId: "partner" });
   extend("target", { cadence: "monthly", monthDay: 15 });
-  extend("transaction", {
-    providerId: "plaid:item:transaction",
-    refundOfTransactionId: "original-purchase",
-  });
+  extend("transaction", { providerId: "plaid:item:transaction" });
   extend("partnerEntry", { removed: true });
   extend("partnerSettlement", { removed: true });
   return rows;

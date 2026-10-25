@@ -308,7 +308,9 @@
         "payerId": "jordan",
         "source": {
           "transactionId": "rent-2026-08",
-          "lineId": "rent-2026-08"
+          "lineId": "rent-2026-08",
+          "hasPurposeCategory": true,
+          "onSplitPurchase": false
         },
         "date": "2026-08-02",
         "payee": "Parkside Apartments · rent",

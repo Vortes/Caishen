@@ -1,10 +1,6 @@
-import {
-  READY_TO_ASSIGN,
-  registerPayee,
-  isTransfer,
-  transferCounterparts,
-  transferNeedsCategory,
-} from "~/domain/transfers";
+import { classifyRegisterEntry } from "~/domain/register-entry";
+import { partnerAccountOf } from "~/domain/partner-ledger";
+import { READY_TO_ASSIGN, registerPayee } from "~/domain/transfers";
 import {
   categoryStatus,
   statusLine,
@@ -84,7 +80,6 @@ export type Account = {
   name: string;
   kind: "cash" | "credit" | "tracking" | "partner" | "reimbursements";
   balance: number;
-  // What in the balance hasn't cleared the bank yet.
   uncleared: number;
   // Today's cleared balance, whatever month is showing: what reconciling
   // compares with the bank's.
@@ -122,7 +117,6 @@ export type Transaction = {
   accountId: string | null;
   amount: number;
   status: "pending" | "posted";
-  // YNAB's C column, apart from the bank's pending status.
   cleared: boolean;
   reconciled: boolean;
   source: "budget" | "bank";
@@ -302,16 +296,15 @@ export function toShellData(
   const loanName = new Map(view.loans.map((item) => [item.id, item.name]));
   // Counterparty accounts go by who they are with: the partner's first name,
   // or Reimbursements for everyone else.
-  const displayName = (account: { kind: string; name: string }) =>
-    (account.kind === "partner" ? state.partnerFirstName : undefined) ??
-    account.name;
-  const partnerAccount = view.accounts.find((item) => item.kind === "partner");
+  const displayName = (account: { id: string; name: string }) =>
+    (account.id === partnerAccountOf(view.budget)?.id
+      ? state.partnerFirstName
+      : undefined) ?? account.name;
+  const partnerAccount = partnerAccountOf(view.budget);
   const partnerName = partnerAccount && displayName(partnerAccount);
   const counterparty = new Map(
     view.accounts
-      .filter(
-        (item) => item.kind === "partner" || item.kind === "reimbursements",
-      )
+      .filter((item) => isCounterparty(item))
       .map((item) => [item.id, item]),
   );
   const categoryName = new Map(
@@ -437,27 +430,15 @@ export function toShellData(
 
   const transactions: Transaction[] = [
     ...active.map((item): Transaction => {
-      const account = view.budget.accounts.find(
-        (account) => account.id === item.accountId,
-      )!;
-      const counterpart = transferCounterparts(view.budget, item)[0];
+      const entry = classifyRegisterEntry(view.budget, item);
+      const counterpart =
+        "counterpart" in entry.shape ? entry.shape.counterpart : null;
       const other = view.budget.accounts.find(
         (account) => account.id === counterpart?.accountId,
       );
-      const boundary = other && transferNeedsCategory(account, other);
-      // Only a cash account's adjustment reaches Ready to Assign; on a card
-      // or tracking account it just corrects the balance.
-      const categoryNotNeeded =
-        (isTransfer(item) ||
-          account.kind === "tracking" ||
-          (item.kind === "adjustment" && account.kind !== "cash")) &&
-        !boundary;
-      const needsCategory =
-        item.kind === "purchase" &&
-        !item.counterpartyShare &&
-        !item.categoryId &&
-        !item.lines &&
-        account.kind !== "tracking";
+      const boundary = entry.fields.category === "boundary";
+      const categoryNotNeeded = entry.fields.category === "none";
+      const needsCategory = entry.fields.needsCategory;
       // A repayment moves money out of a counterparty account, like a
       // transfer, rather than earning it.
       const repaidFrom =
@@ -516,7 +497,7 @@ export function toShellData(
                     ? "Inflow: Ready to Assign"
                     : repaidFrom
                       ? `Transfer: ${displayName(repaidFrom)}`
-                      : transactionCategory(item.kind, item.amount))),
+                      : transactionCategory(entry.shape.kind, item.amount))),
         needsCategory,
         categoryNotNeeded,
         forMonth:
@@ -537,41 +518,47 @@ export function toShellData(
         })),
       };
     }),
-    ...state.imports.map((item): Transaction => ({
-      id: importRowId(item),
-      date: item.date,
-      payee: item.payee,
-      accountId: item.accountId,
-      amount: item.amount,
-      status: item.pending ? "pending" : "posted",
-      cleared: !item.pending,
-      reconciled: false,
-      source: "bank",
-      pendingImport:
-        item.pending &&
+    ...state.imports.map((item): Transaction => {
+      const entry = classifyRegisterEntry(view.budget, item);
+      return {
+        id: importRowId(item),
+        date: item.date,
+        payee: item.payee,
+        accountId: item.accountId,
+        amount: item.amount,
+        status: item.pending ? "pending" : "posted",
+        cleared: !item.pending,
+        reconciled: false,
+        source: "bank",
+        pendingImport:
+          item.pending &&
+          !item.transactionId &&
+          !transactionNeedsReview(view, item),
+        actions: transactionActions(view, item),
+        needsReview: transactionNeedsReview(view, item),
+        reviewReason: entry.capabilities.record.ok
+          ? importReviewReason(item)
+          : entry.capabilities.record.reason,
+        ...importCategoryLabel(view, item, categoryName),
+        // Money to or from the partner waits for the partner's import of it,
+        // then both become one settlement.
+        ...(entry.capabilities.link.ok &&
+        partnerName &&
+        item.accountId &&
         !item.transactionId &&
-        !transactionNeedsReview(view, item),
-      actions: transactionActions(view, item),
-      needsReview: transactionNeedsReview(view, item),
-      reviewReason: importReviewReason(item),
-      ...importCategoryLabel(view, item, categoryName),
-      // Money to or from the partner waits for the partner's import of it,
-      // then both become one settlement.
-      ...(partnerName &&
-      item.accountId &&
-      !item.transactionId &&
-      !importCategory(view, item) &&
-      !importShare(view, item) &&
-      namesPerson(item.payee, partnerName)
-        ? {
-            categoryLabel: `Transfer: ${partnerName}`,
-            needsCategory: false,
-            reviewReason: `Waiting for ${partnerName}’s import to match`,
-          }
-        : {}),
-      categoryNotNeeded: false,
-      history: [],
-    })),
+        !importCategory(view, item) &&
+        !importShare(view, item) &&
+        namesPerson(item.payee, partnerName)
+          ? {
+              categoryLabel: `Transfer: ${partnerName}`,
+              needsCategory: false,
+              reviewReason: `Waiting for ${partnerName}’s import to match`,
+            }
+          : {}),
+        categoryNotNeeded: false,
+        history: [],
+      };
+    }),
   ].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
   const accounts = view.accounts.map((item): Account => {
@@ -590,8 +577,7 @@ export function toShellData(
       kind: item.kind,
       balance: item.balance + balance,
       // The engine leaves pending inflows out of the balance until they
-      // post, so they aren't uncleared money in it either. Imports counted
-      // here have posted, so they're cleared.
+      // post, so they are not part of uncleared money in it either.
       uncleared: active
         .filter(
           (entry) =>
@@ -609,7 +595,7 @@ export function toShellData(
           (transaction) =>
             transaction.accountId === item.id && transaction.needsReview,
         ) ||
-        (item.kind === "partner" &&
+        (item.id === partnerAccount?.id &&
           view.partnerLedger.some(
             (row) => row.needsCategory || row.confirmed === false,
           )),

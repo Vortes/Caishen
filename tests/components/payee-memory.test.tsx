@@ -46,6 +46,7 @@ const bankImport = (
   history: [],
   reviewEvidence: [],
   quarantined: false,
+  eligibility: "eligible",
 });
 
 const editor = () =>

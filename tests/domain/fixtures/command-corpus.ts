@@ -228,7 +228,7 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
   });
   // A transfer, moved to another account, then made a plain purchase.
   alex({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "move",
     accountId: "checking",
     date: "2026-01-07",
@@ -237,7 +237,7 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     transferAccountId: "savings",
   });
   alex(() => ({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "move",
     accountId: "checking",
     date: "2026-01-07",
@@ -248,7 +248,7 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     revision: revision("alex", "move") + 1,
   }));
   alex(() => ({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "move",
     accountId: "checking",
     date: "2026-01-07",
@@ -258,24 +258,32 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     revision: revision("alex", "move") + 1,
   }));
   alex({
-    type: "card.payment",
-    cashAccountId: "checking",
-    cardAccountId: "visa",
+    type: "transaction.upsert",
+    transactionId: `register-payment-1:2026-01-20`,
     date: "2026-01-20",
-    amount: 8_000,
+    accountId: "checking",
+    transferAccountId: "visa",
+    amount: -8_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   alex({
-    type: "card.credit",
-    accountId: "visa",
+    type: "transaction.upsert",
+    transactionId: `register-payment-2:2026-01-21`,
     date: "2026-01-21",
+    accountId: "visa",
     amount: 500,
+    payee: "Posted statement credit",
+    status: "posted",
   });
   alex({
-    type: "card.credit",
-    accountId: "visa",
+    type: "transaction.upsert",
+    transactionId: `register-payment-3:2026-01-21`,
     date: "2026-01-21",
+    accountId: "visa",
     amount: 500,
-    posted: false,
+    payee: "Posted statement credit",
+    status: false ? "posted" : "pending",
   });
   alex({
     type: "loan.add",
@@ -301,16 +309,19 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     amount: 70_000,
   });
   alex({
-    type: "loan.payment",
+    type: "transaction.upsert",
+    transactionId: `register-payment-4:2026-01-10:car`,
     loanId: "car",
-    accountId: "checking",
     date: "2026-01-10",
-    principal: 25_000,
     interest: 5_000,
+    accountId: "checking",
+    amount: -(25_000 + 5_000),
+    payee: "Loan payment",
+    status: "posted",
   });
   // A loan payment from the register, then edited, which re-adds it.
   alex({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "car-payment",
     accountId: "checking",
     date: "2026-01-12",
@@ -321,15 +332,18 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     interest: 4_000,
   });
   alex({
-    type: "loan.payment",
+    type: "transaction.upsert",
+    transactionId: `register-payment-5:2026-01-14:car`,
     loanId: "car",
-    accountId: "checking",
     date: "2026-01-14",
-    principal: 1_000,
     interest: 0,
+    accountId: "checking",
+    amount: -(1_000 + 0),
+    payee: "Loan payment",
+    status: "posted",
   });
   alex(() => ({
-    type: "transaction.save",
+    type: "transaction.upsert",
     transactionId: "car-payment",
     accountId: "checking",
     date: "2026-01-12",

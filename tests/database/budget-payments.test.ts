@@ -111,12 +111,15 @@ void test("approving a transaction persists without creating another purchase", 
 void test("a card payment persists and consumes its reserve without new spending", async (t) => {
   const { run, state } = await cardPurchase(t);
   await run({
-    type: "card.payment",
+    type: "transaction.upsert",
+    transactionId: `${randomUUID()}:cash`,
     id: randomUUID(),
-    cashAccountId: "checking",
-    cardAccountId: "card",
     date,
-    amount: 25_000,
+    accountId: "checking",
+    transferAccountId: "card",
+    amount: -25_000,
+    payee: "Credit card payment",
+    status: "posted",
   });
   const view = (await state()).view!;
   const card = view.accounts.find((account) => account.id === "card")!;
@@ -147,13 +150,16 @@ void test("a loan payment persists its principal and interest separately", async
     amount: 15_000,
   });
   await run({
-    type: "loan.payment",
+    type: "transaction.upsert",
+    transactionId: `${randomUUID()}:payment`,
     id: randomUUID(),
     loanId: "loan",
-    accountId: "checking",
     date,
-    principal: 12_000,
     interest: 3_000,
+    accountId: "checking",
+    amount: -(12_000 + 3_000),
+    payee: "Loan payment",
+    status: "posted",
   });
   const view = (await state()).view!;
   assert.equal(view.loans.find((loan) => loan.id === "loan")?.balance, 488_000);

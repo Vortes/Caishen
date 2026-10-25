@@ -70,7 +70,7 @@ void test("bank metadata creates cash and credit balances without treating debt 
   assert.equal(view.budget.categories[0]!.name, "Travel card payment");
 });
 
-void test("bank account setup rejects unavailable, unsupported, non-USD, fractional-cent and overpaid card balances", () => {
+void test("bank account setup rejects unavailable, unsupported, non-USD, fractional-cent and unsafe balances", () => {
   for (const patch of [
     { type: "investment" },
     { type: "loan" },
@@ -81,7 +81,6 @@ void test("bank account setup rejects unavailable, unsupported, non-USD, fractio
     { currentBalance: 1.001 },
     { currentBalance: Infinity },
     { currentBalance: Number.MAX_SAFE_INTEGER },
-    { type: "credit", subtype: "credit card", currentBalance: -10 },
   ])
     assert.throws(() => bankAccountOpening({ ...account, ...patch }));
   assert.deepEqual(
@@ -318,4 +317,37 @@ void test("a pending record with conflicting identity is quarantined even when s
   records[0]!.matchStatus = "needs_review";
   const snapshot = openingSnapshot(records, "checking");
   assert.deepEqual(snapshot.reviewImportIds, [records[0]!.id]);
+});
+
+void test("an overpaid bank card opens with assignable credit without counting opening imports twice", () => {
+  const opening = bankAccountOpening({
+    ...account,
+    type: "credit",
+    subtype: "credit card",
+    currentBalance: -100.25,
+  });
+  assert.deepEqual(opening, { kind: "credit", openingBalance: 10_025 });
+  const book = execute(createBook("alice", "Alice", "2026-10"), "alice", {
+    type: "account.add",
+    id: "open",
+    accountId: "card",
+    name: "Overpaid card",
+    date: "2026-10-19",
+    ...opening,
+  });
+  const view = projectBook(book, "alice", "2026-10");
+  assert.equal(view.readyToAssign, 10_025);
+  assert.equal(view.cash, 0);
+  assert.equal(view.accounts[0]!.reserve, 0);
+  const records = applyTransactionSync(
+    [],
+    { added: [fact("old-purchase", "2026-10-19")], modified: [], removed: [] },
+    "connection",
+  ).records;
+  const mapping = {
+    accountId: "card",
+    startDate: "2026-10-19",
+    openingSnapshot: openingSnapshot(records, "checking"),
+  };
+  assert.equal(bankImportEligibility(mapping, records[0]!), "opening_snapshot");
 });

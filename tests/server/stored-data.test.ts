@@ -23,9 +23,9 @@ import {
   operationCommandSchema,
 } from "../../src/server/storage/rows";
 
-// ADR 0006: these literal contracts and saved records are release history.
-// Add contracts and samples when storage grows; never regenerate them from
-// the reader implementation or remove old values when writers stop using them.
+// Compare readers with the committed contracts and literal samples. ADR 0008
+// suspends ADR 0006's additive-only rule until the first production launch;
+// removed shapes must be removed from these contracts and samples as well.
 const jsonColumns: Record<string, ZodTypeAny> = {
   "BankConnection.imports": connectionColumnSchema,
   "BankConnection.accountMappings": bankMappingsSchema,
