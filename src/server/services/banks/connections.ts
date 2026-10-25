@@ -98,12 +98,16 @@ export async function linkBankToken(
     const webhook = process.env.APP_BASE_URL
       ? new URL("/api/webhooks/plaid", process.env.APP_BASE_URL).toString()
       : undefined;
-    const token = await client(db, userId, connection?.id).createLinkToken(
+    const plaid = client(db, userId, connection?.id);
+    const accessToken = connection
+      ? decryptBankToken(connection.encryptedToken, userId)
+      : undefined;
+    // Link's webhook field has no effect on an existing Item.
+    if (accessToken && webhook) await plaid.updateWebhook(accessToken, webhook);
+    const token = await plaid.createLinkToken(
       userId,
-      connection
-        ? decryptBankToken(connection.encryptedToken, userId)
-        : undefined,
-      webhook,
+      accessToken,
+      connection ? undefined : webhook,
     );
     return {
       ...token,

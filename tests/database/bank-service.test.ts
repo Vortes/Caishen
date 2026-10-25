@@ -2603,14 +2603,19 @@ void test("update mode reuses the private Item token, registers the webhook, and
     paths.push(path);
     const request = JSON.parse(init?.body as string) as Record<string, unknown>;
     assert.equal(request.access_token, "private-access-token");
-    if (path === "/link/token/create") {
-      assert.equal(request.products, undefined);
-      assert.deepEqual(request.update, { account_selection_enabled: true });
-      assert.equal(request.redirect_uri, process.env.PLAID_REDIRECT_URI);
+    if (path === "/item/webhook/update") {
       assert.equal(
         request.webhook,
         "https://caishen.example/api/webhooks/plaid",
       );
+      return Response.json({ item: {}, request_id: "webhook-registration" });
+    }
+    if (path === "/link/token/create") {
+      assert.deepEqual(paths, ["/item/webhook/update", "/link/token/create"]);
+      assert.equal(request.products, undefined);
+      assert.deepEqual(request.update, { account_selection_enabled: true });
+      assert.equal(request.redirect_uri, process.env.PLAID_REDIRECT_URI);
+      assert.equal(request.webhook, undefined);
       return Response.json({
         link_token: "link-update",
         expiration: "2026-10-20T12:00:00Z",
@@ -2627,7 +2632,20 @@ void test("update mode reuses the private Item token, registers the webhook, and
   });
   const result = await reconnectBank(h.db, alice, h.connection.id);
   assert.deepEqual(result, { id: h.connection.id });
-  assert.deepEqual(paths, ["/link/token/create", "/accounts/get"]);
+  assert.deepEqual(paths, [
+    "/item/webhook/update",
+    "/link/token/create",
+    "/accounts/get",
+  ]);
+  const registration = await db.bankProviderEvent.findFirstOrThrow({
+    where: {
+      clerkUserId: alice,
+      connectionId: h.connection.id,
+      method: "/item/webhook/update",
+    },
+  });
+  assert.equal(registration.requestId, "webhook-registration");
+  assert.equal(registration.errorCode, null);
   assert.equal((await h.details()).error, null);
   assert.equal((await h.details()).status, "connected");
   assert.equal((await h.details()).newAccountsAvailable, false);
@@ -2645,6 +2663,28 @@ void test("update mode reuses the private Item token, registers the webhook, and
   assert.deepEqual((await h.details()).synchronizedAccountIds, []);
   assert.equal((await h.details()).transactionStatus, null);
   assert.ok(!JSON.stringify({ link, result }).includes("private-access-token"));
+  mock.restoreAll();
+  const failedPaths: string[] = [];
+  mockPlaid(async (url) => {
+    failedPaths.push(requestUrl(url).pathname);
+    return Response.json(
+      {
+        error_code: "INVALID_FIELD",
+        request_id: "webhook-registration-failed",
+      },
+      { status: 400 },
+    );
+  });
+  await assert.rejects(
+    linkBankToken(h.db, alice, h.connection.id),
+    /INVALID_FIELD/,
+  );
+  assert.deepEqual(failedPaths, ["/item/webhook/update"]);
+  const failed = await db.bankProviderEvent.findFirstOrThrow({
+    where: { clerkUserId: alice, requestId: "webhook-registration-failed" },
+  });
+  assert.equal(failed.method, "/item/webhook/update");
+  assert.equal(failed.errorCode, "INVALID_FIELD");
 });
 
 void test("exchange refuses an Item already owned by another user without replacing its credential", async () => {
