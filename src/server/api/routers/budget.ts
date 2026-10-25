@@ -43,6 +43,7 @@ import {
   bankConnectionView,
   readBankConnection,
   exchangeBankToken,
+  reviewBankLink,
   linkBankToken,
   syncBanks,
   resolveImport,
@@ -301,15 +302,30 @@ export const budgetRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       linkBankToken(ctx.db, ctx.userId, input?.connectionId),
     ),
+  plaidLinkReview: protectedProcedure
+    .input(z.object({ metadata: plaidLinkMetadataSchema }))
+    .mutation(({ ctx, input }) =>
+      reviewBankLink(ctx.db, ctx.userId, input.metadata),
+    ),
   plaidExchange: protectedProcedure
     .input(
       z.object({
         publicToken: z.string().min(1).max(2048),
         metadata: plaidLinkMetadataSchema,
+        reviewId: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
       }),
     )
     .mutation(({ ctx, input }) =>
-      exchangeBankToken(ctx.db, ctx.userId, input.publicToken, input.metadata),
+      exchangeBankToken(
+        ctx.db,
+        ctx.userId,
+        input.publicToken,
+        input.metadata,
+        input.reviewId,
+      ),
     ),
   plaidLinkExit: protectedProcedure
     .input(bankLinkExitSchema)

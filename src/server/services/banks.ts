@@ -382,11 +382,91 @@ export async function linkBankToken(
     domainError(error);
   }
 }
+function reviewBankLinkConnections(
+  connections: StoredConnection[],
+  linked: PlaidLinkMetadata,
+) {
+  const institutionId = linked.institution?.institution_id;
+  if (!institutionId)
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "Plaid did not identify the bank. Try connecting again.",
+    });
+  const matching = connections
+    .flatMap((connection) => {
+      const details = readColumn(
+        connection,
+        "BankConnection.imports",
+        connectionColumnSchema,
+        connection.imports,
+      );
+      if (!details) throw connectionMaintenance();
+      if (details.disconnectedAt || details.institutionId !== institutionId)
+        return [];
+      const lost = Object.keys(mappings(connection))
+        .filter(
+          (id) => !details.accounts.some((account) => account.accountId === id),
+        )
+        .map((accountId) => ({ accountId, name: null, mask: null }));
+      return [
+        {
+          id: connection.id,
+          institutionName: details.institutionName,
+          accounts: [...details.accounts, ...lost],
+        },
+      ];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const accounts = matching.flatMap((connection) => connection.accounts);
+  const { verdict } = matching.length
+    ? bankLinkVerdict(
+        linked.accounts.map(({ id, ...account }) => ({
+          accountId: id,
+          ...account,
+        })),
+        institutionId,
+        { institutionId, accounts },
+      )
+    : { verdict: "none" as const };
+  const visible = matching.map((connection) => ({
+    id: connection.id,
+    institutionName: connection.institutionName,
+    accounts: connection.accounts.map(({ accountId, name, mask }) => ({
+      accountId,
+      name,
+      mask,
+    })),
+  }));
+  return {
+    verdict,
+    connections: visible,
+    mayDisconnectExisting: matching.some((connection) =>
+      /\b(chase|pnc|navy federal|schwab)\b/i.test(
+        connection.institutionName ?? "",
+      ),
+    ),
+    reviewId: operationHash({ metadata: linked, connections: matching }),
+  };
+}
+
+export async function reviewBankLink(
+  db: Database,
+  userId: string,
+  metadata: unknown,
+) {
+  const linked = plaidLinkMetadataSchema.parse(metadata);
+  const connections = await db.bankConnection.findMany({
+    where: { clerkUserId: userId },
+  });
+  return reviewBankLinkConnections(connections, linked);
+}
+
 export async function exchangeBankToken(
   db: Database,
   userId: string,
   publicToken: string,
   metadata: unknown,
+  reviewId?: string,
 ): Promise<{ id: string; warning?: string }> {
   // Link completed in the browser whatever the exchange makes of it; the
   // trail records that outcome once, with the connection when one results.
@@ -425,48 +505,28 @@ export async function exchangeBankToken(
         const connections = await tx.bankConnection.findMany({
           where: { clerkUserId: userId },
         });
-        for (const saved of connections) {
-          const details = readColumn(
-            saved,
-            "BankConnection.imports",
-            connectionColumnSchema,
-            saved.imports,
-          );
-          if (!details) throw connectionMaintenance();
-          if (details.disconnectedAt) continue;
-          if (details.institutionId !== institutionId) continue;
-          // A mapped account the catalog no longer describes still counts:
-          // the ladder can only call it unknown.
-          const lost = Object.keys(mappings(saved))
-            .filter(
-              (id) =>
-                !details.accounts.some((account) => account.accountId === id),
-            )
-            .map((accountId) => ({ accountId, name: null, mask: null }));
-          const { verdict } = bankLinkVerdict(
-            linked.accounts.map(({ id, ...account }) => ({
-              accountId: id,
-              ...account,
-            })),
-            institutionId,
-            {
-              institutionId: details.institutionId,
-              accounts: [...details.accounts, ...lost],
-            },
-          );
-          if (verdict === "all" || verdict === "some")
-            throw new TRPCError({
-              code: "CONFLICT",
-              message:
-                "This bank account is already connected. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
-            });
-          if (verdict === "unknown")
-            throw new TRPCError({
-              code: "CONFLICT",
-              message:
-                "Caishen couldn’t tell whether this bank account is already connected, because the account details to compare are incomplete or ambiguous. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
-            });
-        }
+        const review = reviewBankLinkConnections(connections, linked);
+        if (reviewId && reviewId !== review.reviewId)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Your bank accounts changed. Review the connection again before continuing.",
+          });
+        if (
+          review.verdict === "all" ||
+          (review.verdict === "some" && !reviewId)
+        )
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "This bank account is already connected. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
+          });
+        if (review.verdict === "unknown" && !reviewId)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Caishen couldn’t tell whether this bank account is already connected, because the account details to compare are incomplete or ambiguous. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
+          });
         const result = await client(db, userId).exchangePublicToken(
           publicToken,
         );

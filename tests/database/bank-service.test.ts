@@ -3417,3 +3417,122 @@ void test("a received webhook is recorded with its type, code, and verification 
     where: { kind: "webhook", clerkUserId: null },
   });
 });
+
+void test("Link review reports all connected accounts with masks without receiving or exchanging a token", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Review must not call Plaid");
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Chase checking",
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+      },
+    ],
+  };
+  const review = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(review.verdict, "all");
+  assert.equal(review.mayDisconnectExisting, true);
+  assert.deepEqual(review.connections, [
+    {
+      id: h.connection.id,
+      institutionName: "Chase",
+      accounts: [
+        {
+          accountId: "provider-checking",
+          name: "Chase checking",
+          mask: "1234",
+        },
+      ],
+    },
+  ]);
+  assert.match(review.reviewId, /^[a-f0-9]{64}$/);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
+void test("a reviewed partial duplicate exchanges only after Connect anyway", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Chase checking",
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+      },
+      {
+        id: "new-savings",
+        name: "Chase savings",
+        mask: "9876",
+        type: "depository",
+        subtype: "savings",
+      },
+    ],
+  };
+  const requests: string[] = [];
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const path = requestUrl(url).pathname;
+    requests.push(path);
+    return path === "/item/public_token/exchange"
+      ? Response.json({
+          access_token: "second-access-token",
+          item_id: `second-login-${run}`,
+        })
+      : Response.json(accountsResponse());
+  });
+  const review = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(review.verdict, "some");
+  assert.deepEqual(requests, []);
+  const result = await h.api.budget.plaidExchange({
+    publicToken: "held-public-token",
+    metadata,
+    reviewId: review.reviewId,
+  });
+  assert.ok(result.id);
+  assert.equal((await h.state()).connections.length, 2);
+  assert.equal(
+    requests.filter((path) => path === "/item/public_token/exchange").length,
+    1,
+  );
+});
