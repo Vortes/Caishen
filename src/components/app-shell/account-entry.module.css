@@ -8,6 +8,28 @@
   background: var(--surface-raised);
   box-shadow: var(--shadow-drawer);
   color-scheme: dark;
+  transform-origin: var(--radix-popover-content-transform-origin);
+}
+.popover[data-state="open"] {
+  animation: popover-in 180ms var(--ease-panel);
+}
+.popover[data-state="closed"] {
+  animation: popover-out 120ms ease-in forwards;
+}
+.popover[data-instant] {
+  animation: none;
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+}
+@keyframes popover-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 :global([data-theme="light"]) .popover {
   color-scheme: light;
@@ -72,5 +94,10 @@
   .form input,
   .form select {
     font-size: var(--type-title);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .popover[data-state] {
+    animation: none;
   }
 }

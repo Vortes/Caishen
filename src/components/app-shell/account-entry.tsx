@@ -21,6 +21,8 @@ export function AccountEntry() {
   const container = usePortalContainer();
   const id = useId();
   const [open, setOpen] = useState(false);
+  const [byKeyboard, setByKeyboard] = useState(false);
+  const pointer = useRef(false);
   const { holdOpen } = entry;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const [name, setName] = useState("");
@@ -79,18 +81,27 @@ export function AccountEntry() {
     <Popover.Root
       open={open}
       onOpenChange={(next) => {
-        if (next && entry.holdForDraft()) return;
+        const byPointer = pointer.current;
+        pointer.current = false;
+        if (next) {
+          if (entry.holdForDraft()) return;
+          setByKeyboard(!byPointer);
+        }
         setOpen(next);
       }}
     >
       <Popover.Trigger asChild>
-        <IconButton label="Add account">
+        <IconButton
+          label="Add account"
+          onPointerDown={() => (pointer.current = true)}
+        >
           <PlusIcon aria-hidden />
         </IconButton>
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
           className={styles.popover}
+          data-instant={byKeyboard || undefined}
           side="top"
           align="start"
           sideOffset={POPOVER_GAP}
