@@ -7,10 +7,12 @@ action with only an icon is an `IconButton`. Something that moves to another
 place is a link; when a link must look like a button, use
 `<Button asChild><a href="…">…</a></Button>`.
 
-Variants: `primary`, `secondary`, `quiet`, `quiet-primary`, `danger`.
+Variants: `primary`, `secondary`, `subtle`, `quiet`, `quiet-primary`, `danger`.
 Sizes: `md`, `sm`. Nothing else exists.
 
 - `secondary` is the default and covers almost every button.
+- `subtle` keeps the padded pill hit area but shows its background only on
+  hover or keyboard focus, as with Clear selection in the selection island.
 - `primary` is the surface's main action: one that commits something (Save,
   Assign, Apply, Mark reviewed) or starts the flow that fixes what the
   surface is about. At most one per card, popover, or dialog. Two primaries

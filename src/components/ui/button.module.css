@@ -63,6 +63,16 @@
   color: var(--text-primary);
 }
 
+.button[data-variant="subtle"] {
+  background: none;
+  color: var(--text-secondary);
+}
+.button[data-variant="subtle"]:hover:not(:disabled),
+.button[data-variant="subtle"]:focus-visible:not(:disabled) {
+  background: var(--control-bg-hover);
+  color: var(--text-primary);
+}
+
 .button[data-variant="quiet"][data-size],
 .button[data-variant="quiet-primary"][data-size] {
   padding: 0;

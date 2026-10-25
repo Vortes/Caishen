@@ -17,8 +17,7 @@ import { TRANSACTION_ACTION_LIMIT } from "~/domain/register-entry";
 import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
-import { IconButton } from "~/components/ui/icon-button";
-import { usePortalContainer } from "~/components/ui/tooltip";
+import { Tooltip, usePortalContainer } from "~/components/ui/tooltip";
 import type { Transaction } from "./model";
 import shell from "./shell.module.css";
 import { useTransactionEntry } from "./transaction-entry";
@@ -132,24 +131,26 @@ export function SelectionIsland({
         role="toolbar"
         aria-label="Selected transactions"
       >
-        <IconButton
-          size="sm"
-          label="Clear selection"
-          shortcut="Esc"
-          onClick={() =>
-            onCheck(
-              selected.map((item) => item.id),
-              false,
-            )
-          }
-        >
-          <XIcon aria-hidden />
-        </IconButton>
         <span className={styles.summary} aria-live="polite">
-          <span className={styles.count}>
-            {selected.length}{" "}
-            {selected.length === 1 ? "transaction" : "transactions"}
-          </span>
+          <Tooltip label="Clear selection" shortcut="Esc">
+            <Button
+              variant="subtle"
+              size="sm"
+              aria-label="Clear selection"
+              onClick={() =>
+                onCheck(
+                  selected.map((item) => item.id),
+                  false,
+                )
+              }
+            >
+              <XIcon aria-hidden />
+              <span className={styles.count}>
+                {selected.length}{" "}
+                {selected.length === 1 ? "transaction" : "transactions"}
+              </span>
+            </Button>
+          </Tooltip>
           {overLimit && (
             <span className={styles.hint}>
               Review up to {TRANSACTION_ACTION_LIMIT} at a time.
