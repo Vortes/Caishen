@@ -51,7 +51,7 @@ import {
   applyTransactionSync,
   type StoredImport,
 } from "~/server/integrations/transactions";
-import { usdToCents } from "~/server/integrations/validation";
+import { IntegrationError, usdToCents } from "~/server/integrations/validation";
 import {
   findOperation,
   readHouseholdRevision,
@@ -304,6 +304,14 @@ function overlappingBankAccount(
 export function bankAccountDetails(value: unknown) {
   return connectionDetails(connectionColumnSchema.parse(value));
 }
+// The request id is what Plaid support can act on, so a failed update
+// names it where the Banks panel shows the failure.
+function withPlaidRequestId(message: string, error: unknown) {
+  return error instanceof IntegrationError && error.requestId
+    ? `${message} (Plaid request id: ${error.requestId})`
+    : message;
+}
+
 // Every request the client makes lands in the audit trail against the
 // member and, once one exists, the connection it concerns.
 function client(db: Database, userId: string, connectionId?: string | null) {
@@ -476,9 +484,11 @@ export async function exchangeBankToken(
     try {
       await refreshBankAccounts(db, userId, connection.id);
       return { id: connection.id };
-    } catch {
-      const warning =
-        "Your bank is connected, but account details are still unavailable. Request an update to try again.";
+    } catch (error) {
+      const warning = withPlaidRequestId(
+        "Your bank is connected, but account details are still unavailable. Request an update to try again.",
+        error,
+      );
       await db.bankConnection.updateMany({
         where: { id: connection.id, updatedAt: connection.updatedAt },
         data: { error: warning, lastAttemptAt: new Date() },
@@ -1715,7 +1725,10 @@ export async function syncBanks(db: Database, userId: string) {
           error:
             error instanceof TRPCError
               ? error.message
-              : "Bank update failed. Reconnect or try again; previous records were preserved.",
+              : withPlaidRequestId(
+                  "Bank update failed. Reconnect or try again; previous records were preserved.",
+                  error,
+                ),
         },
       });
       domainError(error);
