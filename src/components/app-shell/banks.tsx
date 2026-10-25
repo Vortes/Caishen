@@ -441,7 +441,8 @@ export function BankItem({
     ? "link-again"
     : connection.error
       ? "reconnect"
-      : attention?.action;
+      : (attention?.action ??
+        (connection.revokedAccountIds?.length ? "choose" : undefined));
   // Plaid's script is large; fetch it while the pointer is on the way.
   const preload = () => void loadPlaid().catch(() => undefined);
   return (
@@ -570,7 +571,9 @@ export function BankItem({
                   ? (bankBalance(account) ?? "Balance unavailable")
                   : connection.disconnectedAt
                     ? "Disconnected"
-                    : "Not shared"}
+                    : connection.revokedAccountIds?.includes(providerId)
+                      ? "Access revoked at the bank"
+                      : "Not shared"}
               </span>
             </li>
           ))}

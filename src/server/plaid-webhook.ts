@@ -9,8 +9,9 @@ import {
   bankConnectionStatusSchema,
   webhookChange,
 } from "./services/bank-connection-status";
-import { syncBanks } from "./services/banks";
+import { migrateBankAccounts, syncBanks } from "./services/banks";
 import { recordBankWebhookReceipt } from "./services/bank-provider-events";
+import { lockBankConnections } from "./services/bank-account-rows";
 import type { Database } from "./services/household";
 import {
   CONNECTION_MAINTENANCE_MESSAGE,
@@ -72,9 +73,20 @@ export const plaidWebhookSchema = z
       .nullable()
       .optional(),
     consent_expiration_time: z.string().datetime().nullable().optional(),
-    account_ids: z.array(z.string().min(1).max(256)).max(1000).optional(),
+    account_id: z.string().min(1).max(256).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((webhook, context) => {
+    if (
+      webhook.webhook_type === "ITEM" &&
+      webhook.webhook_code === "USER_ACCOUNT_REVOKED" &&
+      (!webhook.item_id || !webhook.account_id)
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Account revocation requires item_id and account_id.",
+      });
+  });
 export type PlaidWebhook = z.infer<typeof plaidWebhookSchema>;
 
 const refused = (message = "Plaid webhook verification failed.") =>
@@ -276,6 +288,30 @@ export async function respondToPlaidWebhook(
       { error: CONNECTION_MAINTENANCE_MESSAGE },
       { status: 503 },
     );
+  }
+  if (
+    webhook.webhook_type === "ITEM" &&
+    webhook.webhook_code === "USER_ACCOUNT_REVOKED" &&
+    webhook.account_id
+  ) {
+    await migrateBankAccounts(db, connection.clerkUserId);
+    await db.$transaction(async (tx) => {
+      await lockBankConnections(tx, connection.clerkUserId, [connection.id]);
+      const changed = await tx.bankAccount.updateMany({
+        where: {
+          connectionId: connection.id,
+          providerAccountId: webhook.account_id,
+          status: { not: "retired" },
+        },
+        data: { status: "revoked" },
+      });
+      if (changed.count)
+        await tx.bankConnection.update({
+          where: { id: connection.id },
+          data: { updatedAt: new Date() },
+        });
+    });
+    return Response.json({ received: true });
   }
   const decision = webhookChange(webhook, status.data, now());
   if (!decision) {
