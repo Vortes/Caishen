@@ -61,26 +61,27 @@ model PartnerInvite {
 }
 
 model BankConnection {
-  id              String    @id @default(cuid())
-  clerkUserId     String
-  user            User      @relation(fields: [clerkUserId], references: [clerkUserId], onDelete: Restrict)
-  itemId          String    @unique
-  encryptedToken  String
-  cursor          String?
-  imports         Json
-  accountMappings Json
-  unavailableAccountIds String[] @default([])
-  status          String    @default("connected")
+  id                     String        @id @default(cuid())
+  clerkUserId            String
+  user                   User          @relation(fields: [clerkUserId], references: [clerkUserId], onDelete: Restrict)
+  itemId                 String        @unique
+  encryptedToken         String
+  cursor                 String?
+  imports                Json
+  accountMappings        Json
+  unavailableAccountIds  String[]      @default([])
+  status                 String        @default("connected")
   consentExpiresAt       DateTime?
   lastSuccessfulUpdateAt DateTime?
   lastFailedUpdateAt     DateTime?
-  newAccountsAvailable   Boolean   @default(false)
+  newAccountsAvailable   Boolean       @default(false)
   updateRequestedAt      DateTime?
-  lastSyncedAt    DateTime?
-  lastAttemptAt   DateTime?
-  error           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  lastSyncedAt           DateTime?
+  lastAttemptAt          DateTime?
+  error                  String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  bankAccounts           BankAccount[]
 
   @@index([clerkUserId])
 }
@@ -107,6 +108,71 @@ model BankProviderEvent {
   @@index([connectionId, createdAt])
   @@index([clerkUserId, createdAt])
   @@index([createdAt])
+}
+
+// One provider account inside one bank connection (ADR 0009): Plaid's
+// account id, the persistent id when Plaid provides one, the account's
+// details and balances, its state, and its readiness (historyComplete, which
+// replaces the connection's synchronizedAccountIds list). status is text whose
+// values only grow: shared, unavailable, revoked, retired. A row Plaid
+// reported again under a new id points at the row that took its place.
+// This release reads these rows and still writes the connection's JSON
+// lists; the writer release copies the lists into rows.
+// The migration also adds a partial unique index Prisma cannot express:
+// (connectionId, persistentAccountId) WHERE status = 'shared' AND
+// persistentAccountId IS NOT NULL.
+model BankAccount {
+  id                  String           @id @default(cuid())
+  connectionId        String
+  connection          BankConnection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  providerAccountId   String
+  persistentAccountId String?
+  name                String
+  officialName        String?
+  mask                String?
+  type                String
+  subtype             String?
+  currency            String?
+  currentBalance      Decimal?         @db.Decimal(20, 4)
+  availableBalance    Decimal?         @db.Decimal(20, 4)
+  balancesAsOf        DateTime?
+  status              String           @default("shared")
+  historyComplete     Boolean          @default(false)
+  firstSeenAt         DateTime         @default(now())
+  lastSeenAt          DateTime         @default(now())
+  supersededById      String?
+  supersededBy        BankAccount?     @relation("BankAccountSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  superseded          BankAccount[]    @relation("BankAccountSupersession")
+  link                BankAccountLink?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([connectionId, providerAccountId])
+  @@index([supersededById])
+}
+
+// One feed from a provider account into a budget account (ADR 0009): the
+// Account or Loan row named by the budget's composite key, the import start
+// date, the opening snapshot (the same shape as accountMappings'), and when
+// the feed began and ended. The budget columns carry no foreign key: a link
+// may feed a Loan as well as an Account, and both are soft-deleted rows the
+// budget keeps forever, so the row's existence is the engine's to check.
+// The migration adds a partial unique index Prisma cannot express:
+// (workspaceId, userId, accountId) WHERE unlinkedAt IS NULL, so a budget
+// account has at most one live feed.
+model BankAccountLink {
+  id              String      @id @default(cuid())
+  bankAccountId   String      @unique
+  bankAccount     BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  workspaceId     String
+  userId          String
+  accountId       String
+  startDate       String
+  openingSnapshot Json?
+  linkedAt        DateTime    @default(now())
+  unlinkedAt      DateTime?
+
+  @@index([workspaceId, userId, accountId])
 }
 
 model ReviewEvidence {
@@ -544,24 +610,24 @@ model PayeeMemory {
 // The partner ledger both budgets share: one entry per purchase or refund
 // line shared between the partners, holding only its ledger facts.
 model PartnerEntry {
-  workspaceId         String
-  id                  String
-  payerId             String
-  sourceTransactionId String?
-  sourceLineId        String?
+  workspaceId              String
+  id                       String
+  payerId                  String
+  sourceTransactionId      String?
+  sourceLineId             String?
   sourceHasPurposeCategory Boolean?
-  sourceOnSplitPurchase Boolean?
-  date                String
-  payee               String
-  status              String
-  amount              BigInt
-  share               BigInt
-  removed             Boolean?
-  history             Json
-  sort                Int
-  revision            Int
-  deleted             Boolean   @default(false)
-  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceOnSplitPurchase    Boolean?
+  date                     String
+  payee                    String
+  status                   String
+  amount                   BigInt
+  share                    BigInt
+  removed                  Boolean?
+  history                  Json
+  sort                     Int
+  revision                 Int
+  deleted                  Boolean   @default(false)
+  workspace                Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@id([workspaceId, id])
   @@index([workspaceId, revision])

@@ -18,7 +18,8 @@ type StoredRecord =
         | "BankConnection.imports"
         | "BankConnection.accountMappings"
         | "BankConnection.status"
-        | "BankImport";
+        | "BankImport"
+        | "BankAccount";
       connectionId: string;
       userId: string;
     }

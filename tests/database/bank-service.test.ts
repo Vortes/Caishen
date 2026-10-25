@@ -3454,3 +3454,448 @@ void test("a received webhook is recorded with its type, code, and verification 
     },
   ]);
 });
+
+void test("row-backed provider accounts show the same linked accounts and inbox as legacy JSON", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("row-reader-purchase")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  const account = {
+    accountId: "provider-checking",
+    persistentAccountId: "persistent-checking",
+    name: "Checking",
+    officialName: "Everyday Checking",
+    mask: "1234",
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 100,
+    availableBalance: 95,
+    currency: "USD",
+  };
+  const details = {
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+    accounts: [account],
+    synchronizedAccountIds: [account.accountId],
+  };
+  await h.setImports({ ...details, records: [record] });
+  const legacy = await h.state();
+  assert.equal(legacy.imports.length, 1);
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: account.accountId,
+      persistentAccountId: account.persistentAccountId,
+      name: account.name,
+      officialName: account.officialName,
+      mask: account.mask,
+      type: account.type,
+      subtype: account.subtype,
+      currentBalance: account.currentBalance,
+      availableBalance: account.availableBalance,
+      currency: account.currency,
+      historyComplete: true,
+      balancesAsOf: new Date("2026-10-25T12:00:00Z"),
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: {
+      imports: { ...details, accounts: [], synchronizedAccountIds: [] },
+      accountMappings: {},
+    },
+  });
+  const rows = await h.state();
+  assert.deepEqual(rows.connections, legacy.connections);
+  assert.deepEqual(rows.imports, legacy.imports);
+  assert.deepEqual(rows.view, legacy.view);
+});
+
+void test("reader rollback leaves table-backed updates stale and visible while other banks still update", async () => {
+  const h = await linkedHarness();
+  const lastSyncedAt = new Date("2026-10-20T12:00:00Z");
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { lastSyncedAt, error: null },
+  });
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      subtype: "checking",
+      mask: "1234",
+      currency: "USD",
+      currentBalance: 100,
+      historyComplete: true,
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  await h.setMappings({});
+  const other = await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: `json-bank-${randomUUID()}`,
+      encryptedToken: encryptBankToken("json-access-token", alice),
+      imports: {},
+      accountMappings: {},
+    },
+  });
+  const requests: string[] = [];
+  mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(init!.body as string) as { access_token: string };
+      requests.push(body.access_token);
+      if (requestUrl(url).pathname === "/transactions/sync")
+        return Response.json({
+          added: [],
+          modified: [],
+          removed: [],
+          accounts: accountsResponse().accounts,
+          has_more: false,
+          next_cursor: "json-updated",
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      return Response.json(accountsResponse());
+    },
+  );
+  await h.api.budget.sync();
+  const result = await h.state();
+  const paused = result.connections.find(
+    (connection) => connection.id === h.connection.id,
+  )!;
+  assert.match(paused.error!, /temporarily unavailable.*upgrade/i);
+  assert.deepEqual(paused.lastSyncedAt, lastSyncedAt);
+  assert.equal(paused.accounts[0]!.currentBalance, 100);
+  assert.ok(
+    result.connections.find((connection) => connection.id === other.id)!
+      .lastSyncedAt,
+  );
+  assert.deepEqual(requests, ["json-access-token", "json-access-token"]);
+});
+
+void test("an unreadable provider account puts only its connection under maintenance", async () => {
+  const h = await linkedHarness();
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      status: "not-a-readable-state",
+    },
+  });
+  const result = await h.state();
+  assert.equal(result.status, "ready");
+  assert.match(result.connections[0]!.error!, /under maintenance/);
+  assert.deepEqual(result.connections[0]!.accounts, []);
+  assert.equal(
+    result.view.budget.accounts.some((account) => account.id === "cash"),
+    true,
+  );
+  await db.bankAccount.updateMany({
+    where: { connectionId: h.connection.id },
+    data: { status: "shared", name: "x".repeat(1025) },
+  });
+  assert.match((await h.state()).connections[0]!.error!, /under maintenance/);
+});
+
+void test("imports naming a retired provider id still reach its live linked account", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("retired-id-purchase")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({ records: [record] });
+  await h.setMappings({});
+  const replacement = await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-replacement",
+      name: "Checking",
+      type: "depository",
+      subtype: "checking",
+      mask: "1234",
+      currency: "USD",
+      currentBalance: 100,
+      historyComplete: true,
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      status: "retired",
+      supersededById: replacement.id,
+    },
+  });
+  const result = await h.state();
+  assert.equal(result.imports[0]?.accountId, "cash");
+  assert.equal(result.imports[0]?.providerAccountId, "provider-checking");
+  assert.deepEqual(Object.keys(result.connections[0]!.accountMappings), [
+    "provider-replacement",
+  ]);
+  await assert.rejects(
+    h.api.budget.execute({
+      baseRevision: result.revision,
+      clientId: "reader-test",
+      command: {
+        type: "account.reconcile",
+        id: randomUUID(),
+        accountId: "cash",
+        date: "2026-10-25",
+        balance: 10000,
+      },
+    }),
+    /review/i,
+  );
+  const item = result.imports[0];
+  await h.api.budget.resolveImport({
+    connectionId: item.connectionId,
+    logicalId: item.logicalId,
+    expectedFingerprint: item.fingerprint,
+    expectedRevision: result.revision,
+    ignore: false,
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "retired-id-recorded",
+      accountId: "cash",
+      date: item.date,
+      amount: item.amount,
+      payee: item.payee,
+      categoryId: "dining",
+      status: "posted",
+    },
+  });
+  const confirmed = await h.state();
+  assert.equal(confirmed.status, "ready");
+  assert.equal(
+    confirmed.view.budget.transactions.find(
+      (item) => item.id === "retired-id-recorded",
+    )?.accountId,
+    "cash",
+  );
+});
+
+void test("a provider link owned by another budget is refused by the connection reader", async () => {
+  const h = await linkedHarness();
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      link: {
+        create: {
+          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          userId: bob,
+          accountId: "cash",
+          startDate: "2026-10-01",
+        },
+      },
+    },
+  });
+  const result = await h.state();
+  assert.equal(result.status, "ready");
+  assert.match(result.connections[0]!.error!, /under maintenance/);
+  assert.deepEqual(result.connections[0]!.accountMappings, {});
+});
+
+void test("reader rollback refuses repeated table-backed setup without creating budget accounts", async () => {
+  const h = await harness();
+  await h.setImports({ transactionStatus: "HISTORICAL_UPDATE_COMPLETE" });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { lastSyncedAt: new Date() },
+  });
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      subtype: "checking",
+      currency: "USD",
+      currentBalance: 100,
+      historyComplete: true,
+    },
+  });
+  const before = await h.state();
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Reader rollback must not contact Plaid for setup");
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await assert.rejects(
+      h.api.budget.setupBankAccounts({
+        connectionId: h.connection.id,
+        operationId: randomUUID(),
+        expectedRevision: before.revision,
+        accounts: [
+          {
+            providerAccountId: "provider-checking",
+            name: "Checking",
+            expectedBalance: 100,
+          },
+        ],
+      }),
+      /temporarily unavailable.*upgrade/i,
+    );
+  }
+  const after = await h.state();
+  assert.equal(after.revision, before.revision);
+  assert.deepEqual(after.view, before.view);
+  assert.deepEqual(after.connections, before.connections);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
+void test("reader rollback refuses connection changes and repair before contacting Plaid", async () => {
+  const h = await linkedHarness();
+  await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+    },
+  });
+  const replacement = await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: `replacement-${randomUUID()}`,
+      encryptedToken: "",
+      imports: {},
+      accountMappings: {},
+    },
+  });
+  const before = await h.state();
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error(
+      "Reader rollback must not contact Plaid for connection changes",
+    );
+  });
+  const selection = {
+    retiredConnectionId: h.connection.id,
+    replacementConnectionId: replacement.id,
+  };
+  const actions = [
+    () => h.api.budget.plaidReconnect({ connectionId: h.connection.id }),
+    () => h.api.budget.plaidLinkToken({ connectionId: h.connection.id }),
+    () =>
+      h.api.budget.disconnectBank({
+        connectionId: h.connection.id,
+        operationId: randomUUID(),
+        expectedRevision: before.revision,
+      }),
+    () => banks.previewDuplicateBankRepair(db, alice, selection),
+    () =>
+      banks.repairDuplicateBankAccounts(db, alice, {
+        ...selection,
+        operationId: randomUUID(),
+        expectedPlanHash: "0".repeat(64),
+      }),
+  ];
+  for (const action of actions)
+    await assert.rejects(action, /temporarily unavailable.*upgrade/i);
+  const after = await h.state();
+  assert.equal(after.revision, before.revision);
+  assert.deepEqual(after.view, before.view);
+  assert.deepEqual(after.connections, before.connections);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
+void test("broken provider supersession raises an alert and isolates the connection", async () => {
+  const h = await linkedHarness();
+  const row = await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      status: "retired",
+    },
+  });
+  await db.bankAccount.update({
+    where: { id: row.id },
+    data: { supersededById: row.id },
+  });
+  const alerts: string[] = [];
+  mock.method(console, "error", (message: string) => {
+    alerts.push(message);
+  });
+  const cyclic = await h.state();
+  assert.equal(cyclic.status, "ready");
+  assert.match(cyclic.connections[0]!.error!, /under maintenance/);
+  assert.ok(
+    alerts.some(
+      (message) =>
+        message.includes("stored-data-unreadable") &&
+        message.includes(h.connection.id),
+    ),
+  );
+
+  const other = await db.bankConnection.create({
+    data: {
+      clerkUserId: bob,
+      itemId: `other-${randomUUID()}`,
+      encryptedToken: "",
+      imports: {},
+      accountMappings: {},
+    },
+  });
+  const outside = await db.bankAccount.create({
+    data: {
+      connectionId: other.id,
+      providerAccountId: "provider-other",
+      name: "Other",
+      type: "depository",
+    },
+  });
+  await db.bankAccount.update({
+    where: { id: row.id },
+    data: { supersededById: outside.id },
+  });
+  alerts.length = 0;
+  const missing = await h.state();
+  assert.equal(missing.status, "ready");
+  assert.match(missing.connections[0]!.error!, /under maintenance/);
+  assert.ok(
+    alerts.some(
+      (message) =>
+        message.includes("stored-data-unreadable") &&
+        message.includes(h.connection.id),
+    ),
+  );
+});
