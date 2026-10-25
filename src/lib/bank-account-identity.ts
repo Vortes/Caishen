@@ -207,7 +207,7 @@ type BankAccountLinks = {
   unavailableAccountIds?: string[];
 };
 
-export function bankAccountNeedsRecovery(
+export function isBankAccountLive(
   connection: Pick<
     BankAccountLinks,
     "disconnectedAt" | "unavailableAccountIds" | "accounts"
@@ -215,10 +215,17 @@ export function bankAccountNeedsRecovery(
   providerId: string,
 ) {
   return (
-    Boolean(connection.disconnectedAt) ||
-    Boolean(connection.unavailableAccountIds?.includes(providerId)) ||
-    !connection.accounts.some((account) => account.accountId === providerId)
+    !connection.disconnectedAt &&
+    !connection.unavailableAccountIds?.includes(providerId) &&
+    connection.accounts.some((account) => account.accountId === providerId)
   );
+}
+
+export function bankAccountNeedsRecovery(
+  connection: Parameters<typeof isBankAccountLive>[0],
+  providerId: string,
+) {
+  return !isBankAccountLive(connection, providerId);
 }
 
 /** Missing provider identity requires an explicit budget-account choice. */

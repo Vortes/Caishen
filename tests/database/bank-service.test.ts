@@ -4192,30 +4192,14 @@ void test("row-backed provider accounts show the same linked accounts and inbox 
   await h.setImports({ ...details, records: [record] });
   const legacy = await h.state();
   assert.equal(legacy.imports.length, 1);
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: account.accountId,
-      persistentAccountId: account.persistentAccountId,
-      name: account.name,
-      officialName: account.officialName,
-      mask: account.mask,
-      type: account.type,
-      subtype: account.subtype,
-      currentBalance: account.currentBalance,
-      availableBalance: account.availableBalance,
-      currency: account.currency,
-      historyComplete: true,
-      balancesAsOf: new Date("2026-10-25T12:00:00Z"),
-      link: {
-        create: {
-          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
-          userId: alice,
-          accountId: "cash",
-          startDate: "2026-10-01",
-        },
+  await db.bankAccount.update({
+    where: {
+      connectionId_providerAccountId: {
+        connectionId: h.connection.id,
+        providerAccountId: account.accountId,
       },
     },
+    data: { balancesAsOf: new Date("2026-10-25T12:00:00Z") },
   });
   await db.bankConnection.update({
     where: { id: h.connection.id },
@@ -4782,7 +4766,7 @@ void test("table-backed update Link and disconnect keep feeds and history while 
     1,
   );
   assert.deepEqual(
-    bankAccountDetails((await h.saved()).imports).accounts,
+    (await h.state()).connections[0]!.accounts,
     bankAccountDetails(legacy.imports).accounts,
   );
   assert.deepEqual((await h.saved()).accountMappings, legacy.accountMappings);
