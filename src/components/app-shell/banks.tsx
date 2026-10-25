@@ -278,7 +278,7 @@ export function BanksPopover() {
           side="top"
           align="start"
           sideOffset={6}
-          collisionPadding={12}
+          collisionPadding={{ top: 12, right: 12, bottom: 12, left: 0 }}
           aria-labelledby={`${id}-title`}
           onOpenAutoFocus={(event) => {
             if (byKeyboard) return;
