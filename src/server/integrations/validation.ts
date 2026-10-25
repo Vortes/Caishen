@@ -18,6 +18,8 @@ export class IntegrationError extends Error {
     public readonly provider: string,
     public readonly code: string,
     message: string,
+    /** The provider's id for the failed request, when it answered at all. */
+    public readonly requestId: string | null = null,
   ) {
     super(message);
     this.name = "IntegrationError";

@@ -72,6 +72,7 @@ import {
   readImportStates,
   type ImportRowState,
 } from "./bank-import-rows";
+import { plaidRequestRecorder } from "./bank-provider-events";
 import {
   earlierResult,
   openHousehold,
@@ -303,15 +304,21 @@ function overlappingBankAccount(
 export function bankAccountDetails(value: unknown) {
   return connectionDetails(connectionColumnSchema.parse(value));
 }
-function client() {
-  return createPlaidClient({
-    clientId: process.env.PLAID_CLIENT_ID ?? "",
-    secret: process.env.PLAID_SECRET ?? "",
-    environment: z
-      .enum(["sandbox", "production"])
-      .parse(process.env.PLAID_ENV ?? "sandbox"),
-    redirectUri: process.env.PLAID_REDIRECT_URI,
-  });
+// Every request the client makes lands in the audit trail against the
+// member and, once one exists, the connection it concerns.
+function client(db: Database, userId: string, connectionId?: string | null) {
+  return createPlaidClient(
+    {
+      clientId: process.env.PLAID_CLIENT_ID ?? "",
+      secret: process.env.PLAID_SECRET ?? "",
+      environment: z
+        .enum(["sandbox", "production"])
+        .parse(process.env.PLAID_ENV ?? "sandbox"),
+      redirectUri: process.env.PLAID_REDIRECT_URI,
+    },
+    undefined,
+    plaidRequestRecorder(db, { userId, connectionId }),
+  );
 }
 
 function requireConnected(connection: StoredConnection) {
@@ -343,7 +350,7 @@ export async function linkBankToken(
     if (connection) requireConnected(connection);
     // Verify token encryption is configured before starting a bank connection.
     encryptBankToken("configuration-check", userId);
-    const token = await client().createLinkToken(
+    const token = await client(db, userId, connection?.id).createLinkToken(
       userId,
       connection
         ? decryptBankToken(connection.encryptedToken, userId)
@@ -432,7 +439,9 @@ export async function exchangeBankToken(
                 "This bank account is already connected. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
             });
         }
-        const result = await client().exchangePublicToken(publicToken);
+        const result = await client(db, userId).exchangePublicToken(
+          publicToken,
+        );
         const existing = await tx.bankConnection.findUnique({
           where: { itemId: result.itemId },
         });
@@ -514,7 +523,7 @@ async function refreshBankAccounts(
   });
   if (!requested) throw new TRPCError({ code: "NOT_FOUND" });
   requireConnected(requested);
-  const accounts = await client().getAccounts(
+  const accounts = await client(db, userId, requested.id).getAccounts(
     decryptBankToken(requested.encryptedToken, userId),
   );
   await db.$transaction(
@@ -611,7 +620,7 @@ export async function disconnectBank(
         opened.household.revision,
       );
     if (!state.disconnectedAt)
-      await client().removeItem(
+      await client(db, userId, connection.id).removeItem(
         decryptBankToken(connection.encryptedToken, userId),
       );
     return await writeServerOperation(db, opened, {
@@ -905,8 +914,7 @@ export async function repairDuplicateBankAccounts(
       "The repair plan changed. Preview it again before applying.",
     );
   const { retired, replacement, opened, mappings, changeSet } = prepared;
-  const plaid = client();
-  const live = await plaid.getAccounts(
+  const live = await client(db, userId, replacement.connection.id).getAccounts(
     decryptBankToken(replacement.connection.encryptedToken, userId),
   );
   if (
@@ -931,7 +939,7 @@ export async function repairDuplicateBankAccounts(
     );
   // Revocation happens first: if the database write conflicts, retrying
   // /item/remove is safe and the credential is still available for cleanup.
-  await plaid.removeItem(
+  await client(db, userId, retired.connection.id).removeItem(
     decryptBankToken(retired.connection.encryptedToken, userId),
   );
   return writeServerOperation(db, opened, {
@@ -1615,7 +1623,7 @@ export async function syncBanks(db: Database, userId: string) {
     const read = readBankConnection(connection, readable);
     if (read.status === "maintenance" || read.state.disconnectedAt) continue;
     try {
-      const plaid = client();
+      const plaid = client(db, userId, connection.id);
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
       let delta = await plaid.syncTransactions(accessToken, connection.cursor);
       const accounts = await plaid.getAccounts(accessToken);

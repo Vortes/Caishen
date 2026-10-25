@@ -124,6 +124,9 @@ async function startOver() {
   await db.bankConnection.deleteMany({
     where: { clerkUserId: { in: [alice, bob] } },
   });
+  await db.bankProviderEvent.deleteMany({
+    where: { clerkUserId: { in: [alice, bob] } },
+  });
 }
 afterEach(startOver);
 
@@ -2783,5 +2786,93 @@ void test("pay remembered as Ready to Assign arrives there, and money going out 
   assert.deepEqual(
     (await bankInbox(h.db, alice)).map((item) => [item.payee, item.amount]),
     [["Acme Payroll", -4000]],
+  );
+});
+
+// The provider event audit trail (spec #139): what an operator can query
+// about one connection's exchanges with Plaid.
+const providerEvents = async (connectionId: string) =>
+  (await db.bankProviderEvent.findMany({ where: { connectionId } })).sort(
+    (left, right) => left.method.localeCompare(right.method),
+  );
+
+void test("one account update records a provider event for each Plaid request with its request id", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        next_cursor: "next",
+        has_more: false,
+        accounts: accountsResponse().accounts,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        request_id: "req-sync-1",
+      });
+    return Response.json({
+      ...accountsResponse(),
+      request_id: "req-accounts-1",
+    });
+  });
+  await syncBanks(h.db, alice);
+  const events = await providerEvents(h.connection.id);
+  assert.deepEqual(
+    events.map(({ kind, method, requestId, errorCode, clerkUserId }) => ({
+      kind,
+      method,
+      requestId,
+      errorCode,
+      clerkUserId,
+    })),
+    [
+      {
+        kind: "request",
+        method: "/accounts/get",
+        requestId: "req-accounts-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+      {
+        kind: "request",
+        method: "/transactions/sync",
+        requestId: "req-sync-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+    ],
+  );
+  assert.ok(
+    events.every((event) => event.durationMs !== null && event.durationMs >= 0),
+  );
+});
+
+void test("a failed account update stores an error naming the Plaid request id and records the failure", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        error_code: "INSTITUTION_DOWN",
+        error_message: "private provider details",
+        request_id: "req-down-7",
+      },
+      { status: 503 },
+    ),
+  );
+  await assert.rejects(syncBanks(h.db, alice));
+  const details = await h.details();
+  assert.match(details.error!, /Plaid request id: req-down-7/);
+  assert.ok(!details.error!.includes("private provider details"));
+  assert.deepEqual(
+    (await providerEvents(h.connection.id)).map(
+      ({ method, requestId, errorCode }) => ({ method, requestId, errorCode }),
+    ),
+    [
+      {
+        method: "/transactions/sync",
+        requestId: "req-down-7",
+        errorCode: "INSTITUTION_DOWN",
+      },
+    ],
   );
 });
