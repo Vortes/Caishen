@@ -86,6 +86,7 @@ import {
 } from "./partner-imports";
 
 const connectionDetailsShape = {
+  disconnectedAt: z.string().datetime().optional(),
   accounts: z.array(bankAccountSchema).max(1000).default([]),
   institutionId: z.string().max(256).nullable().default(null),
   institutionName: z.string().max(1024).nullable().default(null),
@@ -151,6 +152,7 @@ function connectionDetails(column: ConnectionDetails) {
     synchronizedAccountIds,
   } = column;
   return {
+    ...(column.disconnectedAt ? { disconnectedAt: column.disconnectedAt } : {}),
     accounts,
     institutionId,
     institutionName,
@@ -270,6 +272,20 @@ function client() {
   });
 }
 
+function requireConnected(connection: StoredConnection) {
+  const details = readColumn(
+    connection,
+    "BankConnection.imports",
+    connectionColumnSchema,
+    connection.imports,
+  );
+  if (!details) throw connectionMaintenance();
+  if (details.disconnectedAt)
+    throw new Error(
+      "This bank is disconnected. Choose Link again to authorize a new connection.",
+    );
+}
+
 export async function linkBankToken(
   db: Database,
   userId: string,
@@ -282,6 +298,7 @@ export async function linkBankToken(
         })
       : null;
     if (connectionId && !connection) throw new TRPCError({ code: "NOT_FOUND" });
+    if (connection) requireConnected(connection);
     // Verify token encryption is configured before starting a bank connection.
     encryptBankToken("configuration-check", userId);
     const token = await client().createLinkToken(
@@ -365,6 +382,7 @@ async function refreshBankAccounts(
         where: { id: connectionId, clerkUserId: userId },
       });
       if (!fresh) throw new TRPCError({ code: "NOT_FOUND" });
+      requireConnected(fresh);
       const column = readColumn(
         fresh,
         "BankConnection.imports",
@@ -400,6 +418,7 @@ export async function reconnectBank(
       where: { id: connectionId, clerkUserId: userId },
     });
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
+    requireConnected(connection);
     await refreshBankAccounts(
       db,
       userId,
@@ -621,6 +640,10 @@ export async function setupBankAccounts(
       input.connectionId,
     );
     const { household, ledger } = opened;
+    if (state.disconnectedAt)
+      throw new Error(
+        "This bank is disconnected. Link it again before setting up accounts.",
+      );
     const previous = await findOperation(
       db,
       household.workspaceId,
@@ -874,7 +897,7 @@ export async function syncBanks(db: Database, userId: string) {
     updated = 0;
   for (const connection of connections) {
     const read = readBankConnection(connection, readable);
-    if (read.status === "maintenance") continue;
+    if (read.status === "maintenance" || read.state.disconnectedAt) continue;
     try {
       const plaid = client();
       const accessToken = decryptBankToken(connection.encryptedToken, userId);
@@ -1009,6 +1032,7 @@ async function applyBankUpdate(
     fresh,
     readImportStates(opened.household.rows, userId),
   );
+  if (old.disconnectedAt) return { imported: 0, updated: 0 };
   const plan = applyTransactionSync(old.records, delta, fresh.id);
   const changedAccounts = new Set(
     [
@@ -1226,7 +1250,7 @@ async function applyBankUpdate(
   ]);
   const saveConnection = async (tx: Prisma.TransactionClient | Database) => {
     const saved = await tx.bankConnection.updateMany({
-      where: { id: fresh.id, cursor: fresh.cursor },
+      where: { id: fresh.id, cursor: fresh.cursor, updatedAt: fresh.updatedAt },
       data: {
         imports: detailsColumn(fresh.imports, state),
         cursor: delta.nextCursor,

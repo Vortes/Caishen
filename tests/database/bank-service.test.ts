@@ -217,6 +217,33 @@ async function harness() {
   };
 }
 
+void test("stored disconnected connections remain readable without contacting the bank", async () => {
+  const h = await linkedHarness();
+  const disconnectedAt = "2026-10-24T12:00:00.000Z";
+  await h.setImports({ disconnectedAt, accounts: [] });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { encryptedToken: "", error: null },
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Disconnected banks must not be contacted");
+  });
+  const before = await h.state();
+  assert.equal(before.connections[0]!.disconnectedAt, disconnectedAt);
+  assert.deepEqual(await syncBanks(db, alice), { imported: 0, updated: 0 });
+  await assert.rejects(
+    linkBankToken(db, alice, h.connection.id),
+    /link again/i,
+  );
+  await assert.rejects(
+    reconnectBank(db, alice, h.connection.id),
+    /link again/i,
+  );
+  assert.deepEqual((await h.state()).view, before.view);
+  assert.equal((await h.details()).error, null);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
 void test("bank update Link tokens and completion enforce connection ownership before accessing Plaid", async () => {
   const h = await harness();
   const before = await h.details();
