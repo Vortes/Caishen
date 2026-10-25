@@ -1910,6 +1910,8 @@ async function persistentHarness(persistentAccountId?: string) {
   });
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     switch (requestUrl(url).pathname) {
+      case "/item/get":
+        return Response.json({ item: { error: null } });
       case "/accounts/get":
         return Response.json(response());
       case "/transactions/sync":
