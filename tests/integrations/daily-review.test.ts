@@ -171,7 +171,10 @@ void test("daily email links to private persistent inbox and states actual fresh
   });
   assert.match(message.subject, /4 items/);
   assert.match(message.text, /No successful bank update yet/);
-  assert.match(message.text, /https:\/\/caishen.example\/app\?view=review/);
+  assert.match(
+    message.text,
+    /https:\/\/caishen.example\/app\/accounts\?view=review/,
+  );
   assert.throws(() =>
     buildDailyReviewMessage({
       appBaseUrl: "http://caishen.example",

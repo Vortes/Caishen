@@ -24,7 +24,7 @@ test("unclearing a posted purchase keeps it out of Pending and moves its amount 
       },
     ],
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   expect(summary("Cleared")).toBe("$957.90");
 
   await shell.user.click(
@@ -55,7 +55,7 @@ test("clearing an entered pending deposit counts it in the balance, and uncleari
       },
     ],
   });
-  await shell.user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   expect(
     within(transactionRow("Payroll")).getByLabelText("Pending"),
   ).toBeTruthy();

@@ -31,7 +31,7 @@ async function openRegister() {
       },
     ],
   });
-  await user.click(screen.getByRole("button", { name: /^Checking/ }));
+  await user.click(screen.getByRole("link", { name: /^Checking/ }));
   return user;
 }
 

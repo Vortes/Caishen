@@ -24,7 +24,7 @@ import { FieldError, MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import { TargetEditor, useTargetEditing } from "./target-editor";
-import type { Screen } from "./sidebar";
+import type { Screen } from "~/components/workspace/routes";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import { FundingRing } from "./views";
 import styles from "./shell.module.css";

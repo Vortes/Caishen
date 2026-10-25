@@ -131,6 +131,8 @@
   border-radius: var(--radius-row);
   background: transparent;
   font-weight: 500;
+  color: inherit;
+  text-decoration: none;
 }
 .switcher:hover,
 .switcher[data-state="open"] {
@@ -197,6 +199,7 @@
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+  text-decoration: none;
 }
 .navItem:hover {
   background: var(--surface-hover);

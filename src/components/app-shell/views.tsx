@@ -1,6 +1,6 @@
 "use client";
 
-import { SHELL_PATH } from "~/components/workspace/routes";
+import { screenHref } from "~/components/workspace/routes";
 import { counterpartyLines, isFullShare } from "~/domain/counterparty";
 import {
   ArrowRightLeftIcon,
@@ -15,6 +15,7 @@ import {
 import {
   Fragment,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -672,18 +673,25 @@ export function RegisterView({
     row?.scrollIntoView({ block: "nearest" });
     row?.focus({ preventScroll: true });
   }, [selectedId, accountId]);
-  const accountName = (id: string | null) =>
-    accounts.find((entry) => entry.id === id)?.name;
+  const accountNames = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account.name])),
+    [accounts],
+  );
+  const accountName = (id: string | null) => accountNames.get(id ?? "");
   const search = query.trim();
   // The register follows the month picker, like the plan. Search and the
   // review inbox span every month, so nothing is hidden by the picker.
-  const rows = transactions.filter(
-    (item) =>
-      (!accountId || item.accountId === accountId) &&
-      (!reviewOnly || item.needsReview) &&
-      (search
-        ? matches(item, search, accountName(item.accountId))
-        : reviewOnly || item.date.startsWith(month.key)),
+  const rows = useMemo(
+    () =>
+      transactions.filter(
+        (item) =>
+          (!accountId || item.accountId === accountId) &&
+          (!reviewOnly || item.needsReview) &&
+          (search
+            ? matches(item, search, accountNames.get(item.accountId ?? ""))
+            : reviewOnly || item.date.startsWith(month.key)),
+      ),
+    [transactions, accountId, reviewOnly, search, month.key, accountNames],
   );
   const [pendingOpen, setPendingOpen] = useState(true);
   const pending = rows.filter((item) => item.pendingImport);
@@ -956,11 +964,12 @@ export function RegisterView({
                   size="sm"
                 >
                   <a
-                    href={`${SHELL_PATH}?${new URLSearchParams({
-                      account: item.counterpart.accountId,
-                      transaction: item.counterpart.id,
-                      month: item.counterpart.date.slice(0, 7),
-                    }).toString()}`}
+                    href={`${screenHref({ type: "register", accountId: item.counterpart.accountId })}?${new URLSearchParams(
+                      {
+                        transaction: item.counterpart.id,
+                        month: item.counterpart.date.slice(0, 7),
+                      },
+                    ).toString()}`}
                     onClick={(event) => {
                       if (
                         event.metaKey ||

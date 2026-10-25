@@ -16,9 +16,7 @@ test("People holds the Reimbursements account in the sidebar and leads the plan 
 
   const people = sidebar().getByRole("button", { name: /^People/ });
   expect(people.getAttribute("aria-expanded")).toBe("true");
-  expect(
-    sidebar().getByRole("button", { name: /^Reimbursements/ }),
-  ).toBeTruthy();
+  expect(sidebar().getByRole("link", { name: /^Reimbursements/ })).toBeTruthy();
 
   // The column header's toggle opens and folds every group.
   const groups = plan()
@@ -104,7 +102,7 @@ test("with a partner, People lists the partner by first name before Reimbursemen
   await waitFor(() =>
     expect(
       sidebar()
-        .getAllByRole("button", { name: /^(Anna|Reimbursements|Partner)/ })
+        .getAllByRole("link", { name: /^(Anna|Reimbursements|Partner)/ })
         .map((button) => button.textContent?.replace(/\$.*/, "")),
     ).toEqual(["Anna", "Reimbursements"]),
   );
@@ -119,7 +117,7 @@ test("with a partner, People lists the partner by first name before Reimbursemen
 test("Reimbursements opens its register, which explains where its entries come from and offers no way to add one", async () => {
   const { user } = await renderShell({ book: withPeople() });
 
-  await user.click(sidebar().getByRole("button", { name: /^Reimbursements/ }));
+  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
 
   expect(screen.getByText("Nothing owed yet.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Add transaction" })).toBeNull();
@@ -134,7 +132,7 @@ test("Reimbursements opens its register, which explains where its entries come f
 
 test("a new transaction can't go to a counterparty account or into a paired envelope", async () => {
   const { user } = await renderShell({ book: withPeople() });
-  await user.click(sidebar().getByRole("button", { name: /^Checking/ }));
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Add transaction" }));
   await user.keyboard("{Escape}");
   const form = within(screen.getByRole("form", { name: "New transaction" }));
@@ -166,7 +164,7 @@ test("categorizing selected transactions doesn't offer a paired envelope", async
       }),
     ),
   });
-  await user.click(sidebar().getByRole("button", { name: /^Checking/ }));
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("checkbox", { name: "Select Market" }));
   await user.click(
     within(

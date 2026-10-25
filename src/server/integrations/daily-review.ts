@@ -159,7 +159,7 @@ export function buildDailyReviewMessage(input: DailyReviewMessageInput): {
     subject: count
       ? `${count} ${count === 1 ? "item" : "items"} to review in Caishen`
       : "Your Caishen review inbox is clear",
-    text: `${count} unresolved ${count === 1 ? "item is" : "items are"} in your private review inbox.\n\nLatest successful account update: ${freshness}. Bank data may arrive later than the transaction.\n\nOpen your inbox: ${new URL("/app?view=review", url.origin).toString()}\n\nYour inbox keeps unresolved items together, including after missed days.${input.unsubscribeUrl ? `\n\nTurn off daily emails: ${input.unsubscribeUrl}` : ""}`,
+    text: `${count} unresolved ${count === 1 ? "item is" : "items are"} in your private review inbox.\n\nLatest successful account update: ${freshness}. Bank data may arrive later than the transaction.\n\nOpen your inbox: ${new URL("/app/accounts?view=review", url.origin).toString()}\n\nYour inbox keeps unresolved items together, including after missed days.${input.unsubscribeUrl ? `\n\nTurn off daily emails: ${input.unsubscribeUrl}` : ""}`,
   };
 }
 
