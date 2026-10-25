@@ -597,7 +597,6 @@
         "payee",
         "providerId",
         "reconciled",
-        "refundOfTransactionId",
         "removed",
         "reviewed",
         "revision",
@@ -618,7 +617,6 @@
         "partnerSettlementId",
         "providerId",
         "reconciled",
-        "refundOfTransactionId",
         "removed",
         "counterpartyShare.counterpartyName"
       ],

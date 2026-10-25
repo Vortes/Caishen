@@ -587,7 +587,6 @@ export type TransactionLine = {
 };
 export type Transaction = {
   counterpartyShare?: CounterpartyShare;
-  refundOfTransactionId?: string;
   linkedCounterpartyAccountId?: string;
   counterpartyName?: string;
   // This partner's leg of a settlement (src/domain/partner-settlements.ts).
@@ -734,7 +733,6 @@ export const transactionHistorySchema = z.object({
 });
 export const transactionSchema = z.object({
   counterpartyShare: counterpartyShareSchema.optional(),
-  refundOfTransactionId: storedIdentifier.optional(),
   linkedCounterpartyAccountId: storedIdentifier.optional(),
   counterpartyName: z.string().optional(),
   partnerSettlementId: storedIdentifier.optional(),

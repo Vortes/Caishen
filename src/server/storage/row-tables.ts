@@ -193,7 +193,6 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("kind"),
       text("linkedId", true),
       json("counterpartyShare", true),
-      text("refundOfTransactionId", true),
       text("linkedCounterpartyAccountId", true),
       text("counterpartyName", true),
       text("partnerSettlementId", true),
