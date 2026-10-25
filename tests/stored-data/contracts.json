@@ -1158,13 +1158,8 @@
         "financialFingerprints",
         "reviewImportIds"
       ],
-      "optional": [
-        "financialFingerprints",
-        "reviewImportIds"
-      ],
-      "nullable": [
-        ""
-      ],
+      "optional": ["financialFingerprints", "reviewImportIds"],
+      "nullable": [""],
       "values": {}
     }
   ],
@@ -1205,16 +1200,8 @@
         "supersededById"
       ],
       "values": {
-        "status": [
-          "shared",
-          "unavailable",
-          "revoked",
-          "retired"
-        ],
-        "historyComplete": [
-          true,
-          false
-        ]
+        "status": ["shared", "unavailable", "revoked", "retired"],
+        "historyComplete": [true, false]
       }
     }
   ],
@@ -1232,10 +1219,7 @@
         "unlinkedAt"
       ],
       "optional": [],
-      "nullable": [
-        "openingSnapshot",
-        "unlinkedAt"
-      ],
+      "nullable": ["openingSnapshot", "unlinkedAt"],
       "values": {}
     }
   ]

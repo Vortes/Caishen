@@ -3465,6 +3465,239 @@ void test("a received webhook is recorded with its type, code, and verification 
   ]);
 });
 
+void test("Link review reports all connected accounts with masks without receiving or exchanging a token", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Review must not call Plaid");
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Chase checking",
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+      },
+    ],
+  };
+  const review = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(review.verdict, "all");
+  assert.equal(review.mayDisconnectExisting, true);
+  assert.deepEqual(review.connections, [
+    {
+      id: h.connection.id,
+      institutionName: "Chase",
+      accounts: [
+        {
+          accountId: "provider-checking",
+          name: "Chase checking",
+          mask: "1234",
+        },
+      ],
+    },
+  ]);
+  assert.match(review.reviewId, /^[a-f0-9]{64}$/);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
+void test("a reviewed partial duplicate exchanges only after Connect anyway", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Chase checking",
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+      },
+      {
+        id: "new-savings",
+        name: "Chase savings",
+        mask: "9876",
+        type: "depository",
+        subtype: "savings",
+      },
+    ],
+  };
+  const requests: string[] = [];
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const path = requestUrl(url).pathname;
+    requests.push(path);
+    return path === "/item/public_token/exchange"
+      ? Response.json({
+          access_token: "second-access-token",
+          item_id: `second-login-${run}`,
+        })
+      : Response.json(accountsResponse());
+  });
+  const review = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(review.verdict, "some");
+  assert.deepEqual(requests, []);
+  const result = await h.api.budget.plaidExchange({
+    publicToken: "held-public-token",
+    metadata,
+    reviewId: review.reviewId,
+  });
+  assert.ok(result.id);
+  assert.equal((await h.state()).connections.length, 2);
+  assert.equal(
+    requests.filter((path) => path === "/item/public_token/exchange").length,
+    1,
+  );
+});
+
+void test("Link reviews preserve unknown and no-match outcomes and audit a completion even when no token is exchanged", async () => {
+  const h = await linkedHarness();
+  const account = {
+    accountId: "provider-checking",
+    name: "Checking",
+    officialName: null,
+    mask: "1234",
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 100,
+    availableBalance: 100,
+    currency: "USD",
+  };
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [account],
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Checking",
+        mask: null as string | null,
+        type: "depository",
+        subtype: "checking",
+      },
+    ],
+  };
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Review does not exchange tokens");
+  });
+  assert.equal(
+    (await h.api.budget.plaidLinkReview({ metadata })).verdict,
+    "unknown",
+  );
+  await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: `ambiguous-${run}`,
+      encryptedToken: encryptBankToken("other-token", alice),
+      accountMappings: {},
+      imports: {
+        institutionId: "ins-chase",
+        institutionName: "Chase",
+        accounts: [{ ...account, accountId: "other-checking" }],
+      },
+    },
+  });
+  metadata.accounts[0]!.mask = "1234";
+  const ambiguous = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(ambiguous.verdict, "unknown");
+  assert.equal(ambiguous.connections.length, 2);
+  const fresh = await h.api.budget.plaidLinkReview({
+    metadata: { ...metadata, institution: { institution_id: "ins-new-bank" } },
+  });
+  assert.equal(fresh.verdict, "none");
+  assert.deepEqual(fresh.connections, []);
+  assert.equal(fetcher.mock.callCount(), 0);
+  const events = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link", method: "success" },
+  });
+  assert.equal(events.length, 3);
+  assert.ok(
+    events.every((event) => !JSON.stringify(event).includes("other-token")),
+  );
+});
+
+void test("a revoked Item does not block Link again as an all-connected duplicate", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { status: "revoked" },
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Review must not call Plaid");
+  });
+  const result = await h.api.budget.plaidLinkReview({
+    metadata: {
+      institution: { institution_id: "ins-chase" },
+      accounts: [
+        {
+          id: "replacement-checking",
+          name: "Checking",
+          mask: "1234",
+          type: "depository",
+          subtype: "checking",
+        },
+      ],
+    },
+  });
+  assert.equal(result.verdict, "none");
+  assert.deepEqual(result.connections, []);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
 void test("row-backed provider accounts show the same linked accounts and inbox as legacy JSON", async () => {
   const h = await linkedHarness();
   const record = applyTransactionSync(
@@ -3530,79 +3763,6 @@ void test("row-backed provider accounts show the same linked accounts and inbox 
   assert.deepEqual(rows.connections, legacy.connections);
   assert.deepEqual(rows.imports, legacy.imports);
   assert.deepEqual(rows.view, legacy.view);
-});
-
-void test("reader rollback leaves table-backed updates stale and visible while other banks still update", async () => {
-  const h = await linkedHarness();
-  const lastSyncedAt = new Date("2026-10-20T12:00:00Z");
-  await db.bankConnection.update({
-    where: { id: h.connection.id },
-    data: { lastSyncedAt, error: null },
-  });
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
-      name: "Checking",
-      type: "depository",
-      subtype: "checking",
-      mask: "1234",
-      currency: "USD",
-      currentBalance: 100,
-      historyComplete: true,
-      link: {
-        create: {
-          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
-          userId: alice,
-          accountId: "cash",
-          startDate: "2026-10-01",
-        },
-      },
-    },
-  });
-  await h.setMappings({});
-  const other = await db.bankConnection.create({
-    data: {
-      clerkUserId: alice,
-      itemId: `json-bank-${randomUUID()}`,
-      encryptedToken: encryptBankToken("json-access-token", alice),
-      imports: {},
-      accountMappings: {},
-    },
-  });
-  const requests: string[] = [];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      const body = JSON.parse(init!.body as string) as { access_token: string };
-      requests.push(body.access_token);
-      if (requestUrl(url).pathname === "/transactions/sync")
-        return Response.json({
-          added: [],
-          modified: [],
-          removed: [],
-          accounts: accountsResponse().accounts,
-          has_more: false,
-          next_cursor: "json-updated",
-          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
-        });
-      return Response.json(accountsResponse());
-    },
-  );
-  await h.api.budget.sync();
-  const result = await h.state();
-  const paused = result.connections.find(
-    (connection) => connection.id === h.connection.id,
-  )!;
-  assert.match(paused.error!, /temporarily unavailable.*upgrade/i);
-  assert.deepEqual(paused.lastSyncedAt, lastSyncedAt);
-  assert.equal(paused.accounts[0]!.currentBalance, 100);
-  assert.ok(
-    result.connections.find((connection) => connection.id === other.id)!
-      .lastSyncedAt,
-  );
-  assert.deepEqual(requests, ["json-access-token", "json-access-token"]);
 });
 
 void test("an unreadable provider account puts only its connection under maintenance", async () => {
@@ -3742,108 +3902,6 @@ void test("a provider link owned by another budget is refused by the connection 
   assert.equal(result.status, "ready");
   assert.match(result.connections[0]!.error!, /under maintenance/);
   assert.deepEqual(result.connections[0]!.accountMappings, {});
-});
-
-void test("reader rollback refuses repeated table-backed setup without creating budget accounts", async () => {
-  const h = await harness();
-  await h.setImports({ transactionStatus: "HISTORICAL_UPDATE_COMPLETE" });
-  await db.bankConnection.update({
-    where: { id: h.connection.id },
-    data: { lastSyncedAt: new Date() },
-  });
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
-      name: "Checking",
-      type: "depository",
-      subtype: "checking",
-      currency: "USD",
-      currentBalance: 100,
-      historyComplete: true,
-    },
-  });
-  const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
-    throw new Error("Reader rollback must not contact Plaid for setup");
-  });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await assert.rejects(
-      h.api.budget.setupBankAccounts({
-        connectionId: h.connection.id,
-        operationId: randomUUID(),
-        expectedRevision: before.revision,
-        accounts: [
-          {
-            providerAccountId: "provider-checking",
-            name: "Checking",
-            expectedBalance: 100,
-          },
-        ],
-      }),
-      /temporarily unavailable.*upgrade/i,
-    );
-  }
-  const after = await h.state();
-  assert.equal(after.revision, before.revision);
-  assert.deepEqual(after.view, before.view);
-  assert.deepEqual(after.connections, before.connections);
-  assert.equal(fetcher.mock.callCount(), 0);
-});
-
-void test("reader rollback refuses connection changes and repair before contacting Plaid", async () => {
-  const h = await linkedHarness();
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
-      name: "Checking",
-      type: "depository",
-    },
-  });
-  const replacement = await db.bankConnection.create({
-    data: {
-      clerkUserId: alice,
-      itemId: `replacement-${randomUUID()}`,
-      encryptedToken: "",
-      imports: {},
-      accountMappings: {},
-    },
-  });
-  const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
-    throw new Error(
-      "Reader rollback must not contact Plaid for connection changes",
-    );
-  });
-  const selection = {
-    retiredConnectionId: h.connection.id,
-    replacementConnectionId: replacement.id,
-  };
-  const actions = [
-    () => h.api.budget.plaidReconnect({ connectionId: h.connection.id }),
-    () => h.api.budget.plaidLinkToken({ connectionId: h.connection.id }),
-    () =>
-      h.api.budget.disconnectBank({
-        connectionId: h.connection.id,
-        operationId: randomUUID(),
-        expectedRevision: before.revision,
-      }),
-    () => banks.previewDuplicateBankRepair(db, alice, selection),
-    () =>
-      banks.repairDuplicateBankAccounts(db, alice, {
-        ...selection,
-        operationId: randomUUID(),
-        expectedPlanHash: "0".repeat(64),
-      }),
-  ];
-  for (const action of actions)
-    await assert.rejects(action, /temporarily unavailable.*upgrade/i);
-  const after = await h.state();
-  assert.equal(after.revision, before.revision);
-  assert.deepEqual(after.view, before.view);
-  assert.deepEqual(after.connections, before.connections);
-  assert.equal(fetcher.mock.callCount(), 0);
 });
 
 void test("broken provider supersession raises an alert and isolates the connection", async () => {

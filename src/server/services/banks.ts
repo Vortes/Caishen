@@ -285,8 +285,8 @@ export function readBankConnection<C extends StoredConnection>(
   connection: C,
   imports: ImportStates,
 ): ReadConnection<C> {
-  const health = connectionHealth(connection);
   try {
+    const health = connectionHealth(connection);
     const providerRows = readBankAccountRows(connection);
     const column = readColumn(
       connection,
@@ -544,17 +544,6 @@ export async function migrateBankAccounts(db: Database, userId: string) {
   }
 }
 
-const accountWritesUnavailable =
-  "Updates to this bank connection are temporarily unavailable during a server upgrade. Your accounts and saved activity are still available.";
-
-function requireAccountWrites(connection: StoredConnection) {
-  if (connection.bankAccounts?.length)
-    throw new TRPCError({
-      code: "SERVICE_UNAVAILABLE",
-      message: accountWritesUnavailable,
-    });
-}
-
 function requireConnected(connection: StoredConnection) {
   const details = readColumn(
     connection,
@@ -609,11 +598,109 @@ export async function linkBankToken(
     domainError(error);
   }
 }
+function reviewBankLinkConnections(
+  connections: StoredConnection[],
+  linked: PlaidLinkMetadata,
+) {
+  const institutionId = linked.institution?.institution_id;
+  if (!institutionId)
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "Plaid did not identify the bank. Try connecting again.",
+    });
+  const matching = connections
+    .flatMap((connection) => {
+      const details = readColumn(
+        connection,
+        "BankConnection.imports",
+        connectionColumnSchema,
+        connection.imports,
+      );
+      if (!details) throw connectionMaintenance();
+      if (
+        details.disconnectedAt ||
+        connection.status === "revoked" ||
+        connection.status === "disconnected" ||
+        details.institutionId !== institutionId
+      )
+        return [];
+      const lost = Object.keys(mappings(connection))
+        .filter(
+          (id) => !details.accounts.some((account) => account.accountId === id),
+        )
+        .map((accountId) => ({ accountId, name: null, mask: null }));
+      return [
+        {
+          id: connection.id,
+          institutionName: details.institutionName,
+          accounts: [...details.accounts, ...lost],
+        },
+      ];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const accounts = matching.flatMap((connection) => connection.accounts);
+  const { verdict } = matching.length
+    ? bankLinkVerdict(
+        linked.accounts.map(({ id, ...account }) => ({
+          accountId: id,
+          ...account,
+        })),
+        institutionId,
+        { institutionId, accounts },
+      )
+    : { verdict: "none" as const };
+  const visible = matching.map((connection) => ({
+    id: connection.id,
+    institutionName: connection.institutionName,
+    accounts: connection.accounts.map(({ accountId, name, mask }) => ({
+      accountId,
+      name,
+      mask,
+    })),
+  }));
+  return {
+    verdict,
+    connections: visible,
+    mayDisconnectExisting: matching.some((connection) =>
+      /\b(chase|pnc|navy federal|schwab)\b/i.test(
+        connection.institutionName ?? "",
+      ),
+    ),
+    reviewId: operationHash({
+      metadata: linked,
+      connections: visible,
+      verdict,
+    }),
+  };
+}
+
+export async function reviewBankLink(
+  db: Database,
+  userId: string,
+  metadata: unknown,
+  recordCompletion = true,
+) {
+  const linked = plaidLinkMetadataSchema.parse(metadata);
+  const connections = await db.bankConnection.findMany({
+    include: { bankAccounts: bankAccountRowsSelection },
+    where: { clerkUserId: userId },
+  });
+  const review = reviewBankLinkConnections(connections, linked);
+  if (recordCompletion)
+    await recordBankLinkOutcome(db, {
+      userId,
+      method: "success",
+      institutionId: linked.institution?.institution_id ?? null,
+      accountCount: linked.accounts.length,
+    });
+  return review;
+}
 export async function exchangeBankToken(
   db: Database,
   userId: string,
   publicToken: string,
   metadata: unknown,
+  reviewId?: string,
 ): Promise<{ id: string; warning?: string }> {
   // Link completed in the browser whatever the exchange makes of it; the
   // trail records that outcome once, with the connection when one results.
@@ -653,52 +740,28 @@ export async function exchangeBankToken(
           include: { bankAccounts: bankAccountRowsSelection },
           where: { clerkUserId: userId },
         });
-        for (const saved of connections) {
-          const details = readColumn(
-            saved,
-            "BankConnection.imports",
-            connectionColumnSchema,
-            saved.imports,
-          );
-          if (!details) throw connectionMaintenance();
-          if (
-            details.disconnectedAt ||
-            ["revoked", "disconnected"].includes(saved.status)
-          )
-            continue;
-          if (details.institutionId !== institutionId) continue;
-          // A mapped account the catalog no longer describes still counts:
-          // the ladder can only call it unknown.
-          const lost = Object.keys(mappings(saved))
-            .filter(
-              (id) =>
-                !details.accounts.some((account) => account.accountId === id),
-            )
-            .map((accountId) => ({ accountId, name: null, mask: null }));
-          const { verdict } = bankLinkVerdict(
-            linked.accounts.map(({ id, ...account }) => ({
-              accountId: id,
-              ...account,
-            })),
-            institutionId,
-            {
-              institutionId: details.institutionId,
-              accounts: [...details.accounts, ...lost],
-            },
-          );
-          if (verdict === "all" || verdict === "some")
-            throw new TRPCError({
-              code: "CONFLICT",
-              message:
-                "This bank account is already connected. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
-            });
-          if (verdict === "unknown")
-            throw new TRPCError({
-              code: "CONFLICT",
-              message:
-                "Caishen couldn’t tell whether this bank account is already connected, because the account details to compare are incomplete or ambiguous. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
-            });
-        }
+        const review = reviewBankLinkConnections(connections, linked);
+        if (reviewId && reviewId !== review.reviewId)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Your bank accounts changed. Review the connection again before continuing.",
+          });
+        if (
+          review.verdict === "all" ||
+          (review.verdict === "some" && !reviewId)
+        )
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "This bank account is already connected. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
+          });
+        if (review.verdict === "unknown" && !reviewId)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Caishen couldn’t tell whether this bank account is already connected, because the account details to compare are incomplete or ambiguous. Use Choose shared accounts in the existing bank’s ⋯ menu to share additional accounts.",
+          });
         const result = await client(db, userId).exchangePublicToken(
           publicToken,
         );
@@ -711,7 +774,9 @@ export async function exchangeBankToken(
             code: "CONFLICT",
             message: "This connection is already in use.",
           });
-        if (existing) requireAccountWrites(existing);
+        if (existing) {
+          await lockBankConnections(tx, userId, [existing.id]);
+        }
         return tx.bankConnection.upsert({
           where: { itemId: result.itemId },
           create: {
@@ -753,7 +818,7 @@ export async function exchangeBankToken(
   } catch (error) {
     return domainError(error);
   } finally {
-    if (completed)
+    if (completed && !reviewId)
       await recordBankLinkOutcome(db, {
         userId,
         method: "success",
@@ -953,7 +1018,8 @@ async function refreshBankAccounts(
         identity.mappings,
       );
   };
-  if (!identity.decisions.length) return db.$transaction(save);
+  if (!identity.decisions.length)
+    return db.$transaction(save, { timeout: 30_000, maxWait: 10_000 });
   const operationId = randomUUID();
   await writeServerOperation(db, await requireHousehold(db, userId), {
     actorId: userId,
@@ -1035,10 +1101,6 @@ export async function disconnectBank(
         "Your budget changed. Refresh before disconnecting.",
         opened.household.revision,
       );
-    if (!state.disconnectedAt)
-      await client(db, userId, connection.id).removeItem(
-        decryptBankToken(connection.encryptedToken, userId),
-      );
     return await writeServerOperation(db, opened, {
       actorId: userId,
       operationId: input.operationId,
@@ -1048,8 +1110,15 @@ export async function disconnectBank(
       changeSet: composeChangeSets(input.operationId, []),
       alongside: async (tx) => {
         await lockBankConnections(tx, userId, [connection.id]);
+        if (!state.disconnectedAt)
+          await client(db, userId, connection.id).removeItem(
+            decryptBankToken(connection.encryptedToken, userId),
+          );
         const saved = await tx.bankConnection.updateMany({
-          where: { id: connection.id, updatedAt: connection.updatedAt },
+          where: {
+            id: connection.id,
+            updatedAt: connection.updatedAt,
+              },
           data: {
             imports: connectionMetadata(connection.imports, {
               ...state,
@@ -1359,11 +1428,6 @@ export async function repairDuplicateBankAccounts(
     throw new Error(
       "The replacement bank accounts changed. Sync and preview the repair again.",
     );
-  // Revocation happens first: if the database write conflicts, retrying
-  // /item/remove is safe and the credential is still available for cleanup.
-  await client(db, userId, retired.connection.id).removeItem(
-    decryptBankToken(retired.connection.encryptedToken, userId),
-  );
   return writeServerOperation(db, opened, {
     actorId: userId,
     operationId: parsed.operationId,
@@ -1376,12 +1440,17 @@ export async function repairDuplicateBankAccounts(
         retired.connection.id,
         replacement.connection.id,
       ]);
+      // A successful removal is not undone if a later database write fails;
+      // the stored credential stays available for an idempotent retry.
+      await client(db, userId, retired.connection.id).removeItem(
+        decryptBankToken(retired.connection.encryptedToken, userId),
+      );
       const saved = await tx.bankConnection.updateMany({
         where: {
           id: replacement.connection.id,
           clerkUserId: userId,
           updatedAt: replacement.connection.updatedAt,
-        },
+          },
         data: { updatedAt: new Date() },
       });
       const removed = await tx.bankConnection.deleteMany({
@@ -1389,7 +1458,7 @@ export async function repairDuplicateBankAccounts(
           id: retired.connection.id,
           clerkUserId: userId,
           updatedAt: retired.connection.updatedAt,
-        },
+          },
       });
       await writeBankLinks(
         tx,
@@ -2455,7 +2524,11 @@ async function applyBankUpdate(
   const saveConnection = async (tx: Prisma.TransactionClient) => {
     await lockBankConnections(tx, userId, [fresh.id]);
     const saved = await tx.bankConnection.updateMany({
-      where: { id: fresh.id, cursor: fresh.cursor, updatedAt: fresh.updatedAt },
+      where: {
+        id: fresh.id,
+        cursor: fresh.cursor,
+        updatedAt: fresh.updatedAt,
+      },
       data: {
         ...health,
         imports: connectionMetadata(fresh.imports, state),
@@ -2505,7 +2578,8 @@ async function applyBankUpdate(
       changeSet,
       alongside: saveConnection,
     });
-  else await db.$transaction(saveConnection, { timeout: 30_000 });
+  else
+    await db.$transaction(saveConnection, { timeout: 30_000, maxWait: 10_000 });
   return {
     imported: plan.changes.filter((c) => !c.before).length,
     updated: operations.length,
