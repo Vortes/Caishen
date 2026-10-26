@@ -1,7 +1,6 @@
-import {
-  bankAccountRowsSelection,
-  withBankAccountSuccessors,
-} from "./bank-account-rows";
+import { withBankAccountSuccessors } from "./bank-account-rows";
+import { bankAccountRowsSelection } from "./bank-account-rows";
+import { migrateBankAccounts } from "./bank-account-migration";
 import { createHash } from "node:crypto";
 import { composeChangeSets } from "~/domain/change-sets";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
@@ -77,6 +76,8 @@ async function settleOnce(db: Database, userId: string) {
   const memberIds = ledger.personal
     ? [userId]
     : Object.keys((ledger.state as Book).budgets);
+  for (const memberId of memberIds)
+    await migrateBankAccounts(db, memberId, { reportUnreadable: false });
   const [stored, profiles] = await Promise.all([
     withBankAccountSuccessors(
       db,

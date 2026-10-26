@@ -7,6 +7,7 @@ import { api } from "~/trpc/react";
 import {
   bankRecoveryCandidates,
   bankAccountNeedsRecovery,
+  isBankAccountLive,
 } from "~/lib/bank-account-identity";
 
 type Connection = State["connections"][number];
@@ -244,7 +245,7 @@ export function useBankAccountSetupForm({
     ),
   );
   const synchronized = (account: BankAccount) =>
-    !connection.unavailableAccountIds?.includes(account.accountId) &&
+    isBankAccountLive(connection, account.accountId) &&
     (account.type === "loan"
       ? ready
       : synchronizedAccountIds.has(account.accountId));

@@ -1,0 +1,58 @@
+name: Plaid Sandbox API smoke
+
+on:
+  schedule:
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plaid-sandbox
+  cancel-in-progress: false
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      PLAID_SANDBOX_CLIENT_ID: ${{ secrets.PLAID_SANDBOX_CLIENT_ID }}
+      PLAID_SANDBOX_SECRET: ${{ secrets.PLAID_SANDBOX_SECRET }}
+      NODE_ENV: test
+      SKIP_ENV_VALIDATION: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Check required secrets
+        shell: bash
+        run: |
+          missing=0
+          for name in NEON_API_KEY PLAID_SANDBOX_CLIENT_ID PLAID_SANDBOX_SECRET; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Configure repository secret $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --global neon@8.8.0
+      - name: Prepare isolated development database
+        id: database
+        run: |
+          git switch -c "ci-sandbox-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          touch .env.local
+          npm run db:worktree
+          npm run db:migrate
+          npx prisma generate
+      - name: Exercise real Sandbox API and account setup
+        run: npm run test:sandbox
+      - name: Delete isolated database branch
+        if: ${{ always() && steps.database.outcome != 'skipped' }}
+        run: npm run db:worktree:delete

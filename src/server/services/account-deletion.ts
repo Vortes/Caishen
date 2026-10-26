@@ -7,6 +7,7 @@ import {
 import { bookToRows } from "~/domain/rows";
 import { removePersonalData } from "~/server/storage/account-deletion";
 import { createPlaidClient } from "~/server/integrations/plaid";
+import { plaidRequestRecorder } from "./bank-provider-events";
 import { decryptBankToken } from "~/server/token-crypto";
 import { openHousehold, type Database } from "./household";
 import { cancelScheduledDailyReviews } from "./daily-delivery";
@@ -22,16 +23,18 @@ export async function deletePersonalBudget(db: Database, userId: string) {
     where: { clerkUserId: userId },
   });
   if (connections.length) {
-    const plaid = createPlaidClient({
+    const config = {
       clientId: process.env.PLAID_CLIENT_ID!,
       secret: process.env.PLAID_SECRET!,
       environment:
         process.env.PLAID_ENV === "production" ? "production" : "sandbox",
-    });
+    } as const;
     for (const connection of connections)
-      await plaid.removeItem(
-        decryptBankToken(connection.encryptedToken, userId),
-      );
+      await createPlaidClient(
+        config,
+        undefined,
+        plaidRequestRecorder(db, { userId, connectionId: connection.id }),
+      ).removeItem(decryptBankToken(connection.encryptedToken, userId));
   }
   const opened = await openHousehold(db, userId);
   if (!opened) {

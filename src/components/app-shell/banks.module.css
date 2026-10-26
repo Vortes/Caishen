@@ -115,6 +115,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The state the bank reported keeps its width; the name gives way. */
+.bankState {
+  display: inline-flex;
+  flex: none;
+}
 /* A 13px icon in a 24px target; the pseudo-element stretches the target
    without moving the icon off the name. */
 .status {
@@ -618,4 +623,18 @@
   .spin {
     animation: none;
   }
+}
+
+.duplicateAccounts {
+  list-style: none;
+  margin: var(--space-inset) 0 0;
+  padding: 0;
+}
+.duplicateAccounts li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-card);
+  padding-block: var(--space-inset);
+  border-bottom: 1px solid var(--border-subtle);
 }

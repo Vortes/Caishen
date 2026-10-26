@@ -20,9 +20,11 @@ import {
   savedEvidenceSchema,
 } from "../../src/server/storage/review-evidence";
 import { plaidLinkMetadataSchema } from "../../src/lib/plaid-link-metadata";
+import { bankConnectionStatusSchema } from "../../src/server/services/bank-connection-status";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { bankImportColumnSchemas } from "../../src/server/services/bank-import-rows";
 import { connectionColumnSchema } from "../../src/server/services/banks";
+import { bankProviderEventDetailSchema } from "../../src/server/services/bank-provider-events";
 import { dailyDeliveryPayloadSchema } from "../../src/server/services/daily-delivery";
 import {
   changeSetSchema,
@@ -36,6 +38,7 @@ const jsonColumns: Record<string, ZodTypeAny> = {
   "BankAccountLink.openingSnapshot": bankOpeningSnapshotSchema,
   "BankConnection.imports": connectionColumnSchema,
   "BankConnection.accountMappings": bankMappingsSchema,
+  "BankProviderEvent.detail": bankProviderEventDetailSchema.nullable(),
   "ReviewEvidence.evidence": savedEvidenceSchema,
   "ReviewEvidence.result": reconciliationResultSchema,
   "DailyDelivery.payload": dailyDeliveryPayloadSchema,
@@ -67,6 +70,7 @@ const columns: Record<string, ZodTypeAny> = {
   ...jsonColumns,
   ...rowTables,
   ...requestShapes,
+  "BankConnection.status": bankConnectionStatusSchema,
   BankAccount: bankAccountRowSchema,
   BankAccountLink: bankAccountLinkRowSchema,
 };

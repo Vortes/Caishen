@@ -34,6 +34,9 @@ import {
   resolveImport,
   syncBanks,
 } from "../../src/server/services/banks";
+import { recordBankWebhookReceipt } from "../../src/server/services/bank-provider-events";
+import { respondToPlaidWebhook } from "../../src/server/plaid-webhook";
+import { signedRequest, signingKey } from "../plaid-webhook-fixture";
 import { onboard } from "../../src/server/services/household-operations";
 import * as banks from "../../src/server/services/banks";
 import { households } from "../../src/server/storage/households";
@@ -64,6 +67,7 @@ const environmentKeys = [
   "PLAID_ENV",
   "PLAID_REDIRECT_URI",
   "BANK_TOKEN_ENCRYPTION_KEY",
+  "APP_BASE_URL",
 ] as const;
 const originalEnvironment = Object.fromEntries(
   environmentKeys.map((key) => [key, process.env[key]]),
@@ -109,6 +113,31 @@ const linkMetadata = (response = accountsResponse()) => ({
 const requestUrl = (input: string | URL | Request) =>
   new URL(input instanceof Request ? input.url : input);
 
+// A healthy Item, as /item/get reports it during every account update.
+const itemResponse = () => ({
+  item: { consent_expiration_time: null, error: null },
+  status: {
+    transactions: { last_successful_update: null, last_failed_update: null },
+  },
+});
+
+/** Plaid answered by `answer`, with the Item's health read every update. */
+function mockPlaid(
+  answer: (
+    url: string | URL | Request,
+    init?: RequestInit,
+  ) => Promise<Response>,
+) {
+  return mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, init?: RequestInit) =>
+      requestUrl(url).pathname === "/item/get"
+        ? Response.json(itemResponse())
+        : answer(url, init),
+  );
+}
+
 test.before(async () => {
   await db.user.createMany({
     data: [{ clerkUserId: alice }, { clerkUserId: bob }],
@@ -124,6 +153,9 @@ async function startOver() {
     where: { id: { in: memberships.map((member) => member.workspaceId) } },
   });
   await db.bankConnection.deleteMany({
+    where: { clerkUserId: { in: [alice, bob] } },
+  });
+  await db.bankProviderEvent.deleteMany({
     where: { clerkUserId: { in: [alice, bob] } },
   });
 }
@@ -238,7 +270,7 @@ void test("stored disconnected connections remain readable without contacting th
     where: { id: h.connection.id },
     data: { encryptedToken: "", error: null },
   });
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("Disconnected banks must not be contacted");
   });
   const before = await h.state();
@@ -260,7 +292,7 @@ void test("stored disconnected connections remain readable without contacting th
 void test("bank update Link tokens and completion enforce connection ownership before accessing Plaid", async () => {
   const h = await harness();
   const before = await h.details();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("Provider must not be called");
   });
   await assert.rejects(linkBankToken(h.db, bob, h.connection.id), {
@@ -308,6 +340,123 @@ async function linkedHarness() {
   return h;
 }
 
+void test("account revocation preserves existing inbox activity, blocks new imports, and permits re-sharing", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    {
+      added: [importFact("before-revocation")],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    records: [record],
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currency: "USD",
+        currentBalance: 100,
+        availableBalance: 100,
+      },
+    ],
+    synchronizedAccountIds: ["provider-checking"],
+  });
+  await h.state();
+  const before = await bankInbox(db, alice);
+  const budgetBefore = await h.book();
+  const key = signingKey("revocation-key");
+  const now = new Date();
+  const response = await respondToPlaidWebhook(
+    signedRequest(
+      JSON.stringify({
+        webhook_type: "ITEM",
+        webhook_code: "USER_ACCOUNT_REVOKED",
+        item_id: h.connection.itemId,
+        account_id: "provider-checking",
+        environment: "sandbox",
+      }),
+      key.privateKey,
+      { keyId: key.key.kid, issuedAt: Math.floor(now.getTime() / 1000) },
+    ),
+    {
+      db,
+      fetchKey: async () => key.key,
+      now: () => now,
+      schedule: () => assert.fail("revocation must not schedule a refresh"),
+    },
+  );
+  assert.equal(response.status, 200);
+  let shared = false;
+  const raw = (id: string, amount: unknown = 30) => ({
+    transaction_id: id,
+    account_id: "provider-checking",
+    pending: false,
+    amount,
+    iso_currency_code: "USD",
+    date: "2026-10-21",
+    name: "New purchase",
+  });
+  mockPlaid(async (url) => {
+    if (requestUrl(url).pathname === "/accounts/get")
+      return Response.json({
+        ...accountsResponse(),
+        accounts: shared ? accountsResponse().accounts : [],
+      });
+    return Response.json({
+      added: [
+        raw("after-revocation"),
+        ...(shared ? [] : [raw("invalid-revoked", "bad")]),
+      ],
+      modified: [],
+      removed: [],
+      accounts: shared ? accountsResponse().accounts : [],
+      next_cursor: shared ? "re-granted" : "revoked-update",
+      has_more: false,
+      transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+    });
+  });
+  await h.api.budget.sync();
+  assert.deepEqual(await bankInbox(db, alice), before);
+  assert.deepEqual(await h.book(), budgetBefore);
+  assert.deepEqual((await h.details()).revokedAccountIds, [
+    "provider-checking",
+  ]);
+  assert.equal((await h.details()).status, "connected");
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record.id,
+    expectedFingerprint: bankImportFingerprint(record),
+    expectedRevision: await h.revision(),
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "reviewed-before-revocation",
+      accountId: "cash",
+      date: "2026-10-20",
+      amount: -2000,
+      payee: "Coffee shop",
+      categoryId: "dining",
+      status: "posted",
+    },
+  });
+  assert.equal((await bankInbox(db, alice)).length, 0);
+  shared = true;
+  await h.api.budget.sync();
+  assert.equal((await h.details()).revokedAccountIds, undefined);
+  assert.equal((await bankInbox(db, alice)).length, 1);
+  assert.equal(
+    (await h.book()).budgets[alice]!.accounts.length,
+    budgetBefore.budgets[alice]!.accounts.length,
+  );
+});
+
 void test("disconnecting a bank preserves the account, reviewed history, and outstanding imports", async () => {
   const h = await linkedHarness();
   const record = applyTransactionSync(
@@ -337,7 +486,7 @@ void test("disconnecting a bank preserves the account, reviewed history, and out
   const before = await h.state();
   const beforeInbox = await bankInbox(db, alice);
   const paths: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     paths.push(requestUrl(url).pathname);
     return Response.json({ removed: true });
   });
@@ -356,12 +505,18 @@ void test("disconnecting a bank preserves the account, reviewed history, and out
   );
   assert.deepEqual(await bankInbox(db, alice), beforeInbox);
   assert.ok(after.connections[0]!.disconnectedAt);
+  assert.equal(after.connections[0]!.status, "disconnected");
   assert.deepEqual(paths, ["/item/remove"]);
   await h.api.budget.sync();
   assert.deepEqual(paths, ["/item/remove"]);
 });
 
-for (const mode of ["disconnected", "unavailable", "renamed"] as const)
+for (const mode of [
+  "disconnected",
+  "unavailable",
+  "renamed",
+  "revoked",
+] as const)
   void test(`relinking a ${mode} account preserves its reconciled history and excludes the replacement's historical imports`, async () => {
     const h = await linkedHarness();
     const today = bankSetupDate("America/Los_Angeles");
@@ -386,7 +541,7 @@ for (const mode of ["disconnected", "unavailable", "renamed"] as const)
         },
       ],
     });
-    mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    mockPlaid(async (url: string | URL | Request) => {
       switch (requestUrl(url).pathname) {
         case "/item/remove":
           return Response.json({ removed: true });
@@ -451,9 +606,14 @@ for (const mode of ["disconnected", "unavailable", "renamed"] as const)
         operationId: randomUUID(),
         expectedRevision: await h.revision(),
       });
+    if (mode === "revoked")
+      await db.bankConnection.update({
+        where: { id: h.connection.id },
+        data: { status: "revoked" },
+      });
     replacement = true;
     const linked =
-      mode === "disconnected"
+      mode === "disconnected" || mode === "revoked"
         ? await h.api.budget.plaidExchange({
             publicToken: "replacement-public",
             metadata: linkMetadata(response()),
@@ -486,7 +646,7 @@ for (const mode of ["disconnected", "unavailable", "renamed"] as const)
     assert.deepEqual(after.accounts, before.accounts);
     assert.deepEqual(after.transactions, before.transactions);
     assert.deepEqual(await bankInbox(db, alice), []);
-    if (mode !== "disconnected")
+    if (mode !== "disconnected" && mode !== "revoked")
       assert.deepEqual(
         (await h.details()).accounts.map((account) => account.accountId),
         ["replacement-checking"],
@@ -531,7 +691,7 @@ void test("recovery with missing bank identifiers requires an explicit existing 
       },
     ],
   };
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     switch (requestUrl(url).pathname) {
       case "/item/public_token/exchange":
         return Response.json({
@@ -589,9 +749,7 @@ void test("recovery with missing bank identifiers requires an explicit existing 
 
 void test("a disconnected bank requires fresh Link rather than update mode", async () => {
   const h = await linkedHarness();
-  const fetcher = mock.method(globalThis, "fetch", async () =>
-    Response.json({ removed: true }),
-  );
+  const fetcher = mockPlaid(async () => Response.json({ removed: true }));
   await h.api.budget.disconnectBank({
     connectionId: h.connection.id,
     operationId: randomUUID(),
@@ -687,11 +845,355 @@ async function duplicatedCards() {
   };
 }
 
+async function sameConnectionDuplicateCards() {
+  const h = await duplicatedCards();
+  const original = bankAccountDetails((await h.saved()).imports).accounts[0]!;
+  const duplicate = bankAccountDetails(h.replacement.imports).accounts[0]!;
+  const record = applyTransactionSync(
+    [],
+    {
+      added: [
+        { ...importFact("kept-card-import"), providerAccountId: "old-gold" },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    institutionId: "ins-amex",
+    institutionName: "Amex",
+    accounts: [original, duplicate],
+    transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
+    synchronizedAccountIds: ["old-gold", "new-gold"],
+    records: [record],
+  });
+  await h.setMappings({
+    "old-gold": { accountId: "original-gold", startDate: "2026-10-01" },
+    "new-gold": { accountId: "duplicate-gold", startDate: "2026-10-01" },
+  });
+  await db.bankConnection.delete({ where: { id: h.replacement.id } });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { lastSyncedAt: new Date() },
+  });
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "kept-history",
+      accountId: "original-gold",
+      date: "2026-10-10",
+      amount: -500,
+      payee: "Recorded purchase",
+      categoryId: "dining",
+      status: "posted",
+    }),
+  );
+  return {
+    ...h,
+    selection: {
+      connectionId: h.connection.id,
+      keepProviderAccountId: "old-gold",
+      removeProviderAccountId: "new-gold",
+    },
+    providerAccounts: [original, duplicate],
+  };
+}
+
+void test("same-connection repair retires only the unused duplicate and preserves imports and kept history", async () => {
+  const h = await sameConnectionDuplicateCards();
+  const before = await h.state();
+  const paths: string[] = [];
+  mockPlaid(async (url) => {
+    paths.push(requestUrl(url).pathname);
+    if (requestUrl(url).pathname !== "/accounts/get")
+      throw new Error("Same-Item repair must never revoke the Item");
+    return Response.json({
+      item: { institution_id: "ins-amex", institution_name: "Amex" },
+      accounts: h.providerAccounts.map((account) => ({
+        account_id: account.accountId,
+        name: account.name,
+        official_name: account.officialName,
+        mask: account.mask,
+        type: account.type,
+        subtype: account.subtype,
+        balances: {
+          current: account.currentBalance,
+          available: account.availableBalance,
+          iso_currency_code: account.currency,
+          unofficial_currency_code: null,
+        },
+      })),
+    });
+  });
+  const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  assert.deepEqual(plan.accounts[0], {
+    name: "Gold",
+    keepAccountId: "original-gold",
+    removeAccountId: "duplicate-gold",
+    keepAccountName: "Gold",
+    removeAccountName: "Gold",
+    keepProviderAccountId: "old-gold",
+    removeProviderAccountId: "new-gold",
+    keepMask: "1001",
+    removeMask: "1001",
+  });
+  assert.equal(plan.retiredImportCount, 0);
+  const result = await banks.repairDuplicateBankAccounts(db, alice, {
+    ...h.selection,
+    operationId: randomUUID(),
+    expectedPlanHash: plan.hash,
+  });
+  const after = await h.state();
+  assert.deepEqual(
+    after.view!.budget.accounts,
+    before.view!.budget.accounts.filter(
+      (account) => account.id !== "duplicate-gold",
+    ),
+  );
+  assert.deepEqual(
+    after.view!.budget.transactions,
+    before.view!.budget.transactions,
+  );
+  assert.deepEqual(after.imports, before.imports);
+  assert.deepEqual(after.connections[0]!.accountMappings, {
+    "old-gold": { accountId: "original-gold", startDate: "2026-10-01" },
+  });
+  assert.ok(
+    result.changeSet?.after.some(
+      (row) => row.table === "account" && row.deleted,
+    ),
+  );
+  assert.ok(
+    result.changeSet?.after.every(
+      (row) => row.table === "account" || row.table === "category",
+    ),
+  );
+  const providerRows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    include: { link: true },
+  });
+  const kept = providerRows.find(
+    (row) => row.providerAccountId === "old-gold",
+  )!;
+  const removed = providerRows.find(
+    (row) => row.providerAccountId === "new-gold",
+  )!;
+  assert.equal(removed.status, "retired");
+  assert.equal(removed.supersededById, kept.id);
+  assert.ok(removed.link!.unlinkedAt);
+  assert.equal(
+    providerRows.filter((row) => row.link && !row.link.unlinkedAt).length,
+    1,
+  );
+  assert.deepEqual(paths, ["/accounts/get"]);
+});
+
+void test("same-connection repair requires the current provider preview and retries one operation only once", async () => {
+  const h = await sameConnectionDuplicateCards();
+  const paths: string[] = [];
+  mockPlaid(async (url) => {
+    paths.push(requestUrl(url).pathname);
+    if (requestUrl(url).pathname !== "/accounts/get")
+      throw new Error("Unexpected provider request");
+    return Response.json({
+      item: { institution_id: "ins-amex", institution_name: "Amex" },
+      accounts: h.providerAccounts.map((account) => ({
+        account_id: account.accountId,
+        name: account.name,
+        official_name: account.officialName,
+        mask: account.mask,
+        type: account.type,
+        subtype: account.subtype,
+        balances: {
+          current: account.currentBalance,
+          available: account.availableBalance,
+          iso_currency_code: account.currency,
+          unofficial_currency_code: null,
+        },
+      })),
+    });
+  });
+  const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  await db.bankAccount.update({
+    where: {
+      connectionId_providerAccountId: {
+        connectionId: h.connection.id,
+        providerAccountId: "new-gold",
+      },
+    },
+    data: { name: "Gold duplicate renamed" },
+  });
+  const before = await h.state();
+  const input = {
+    ...h.selection,
+    operationId: randomUUID(),
+    expectedPlanHash: plan.hash,
+  };
+  await assert.rejects(
+    banks.repairDuplicateBankAccounts(db, alice, input),
+    /plan changed/i,
+  );
+  assert.deepEqual(await h.state(), before);
+  assert.deepEqual(paths, []);
+  const fresh = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  input.expectedPlanHash = fresh.hash;
+  const result = await banks.repairDuplicateBankAccounts(db, alice, input);
+  const retry = await banks.repairDuplicateBankAccounts(db, alice, input);
+  assert.equal(retry.revision, result.revision);
+  assert.equal((await h.state()).revision, result.revision);
+  assert.deepEqual(paths, ["/accounts/get"]);
+});
+
+void test("same-connection repair refuses transaction, reconciliation, assignment, and reviewed-import activity on the removed account", async () => {
+  for (const activity of [
+    "transaction",
+    "reconciliation",
+    "assignment",
+    "review",
+  ] as const) {
+    const h = await sameConnectionDuplicateCards();
+    if (activity === "transaction")
+      await h.setBook(
+        execute(await h.book(), alice, {
+          type: "transaction.upsert",
+          id: randomUUID(),
+          transactionId: "duplicate-history",
+          accountId: "duplicate-gold",
+          date: "2026-10-10",
+          amount: -500,
+          payee: "Duplicate card purchase",
+          categoryId: "dining",
+          status: "posted",
+        }),
+      );
+    if (activity === "reconciliation")
+      await h.setBook(
+        execute(await h.book(), alice, {
+          type: "account.reconcile",
+          id: randomUUID(),
+          accountId: "duplicate-gold",
+          date: "2026-10-24",
+          balance: -43508,
+        }),
+      );
+    if (activity === "assignment") {
+      const category = (await h.state()).view!.budget.categories.find(
+        (item) => item.pairedAccountId === "duplicate-gold",
+      )!;
+      await h.setBook(
+        execute(await h.book(), alice, {
+          type: "assign.set",
+          id: randomUUID(),
+          categoryId: category.id,
+          month: "2026-10",
+          amount: 100,
+        }),
+      );
+    }
+    if (activity === "review") {
+      const record = applyTransactionSync(
+        [],
+        {
+          added: [
+            {
+              ...importFact("reviewed-duplicate"),
+              providerAccountId: "new-gold",
+            },
+          ],
+          modified: [],
+          removed: [],
+        },
+        h.connection.id,
+      ).records[0]!;
+      await h.setImports({
+        ...bankAccountDetails((await h.saved()).imports),
+        records: [record],
+        resolved: {
+          [record.id]: {
+            fingerprint: bankImportFingerprint(record),
+            ignored: true,
+            decidedAt: "2026-10-24T12:00:00Z",
+          },
+        },
+        reviews: {
+          [record.id]: [{ message: "Operator reviewed this duplicate import" }],
+        },
+      });
+    }
+    const before = await h.state();
+    const fetcher = mockPlaid(async () => {
+      throw new Error("Unsafe repair must not contact Plaid");
+    });
+    await assert.rejects(
+      banks.previewDuplicateBankRepair(db, alice, h.selection),
+      /transaction|reconciliation|budget activity|review/i,
+      activity,
+    );
+    assert.deepEqual(await h.state(), before, activity);
+    assert.equal(fetcher.mock.callCount(), 0);
+    mock.restoreAll();
+  }
+});
+
+void test("same-connection repair refuses provider changes while its live check is pending", async () => {
+  const h = await sameConnectionDuplicateCards();
+  const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
+  const before = await h.state();
+  mockPlaid(async (url) => {
+    if (requestUrl(url).pathname !== "/accounts/get")
+      throw new Error("Unexpected provider request");
+    await db.bankAccount.update({
+      where: {
+        connectionId_providerAccountId: {
+          connectionId: h.connection.id,
+          providerAccountId: "new-gold",
+        },
+      },
+      data: { name: "Changed during live check" },
+    });
+    return Response.json({
+      item: { institution_id: "ins-amex", institution_name: "Amex" },
+      accounts: h.providerAccounts.map((account) => ({
+        account_id: account.accountId,
+        name: account.name,
+        official_name: account.officialName,
+        mask: account.mask,
+        type: account.type,
+        subtype: account.subtype,
+        balances: {
+          current: account.currentBalance,
+          available: account.availableBalance,
+          iso_currency_code: account.currency,
+          unofficial_currency_code: null,
+        },
+      })),
+    });
+  });
+  await assert.rejects(
+    banks.repairDuplicateBankAccounts(db, alice, {
+      ...h.selection,
+      operationId: randomUUID(),
+      expectedPlanHash: plan.hash,
+    }),
+    /changed.*preview/i,
+  );
+  const after = await h.state();
+  assert.equal(after.revision, before.revision);
+  assert.deepEqual(after.view, before.view);
+  assert.deepEqual(after.imports, before.imports);
+  assert.deepEqual(
+    after.connections[0]!.accountMappings,
+    before.connections[0]!.accountMappings,
+  );
+});
+
 void test("repairing untouched duplicate cards keeps the original accounts and the newly discovered Platinum", async () => {
   const h = await duplicatedCards();
   const before = (await h.state()).view!.budget;
   const paths: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     paths.push(requestUrl(url).pathname);
     if (requestUrl(url).pathname === "/accounts/get")
       return Response.json({
@@ -760,7 +1262,7 @@ void test("duplicate repair refuses a replacement without a matching balance and
     },
   });
   const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("Must not revoke an unsafe replacement");
   });
   await assert.rejects(
@@ -775,7 +1277,7 @@ void test("duplicate repair keeps the old connection when the replacement cannot
   const h = await duplicatedCards();
   const before = await h.state();
   const paths: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const path = requestUrl(url).pathname;
     paths.push(path);
     return path === "/accounts/get"
@@ -992,7 +1494,7 @@ void test("entering a pending import counts it once, removes its review dot, and
 void test("an edited pending import posts to the same transaction and keeps the user's payee and category", async () => {
   const h = await pendingImport();
   await resolveImport(h.db, alice, h.input);
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
         added: [
@@ -1392,7 +1894,7 @@ for (const delivery of [
       reviews: {},
     });
     let syncCount = 0;
-    mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    mockPlaid(async (url: string | URL | Request) => {
       if (requestUrl(url).pathname === "/transactions/sync") {
         syncCount++;
         const removalOnly = delivery !== "same sync" && syncCount === 1;
@@ -1468,7 +1970,7 @@ void test("an older reconnect response cannot overwrite a newer bank refresh", a
     release = resolve;
   });
   let calls = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     assert.equal(requestUrl(url).pathname, "/accounts/get");
     const first = ++calls === 1;
     if (first) {
@@ -1503,7 +2005,7 @@ void test("an older transaction sync cannot overwrite a completed reconnect", as
     release = resolve;
   });
   let calls = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
         added: [],
@@ -1548,7 +2050,7 @@ void test("concurrent initial Link completions cannot exchange the same bank twi
     release = resolve;
   });
   let exchanges = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/item/public_token/exchange") {
       const number = ++exchanges;
       if (number === 1) {
@@ -1595,7 +2097,7 @@ void test("missing identity for a cash account does not block adding a new credi
     institutionName: "Chase",
     accounts: [],
   });
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const response = accountsResponse();
     Object.assign(response.accounts[0]!, {
       account_id: "new-credit",
@@ -1646,7 +2148,7 @@ void test("Add accounts cannot duplicate a mapped card whose Plaid ID changed af
     institutionName: "Chase",
     accounts: [],
   });
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const response = accountsResponse();
     response.accounts[0]!.account_id = "provider-checking-reauthorized";
     if (requestUrl(url).pathname === "/transactions/sync")
@@ -1705,7 +2207,7 @@ void test("a mapped account with missing cached identity routes a fresh Link bac
     accounts: [],
   });
   const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
+  const fetcher = mockPlaid(async () => {
     throw new Error("A potential duplicate must not be exchanged");
   });
   await assert.rejects(
@@ -1762,7 +2264,7 @@ void test("a partial reconnect merges fresh details without forgetting other map
   });
   const before = await h.state();
   let shareSavings = false;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const response = accountsResponse();
     if (shareSavings)
       response.accounts.push({
@@ -1881,6 +2383,8 @@ async function persistentHarness(persistentAccountId?: string) {
   });
   mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     switch (requestUrl(url).pathname) {
+      case "/item/get":
+        return Response.json({ item: { error: null } });
       case "/accounts/get":
         return Response.json(response());
       case "/transactions/sync":
@@ -1932,6 +2436,31 @@ async function recordedDecisions(type: string) {
     ),
   );
 }
+
+void test("reconnect records rung 1 when the same provider account retains its live link", async () => {
+  const h = await linkedHarness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(accountsResponse()),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  const before = (await h.state()).view!.budget;
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  const decisions = await recordedDecisions("bank.accounts.identify");
+  assert.equal(decisions.length, 2);
+  for (const decision of decisions)
+    assert.deepEqual(decision, {
+      connectionId: h.connection.id,
+      decisions: [
+        {
+          rung: 1,
+          from: "provider-checking",
+          to: "provider-checking",
+          accountId: "cash",
+        },
+      ],
+    });
+  assert.deepEqual((await h.state()).view!.budget, before);
+});
 
 void test("a re-shared account with a new Plaid id and the same persistent id keeps its budget account without a question", async () => {
   const h = await persistentHarness("persistent-checking");
@@ -2020,11 +2549,12 @@ void test("a new Plaid id without a persistent id still needs the user to confir
     name: "Checking",
     expectedBalance: 93,
   };
+  const expectedRevision = await h.revision();
   const attempt = (existingAccountId?: string) =>
     h.api.budget.setupBankAccounts({
       connectionId: h.connection.id,
       operationId: randomUUID(),
-      expectedRevision: h.before.revision,
+      expectedRevision,
       accounts: [{ ...selected, existingAccountId }],
     });
   await assert.rejects(attempt(), /existing.*account/i);
@@ -2039,8 +2569,13 @@ void test("a new Plaid id without a persistent id still needs the user to confir
   );
 });
 
-void test("update mode reuses the private Item token and refreshes metadata without exchanging a public token", async () => {
+void test("update mode reuses the private Item token, registers the webhook, and a completed reconnect returns the connection to connected", async () => {
   const h = await harness();
+  process.env.APP_BASE_URL = "https://caishen.example";
+  await h.db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { status: "login_required", newAccountsAvailable: true },
+  });
   await h.setMappings({
     "provider-checking": { accountId: "cash", startDate: "2026-10-01" },
   });
@@ -2063,30 +2598,32 @@ void test("update mode reuses the private Item token and refreshes metadata with
   assert.equal(priorInbox.length, 1);
   assert.equal(priorInbox[0]!.error, "Review an earlier import");
   const paths: string[] = [];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      const path = requestUrl(url).pathname;
-      paths.push(path);
-      const request = JSON.parse(init?.body as string) as Record<
-        string,
-        unknown
-      >;
-      assert.equal(request.access_token, "private-access-token");
-      if (path === "/link/token/create") {
-        assert.equal(request.products, undefined);
-        assert.deepEqual(request.update, { account_selection_enabled: true });
-        assert.equal(request.redirect_uri, process.env.PLAID_REDIRECT_URI);
-        return Response.json({
-          link_token: "link-update",
-          expiration: "2026-10-20T12:00:00Z",
-        });
-      }
-      assert.equal(path, "/accounts/get");
-      return Response.json(accountsResponse());
-    },
-  );
+  mockPlaid(async (url: string | URL | Request, init?: RequestInit) => {
+    const path = requestUrl(url).pathname;
+    paths.push(path);
+    const request = JSON.parse(init?.body as string) as Record<string, unknown>;
+    assert.equal(request.access_token, "private-access-token");
+    if (path === "/item/webhook/update") {
+      assert.equal(
+        request.webhook,
+        "https://caishen.example/api/webhooks/plaid",
+      );
+      return Response.json({ item: {}, request_id: "webhook-registration" });
+    }
+    if (path === "/link/token/create") {
+      assert.deepEqual(paths, ["/item/webhook/update", "/link/token/create"]);
+      assert.equal(request.products, undefined);
+      assert.deepEqual(request.update, { account_selection_enabled: true });
+      assert.equal(request.redirect_uri, process.env.PLAID_REDIRECT_URI);
+      assert.equal(request.webhook, undefined);
+      return Response.json({
+        link_token: "link-update",
+        expiration: "2026-10-20T12:00:00Z",
+      });
+    }
+    assert.equal(path, "/accounts/get");
+    return Response.json(accountsResponse());
+  });
   const link = await linkBankToken(h.db, alice, h.connection.id);
   assert.deepEqual(link, {
     linkToken: "link-update",
@@ -2095,8 +2632,23 @@ void test("update mode reuses the private Item token and refreshes metadata with
   });
   const result = await reconnectBank(h.db, alice, h.connection.id);
   assert.deepEqual(result, { id: h.connection.id });
-  assert.deepEqual(paths, ["/link/token/create", "/accounts/get"]);
+  assert.deepEqual(paths, [
+    "/item/webhook/update",
+    "/link/token/create",
+    "/accounts/get",
+  ]);
+  const registration = await db.bankProviderEvent.findFirstOrThrow({
+    where: {
+      clerkUserId: alice,
+      connectionId: h.connection.id,
+      method: "/item/webhook/update",
+    },
+  });
+  assert.equal(registration.requestId, "webhook-registration");
+  assert.equal(registration.errorCode, null);
   assert.equal((await h.details()).error, null);
+  assert.equal((await h.details()).status, "connected");
+  assert.equal((await h.details()).newAccountsAvailable, false);
   assert.deepEqual(await bankInbox(h.db, alice), priorInbox);
   assert.deepEqual(
     (await h.details()).accounts.map((a) => [a.name, a.currentBalance]),
@@ -2111,6 +2663,28 @@ void test("update mode reuses the private Item token and refreshes metadata with
   assert.deepEqual((await h.details()).synchronizedAccountIds, []);
   assert.equal((await h.details()).transactionStatus, null);
   assert.ok(!JSON.stringify({ link, result }).includes("private-access-token"));
+  mock.restoreAll();
+  const failedPaths: string[] = [];
+  mockPlaid(async (url) => {
+    failedPaths.push(requestUrl(url).pathname);
+    return Response.json(
+      {
+        error_code: "INVALID_FIELD",
+        request_id: "webhook-registration-failed",
+      },
+      { status: 400 },
+    );
+  });
+  await assert.rejects(
+    linkBankToken(h.db, alice, h.connection.id),
+    /INVALID_FIELD/,
+  );
+  assert.deepEqual(failedPaths, ["/item/webhook/update"]);
+  const failed = await db.bankProviderEvent.findFirstOrThrow({
+    where: { clerkUserId: alice, requestId: "webhook-registration-failed" },
+  });
+  assert.equal(failed.method, "/item/webhook/update");
+  assert.equal(failed.errorCode, "INVALID_FIELD");
 });
 
 void test("exchange refuses an Item already owned by another user without replacing its credential", async () => {
@@ -2121,7 +2695,7 @@ void test("exchange refuses an Item already owned by another user without replac
     timezone: "America/Los_Angeles",
   });
   const before = (await h.saved()).encryptedToken;
-  mock.method(globalThis, "fetch", async () =>
+  mockPlaid(async () =>
     Response.json({
       access_token: "new-private-token",
       item_id: h.connection.itemId,
@@ -2156,7 +2730,7 @@ void test("Link metadata rejects duplicate cards before exchanging a public toke
     ],
   });
   const requests: string[] = [];
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const path = requestUrl(url).pathname;
     requests.push(path);
     if (path === "/item/public_token/exchange")
@@ -2230,6 +2804,80 @@ void test("Link metadata rejects duplicate cards before exchanging a public toke
   assert.equal((await h.state()).connections.length, 2);
 });
 
+void test("Link completion treats a same-named card with a different account type as a different account", async () => {
+  const h = await harness();
+  await h.setImports({
+    institutionId: "ins-amex",
+    institutionName: "American Express",
+    accounts: [
+      {
+        accountId: "old-gold",
+        name: "American Express Gold Card",
+        officialName: null,
+        mask: "1234",
+        type: "credit",
+        subtype: "credit card",
+        currentBalance: 435.08,
+        availableBalance: null,
+        currency: "USD",
+      },
+    ],
+  });
+  const requests: string[] = [];
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const path = requestUrl(url).pathname;
+    requests.push(path);
+    if (path === "/item/public_token/exchange")
+      return Response.json({
+        access_token: "savings-token",
+        item_id: `savings-${run}`,
+      });
+    return Response.json({
+      item: {
+        institution_id: "ins-amex",
+        institution_name: "American Express",
+      },
+      accounts: [
+        {
+          ...accountsResponse().accounts[0]!,
+          account_id: "gold-savings",
+          name: "American Express Gold Card",
+          mask: "1234",
+          type: "depository",
+          subtype: "savings",
+        },
+      ],
+    });
+  });
+  const metadata = (type: string, subtype: string) => ({
+    institution: { institution_id: "ins-amex" },
+    accounts: [
+      {
+        id: "gold-again",
+        name: "American Express Gold Card",
+        mask: "1234",
+        type,
+        subtype,
+      },
+    ],
+  });
+  await assert.rejects(
+    h.api.budget.plaidExchange({
+      publicToken: "same-card",
+      metadata: metadata("credit", "credit card"),
+    }),
+    /already connected.*Choose shared accounts/i,
+    "the same name, mask, type, and subtype is the connected card",
+  );
+  assert.deepEqual(requests, [], "a duplicate is refused before the exchange");
+  await h.api.budget.plaidExchange({
+    publicToken: "savings-account",
+    metadata: metadata("depository", "savings"),
+  });
+  assert.deepEqual(requests, ["/item/public_token/exchange", "/accounts/get"]);
+  assert.equal((await h.state()).connections.length, 2);
+});
+
 void test("a second Plaid connection cannot add the same Amex card to the budget again", async () => {
   const h = await harness();
   let secondLink = false;
@@ -2257,40 +2905,36 @@ void test("a second Plaid connection cannot add the same Amex card to the budget
         ]
       : []),
   ];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      const request = JSON.parse(init?.body as string) as {
-        access_token?: string;
-      };
-      const newConnection = request.access_token === "fixture-amex-new";
-      switch (requestUrl(url).pathname) {
-        case "/item/public_token/exchange":
-          return Response.json({
-            access_token: secondLink ? "fixture-amex-new" : "fixture-amex-old",
-            item_id: secondLink ? `amex-new-${run}` : h.connection.itemId,
-          });
-        case "/accounts/get":
-          return Response.json({
-            accounts: accounts(newConnection),
-            item: { institution_id: "ins-amex", institution_name: "Amex" },
-          });
-        case "/transactions/sync":
-          return Response.json({
-            added: [],
-            modified: [],
-            removed: [],
-            accounts: accounts(newConnection),
-            next_cursor: "amex-cursor",
-            has_more: false,
-            transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
-          });
-        default:
-          throw new Error("Unexpected provider request");
-      }
-    },
-  );
+  mockPlaid(async (url: string | URL | Request, init?: RequestInit) => {
+    const request = JSON.parse(init?.body as string) as {
+      access_token?: string;
+    };
+    const newConnection = request.access_token === "fixture-amex-new";
+    switch (requestUrl(url).pathname) {
+      case "/item/public_token/exchange":
+        return Response.json({
+          access_token: secondLink ? "fixture-amex-new" : "fixture-amex-old",
+          item_id: secondLink ? `amex-new-${run}` : h.connection.itemId,
+        });
+      case "/accounts/get":
+        return Response.json({
+          accounts: accounts(newConnection),
+          item: { institution_id: "ins-amex", institution_name: "Amex" },
+        });
+      case "/transactions/sync":
+        return Response.json({
+          added: [],
+          modified: [],
+          removed: [],
+          accounts: accounts(newConnection),
+          next_cursor: "amex-cursor",
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      default:
+        throw new Error("Unexpected provider request");
+    }
+  });
   const first = await h.api.budget.plaidExchange({
     publicToken: "first",
     metadata: {
@@ -2400,7 +3044,7 @@ void test("sandbox Link response omits redirectUri when no redirect is configure
   const h = await harness();
   process.env.PLAID_ENV = "sandbox";
   delete process.env.PLAID_REDIRECT_URI;
-  mock.method(globalThis, "fetch", async () =>
+  mockPlaid(async () =>
     Response.json({
       link_token: "link-sandbox",
       expiration: "2026-10-20T12:00:00Z",
@@ -2414,7 +3058,7 @@ void test("sandbox Link response omits redirectUri when no redirect is configure
 
 void test("successful public token exchange remains saved if account metadata is temporarily unavailable", async () => {
   const h = await harness();
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/item/public_token/exchange")
       return Response.json({
         access_token: "new-private-token",
@@ -2446,7 +3090,7 @@ void test("successful public token exchange remains saved if account metadata is
 
 void test("bank sync updates cached account details without creating ledger accounts or balances", async () => {
   const h = await harness();
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync")
       return Response.json({
         added: [],
@@ -2476,7 +3120,7 @@ void test("bank sync updates cached account details without creating ledger acco
 
 void test("opening metadata uses the balance paired with sync activity rather than a newer accounts/get balance", async () => {
   const h = await harness();
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     const result = accountsResponse();
     result.accounts[0]!.balances.current =
       requestUrl(url).pathname === "/transactions/sync" ? 100 : 80;
@@ -2501,7 +3145,7 @@ void test("opening metadata uses the balance paired with sync activity rather th
 void test("a prior sync balance is retained only when its cursor and account activity are unchanged", async () => {
   const h = await harness();
   let updates = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync") {
       updates++;
       return Response.json({
@@ -2532,7 +3176,7 @@ void test("a prior sync balance is retained only when its cursor and account act
 void test("an account delta without its matching sync balance invalidates the prior balance source", async () => {
   const h = await harness();
   let updates = 0;
-  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+  mockPlaid(async (url: string | URL | Request) => {
     if (requestUrl(url).pathname === "/transactions/sync") {
       updates++;
       return Response.json({
@@ -2574,27 +3218,21 @@ const plaidTransaction = (overrides: Record<string, unknown> = {}) => ({
 function syncPages(pages: Record<string, unknown>[]) {
   let call = 0;
   const requests: Record<string, unknown>[] = [];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      if (requestUrl(url).pathname !== "/transactions/sync")
-        return Response.json(accountsResponse());
-      requests.push(
-        JSON.parse(init!.body as string) as Record<string, unknown>,
-      );
-      const page = pages[Math.min(call++, pages.length - 1)]!;
-      return Response.json({
-        added: [],
-        modified: [],
-        removed: [],
-        accounts: accountsResponse().accounts,
-        has_more: false,
-        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
-        ...page,
-      });
-    },
-  );
+  mockPlaid(async (url: string | URL | Request, init?: RequestInit) => {
+    if (requestUrl(url).pathname !== "/transactions/sync")
+      return Response.json(accountsResponse());
+    requests.push(JSON.parse(init!.body as string) as Record<string, unknown>);
+    const page = pages[Math.min(call++, pages.length - 1)]!;
+    return Response.json({
+      added: [],
+      modified: [],
+      removed: [],
+      accounts: accountsResponse().accounts,
+      has_more: false,
+      transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      ...page,
+    });
+  });
   return requests;
 }
 
@@ -3004,6 +3642,567 @@ void test("pay remembered as Ready to Assign arrives there, and money going out 
   );
 });
 
+void test("ambiguous Link identities ask for review instead of proposing either stored account", async () => {
+  const h = await harness();
+  const stored = {
+    name: "Gold Card",
+    officialName: null,
+    mask: "1234",
+    type: "credit",
+    subtype: "credit card",
+    currentBalance: 50,
+    availableBalance: null,
+    currency: "USD",
+  };
+  await h.setImports({
+    institutionId: "ins-amex",
+    institutionName: "American Express",
+    accounts: [
+      { ...stored, accountId: "old-one" },
+      { ...stored, accountId: "old-two" },
+    ],
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("No exchange before review");
+  });
+  await assert.rejects(
+    h.api.budget.plaidExchange({
+      publicToken: "public-token",
+      metadata: {
+        institution: { institution_id: "ins-amex" },
+        accounts: [
+          {
+            id: "new-id",
+            name: "Gold Card",
+            mask: "1234",
+            type: "credit",
+            subtype: "credit card",
+          },
+        ],
+      },
+    }),
+    /couldn’t tell.*already connected/i,
+  );
+  assert.equal(fetcher.mock.callCount(), 0);
+  assert.equal((await h.state()).connections.length, 1);
+});
+
+void test("missing Link masks report an unknown comparison before token exchange", async () => {
+  const h = await linkedHarness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(accountsResponse()),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  mock.restoreAll();
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("No exchange before review");
+  });
+  await assert.rejects(
+    h.api.budget.plaidExchange({
+      publicToken: "public-token",
+      metadata: {
+        institution: { institution_id: "ins-chase" },
+        accounts: [
+          {
+            id: "new-id",
+            name: "Chase checking",
+            mask: null,
+            type: "depository",
+            subtype: "checking",
+          },
+        ],
+      },
+    }),
+    /couldn’t tell.*details.*incomplete/i,
+  );
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
+// The provider event audit trail (spec #139): what an operator can query
+// about one connection's exchanges with Plaid.
+const providerEvents = async (connectionId: string) =>
+  (await db.bankProviderEvent.findMany({ where: { connectionId } })).sort(
+    (left, right) => left.method.localeCompare(right.method),
+  );
+
+void test("one account update records a provider event for each Plaid request with its request id", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/item/get")
+      return Response.json({ item: { error: null }, request_id: "req-item-1" });
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        next_cursor: "next",
+        has_more: false,
+        accounts: accountsResponse().accounts,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        request_id: "req-sync-1",
+      });
+    return Response.json({
+      ...accountsResponse(),
+      request_id: "req-accounts-1",
+    });
+  });
+  await syncBanks(h.db, alice);
+  const events = await providerEvents(h.connection.id);
+  assert.deepEqual(
+    events.map(({ kind, method, requestId, errorCode, clerkUserId }) => ({
+      kind,
+      method,
+      requestId,
+      errorCode,
+      clerkUserId,
+    })),
+    [
+      {
+        kind: "request",
+        method: "/accounts/get",
+        requestId: "req-accounts-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+      {
+        kind: "request",
+        method: "/item/get",
+        requestId: "req-item-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+      {
+        kind: "request",
+        method: "/transactions/sync",
+        requestId: "req-sync-1",
+        errorCode: null,
+        clerkUserId: alice,
+      },
+    ],
+  );
+  assert.ok(
+    events.every((event) => event.durationMs !== null && event.durationMs >= 0),
+  );
+});
+
+void test("a failed account update stores an error naming the Plaid request id and records the failure", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        error_code: "INSTITUTION_DOWN",
+        error_message: "private provider details",
+        request_id: "req-down-7",
+      },
+      { status: 503 },
+    ),
+  );
+  await assert.rejects(syncBanks(h.db, alice));
+  const details = await h.details();
+  assert.match(details.error!, /Plaid request id: req-down-7/);
+  assert.ok(!details.error!.includes("private provider details"));
+  assert.deepEqual(
+    (await providerEvents(h.connection.id)).map(
+      ({ method, requestId, errorCode }) => ({ method, requestId, errorCode }),
+    ),
+    [
+      {
+        method: "/item/get",
+        requestId: "req-down-7",
+        errorCode: "INSTITUTION_DOWN",
+      },
+    ],
+  );
+});
+
+void test("completing Link records a success event with the institution and account count", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
+    requestUrl(url).pathname === "/item/public_token/exchange"
+      ? Response.json({
+          access_token: "new-private-token",
+          item_id: h.connection.itemId,
+          request_id: "req-exchange-1",
+        })
+      : Response.json({ ...accountsResponse(), request_id: "req-accounts-2" }),
+  );
+  await exchangeBankToken(h.db, alice, "public-token", linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        errorCode: null,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});
+
+void test("leaving Link early records an exit event with Plaid's error code and request id", async () => {
+  const h = await harness();
+  await h.api.budget.plaidLinkExit({
+    connectionId: h.connection.id,
+    institutionId: "ins-chase",
+    errorCode: "INVALID_CREDENTIALS",
+    requestId: "req-link-exit-1",
+  });
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, errorCode, requestId, detail }) => ({
+      method,
+      connectionId,
+      errorCode,
+      requestId,
+      detail,
+    })),
+    [
+      {
+        method: "exit",
+        connectionId: h.connection.id,
+        errorCode: "INVALID_CREDENTIALS",
+        requestId: "req-link-exit-1",
+        detail: { institutionId: "ins-chase", accountCount: null },
+      },
+    ],
+  );
+});
+
+void test("completing an update-mode Link records a success event against the reconnected bank", async () => {
+  const h = await harness();
+  mock.method(globalThis, "fetch", async () =>
+    Response.json({ ...accountsResponse(), request_id: "req-accounts-3" }),
+  );
+  await reconnectBank(h.db, alice, h.connection.id, linkMetadata());
+  const links = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link" },
+  });
+  assert.deepEqual(
+    links.map(({ method, connectionId, detail }) => ({
+      method,
+      connectionId,
+      detail,
+    })),
+    [
+      {
+        method: "success",
+        connectionId: h.connection.id,
+        detail: { institutionId: "ins-chase", accountCount: 1 },
+      },
+    ],
+  );
+});
+
+void test("a received webhook is recorded with its type, code, and verification result", async (t) => {
+  const h = await harness();
+  const verification = `invalid_signature:${randomUUID()}`;
+  const anonymousReceipt = {
+    detail: { path: ["verification"], equals: verification },
+  };
+  t.after(() => db.bankProviderEvent.deleteMany({ where: anonymousReceipt }));
+  await recordBankWebhookReceipt(db, {
+    connectionId: h.connection.id,
+    userId: alice,
+    webhookType: "ITEM",
+    webhookCode: "ERROR",
+    verification: "verified",
+    errorCode: "ITEM_LOGIN_REQUIRED",
+  });
+  await recordBankWebhookReceipt(db, {
+    webhookType: null,
+    webhookCode: null,
+    verification,
+  });
+  const receipts = (
+    await db.bankProviderEvent.findMany({
+      where: {
+        kind: "webhook",
+        OR: [{ connectionId: h.connection.id }, anonymousReceipt],
+      },
+    })
+  )
+    .filter(
+      (event) =>
+        event.connectionId === h.connection.id || event.connectionId === null,
+    )
+    .map(({ method, connectionId, clerkUserId, errorCode, detail }) => ({
+      method,
+      connectionId,
+      clerkUserId,
+      errorCode,
+      detail,
+    }))
+    .sort((left, right) => left.method.localeCompare(right.method));
+  assert.deepEqual(receipts, [
+    {
+      method: "ITEM/ERROR",
+      connectionId: h.connection.id,
+      clerkUserId: alice,
+      errorCode: "ITEM_LOGIN_REQUIRED",
+      detail: {
+        webhookType: "ITEM",
+        webhookCode: "ERROR",
+        verification: "verified",
+      },
+    },
+    {
+      method: "unverified",
+      connectionId: null,
+      clerkUserId: null,
+      errorCode: null,
+      detail: {
+        webhookType: null,
+        webhookCode: null,
+        verification,
+      },
+    },
+  ]);
+});
+
+void test("Link review reports all connected accounts with masks without receiving or exchanging a token", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Review must not call Plaid");
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Chase checking",
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+      },
+    ],
+  };
+  const review = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(review.verdict, "all");
+  assert.equal(review.mayDisconnectExisting, true);
+  assert.deepEqual(review.connections, [
+    {
+      id: h.connection.id,
+      institutionName: "Chase",
+      accounts: [
+        {
+          accountId: "provider-checking",
+          name: "Chase checking",
+          mask: "1234",
+        },
+      ],
+    },
+  ]);
+  assert.match(review.reviewId, /^[a-f0-9]{64}$/);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
+void test("a reviewed partial duplicate exchanges only after Connect anyway", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Chase checking",
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+      },
+      {
+        id: "new-savings",
+        name: "Chase savings",
+        mask: "9876",
+        type: "depository",
+        subtype: "savings",
+      },
+    ],
+  };
+  const requests: string[] = [];
+  mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const path = requestUrl(url).pathname;
+    requests.push(path);
+    return path === "/item/public_token/exchange"
+      ? Response.json({
+          access_token: "second-access-token",
+          item_id: `second-login-${run}`,
+        })
+      : Response.json(accountsResponse());
+  });
+  const review = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(review.verdict, "some");
+  assert.deepEqual(requests, []);
+  const result = await h.api.budget.plaidExchange({
+    publicToken: "held-public-token",
+    metadata,
+    reviewId: review.reviewId,
+  });
+  assert.ok(result.id);
+  assert.equal((await h.state()).connections.length, 2);
+  assert.equal(
+    requests.filter((path) => path === "/item/public_token/exchange").length,
+    1,
+  );
+});
+
+void test("Link reviews preserve unknown and no-match outcomes and audit a completion even when no token is exchanged", async () => {
+  const h = await linkedHarness();
+  const account = {
+    accountId: "provider-checking",
+    name: "Checking",
+    officialName: null,
+    mask: "1234",
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 100,
+    availableBalance: 100,
+    currency: "USD",
+  };
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [account],
+  });
+  const metadata = {
+    institution: { institution_id: "ins-chase" },
+    accounts: [
+      {
+        id: "new-checking",
+        name: "Checking",
+        mask: null as string | null,
+        type: "depository",
+        subtype: "checking",
+      },
+    ],
+  };
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Review does not exchange tokens");
+  });
+  assert.equal(
+    (await h.api.budget.plaidLinkReview({ metadata })).verdict,
+    "unknown",
+  );
+  await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: `ambiguous-${run}`,
+      encryptedToken: encryptBankToken("other-token", alice),
+      accountMappings: {},
+      imports: {
+        institutionId: "ins-chase",
+        institutionName: "Chase",
+        accounts: [{ ...account, accountId: "other-checking" }],
+      },
+    },
+  });
+  metadata.accounts[0]!.mask = "1234";
+  const ambiguous = await h.api.budget.plaidLinkReview({ metadata });
+  assert.equal(ambiguous.verdict, "unknown");
+  assert.equal(ambiguous.connections.length, 2);
+  const fresh = await h.api.budget.plaidLinkReview({
+    metadata: { ...metadata, institution: { institution_id: "ins-new-bank" } },
+  });
+  assert.equal(fresh.verdict, "none");
+  assert.deepEqual(fresh.connections, []);
+  assert.equal(fetcher.mock.callCount(), 0);
+  const events = await db.bankProviderEvent.findMany({
+    where: { clerkUserId: alice, kind: "link", method: "success" },
+  });
+  assert.equal(events.length, 3);
+  assert.ok(
+    events.every((event) => !JSON.stringify(event).includes("other-token")),
+  );
+});
+
+void test("a revoked Item does not block Link again as an all-connected duplicate", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: 100,
+        currency: "USD",
+      },
+    ],
+  });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { status: "revoked" },
+  });
+  const fetcher = mock.method(globalThis, "fetch", async () => {
+    throw new Error("Review must not call Plaid");
+  });
+  const result = await h.api.budget.plaidLinkReview({
+    metadata: {
+      institution: { institution_id: "ins-chase" },
+      accounts: [
+        {
+          id: "replacement-checking",
+          name: "Checking",
+          mask: "1234",
+          type: "depository",
+          subtype: "checking",
+        },
+      ],
+    },
+  });
+  assert.equal(result.verdict, "none");
+  assert.deepEqual(result.connections, []);
+  assert.equal(fetcher.mock.callCount(), 0);
+});
+
 void test("row-backed provider accounts show the same linked accounts and inbox as legacy JSON", async () => {
   const h = await linkedHarness();
   const record = applyTransactionSync(
@@ -3033,30 +4232,14 @@ void test("row-backed provider accounts show the same linked accounts and inbox 
   await h.setImports({ ...details, records: [record] });
   const legacy = await h.state();
   assert.equal(legacy.imports.length, 1);
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: account.accountId,
-      persistentAccountId: account.persistentAccountId,
-      name: account.name,
-      officialName: account.officialName,
-      mask: account.mask,
-      type: account.type,
-      subtype: account.subtype,
-      currentBalance: account.currentBalance,
-      availableBalance: account.availableBalance,
-      currency: account.currency,
-      historyComplete: true,
-      balancesAsOf: new Date("2026-10-25T12:00:00Z"),
-      link: {
-        create: {
-          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
-          userId: alice,
-          accountId: "cash",
-          startDate: "2026-10-01",
-        },
+  await db.bankAccount.update({
+    where: {
+      connectionId_providerAccountId: {
+        connectionId: h.connection.id,
+        providerAccountId: account.accountId,
       },
     },
+    data: { balancesAsOf: new Date("2026-10-25T12:00:00Z") },
   });
   await db.bankConnection.update({
     where: { id: h.connection.id },
@@ -3069,79 +4252,6 @@ void test("row-backed provider accounts show the same linked accounts and inbox 
   assert.deepEqual(rows.connections, legacy.connections);
   assert.deepEqual(rows.imports, legacy.imports);
   assert.deepEqual(rows.view, legacy.view);
-});
-
-void test("reader rollback leaves table-backed updates stale and visible while other banks still update", async () => {
-  const h = await linkedHarness();
-  const lastSyncedAt = new Date("2026-10-20T12:00:00Z");
-  await db.bankConnection.update({
-    where: { id: h.connection.id },
-    data: { lastSyncedAt, error: null },
-  });
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
-      name: "Checking",
-      type: "depository",
-      subtype: "checking",
-      mask: "1234",
-      currency: "USD",
-      currentBalance: 100,
-      historyComplete: true,
-      link: {
-        create: {
-          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
-          userId: alice,
-          accountId: "cash",
-          startDate: "2026-10-01",
-        },
-      },
-    },
-  });
-  await h.setMappings({});
-  const other = await db.bankConnection.create({
-    data: {
-      clerkUserId: alice,
-      itemId: `json-bank-${randomUUID()}`,
-      encryptedToken: encryptBankToken("json-access-token", alice),
-      imports: {},
-      accountMappings: {},
-    },
-  });
-  const requests: string[] = [];
-  mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL | Request, init?: RequestInit) => {
-      const body = JSON.parse(init!.body as string) as { access_token: string };
-      requests.push(body.access_token);
-      if (requestUrl(url).pathname === "/transactions/sync")
-        return Response.json({
-          added: [],
-          modified: [],
-          removed: [],
-          accounts: accountsResponse().accounts,
-          has_more: false,
-          next_cursor: "json-updated",
-          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
-        });
-      return Response.json(accountsResponse());
-    },
-  );
-  await h.api.budget.sync();
-  const result = await h.state();
-  const paused = result.connections.find(
-    (connection) => connection.id === h.connection.id,
-  )!;
-  assert.match(paused.error!, /temporarily unavailable.*upgrade/i);
-  assert.deepEqual(paused.lastSyncedAt, lastSyncedAt);
-  assert.equal(paused.accounts[0]!.currentBalance, 100);
-  assert.ok(
-    result.connections.find((connection) => connection.id === other.id)!
-      .lastSyncedAt,
-  );
-  assert.deepEqual(requests, ["json-access-token", "json-access-token"]);
 });
 
 void test("an unreadable provider account puts only its connection under maintenance", async () => {
@@ -3369,108 +4479,6 @@ void test("a provider link owned by another budget is refused by the connection 
   assert.deepEqual(result.connections[0]!.accountMappings, {});
 });
 
-void test("reader rollback refuses repeated table-backed setup without creating budget accounts", async () => {
-  const h = await harness();
-  await h.setImports({ transactionStatus: "HISTORICAL_UPDATE_COMPLETE" });
-  await db.bankConnection.update({
-    where: { id: h.connection.id },
-    data: { lastSyncedAt: new Date() },
-  });
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
-      name: "Checking",
-      type: "depository",
-      subtype: "checking",
-      currency: "USD",
-      currentBalance: 100,
-      historyComplete: true,
-    },
-  });
-  const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
-    throw new Error("Reader rollback must not contact Plaid for setup");
-  });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await assert.rejects(
-      h.api.budget.setupBankAccounts({
-        connectionId: h.connection.id,
-        operationId: randomUUID(),
-        expectedRevision: before.revision,
-        accounts: [
-          {
-            providerAccountId: "provider-checking",
-            name: "Checking",
-            expectedBalance: 100,
-          },
-        ],
-      }),
-      /temporarily unavailable.*upgrade/i,
-    );
-  }
-  const after = await h.state();
-  assert.equal(after.revision, before.revision);
-  assert.deepEqual(after.view, before.view);
-  assert.deepEqual(after.connections, before.connections);
-  assert.equal(fetcher.mock.callCount(), 0);
-});
-
-void test("reader rollback refuses connection changes and repair before contacting Plaid", async () => {
-  const h = await linkedHarness();
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
-      name: "Checking",
-      type: "depository",
-    },
-  });
-  const replacement = await db.bankConnection.create({
-    data: {
-      clerkUserId: alice,
-      itemId: `replacement-${randomUUID()}`,
-      encryptedToken: "",
-      imports: {},
-      accountMappings: {},
-    },
-  });
-  const before = await h.state();
-  const fetcher = mock.method(globalThis, "fetch", async () => {
-    throw new Error(
-      "Reader rollback must not contact Plaid for connection changes",
-    );
-  });
-  const selection = {
-    retiredConnectionId: h.connection.id,
-    replacementConnectionId: replacement.id,
-  };
-  const actions = [
-    () => h.api.budget.plaidReconnect({ connectionId: h.connection.id }),
-    () => h.api.budget.plaidLinkToken({ connectionId: h.connection.id }),
-    () =>
-      h.api.budget.disconnectBank({
-        connectionId: h.connection.id,
-        operationId: randomUUID(),
-        expectedRevision: before.revision,
-      }),
-    () => banks.previewDuplicateBankRepair(db, alice, selection),
-    () =>
-      banks.repairDuplicateBankAccounts(db, alice, {
-        ...selection,
-        operationId: randomUUID(),
-        expectedPlanHash: "0".repeat(64),
-      }),
-  ];
-  for (const action of actions)
-    await assert.rejects(action, /temporarily unavailable.*upgrade/i);
-  const after = await h.state();
-  assert.equal(after.revision, before.revision);
-  assert.deepEqual(after.view, before.view);
-  assert.deepEqual(after.connections, before.connections);
-  assert.equal(fetcher.mock.callCount(), 0);
-});
-
 void test("broken provider supersession raises an alert and isolates the connection", async () => {
   const h = await linkedHarness();
   const row = await db.bankAccount.create({
@@ -3535,204 +4543,1007 @@ void test("broken provider supersession raises an alert and isolates the connect
   );
 });
 
-void test("reader rollback refuses recovery from a table-backed source into a JSON connection", async () => {
+void test("first bank read copies legacy links once even when their cached identity is missing", async () => {
+  const h = await linkedHarness();
+  const snapshot = { postedImportIds: ["old-import"], fingerprints: {} };
+  await h.setMappings({
+    "provider-checking": {
+      accountId: "cash",
+      startDate: "2026-09-18",
+      openingSnapshot: snapshot,
+    },
+  });
+  const before = await h.book();
+  await h.state();
+  const rows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    include: { link: true },
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.providerAccountId, "provider-checking");
+  assert.equal(rows[0]!.status, "unavailable");
+  assert.equal(rows[0]!.persistentAccountId, null);
+  assert.equal(rows[0]!.mask, null);
+  assert.equal(rows[0]!.link!.accountId, "cash");
+  assert.equal(rows[0]!.link!.startDate, "2026-09-18");
+  assert.deepEqual(rows[0]!.link!.openingSnapshot, snapshot);
+  await h.state();
+  assert.deepEqual(
+    await db.bankAccount.findMany({
+      where: { connectionId: h.connection.id },
+      include: { link: true },
+    }),
+    rows,
+  );
+  assert.deepEqual(await h.book(), before);
+});
+
+void test("reconnect writes provider rows and preserves a revoked account omitted by Plaid", async () => {
+  const h = await linkedHarness();
+  await h.state();
+  await db.bankAccount.updateMany({
+    where: { connectionId: h.connection.id },
+    data: { status: "revoked" },
+  });
+  const legacy = await h.saved();
+  mockPlaid(async () =>
+    Response.json({
+      ...accountsResponse(),
+      accounts: [
+        { ...accountsResponse().accounts[0]!, account_id: "second-account" },
+      ],
+    }),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  const rows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    orderBy: { providerAccountId: "asc" },
+  });
+  assert.deepEqual(
+    rows.map((row) => [row.providerAccountId, row.status]),
+    [
+      ["provider-checking", "revoked"],
+      ["second-account", "shared"],
+    ],
+  );
+  assert.deepEqual((await h.saved()).accountMappings, legacy.accountMappings);
+  assert.deepEqual(bankAccountDetails((await h.saved()).imports).accounts, []);
+  mock.restoreAll();
+  mockPlaid(async () => Response.json(accountsResponse()));
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  assert.equal(
+    (
+      await db.bankAccount.findUniqueOrThrow({
+        where: {
+          connectionId_providerAccountId: {
+            connectionId: h.connection.id,
+            providerAccountId: "provider-checking",
+          },
+        },
+      })
+    ).status,
+    "shared",
+  );
+});
+
+void test("five Amex cards survive subset consent and explicit recovery of four changed ids", async () => {
+  const h = await harness();
+  await db.bankConnection.delete({ where: { id: h.connection.id } });
+  let phase: "all" | "subset" | "reshared" = "all";
+  const response = () => ({
+    item: { institution_id: "ins-amex", institution_name: "Amex" },
+    accounts: Array.from(
+      { length: phase === "subset" ? 1 : 5 },
+      (_, index) => ({
+        account_id:
+          phase === "reshared" && index ? `new-${index}` : `card-${index}`,
+        name: `Amex card ${index}`,
+        official_name: null,
+        mask: `100${index}`,
+        type: "credit",
+        subtype: "credit card",
+        balances: {
+          current: 10,
+          available: null,
+          iso_currency_code: "USD",
+          unofficial_currency_code: null,
+        },
+      }),
+    ),
+  });
+  mockPlaid(async (url) => {
+    switch (requestUrl(url).pathname) {
+      case "/item/public_token/exchange":
+        return Response.json({
+          access_token: "amex-access",
+          item_id: `amex-${run}`,
+        });
+      case "/transactions/sync":
+        return Response.json({
+          ...response(),
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: phase,
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      case "/accounts/get":
+        return Response.json(response());
+      default:
+        throw new Error("Unexpected Plaid request");
+    }
+  });
+  const linked = await h.api.budget.plaidExchange({
+    publicToken: "public-amex",
+    metadata: {
+      institution: { institution_id: "ins-amex" },
+      accounts: response().accounts.map((account) => ({
+        id: account.account_id,
+        name: account.name,
+        mask: account.mask,
+      })),
+    },
+  });
+  assert.equal(
+    await db.bankAccount.count({ where: { connectionId: linked.id } }),
+    5,
+  );
+  await h.api.budget.sync();
+  await h.api.budget.setupBankAccounts({
+    connectionId: linked.id,
+    operationId: randomUUID(),
+    expectedRevision: await h.revision(),
+    accounts: response().accounts.map((account) => ({
+      providerAccountId: account.account_id,
+      name: account.name,
+      expectedBalance: 10,
+    })),
+  });
+  const original = (await h.state()).view!.budget.accounts.filter(
+    (account) => account.kind === "credit",
+  );
+  assert.equal(original.length, 5);
+  const originalLinks = await db.bankAccountLink.findMany({
+    where: { userId: alice },
+    include: { bankAccount: true },
+  });
+  let book = await h.book();
+  for (const account of original)
+    book = execute(book, alice, {
+      type: "account.reconcile",
+      id: randomUUID(),
+      accountId: account.id,
+      date: bankSetupDate(book.budgets[alice]!.settings.timezone),
+      balance: -1000,
+    });
+  await h.setBook(book);
+  const before = (await h.state()).view!.budget;
+  phase = "subset";
+  await h.api.budget.plaidReconnect({ connectionId: linked.id });
+  assert.equal((await h.state()).connections[0]!.accounts.length, 5);
+  assert.equal(
+    await db.bankAccount.count({
+      where: { connectionId: linked.id, status: "unavailable" },
+    }),
+    4,
+  );
+  phase = "reshared";
+  await h.api.budget.plaidReconnect({ connectionId: linked.id });
+  await h.api.budget.sync();
+  const accounts = response()
+    .accounts.slice(1)
+    .map((account, index) => ({
+      providerAccountId: account.account_id,
+      name: account.name,
+      expectedBalance: 10,
+      existingAccountId: originalLinks.find(
+        (link) => link.bankAccount.providerAccountId === `card-${index + 1}`,
+      )!.accountId,
+    }));
+  await h.api.budget.setupBankAccounts({
+    connectionId: linked.id,
+    operationId: randomUUID(),
+    expectedRevision: await h.revision(),
+    accounts,
+  });
+  const after = (await h.state()).view!.budget;
+  assert.deepEqual(after.accounts, before.accounts);
+  assert.deepEqual(after.transactions, before.transactions);
+  assert.equal(
+    await db.bankAccountLink.count({
+      where: { userId: alice, unlinkedAt: null },
+    }),
+    5,
+  );
+  const retired = await db.bankAccount.findMany({
+    where: { connectionId: linked.id, status: "retired" },
+  });
+  assert.equal(retired.length, 4);
+  assert.ok(retired.every((account) => account.supersededById));
+  assert.deepEqual(
+    bankAccountDetails(
+      (await db.bankConnection.findUniqueOrThrow({ where: { id: linked.id } }))
+        .imports,
+    ).accounts,
+    [],
+  );
+});
+
+void test("superseded ids keep their old inbox through a chain and cannot become live again", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("old-id-purchase")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    records: [record],
+    accounts: [
+      {
+        accountId: "provider-checking",
+        persistentAccountId: "stable-checking",
+        name: "Chase checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currentBalance: 100,
+        availableBalance: null,
+        currency: "USD",
+      },
+    ],
+  });
+  await h.state();
+  const before = await bankInbox(db, alice);
+  assert.equal(before.length, 1);
+  const importRows = (
+    await loadRows(db, (await readHouseholdRevision(db, alice))!.workspaceId)
+  ).filter((row) => row.table === "bankImport");
+  let providerId = "replacement-one";
+  mockPlaid(async () =>
+    Response.json({
+      ...accountsResponse(),
+      accounts: [
+        {
+          ...accountsResponse().accounts[0]!,
+          account_id: providerId,
+          persistent_account_id: "stable-checking",
+        },
+      ],
+    }),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  providerId = "replacement-two";
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  providerId = "provider-checking";
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  assert.deepEqual(await bankInbox(db, alice), before);
+  assert.deepEqual(
+    (
+      await loadRows(db, (await readHouseholdRevision(db, alice))!.workspaceId)
+    ).filter((row) => row.table === "bankImport"),
+    importRows,
+  );
+  const links = await db.bankAccountLink.findMany({
+    where: { userId: alice, unlinkedAt: null },
+    include: { bankAccount: true },
+  });
+  assert.equal(links.length, 1);
+  assert.equal(links[0]!.bankAccount.providerAccountId, "replacement-two");
+  assert.equal(
+    await db.bankAccount.count({
+      where: { connectionId: h.connection.id, status: "retired" },
+    }),
+    2,
+  );
+});
+
+void test("table-backed update Link and disconnect keep feeds and history while stopping balances", async () => {
+  const h = await linkedHarness();
+  await h.setImports({
+    accounts: [
+      {
+        accountId: "provider-checking",
+        name: "Checking",
+        officialName: null,
+        mask: "1234",
+        type: "depository",
+        subtype: "checking",
+        currency: "USD",
+        currentBalance: 100,
+        availableBalance: 100,
+      },
+    ],
+    synchronizedAccountIds: ["provider-checking"],
+  });
+  await h.state();
+  const before = await h.book();
+  const legacy = await h.saved();
+  mockPlaid(async (url) =>
+    requestUrl(url).pathname === "/link/token/create"
+      ? Response.json({
+          link_token: "update-token",
+          expiration: "2026-10-26T00:00:00Z",
+        })
+      : Response.json({ removed: true }),
+  );
+  const token = await linkBankToken(db, alice, h.connection.id);
+  assert.equal(token.linkToken, "update-token");
+  await h.api.budget.disconnectBank({
+    connectionId: h.connection.id,
+    operationId: randomUUID(),
+    expectedRevision: await h.revision(),
+  });
+  assert.equal(
+    (
+      await db.bankAccount.findFirstOrThrow({
+        where: { connectionId: h.connection.id },
+      })
+    ).status,
+    "unavailable",
+  );
+  assert.equal(
+    await db.bankAccountLink.count({
+      where: { userId: alice, unlinkedAt: null },
+    }),
+    1,
+  );
+  assert.deepEqual(
+    (await h.state()).connections[0]!.accounts,
+    bankAccountDetails(legacy.imports).accounts,
+  );
+  assert.deepEqual((await h.saved()).accountMappings, legacy.accountMappings);
+  assert.deepEqual(await h.book(), before);
+});
+
+void test("a persistent identity is superseded before the user adds any budget account", async () => {
+  const h = await harness();
+  const before = (await h.state()).view!.budget;
+  let providerId = "first-provider";
+  mockPlaid(async () =>
+    Response.json({
+      ...accountsResponse(),
+      accounts: [
+        {
+          ...accountsResponse().accounts[0]!,
+          account_id: providerId,
+          persistent_account_id: "stable-unlinked",
+        },
+      ],
+    }),
+  );
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  providerId = "next-provider";
+  await h.api.budget.plaidReconnect({ connectionId: h.connection.id });
+  const rows = await db.bankAccount.findMany({
+    where: { connectionId: h.connection.id },
+    orderBy: { providerAccountId: "asc" },
+  });
+  assert.deepEqual(
+    rows.map((row) => [row.providerAccountId, row.status]),
+    [
+      ["first-provider", "retired"],
+      ["next-provider", "shared"],
+    ],
+  );
+  assert.equal(rows[0]!.supersededById, rows[1]!.id);
+  assert.equal(await db.bankAccountLink.count({ where: { userId: alice } }), 0);
+  assert.deepEqual((await h.state()).view!.budget.accounts, before.accounts);
+  const decisions = await recordedDecisions("bank.accounts.supersede");
+  assert.deepEqual(decisions, [
+    {
+      connectionId: h.connection.id,
+      decisions: [{ rung: 2, from: "first-provider", to: "next-provider" }],
+    },
+  ]);
+});
+
+void test("seeded bank lifecycles never create implicit budget accounts or duplicate feeds", async () => {
+  for (const seed of [147, 20261025]) {
+    const h = await harness();
+    await db.bankConnection.delete({ where: { id: h.connection.id } });
+    let randomState = seed;
+    const random = () => {
+      randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+      return randomState;
+    };
+    type Item = {
+      number: number;
+      version: number;
+      shared: boolean;
+      removed: boolean;
+      name: string;
+      connectionId?: string;
+    };
+    const items: Item[] = [];
+    let current: Item | undefined;
+    const response = (item: Item) => ({
+      item: {
+        institution_id: "ins-sequence",
+        institution_name: "Sequence bank",
+      },
+      accounts: item.shared
+        ? [
+            {
+              account_id: `provider-${item.number}-${item.version}`,
+              persistent_account_id: `persistent-${item.number}`,
+              name: item.name,
+              official_name: null,
+              mask: String(1000 + item.number),
+              type: "depository",
+              subtype: "checking",
+              balances: {
+                current: 0,
+                available: 0,
+                iso_currency_code: "USD",
+                unofficial_currency_code: null,
+              },
+            },
+          ]
+        : [],
+    });
+    mockPlaid(async (url, init) => {
+      assert.equal(typeof init?.body, "string");
+      const body = JSON.parse(init!.body as string) as {
+        public_token?: string;
+        access_token?: string;
+      };
+      if (requestUrl(url).pathname === "/item/public_token/exchange") {
+        const number = Number(body.public_token);
+        return Response.json({
+          access_token: `access-${number}`,
+          item_id: `sequence-${run}-${seed}-${number}`,
+        });
+      }
+      const item = items[Number(body.access_token?.replace("access-", ""))]!;
+      if (requestUrl(url).pathname === "/item/remove") {
+        item.removed = true;
+        return Response.json({ removed: true });
+      }
+      if (requestUrl(url).pathname === "/accounts/get")
+        return Response.json(response(item));
+      if (requestUrl(url).pathname === "/transactions/sync")
+        return Response.json({
+          ...response(item),
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: `cursor-${item.number}-${item.version}`,
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      throw new Error("Unexpected Plaid request");
+    });
+    const choices = [
+      "link",
+      "subset",
+      "update",
+      "add",
+      "disconnect",
+      "id",
+      "rename",
+    ] as const;
+    const shuffled = [...choices, ...choices];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = random() % (i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+    }
+    const trace: string[] = [];
+    try {
+      for (const action of ["link", "update", "add", ...shuffled] as const) {
+        const before = (await h.state()).view!.budget.accounts.length;
+        trace.push(action);
+        if (action === "link") {
+          current = {
+            number: items.length,
+            version: 0,
+            shared: true,
+            removed: false,
+            name: `Checking ${items.length}`,
+          };
+          items.push(current);
+          const data = response(current);
+          const linked = await h.api.budget.plaidExchange({
+            publicToken: String(current.number),
+            metadata: {
+              institution: { institution_id: "ins-sequence" },
+              accounts: data.accounts.map((account) => ({
+                id: account.account_id,
+                name: account.name,
+                mask: account.mask,
+                type: account.type,
+                subtype: account.subtype,
+              })),
+            },
+          });
+          current.connectionId = linked.id;
+        } else if (current?.connectionId && !current.removed) {
+          if (action === "update") await h.api.budget.sync();
+          if (action === "disconnect")
+            await h.api.budget.disconnectBank({
+              connectionId: current.connectionId,
+              operationId: randomUUID(),
+              expectedRevision: await h.revision(),
+            });
+          if (action === "subset" || action === "id" || action === "rename") {
+            current.shared = action !== "subset";
+            if (action === "id") current.version++;
+            if (action === "rename") current.name = `Renamed ${random()}`;
+            await h.api.budget.plaidReconnect({
+              connectionId: current.connectionId,
+            });
+          }
+          if (action === "add" && current.shared) {
+            await h.api.budget.sync();
+            const details = (await h.state()).connections.find(
+              (connection) => connection.id === current!.connectionId,
+            )!;
+            const mappings = details.accountMappings as Record<string, unknown>;
+            const account = details.accounts.find(
+              (candidate) =>
+                !mappings[candidate.accountId] &&
+                !details.unavailableAccountIds?.includes(candidate.accountId),
+            );
+            if (account)
+              await h.api.budget.setupBankAccounts({
+                connectionId: current.connectionId,
+                operationId: randomUUID(),
+                expectedRevision: await h.revision(),
+                accounts: [
+                  {
+                    providerAccountId: account.accountId,
+                    name: account.name,
+                    expectedBalance: 0,
+                  },
+                ],
+              });
+          }
+        }
+        const after = (await h.state()).view!.budget.accounts.length;
+        assert.ok(
+          action === "add"
+            ? after >= before && after <= before + 1
+            : after === before,
+        );
+        const links = await db.bankAccountLink.findMany({
+          where: { userId: alice, unlinkedAt: null },
+          include: { bankAccount: true },
+        });
+        assert.ok(
+          links.every((link) => link.bankAccount.id === link.bankAccountId),
+        );
+        assert.equal(
+          new Set(
+            links.map(
+              (link) => `${link.workspaceId}:${link.userId}:${link.accountId}`,
+            ),
+          ).size,
+          links.length,
+        );
+        const connections = await db.bankConnection.findMany({
+          where: { clerkUserId: alice },
+        });
+        for (const connection of connections) {
+          assert.deepEqual(connection.accountMappings, {});
+          assert.equal(
+            Object.hasOwn(connection.imports as object, "accounts"),
+            false,
+          );
+          assert.equal(
+            Object.hasOwn(
+              connection.imports as object,
+              "synchronizedAccountIds",
+            ),
+            false,
+          );
+        }
+      }
+    } catch (error) {
+      throw new Error(`seed=${seed}; operations=${trace.join(",")}`, {
+        cause: error,
+      });
+    }
+    mock.restoreAll();
+  }
+});
+
+void test("a provider identity uniqueness failure refuses the update with a friendly conflict", async () => {
+  const h = await harness();
+  const before = (await h.state()).view!.budget;
+  const accounts = ["first", "second"].map((account_id) => ({
+    ...accountsResponse().accounts[0]!,
+    account_id,
+    persistent_account_id: "duplicate-persistent",
+  }));
+  mockPlaid(async (url) =>
+    requestUrl(url).pathname === "/accounts/get"
+      ? Response.json({ ...accountsResponse(), accounts })
+      : Response.json({
+          accounts,
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: "duplicate",
+          has_more: false,
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        }),
+  );
+  await assert.rejects(h.api.budget.sync(), {
+    code: "CONFLICT",
+    message: "Your budget changed. Refresh and try again.",
+  });
+  const state = await h.state();
+  assert.equal(
+    state.connections[0]!.error,
+    "Your budget changed. Refresh and try again.",
+  );
+  assert.equal(
+    await db.bankAccount.count({ where: { connectionId: h.connection.id } }),
+    0,
+  );
+  assert.deepEqual(state.view!.budget, before);
+});
+
+void test("an ended provider feed preserves old import eligibility across a successor with a later start date", async () => {
+  const h = await linkedHarness();
+  const record = applyTransactionSync(
+    [],
+    { added: [importFact("corrected-old-import")], modified: [], removed: [] },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({ records: [record] });
+  const before = await h.state();
+  assert.equal(before.imports.length, 1);
+  const old = await db.bankAccount.findFirstOrThrow({
+    where: { connectionId: h.connection.id },
+    include: { link: true },
+  });
+  await db.bankAccountLink.update({
+    where: { id: old.link!.id },
+    data: { unlinkedAt: new Date() },
+  });
+  const successor = await db.bankAccount.create({
+    data: {
+      connectionId: h.connection.id,
+      providerAccountId: "recovered-provider",
+      name: "Checking",
+      type: "depository",
+      link: {
+        create: {
+          workspaceId: old.link!.workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-25",
+        },
+      },
+    },
+  });
+  await db.bankAccount.update({
+    where: { id: old.id },
+    data: { status: "retired", supersededById: successor.id },
+  });
+  const after = await h.state();
+  assert.deepEqual(after.imports, before.imports);
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record.id,
+    expectedRevision: after.revision,
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "corrected-old-entry",
+      accountId: "cash",
+      date: record.current.date,
+      amount: -record.current.amountCents,
+      payee: "Coffee shop",
+      categoryId: "dining",
+      status: "posted",
+    },
+  });
+  assert.equal(
+    (await h.state()).view!.budget.transactions.find(
+      (transaction) => transaction.id === "corrected-old-entry",
+    )!.accountId,
+    "cash",
+  );
+});
+
+void test("cross-connection recovery retires each source and keeps original import boundaries through later replacements", async () => {
   const h = await linkedHarness();
   const today = bankSetupDate("America/Los_Angeles");
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: "recovery-history",
+      accountId: "cash",
+      date: "2026-10-10",
+      amount: -500,
+      payee: "Recorded purchase",
+      categoryId: "dining",
+      status: "posted",
+    }),
+  );
   await h.setBook(
     execute(await h.book(), alice, {
       type: "account.reconcile",
       id: randomUUID(),
       accountId: "cash",
       date: today,
-      balance: 10000,
+      balance: 9500,
     }),
   );
-  await h.setImports({ institutionId: "ins-chase", institutionName: "Chase" });
-  await db.bankAccount.create({
-    data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
-      name: "Checking",
-      type: "depository",
-      subtype: "checking",
-      mask: "1234",
-      currency: "USD",
-      currentBalance: 100,
-      status: "unavailable",
-      historyComplete: true,
-      link: {
-        create: {
-          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
-          userId: alice,
-          accountId: "cash",
-          startDate: "2026-10-01",
+  const original = {
+    accountId: "provider-checking",
+    name: "Checking",
+    officialName: null,
+    mask: "1234",
+    type: "depository",
+    subtype: "checking",
+    currency: "USD",
+    currentBalance: 95,
+    availableBalance: 95,
+  };
+  const historical = applyTransactionSync(
+    [],
+    {
+      added: [{ ...importFact("before-original-start"), date: "2026-09-01" }],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [original],
+    records: [historical],
+  });
+  await db.bankConnection.update({
+    where: { id: h.connection.id },
+    data: { unavailableAccountIds: [original.accountId], error: null },
+  });
+  const before = (await h.state()).view!.budget;
+  const workspaceId = (await readHouseholdRevision(db, alice))!.workspaceId;
+  const originalImports = async () =>
+    (await loadRows(db, workspaceId)).filter(
+      (row) =>
+        row.table === "bankImport" &&
+        row.data?.connectionId === h.connection.id,
+    );
+  const originals = await originalImports();
+  let sourceId = h.connection.id;
+  const chain: string[] = [];
+  for (const providerId of ["replacement-checking", "final-checking"]) {
+    const target = await db.bankConnection.create({
+      data: {
+        clerkUserId: alice,
+        itemId: randomUUID(),
+        encryptedToken: encryptBankToken("replacement-access", alice),
+        lastSyncedAt: new Date(),
+        accountMappings: {},
+        imports: {
+          institutionId: "ins-chase",
+          institutionName: "Chase",
+          accounts: [{ ...original, accountId: providerId }],
+          synchronizedAccountIds: [providerId],
+          transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
         },
       },
-    },
-  });
-  const target = await db.bankConnection.create({
-    data: {
-      clerkUserId: alice,
-      itemId: `recovery-target-${randomUUID()}`,
-      encryptedToken: "",
-      accountMappings: {},
-      lastSyncedAt: new Date(),
-      imports: {
-        institutionId: "ins-chase",
-        institutionName: "Chase",
-        transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
-        synchronizedAccountIds: ["provider-new"],
-        accounts: [
-          {
-            accountId: "provider-new",
-            name: "Checking",
-            officialName: null,
-            mask: "1234",
-            type: "depository",
-            subtype: "checking",
-            currency: "USD",
-            currentBalance: 100,
-            availableBalance: 100,
-          },
-        ],
-      },
-    },
-  });
-  const before = await h.state();
-  await assert.rejects(
-    h.api.budget.setupBankAccounts({
+    });
+    await h.api.budget.setupBankAccounts({
       connectionId: target.id,
       operationId: randomUUID(),
-      expectedRevision: before.revision,
+      expectedRevision: await h.revision(),
       accounts: [
         {
-          providerAccountId: "provider-new",
+          providerAccountId: providerId,
           name: "Checking",
-          expectedBalance: 100,
+          expectedBalance: 95,
           existingAccountId: "cash",
         },
       ],
-    }),
-    /temporarily unavailable.*upgrade/i,
-  );
-  const after = await h.state();
-  assert.equal(after.revision, before.revision);
-  assert.deepEqual(after.view, before.view);
-  assert.deepEqual(after.connections, before.connections);
+    });
+    const source = await db.bankAccount.findFirstOrThrow({
+      where: { connectionId: sourceId },
+    });
+    const successor = await db.bankAccount.findFirstOrThrow({
+      where: { connectionId: target.id },
+    });
+    assert.equal(source.status, "retired");
+    assert.equal(source.supersededById, successor.id);
+    chain.push(source.id);
+    const after = await h.state();
+    assert.deepEqual(after.view!.budget, before);
+    assert.deepEqual(after.imports, []);
+    assert.ok(
+      after.connections.every((connection) => connection.error === null),
+    );
+    await db.bankAccount.update({
+      where: { id: successor.id },
+      data: { status: "unavailable" },
+    });
+    sourceId = target.id;
+  }
+  assert.equal(chain.length, 2);
+  assert.deepEqual(await originalImports(), originals);
+  const eligible = applyTransactionSync(
+    [historical],
+    {
+      added: [
+        { ...importFact("original-boundary-purchase"), date: "2026-10-20" },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records;
+  await h.setImports({
+    institutionId: "ins-chase",
+    institutionName: "Chase",
+    accounts: [original],
+    records: eligible,
+  });
+  const inbox = (await h.state()).imports;
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0]!.accountId, "cash");
+  const record = eligible.find((item) => item.id !== historical.id)!;
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record.id,
+    expectedFingerprint: bankImportFingerprint(record),
+    expectedRevision: await h.revision(),
+    ignore: true,
+  });
+  assert.deepEqual((await h.state()).imports, []);
+  assert.deepEqual((await h.state()).view!.budget, before);
 });
 
-void test(
-  "a reconnect paused at Plaid refuses its JSON write if provider rows arrive meanwhile",
-  { timeout: 30000 },
-  async () => {
-    const h = await linkedHarness();
-    let entered!: () => void;
-    let resume!: () => void;
-    const requested = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const response = new Promise<void>((resolve) => {
-      resume = resolve;
-    });
-    mock.method(globalThis, "fetch", async () => {
-      entered();
-      await response;
-      return Response.json(accountsResponse());
-    });
-    const pending = h.api.budget.plaidReconnect({
-      connectionId: h.connection.id,
-    });
-    const refusal = assert.rejects(
-      pending,
-      /temporarily unavailable.*upgrade/i,
-    );
-    await requested;
-    await db.bankAccount.create({
-      data: {
-        connectionId: h.connection.id,
-        providerAccountId: "provider-checking",
-        name: "Checking",
-        type: "depository",
-        currency: "USD",
-        currentBalance: 100,
+void test("duplicate repair preserves older provider chains when it removes their intermediate connection", async () => {
+  const h = await duplicatedCards();
+  const oldDetails = bankAccountDetails((await h.saved()).imports);
+  const historical = applyTransactionSync(
+    [],
+    {
+      added: [
+        {
+          ...importFact("ancestor-history"),
+          providerAccountId: "old-gold",
+          date: "2026-09-01",
+        },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records[0]!;
+  await h.setImports({ ...oldDetails, records: [historical] });
+  await h.state();
+  const ancestor = await db.bankAccount.findFirstOrThrow({
+    where: { connectionId: h.connection.id },
+  });
+  await db.bankAccountLink.update({
+    where: { bankAccountId: ancestor.id },
+    data: { unlinkedAt: new Date() },
+  });
+  const middle = await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: randomUUID(),
+      encryptedToken: encryptBankToken("intermediate-access", alice),
+      createdAt: h.connection.createdAt,
+      lastSyncedAt: new Date(),
+      accountMappings: {},
+      imports: {
+        institutionId: "ins-amex",
+        institutionName: "Amex",
+        transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
       },
-    });
-    const before = await h.state();
-    resume();
-    await refusal;
-    const after = await h.state();
-    assert.equal(after.revision, before.revision);
-    assert.deepEqual(after.view, before.view);
-    assert.deepEqual(after.connections, before.connections);
-  },
-);
-
-void test(
-  "repair paused at Plaid never revokes a connection migrated before apply",
-  { timeout: 30000 },
-  async () => {
-    const h = await duplicatedCards();
-    const plan = await banks.previewDuplicateBankRepair(db, alice, h.selection);
-    let entered!: () => void;
-    let resume!: () => void;
-    const requested = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const response = new Promise<void>((resolve) => {
-      resume = resolve;
-    });
-    const paths: string[] = [];
-    mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
-      const path = requestUrl(url).pathname;
-      paths.push(path);
-      if (path !== "/accounts/get") return Response.json({ removed: true });
-      entered();
-      await response;
-      return Response.json({
-        item: { institution_id: "ins-amex", institution_name: "Amex" },
-        accounts: bankAccountDetails(h.replacement.imports).accounts.map(
-          (account) => ({
-            account_id: account.accountId,
-            name: account.name,
-            official_name: account.officialName,
-            mask: account.mask,
-            type: account.type,
-            subtype: account.subtype,
-            balances: {
-              current: account.currentBalance,
-              available: account.availableBalance,
-              iso_currency_code: account.currency,
-              unofficial_currency_code: null,
+      bankAccounts: {
+        create: {
+          providerAccountId: "middle-gold",
+          name: "Gold",
+          mask: "1001",
+          type: "credit",
+          subtype: "credit card",
+          currency: "USD",
+          currentBalance: 435.08,
+          historyComplete: true,
+          link: {
+            create: {
+              workspaceId: (await readHouseholdRevision(db, alice))!
+                .workspaceId,
+              userId: alice,
+              accountId: "original-gold",
+              startDate: "2026-10-01",
             },
-          }),
-        ),
-      });
-    });
-    const pending = banks
-      .repairDuplicateBankAccounts(db, alice, {
-        ...h.selection,
-        operationId: randomUUID(),
-        expectedPlanHash: plan.hash,
-      })
-      .catch((error: unknown) => error);
-    await requested;
-    await db.bankAccount.create({
-      data: {
-        connectionId: h.connection.id,
-        providerAccountId: "old-gold",
-        name: "Gold",
-        type: "credit",
+          },
+        },
       },
-    });
-    const before = await h.state();
-    resume();
-    const error: unknown = await pending;
-    assert.deepEqual(paths, ["/accounts/get"]);
-    assert.ok(error instanceof Error);
-    assert.match(error.message, /temporarily unavailable.*upgrade/i);
-    const after = await h.state();
-    assert.equal(after.revision, before.revision);
-    assert.deepEqual(after.view, before.view);
-    assert.deepEqual(after.connections, before.connections);
-  },
-);
+    },
+    include: { bankAccounts: true },
+  });
+  const middleRetired = await db.bankAccount.create({
+    data: {
+      connectionId: middle.id,
+      providerAccountId: "middle-old-gold",
+      name: "Gold",
+      mask: "1001",
+      type: "credit",
+      subtype: "credit card",
+      currency: "USD",
+      currentBalance: 435.08,
+      status: "retired",
+      supersededById: middle.bankAccounts[0]!.id,
+    },
+  });
+  await db.bankAccount.update({
+    where: { id: ancestor.id },
+    data: { status: "retired", supersededById: middleRetired.id },
+  });
+  mockPlaid(async (url) =>
+    requestUrl(url).pathname === "/accounts/get"
+      ? Response.json({
+          item: { institution_id: "ins-amex", institution_name: "Amex" },
+          accounts: bankAccountDetails(h.replacement.imports).accounts.map(
+            (account) => ({
+              account_id: account.accountId,
+              name: account.name,
+              official_name: account.officialName,
+              mask: account.mask,
+              type: account.type,
+              subtype: account.subtype,
+              balances: {
+                current: account.currentBalance,
+                available: account.availableBalance,
+                iso_currency_code: account.currency,
+                unofficial_currency_code: null,
+              },
+            }),
+          ),
+        })
+      : Response.json({ removed: true }),
+  );
+  const selection = {
+    retiredConnectionId: middle.id,
+    replacementConnectionId: h.replacement.id,
+  };
+  const plan = await banks.previewDuplicateBankRepair(db, alice, selection);
+  await banks.repairDuplicateBankAccounts(db, alice, {
+    ...selection,
+    operationId: randomUUID(),
+    expectedPlanHash: plan.hash,
+  });
+  const target = await db.bankAccount.findFirstOrThrow({
+    where: { connectionId: h.replacement.id, providerAccountId: "new-gold" },
+  });
+  assert.equal(
+    (await db.bankAccount.findUniqueOrThrow({ where: { id: ancestor.id } }))
+      .supersededById,
+    target.id,
+  );
+  await h.setImports({
+    ...oldDetails,
+    records: applyTransactionSync(
+      [historical],
+      {
+        added: [
+          {
+            ...importFact("ancestor-post-start"),
+            providerAccountId: "old-gold",
+            date: "2026-10-20",
+          },
+        ],
+        modified: [],
+        removed: [],
+      },
+      h.connection.id,
+    ).records,
+  });
+  const state = await h.state();
+  assert.equal(state.imports.length, 1);
+  assert.equal(state.imports[0]!.accountId, "original-gold");
+});

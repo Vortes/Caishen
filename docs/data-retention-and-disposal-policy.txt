@@ -74,8 +74,12 @@ Retain routine technical logs, delivery records, expired invitations,
 reconciliation evidence, and other temporary operational records for no more
 than 90 calendar days unless still needed for an active budgeting feature or
 a documented security investigation. Delete unneeded records during a monthly
-review. Provider-controlled records follow the confirmed provider settings;
-record any longer retention and disclose it when relevant to a request.
+review. The bank provider event trail (the BankProviderEvent table, which
+records each Plaid request, webhook receipt, and Link outcome by request id
+and error code, never by token or account number) is purged of rows older
+than 90 calendar days by the daily job. Provider-controlled records follow
+the confirmed provider settings; record any longer retention and disclose it
+when relevant to a request.
 
 Temporary exports and development copies:
 Delete owner-controlled copies when their task is complete and no later than

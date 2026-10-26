@@ -73,6 +73,9 @@ async function fixture(
     () => `test-daily-${randomUUID()}`,
   );
   t.after(async () => {
+    await base.bankProviderEvent.deleteMany({
+      where: { clerkUserId: { in: users } },
+    });
     await base.dailyDelivery.deleteMany({
       where: { clerkUserId: { in: users } },
     });
@@ -295,6 +298,11 @@ void test("disabled email still refreshes banks once per UTC day despite schedul
   });
   t.mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
     const path = new URL(url instanceof Request ? url.url : url).pathname;
+    if (path === "/item/get")
+      return Response.json({
+        item: { consent_expiration_time: null, error: null },
+        status: null,
+      });
     if (path === "/transactions/sync")
       return Response.json({
         added: [],
@@ -315,6 +323,78 @@ void test("disabled email still refreshes banks once per UTC day despite schedul
   t.mock.timers.setTime(new Date("2026-10-17T01:00:00Z").getTime());
   assert.equal((await runDailyJob(h.db, new Date(), h.dependencies)).synced, 0);
   assert.deepEqual(h.sent, []);
+});
+void test("the daily job still updates every connection, and records each Item's health, when no webhook has arrived", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now });
+  const h = await fixture(t, { emailEnabled: false });
+  const connections = ["chase", "amex"].map((bank) => ({
+    id: randomUUID(),
+    itemId: `item-${bank}-${randomUUID()}`,
+  }));
+  for (const connection of connections)
+    await createBankConnection(base, {
+      data: {
+        ...connection,
+        clerkUserId: h.userId,
+        encryptedToken: encryptBankToken("fixture-bank-token", h.userId),
+        lastSyncedAt: new Date("2026-10-16T00:50:00Z"),
+        accountMappings: {},
+        imports: {},
+      },
+    });
+  const itemReads: string[] = [];
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, init?: RequestInit) => {
+      const path = new URL(url instanceof Request ? url.url : url).pathname;
+      if (path === "/item/get") {
+        itemReads.push(
+          (JSON.parse(init?.body as string) as { access_token: string })
+            .access_token,
+        );
+        return Response.json({
+          item: { consent_expiration_time: null, error: null },
+          status: {
+            transactions: {
+              last_successful_update: "2026-10-16T23:00:00Z",
+              last_failed_update: null,
+            },
+          },
+        });
+      }
+      if (path === "/transactions/sync")
+        return Response.json({
+          added: [],
+          modified: [],
+          removed: [],
+          accounts: [],
+          has_more: false,
+          next_cursor: "next",
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      assert.equal(path, "/accounts/get");
+      return Response.json({ accounts: [], item: {} });
+    },
+  );
+  const result = await runDailyJob(h.db, now, h.dependencies);
+  assert.equal(result.synced, 1);
+  assert.equal(result.failed, 0);
+  const saved = await base.bankConnection.findMany({
+    where: { clerkUserId: h.userId },
+    orderBy: { itemId: "asc" },
+  });
+  assert.equal(saved.length, 2);
+  for (const connection of saved) {
+    assert.deepEqual(connection.lastSyncedAt, now);
+    assert.equal(connection.updateRequestedAt, null);
+    assert.equal(connection.status, "connected");
+    assert.deepEqual(
+      connection.lastSuccessfulUpdateAt,
+      new Date("2026-10-16T23:00:00Z"),
+    );
+  }
+  assert.equal(itemReads.length, 2);
 });
 void test("uncertain delivery retries the saved recipient, sender, message and schedule", async (t) => {
   const h = await fixture(t);
@@ -559,3 +639,30 @@ for (const failedCancel of [false, true])
     assert.deepEqual(h.canceled, ["email_1"]);
     assert.equal(h.accepted.size, 1);
   });
+
+void test("the daily job purges provider events older than the 90-day retention window and keeps newer ones", async (t) => {
+  const h = await fixture(t);
+  const day = 24 * 60 * 60 * 1000;
+  const event = (requestId: string, ageDays: number) => ({
+    kind: "request",
+    method: "/accounts/get",
+    requestId,
+    clerkUserId: h.userId,
+    createdAt: new Date(now.getTime() - ageDays * day),
+  });
+  await base.bankProviderEvent.createMany({
+    data: [
+      event("req-expired", 91),
+      event("req-last-day", 89),
+      event("req-today", 0),
+    ],
+  });
+  await runDailyJob(h.db, now, h.dependencies);
+  const kept = await base.bankProviderEvent.findMany({
+    where: { clerkUserId: h.userId },
+  });
+  assert.deepEqual(kept.map((row) => row.requestId).sort(), [
+    "req-last-day",
+    "req-today",
+  ]);
+});
