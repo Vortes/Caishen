@@ -109,6 +109,8 @@ export function ReflectView({
     !report.inflows.length &&
     !report.entries.length;
   const drilled = Boolean(path.group ?? path.categoryId);
+  // The breakdown ring fills the report when nothing comes after it.
+  const fill = kind === "breakdown" && !showList;
 
   // The crumbs, headline label, and grouping work without the spending, so
   // they stay up while it loads; only the amounts are bones.
@@ -141,15 +143,18 @@ export function ReflectView({
       {!report ? (
         <div className={styles.skeleton} aria-hidden inert>
           {(kind === "trends" || level !== "transactions") && (
-            <div className={styles.chartBand} data-kind={kind}>
+            <div
+              className={styles.chartBand}
+              data-kind={kind}
+              data-fill={fill || undefined}
+            >
               {kind === "breakdown" ? (
-                <BreakdownSkeleton />
+                <BreakdownSkeleton fill={fill} />
               ) : (
                 <div className={styles.ditherTrends} />
               )}
             </div>
           )}
-          <Stats level={level} />
           {kind === "trends" && <MonthList months={months} />}
           {level === "transactions" ? (
             <EntryListSkeleton />
@@ -183,6 +188,7 @@ export function ReflectView({
               <section
                 className={styles.chartBand}
                 data-kind={kind}
+                data-fill={fill || undefined}
                 aria-label={
                   kind === "breakdown"
                     ? "Spending breakdown chart"
@@ -198,6 +204,7 @@ export function ReflectView({
                     onOpenEntry={onOpenTransaction}
                     afterSkeleton={ringShown}
                     onSkeletonGone={clearRing}
+                    fill={fill}
                   />
                 ) : (
                   <DitherTrends
@@ -209,7 +216,6 @@ export function ReflectView({
                 )}
               </section>
             )}
-          <Stats level={report.level} report={report} />
           {kind === "trends" && report.total > 0 && (
             <MonthList months={report.months} report={report} />
           )}
@@ -255,74 +261,6 @@ function GroupingSwitch({
         </SegmentedControlItem>
       ))}
     </SegmentedControl>
-  );
-}
-
-// YNAB's summary under the chart, for exactly what the chart shows. While
-// the report loads, its labels stay and its values are bones; the last two
-// always have a detail line in a budget with spending, so they keep it.
-function Stats({ level, report }: { level: Report["level"]; report?: Report }) {
-  const stats: {
-    label: string;
-    value?: string;
-    detail?: string;
-    bones: [number, number?];
-  }[] = [
-    {
-      label: "Average monthly spending",
-      value: report && money(report.average),
-      bones: [80],
-    },
-    {
-      label: "Average daily spending",
-      value: report && money(report.dailyAverage),
-      bones: [56],
-    },
-    {
-      label:
-        level === "transactions"
-          ? "Most frequent payee"
-          : "Most frequent category",
-      value: report && (report.frequent?.name ?? "None"),
-      detail: report?.frequent
-        ? `${report.frequent.count} ${report.frequent.count === 1 ? "transaction" : "transactions"}`
-        : undefined,
-      bones: [104, 80],
-    },
-    {
-      label: "Largest outflow",
-      value: report && (report.largest?.payee ?? "None"),
-      detail: report?.largest
-        ? `${money(report.largest.amount)} · ${shortDay(report.largest.date)}`
-        : undefined,
-      bones: [88, 96],
-    },
-  ];
-  return (
-    <dl className={styles.stats}>
-      {stats.map(({ label, value, detail, bones: [width, detailWidth] }) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          {report ? (
-            <dd>
-              <span className={shell.truncate} title={value}>
-                {value}
-              </span>
-              {detail && <small>{detail}</small>}
-            </dd>
-          ) : (
-            <dd>
-              <Skeleton width={width} />
-              {detailWidth && (
-                <small>
-                  <Skeleton width={detailWidth} />
-                </small>
-              )}
-            </dd>
-          )}
-        </div>
-      ))}
-    </dl>
   );
 }
 
