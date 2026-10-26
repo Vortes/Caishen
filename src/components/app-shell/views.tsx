@@ -15,6 +15,7 @@ import {
 import {
   Fragment,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -669,6 +670,7 @@ export function RegisterView({
   reviewOnly,
   query,
   selectedId,
+  revealId,
   onSelect,
   checked,
   onCheck,
@@ -679,6 +681,7 @@ export function RegisterView({
   reviewOnly: boolean;
   query: string;
   selectedId: string | null;
+  revealId: string | null;
   onSelect: (id: string) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
@@ -689,6 +692,7 @@ export function RegisterView({
   const entry = useTransactionEntry();
   const { session } = entry;
   const register = useRef<HTMLDivElement>(null);
+  const revealSpace = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!selectedId) return;
     const row = register.current?.querySelector<HTMLButtonElement>(
@@ -720,6 +724,53 @@ export function RegisterView({
   const [pendingOpen, setPendingOpen] = useState(true);
   const pending = rows.filter((item) => item.pendingImport);
   const entered = rows.filter((item) => !item.pendingImport);
+  const revealRow = rows.find((item) => item.id === revealId);
+  const canReveal = Boolean(
+    selectedId === revealId &&
+    revealRow &&
+    (!revealRow.pendingImport || pendingOpen),
+  );
+  useLayoutEffect(() => {
+    if (!revealId || !canReveal) return;
+    const row = register.current?.querySelector<HTMLButtonElement>(
+      `[data-transaction-row="${CSS.escape(revealId)}"]`,
+    );
+    const content = register.current?.closest("main");
+    const space = revealSpace.current;
+    if (!row || !content || !space) return;
+
+    const bounds = row.getBoundingClientRect();
+    const top = Math.max(
+      0,
+      content.scrollTop +
+        bounds.top +
+        bounds.height / 2 -
+        content.getBoundingClientRect().top -
+        content.clientHeight / 2,
+    );
+    const originalHeight = content.scrollHeight;
+    const neededHeight = top + content.clientHeight;
+    if (neededHeight > originalHeight) {
+      // First fill the island's auto margin, then keep only the room needed.
+      space.style.height = `${content.clientHeight}px`;
+      space.style.height = `${Math.max(
+        0,
+        Math.ceil(content.clientHeight + neededHeight - content.scrollHeight),
+      )}px`;
+    }
+    content.scrollTop = top;
+
+    // Keep the extra room until removing it won't clamp the scroll position.
+    const releaseSpace = () => {
+      if (content.scrollTop + content.clientHeight <= originalHeight)
+        space.style.height = "0px";
+    };
+    content.addEventListener("scroll", releaseSpace, { passive: true });
+    return () => {
+      content.removeEventListener("scroll", releaseSpace);
+      space.style.height = "0px";
+    };
+  }, [revealId, canReveal]);
   const openings = reviewOnly
     ? []
     : openingBalances.filter(
@@ -1168,6 +1219,7 @@ export function RegisterView({
           row(item)
         ),
       )}
+      <div ref={revealSpace} className={styles.revealSpace} aria-hidden />
       <SelectionIsland selection={selection} onCheck={onCheck} back={back} />
     </div>
   );

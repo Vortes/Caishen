@@ -1035,6 +1035,7 @@ export function AppShell({
                                 reviewOnly={reviewOnly}
                                 query={deferredQuery}
                                 selectedId={selectedId}
+                                revealId={routeSelection}
                                 onSelect={selectOnly}
                                 checked={checked}
                                 onCheck={check}
