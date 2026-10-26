@@ -171,11 +171,11 @@ test("categorizing selected transactions doesn't offer a paired envelope", async
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Categorize" }),
   );
-  const form = within(
-    screen.getByRole("form", { name: "Categorize transactions" }),
+  const menu = within(
+    screen.getByRole("menu", { name: "Categorize transactions" }),
   );
-
-  await user.click(form.getByRole("combobox", { name: "Category" }));
-  expect(screen.getByRole("option", { name: /Gifts/ })).toBeTruthy();
-  expect(screen.queryByRole("option", { name: /Reimbursements/ })).toBeNull();
+  await user.click(menu.getByRole("menuitem", { name: "Everyday" }));
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("menuitem", { name: /Gifts/ })).toBeTruthy();
+  expect(screen.queryByRole("menuitem", { name: /Reimbursements/ })).toBeNull();
 });
