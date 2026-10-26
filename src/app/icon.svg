@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-<defs><linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#867dfe"/><stop offset="0.22" stop-color="#7a6df8"/><stop offset="0.52" stop-color="#6c5de7"/><stop offset="0.8" stop-color="#5f4dd5"/><stop offset="1" stop-color="#5843cb"/></linearGradient></defs>
-<g fill="url(#tile)"><rect width="100" height="100" rx="22.6"/></g>
-
-<g fill="#fff" transform="translate(14 14) scale(0.72)"><path d="M15 48 Q10 48 10 43 V15 Q10 10 14.99 10.33 A38 38 0 0 1 47.67 43.01 Q48 48 43 48 Z"/><path d="M52 15 Q52 10 57 10 H85 Q90 10 89.67 14.99 A38 38 0 0 1 56.99 47.67 Q52 48 52 43 Z"/><path d="M85 52 Q90 52 90 57 V85 Q90 90 85.01 89.67 A38 38 0 0 1 52.33 56.99 Q52 52 57 52 Z"/><path d="M48 85 Q48 90 43 90 H15 Q10 90 10.33 85.01 A38 38 0 0 1 43.01 52.33 Q48 52 48 57 Z"/></g>
+<defs><linearGradient id="tile" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#8d84ff"/><stop offset="0.45" stop-color="#7363f4"/><stop offset="1" stop-color="#5440cc"/></linearGradient><linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="0.5" stop-color="#fff" stop-opacity="0"/></linearGradient><linearGradient id="blade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece9ff"/></linearGradient></defs>
+<g fill="url(#tile)"><rect width="100" height="100" rx="23"/></g>
+<g fill="url(#sheen)"><rect width="100" height="100" rx="23"/></g>
+<rect x="0.75" y="0.75" width="98.5" height="98.5" rx="22.25" fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="1.5"/>
+<g fill="url(#blade)" transform="translate(12 12) scale(0.76)"><path d="M15 48 Q10 48 10 43 V15 Q10 10 14.99 10.33 A38 38 0 0 1 47.67 43.01 Q48 48 43 48 Z"/><path d="M52 15 Q52 10 57 10 H85 Q90 10 89.67 14.99 A38 38 0 0 1 56.99 47.67 Q52 48 52 43 Z"/><path d="M85 52 Q90 52 90 57 V85 Q90 90 85.01 89.67 A38 38 0 0 1 52.33 56.99 Q52 52 57 52 Z"/><path d="M48 85 Q48 90 43 90 H15 Q10 90 10.33 85.01 A38 38 0 0 1 43.01 52.33 Q48 52 48 57 Z"/></g>
 </svg>

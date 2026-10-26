@@ -10,8 +10,12 @@ import {
 } from "remotion";
 import {
   BRAND_BLADES,
+  BRAND_BLADE_STOPS,
+  BRAND_EDGE_OPACITY,
+  BRAND_SHEEN_OPACITY,
   BRAND_SMALL_MARK_SCALE,
   BRAND_TILE_RADIUS,
+  BRAND_TILE_SLANT,
   BRAND_TILE_STOPS,
 } from "~/components/shared/brand-geometry";
 
@@ -621,8 +625,27 @@ function Lockup({ frame }: { frame: number }) {
           }}
         >
           <defs>
-            <linearGradient id="og-tile" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient
+              id="og-tile"
+              x1="0"
+              y1="0"
+              x2={BRAND_TILE_SLANT}
+              y2="1"
+            >
               {BRAND_TILE_STOPS.map(([stop, color]) => (
+                <stop key={stop} offset={stop} stopColor={color} />
+              ))}
+            </linearGradient>
+            <linearGradient id="og-sheen" x1="0" y1="0" x2="0" y2="1">
+              <stop
+                offset="0"
+                stopColor="#fff"
+                stopOpacity={BRAND_SHEEN_OPACITY}
+              />
+              <stop offset="0.5" stopColor="#fff" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="og-blade" x1="0" y1="0" x2="0" y2="1">
+              {BRAND_BLADE_STOPS.map(([stop, color]) => (
                 <stop key={stop} offset={stop} stopColor={color} />
               ))}
             </linearGradient>
@@ -632,6 +655,23 @@ function Lockup({ frame }: { frame: number }) {
             height="100"
             rx={BRAND_TILE_RADIUS}
             fill="url(#og-tile)"
+          />
+          <rect
+            width="100"
+            height="100"
+            rx={BRAND_TILE_RADIUS}
+            fill="url(#og-sheen)"
+          />
+          <rect
+            x="0.75"
+            y="0.75"
+            width="98.5"
+            height="98.5"
+            rx={BRAND_TILE_RADIUS - 0.75}
+            fill="none"
+            stroke="#fff"
+            strokeOpacity={BRAND_EDGE_OPACITY}
+            strokeWidth="1.5"
           />
           <g
             transform={`translate(${offset} ${offset}) scale(${BRAND_SMALL_MARK_SCALE})`}
@@ -654,7 +694,7 @@ function Lockup({ frame }: { frame: number }) {
                   <path
                     key={d}
                     d={d}
-                    fill="#fff"
+                    fill="url(#og-blade)"
                     opacity={Math.min(1, blade * 1.4)}
                     style={{
                       transformOrigin: "50px 50px",
