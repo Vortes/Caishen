@@ -698,6 +698,11 @@
   container-type: inline-size;
   outline: none;
 }
+/* With overlay scrollbars, the list's scrollbar shows only while it scrolls
+   (see AppShell): Firefox flashes it on load and on every resize. */
+.root[data-overlay-scrollbars] .content:not([data-scrolling]) {
+  scrollbar-width: none;
+}
 
 /* ---------- Controls: Linear-style filled pills ---------- */
 

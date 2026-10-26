@@ -262,6 +262,62 @@ export function AppShell({
     requestAnimationFrame(() => setReady(true));
   }, []);
 
+  // With overlay scrollbars, the main list shows its scrollbar only while
+  // it scrolls. Firefox flashes it whenever the list first lays out or
+  // resizes: on load, and as a side panel moves.
+  useEffect(() => {
+    if (!rootElement) return;
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      "position:absolute;visibility:hidden;width:50px;overflow:scroll";
+    rootElement.append(probe);
+    const overlay = probe.offsetWidth === probe.clientWidth;
+    probe.remove();
+    if (!overlay) return;
+    rootElement.dataset.overlayScrollbars = "";
+    const timers = new Map<HTMLElement, number>();
+    const listOf = (target: EventTarget | null) =>
+      target instanceof HTMLElement && target.matches(`.${styles.content}`)
+        ? target
+        : null;
+    // Kept past the scroll for the browser's own fade, then hidden again.
+    const show = (list: HTMLElement, hideAfter: number | null) => {
+      list.dataset.scrolling = "";
+      window.clearTimeout(timers.get(list));
+      if (hideAfter === null) return;
+      timers.set(
+        list,
+        window.setTimeout(() => delete list.dataset.scrolling, hideAfter),
+      );
+    };
+    const onScroll = (event: Event) => {
+      const list = listOf(event.target);
+      if (list) show(list, 1000);
+    };
+    // A press on the showing list itself, not a row, is on its scrollbar: it
+    // stays while the thumb is held.
+    let held: HTMLElement | null = null;
+    const onPointerDown = (event: PointerEvent) => {
+      const list = listOf(event.target);
+      held = list && "scrolling" in list.dataset ? list : null;
+      if (held) show(held, null);
+    };
+    const onPointerUp = () => {
+      if (held) show(held, 1000);
+      held = null;
+    };
+    rootElement.addEventListener("scroll", onScroll, true);
+    rootElement.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    return () => {
+      delete rootElement.dataset.overlayScrollbars;
+      rootElement.removeEventListener("scroll", onScroll, true);
+      rootElement.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [rootElement]);
+
   useEffect(() => {
     if (ready) localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings, ready]);
