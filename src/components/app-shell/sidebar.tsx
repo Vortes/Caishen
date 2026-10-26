@@ -598,13 +598,16 @@ function NavContents({
           {money(value)}
         </span>
       )}
-      {toReview && (
+      {/* Rows with an amount keep the dot's slot when it's off, so the
+        amounts line up in one column and the dots in their own. */}
+      {(value !== undefined || toReview) && (
         <span
           className={styles.reviewDot}
-          data-on
+          data-on={toReview ? "" : undefined}
           data-inline
-          role="img"
-          aria-label="Transactions to review"
+          role={toReview ? "img" : undefined}
+          aria-label={toReview ? "Transactions to review" : undefined}
+          aria-hidden={toReview ? undefined : true}
         />
       )}
     </>
