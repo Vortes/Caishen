@@ -174,6 +174,7 @@ test("categorizing selected transactions doesn't offer a paired envelope", async
   const menu = within(
     screen.getByRole("menu", { name: "Categorize transactions" }),
   );
+  expect(menu.queryByRole("menuitem", { name: "People" })).toBeNull();
   await user.click(menu.getByRole("menuitem", { name: "Everyday" }));
   await user.keyboard("{ArrowRight}");
   expect(screen.getByRole("menuitem", { name: /Gifts/ })).toBeTruthy();
