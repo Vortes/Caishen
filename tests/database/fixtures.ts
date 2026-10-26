@@ -1,3 +1,4 @@
+import { bankAccountSchema } from "../../src/server/integrations/plaid";
 import type { TestContext } from "node:test";
 import { PrismaClient as TestDatabase } from "../../src/generated/prisma";
 import { ObservedRevision } from "../../src/server/api/trpc";
@@ -83,6 +84,32 @@ export async function setConnectionImports(
     where: { id: connectionId },
     data: { imports: details as Prisma.InputJsonValue },
   });
+  // A fixture can advance a connection after its first read migrated it.
+  if (await db.bankAccount.count({ where: { connectionId } })) {
+    const accounts = bankAccountSchema.array().safeParse(details.accounts);
+    if (accounts.success) {
+      for (const account of accounts.data) {
+        const { accountId, persistentAccountId, ...fields } = account;
+        const data = {
+          ...fields,
+          persistentAccountId: persistentAccountId ?? null,
+          historyComplete:
+            Array.isArray(details.synchronizedAccountIds) &&
+            details.synchronizedAccountIds.includes(accountId),
+        };
+        await db.bankAccount.upsert({
+          where: {
+            connectionId_providerAccountId: {
+              connectionId,
+              providerAccountId: accountId,
+            },
+          },
+          create: { connectionId, providerAccountId: accountId, ...data },
+          update: data,
+        });
+      }
+    }
+  }
 }
 
 /** A bank connection with its import state, as bank updates leave it. */

@@ -1089,6 +1089,25 @@
       "values": {}
     }
   ],
+  "BankProviderEvent.detail": [
+    {
+      "fields": [
+        "accountCount",
+        "institutionId",
+        "verification",
+        "webhookCode",
+        "webhookType"
+      ],
+      "optional": [],
+      "nullable": [
+        "accountCount",
+        "institutionId",
+        "webhookCode",
+        "webhookType"
+      ],
+      "values": {}
+    }
+  ],
   "PlaidLink.metadata": [
     {
       "fields": [
@@ -1115,6 +1134,22 @@
       "values": {}
     }
   ],
+  "BankConnection.status": [
+    {
+      "fields": [],
+      "optional": [],
+      "nullable": [],
+      "values": {
+        "": [
+          "connected",
+          "login_required",
+          "pending_disconnect",
+          "revoked",
+          "disconnected"
+        ]
+      }
+    }
+  ],
   "BankAccountLink.openingSnapshot": [
     {
       "fields": [
@@ -1123,13 +1158,8 @@
         "financialFingerprints",
         "reviewImportIds"
       ],
-      "optional": [
-        "financialFingerprints",
-        "reviewImportIds"
-      ],
-      "nullable": [
-        ""
-      ],
+      "optional": ["financialFingerprints", "reviewImportIds"],
+      "nullable": [""],
       "values": {}
     }
   ],
@@ -1170,16 +1200,8 @@
         "supersededById"
       ],
       "values": {
-        "status": [
-          "shared",
-          "unavailable",
-          "revoked",
-          "retired"
-        ],
-        "historyComplete": [
-          true,
-          false
-        ]
+        "status": ["shared", "unavailable", "revoked", "retired"],
+        "historyComplete": [true, false]
       }
     }
   ],
@@ -1197,10 +1219,7 @@
         "unlinkedAt"
       ],
       "optional": [],
-      "nullable": [
-        "openingSnapshot",
-        "unlinkedAt"
-      ],
+      "nullable": ["openingSnapshot", "unlinkedAt"],
       "values": {}
     }
   ]

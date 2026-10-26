@@ -13,6 +13,11 @@ function connection(): State["connections"][number] {
     error: null,
     lastSyncedAt: new Date(),
     lastAttemptAt: new Date(),
+    status: "connected",
+    consentExpiresAt: null,
+    lastSuccessfulUpdateAt: null,
+    lastFailedUpdateAt: null,
+    newAccountsAvailable: false,
     transactionStatus: "HISTORICAL_UPDATE_COMPLETE",
     synchronizedAccountIds: [],
     accountMappings: {},
@@ -176,6 +181,76 @@ test("a re-shared checking account whose Plaid id changed shows as shared with i
   expect(within(menu).getByText("Choose shared accounts")).toBeTruthy();
 });
 
+test("a fresh bank connection can recover the existing account after Item permission is revoked", async () => {
+  const account = {
+    ...connection().accounts[0]!,
+    accountId: "old-checking",
+    name: "Discover checking",
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 1000,
+    availableBalance: 1000,
+  };
+  const revoked: State["connections"][number] = {
+    ...connection(),
+    status: "revoked",
+    institutionName: "Previous Discover",
+    accounts: [account],
+    accountMappings: {
+      "old-checking": { accountId: "checking", startDate: "2026-10-01" },
+    },
+    synchronizedAccountIds: ["old-checking"],
+  };
+  const replacement: State["connections"][number] = {
+    ...connection(),
+    id: "replacement",
+    itemId: "replacement-item",
+    accounts: [{ ...account, accountId: "new-checking" }],
+    synchronizedAccountIds: ["new-checking"],
+  };
+  const setup =
+    vi.fn<(input: RouterInputs["budget"]["setupBankAccounts"]) => void>();
+  const shell = await renderShell({
+    overview: () => readyOverview({ connections: [revoked, replacement] }),
+    setupBankAccounts: (input, server) => {
+      setup(input);
+      return {
+        revision: server.revision,
+        changeSet: null,
+        rebased: false,
+        accountIds: ["checking"],
+      };
+    },
+  });
+  await shell.user.click(screen.getByRole("button", { name: "Banks" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Add 1 account/ }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: /Discover/ });
+  const existing = within(dialog).getByRole("combobox", { name: "Link to" });
+  expect(
+    within(existing).getByRole("option", { name: "Checking" }),
+  ).toBeTruthy();
+  expect(existing).toHaveProperty("value", "checking");
+  expect(within(dialog).queryByLabelText("Import from")).toBeNull();
+  const add = within(dialog).getByRole("button", { name: "Add accounts" });
+  await waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+  await shell.user.click(add);
+  await waitFor(() => expect(setup).toHaveBeenCalledOnce());
+  expect(setup.mock.calls[0]![0].accounts).toEqual([
+    {
+      providerAccountId: "new-checking",
+      name: "Discover checking",
+      existingAccountId: "checking",
+      expectedBalance: 1000,
+    },
+  ]);
+  expect(shell.execute).not.toHaveBeenCalled();
+});
+
 test("a loan with no bank balance offers setup and asks for confirmed lender terms", async () => {
   const bank = connection();
   const setup =
@@ -315,4 +390,20 @@ test("a loan balance arriving during setup replaces the missing balance field", 
       .getByRole("spinbutton", { name: "Current principal owed" })
       .getAttribute("value"),
   ).toBe("123.45");
+});
+
+test("a failed bank update's status names the Plaid request id for support", async () => {
+  const bank = connection();
+  bank.error =
+    "Bank update failed. Reconnect or try again; previous records were preserved. (Plaid request id: req-7f3a)";
+  const shell = await renderShell({
+    overview: () => readyOverview({ connections: [bank] }),
+  });
+  await shell.user.click(screen.getByRole("button", { name: "Banks" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Why Discover needs attention" }),
+  );
+  expect(
+    await screen.findByText(/\(Plaid request id: req-7f3a\)/),
+  ).toBeTruthy();
 });

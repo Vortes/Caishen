@@ -1,3 +1,4 @@
+import { withBankAccountSuccessors } from "~/server/services/bank-account-rows";
 import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
 import {
   createPartnerInvite,
@@ -40,16 +41,20 @@ import { budgetMaintenance } from "~/server/services/stored-data";
 import { readImportStates } from "~/server/services/bank-import-rows";
 import { readHouseholdRevision } from "~/server/storage/rows";
 import {
+  migrateBankAccounts,
   bankInboxItems,
   bankConnectionView,
   readBankConnection,
   exchangeBankToken,
+  reviewBankLink,
   linkBankToken,
   syncBanks,
   resolveImport,
   reconnectBank,
   disconnectBank,
   setupBankAccounts,
+  bankLinkExitSchema,
+  recordBankLinkExit,
 } from "~/server/services/banks";
 import { setupBankAccountsSchema } from "~/server/services/bank-account-setup";
 
@@ -61,22 +66,32 @@ function currentMonth(zone: string) {
   return budgetDay(zone).slice(0, 7);
 }
 // A user's bank connections as the app reads them with their imports.
-const savedBankConnections = (db: Database, userId: string) =>
-  db.bankConnection.findMany({
-    where: { clerkUserId: userId },
-    select: {
-      id: true,
-      clerkUserId: true,
-      itemId: true,
-      lastSyncedAt: true,
-      lastAttemptAt: true,
-      error: true,
-      accountMappings: true,
-      unavailableAccountIds: true,
-      imports: true,
-      bankAccounts: bankAccountRowsSelection,
-    },
-  });
+const savedBankConnections = async (db: Database, userId: string) => {
+  await migrateBankAccounts(db, userId, { reportUnreadable: false });
+  return withBankAccountSuccessors(
+    db,
+    db.bankConnection.findMany({
+      where: { clerkUserId: userId },
+      select: {
+        id: true,
+        clerkUserId: true,
+        itemId: true,
+        lastSyncedAt: true,
+        lastAttemptAt: true,
+        error: true,
+        accountMappings: true,
+        unavailableAccountIds: true,
+        status: true,
+        consentExpiresAt: true,
+        lastSuccessfulUpdateAt: true,
+        lastFailedUpdateAt: true,
+        newAccountsAvailable: true,
+        imports: true,
+        bankAccounts: bankAccountRowsSelection,
+      },
+    }),
+  );
+};
 
 // The partner's first name from their profile, which names the partner
 // account in the shell.
@@ -301,20 +316,55 @@ export const budgetRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       linkBankToken(ctx.db, ctx.userId, input?.connectionId),
     ),
+  plaidLinkReview: protectedProcedure
+    .input(
+      z.object({
+        metadata: plaidLinkMetadataSchema,
+        recordCompletion: z.boolean().default(true),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      reviewBankLink(
+        ctx.db,
+        ctx.userId,
+        input.metadata,
+        input.recordCompletion,
+      ),
+    ),
   plaidExchange: protectedProcedure
     .input(
       z.object({
         publicToken: z.string().min(1).max(2048),
         metadata: plaidLinkMetadataSchema,
+        reviewId: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
       }),
     )
     .mutation(({ ctx, input }) =>
-      exchangeBankToken(ctx.db, ctx.userId, input.publicToken, input.metadata),
+      exchangeBankToken(
+        ctx.db,
+        ctx.userId,
+        input.publicToken,
+        input.metadata,
+        input.reviewId,
+      ),
+    ),
+  plaidLinkExit: protectedProcedure
+    .input(bankLinkExitSchema)
+    .mutation(({ ctx, input }) =>
+      recordBankLinkExit(ctx.db, ctx.userId, input),
     ),
   plaidReconnect: protectedProcedure
-    .input(z.object({ connectionId: z.string().min(1).max(256) }))
+    .input(
+      z.object({
+        connectionId: z.string().min(1).max(256),
+        metadata: plaidLinkMetadataSchema.optional(),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      reconnectBank(ctx.db, ctx.userId, input.connectionId),
+      reconnectBank(ctx.db, ctx.userId, input.connectionId, input.metadata),
     ),
   disconnectBank: protectedProcedure
     .input(

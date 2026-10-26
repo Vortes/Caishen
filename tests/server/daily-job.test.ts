@@ -10,6 +10,9 @@ if (originalSkipValidation === undefined)
 else process.env.SKIP_ENV_VALIDATION = originalSkipValidation;
 const originalFindMany = db.workspaceMember.findMany.bind(db.workspaceMember);
 const originalDeliveries = db.dailyDelivery.findMany.bind(db.dailyDelivery);
+const originalPurge = db.bankProviderEvent.deleteMany.bind(
+  db.bankProviderEvent,
+);
 const originalSecret = process.env.CRON_SECRET;
 const secret = "scheduler-fixture-secret-32-characters";
 
@@ -21,6 +24,7 @@ after(() => {
 afterEach(() => {
   Object.assign(db.workspaceMember, { findMany: originalFindMany });
   Object.assign(db.dailyDelivery, { findMany: originalDeliveries });
+  Object.assign(db.bankProviderEvent, { deleteMany: originalPurge });
 });
 
 function request(authorization?: string) {
@@ -54,6 +58,9 @@ void test("authorized hosted jobs return their result without caching", async ()
   const members = mock.fn(async () => []);
   Object.assign(db.workspaceMember, { findMany: members });
   Object.assign(db.dailyDelivery, { findMany: async () => [] });
+  Object.assign(db.bankProviderEvent, {
+    deleteMany: async () => ({ count: 0 }),
+  });
   const response = await GET(request(`Bearer ${secret}`));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
@@ -81,6 +88,9 @@ void test("failed daily work is visible as a failed hosted invocation", async ()
   ]);
   Object.assign(db.workspaceMember, { findMany: members });
   Object.assign(db.dailyDelivery, { findMany: async () => [] });
+  Object.assign(db.bankProviderEvent, {
+    deleteMany: async () => ({ count: 0 }),
+  });
   const response = await GET(request(`Bearer ${secret}`));
   assert.equal(response.status, 503);
   const result = (await response.json()) as Record<string, unknown>;
@@ -95,6 +105,9 @@ void test("database failures return a non-cacheable hosted job error", async () 
   });
   Object.assign(db.workspaceMember, { findMany: members });
   Object.assign(db.dailyDelivery, { findMany: async () => [] });
+  Object.assign(db.bankProviderEvent, {
+    deleteMany: async () => ({ count: 0 }),
+  });
   const response = await GET(request(`Bearer ${secret}`));
   assert.equal(response.status, 500);
   assert.equal(response.headers.get("cache-control"), "no-store");

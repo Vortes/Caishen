@@ -16,14 +16,22 @@ const usage = `Preview unused duplicate bank accounts without changing data:
   node --env-file=.env.local --import tsx scripts/repair-duplicate-bank-accounts.ts \\
     --user USER_ID --retired CONNECTION_ID --replacement CONNECTION_ID
 
+Same-Item mode (two provider accounts on one connection):
+  node --env-file=.env.local --import tsx scripts/repair-duplicate-bank-accounts.ts \\
+    --user USER_ID --connection CONNECTION_ID \\
+    --keep-provider PROVIDER_ACCOUNT_ID --remove-provider PROVIDER_ACCOUNT_ID
+
 Apply exactly the reviewed preview:
   Add --apply --plan-hash HASH --operation-id UUID
 
 Production requires --production and a DATABASE_URL verified against the
 configured production Neon branch. No database credentials are printed.
 The command keeps original budget accounts, removes only unused duplicates,
-and revokes the retired Plaid Item. Transaction, reconciliation, assignment,
-and review conflicts require manual resolution. Retry the same operation ID
+and revokes the retired Plaid Item only in the two-connection mode.
+Same-Item mode retires the removed provider account without revoking the Item;
+it preserves every import and all history on the kept budget account.
+Transaction, reconciliation, assignment, and review conflicts on the removed
+account require manual resolution. Retry the same operation ID
 after a network failure; re-preview if the budget or connections changed.`;
 
 async function main() {
@@ -35,6 +43,9 @@ async function main() {
       user: { type: "string" },
       retired: { type: "string" },
       replacement: { type: "string" },
+      connection: { type: "string" },
+      "keep-provider": { type: "string" },
+      "remove-provider": { type: "string" },
       "plan-hash": { type: "string" },
       "operation-id": { type: "string" },
     },
@@ -43,7 +54,18 @@ async function main() {
     console.log(usage);
     return;
   }
-  if (!values.user || !values.retired || !values.replacement)
+  const sameItem =
+    values.connection ?? values["keep-provider"] ?? values["remove-provider"];
+  if (
+    !values.user ||
+    (sameItem
+      ? !values.connection ||
+        !values["keep-provider"] ||
+        !values["remove-provider"] ||
+        values.retired ||
+        values.replacement
+      : !values.retired || !values.replacement)
+  )
     throw new Error(usage);
   if (values.apply && (!values["plan-hash"] || !values["operation-id"]))
     throw new Error(
@@ -70,10 +92,16 @@ async function main() {
   } else assertDevelopmentDatabase(process.env);
   const db = new PrismaClient();
   try {
-    const selection = {
-      retiredConnectionId: values.retired,
-      replacementConnectionId: values.replacement,
-    };
+    const selection = sameItem
+      ? {
+          connectionId: values.connection!,
+          keepProviderAccountId: values["keep-provider"]!,
+          removeProviderAccountId: values["remove-provider"]!,
+        }
+      : {
+          retiredConnectionId: values.retired!,
+          replacementConnectionId: values.replacement!,
+        };
     if (!values.apply) {
       console.log(
         JSON.stringify(
