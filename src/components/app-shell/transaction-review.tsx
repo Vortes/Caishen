@@ -123,7 +123,6 @@ export function SelectionIsland({
 }) {
   const review = useTransactionReview();
   const entry = useTransactionEntry();
-  const idle = useBudgetSelector(saved);
   if (!selected.length) return null;
   const { approve: approvable, enter: enterable, reject: rejectable } = actions;
   const approvals = [
@@ -134,7 +133,7 @@ export function SelectionIsland({
     approvable.length > TRANSACTION_ACTION_LIMIT ||
     enterable.length > TRANSACTION_ACTION_LIMIT ||
     rejectable.length > TRANSACTION_ACTION_LIMIT;
-  const busy = Boolean(entry.session) || !idle;
+  const busy = Boolean(entry.session);
   return (
     <div className={styles.islandSlot}>
       <div
