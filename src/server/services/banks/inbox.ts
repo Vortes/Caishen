@@ -222,6 +222,7 @@ export function readBankConnection<C extends StoredConnection>(
   try {
     const health = connectionHealth(connection);
     const providerRows = providerAccountProjection(connection);
+    if (!providerRows) return { status: "maintenance", connection };
     const column = readConnectionColumn(connection, providerRows);
     const mappings = providerRows?.mappings;
     const rows = imports.get(connection.id) ?? emptyState();
@@ -307,7 +308,7 @@ export function bankAccountDetails(value: unknown) {
 }
 
 export async function bankInbox(db: Database, userId: string) {
-  await migrateBankAccounts(db, userId);
+  await migrateBankAccounts(db, userId, { reportUnreadable: false });
   const [connections, opened] = await Promise.all([
     withBankAccountSuccessors(
       db,
