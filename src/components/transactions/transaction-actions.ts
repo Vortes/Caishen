@@ -63,7 +63,7 @@ export function transactionActions(
       edit: capabilities.record.ok ? "transaction" : null,
       approve: false,
       reject: false,
-      categorize: false,
+      categorize: capabilities.categorize.ok,
       share:
         capabilities.link.ok && capabilities.share.mode !== "none"
           ? capabilities.share.mode

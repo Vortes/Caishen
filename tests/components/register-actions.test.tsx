@@ -83,9 +83,7 @@ test.each([
     expect(Boolean(actions.queryByRole("button", { name: "Reject" }))).toBe(
       source === "manual",
     );
-    expect(Boolean(actions.queryByRole("button", { name: "Categorize" }))).toBe(
-      source === "manual",
-    );
+    expect(actions.getByRole("button", { name: "Categorize" })).toBeTruthy();
     await shell.user.keyboard("e");
     const editor = within(
       screen.getByRole("form", { name: "Edit transaction" }),
@@ -417,4 +415,75 @@ test("bulk category menus support keyboard selection and change only the selecte
   expect(
     screen.queryByRole("menu", { name: "Categorize transactions" }),
   ).toBeNull();
+});
+
+test("bulk categorization records pending and posted imports with selected transactions and survives reload", async () => {
+  let imports = [
+    bankImport({
+      logicalId: "coffee",
+      payee: "Imported coffee",
+      pending: true,
+    }),
+    bankImport({ logicalId: "lunch", payee: "Imported lunch", amount: -1500 }),
+    bankImport({ logicalId: "book", payee: "Unselected book", amount: -900 }),
+  ];
+  const shell = await renderShell({
+    seedCommands: [
+      { type: "category.add", id: "food", categoryId: "food", name: "Food" },
+      {
+        type: "transaction.upsert",
+        id: "market",
+        transactionId: "market",
+        accountId: "checking",
+        date: "2026-10-10",
+        payee: "Market",
+        amount: -1000,
+        categoryId: "food",
+      },
+    ],
+    overview: () => readyOverview({ imports }),
+    resolveImport: (input, server) => {
+      const saved = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = imports.filter((item) => item.logicalId !== input.logicalId);
+      return { ...saved, resolved: true };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Imported coffee", "Imported lunch", "Market"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Categorize" }),
+  );
+  await shell.user.click(screen.getByRole("menuitem", { name: "Everyday" }));
+  await shell.user.keyboard("{ArrowRight}{Home}{Enter}");
+  await findToast("Categorized 3 transactions");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Imported coffee", "Imported lunch", "Market"]) {
+    expect(
+      within(await findTransactionRow(payee)).getByText("Gifts", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole("checkbox", { name: `Select ${payee}` }),
+    ).toHaveLength(1);
+  }
+  expect(
+    within(transactionRow("Imported coffee")).getByLabelText("Pending"),
+  ).toBeTruthy();
+  expect(
+    within(transactionRow("Imported lunch")).getByLabelText("Cleared"),
+  ).toBeTruthy();
+  expect(
+    within(transactionRow("Unselected book")).getByText("Needs category"),
+  ).toBeTruthy();
 });

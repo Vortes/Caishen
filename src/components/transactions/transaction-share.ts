@@ -4,6 +4,7 @@ import { isFullShare } from "~/domain/counterparty";
 import {
   buildTransactionDraftCommand,
   createTransactionDraft,
+  type PreparedTransactionChange,
 } from "./transaction-draft";
 import {
   createImportDraft,
@@ -60,7 +61,7 @@ export function prepareTransactionShares(
   ids: string[],
   choice: ShareChoice,
   categoryId: string,
-) {
+): PreparedTransactionChange[] {
   return ids.map((rowId) => {
     const transaction = view.budget.transactions.find(
       (item) => item.id === rowId && !item.removed,
@@ -97,10 +98,11 @@ export function prepareTransactionShares(
       operationId: crypto.randomUUID(),
       entityId: crypto.randomUUID(),
     });
-    return { rowId, imported, command, summary: `Saved ${item.payee}` };
+    return {
+      rowIds: [rowId],
+      imported,
+      command,
+      summary: `Saved ${item.payee}`,
+    };
   });
 }
-
-export type PreparedTransactionShare = ReturnType<
-  typeof prepareTransactionShares
->[number];

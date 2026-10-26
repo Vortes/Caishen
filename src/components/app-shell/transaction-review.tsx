@@ -42,8 +42,6 @@ export type TransactionReview = {
   // and saves in the background.
   approve: (transactionIds: string[]) => void;
   reject: (transactionIds: string[]) => void;
-  // Returns why the category can't apply, or null once it's on its way.
-  categorize: (transactionIds: string[], categoryId: string) => string | null;
 };
 
 const TransactionReviewContext = createContext<TransactionReview | null>(null);
@@ -192,6 +190,7 @@ export function SelectionIsland({
             selected={selected}
             available={actions.categorize}
             disabled={busy}
+            onCheck={onCheck}
           />
           <ShareSelection
             selected={selected}
@@ -208,13 +207,15 @@ function CategorizeAction({
   selected,
   available,
   disabled,
+  onCheck,
 }: {
   selected: Transaction[];
   available: boolean;
   disabled: boolean;
+  onCheck: (ids: string[], value: boolean) => void;
 }) {
-  const review = useTransactionReview();
-  const { view, holdOpen } = useTransactionEntry();
+  const entry = useTransactionEntry();
+  const { view, holdOpen } = entry;
   const container = usePortalContainer();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -327,13 +328,15 @@ function CategorizeAction({
                       disabled={disabled}
                       textValue={category.name}
                       onSelect={(event) => {
-                        const blocked = review.categorize(
+                        const result = entry.categorizeSelection(
                           selected.map((item) => item.id),
                           category.id,
+                          (rowId) => onCheck([rowId], true),
                         );
-                        if (blocked) {
+                        if (result.error) {
+                          onCheck(result.queuedIds, false);
                           event.preventDefault();
-                          setError(blocked);
+                          setError(result.error);
                         }
                       }}
                     >

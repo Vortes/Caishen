@@ -14,14 +14,15 @@ import {
   type DraftFieldKey,
   type TransactionDraft,
   type TransactionDraftFields,
+  type PreparedTransactionChange,
 } from "~/components/transactions/transaction-draft";
 import type { Command, CounterpartyShare } from "~/domain/engine";
 import { isFullShare } from "~/domain/counterparty";
 import {
   prepareTransactionShares,
   type ShareChoice,
-  type PreparedTransactionShare,
 } from "~/components/transactions/transaction-share";
+import { prepareTransactionCategories } from "~/components/transactions/transaction-category";
 import {
   rememberedCategory,
   rememberedCounterpartyShare,
@@ -57,8 +58,9 @@ export type TransactionSaver = {
     summary: string,
     refused?: () => void,
   ) => string | null;
-  saveShares: (
-    changes: PreparedTransactionShare[],
+  saveSelection: (
+    changes: PreparedTransactionChange[],
+    action: "share" | "categorize",
     refused: (rowId: string) => void,
   ) => { queuedIds: string[]; error?: string };
   // Holds the undo shortcut while the editor is open.
@@ -728,6 +730,32 @@ export function useTransactionEntryController({
     view,
     holdOpen,
     saveCommand: saver.save,
+    categorizeSelection: (
+      ids: string[],
+      categoryId: string,
+      refused: (rowId: string) => void,
+    ) => {
+      if (session)
+        return {
+          queuedIds: [],
+          error: "Save or cancel the open transaction first.",
+        };
+      try {
+        return saver.saveSelection(
+          prepareTransactionCategories(view, saver.imports, ids, categoryId),
+          "categorize",
+          refused,
+        );
+      } catch (failure) {
+        return {
+          queuedIds: [],
+          error:
+            failure instanceof Error
+              ? failure.message
+              : "These categories couldn't be saved. Try again.",
+        };
+      }
+    },
     saveShare,
     toggleCleared,
     shareSelection: (
@@ -742,7 +770,7 @@ export function useTransactionEntryController({
           error: "Save or cancel the open transaction first.",
         };
       try {
-        return saver.saveShares(
+        return saver.saveSelection(
           prepareTransactionShares(
             view,
             saver.imports,
@@ -750,6 +778,7 @@ export function useTransactionEntryController({
             choice,
             categoryId,
           ),
+          "share",
           refused,
         );
       } catch (failure) {
