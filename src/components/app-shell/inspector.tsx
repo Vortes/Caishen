@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
-import { monthName, moveMonth, newId } from "~/components/budget/format";
+import { newId } from "~/components/budget/format";
 import { Card } from "~/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Figure, Property, Title } from "./cards";
@@ -482,22 +482,11 @@ function TargetSnooze({ category }: { category: Category }) {
   const current = month.key === today.slice(0, 7);
   const snoozed = category.rule?.snoozedMonths.includes(month.key) ?? false;
   if (category.pays?.type === "card" || category.pairs) return null;
-  const next = monthName(moveMonth(month.key, 1)).split(" ")[0];
-  const hint = current
-    ? snoozed
-      ? `It asks for money again on ${next} 1.`
-      : `Skips this target until ${next}. Its progress still shows.`
-    : month.key < today.slice(0, 7) && snoozed
-      ? "A snooze ends with its month."
-      : `You can snooze only in the current month, ${monthName(today.slice(0, 7))}.`;
   return (
     <>
       <label className={styles.snoozeRow} data-disabled={!current || undefined}>
-        <span className={styles.snoozeText}>
-          <span className={styles.snoozeLabel}>
-            {snoozed && !current ? "Snoozed in" : "Snooze for"} {month.short}
-          </span>
-          <span className={styles.snoozeHint}>{hint}</span>
+        <span className={styles.snoozeLabel}>
+          {snoozed && !current ? "Snoozed in" : "Snooze for"} {month.short}
         </span>
         <Switch
           checked={snoozed}
