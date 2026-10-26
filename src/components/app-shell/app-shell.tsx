@@ -635,6 +635,10 @@ export function AppShell({
       />
     ) : (
       <Sidebar
+        sectionOrder={settings.sidebarSectionOrder}
+        onReorderSections={(sidebarSectionOrder) =>
+          setSettings((value) => ({ ...value, sidebarSectionOrder }))
+        }
         screen={screen}
         hrefFor={hrefFor}
         onNavigate={navigateTo}

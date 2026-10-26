@@ -48,6 +48,8 @@ export function Sidebar({
   toggleLabel,
   onToggle,
   settingsHref,
+  sectionOrder,
+  onReorderSections,
 }: {
   screen: Screen;
   hrefFor: (screen: Screen) => string;
@@ -55,6 +57,8 @@ export function Sidebar({
   toggleLabel: string;
   onToggle: () => void;
   settingsHref: (page: SettingsPage) => string;
+  sectionOrder: string[];
+  onReorderSections: (order: string[]) => void;
 }) {
   const { accounts, loans, transactions } = useShellData();
   const reviewCount = transactions.filter((item) => item.needsReview).length;
@@ -152,7 +156,47 @@ export function Sidebar({
         href: hrefFor({ type: "loans", loanId: loan.id }),
       })),
     },
-  ].filter((section) => section.items.length || section.empty);
+  ];
+
+  const byId = new Map(sections.map((section) => [section.id, section]));
+  const ordered = [
+    ...new Set([...sectionOrder, ...sections.map((section) => section.id)]),
+  ].flatMap((id) => {
+    const section = byId.get(id);
+    return section ? [section] : [];
+  });
+  const visible = ordered.filter(
+    (section) => section.items.length || section.empty,
+  );
+  const reorder = useReorderDrag({
+    ids: visible.map((section) => section.id),
+    enabled: visible.length > 1,
+    onDrop: (order, id, done) => {
+      const showing = new Set(order);
+      let next = 0;
+      onReorderSections(
+        ordered.map((section) =>
+          showing.has(section.id) ? order[next++]! : section.id,
+        ),
+      );
+      done();
+      requestAnimationFrame(() => focusSection(id));
+    },
+  });
+  const dragged = reorder.drag && byId.get(reorder.drag.id);
+  const draggedTotal =
+    dragged?.items.reduce((sum, item) => sum + item.value, 0) ?? 0;
+  const focusSection = (id: string) =>
+    reorder.listRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-section="${CSS.escape(id)}"]`)
+      ?.focus();
+  const moveSection = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
+    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown"))
+      return;
+    event.preventDefault();
+    reorder.nudge(id, event.key === "ArrowUp" ? -1 : 1);
+    requestAnimationFrame(() => focusSection(id));
+  };
 
   return (
     <nav className={styles.sidebarNav} aria-label="Budget navigation">
@@ -196,52 +240,103 @@ export function Sidebar({
           />
         </ul>
 
-        {sections.map((section) => {
-          const open = !closed.includes(section.id);
-          const total = section.items.reduce(
-            (sum, item) => sum + item.value,
-            0,
-          );
-          return (
-            <section key={section.id} className={styles.navSection}>
-              <button
-                type="button"
-                className={styles.sectionHeading}
-                aria-expanded={open}
-                onClick={() => toggle(section.id)}
-              >
-                <span>{section.label}</span>
-                <Caret />
-                <span
-                  className={styles.sectionTotal}
-                  data-negative={total < 0 || undefined}
+        <MotionConfig reducedMotion="user">
+          <div
+            ref={reorder.listRef}
+            className={styles.sidebarSections}
+            data-dragging={reorder.drag ? true : undefined}
+          >
+            {reorder.order.map((id) => {
+              const section = byId.get(id);
+              if (!section) return null;
+              const open = !closed.includes(section.id) && !reorder.drag;
+              const total = section.items.reduce(
+                (sum, item) => sum + item.value,
+                0,
+              );
+              return (
+                <motion.section
+                  key={section.id}
+                  className={styles.navSection}
+                  data-reorder-slot
+                  layout={reorder.animating ? "position" : false}
+                  transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
                 >
-                  {money(total)}
-                </span>
-              </button>
-              {/* Stays mounted so it can animate closed; inert while hidden
-                  so its rows drop out of the tab order. */}
-              <div
-                className={styles.sectionBody}
-                data-open={open}
-                inert={!open}
-                aria-hidden={!open || undefined}
-              >
-                <div>
-                  {section.items.length ? (
-                    <AccountList
-                      items={section.items}
-                      loans={section.id === "loans"}
-                      onNavigate={onNavigate}
-                    />
+                  {reorder.drag?.id === id ? (
+                    <div className={styles.sectionDropSlot} aria-hidden />
                   ) : (
-                    <p className={styles.navEmpty}>{section.empty}</p>
+                    <>
+                      <button
+                        type="button"
+                        className={styles.sectionHeading}
+                        aria-expanded={open}
+                        onClick={() => toggle(section.id)}
+                        data-section={section.id}
+                        data-reorderable={reorder.enabled || undefined}
+                        aria-keyshortcuts={
+                          reorder.enabled
+                            ? "Alt+ArrowUp Alt+ArrowDown"
+                            : undefined
+                        }
+                        onPointerDown={(event) => reorder.start(event, id)}
+                        onKeyDown={(event) => moveSection(event, id)}
+                      >
+                        <span>{section.label}</span>
+                        <Caret />
+                        <span
+                          className={styles.sectionTotal}
+                          data-negative={total < 0 || undefined}
+                        >
+                          {money(total)}
+                        </span>
+                      </button>
+                      {/* Hidden rows stay mounted for the fold animation. */}
+                      <div
+                        className={styles.sectionBody}
+                        data-open={open}
+                        inert={!open}
+                        aria-hidden={!open || undefined}
+                      >
+                        <div>
+                          {section.items.length ? (
+                            <AccountList
+                              items={section.items}
+                              loans={section.id === "loans"}
+                              onNavigate={onNavigate}
+                            />
+                          ) : (
+                            <p className={styles.navEmpty}>{section.empty}</p>
+                          )}
+                        </div>
+                      </div>
+                    </>
                   )}
+                </motion.section>
+              );
+            })}
+            {dragged && (
+              <motion.div
+                className={`${styles.navGhost} ${styles.sectionGhost}`}
+                style={{ y: reorder.y }}
+                initial={{ scale: 1 }}
+                animate={{ scale: 1.02 }}
+                transition={{ duration: 0.15, ease: EASE }}
+                aria-hidden
+              >
+                <div className={styles.sectionHeading}>
+                  <span>{dragged.label}</span>
+                  <Caret />
+                  <span
+                    className={styles.sectionTotal}
+                    data-negative={draggedTotal < 0 || undefined}
+                  >
+                    {money(draggedTotal)}
+                  </span>
                 </div>
-              </div>
-            </section>
-          );
-        })}
+              </motion.div>
+            )}
+          </div>
+        </MotionConfig>
       </div>
 
       <div className={styles.sidebarFooter}>
