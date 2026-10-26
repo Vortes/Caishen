@@ -89,3 +89,72 @@ test("the details panel's Activity opens the same transactions, for plans too na
     "CheckingOct 4Florist-$42.10",
   ]);
 });
+
+// A transaction opened from the plan's activity keeps a way back to the
+// category it was opened from, in the register's selection island.
+
+async function jumpToFlorist(shell: Awaited<ReturnType<typeof renderShell>>) {
+  await shell.user.click(
+    screen.getByRole("button", {
+      name: "-$57.10 activity in Gifts. Show transactions",
+    }),
+  );
+  await shell.user.click(
+    within(screen.getByRole("dialog", { name: "Gifts activity" })).getByRole(
+      "button",
+      { name: /^Florist/ },
+    ),
+  );
+}
+
+test("Back from a transaction opened from Activity returns to its category in the plan", async () => {
+  const shell = await renderShell({ seedCommands });
+  await jumpToFlorist(shell);
+
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Back to Gifts in the plan" }),
+  );
+
+  expect(
+    screen.getByRole("button", { name: /^Gifts/ }).getAttribute("aria-current"),
+  ).toBe("true");
+  expect(
+    within(screen.getByRole("complementary", { name: "Details" })).getByRole(
+      "button",
+      {
+        name: "-$57.10 activity in Gifts. Show transactions",
+      },
+    ),
+  ).toBeTruthy();
+});
+
+test("the way back stays once the selection is cleared", async () => {
+  const shell = await renderShell({ seedCommands });
+  await jumpToFlorist(shell);
+
+  await shell.user.keyboard("{Escape}");
+
+  expect(
+    screen.queryByRole("toolbar", { name: "Selected transactions" }),
+  ).toBeNull();
+  await shell.user.click(
+    screen.getByRole("button", { name: "Back to Gifts in the plan" }),
+  );
+  expect(
+    screen.getByRole("button", { name: /^Gifts/ }).getAttribute("aria-current"),
+  ).toBe("true");
+});
+
+test("browsing away from the register forgets the way back", async () => {
+  const shell = await renderShell({ seedCommands });
+  await jumpToFlorist(shell);
+
+  await shell.user.click(screen.getByRole("link", { name: /^All accounts/ }));
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+
+  expect(
+    screen.queryByRole("button", { name: "Back to Gifts in the plan" }),
+  ).toBeNull();
+});

@@ -32,7 +32,7 @@ import { ProfileSettings } from "~/components/settings/profile";
 import { Inspector } from "./inspector";
 import { MonthNav } from "./month-picker";
 import { findPalette, paletteVars } from "./palettes";
-import { isCounterparty, type ShellData } from "./model";
+import { isCounterparty, type Category, type ShellData } from "./model";
 import { MoveMoneyProvider, type MoveMoney } from "./move-money";
 import { TargetEditingProvider, type TargetEditing } from "./target-editor";
 import { PlanViews } from "./plan-views";
@@ -51,6 +51,7 @@ import { SettingsNav, Sidebar } from "./sidebar";
 import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
+import type { WayBack } from "./transaction-review";
 import { PartnerRegister } from "./partner-register";
 import {
   ReimbursementFilters,
@@ -258,6 +259,12 @@ export function AppShell({
   }, [selectionAddress, routeSelection, screen.type]);
   const [addingGroup, setAddingGroup] = useState(false);
   const [revealed, setRevealed] = useState<Added | null>(null);
+  const [cameFrom, setCameFrom] = useState<{
+    href: string;
+    accountId: string;
+    categoryId: string;
+    name: string;
+  } | null>(null);
   // Below this width both panels float over the content instead of
   // taking space from it, and start closed.
   const narrow = useMediaQuery("(max-width: 860px)");
@@ -514,6 +521,7 @@ export function AppShell({
 
   const navigateTo = (href: string) => {
     if (entry.holdForDraft()) return;
+    setCameFrom(null);
     if (`${window.location.pathname}${window.location.search}` !== href)
       window.history.pushState(null, "", href);
     const next = screenAt(href.split("?")[0]!);
@@ -552,19 +560,55 @@ export function AppShell({
   };
 
   // Opens a transaction in its own account's register, selected, for the
-  // month it happened.
-  const jump = (transaction: {
-    id: string;
-    accountId: string;
-    date: string;
-  }) => {
+  // month it happened. Opened from a plan category's activity, the register
+  // offers the way back to it.
+  const jump = (
+    transaction: { id: string; accountId: string; date: string },
+    from?: Category,
+  ) => {
     if (entry.holdForDraft()) return;
+    const plan = `${window.location.pathname}${window.location.search}`;
     navigate(
       { type: "register", accountId: transaction.accountId },
       transaction.id,
       transaction.date.slice(0, 7),
     );
+    if (from)
+      setCameFrom({
+        href: plan,
+        accountId: transaction.accountId,
+        categoryId: from.id,
+        name: from.name,
+      });
   };
+  const returnTo = useRef<string | null>(null);
+  // Only in the register the transaction opened in; browsing anywhere else
+  // forgets it.
+  const back: WayBack | null =
+    cameFrom &&
+    screen.type === "register" &&
+    screen.accountId === cameFrom.accountId
+      ? {
+          name: cameFrom.name,
+          onBack: () => {
+            if (entry.holdForDraft()) return;
+            navigateTo(cameFrom.href);
+            setRevealed({ type: "category", id: cameFrom.categoryId });
+            returnTo.current = cameFrom.categoryId;
+          },
+        }
+      : null;
+  // Back in the plan, the category is selected with its details open, as if
+  // its row was clicked. This runs after the address change has cleared the
+  // register's selection.
+  useEffect(() => {
+    const id = returnTo.current;
+    if (!id || screen.type !== "plan") return;
+    returnTo.current = null;
+    if (inspectorState.collapsed) inspector.toggle();
+    setSelectedId(id);
+    setChecked([id]);
+  }, [screen, inspectorState.collapsed, inspector]);
 
   // Like YNAB, clicking a row selects just that row: its checkbox ticks and
   // any others clear. Clicking a selected row deselects it. Checkboxes add
@@ -995,6 +1039,7 @@ export function AppShell({
                                 checked={checked}
                                 onCheck={check}
                                 onJump={jump}
+                                back={back}
                               />
                             )}
                           </>

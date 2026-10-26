@@ -58,6 +58,13 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* A long category name can't push the selection's actions off the island. */
+.backName {
+  overflow: hidden;
+  max-width: 18ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .hint {
   color: var(--feedback-attention);
 }

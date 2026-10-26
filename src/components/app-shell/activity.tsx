@@ -14,11 +14,12 @@ import { money, type ActivityEntry, type Category } from "./model";
 import shell from "./shell.module.css";
 import styles from "./activity.module.css";
 
-type Jump = (transaction: {
-  id: string;
-  accountId: string;
-  date: string;
-}) => void;
+// Opens a transaction in its account's register, remembering the category
+// it was opened from.
+export type ActivityJump = (
+  transaction: { id: string; accountId: string; date: string },
+  from: Category,
+) => void;
 
 const day = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -47,7 +48,7 @@ export function ActivityPopover({
   children,
 }: {
   category: Category;
-  onJump: Jump;
+  onJump: ActivityJump;
   align?: "start" | "center" | "end";
   children: ReactNode;
 }) {
@@ -72,7 +73,7 @@ export function ActivityPopover({
             category={category}
             onJump={(entry) => {
               setOpen(false);
-              onJump(entry);
+              onJump(entry, category);
             }}
           />
         </Popover.Content>
@@ -169,7 +170,7 @@ export function ActivityCell({
   onJump,
 }: {
   category: Category;
-  onJump: Jump;
+  onJump: ActivityJump;
 }) {
   const label = money(category.activity);
   return (
@@ -196,7 +197,7 @@ export function ActivityProperty({
   onJump,
 }: {
   category: Category;
-  onJump: Jump;
+  onJump: ActivityJump;
 }) {
   const label = money(category.activity);
   return (
