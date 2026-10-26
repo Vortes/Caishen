@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import test, { afterEach, mock } from "node:test";
 import nextEnv from "@next/env";
 
-import { createDatabaseCaller as createCaller } from "./fixtures";
+import {
+  createDatabaseCaller as createCaller,
+  databaseClientBuild,
+} from "./fixtures";
+import { createBudgetClient } from "../../src/components/sync/budget-client";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { toShellData } from "../../src/components/app-shell/model";
 import { PrismaClient } from "../../src/generated/prisma";
@@ -1478,6 +1482,53 @@ void test("Reject checks the bank fingerprint, changes no budget transactions, a
   assert.deepEqual(after.imports, []);
   assert.deepEqual(after.view, before.view);
   assert.equal(after.revision, before.revision + 1);
+});
+
+void test("the budget client undoes and redoes a rejected pending import through the budget API", async (t) => {
+  const h = await pendingImport();
+  const before = await h.state();
+  const client = createBudgetClient({
+    userId: alice,
+    clientBuild: databaseClientBuild,
+    transport: {
+      execute: (input) => h.api.budget.execute(input),
+      pull: (input) => h.api.sync.pull(input),
+    },
+  });
+  t.after(() => client.dispose());
+  await client.ready;
+  const operationId = randomUUID();
+  client.runOnServer(
+    operationId,
+    (expectedRevision) =>
+      h.api.budget.resolveImport({
+        connectionId: h.input.connectionId,
+        logicalId: h.input.logicalId,
+        expectedRevision,
+        expectedFingerprint: h.input.expectedFingerprint,
+        operationId,
+        ignore: true,
+      }),
+    { summary: "Rejected Coffee shop", undoable: true },
+  );
+  await client.idle();
+  assert.deepEqual((await h.state()).imports, []);
+
+  assert.deepEqual(client.store.getSnapshot().undo, {
+    operationId,
+    label: "Rejected Coffee shop",
+  });
+  assert.equal(client.undo()?.ok, true, "Undo restores the rejected import");
+  await client.idle();
+  const restored = await h.state();
+  assert.deepEqual(restored.imports, before.imports);
+  assert.deepEqual(restored.view, before.view);
+
+  assert.equal(client.redo()?.ok, true, "Redo rejects the import again");
+  await client.idle();
+  const redone = await h.state();
+  assert.deepEqual(redone.imports, []);
+  assert.deepEqual(redone.view, before.view);
 });
 
 void test("a card credit entered while pending matches its posted bank record and changes the balance once", async () => {

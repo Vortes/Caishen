@@ -37,6 +37,103 @@ const purchase = (
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
 
+test("matching an import to a recorded purchase offers Undo and supports redo", async () => {
+  const book = execute(
+    withCounterpartyAccounts(
+      addMember(budgetFixture(), "partner", "Anna", "2026-10"),
+    ),
+    "partner",
+    {
+      type: "partner.record",
+      id: "record-market",
+      recordedAt: "2026-10-10T12:00:00Z",
+      entryId: "recorded-market",
+      payerId: "owner",
+      date: "2026-10-10",
+      payee: "Recorded Market",
+      amount: 2500,
+      share: 1250,
+    },
+  );
+  const imported: Overview["imports"][number] = {
+    connectionId: "bank",
+    logicalId: "market",
+    fingerprint: "a".repeat(64),
+    transactionId: undefined,
+    categoryId: "gifts",
+    categoryName: "Gifts",
+    providerAccountId: "provider-checking",
+    accountId: "checking",
+    date: "2026-10-10",
+    payee: "Bank Market",
+    amount: -2500,
+    pending: false,
+    removed: false,
+    needsMatchReview: true,
+    error: null,
+    history: [],
+    reviewEvidence: [],
+    quarantined: false,
+    eligibility: "eligible",
+    partnerMatches: [
+      {
+        entryId: "recorded-market",
+        date: "2026-10-10",
+        payee: "Recorded Market",
+        amount: 2500,
+        share: 1250,
+        payeesAlike: true,
+        recordedBy: "partner",
+      },
+    ],
+  };
+  const shell = await renderShell({
+    book,
+    overview: (server) =>
+      readyOverview({
+        partnerFirstName: "Anna",
+        imports: server
+          .book()
+          .budgets.owner!.transactions.some(
+            (transaction) =>
+              !transaction.removed && transaction.providerId === "bank-market",
+          )
+          ? []
+          : [imported],
+      }),
+    resolveImport: (input, server) => {
+      if (input.command?.type !== "partner.match")
+        throw new Error("Expected the recorded purchase to be matched");
+      return {
+        ...server.execute("owner", {
+          command: { ...input.command, providerId: "bank-market" },
+          baseRevision: input.expectedRevision,
+          clientId: "import",
+        }),
+        resolved: true,
+      };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(row("Bank Market"));
+  await shell.user.keyboard("e");
+  await shell.user.click(editor().getByRole("button", { name: "Match" }));
+  const toast = await findToast("Matched your import to Recorded Market");
+  expect(await findRow("Recorded Market")).toBeTruthy();
+
+  await shell.user.click(within(toast).getByRole("button", { name: "Undo" }));
+  await findToast("Action undone.");
+  expect(await findRow("Bank Market")).toBeTruthy();
+  expect(screen.queryByText("Recorded Market", { exact: true })).toBeNull();
+
+  await shell.user.keyboard("{Meta>}{Shift>}z{/Shift}{/Meta}");
+  await findToast("Action redone.");
+  expect(await findRow("Recorded Market")).toBeTruthy();
+  expect(screen.queryByText("Bank Market", { exact: true })).toBeNull();
+  await shell.reload();
+  expect(await findRow("Recorded Market")).toBeTruthy();
+});
+
 test("the opening balance is read-only and excluded from purchase selection and review", async () => {
   const shell = await renderShell({ seedCommands: [purchase()] });
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));

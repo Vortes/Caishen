@@ -395,7 +395,7 @@ function LiveWorkspace({
     operationId: string,
     send: Parameters<ServerRunner>[1],
     summary: string,
-    inPlace = false,
+    options: { inPlace?: boolean; undoable?: boolean } = {},
   ) =>
     new Promise<void>((resolve, reject) => {
       const result = client.runOnServer(
@@ -404,15 +404,16 @@ function LiveWorkspace({
           serverOperation(() => send(baseRevision), renewSession),
         {
           summary,
+          undoable: options.undoable,
           onSettled: (settled) =>
             settled.ok ? resolve() : reject(new Error(settled.message)),
         },
       );
       if (!result.ok) reject(new Error(result.message));
-      else if (inPlace) shownInPlace.current.add(operationId);
+      else if (options.inPlace) shownInPlace.current.add(operationId);
     });
   const runInForm: ServerRunner = (operationId, send, summary) =>
-    runOnServer(operationId, send, summary, true);
+    runOnServer(operationId, send, summary, { inPlace: true });
 
   const [openPopovers, setOpenPopovers] = useState(0);
   const holdOpen = useCallback(() => {
@@ -495,7 +496,7 @@ function LiveWorkspace({
               ignore: true,
             }),
           summary,
-          true,
+          { inPlace: true, undoable: true },
         ).then(
           async () => {
             notify(summary, "neutral", operationId);
@@ -558,7 +559,7 @@ function LiveWorkspace({
           command,
         }),
       summary,
-      inPlace,
+      { inPlace, undoable: true },
     );
     await refreshResolvedImport(item);
   };
@@ -616,7 +617,7 @@ function LiveWorkspace({
           }),
         );
       saveImportedTransaction(item, command, summary).then(
-        () => notify(summary),
+        () => notify(summary, "neutral", command.id),
         () => refused?.(),
       );
       return null;
@@ -670,8 +671,10 @@ function LiveWorkspace({
   // confirmed like any other.
   const travel = (direction: "undo" | "redo") => {
     const result = client[direction]((settled) => {
-      if (settled.ok)
+      if (settled.ok) {
         notify(direction === "undo" ? "Action undone." : "Action redone.");
+        void utils.budget.overview.invalidate();
+      }
     });
     if (result && !result.ok) notify(result.message, "attention");
   };
