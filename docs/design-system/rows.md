@@ -113,3 +113,23 @@ What does the row state mean?
 These states can coexist. Apply the selected fill over the underlying
 hover/current surface and preserve keyboard focus; do not substitute one
 state's styling for another.
+
+## Group headers
+
+A list split into groups (plan category groups, the register's date
+headers) heads each group with a header row:
+
+- `--surface-group` fill, `--size-row-lg` tall, `--radius-row` corners,
+  4px above it.
+- Name in `--text-secondary` at weight 500; `--text-primary` on hover.
+  Group totals in `--text-tertiary` at weight 400.
+- In a column of pills, the header label and group total inset by the
+  pill's 8px side padding, so their text lines up with the pill labels
+  instead of the pill edges.
+- On a collapsible group, a `ChevronDownIcon` caret (12px, stroke 2.5)
+  in `--text-tertiary` before the name. Collapsed, it rotates -90° over
+  150ms with `--ease-panel`.
+- No category count beside the name.
+
+Copy `.groupRow`, `.groupName`, and `.groupCaret` from `shell.module.css`
+until the `Row` primitive exists.
