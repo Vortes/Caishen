@@ -48,8 +48,8 @@ import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
 import { SettingsNav, Sidebar } from "./sidebar";
-import { PanelWidthDials, usePanelWidths } from "./panel-widths";
-import { usePanel } from "./use-panel";
+import { PanelWidthDials, usePanelLimits } from "./panel-widths";
+import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import { PartnerRegister } from "./partner-register";
 import {
@@ -95,6 +95,27 @@ const settingsTitles: Record<SettingsPage, string> = {
   appearance: "Appearance",
   partner: "Partner",
 };
+
+// A panel nobody has resized fills the window's cap; a resized one keeps its
+// width up to the cap. Resetting a panel saves the default width, which reads
+// as never resized.
+function shownWidth(saved: number, defaultWidth: number, cap: number | null) {
+  if (cap === null) return saved;
+  return saved === defaultWidth ? cap : Math.min(saved, cap);
+}
+
+// A toggle keeps the saved width; only a resize replaces it. The panel can
+// show narrower than saved on a smaller screen.
+function keepSavedWidth(
+  saved: PanelState,
+  next: PanelState,
+  shown: number,
+): PanelState {
+  return {
+    width: next.width === shown ? saved.width : next.width,
+    collapsed: next.collapsed,
+  };
+}
 
 function isTyping(target: EventTarget | null) {
   return (
@@ -245,16 +266,32 @@ export function AppShell({
   const [drawer, setDrawer] = useState({ sidebar: false, inspector: false });
   // Linear-style peek: with the sidebar collapsed, hovering the left edge or
   // the sidebar button floats it over the content until the pointer leaves.
-  const [peek, setPeek] = useState(false);
+  // Where the sidebar can't be pinned, clicking the button holds the peek
+  // open until it's dismissed.
+  const [peek, setPeek] = useState<"hover" | "held" | null>(null);
   const peekTimer = useRef<number | undefined>(undefined);
   const openPeek = () => {
     window.clearTimeout(peekTimer.current);
-    peekTimer.current = window.setTimeout(() => setPeek(true), 250);
+    peekTimer.current = window.setTimeout(
+      () => setPeek((current) => current ?? "hover"),
+      250,
+    );
   };
-  const closePeek = (delay = 200) => {
+  const closePeek = () => {
     window.clearTimeout(peekTimer.current);
-    peekTimer.current = window.setTimeout(() => setPeek(false), delay);
+    peekTimer.current = window.setTimeout(
+      () => setPeek((current) => (current === "held" ? current : null)),
+      200,
+    );
   };
+  const holdPeek = useCallback(() => {
+    window.clearTimeout(peekTimer.current);
+    setPeek("held");
+  }, []);
+  const dismissPeek = useCallback(() => {
+    window.clearTimeout(peekTimer.current);
+    setPeek(null);
+  }, []);
 
   // Enable transitions only after the first paint, so a saved collapsed
   // state doesn't animate on load.
@@ -322,13 +359,27 @@ export function AppShell({
     if (ready) localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings, ready]);
 
-  // Laptop and tablet screens use fixed widths instead of the saved ones.
-  const tuned = usePanelWidths();
-  const sidebarWidth = tuned?.sidebar ?? settings.sidebar.width;
-  const inspectorWidth = tuned?.inspector ?? settings.inspector.width;
+  // The window width caps the panels. A saved width above the cap shows at
+  // the cap but stays saved, so a wider screen gets it back.
+  const limits = usePanelLimits();
+  const sidebarMax = limits.sidebarMax ?? SIDEBAR.max;
+  const inspectorMax = limits.inspectorMax ?? INSPECTOR.max;
+  const sidebarWidth = shownWidth(
+    settings.sidebar.width,
+    SIDEBAR.defaultWidth,
+    limits.sidebarMax,
+  );
+  const inspectorWidth = shownWidth(
+    settings.inspector.width,
+    INSPECTOR.defaultWidth,
+    limits.inspectorMax,
+  );
+  const peekOnly = !narrow && limits.peekOnly;
   const sidebarState = narrow
     ? { width: sidebarWidth, collapsed: !drawer.sidebar }
-    : { ...settings.sidebar, width: sidebarWidth };
+    : peekOnly
+      ? { width: sidebarWidth, collapsed: true }
+      : { ...settings.sidebar, width: sidebarWidth };
   const inspectorState = narrow
     ? {
         width: phone ? INSPECTOR.min : inspectorWidth,
@@ -338,26 +389,40 @@ export function AppShell({
 
   const sidebar = usePanel({
     side: "left",
-    ...SIDEBAR,
-    min: Math.min(SIDEBAR.min, sidebarWidth),
+    defaultWidth: SIDEBAR.defaultWidth,
+    min: Math.min(SIDEBAR.min, sidebarMax),
+    max: sidebarMax,
     state: sidebarState,
     onChange: (next) =>
       narrow
         ? setDrawer((value) => ({ ...value, sidebar: !next.collapsed }))
-        : setSettings((value) => ({ ...value, sidebar: next })),
+        : setSettings((value) => ({
+            ...value,
+            sidebar: keepSavedWidth(value.sidebar, next, sidebarWidth),
+          })),
   });
   const peekable = !narrow && sidebarState.collapsed;
-  const peekOpen = peekable && peek && !sidebar.dragging;
+  const peekOpen = peekable && peek !== null && !sidebar.dragging;
+  const { toggle } = sidebar;
+  const toggleSidebar = useCallback(() => {
+    if (!peekOnly) toggle();
+    else if (peekOpen) dismissPeek();
+    else holdPeek();
+  }, [peekOnly, peekOpen, toggle, dismissPeek, holdPeek]);
 
   const inspector = usePanel({
     side: "right",
-    ...INSPECTOR,
-    min: Math.min(INSPECTOR.min, inspectorWidth),
+    defaultWidth: INSPECTOR.defaultWidth,
+    min: Math.min(INSPECTOR.min, inspectorMax),
+    max: inspectorMax,
     state: inspectorState,
     onChange: (next) =>
       narrow
         ? setDrawer((value) => ({ ...value, inspector: !next.collapsed }))
-        : setSettings((value) => ({ ...value, inspector: next })),
+        : setSettings((value) => ({
+            ...value,
+            inspector: keepSavedWidth(value.inspector, next, inspectorWidth),
+          })),
   });
 
   const entry = useTransactionEntryController({
@@ -383,13 +448,13 @@ export function AppShell({
       )
         return;
       if (settingsOpen) {
-        if (event.key === "[") sidebar.toggle();
+        if (event.key === "[") toggleSidebar();
         else if (event.key === "Escape") closeSettings();
         else return;
         event.preventDefault();
         return;
       }
-      if (event.key === "[") sidebar.toggle();
+      if (event.key === "[") toggleSidebar();
       else if (event.key === "]" && screen.type !== "register")
         inspector.toggle();
       else if (event.key === "n" && screen.type === "plan")
@@ -404,7 +469,7 @@ export function AppShell({
       ) {
         if (!entry.start({ transactionId: selectedActions.edit.id })) return;
       } else if (event.key === "Escape") {
-        if (peekOpen) setPeek(false);
+        if (peekOpen) dismissPeek();
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
           setDrawer({ sidebar: false, inspector: false });
         } else if (screen.type === "loans" && screen.loanId) {
@@ -430,6 +495,8 @@ export function AppShell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     sidebar,
+    toggleSidebar,
+    dismissPeek,
     inspector,
     narrow,
     drawer,
@@ -455,7 +522,7 @@ export function AppShell({
         sidebar: false,
         inspector: next?.type === "loans" && Boolean(next.loanId),
       });
-    closePeek(0);
+    dismissPeek();
   };
 
   const hrefFor = (next: Screen) => {
@@ -635,7 +702,7 @@ export function AppShell({
                   className={styles.peekScrim}
                   data-open={peekOpen || undefined}
                   aria-hidden
-                  onClick={() => closePeek(0)}
+                  onClick={() => dismissPeek()}
                 />
                 <div
                   className={styles.peek}
@@ -644,14 +711,17 @@ export function AppShell({
                   aria-hidden={!peekOpen || undefined}
                   inert={!peekOpen}
                   onPointerEnter={openPeek}
-                  onPointerLeave={() => closePeek()}
+                  onPointerLeave={closePeek}
                 >
                   {/* The peek floats a collapsed sidebar; its toggle pins
-                      it open. */}
-                  {navigation("Show sidebar", () => {
-                    closePeek(0);
-                    sidebar.toggle();
-                  })}
+                      it open, or closes it where the sidebar can't be
+                      pinned. */}
+                  {peekOnly
+                    ? navigation("Hide sidebar", dismissPeek)
+                    : navigation("Show sidebar", () => {
+                        dismissPeek();
+                        sidebar.toggle();
+                      })}
                 </div>
               </>
             )}
@@ -667,14 +737,14 @@ export function AppShell({
 
             <div className={styles.main}>
               <div
-                {...sidebar.handleProps}
+                {...(peekOnly ? { "aria-hidden": true } : sidebar.handleProps)}
                 className={styles.handle}
                 data-side="left"
                 aria-label="Resize sidebar"
                 aria-controls="app-sidebar"
                 data-active={sidebar.dragging || undefined}
                 onPointerEnter={peekable ? openPeek : undefined}
-                onPointerLeave={peekable ? () => closePeek() : undefined}
+                onPointerLeave={peekable ? closePeek : undefined}
               />
               <div className={styles.panel}>
                 <header className={styles.header}>
@@ -682,16 +752,20 @@ export function AppShell({
                     className={styles.toggleSlot}
                     data-show={sidebarState.collapsed || undefined}
                     onPointerEnter={peekable ? openPeek : undefined}
-                    onPointerLeave={peekable ? () => closePeek() : undefined}
+                    onPointerLeave={peekable ? closePeek : undefined}
                   >
                     <div>
                       <IconButton
                         label="Show sidebar"
                         shortcut="["
-                        onClick={() => {
-                          closePeek(0);
-                          sidebar.toggle();
-                        }}
+                        onClick={
+                          peekOnly
+                            ? holdPeek
+                            : () => {
+                                dismissPeek();
+                                sidebar.toggle();
+                              }
+                        }
                       >
                         <PanelLeftIcon aria-hidden />
                       </IconButton>
