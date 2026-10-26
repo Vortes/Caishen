@@ -26,8 +26,10 @@ import type {
 } from "~/components/sync/budget-store";
 import {
   importRowId,
+  importReviewCommand,
   type BankImport,
 } from "~/components/transactions/import-draft";
+import { transactionActions } from "~/components/transactions/transaction-actions";
 import {
   BudgetClientProvider,
   useBudgetMonth,
@@ -309,7 +311,7 @@ function LiveWorkspace({
   const imports = useMemo(
     () =>
       allImports.filter((item) => {
-        if (resolved.has(item.logicalId)) return false;
+        if (resolved.has(importRowId(item))) return false;
         const preview = importPreviews.get(importRowId(item));
         return (
           preview?.fingerprint !== item.fingerprint ||
@@ -437,21 +439,107 @@ function LiveWorkspace({
   };
   const count = (ids: string[]) =>
     `${ids.length} ${ids.length === 1 ? "transaction" : "transactions"}`;
+  const reviewSelection = (
+    transactionIds: string[],
+    action: "approve" | "enter" | "reject",
+  ) => {
+    if (!transactionIds.length) return;
+    const selectedImports = imports.filter((item) =>
+      transactionIds.includes(importRowId(item)),
+    );
+    const recorded = view.budget.transactions.filter((item) =>
+      transactionIds.includes(item.id),
+    );
+    if (
+      selectedImports.length + recorded.length !== transactionIds.length ||
+      [...selectedImports, ...recorded].some(
+        (item) => !transactionActions(view, item)[action],
+      )
+    ) {
+      notify(
+        "This selection changed. Select the transactions again.",
+        "attention",
+      );
+      return;
+    }
+    const recordedIds = recorded.map((item) => item.id);
+    if (recordedIds.length) {
+      if (action === "approve")
+        run(
+          approveCommand(recordedIds),
+          `Marked ${count(recordedIds)} reviewed`,
+        );
+      else
+        run(
+          {
+            type: "transaction.reject",
+            id: newId(),
+            transactionIds: recordedIds,
+          },
+          `Rejected ${count(recordedIds)}`,
+        );
+    }
+    for (const item of selectedImports) {
+      if (action === "reject") {
+        const operationId = newId();
+        const summary = `Rejected ${item.payee}`;
+        void runOnServer(
+          operationId,
+          (expectedRevision) =>
+            trpc.budget.resolveImport.mutate({
+              connectionId: item.connectionId,
+              logicalId: item.logicalId,
+              expectedFingerprint: item.fingerprint,
+              expectedRevision,
+              operationId,
+              ignore: true,
+            }),
+          summary,
+          true,
+        ).then(
+          async () => {
+            notify(summary, "neutral", operationId);
+            await refreshResolvedImport(item);
+          },
+          (error: Error) =>
+            notify(
+              `Couldn’t reject ${item.payee}. ${error.message}`,
+              "attention",
+            ),
+        );
+        continue;
+      }
+      const command = importReviewCommand(view, item);
+      const summary = `${action === "enter" ? "Entered" : "Approved"} ${item.payee}`;
+      const result = previewImport(
+        item,
+        command,
+        summary,
+        (settled) => {
+          if (settled.ok) notify(summary, "neutral", command.id);
+        },
+        action,
+      );
+      if (!result.ok) notify(result.message, "attention");
+    }
+  };
   const review: TransactionReview = {
-    approve: (transactionIds) => {
-      if (!transactionIds.length) return;
-      run(
-        approveCommand(transactionIds),
-        `Marked ${count(transactionIds)} reviewed`,
-      );
-    },
-    reject: (transactionIds) => {
-      if (!transactionIds.length) return;
-      run(
-        { type: "transaction.reject", id: newId(), transactionIds },
-        `Rejected ${count(transactionIds)}`,
-      );
-    },
+    approve: (ids) => reviewSelection(ids, "approve"),
+    enter: (ids) => reviewSelection(ids, "enter"),
+    reject: (ids) => reviewSelection(ids, "reject"),
+  };
+  const refreshResolvedImport = async (item: BankImport) => {
+    const rowId = importRowId(item);
+    setResolved((ids) => new Set(ids).add(rowId));
+    try {
+      await utils.budget.overview.invalidate();
+    } finally {
+      setResolved((ids) => {
+        const next = new Set(ids);
+        next.delete(rowId);
+        return next;
+      });
+    }
   };
   const saveImportedTransaction = async (
     item: (typeof imports)[number],
@@ -472,22 +560,14 @@ function LiveWorkspace({
       summary,
       inPlace,
     );
-    setResolved((ids) => new Set(ids).add(item.logicalId));
-    try {
-      await utils.budget.overview.invalidate();
-    } finally {
-      setResolved((ids) => {
-        const next = new Set(ids);
-        next.delete(item.logicalId);
-        return next;
-      });
-    }
+    await refreshResolvedImport(item);
   };
   const previewImport = (
     item: BankImport,
     command: Command,
     summary: string,
     onSettled: (result: Settled) => void,
+    review?: "approve" | "enter",
   ): RunResult => {
     if (command.type !== "transaction.upsert")
       return { ok: false, message: "This bank operation cannot be previewed." };
@@ -502,6 +582,7 @@ function LiveWorkspace({
               expectedFingerprint: item.fingerprint,
               expectedRevision,
               command,
+              review,
             }),
           renewSession,
         ),

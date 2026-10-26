@@ -1,4 +1,6 @@
 import type { State, View } from "~/components/budget/types";
+import { newId } from "~/components/budget/format";
+import type { Command } from "~/domain/engine";
 import {
   rememberedCategory,
   rememberedCounterpartyShare,
@@ -65,4 +67,23 @@ export function importShare(view: View, item: BankImport) {
         amount: item.amount,
       })
     : undefined;
+}
+
+export function importReviewCommand(view: View, item: BankImport): Command {
+  if (!item.accountId) throw new Error("Map this bank account first.");
+  const category = importCategory(view, item);
+  return {
+    type: "transaction.upsert",
+    id: newId(),
+    transactionId: newId(),
+    accountId: item.accountId,
+    date: item.date,
+    payee: item.payee,
+    amount: item.amount,
+    categoryId: category === READY_TO_ASSIGN ? undefined : category,
+    counterpartyShare: importShare(view, item),
+    status: item.pending ? "pending" : "posted",
+    cleared: !item.pending,
+    reviewed: true,
+  };
 }

@@ -25,6 +25,7 @@ export type BankInboxItem = {
   removed: boolean;
   quarantined: boolean;
   amount: number;
+  pending: boolean;
   categoryId?: string | null;
   payee?: string;
   error?: string | null;
@@ -62,6 +63,7 @@ export type EditCapability =
 export type Capabilities = {
   edit: EditCapability;
   approve: Capability;
+  enter: Capability;
   reject: Capability;
   categorize: Capability;
   share: { mode: "edit" } | { mode: "none" };
@@ -235,7 +237,10 @@ function transactionCapabilities(
     if (removed) return { ok: false, reason: removed };
     if (!directAccountKinds[account.kind])
       return { ok: false, reason: directEntryAccountMessage };
-    if (!registerShapes[shape.kind])
+    if (
+      !registerShapes[shape.kind] &&
+      !(shape.kind === "statement-credit" && item.status === "pending")
+    )
       return {
         ok: false,
         reason: "This kind of transaction cannot be edited in the register",
@@ -297,6 +302,7 @@ function transactionCapabilities(
   return {
     edit: edit(),
     approve: capability(approve()),
+    enter: unavailable,
     reject: capability(reject()),
     categorize: capability(categorize()),
     share: share(),
@@ -327,14 +333,27 @@ export function classifyRegisterEntry(
     const account = budget.accounts.find(
       (account) => account.id === item.accountId,
     );
+    const review = capability(
+      !record.ok
+        ? record.reason
+        : (item.error ??
+            (item.needsMatchReview || item.partnerMatches?.length
+              ? "Review the possible match before recording this bank activity"
+              : null)),
+    );
     return {
       origin: "import",
       item,
       eligibility: item.eligibility,
       capabilities: {
         edit: { ok: false, reason: "Record this bank activity first" },
-        approve: unavailable,
-        reject: unavailable,
+        approve: item.pending
+          ? capability("Use Enter now for pending bank activity")
+          : review,
+        enter: item.pending
+          ? review
+          : capability("Posted bank activity uses Approve"),
+        reject: record,
         categorize:
           record.ok &&
           (account?.kind === "cash" || account?.kind === "credit") &&
