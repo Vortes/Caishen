@@ -45,6 +45,8 @@ export type RunOptions = {
   onSettled?: (result: Settled) => void;
   /** Preview the command normally, but save through a specialized route. */
   send?: (baseRevision: number) => Promise<ExecuteResult>;
+  /** Add a server-only operation to history once its change set arrives. */
+  undoable?: boolean;
 };
 
 export type RunResult =
@@ -119,6 +121,7 @@ export type PendingOperation = {
   /** For a revert: the change set it restores in this browser. */
   readonly revertTarget?: ChangeSet;
   readonly onSettled?: (result: Settled) => void;
+  readonly undoable?: boolean;
   /** Imports whose preview created a transaction this operation edits. */
   readonly dependencies: readonly string[];
   settled: boolean;
@@ -298,7 +301,9 @@ export class BudgetStore {
       operationId,
       summary: options.summary,
       onSettled: options.onSettled,
+      undoable: options.undoable,
     });
+    if (options.undoable) this.redoStack = [];
     this.changed();
     return { ok: true, operationId };
   }
@@ -353,7 +358,10 @@ export class BudgetStore {
   }
 
   private push(
-    op: Pick<PendingOperation, "summary" | "onSettled" | "revertTarget"> &
+    op: Pick<
+      PendingOperation,
+      "summary" | "onSettled" | "revertTarget" | "undoable"
+    > &
       (
         | {
             command: LedgerCommand & { id: string };
@@ -392,6 +400,7 @@ export class BudgetStore {
       send: op.send ?? null,
       revertTarget: op.revertTarget,
       onSettled: op.onSettled,
+      undoable: op.undoable,
       dependencies,
       settled: false,
       confirmedAt: null,
@@ -516,6 +525,21 @@ export class BudgetStore {
     const op = this.pending.find((item) => item.operationId === operationId);
     if (!op || this.revision === null) return "done";
     this.recordAnswer(op);
+    if (op.undoable && result.changeSet?.after.length) {
+      const following = new Set(
+        this.pending
+          .slice(this.pending.indexOf(op) + 1)
+          .map((pending) => pending.operationId),
+      );
+      const index = this.undoStack.findIndex((entry) =>
+        following.has(entry.operationId),
+      );
+      this.undoStack.splice(index < 0 ? this.undoStack.length : index, 0, {
+        operationId,
+        label: op.summary,
+        changeSet: result.changeSet,
+      });
+    }
     if (result.changeSet) this.replaceHistory(operationId, result.changeSet);
     this.settle(op, { ok: true, revision: result.revision });
     const base = this.revision;
