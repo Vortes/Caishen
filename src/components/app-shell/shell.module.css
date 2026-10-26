@@ -303,6 +303,9 @@
 }
 .sectionTotal {
   margin-left: auto;
+  /* Clears the review dot's column (6px dot, 8px gap) so the total lines
+     up with the amounts below it. */
+  margin-right: 14px;
 }
 /* Dragging an account to reorder its section, like the plan's groups. The
    dragged row follows the pointer; an outlined gap shows where it will
