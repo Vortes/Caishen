@@ -2,12 +2,8 @@
 
 import { ArrowRightIcon, ShieldCheckIcon } from "lucide-react";
 import { SignInButton, SignUpButton } from "@clerk/nextjs";
-import {
-  BRAND_BLADES,
-  BRAND_SMALL_MARK_SCALE,
-  BRAND_TILE_RADIUS,
-  BRAND_TILE_STOPS,
-} from "~/components/shared/brand-geometry";
+import { BRAND_BLADES } from "~/components/shared/brand-geometry";
+import { BrandMark } from "~/components/shared/brand-mark";
 import { EntryPage } from "~/components/entry/entry-page";
 import { SHELL_PATH } from "~/components/workspace/routes";
 import styles from "~/components/entry/welcome.module.css";
@@ -71,36 +67,12 @@ export function Welcome() {
   );
 }
 
-const markOffset = (100 - 100 * BRAND_SMALL_MARK_SCALE) / 2;
-
 // The wordmark: the pinwheel tile and "caishen." in lowercase, the
 // period in the brand's violet.
 function Wordmark() {
   return (
     <span className={styles.wordmark}>
-      <svg viewBox="0 0 100 100" aria-hidden>
-        <defs>
-          <linearGradient id="welcome-tile" x1="0" y1="0" x2="0" y2="1">
-            {BRAND_TILE_STOPS.map(([offset, color]) => (
-              <stop key={offset} offset={offset} stopColor={color} />
-            ))}
-          </linearGradient>
-        </defs>
-        <rect
-          width="100"
-          height="100"
-          rx={BRAND_TILE_RADIUS}
-          fill="url(#welcome-tile)"
-        />
-        <g
-          fill="#fff"
-          transform={`translate(${markOffset} ${markOffset}) scale(${BRAND_SMALL_MARK_SCALE})`}
-        >
-          {BRAND_BLADES.map((d) => (
-            <path key={d} d={d} />
-          ))}
-        </g>
-      </svg>
+      <BrandMark />
       <span>
         caishen<span className={styles.period}>.</span>
       </span>
