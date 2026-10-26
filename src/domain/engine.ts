@@ -4026,7 +4026,6 @@ function applyCommand(
         !categoryId &&
         !lines &&
         !counterpartyShare;
-      if (statementCredit && command.status !== "posted") break;
       if (
         counterpartyShare &&
         ((!categoryId &&

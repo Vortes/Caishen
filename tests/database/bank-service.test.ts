@@ -1398,6 +1398,173 @@ void test("reviewing imported activity replaces its balance contribution without
   );
 });
 
+void test("approving posted bank activity records it reviewed and retries without a second charge", async () => {
+  const h = await pendingImport();
+  const record = {
+    ...h.record,
+    current: { ...h.record.current, pending: false },
+  };
+  await h.setImports({
+    records: [record],
+    resolved: {},
+    errors: {},
+    reviews: {},
+  });
+  const input = {
+    ...h.input,
+    expectedRevision: await h.revision(),
+    expectedFingerprint: bankImportFingerprint(record),
+    review: "approve" as const,
+  };
+  await h.api.budget.resolveImport(input);
+  await h.api.budget.resolveImport(input);
+  const saved = await h.state();
+  assert.equal(saved.imports.length, 0);
+  assert.equal(saved.view!.budget.transactions.length, 1);
+  assert.equal(saved.view!.budget.transactions[0]!.reviewed, true);
+  assert.equal(saved.view!.budget.transactions[0]!.status, "posted");
+});
+
+void test("bank review refuses Approve on pending activity and Enter now on posted activity", async () => {
+  const h = await pendingImport();
+  await assert.rejects(
+    h.api.budget.resolveImport({ ...h.input, review: "approve" }),
+    /pending/i,
+  );
+  const record = {
+    ...h.record,
+    current: { ...h.record.current, pending: false },
+  };
+  await h.setImports({
+    records: [record],
+    resolved: {},
+    errors: {},
+    reviews: {},
+  });
+  await assert.rejects(
+    h.api.budget.resolveImport({
+      ...h.input,
+      expectedRevision: await h.revision(),
+      expectedFingerprint: bankImportFingerprint(record),
+      review: "enter",
+    }),
+    /posted/i,
+  );
+  assert.equal((await h.state()).view!.budget.transactions.length, 0);
+});
+
+void test("Reject checks the bank fingerprint, changes no budget transactions, and retries once", async () => {
+  const h = await pendingImport();
+  const input = {
+    connectionId: h.input.connectionId,
+    logicalId: h.input.logicalId,
+    expectedRevision: await h.revision(),
+    expectedFingerprint: h.input.expectedFingerprint,
+    operationId: randomUUID(),
+    ignore: true,
+  };
+  const before = await h.state();
+  await assert.rejects(
+    h.api.budget.resolveImport({
+      ...input,
+      expectedFingerprint: "b".repeat(64),
+    }),
+    /bank updated/i,
+  );
+  assert.equal((await h.state()).imports.length, 1);
+  await h.api.budget.resolveImport(input);
+  await h.api.budget.resolveImport(input);
+  const after = await h.state();
+  assert.deepEqual(after.imports, []);
+  assert.deepEqual(after.view, before.view);
+  assert.equal(after.revision, before.revision + 1);
+});
+
+void test("a card credit entered while pending matches its posted bank record and changes the balance once", async () => {
+  const h = await linkedHarness();
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "account.add",
+      id: "card",
+      accountId: "card",
+      name: "Card",
+      kind: "credit",
+      date: "2026-10-01",
+      openingBalance: -5000,
+    }),
+  );
+  await h.setMappings({
+    "provider-checking": { accountId: "card", startDate: "2026-10-01" },
+  });
+  const [record] = applyTransactionSync(
+    [],
+    {
+      added: [{ ...importFact("pending-credit", true), amountCents: -2000 }],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records;
+  await h.setImports({
+    records: [record!],
+    resolved: {},
+    errors: {},
+    reviews: {},
+  });
+  await h.api.budget.resolveImport({
+    connectionId: h.connection.id,
+    logicalId: record!.id,
+    expectedRevision: await h.revision(),
+    expectedFingerprint: bankImportFingerprint(record!),
+    review: "enter",
+    command: {
+      type: "transaction.upsert",
+      id: "enter-credit",
+      transactionId: "credit",
+      accountId: "card",
+      date: "2026-10-20",
+      amount: 2000,
+      payee: "Coffee shop",
+      status: "pending",
+      reviewed: true,
+    },
+  });
+  const entered = await h.state();
+  assert.equal(entered.view!.budget.transactions[0]!.status, "pending");
+  assert.equal(
+    entered.view!.accounts.find((item) => item.id === "card")!.balance,
+    -5000,
+  );
+  syncPages([
+    {
+      added: [
+        plaidTransaction({
+          transaction_id: "posted-credit",
+          pending_transaction_id: "pending-credit",
+          amount: -20,
+          date: "2026-10-20",
+          name: "Coffee shop",
+        }),
+      ],
+      removed: [
+        { transaction_id: "pending-credit", account_id: "provider-checking" },
+      ],
+      next_cursor: "posted-credit",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  const posted = await h.state();
+  assert.equal(posted.imports.length, 0);
+  assert.equal(posted.view!.budget.transactions.length, 1);
+  assert.equal(posted.view!.budget.transactions[0]!.id, "credit");
+  assert.equal(posted.view!.budget.transactions[0]!.status, "posted");
+  assert.equal(posted.view!.budget.transactions[0]!.reviewed, true);
+  assert.equal(
+    posted.view!.accounts.find((item) => item.id === "card")!.balance,
+    -3000,
+  );
+});
+
 void test("the register can edit pending bank activity without clearing it or changing the bank fact", async () => {
   const h = await pendingImport();
   await resolveImport(h.db, alice, h.input);

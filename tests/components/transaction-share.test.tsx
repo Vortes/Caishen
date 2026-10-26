@@ -41,6 +41,83 @@ function bankImport(
   };
 }
 
+test("mixed selections offer Share for eligible purchases and leave transfers selected", async () => {
+  const shell = await renderShell({
+    book: withCounterpartyAccounts(
+      budgetFixture({
+        seedCommands: [
+          {
+            type: "account.add",
+            id: "savings",
+            accountId: "savings",
+            name: "Savings",
+            kind: "cash",
+            date: "2026-10-01",
+            openingBalance: 0,
+          },
+          {
+            type: "transaction.upsert",
+            id: "transfer",
+            transactionId: "transfer",
+            accountId: "checking",
+            transferAccountId: "savings",
+            date: "2026-10-10",
+            amount: -1000,
+            payee: "Transfer",
+          },
+          {
+            type: "transaction.upsert",
+            id: "coffee",
+            transactionId: "coffee",
+            accountId: "checking",
+            date: "2026-10-10",
+            amount: -2500,
+            payee: "Coffee",
+            categoryId: "gifts",
+          },
+        ],
+      }),
+    ),
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Transfer to Savings"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Share" }),
+  );
+  await shell.user.click(
+    screen.getByRole("button", { name: /Someone else owes/ }),
+  );
+  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await shell.user.click(screen.getByRole("button", { name: "Apply" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Share 1 transaction" }),
+  );
+  await findToast("Shared 1 transaction");
+  expect(
+    screen
+      .getByRole("checkbox", { name: "Select Transfer to Savings" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(
+    await screen.findByRole("button", {
+      name: "Mom's share of Coffee: $25.00. Change",
+    }),
+  ).toBeTruthy();
+  expect(
+    within(await findTransactionRow("Transfer to Savings")).getByText(
+      "Category not needed",
+      { exact: true },
+    ),
+  ).toBeTruthy();
+});
+
 test("sharing previews the whole selection before the server answers and restores only a refused import", async () => {
   const sending = deferred<void>();
   let refuse = true;

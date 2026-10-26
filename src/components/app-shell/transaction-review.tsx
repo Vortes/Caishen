@@ -38,9 +38,8 @@ export function approveCommand(transactionIds: string[]): Command {
 }
 
 export type TransactionReview = {
-  // Sends one transaction.approve for these transactions; it shows at once
-  // and saves in the background.
   approve: (transactionIds: string[]) => void;
+  enter: (transactionIds: string[]) => void;
   reject: (transactionIds: string[]) => void;
 };
 
@@ -124,12 +123,18 @@ export function SelectionIsland({
 }) {
   const review = useTransactionReview();
   const entry = useTransactionEntry();
+  const idle = useBudgetSelector(saved);
   if (!selected.length) return null;
-  const { approve: approvable, reject: rejectable } = actions;
+  const { approve: approvable, enter: enterable, reject: rejectable } = actions;
+  const approvals = [
+    { label: "Approve", ids: approvable, save: review.approve },
+    { label: "Enter now", ids: enterable, save: review.enter },
+  ].filter((action) => action.ids.length > 0);
   const overLimit =
     approvable.length > TRANSACTION_ACTION_LIMIT ||
+    enterable.length > TRANSACTION_ACTION_LIMIT ||
     rejectable.length > TRANSACTION_ACTION_LIMIT;
-  const busy = Boolean(entry.session);
+  const busy = Boolean(entry.session) || !idle;
   return (
     <div className={styles.islandSlot}>
       <div
@@ -165,17 +170,18 @@ export function SelectionIsland({
         </span>
         <span className={styles.divider} aria-hidden />
         <div className={styles.actions}>
-          {approvable.length > 0 && (
+          {approvals.map((action, index) => (
             <Button
-              variant="primary"
+              key={action.label}
+              variant={index === 0 ? "primary" : "secondary"}
               size="sm"
-              disabled={busy || approvable.length > TRANSACTION_ACTION_LIMIT}
-              onClick={() => review.approve(approvable)}
+              disabled={busy || action.ids.length > TRANSACTION_ACTION_LIMIT}
+              onClick={() => action.save(action.ids)}
             >
               <CircleCheckIcon aria-hidden />
-              Approve ({approvable.length})
+              {action.label} ({action.ids.length})
             </Button>
-          )}
+          ))}
           {rejectable.length > 0 && (
             <Button
               size="sm"
@@ -187,8 +193,10 @@ export function SelectionIsland({
             </Button>
           )}
           <CategorizeAction
-            selected={selected}
-            available={actions.categorize}
+            selected={selected.filter((row) =>
+              actions.categorize.includes(row.id),
+            )}
+            available={actions.categorize.length > 0}
             disabled={busy}
             onCheck={onCheck}
           />

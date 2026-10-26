@@ -42,7 +42,7 @@ test.each([
   { source: "bank", status: "pending" },
   { source: "bank", status: "posted" },
 ] as const)(
-  "a $status $source purchase needs a category before approval and saves through the row editor",
+  "a $status $source purchase offers its review actions and saves through the row editor",
   async ({ source, status }) => {
     let imports =
       source === "bank" ? [bankImport({ pending: status === "pending" })] : [];
@@ -79,10 +79,10 @@ test.each([
     const actions = within(
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     );
-    expect(actions.queryByRole("button", { name: /^Approve/ })).toBeNull();
-    expect(Boolean(actions.queryByRole("button", { name: "Reject" }))).toBe(
-      source === "manual",
+    expect(Boolean(actions.queryByRole("button", { name: /^Approve/ }))).toBe(
+      source === "bank" && status === "posted",
     );
+    expect(actions.getByRole("button", { name: "Reject" })).toBeTruthy();
     expect(actions.getByRole("button", { name: "Categorize" })).toBeTruthy();
     await shell.user.keyboard("e");
     const editor = within(
@@ -350,6 +350,222 @@ test.each([true, false])(
   },
 );
 
+test("the existing Approve action reviews posted bank imports alongside recorded transactions", async () => {
+  let imports = [bankImport({ categoryId: "gifts" })];
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "transaction.upsert",
+        id: "market",
+        transactionId: "market",
+        accountId: "checking",
+        date: "2026-10-10",
+        payee: "Market",
+        amount: -1000,
+        categoryId: "gifts",
+        reviewed: false,
+      },
+    ],
+    overview: () => readyOverview({ imports }),
+    resolveImport: (input, server) => {
+      const saved = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = [];
+      return { ...saved, resolved: true };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Market"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Approve (2)" }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: /^Approve/ })).toBeNull(),
+  );
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Market"]) {
+    const row = within(await findTransactionRow(payee));
+    expect(row.getByText("Gifts", { exact: true })).toBeTruthy();
+    expect(row.getByLabelText("Cleared")).toBeTruthy();
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  }
+  const actions = within(
+    screen.getByRole("toolbar", { name: "Selected transactions" }),
+  );
+  expect(
+    actions.queryByRole("button", { name: /^Approve|^Reject$/ }),
+  ).toBeNull();
+});
+
+test("pending imports offer Enter now instead of Approve and stay pending after reload", async () => {
+  let imports = [
+    bankImport({ pending: true }),
+    bankImport({ logicalId: "posted", payee: "Posted lunch" }),
+  ];
+  const shell = await renderShell({
+    overview: () => readyOverview({ imports }),
+    resolveImport: (input, server) => {
+      const saved = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = imports.filter((item) => item.logicalId !== input.logicalId);
+      return { ...saved, resolved: true };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Coffee" }),
+  );
+  const actions = within(
+    screen.getByRole("toolbar", { name: "Selected transactions" }),
+  );
+  expect(actions.queryByRole("button", { name: /^Approve/ })).toBeNull();
+  expect(actions.getByRole("button", { name: "Reject" })).toBeTruthy();
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Posted lunch" }),
+  );
+  expect(actions.queryByRole("button", { name: /^Enter now/ })).toBeNull();
+  await shell.user.click(actions.getByRole("button", { name: "Approve (1)" }));
+  await findToast("Approved Posted lunch");
+  expect(
+    screen
+      .getByRole("checkbox", { name: "Select Coffee" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(actions.queryByRole("button", { name: /^Approve/ })).toBeNull();
+  await shell.user.click(
+    actions.getByRole("button", { name: "Enter now (1)" }),
+  );
+  await findToast("Entered Coffee");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  const row = within(await findTransactionRow("Coffee"));
+  expect(row.getByLabelText("Pending")).toBeTruthy();
+  expect(row.getByText("Needs category")).toBeTruthy();
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Coffee" }),
+  );
+  const entered = within(
+    screen.getByRole("toolbar", { name: "Selected transactions" }),
+  );
+  expect(
+    entered.queryByRole("button", { name: /^Approve|^Enter now|^Reject$/ }),
+  ).toBeNull();
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Posted lunch" }),
+  );
+  expect(entered.queryByRole("button", { name: /^Approve/ })).toBeNull();
+});
+
+test("Reject dismisses pending and posted bank imports without recording them and keeps unselected activity", async () => {
+  let imports = [
+    bankImport({ pending: true }),
+    bankImport({ logicalId: "posted", payee: "Posted lunch" }),
+    bankImport({ logicalId: "keep", payee: "Keep this purchase" }),
+  ];
+  const shell = await renderShell({
+    overview: () => readyOverview({ imports }),
+    resolveImport: (input, server) => {
+      if (!input.ignore)
+        throw new Error("Reject must not record a transaction");
+      imports = imports.filter((item) => item.logicalId !== input.logicalId);
+      return {
+        revision: server.revision,
+        changeSet: null,
+        rebased: false,
+        resolved: true,
+      };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Posted lunch"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Reject" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("checkbox", { name: "Select Coffee" }),
+    ).toBeNull(),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("checkbox", { name: "Select Posted lunch" }),
+    ).toBeNull(),
+  );
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(
+    screen.queryByRole("checkbox", { name: "Select Posted lunch" }),
+  ).toBeNull();
+  expect(await findTransactionRow("Keep this purchase")).toBeTruthy();
+});
+
+test("Enter now retains an uncategorized pending credit-card inflow after reload", async () => {
+  let imports = [
+    bankImport({ accountId: "card", pending: true, amount: 2500 }),
+  ];
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.add",
+        id: "card",
+        accountId: "card",
+        name: "Card",
+        kind: "credit",
+        date: "2026-10-01",
+        openingBalance: -5000,
+      },
+    ],
+    overview: () => readyOverview({ imports }),
+    resolveImport: (input, server) => {
+      const saved = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = [];
+      return { ...saved, resolved: true };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Coffee" }),
+  );
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Enter now (1)" }),
+  );
+  await findToast("Entered Coffee");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
+  expect(
+    within(await findTransactionRow("Coffee")).getByLabelText("Pending"),
+  ).toBeTruthy();
+  expect(
+    screen.getAllByRole("checkbox", { name: "Select Coffee" }),
+  ).toHaveLength(1);
+});
+
 test("bulk category menus support keyboard selection and change only the selected rows", async () => {
   const shell = await renderShell({
     seedCommands: [
@@ -415,6 +631,81 @@ test("bulk category menus support keyboard selection and change only the selecte
   expect(
     screen.queryByRole("menu", { name: "Categorize transactions" }),
   ).toBeNull();
+});
+
+test("mixed selections keep Categorize available and change only entries that use a category", async () => {
+  let imports = [bankImport({ pending: true })];
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.add",
+        id: "savings",
+        accountId: "savings",
+        name: "Savings",
+        kind: "cash",
+        date: "2026-10-01",
+        openingBalance: 0,
+      },
+      {
+        type: "transaction.upsert",
+        id: "transfer",
+        transactionId: "transfer",
+        accountId: "checking",
+        transferAccountId: "savings",
+        date: "2026-10-10",
+        amount: -1000,
+        payee: "Transfer",
+        reviewed: true,
+      },
+    ],
+    overview: () => readyOverview({ imports }),
+    resolveImport: (input, server) => {
+      const saved = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = [];
+      return { ...saved, resolved: true };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Transfer to Savings"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  const actions = within(
+    screen.getByRole("toolbar", { name: "Selected transactions" }),
+  );
+  await shell.user.click(actions.getByRole("button", { name: "Categorize" }));
+  await shell.user.click(screen.getByRole("menuitem", { name: "Everyday" }));
+  await shell.user.keyboard("{ArrowRight}{Home}{Enter}");
+  await findToast("Categorized 1 transaction");
+  expect(
+    screen
+      .getByRole("checkbox", { name: "Select Transfer to Savings" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(
+    within(await findTransactionRow("Coffee")).getByText("Gifts", {
+      exact: true,
+    }),
+  ).toBeTruthy();
+  expect(
+    within(transactionRow("Transfer to Savings")).getByText(
+      "Category not needed",
+      { exact: true },
+    ),
+  ).toBeTruthy();
+  await shell.user.click(screen.getByRole("link", { name: /^Savings/ }));
+  expect(
+    within(await findTransactionRow("Transfer from Checking")).getByText(
+      "Category not needed",
+      { exact: true },
+    ),
+  ).toBeTruthy();
 });
 
 test("bulk categorization records pending and posted imports with selected transactions and survives reload", async () => {

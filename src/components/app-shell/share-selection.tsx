@@ -42,7 +42,7 @@ export function ShareSelection({
   const [categoryId, setCategoryId] = useState("");
   const [error, setError] = useState("");
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
-  const available = selected.every(
+  const eligible = selected.filter(
     (row) =>
       row.actions.share === "edit" &&
       !entry.view.budget.transactions.some(
@@ -96,14 +96,14 @@ export function ShareSelection({
       setError(result.error);
     } else setOpen(false);
   };
-  if (!open && (!available || (!partner && !reimbursements))) return null;
+  if (!open && (!eligible.length || (!partner && !reimbursements))) return null;
   return (
     <Popover.Root
       modal
       open={open}
       onOpenChange={(next) => {
         if (next) {
-          setTargets(selected);
+          setTargets(eligible);
           setChoice(null);
           setCategoryId("");
           setError("");

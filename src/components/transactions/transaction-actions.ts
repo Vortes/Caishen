@@ -9,6 +9,7 @@ export type TransactionActions = {
   select: boolean;
   edit: "transaction" | "repayment" | null;
   approve: boolean;
+  enter: boolean;
   reject: boolean;
   categorize: boolean;
   share: "edit" | null;
@@ -37,14 +38,21 @@ export function transactionSelectionActions(
 ) {
   const selected = rows.filter((row) => row.actions.select);
   const single = selected.length === 1 ? selected[0] : undefined;
+  const approve = selected
+    .filter((row) => row.actions.approve)
+    .map((row) => row.id);
   return {
     edit: single?.actions.edit
       ? { id: single.id, kind: single.actions.edit }
       : null,
-    approve: selected.filter((row) => row.actions.approve).map((row) => row.id),
+    approve,
+    enter: approve.length
+      ? []
+      : selected.filter((row) => row.actions.enter).map((row) => row.id),
     reject: selected.filter((row) => row.actions.reject).map((row) => row.id),
-    categorize:
-      selected.length > 0 && selected.every((row) => row.actions.categorize),
+    categorize: selected
+      .filter((row) => row.actions.categorize)
+      .map((row) => row.id),
   };
 }
 
@@ -61,8 +69,9 @@ export function transactionActions(
     return {
       select: capabilities.record.ok,
       edit: capabilities.record.ok ? "transaction" : null,
-      approve: false,
-      reject: false,
+      approve: capabilities.approve.ok,
+      enter: capabilities.enter.ok,
+      reject: capabilities.reject.ok,
       categorize: capabilities.categorize.ok,
       share:
         capabilities.link.ok && capabilities.share.mode !== "none"
@@ -79,6 +88,7 @@ export function transactionActions(
     select: !entry.transaction.removed,
     edit: entry.transaction.removed ? null : edit,
     approve: transactionNeedsReview(view, item) && capabilities.approve.ok,
+    enter: capabilities.enter.ok,
     reject: capabilities.reject.ok,
     categorize: capabilities.categorize.ok,
     share: capabilities.share.mode === "none" ? null : capabilities.share.mode,

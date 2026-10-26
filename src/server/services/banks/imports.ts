@@ -35,7 +35,11 @@ import {
 } from "../bank-quarantine";
 import { type ChangeSet } from "~/domain/rows";
 import { type Command, executeWithChanges, type Budget } from "~/domain/engine";
-import { planPartnerImports, confirmedPartnerMatch } from "../partner-imports";
+import {
+  planPartnerImports,
+  confirmedPartnerMatch,
+  inboxPartnerMatches,
+} from "../partner-imports";
 import {
   bankImportFingerprint as fingerprint,
   bankImportEligibility,
@@ -466,7 +470,11 @@ async function applyBankUpdate(
     if (
       !transaction ||
       (transaction.removed && !restoresPending) ||
-      !["purchase", "income", "refund"].includes(transaction.kind)
+      (!["purchase", "income", "refund"].includes(transaction.kind) &&
+        !(
+          transaction.kind === "statement-credit" &&
+          transaction.status === "pending"
+        ))
     )
       continue;
     const id = `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`;
@@ -640,6 +648,8 @@ export async function resolveImport(
     connectionId: string;
     logicalId: string;
     command?: Command;
+    review?: "approve" | "enter";
+    operationId?: string;
     existingTransactionId?: string;
     expectedRevision: number;
     expectedFingerprint?: string;
@@ -657,9 +667,17 @@ export async function resolveImport(
           connectionId: input.connectionId,
           logicalId: input.logicalId,
           fingerprint: input.expectedFingerprint,
+          ...(input.review ? { review: input.review } : {}),
         }
       : command;
   try {
+    if (
+      input.ignore &&
+      (input.command || input.review || input.existingTransactionId)
+    )
+      throw new Error(
+        "Reject bank activity separately from recording or matching it.",
+      );
     const { connection, opened, state } = await openConnection(
       db,
       userId,
@@ -684,39 +702,56 @@ export async function resolveImport(
         ]),
       })),
     });
-    const record = state.records.find((r) => r.id === input.logicalId);
-    if (!record) {
-      const quarantined = readQuarantine(state.reviews, input.logicalId);
-      if (!quarantined) throw new TRPCError({ code: "NOT_FOUND" });
-      if (!input.ignore) throw new Error(quarantinedImportMessage);
-      state.resolved[input.logicalId] = {
-        fingerprint: quarantineFingerprint(quarantined.transaction),
-        ignored: true,
-        decidedAt: new Date().toISOString(),
-      };
-      const operationId = randomUUID();
-      return await write(operationId, { ...input, operationId }, []);
-    }
-    if (input.command) {
-      const saved = await findOperation(
-        db,
-        household.workspaceId,
-        input.command.id,
-      );
+    const retryId = input.ignore ? input.operationId : input.command?.id;
+    const rejectedIdentity = {
+      type: "bank.import.reject",
+      id: input.operationId,
+      connectionId: input.connectionId,
+      logicalId: input.logicalId,
+      fingerprint: input.expectedFingerprint ?? null,
+    };
+    if (retryId) {
+      const saved = await findOperation(db, household.workspaceId, retryId);
       if (saved)
         return {
           resolved: true,
           ...earlierResult(
             saved,
             userId,
-            saveIdentity(submittedCommand),
-            saveIdentity(input.command),
+            input.ignore ? rejectedIdentity : saveIdentity(submittedCommand),
+            input.ignore ? rejectedIdentity : saveIdentity(input.command),
           ),
         };
     }
+    const record = state.records.find((r) => r.id === input.logicalId);
+    if (!record) {
+      const quarantined = readQuarantine(state.reviews, input.logicalId);
+      if (!quarantined) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!input.ignore) throw new Error(quarantinedImportMessage);
+      if (
+        input.expectedFingerprint &&
+        input.expectedFingerprint !==
+          quarantineFingerprint(quarantined.transaction)
+      )
+        throw refusal(
+          "conflict",
+          "Your bank updated this transaction. Reopen it before saving.",
+          household.revision,
+        );
+      state.resolved[input.logicalId] = {
+        fingerprint: quarantineFingerprint(quarantined.transaction),
+        ignored: true,
+        decidedAt: new Date().toISOString(),
+      };
+      const operationId = input.operationId ?? randomUUID();
+      return await write(
+        operationId,
+        input.operationId ? rejectedIdentity : { ...input, operationId },
+        [],
+      );
+    }
     if (
       input.expectedFingerprint &&
-      input.command &&
       input.expectedFingerprint !== fingerprint(record)
     )
       throw refusal(
@@ -726,22 +761,41 @@ export async function resolveImport(
       );
     const mapping = (readBankAccountRows(connection)?.importMappings ??
       mappings(connection))[record.current.providerAccountId];
-    let operationId: string = randomUUID();
-    let submitted: unknown = { ...input, operationId };
+    let operationId: string =
+      input.ignore && input.operationId ? input.operationId : randomUUID();
+    let submitted: unknown =
+      input.ignore && input.operationId
+        ? rejectedIdentity
+        : { ...input, operationId };
     const changeSets: ChangeSet[] = [];
-    if (input.ignore)
+    if (input.ignore) {
+      if (opened.requestRevision !== input.expectedRevision)
+        throw refusal(
+          "conflict",
+          "Your budget changed. Refresh before rejecting this import.",
+          household.revision,
+        );
       state.resolved[record.id] = {
         fingerprint: fingerprint(record),
         ignored: true,
         decidedAt: new Date().toISOString(),
       };
-    else {
+    } else {
       const imported: BankInboxItem = {
         accountId: mapping?.accountId ?? null,
         transactionId: state.resolved[record.id]?.transactionId,
         removed: record.removed,
         quarantined: false,
         amount: -record.current.amountCents,
+        pending: record.current.pending,
+        error: state.errors[record.id],
+        needsMatchReview: record.matchStatus === "needs_review",
+        partnerMatches: inboxPartnerMatches(
+          ledger.state,
+          ledger.budget,
+          mapping?.accountId ?? null,
+          record,
+        ),
         eligibility: (!mapping
           ? "unmapped"
           : ledger.budget.loans.some((loan) => loan.id === mapping.accountId)
@@ -765,6 +819,18 @@ export async function resolveImport(
           household.revision,
         );
       const budget = ledger.budget;
+      if (input.review) {
+        if (
+          input.existingTransactionId ||
+          input.command?.type !== "transaction.upsert" ||
+          !input.expectedFingerprint
+        )
+          throw new Error("Reopen this bank activity before reviewing it.");
+        const allowed = classifyRegisterEntry(budget, imported).capabilities[
+          input.review
+        ];
+        if (!allowed.ok) throw new Error(allowed.reason);
+      }
       let transactionId: string;
       if (input.existingTransactionId) {
         const transaction = budget.transactions.find(
@@ -844,7 +910,7 @@ export async function resolveImport(
                   0,
                   240,
                 ),
-            reviewed: record.current.pending,
+            reviewed: record.current.pending || input.review === "approve",
             providerId: record.current.providerTransactionId,
           }).changeSet,
         );

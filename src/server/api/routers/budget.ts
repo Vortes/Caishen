@@ -402,6 +402,8 @@ export const budgetRouter = createTRPCRouter({
           .regex(/^[a-f0-9]{64}$/)
           .optional(),
         command: commandSchema.optional(),
+        review: z.enum(["approve", "enter"]).optional(),
+        operationId: z.string().optional(),
         existingTransactionId: z.string().optional(),
         expectedRevision: revision,
         ignore: z.boolean().default(false),
