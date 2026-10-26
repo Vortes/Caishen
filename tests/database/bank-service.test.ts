@@ -1546,6 +1546,125 @@ void test("the budget client undoes and redoes a rejected pending import through
   assert.deepEqual(redone.view, before.view);
 });
 
+void test("bulk Enter now supports immediate Undo and Redo while database saves are delayed", async (t) => {
+  const h = await linkedHarness();
+  const records = applyTransactionSync(
+    [],
+    {
+      added: [
+        importFact("pending-coffee", true),
+        {
+          ...importFact("pending-lunch", true),
+          name: "Lunch",
+          amountCents: 3500,
+        },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records;
+  await h.setImports({ records, resolved: {}, errors: {}, reviews: {} });
+  const before = await h.state();
+  const transport = {
+    execute: (input: Parameters<typeof h.api.budget.execute>[0]) =>
+      h.api.budget.execute(input),
+    pull: (input: Parameters<typeof h.api.sync.pull>[0]) =>
+      h.api.sync.pull(input),
+  };
+  const client = createBudgetClient({
+    userId: alice,
+    clientBuild: databaseClientBuild,
+    transport,
+  });
+  t.after(() => client.dispose());
+  await client.ready;
+  const balance = () =>
+    client.store.month("2026-10")!.accounts.find(({ id }) => id === "cash")!
+      .balance;
+  let release!: () => void;
+  const saves = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    for (const item of before.imports) {
+      const command = {
+        type: "transaction.upsert" as const,
+        id: randomUUID(),
+        transactionId: randomUUID(),
+        accountId: "cash",
+        date: item.date,
+        payee: item.payee,
+        amount: item.amount,
+        status: "pending" as const,
+        reviewed: true,
+      };
+      assert.equal(
+        client.run(command, {
+          summary: "Entered 2 transactions",
+          action: "enter-selection",
+          send: async (expectedRevision) => {
+            await saves;
+            return h.api.budget.resolveImport({
+              connectionId: item.connectionId,
+              logicalId: item.logicalId,
+              expectedFingerprint: item.fingerprint,
+              expectedRevision,
+              review: "enter",
+              command,
+            });
+          },
+        }).ok,
+        true,
+      );
+    }
+    await Promise.resolve();
+    assert.equal(balance(), 4500);
+    assert.equal(client.undo()?.ok, true);
+    await Promise.resolve();
+    assert.equal(balance(), 10000, "Undo restores the whole unsaved selection");
+    assert.equal(client.redo()?.ok, true);
+    await Promise.resolve();
+    assert.equal(balance(), 4500, "Redo reapplies the whole unsaved selection");
+    const waiting = await h.state();
+    assert.equal(waiting.imports.length, 2);
+    assert.equal(waiting.view!.budget.transactions.length, 0);
+  } finally {
+    release();
+    await client.idle();
+  }
+  const entered = await h.state();
+  assert.deepEqual(entered.imports, []);
+  assert.deepEqual(
+    entered.view!.budget.transactions.map((item) => ({
+      providerId: item.providerId,
+      status: item.status,
+      reviewed: item.reviewed,
+    })),
+    [
+      { providerId: "pending-coffee", status: "pending", reviewed: true },
+      { providerId: "pending-lunch", status: "pending", reviewed: true },
+    ],
+  );
+  assert.equal(
+    entered.view!.accounts.find(({ id }) => id === "cash")!.balance,
+    4500,
+  );
+  assert.equal(client.undo()?.ok, true);
+  await client.idle();
+  const restored = await h.state();
+  assert.deepEqual(restored.imports, before.imports);
+  assert.deepEqual(restored.view, before.view);
+  const reloaded = createBudgetClient({
+    userId: alice,
+    clientBuild: databaseClientBuild,
+    transport,
+  });
+  t.after(() => reloaded.dispose());
+  await reloaded.ready;
+  assert.deepEqual(reloaded.store.month("2026-10"), before.view);
+});
+
 void test("a card credit entered while pending matches its posted bank record and changes the balance once", async () => {
   const h = await linkedHarness();
   await h.setBook(
