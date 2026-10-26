@@ -10,6 +10,8 @@ import {
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { rememberedSpendingCategory } from "~/domain/partner-ledger";
 import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
@@ -33,6 +35,7 @@ export function RecordPurchase({ account }: { account: Account }) {
   )?.userId;
   const payeeInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const [payee, setPayee] = useState("");
   const [amountText, setAmountText] = useState("");
   const [paidBy, setPaidBy] = useState("");
@@ -90,9 +93,10 @@ export function RecordPurchase({ account }: { account: Account }) {
       </Popover.Trigger>
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={moveStyles.popover}
           align="end"
-          sideOffset={6}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Record a shared purchase"
           // The payee comes first; on touch, no keyboard until it's tapped.

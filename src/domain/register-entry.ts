@@ -335,7 +335,14 @@ export function classifyRegisterEntry(
         edit: { ok: false, reason: "Record this bank activity first" },
         approve: unavailable,
         reject: unavailable,
-        categorize: unavailable,
+        categorize:
+          record.ok &&
+          (account?.kind === "cash" || account?.kind === "credit") &&
+          !item.error &&
+          !item.needsMatchReview &&
+          !item.partnerMatches?.length
+            ? record
+            : unavailable,
         record,
         link: capability(bankImportActionIssue(budget, item, "link")),
         share:

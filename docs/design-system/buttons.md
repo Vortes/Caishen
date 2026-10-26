@@ -7,10 +7,12 @@ action with only an icon is an `IconButton`. Something that moves to another
 place is a link; when a link must look like a button, use
 `<Button asChild><a href="…">…</a></Button>`.
 
-Variants: `primary`, `secondary`, `quiet`, `quiet-primary`, `danger`.
+Variants: `primary`, `secondary`, `subtle`, `quiet`, `quiet-primary`, `danger`.
 Sizes: `md`, `sm`. Nothing else exists.
 
 - `secondary` is the default and covers almost every button.
+- `subtle` keeps the padded pill hit area but shows its background only on
+  hover or keyboard focus, as with Clear selection in the selection island.
 - `primary` is the surface's main action: one that commits something (Save,
   Assign, Apply, Mark reviewed) or starts the flow that fixes what the
   surface is about. At most one per card, popover, or dialog. Two primaries
@@ -47,6 +49,10 @@ line. Never mix sizes in one row of buttons.
 Put the icon in `children`, before or after the label; the button sizes it.
 A secondary button that toggles something on (a filter, a setting) gets
 `aria-pressed`, which gives it the pressed look.
+
+Popup triggers (`aria-haspopup`) never scale on press, for either `Button`
+or `IconButton`. Radix measures the trigger during the press; shrinking it
+moves the anchored surface before it closes and again when the press ends.
 
 ```tsx
 // Correct: one primary, the rest secondary, icon as a child

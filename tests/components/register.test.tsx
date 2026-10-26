@@ -434,14 +434,10 @@ test("categorization applies to both selected purchases at once", async () => {
   );
   expect(actions.getByRole("button", { name: "Approve (1)" })).toBeTruthy();
   await shell.user.click(actions.getByRole("button", { name: "Categorize" }));
-  const form = screen.getByRole("form", { name: "Categorize transactions" });
-  await shell.user.type(
-    within(form).getByRole("combobox", { name: "Category" }),
-    "Food{Enter}",
-  );
-  await shell.user.click(within(form).getByRole("button", { name: "Apply" }));
+  await shell.user.click(screen.getByRole("menuitem", { name: "Everyday" }));
+  await shell.user.keyboard("{ArrowRight}{End}{Enter}");
   expect(
-    screen.queryByRole("form", { name: "Categorize transactions" }),
+    screen.queryByRole("menu", { name: "Categorize transactions" }),
   ).toBeNull();
   await findToast("Categorized 2 transactions");
   expect(
