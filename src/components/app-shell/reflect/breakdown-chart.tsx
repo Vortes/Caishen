@@ -13,8 +13,9 @@ import { RingSkeleton } from "./ring-skeleton";
 import { SlicePopover } from "./slice-popover";
 import styles from "./reflect.module.css";
 
-// Spending Breakdown's ring leads the page, as in YNAB: it takes the width
-// the column offers, minus room for the slice labels on either side.
+// Spending Breakdown's ring leads the page, as in YNAB: alone, it takes all
+// the room the report offers; with the list under it, the column's width.
+// Either way it leaves space for the slice labels around it.
 const RING = { min: 320, max: 640 };
 const LABEL = { gap: 22, height: 36, room: 180 };
 // The ring's clockwise sweep-in, in ms.
@@ -63,34 +64,41 @@ function placeLabels(
   return labels;
 }
 
-// The ring's diameter and the stage around it, for a column this wide.
-export function stageSize(width: number) {
+// The ring's diameter and the stage around it. Filling, the stage is the
+// frame's height; otherwise it's as tall as the ring and its labels.
+function stageSize(width: number, height: number, fill: boolean) {
   const labelled = width >= RING.min + LABEL.room * 2;
-  const ring = Math.round(
-    labelled
-      ? Math.min(RING.max, width - LABEL.room * 2)
-      : Math.min(RING.min, width),
+  const labels = labelled ? LABEL.height * 2 : 0;
+  const across = labelled ? width - LABEL.room * 2 : width;
+  const ring = Math.max(
+    0,
+    Math.round(
+      fill ? Math.min(across, height - labels) : Math.min(RING.max, across),
+    ),
   );
-  return { labelled, ring, height: ring + (labelled ? LABEL.height * 2 : 0) };
+  return { labelled, ring, height: fill ? height : ring + labels };
 }
 
-export function useWidth() {
+function useSize() {
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
     // Measured before the first paint: the observer's first report comes
-    // after it, and a stage drawn at zero height for a frame jumps the
-    // stats below it up and back.
-    setWidth(element.getBoundingClientRect().width);
+    // after it, and a ring drawn at zero size for a frame flashes.
+    const { width, height } = element.getBoundingClientRect();
+    setSize({ width, height });
     const observer = new ResizeObserver(([entry]) =>
-      setWidth(entry?.contentRect.width ?? 0),
+      setSize({
+        width: entry?.contentRect.width ?? 0,
+        height: entry?.contentRect.height ?? 0,
+      }),
     );
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  return [ref, width] as const;
+  return [ref, size] as const;
 }
 
 // Clicking a slice opens its transactions where it was clicked, like YNAB;
@@ -103,6 +111,7 @@ export function BreakdownChart({
   onOpenEntry,
   afterSkeleton,
   onSkeletonGone,
+  fill,
 }: {
   items: ChartItem[];
   total: number;
@@ -113,9 +122,12 @@ export function BreakdownChart({
   // sweep-in, clearing as the slices reach it.
   afterSkeleton: boolean;
   onSkeletonGone: () => void;
+  // Nothing follows the chart, so it takes the report's full height.
+  fill: boolean;
 }) {
-  const [frame, width] = useWidth();
-  const { labelled, ring, height } = stageSize(width);
+  const [frame, size] = useSize();
+  const { labelled, ring, height } = stageSize(size.width, size.height, fill);
+  const { width } = size;
 
   // Dither Kit replays its entrance whenever `data` changes identity, so the
   // rows are built once per report rather than on every hover.
@@ -145,7 +157,11 @@ export function BreakdownChart({
   const drill: DrillPath | undefined = open?.item.drill;
 
   return (
-    <div ref={frame} className={styles.stageFrame}>
+    <div
+      ref={frame}
+      className={styles.stageFrame}
+      style={fill ? undefined : { height }}
+    >
       {width > 0 && (
         <Popover.Root
           open={Boolean(open)}
@@ -153,7 +169,7 @@ export function BreakdownChart({
             if (!value) setOpen(null);
           }}
         >
-          <div className={styles.stage} style={{ height }} aria-hidden>
+          <div className={styles.stage} aria-hidden>
             {displayed && (
               <Popover.Anchor asChild>
                 <span
@@ -259,16 +275,20 @@ export function BreakdownChart({
   );
 }
 
-// The stage while spending loads, at the size the ring will take, so the
-// stats below don't move when it arrives. The ring is a dithered bone; the
+// The stage while spending loads, at the size the ring will take, so
+// nothing moves when it arrives. The ring is a dithered bone; the
 // center keeps its label and holds the total's line empty.
-export function BreakdownSkeleton() {
-  const [frame, width] = useWidth();
-  const { ring, height } = stageSize(width);
+export function BreakdownSkeleton({ fill }: { fill: boolean }) {
+  const [frame, size] = useSize();
+  const { ring, height } = stageSize(size.width, size.height, fill);
   return (
-    <div ref={frame} className={styles.stageFrame}>
-      {width > 0 && (
-        <div className={styles.stage} style={{ height }}>
+    <div
+      ref={frame}
+      className={styles.stageFrame}
+      style={fill ? undefined : { height }}
+    >
+      {size.width > 0 && (
+        <div className={styles.stage}>
           <div
             className={styles.ditherDonut}
             style={{ width: ring, height: ring }}

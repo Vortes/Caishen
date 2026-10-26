@@ -107,9 +107,6 @@ export function shiftRange(
   };
 }
 
-const daysIn = (month: string) =>
-  new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
-
 export function rangeLabel(from: string, to: string) {
   if (from === to) return monthYear(from, { month: "short", year: "numeric" });
   if (from.slice(0, 4) === to.slice(0, 4))
@@ -158,11 +155,6 @@ export type Report = {
   months: string[];
   total: number;
   average: number;
-  // Per day so far: the current month counts only the days that have passed.
-  dailyAverage: number;
-  // Most transactions in scope: a category, or a payee inside one category.
-  frequent: { name: string; count: number } | null;
-  largest: { payee: string; amount: number; date: string } | null;
   items: ReportItem[];
   chartItems: ChartItem[];
   trend: { month: string; total: number; values: Record<string, number> }[];
@@ -372,48 +364,11 @@ export function buildReport({
       (itemEntries[item] ??= []).push(entry);
   }
 
-  // The stats under the chart describe exactly what the chart shows.
-  const scopeIds = new Set(
-    ranked
-      .flatMap((item) => item.members)
-      .filter((id) => level === "transactions" || counted.has(id)),
-  );
-  const outflows = scoped.filter(
-    (entry) => entry.amount > 0 && scopeIds.has(categoryOf(entry).id),
-  );
-  const counts = new Map<string, number>();
-  for (const entry of outflows) {
-    const name =
-      level === "transactions" ? entry.payee : categoryOf(entry).name;
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  const [frequentName, frequentCount] = [...counts].sort(
-    (a, b) => b[1] - a[1],
-  )[0] ?? [null, 0];
-  const biggest = outflows.reduce<SpendingEntry | null>(
-    (best, entry) => (!best || entry.amount > best.amount ? entry : best),
-    null,
-  );
-  const days = months.reduce(
-    (sum, month) =>
-      sum + (month === current ? Number(today.slice(8, 10)) : daysIn(month)),
-    0,
-  );
-
   return {
     level,
     months,
     total,
     average,
-    dailyAverage: days ? Math.round(total / days) : 0,
-    frequent: frequentName
-      ? { name: frequentName, count: frequentCount }
-      : null,
-    largest: biggest && {
-      payee: biggest.payee,
-      amount: biggest.amount,
-      date: biggest.date,
-    },
     items,
     chartItems,
     trend,
