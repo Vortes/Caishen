@@ -715,8 +715,9 @@
 .handle[data-side="left"] {
   left: calc(var(--space-gutter) * -1 - 2px);
 }
+/* Details: over the gap before the cards, the list's 16px side padding. */
 .handle[data-side="right"] {
-  left: 0;
+  left: -14px;
 }
 /* Linear-style resize affordance: a 1px beam that stops short of the ends
    and fades out toward them. The short delay keeps it quiet when the cursor
@@ -775,7 +776,9 @@
   flex-direction: column;
   gap: var(--space-stack);
   height: 100%;
-  padding: 0 var(--space-inset) var(--space-inset) 12px;
+  /* No left padding: the list's 16px side padding is the gap before the
+     cards, matching its inset from the panel's left edge. */
+  padding: 0 var(--space-inset) var(--space-inset) 0;
   overflow-y: auto;
   scrollbar-width: none;
 }
