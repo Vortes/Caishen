@@ -106,7 +106,7 @@ test("two tabs share one database and hear each other's confirmed changes", asyn
   expect(server.pulls.length).toBe(pulls);
   expect(second.store.month(month)).toEqual(serverMonth(server));
   // Each tab keeps its own history.
-  expect(first.store.getSnapshot().undo?.operationId).toBe("a1");
+  expect(first.store.getSnapshot().undo?.actionId).toBe("a1");
   expect(second.store.getSnapshot().undo).toBeNull();
 
   // A tab that missed a revision pulls instead.

@@ -529,7 +529,7 @@ describe("Undo and redo", () => {
     client.run(assign("a1", "food", 10_000), { summary: "Assigned to Food" });
     await client.idle();
     expect(store.getSnapshot().undo).toEqual({
-      operationId: "a1",
+      actionId: "a1",
       label: "Assigned to Food",
     });
 
@@ -538,7 +538,7 @@ describe("Undo and redo", () => {
     expect(assigned(store, "food")).toBe(0);
     expect(store.getSnapshot()).toMatchObject({
       undo: null,
-      redo: { operationId: "undo-1", label: "Assigned to Food" },
+      redo: { actionId: "a1", label: "Assigned to Food" },
     });
     await client.idle();
     expect(store.month(month)).toEqual(serverMonth(server));
@@ -548,7 +548,7 @@ describe("Undo and redo", () => {
     expect(assigned(store, "food")).toBe(10_000);
     expect(store.month(month)).toEqual(serverMonth(server));
     expect(store.getSnapshot()).toMatchObject({
-      undo: { operationId: "undo-2" },
+      undo: { actionId: "a1" },
       redo: null,
     });
     // A new command clears what could be redone.

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, vi } from "vitest";
 import { LiveAppShell } from "~/components/app-shell/live-app-shell";
@@ -136,18 +136,30 @@ export async function renderShell(
       ((input: ExecuteInput) => server.execute("owner", input)),
   );
   const overview = vi.fn(options.overview ?? (() => readyOverview()));
+  const initialOverview = await overview(server);
+  if (initialOverview.status === "ready")
+    server.seedImports("owner", initialOverview.imports);
   // An import saves the command it carries, as the server does.
-  const resolveImport = vi.fn(
-    options.resolveImport ??
-      ((input: ImportInput) => ({
-        ...server.execute("owner", {
-          command: input.command!,
-          baseRevision: input.expectedRevision,
-          clientId: "import",
-        }),
-        resolved: true as const,
-      })),
-  );
+  const resolveImport = vi.fn(async (input: ImportInput) => {
+    const result = options.resolveImport
+      ? await options.resolveImport(input, server)
+      : input.ignore
+        ? { ...server.rejectImport("owner", input), resolved: true as const }
+        : {
+            ...server.execute("owner", {
+              command: input.command!,
+              baseRevision: input.expectedRevision,
+              clientId: "import",
+            }),
+            resolved: true as const,
+          };
+    return input.ignore && !result.changeSet
+      ? { ...server.rejectImport("owner", input), resolved: true as const }
+      : {
+          ...server.resolveImportRow("owner", input, result),
+          resolved: true as const,
+        };
+  });
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -165,8 +177,7 @@ export async function renderShell(
           options.pull
             ? options.pull(input as PullInput, server)
             : server.pull("owner", input as PullInput),
-        "budget.resolveImport": (input) =>
-          resolveImport(input as ImportInput, server),
+        "budget.resolveImport": (input) => resolveImport(input as ImportInput),
         "budget.sync": () =>
           options.sync
             ? options.sync(server)
@@ -272,6 +283,15 @@ export async function findToast(
   const region = screen.getByRole("region", { name: "Notifications" });
   const message = await within(region).findByText(text, {}, options);
   return message.parentElement!;
+}
+
+/** Wait until leaving the shell no longer warns about unsaved changes. */
+export async function waitForSaves() {
+  await waitFor(() => {
+    const leaving = new Event("beforeunload", { cancelable: true });
+    if (!window.dispatchEvent(leaving))
+      throw new Error("The shell still warns about unsaved changes.");
+  });
 }
 
 /** The window regains focus, which makes the shell catch up. */

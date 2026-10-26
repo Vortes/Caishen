@@ -45,8 +45,8 @@ export type RunOptions = {
   onSettled?: (result: Settled) => void;
   /** Preview the command normally, but save through a specialized route. */
   send?: (baseRevision: number) => Promise<ExecuteResult>;
-  /** Add a server-only operation to history once its change set arrives. */
-  undoable?: boolean;
+  /** Operations initiated by one gesture share its history entry. */
+  action?: string;
 };
 
 export type RunResult =
@@ -60,7 +60,7 @@ export type PendingView = {
   previewed: boolean;
 };
 
-export type HistoryView = { operationId: string; label: string };
+export type HistoryView = { actionId: string; label: string };
 
 export type SyncState = {
   /** Pulls keep failing; the numbers may be out of date. */
@@ -80,6 +80,13 @@ export type BudgetSnapshot = SyncState & {
   revision: number | null;
   /** The budget as shown: confirmed rows plus the pending commands. */
   ledger: PersonalLedger | null;
+  importState: (
+    connectionId: string,
+    logicalId: string,
+  ) => {
+    resolvedFingerprint: string | null;
+    record: unknown;
+  } | null;
   pending: readonly PendingView[];
   undo: HistoryView | null;
   redo: HistoryView | null;
@@ -119,9 +126,9 @@ export type PendingOperation = {
   readonly command: LedgerCommand | null;
   readonly send: ((baseRevision: number) => Promise<ExecuteResult>) | null;
   /** For a revert: the change set it restores in this browser. */
-  readonly revertTarget?: ChangeSet;
+  revertTarget?: ChangeSet;
+  readonly preview?: ChangeSet;
   readonly onSettled?: (result: Settled) => void;
-  readonly undoable?: boolean;
   /** Imports whose preview created a transaction this operation edits. */
   readonly dependencies: readonly string[];
   settled: boolean;
@@ -131,10 +138,14 @@ export type PendingOperation = {
   failures: number;
 };
 
-type HistoryEntry = {
+type HistoryOperation = {
   operationId: string;
-  label: string;
   changeSet: ChangeSet;
+};
+type HistoryEntry = {
+  actionId: string;
+  label: string;
+  operations: HistoryOperation[];
 };
 
 export type BudgetStoreOptions = {
@@ -274,14 +285,59 @@ export class BudgetStore {
       },
       step,
     );
-    this.undoStack.push({
-      operationId: command.id,
-      label: options.summary,
-      changeSet: step.changeSet,
-    });
-    this.redoStack = [];
+    this.remember(step.changeSet, options);
     this.changed();
     return { ok: true, operationId: command.id };
+  }
+
+  runChange(
+    change: (rows: RowSet) => ChangeSet,
+    options: RunOptions & { send: NonNullable<RunOptions["send"]> },
+  ): RunResult {
+    if (!this.optimisticLedger)
+      return { ok: false, message: "The budget is still loading" };
+    try {
+      const preview = change(this.optimisticRows);
+      if (this.pending.some((op) => op.operationId === preview.operationId))
+        return { ok: false, message: "This change was already sent" };
+      const step = this.previewStep(
+        this.optimisticLedger,
+        this.optimisticRows,
+        preview,
+      );
+      this.push(
+        {
+          command: null,
+          operationId: preview.operationId,
+          preview,
+          send: options.send,
+          summary: options.summary,
+          onSettled: options.onSettled,
+        },
+        step,
+      );
+      this.remember(preview, options);
+      this.changed();
+      return { ok: true, operationId: preview.operationId };
+    } catch (error) {
+      if (error instanceof AccountingError)
+        return { ok: false, message: error.message };
+      throw error;
+    }
+  }
+
+  private remember(changeSet: ChangeSet, options: RunOptions) {
+    const actionId = options.action ?? changeSet.operationId;
+    const operation = { operationId: changeSet.operationId, changeSet };
+    const latest = this.undoStack.at(-1);
+    if (latest?.actionId === actionId) latest.operations.push(operation);
+    else
+      this.undoStack.push({
+        actionId,
+        label: options.summary,
+        operations: [operation],
+      });
+    this.redoStack = [];
   }
 
   /**
@@ -301,9 +357,7 @@ export class BudgetStore {
       operationId,
       summary: options.summary,
       onSettled: options.onSettled,
-      undoable: options.undoable,
     });
-    if (options.undoable) this.redoStack = [];
     this.changed();
     return { ok: true, operationId };
   }
@@ -327,16 +381,23 @@ export class BudgetStore {
   ): RunResult | null {
     const entry = from.at(-1);
     if (!entry || !this.optimisticLedger) return null;
-    const target =
-      this.steps.get(entry.operationId)?.changeSet ?? entry.changeSet;
-    const command: RevertCommand = {
-      type: "revert",
-      id: this.newId(),
-      targetOperationId: entry.operationId,
-    };
-    let step: Step;
+    const reverts: { command: RevertCommand; target: ChangeSet; step: Step }[] =
+      [];
+    let rows = this.optimisticRows;
     try {
-      step = this.revertStep(this.optimisticRows, command, target);
+      for (const operation of [...entry.operations].reverse()) {
+        const target =
+          this.steps.get(operation.operationId)?.changeSet ??
+          operation.changeSet;
+        const command: RevertCommand = {
+          type: "revert",
+          id: this.newId(),
+          targetOperationId: operation.operationId,
+        };
+        const step = this.revertStep(rows, command, target);
+        reverts.push({ command, target, step });
+        rows = step.rows;
+      }
     } catch (error) {
       if (!(error instanceof AccountingError)) throw error;
       from.pop();
@@ -344,23 +405,33 @@ export class BudgetStore {
       return { ok: false, message: error.message };
     }
     from.pop();
-    this.push(
-      { command, summary: entry.label, revertTarget: target, onSettled },
-      step,
-    );
-    to.push({
-      operationId: command.id,
-      label: entry.label,
-      changeSet: step.changeSet,
-    });
+    let remaining = reverts.length;
+    let failure: Extract<Settled, { ok: false }> | undefined;
+    const operations: HistoryOperation[] = [];
+    for (const { command, target, step } of reverts) {
+      this.push(
+        {
+          command,
+          summary: entry.label,
+          revertTarget: target,
+          onSettled: (result) => {
+            if (!result.ok) failure ??= result;
+            if (--remaining === 0) onSettled?.(failure ?? result);
+          },
+        },
+        step,
+      );
+      operations.push({ operationId: command.id, changeSet: step.changeSet });
+    }
+    to.push({ actionId: entry.actionId, label: entry.label, operations });
     this.changed();
-    return { ok: true, operationId: command.id };
+    return { ok: true, operationId: reverts.at(-1)!.command.id };
   }
 
   private push(
     op: Pick<
       PendingOperation,
-      "summary" | "onSettled" | "revertTarget" | "undoable"
+      "summary" | "onSettled" | "revertTarget" | "preview"
     > &
       (
         | {
@@ -400,7 +471,7 @@ export class BudgetStore {
       send: op.send ?? null,
       revertTarget: op.revertTarget,
       onSettled: op.onSettled,
-      undoable: op.undoable,
+      preview: op.preview,
       dependencies,
       settled: false,
       confirmedAt: null,
@@ -449,6 +520,23 @@ export class BudgetStore {
     };
   }
 
+  private previewStep(
+    ledger: PersonalLedger,
+    rows: RowSet,
+    changeSet: ChangeSet,
+  ): Step {
+    if (revertConflicts(rows, { ...changeSet, after: changeSet.before }).length)
+      throw new AccountingError(
+        "This changed again since, so it can't be previewed",
+      );
+    const next = applyChangeSet(rows, changeSet);
+    const budget = changeSet.after.every((row) => row.table === "bankImport")
+      ? ledger
+      : this.buildLedger(next);
+    if (!budget) throw new AccountingError("The budget is still loading");
+    return { ledger: budget, rows: next, changeSet };
+  }
+
   /**
    * Rebuilds what is shown: the confirmed ledger with every pending command
    * applied in order. A command that no longer applies here is still sent;
@@ -460,9 +548,16 @@ export class BudgetStore {
     this.steps = new Map();
     if (ledger)
       for (const op of this.pending) {
-        if (!op.command) continue;
+        if (!op.command && !op.preview) continue;
         try {
-          const step = this.apply(ledger, rows, op.command, op.revertTarget);
+          const target =
+            op.command?.type === "revert"
+              ? (this.steps.get(op.command.targetOperationId)?.changeSet ??
+                op.revertTarget)
+              : undefined;
+          const step: Step = op.command
+            ? this.apply(ledger, rows, op.command, target)
+            : this.previewStep(ledger, rows, op.preview!);
           this.steps.set(op.operationId, step);
           ledger = step.ledger;
           rows = step.rows;
@@ -525,21 +620,6 @@ export class BudgetStore {
     const op = this.pending.find((item) => item.operationId === operationId);
     if (!op || this.revision === null) return "done";
     this.recordAnswer(op);
-    if (op.undoable && result.changeSet?.after.length) {
-      const following = new Set(
-        this.pending
-          .slice(this.pending.indexOf(op) + 1)
-          .map((pending) => pending.operationId),
-      );
-      const index = this.undoStack.findIndex((entry) =>
-        following.has(entry.operationId),
-      );
-      this.undoStack.splice(index < 0 ? this.undoStack.length : index, 0, {
-        operationId,
-        label: op.summary,
-        changeSet: result.changeSet,
-      });
-    }
     if (result.changeSet) this.replaceHistory(operationId, result.changeSet);
     this.settle(op, { ok: true, revision: result.revision });
     const base = this.revision;
@@ -597,16 +677,23 @@ export class BudgetStore {
     for (const item of this.pending.filter((p) => refused.has(p.operationId))) {
       this.remove(item);
       this.settle(item, { ok: false, kind, message });
-      this.notify({
-        kind: "refused",
-        operationId: item.operationId,
-        summary: item.summary,
-        reason: kind,
-        message,
-      });
+      if (item === op)
+        this.notify({
+          kind: "refused",
+          operationId: item.operationId,
+          summary: item.summary,
+          reason: kind,
+          message,
+        });
     }
-    this.undoStack = this.undoStack.filter((e) => !refused.has(e.operationId));
-    this.redoStack = this.redoStack.filter((e) => !refused.has(e.operationId));
+    const retain = (entry: HistoryEntry) => {
+      entry.operations = entry.operations.filter(
+        (operation) => !refused.has(operation.operationId),
+      );
+      return entry.operations.length > 0;
+    };
+    this.undoStack = this.undoStack.filter(retain);
+    this.redoStack = this.redoStack.filter(retain);
     this.replay();
     this.changed();
   }
@@ -752,7 +839,15 @@ export class BudgetStore {
 
   private replaceHistory(operationId: string, changeSet: ChangeSet) {
     for (const entry of [...this.undoStack, ...this.redoStack])
-      if (entry.operationId === operationId) entry.changeSet = changeSet;
+      for (const operation of entry.operations)
+        if (operation.operationId === operationId)
+          operation.changeSet = changeSet;
+    for (const op of this.pending)
+      if (
+        op.command?.type === "revert" &&
+        op.command.targetOperationId === operationId
+      )
+        op.revertTarget = changeSet;
   }
 
   /**
@@ -762,11 +857,25 @@ export class BudgetStore {
   private expireHistory() {
     const pending = new Set(this.pending.map((op) => op.operationId));
     const live = (entry: HistoryEntry) => {
-      if (pending.has(entry.operationId)) return true;
-      if (!revertConflicts(this.confirmedRows, entry.changeSet).length)
+      if (
+        entry.operations.some((operation) => pending.has(operation.operationId))
+      )
         return true;
-      this.notify({ kind: "historyExpired", operationId: entry.operationId });
-      return false;
+      let rows = this.confirmedRows;
+      for (const operation of [...entry.operations].reverse()) {
+        if (revertConflicts(rows, operation.changeSet).length) {
+          this.notify({
+            kind: "historyExpired",
+            operationId: operation.operationId,
+          });
+          return false;
+        }
+        rows = applyChangeSet(rows, {
+          ...operation.changeSet,
+          after: operation.changeSet.before,
+        });
+      }
+      return true;
     };
     this.undoStack = this.undoStack.filter(live);
     this.redoStack = this.redoStack.filter(live);
@@ -802,7 +911,8 @@ export class BudgetStore {
 
   private buildSnapshot(): BudgetSnapshot {
     const view = (entry: HistoryEntry | undefined) =>
-      entry ? { operationId: entry.operationId, label: entry.label } : null;
+      entry ? { actionId: entry.actionId, label: entry.label } : null;
+    const rows = this.optimisticRows;
     return {
       ...this.sync,
       status:
@@ -815,6 +925,24 @@ export class BudgetStore {
             : "empty",
       revision: this.revision,
       ledger: this.optimisticLedger,
+      importState: (connectionId, logicalId) => {
+        const row = getRow(
+          rows,
+          "bankImport",
+          rowKey(this.userId, connectionId, logicalId),
+        );
+        if (row?.table !== "bankImport" || row.deleted || !row.data)
+          return null;
+        const resolved = row.data.resolved;
+        const resolvedFingerprint =
+          resolved &&
+          typeof resolved === "object" &&
+          "fingerprint" in resolved &&
+          typeof resolved.fingerprint === "string"
+            ? resolved.fingerprint
+            : null;
+        return { resolvedFingerprint, record: row.data.record };
+      },
       pending: this.pending.map((op) => ({
         operationId: op.operationId,
         summary: op.summary,

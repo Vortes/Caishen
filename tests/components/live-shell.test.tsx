@@ -3,7 +3,13 @@ import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
 import { ZodError } from "zod";
 import { SyncError } from "~/components/sync/transport";
-import { deferred, findToast, refocus, renderShell } from "./shell-harness";
+import {
+  deferred,
+  findToast,
+  refocus,
+  renderShell,
+  waitForSaves,
+} from "./shell-harness";
 
 const amount = () =>
   screen.getByRole("button", {
@@ -59,7 +65,7 @@ test("switching months shows the next month at once, without asking the server",
   expect(shell.server.pulls.length).toBe(pulls);
 });
 
-test("undo and redo apply at once, from the toast or the keyboard, for changes made in this visit", async () => {
+test("undo and redo apply silently at once, from the toast or the keyboard, for changes made in this visit", async () => {
   const shell = await renderShell();
   // Changes saved before this visit can't be undone here.
   await shell.user.keyboard("{Meta>}z{/Meta}");
@@ -69,14 +75,23 @@ test("undo and redo apply at once, from the toast or the keyboard, for changes m
   const toast = await findToast("Gifts now has $150.00 assigned");
   await shell.user.click(within(toast).getByRole("button", { name: "Undo" }));
   expect(assignedLabel()).toMatch(/^\$100\.00 assigned/);
-  await findToast("Action undone.");
+  await waitForSaves();
+  expect(
+    screen.getByRole("region", { name: "Notifications" }).textContent,
+  ).toBe("");
 
   await shell.user.keyboard("{Meta>}{Shift>}z{/Shift}{/Meta}");
   expect(assignedLabel()).toMatch(/^\$150\.00 assigned/);
-  await findToast("Action redone.");
+  await waitForSaves();
+  expect(
+    screen.getByRole("region", { name: "Notifications" }).textContent,
+  ).toBe("");
   await shell.user.keyboard("{Meta>}z{/Meta}");
   expect(assignedLabel()).toMatch(/^\$100\.00 assigned/);
-  await findToast("Action undone.");
+  await waitForSaves();
+  expect(
+    screen.getByRole("region", { name: "Notifications" }).textContent,
+  ).toBe("");
   await shell.reload();
   expect(amount().textContent).toBe("$100.00");
   expect(screen.getByText("$900.00")).toBeTruthy();

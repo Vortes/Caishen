@@ -16,6 +16,7 @@ import {
   renderShell,
   sent,
   transactionRow as row,
+  waitForSaves,
   type Overview,
 } from "./shell-harness";
 
@@ -122,12 +123,12 @@ test("matching an import to a recorded purchase offers Undo and supports redo", 
   expect(await findRow("Recorded Market")).toBeTruthy();
 
   await shell.user.click(within(toast).getByRole("button", { name: "Undo" }));
-  await findToast("Action undone.");
+  await waitForSaves();
   expect(await findRow("Bank Market")).toBeTruthy();
   expect(screen.queryByText("Recorded Market", { exact: true })).toBeNull();
 
   await shell.user.keyboard("{Meta>}{Shift>}z{/Shift}{/Meta}");
-  await findToast("Action redone.");
+  await waitForSaves();
   expect(await findRow("Recorded Market")).toBeTruthy();
   expect(screen.queryByText("Bank Market", { exact: true })).toBeNull();
   await shell.reload();
