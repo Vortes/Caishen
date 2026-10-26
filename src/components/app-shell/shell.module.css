@@ -1277,6 +1277,12 @@ button.actionItem:disabled {
 .register .columnHeader {
   border-bottom-color: transparent;
 }
+/* The first transaction clears the rule by the same inset as the pending
+   group and the new-transaction editor. */
+.register .columnHeader + .rowWrap,
+.register .columnHeader + .row {
+  margin-top: var(--space-inset);
+}
 .register .columnHeader::after,
 .pendingGroup::after {
   content: "";
