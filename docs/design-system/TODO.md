@@ -51,6 +51,11 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] Replace hand-written `6px` radii with `--radius-row` (about 12 rules)
 - [ ] Dimmed chart slice labels use `opacity: 0.4`; use a text token
       (`reflect/reflect.module.css`, `.sliceLabel[data-dim]`)
+- [ ] `--surface-group` used for things that aren't group or date headers:
+      the settings zone hint (`entry/settings.module.css`, `.zoneHint`), the
+      disabled amount well (`transaction-entry.module.css`,
+      `.well[data-disabled]`), and the reconcile icon
+      (`reconcile.module.css`, `.icon`)
 
 ## Gaps found by testing the docs with a fresh agent
 

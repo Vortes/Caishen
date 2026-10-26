@@ -41,7 +41,7 @@
   /* Surfaces, from the back of the window forward. */
   --surface-app: oklch(0.15 var(--tint) var(--hue));
   --surface-panel: oklch(0.178 var(--tint) var(--hue));
-  --surface-group: oklch(0.192 var(--tint) var(--hue));
+  --surface-group: oklch(0.212 var(--tint) var(--hue));
   --surface-raised: oklch(0.205 var(--tint) var(--hue));
   --surface-hover: oklch(0.222 var(--tint) var(--hue));
   --surface-selected: oklch(0.245 calc(var(--tint) * 1.5) var(--hue));
@@ -50,6 +50,10 @@
   --border-card: oklch(0.25 var(--tint) var(--hue));
   --border-strong: oklch(0.34 var(--tint) var(--hue));
   --border-edge-lit: oklch(0.56 var(--tint) var(--hue));
+
+  /* The empty part of a bar or meter. Lighter than hover and selected, so it
+     stays visible on any row state. */
+  --track: oklch(0.28 var(--tint) var(--hue));
 
   --text-primary: oklch(0.95 calc(var(--tint) * 0.5) var(--hue));
   --text-secondary: oklch(0.79 calc(var(--tint) * 0.8) var(--hue));
@@ -83,6 +87,11 @@
   --status-credit-bg: var(--amber-800-a);
   --status-overspent: var(--red-300);
   --status-overspent-bg: var(--red-800-a);
+  /* No target and nothing available. Primary text, so the amount reads
+     like the sidebar's; its own fill, so it shows on hovered and current
+     rows. */
+  --status-empty: var(--text-primary);
+  --status-empty-bg: oklch(0.27 var(--tint) var(--hue));
 
   /* Signed amounts outside a category: inflows, Ready to Assign. */
   --money-positive: var(--green-300);
@@ -107,7 +116,7 @@
   color-scheme: light;
   --surface-app: oklch(0.958 var(--tint) var(--hue));
   --surface-panel: oklch(0.995 calc(var(--tint) * 0.3) var(--hue));
-  --surface-group: oklch(0.976 calc(var(--tint) * 0.6) var(--hue));
+  --surface-group: oklch(0.962 calc(var(--tint) * 0.6) var(--hue));
   --surface-raised: oklch(0.982 calc(var(--tint) * 0.6) var(--hue));
   --surface-hover: oklch(0.952 var(--tint) var(--hue));
   --surface-selected: oklch(0.928 calc(var(--tint) * 1.5) var(--hue));
@@ -116,6 +125,8 @@
   --border-card: oklch(0.25 var(--tint) var(--hue) / 0.08);
   --border-strong: oklch(0.25 var(--tint) var(--hue) / 0.18);
   --border-edge-lit: oklch(0.25 var(--tint) var(--hue) / 0.45);
+
+  --track: oklch(0.9 var(--tint) var(--hue));
 
   --text-primary: oklch(0.22 var(--tint) var(--hue));
   --text-secondary: oklch(0.42 var(--tint) var(--hue));
@@ -143,6 +154,8 @@
   --status-credit-bg: var(--amber-100);
   --status-overspent: var(--red-600);
   --status-overspent-bg: var(--red-100);
+  --status-empty: var(--text-primary);
+  --status-empty-bg: oklch(0.915 var(--tint) var(--hue));
 
   --money-positive: var(--green-600);
   --money-negative: var(--red-600);

@@ -192,7 +192,7 @@ export function PlanView({
         <span className={styles.numeric} data-optional>
           {money(sum((item) => item.activity))}
         </span>
-        <span className={styles.numeric}>
+        <span className={styles.numeric} data-available>
           {money(sum((item) => item.available))}
         </span>
       </>
@@ -290,7 +290,7 @@ export function PlanView({
           <span className={styles.numeric} data-optional aria-hidden>
             Activity
           </span>
-          <span className={styles.numeric} aria-hidden>
+          <span className={styles.numeric} data-available aria-hidden>
             Available
           </span>
         </div>
@@ -359,9 +359,6 @@ export function PlanView({
                           aria-hidden
                         />
                         <span className={styles.truncate}>{group.name}</span>
-                        <span className={styles.groupCount}>
-                          {group.categories.length}
-                        </span>
                       </button>
                       {!isSystemGroup(group) && (
                         <span className={styles.groupAdd} data-no-drag>
@@ -465,9 +462,6 @@ export function PlanView({
                     className={styles.groupCaret}
                   />
                   <span className={styles.truncate}>{dragged.name}</span>
-                  <span className={styles.groupCount}>
-                    {dragged.categories.length}
-                  </span>
                 </span>
               </span>
               {totals(dragged)}

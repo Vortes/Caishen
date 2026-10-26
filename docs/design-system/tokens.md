@@ -31,7 +31,7 @@ From the back of the window forward. Each step is lighter in dark mode.
 What is the element?
  ├── The window behind every panel → --surface-app
  ├── A panel: sidebar, main content, inspector → --surface-panel
- ├── A date header row inside a list → --surface-group
+ ├── A plan group header or a date header row → --surface-group
  ├── A card, popover, or tooltip → --surface-raised
  ├── A row or quiet control under the pointer → --surface-hover
  └── The current detail row or pressed quiet control → --surface-selected
@@ -46,13 +46,19 @@ Buttons, tabs, and segmented controls have their own fills
 (`--control-border`, `--control-border-active`). Use those only when building
 a new kind of control, never for a surface.
 
+A Monkeytype palette (`.root[data-palette]` in `shell.module.css`)
+replaces the surface ladder with offsets from the palette's background.
+When you add a gray token, add its offset there too, or it stays the
+default theme's gray on every palette.
+
 ## Text
 
 ```
 What is the text?
  ├── Names, values, headings, anything the user reads first → --text-primary
  ├── Supporting text, unselected controls, field labels → --text-secondary
- ├── Hints, captions, column headers, empty states → --text-tertiary
+ ├── Hints, captions, column headers, empty states, disclosure carets
+ │    → --text-tertiary
  └── Text on --accent-solid → --text-on-accent
 ```
 
@@ -75,7 +81,7 @@ Pick by what the color says, never by the hue you want.
 ```
 What does the color communicate?
  ├── A category's funding state → --status-{funded, underfunded, credit,
- │                                 overspent}, plus -bg for pill fills
+ │                                 overspent, empty}, plus -bg for pill fills
  │                                 and --status-{funded, underfunded}-spent
  │                                 for a funding bar's spent segment
  ├── A signed amount outside a category (inflow, Ready to Assign)
@@ -101,9 +107,33 @@ Spent money in a funding bar uses `--status-funded-spent` or
 and paler in the light one. Use them only for the bar's spent segment;
 everywhere else a status color appears at full strength.
 
+`--status-empty` is a category with no target and $0.00 available. Its
+text is `--text-primary`, so the Available amount reads as clearly as the
+sidebar's balances. `--status-empty-bg` is lighter than `--surface-hover`
+and `--surface-selected`, so the pill shows on hovered and current rows. A
+snoozed category keeps `--text-secondary` on `--surface-hover`: it's paused,
+so its amount steps back.
+
 `--status-credit` is amber, like underfunded, not red: spending on a credit
 card takes no cash, it adds card debt the plan hasn't funded yet. Only
 `--status-overspent` (cash) is red.
+
+Bars and meters: `--track` fills the part that isn't money yet (a funding
+bar's still-needed segment, a meter's empty track). It is lighter than
+`--surface-hover` and `--surface-selected` so it stays visible on any row
+state.
+
+```css
+/* Correct */
+.segment[data-kind="needed"] {
+  background: var(--track);
+}
+
+/* Incorrect: the row's hover fill, so the track vanishes under the pointer */
+.segment[data-kind="needed"] {
+  background: var(--surface-hover);
+}
+```
 
 Loading skeletons: `--skeleton-bone` fills a bone and `--skeleton-shine`
 is the band that sweeps it. Only `Skeleton` uses them; a hand-drawn bone in

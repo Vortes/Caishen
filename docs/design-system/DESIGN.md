@@ -70,3 +70,7 @@ the screen needs the missing primitive. Never invent a new primitive inline.
 - **Funding components**: `AvailablePill`, `FundingBar`, `FundingRing`, and
   `Meter` live in the shell and take the category's `Funding` state from
   `model.ts`. Use them for money states; never rebuild one with a `Tag`.
+  Get the state from `categoryStatus()` in
+  `src/components/budget/category-row-status.ts`; never pick one by hand.
+  A hand-picked state drifts from the plan's: a $0.00 category with a
+  target is `underfunded` (amber), not `empty`.

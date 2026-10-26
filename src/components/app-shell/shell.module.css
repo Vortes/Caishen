@@ -19,7 +19,7 @@
   --surface-panel: var(--mt-bg);
   --surface-app: oklch(from var(--mt-bg) calc(l - 0.028) c h);
   --control-bg: oklch(from var(--mt-bg) calc(l + 0.022) c h);
-  --surface-group: oklch(from var(--mt-bg) calc(l + 0.014) c h);
+  --surface-group: oklch(from var(--mt-bg) calc(l + 0.034) c h);
   --surface-raised: oklch(from var(--mt-bg) calc(l + 0.027) c h);
   --surface-hover: oklch(from var(--mt-bg) calc(l + 0.044) c h);
   --control-bg-hover: oklch(from var(--mt-bg) calc(l + 0.054) c h);
@@ -29,6 +29,8 @@
   --control-border: oklch(from var(--mt-bg) calc(l + 0.082) c h);
   --control-bg-active: oklch(from var(--mt-bg) calc(l + 0.112) c h);
   --border-strong: oklch(from var(--mt-bg) calc(l + 0.162) c h);
+  --track: oklch(from var(--mt-bg) calc(l + 0.102) c h);
+  --status-empty-bg: oklch(from var(--mt-bg) calc(l + 0.092) c h);
   --control-border-active: var(--border-strong);
   --border-edge-lit: oklch(from var(--mt-bg) calc(l + 0.38) c h);
   --text-primary: var(--mt-text);
@@ -948,7 +950,7 @@ button.actionItem:disabled {
   height: 4px;
   overflow: hidden;
   border-radius: 2px;
-  background: var(--surface-hover);
+  background: var(--track);
 }
 .meterTrack > span {
   display: block;
@@ -1438,6 +1440,11 @@ button.actionItem:disabled {
 .numeric[data-inflow] {
   color: var(--money-positive);
 }
+/* Plain text in the Available column ends where the pills' labels do, not
+   at the pills' edge: inset by the pill's side padding. */
+.numeric[data-available] {
+  padding-right: 8px;
+}
 .muted {
   color: var(--text-secondary);
 }
@@ -1454,6 +1461,10 @@ button.actionItem:disabled {
   color: var(--text-secondary);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+.pill[data-state="empty"] {
+  background: var(--status-empty-bg);
+  color: var(--status-empty);
 }
 .pill[data-state="funded"] {
   background: var(--status-funded-bg);
