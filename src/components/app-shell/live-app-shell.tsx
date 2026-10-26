@@ -304,6 +304,9 @@ function LiveWorkspace({
   const connections = overview?.connections ?? noConnections;
   // Imports a save just resolved stay hidden until the inbox catches up.
   const [resolved, setResolved] = useState<ReadonlySet<string>>(new Set());
+  const [importRejections, setImportRejections] = useState<
+    ReadonlyMap<string, { operationId: string; fingerprint: string }>
+  >(new Map());
   const [importPreviews, setImportPreviews] = useState<
     ReadonlyMap<string, { fingerprint: string; transactionId: string }>
   >(new Map());
@@ -312,6 +315,15 @@ function LiveWorkspace({
     () =>
       allImports.filter((item) => {
         if (resolved.has(importRowId(item))) return false;
+        const rejection = importRejections.get(importRowId(item));
+        // Hide with the published queue state so selection survives a refusal.
+        if (
+          rejection?.fingerprint === item.fingerprint &&
+          snapshot.pending.some(
+            (operation) => operation.operationId === rejection.operationId,
+          )
+        )
+          return false;
         const preview = importPreviews.get(importRowId(item));
         return (
           preview?.fingerprint !== item.fingerprint ||
@@ -321,7 +333,14 @@ function LiveWorkspace({
           )
         );
       }),
-    [allImports, resolved, importPreviews, view.budget.transactions],
+    [
+      allImports,
+      resolved,
+      importRejections,
+      importPreviews,
+      snapshot.pending,
+      view.budget.transactions,
+    ],
   );
   useEffect(() => {
     setImportPreviews((current) => {
@@ -479,34 +498,61 @@ function LiveWorkspace({
           `Rejected ${count(recordedIds)}`,
         );
     }
+    let rejectionFailed = false;
     for (const item of selectedImports) {
       if (action === "reject") {
         const operationId = newId();
         const summary = `Rejected ${item.payee}`;
-        void runOnServer(
+        const rowId = importRowId(item);
+        const clearPreview = () =>
+          setImportRejections((current) => {
+            if (current.get(rowId)?.operationId !== operationId) return current;
+            const next = new Map(current);
+            next.delete(rowId);
+            return next;
+          });
+        const result = client.runOnServer(
           operationId,
           (expectedRevision) =>
-            trpc.budget.resolveImport.mutate({
-              connectionId: item.connectionId,
-              logicalId: item.logicalId,
-              expectedFingerprint: item.fingerprint,
-              expectedRevision,
-              operationId,
-              ignore: true,
-            }),
-          summary,
-          true,
-        ).then(
-          async () => {
-            notify(summary, "neutral", operationId);
-            await refreshResolvedImport(item);
-          },
-          (error: Error) =>
-            notify(
-              `Couldn’t reject ${item.payee}. ${error.message}`,
-              "attention",
+            serverOperation(
+              () =>
+                trpc.budget.resolveImport.mutate({
+                  connectionId: item.connectionId,
+                  logicalId: item.logicalId,
+                  expectedFingerprint: item.fingerprint,
+                  expectedRevision,
+                  operationId,
+                  ignore: true,
+                }),
+              renewSession,
             ),
+          {
+            summary,
+            onSettled: (settled) => {
+              if (settled.ok) {
+                shownInPlace.current.delete(operationId);
+                if (!rejectionFailed) notify(summary, "neutral", operationId);
+                void refreshResolvedImport(item).finally(clearPreview);
+              } else {
+                rejectionFailed = true;
+                clearPreview();
+                notify(
+                  `Couldn’t reject ${item.payee}. ${settled.message}`,
+                  "attention",
+                );
+              }
+            },
+          },
         );
+        if (result.ok) {
+          shownInPlace.current.add(operationId);
+          setImportRejections((current) =>
+            new Map(current).set(rowId, {
+              operationId,
+              fingerprint: item.fingerprint,
+            }),
+          );
+        } else notify(result.message, "attention");
         continue;
       }
       const command = importReviewCommand(view, item);

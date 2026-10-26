@@ -1,6 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
+import { SyncError } from "~/components/sync/transport";
+import { withCounterpartyAccounts } from "~/domain/engine";
 import {
+  budgetFixture,
+  deferred,
   findToast,
   findTransactionRow,
   readyOverview,
@@ -517,6 +521,130 @@ test("Reject dismisses pending and posted bank imports without recording them an
     screen.queryByRole("checkbox", { name: "Select Posted lunch" }),
   ).toBeNull();
   expect(await findTransactionRow("Keep this purchase")).toBeTruthy();
+});
+
+test("bank rejection hides the whole selection before saving and restores only a refused import", async () => {
+  const sending = deferred<void>();
+  let refuse = true;
+  let imports = [
+    bankImport({ pending: true }),
+    bankImport({ logicalId: "lunch", payee: "Lunch" }),
+    bankImport({ logicalId: "keep", payee: "Keep this purchase" }),
+  ];
+  const shell = await renderShell({
+    overview: () => readyOverview({ imports }),
+    resolveImport: async (input, server) => {
+      await sending.promise;
+      if (input.logicalId === "coffee" && refuse) {
+        refuse = false;
+        throw new SyncError("rejected", "Bank changed Coffee.");
+      }
+      if (!input.ignore)
+        throw new Error("Reject must not record a transaction");
+      imports = imports.filter((item) => item.logicalId !== input.logicalId);
+      return {
+        revision: server.revision,
+        changeSet: null,
+        rebased: false,
+        resolved: true,
+      };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Lunch"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Reject" }),
+  );
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull();
+  expect(transactionRow("Keep this purchase")).toBeTruthy();
+  await act(async () => sending.resolve());
+  await findToast("Couldn’t reject Coffee. Bank changed Coffee.");
+  expect(
+    (
+      await screen.findByRole("checkbox", { name: "Select Coffee" })
+    ).getAttribute("aria-checked"),
+  ).toBe("true");
+  await waitFor(() =>
+    expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull(),
+  );
+  await shell.user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Reject" }),
+  );
+  await findToast("Rejected Coffee");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull();
+  expect(await findTransactionRow("Keep this purchase")).toBeTruthy();
+});
+
+test("other bulk actions stay available while a bank rejection saves", async () => {
+  const sending = deferred<void>();
+  let imports = [
+    bankImport({ pending: true }),
+    bankImport({ logicalId: "lunch", payee: "Lunch", categoryId: "gifts" }),
+  ];
+  const shell = await renderShell({
+    book: withCounterpartyAccounts(budgetFixture()),
+    overview: () => readyOverview({ imports }),
+    resolveImport: async (input, server) => {
+      if (input.ignore) {
+        await sending.promise;
+        imports = imports.filter((item) => item.logicalId !== input.logicalId);
+        return {
+          revision: server.revision,
+          changeSet: null,
+          rebased: false,
+          resolved: true,
+        };
+      }
+      const saved = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = imports.filter((item) => item.logicalId !== input.logicalId);
+      return { ...saved, resolved: true };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Coffee" }),
+  );
+  await shell.user.click(screen.getByRole("button", { name: "Reject" }));
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Lunch" }),
+  );
+  const actions = within(
+    screen.getByRole("toolbar", { name: "Selected transactions" }),
+  );
+  for (const name of ["Approve (1)", "Reject", "Categorize", "Share"])
+    expect(actions.getByRole("button", { name })).toHaveProperty(
+      "disabled",
+      false,
+    );
+  await shell.user.click(actions.getByRole("button", { name: "Approve (1)" }));
+  expect(
+    within(transactionRow("Lunch")).queryByText("Needs review"),
+  ).toBeNull();
+  await act(async () => sending.resolve());
+  await findToast("Approved Lunch");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(
+    within(await findTransactionRow("Lunch")).getByText("Gifts", {
+      exact: true,
+    }),
+  ).toBeTruthy();
 });
 
 test("Enter now retains an uncategorized pending credit-card inflow after reload", async () => {
