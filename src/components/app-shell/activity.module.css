@@ -1,0 +1,157 @@
+/* The Activity amount in a plan row and the popover of transactions it
+   opens. The amount sits over the row's own Activity cell on a grid matching
+   the row's columns, so it hides with the column on narrow plans. */
+
+.overlay {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cell {
+  grid-column: 3;
+  justify-self: end;
+  pointer-events: auto;
+}
+
+/* Reads as the row's amount; a ring on hover says it opens something. Its
+   padding hangs past the column, so the figure keeps its right edge. */
+.amount,
+.property {
+  display: block;
+  height: var(--size-control-xs);
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: box-shadow 150ms;
+}
+.amount {
+  margin-right: -6px;
+}
+.property {
+  margin: 0 -6px 0 auto;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.amount:hover,
+.amount[data-state="open"],
+.property:hover,
+.property[data-state="open"] {
+  box-shadow: inset 0 0 0 1px var(--control-border-active);
+  color: var(--text-primary);
+}
+
+/* The move-money popover's surface, wide enough for a register row. */
+.popover {
+  composes: content from "../ui/popover-motion.module.css";
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(420px, var(--radix-popover-content-available-height));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+}
+
+.header {
+  flex: none;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 4px 4px;
+}
+/* Rows hidden below fade out, so a cut-off row reads as more to scroll. */
+.scroll[data-more] {
+  mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent);
+}
+
+/* Account, date, payee, amount, like a register row. The amount takes the
+   room it needs and is never cut off; the account gives way first. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(64px, 120px) 52px minmax(0, 1fr) max-content;
+  column-gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 0 8px;
+}
+.columns > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.columns > [data-numeric] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  height: var(--size-control-sm);
+  background: var(--surface-raised);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+
+.row,
+.static {
+  height: var(--size-row-sm);
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.row {
+  cursor: pointer;
+}
+.row:hover {
+  background: var(--surface-hover);
+}
+.row:active {
+  background: var(--surface-selected);
+}
+.row > span:nth-child(3),
+.static > span:nth-child(3) {
+  color: var(--text-primary);
+}
+
+.empty {
+  margin: 0;
+  padding: 16px 12px;
+  color: var(--text-tertiary);
+}
+
+@media (pointer: coarse) {
+  .amount,
+  .property,
+  .row,
+  .static {
+    height: var(--size-row-lg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .amount,
+  .property {
+    transition: none;
+  }
+}

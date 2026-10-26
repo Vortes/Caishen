@@ -18,6 +18,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -45,6 +46,7 @@ import {
   type Added,
 } from "./add-category";
 import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
+import { ActivityCell, activityColumn } from "./activity";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -92,9 +94,16 @@ export function PlanView({
   checked,
   onCheck,
   reveal,
+  onJump,
 }: {
   view: PlanViewId | null;
   onSelect: (id: string) => void;
+  // Opens a transaction in its account's register.
+  onJump: (transaction: {
+    id: string;
+    accountId: string;
+    date: string;
+  }) => void;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
   // A group or category to bring into view and focus, like one just added.
@@ -213,6 +222,19 @@ export function PlanView({
         ref={reorder.listRef}
         className={`${styles.list} ${styles.planList} ${selectionStyles.list}`}
         {...selectionStyle.listProps}
+        style={
+          {
+            "--activity-column": activityColumn([
+              ...shell.categories.map((category) => category.activity),
+              ...shell.groups.map((group) =>
+                group.categories.reduce(
+                  (total, item) => total + item.activity,
+                  0,
+                ),
+              ),
+            ]),
+          } as CSSProperties
+        }
         role="group"
         aria-label="Categories"
         data-selecting={checked.length > 0 || undefined}
@@ -416,8 +438,11 @@ export function PlanView({
                         <span
                           className={`${styles.numeric} ${styles.muted}`}
                           data-optional
+                          aria-hidden
                         >
-                          {money(category.activity)}
+                          <span className={moveStyles.placeholder}>
+                            {money(category.activity)}
+                          </span>
                         </span>
                         <span className={styles.numeric} aria-hidden>
                           <span className={moveStyles.placeholder}>
@@ -426,6 +451,7 @@ export function PlanView({
                         </span>
                       </button>
                       <AssignedCell category={category} />
+                      <ActivityCell category={category} onJump={onJump} />
                       <MoveMoneyPopover category={category} align="end">
                         <button
                           type="button"

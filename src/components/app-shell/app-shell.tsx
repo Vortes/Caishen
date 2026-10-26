@@ -48,7 +48,7 @@ import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
 import { SettingsNav, Sidebar } from "./sidebar";
-import { PanelWidthDials, usePanelLimits } from "./panel-widths";
+import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import { PartnerRegister } from "./partner-register";
@@ -961,6 +961,7 @@ export function AppShell({
                             checked={checked}
                             onCheck={check}
                             reveal={revealed}
+                            onJump={jump}
                           />
                         )}
                         {screen.type === "register" && (
@@ -1080,6 +1081,7 @@ export function AppShell({
                                   selectedId={selectedId}
                                   checked={checked}
                                   view={settings.planView}
+                                  onJump={jump}
                                 />
                               )}
                             </div>
@@ -1094,7 +1096,6 @@ export function AppShell({
 
             {overlays}
           </TooltipProvider>
-          <PanelWidthDials />
         </div>
       </ActionProviders>
     </ShellDataProvider>

@@ -1288,6 +1288,12 @@ export function categoryLines(
     ? [{ categoryId: transaction.categoryId, amount: transaction.amount }]
     : [];
 }
+// One transaction's or partner entry's part of a category's activity.
+export type ActivityEntry = {
+  source: "transaction" | "partner";
+  id: string;
+  amount: number;
+};
 type CategoryMonth = {
   assigned: number;
   activity: number;
@@ -1554,14 +1560,32 @@ const creditCategory = (key: string) => key.split("\u0000")[0]!;
 
 // Replays the budget month by month from its start through the given month.
 // After each month, afterMonth can read that month's Ready to Assign.
+// Given activity, it fills it with what made each category's activity in
+// the last month, by category ID.
 function replay(
   book: AccountingState,
   budget: Budget,
   month: string,
   cutoff: string,
   afterMonth?: (month: string, readyToAssign: () => number) => void,
+  activity?: Map<string, ActivityEntry[]>,
 ): Materialized {
   const userId = budget.userId;
+  const addActivity = (
+    categoryId: string,
+    source: ActivityEntry["source"],
+    id: string,
+    amount: number,
+  ) => {
+    if (!activity || !amount) return;
+    const entries = activity.get(categoryId) ?? [];
+    const entry = entries.find(
+      (item) => item.source === source && item.id === id,
+    );
+    if (entry) entry.amount = safe(entry.amount + amount);
+    else entries.push({ source, id, amount });
+    activity.set(categoryId, entries);
+  };
   const index = indexReplay(book, budget);
   const accounts = new Map<string, AccountMonth>(
     budget.accounts.map((account) => [
@@ -1623,6 +1647,7 @@ function replay(
       state.assigned = 0;
       state.activity = 0;
       state.cashOverspending = 0;
+      activity?.delete(categoryId);
       state.cashActivity = 0;
     }
     for (const account of budget.accounts.filter(
@@ -1715,6 +1740,12 @@ function replay(
         )!;
         const state = categories.get(category.id)!;
         state.activity = safe(state.activity + transaction.amount);
+        addActivity(
+          category.id,
+          "transaction",
+          transaction.id,
+          transaction.amount,
+        );
         state.available = safe(state.available + transaction.amount);
         state.cashActivity = safe(state.cashActivity + transaction.amount);
         cashByCategory.set(
@@ -1766,6 +1797,7 @@ function replay(
       for (const { categoryId, amount, key } of accountingLines) {
         const state = categories.get(categoryId)!;
         state.activity = safe(state.activity + amount);
+        addActivity(categoryId, "transaction", transaction.id, amount);
         state.available = safe(state.available + amount);
         // The change above zero spends or restores existing card credit;
         // only the remainder changes debt and its payment funding.
@@ -1819,6 +1851,7 @@ function replay(
         if (!id || !amount) continue;
         const state = categories.get(id)!;
         state.activity = safe(state.activity + amount);
+        addActivity(id, "partner", entry.id, amount);
         state.available = safe(state.available + amount);
         state.cashActivity = safe(state.cashActivity + amount);
         cashByCategory.set(id, safe((cashByCategory.get(id) ?? 0) + amount));
@@ -2027,6 +2060,17 @@ function replay(
         const account = accounts.get(category.pairedAccountId)!;
         state.available = account.reserve;
         state.activity = safe(state.available - state.opening - state.assigned);
+        // The card's payments are the part of it a transaction made; the
+        // rest is spending its categories funded.
+        activity?.delete(category.id);
+        for (const payment of payments)
+          if (payment.accountId === category.pairedAccountId)
+            addActivity(
+              category.id,
+              "transaction",
+              payment.id,
+              -payment.amount,
+            );
         state.cashOverspending = Math.max(0, -state.available);
       }
     for (const category of budget.categories) {
@@ -2372,7 +2416,15 @@ function projectAccountingState(
   currentMonth: string,
 ) {
   const budget = ownBudget(book, userId);
-  const calculated = materialize(book, userId, month);
+  const activity = new Map<string, ActivityEntry[]>();
+  const calculated = replay(
+    book,
+    budgetThrough(book, userId, month),
+    month,
+    endOf(month),
+    undefined,
+    activity,
+  );
   const cutoff = endOf(month);
   const personalSpending = sum(
     personalSpendingEntries(book, userId)
@@ -2406,6 +2458,7 @@ function projectAccountingState(
       return {
         ...structuredClone(category),
         ...state,
+        activityEntries: activity.get(category.id) ?? [],
         // Card purchases plus any card refunds the payment reserve could not
         // return, so the breakdown always adds up to Available.
         creditActivity: category.pairedAccountId
