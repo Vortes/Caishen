@@ -121,7 +121,7 @@ test("checking and unchecking a transaction shows and hides the selection toolba
   ).toBeNull();
 });
 
-test("select-all completes a partial transaction selection and clears the full selection", async () => {
+test("select-all clears a partial transaction selection and selects all from none", async () => {
   const user = await openRegister();
   const transactions = within(
     screen.getByRole("group", { name: "Transactions" }),
@@ -135,37 +135,58 @@ test("select-all completes a partial transaction selection and clears the full s
   await user.click(all);
 
   expect(
+    transactions.queryAllByRole("checkbox", { checked: true }),
+  ).toHaveLength(0);
+  expect(
+    screen.queryByRole("toolbar", { name: "Selected transactions" }),
+  ).toBeNull();
+
+  await user.click(all);
+
+  expect(
     transactions.getByRole("checkbox", { name: "Select all", checked: true }),
   ).toBe(all);
-  expect(
-    transactions.getByRole("checkbox", {
-      name: "Select Market",
-      checked: true,
-    }),
-  ).toBeTruthy();
-  expect(
-    transactions.getByRole("checkbox", {
-      name: "Select Coffee",
-      checked: true,
-    }),
-  ).toBeTruthy();
   expect(
     within(
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByText("2 transactions"),
   ).toBeTruthy();
+});
+
+test("select-all clears a partial category selection", async () => {
+  const { user } = await renderShell({
+    seedCommands: [
+      {
+        type: "category.add",
+        id: "groceries",
+        categoryId: "groceries",
+        name: "Groceries",
+      },
+      {
+        type: "category.add",
+        id: "rent",
+        categoryId: "rent",
+        name: "Rent",
+        group: "Bills",
+      },
+    ],
+  });
+  const categories = within(screen.getByRole("group", { name: "Categories" }));
+  const all = await categories.findByRole("checkbox", {
+    name: "Select all categories",
+  });
+  await user.click(categories.getByRole("checkbox", { name: "Select Gifts" }));
+  await user.click(
+    categories.getByRole("checkbox", { name: "Select Groceries" }),
+  );
+  expect(all.getAttribute("aria-checked")).toBe("mixed");
 
   await user.click(all);
 
-  expect(
-    transactions.queryAllByRole("checkbox", { checked: true }),
-  ).toHaveLength(0);
-  expect(
-    transactions.getAllByRole("checkbox", { checked: false }),
-  ).toHaveLength(3);
-  expect(
-    screen.queryByRole("toolbar", { name: "Selected transactions" }),
-  ).toBeNull();
+  expect(categories.queryAllByRole("checkbox", { checked: true })).toHaveLength(
+    0,
+  );
+  expect(screen.queryByText("2 categories selected")).toBeNull();
 });
 
 test("the keyboard shortcut toggles the focused category's selection", async () => {

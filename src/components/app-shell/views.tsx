@@ -262,7 +262,8 @@ export function PlanView({
                     ? true
                     : "mixed"
               }
-              onChange={() => onCheck(everyId, checkedCount < everyId.length)}
+              // With anything checked, the box clears the selection.
+              onChange={() => onCheck(everyId, checkedCount === 0)}
             />
           )}
           <span className={styles.groupName}>
