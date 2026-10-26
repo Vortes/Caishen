@@ -27,7 +27,7 @@ import { TargetEditor, useTargetEditing } from "./target-editor";
 import type { Screen } from "~/components/workspace/routes";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import { FundingRing } from "./views";
-import { ActivityProperty } from "./activity";
+import { ActivityProperty, type ActivityJump } from "./activity";
 import styles from "./shell.module.css";
 
 export function Inspector({
@@ -41,11 +41,7 @@ export function Inspector({
   selectedId: string | null;
   checked: string[];
   view: PlanViewId | null;
-  onJump: (transaction: {
-    id: string;
-    accountId: string;
-    date: string;
-  }) => void;
+  onJump: ActivityJump;
 }) {
   const { categories, loans, readyToAssign } = useShellData();
   if (screen.type === "plan") {
@@ -331,11 +327,7 @@ function CategoryDetails({
   onJump,
 }: {
   category: Category;
-  onJump: (transaction: {
-    id: string;
-    accountId: string;
-    date: string;
-  }) => void;
+  onJump: ActivityJump;
 }) {
   const fallback =
     category.available > 0 ? "Money available" : "No money assigned yet";

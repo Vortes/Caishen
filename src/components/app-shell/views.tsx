@@ -46,7 +46,7 @@ import {
   type Added,
 } from "./add-category";
 import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
-import { ActivityCell, activityColumn } from "./activity";
+import { ActivityCell, activityColumn, type ActivityJump } from "./activity";
 import { AssignedCell } from "./assigned";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -61,6 +61,7 @@ import { useShellData } from "./shell-data";
 import {
   SelectAll,
   SelectionIsland,
+  type WayBack,
   useReviewSelection,
 } from "./transaction-review";
 import styles from "./shell.module.css";
@@ -98,12 +99,7 @@ export function PlanView({
 }: {
   view: PlanViewId | null;
   onSelect: (id: string) => void;
-  // Opens a transaction in its account's register.
-  onJump: (transaction: {
-    id: string;
-    accountId: string;
-    date: string;
-  }) => void;
+  onJump: ActivityJump;
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
   // A group or category to bring into view and focus, like one just added.
@@ -677,6 +673,7 @@ export function RegisterView({
   checked,
   onCheck,
   onJump,
+  back,
 }: {
   accountId: string | null;
   reviewOnly: boolean;
@@ -686,6 +683,7 @@ export function RegisterView({
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
   onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
+  back: WayBack | null;
 }) {
   const { transactions, openingBalances, accounts, month } = useShellData();
   const entry = useTransactionEntry();
@@ -1170,7 +1168,7 @@ export function RegisterView({
           row(item)
         ),
       )}
-      <SelectionIsland selection={selection} onCheck={onCheck} />
+      <SelectionIsland selection={selection} onCheck={onCheck} back={back} />
     </div>
   );
 }

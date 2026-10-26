@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
@@ -113,18 +114,33 @@ export function SelectAll({
   );
 }
 
+// The plan category a transaction was opened from, to return to.
+export type WayBack = { name: string; onBack: () => void };
+
 // Floats over the bottom of the register while rows are selected, in place
 // of a details panel. Review actions disappear once the selection is approved.
+// A transaction opened from the plan leads it with the way back, which stays
+// once the selection clears.
 export function SelectionIsland({
   selection: { selected, actions },
   onCheck,
+  back,
 }: {
   selection: ReturnType<typeof useReviewSelection>;
   onCheck: (ids: string[], value: boolean) => void;
+  back: WayBack | null;
 }) {
   const review = useTransactionReview();
   const entry = useTransactionEntry();
-  if (!selected.length) return null;
+  // With nothing selected, the island keeps just the way back.
+  if (!selected.length)
+    return back ? (
+      <div className={styles.islandSlot}>
+        <div className={styles.island}>
+          <BackButton back={back} />
+        </div>
+      </div>
+    ) : null;
   const { approve: approvable, enter: enterable, reject: rejectable } = actions;
   const approvals = [
     { label: "Approve", ids: approvable, save: review.approve },
@@ -142,6 +158,12 @@ export function SelectionIsland({
         role="toolbar"
         aria-label="Selected transactions"
       >
+        {back && (
+          <>
+            <BackButton back={back} />
+            <span className={styles.divider} aria-hidden />
+          </>
+        )}
         <span className={styles.summary} aria-live="polite">
           <Tooltip label="Clear selection" shortcut="Esc">
             <Button
@@ -208,6 +230,23 @@ export function SelectionIsland({
         </div>
       </div>
     </div>
+  );
+}
+
+function BackButton({ back }: { back: WayBack }) {
+  const label = `Back to ${back.name} in the plan`;
+  return (
+    <Tooltip label={label}>
+      <Button
+        variant="subtle"
+        size="sm"
+        aria-label={label}
+        onClick={back.onBack}
+      >
+        <ArrowLeftIcon aria-hidden />
+        <span className={styles.backName}>{back.name}</span>
+      </Button>
+    </Tooltip>
   );
 }
 
