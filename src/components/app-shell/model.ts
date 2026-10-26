@@ -49,6 +49,9 @@ export type Category = {
   group: string;
   assigned: number;
   activity: number;
+  // What made the month's activity, newest first. A card's payment
+  // category lists its payments; the rest is spending its categories funded.
+  activityEntries: ActivityEntry[];
   available: number;
   carryover: number;
   funding: Funding;
@@ -71,6 +74,15 @@ export type Category = {
   // aside minus what the account says is owed to you.
   pairs?: { accountId: string; name: string; balance: number };
   autoAssign: AutoAssignCategory;
+};
+
+export type ActivityEntry = {
+  id: string;
+  date: string;
+  payee: string;
+  accountId: string;
+  account: string;
+  amount: number;
 };
 
 type CategoryGroup = { id: string; name: string; categories: Category[] };
@@ -316,6 +328,40 @@ export function toShellData(
     }),
   );
 
+  const budgetTransaction = new Map(
+    view.budget.transactions.map((item) => [item.id, item]),
+  );
+  const partnerEntry = new Map(
+    view.partnerLedger.flatMap((row) =>
+      row.entryId ? [[row.entryId, row] as const] : [],
+    ),
+  );
+  const activityEntries = (item: View["categories"][number]) =>
+    item.activityEntries
+      .map((entry): ActivityEntry => {
+        if (entry.source === "partner") {
+          const row = partnerEntry.get(entry.id);
+          return {
+            id: entry.id,
+            date: row?.date ?? "",
+            payee: row?.payee ?? "Partner purchase",
+            accountId: partnerAccount!.id,
+            account: partnerName ?? "Partner",
+            amount: entry.amount,
+          };
+        }
+        const transaction = budgetTransaction.get(entry.id)!;
+        return {
+          id: entry.id,
+          date: transaction.date,
+          payee: registerPayee(view.budget, transaction),
+          accountId: transaction.accountId,
+          account: accountName.get(transaction.accountId) ?? "",
+          amount: entry.amount,
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+
   const categories = view.categories.map((item): Category => {
     const card = item.pairedAccountId
       ? view.accounts.find((account) => account.id === item.pairedAccountId)
@@ -340,6 +386,7 @@ export function toShellData(
       group: item.group,
       assigned: item.assigned,
       activity: item.activity,
+      activityEntries: activityEntries(item),
       available: item.available,
       carryover: item.opening,
       funding,

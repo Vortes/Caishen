@@ -961,6 +961,7 @@ export function AppShell({
                             checked={checked}
                             onCheck={check}
                             reveal={revealed}
+                            onJump={jump}
                           />
                         )}
                         {screen.type === "register" && (
@@ -1080,6 +1081,7 @@ export function AppShell({
                                   selectedId={selectedId}
                                   checked={checked}
                                   view={settings.planView}
+                                  onJump={jump}
                                 />
                               )}
                             </div>

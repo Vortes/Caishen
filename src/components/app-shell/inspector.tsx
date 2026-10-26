@@ -27,6 +27,7 @@ import { TargetEditor, useTargetEditing } from "./target-editor";
 import type { Screen } from "~/components/workspace/routes";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import { FundingRing } from "./views";
+import { ActivityProperty } from "./activity";
 import styles from "./shell.module.css";
 
 export function Inspector({
@@ -34,11 +35,17 @@ export function Inspector({
   selectedId,
   checked,
   view,
+  onJump,
 }: {
   screen: Screen;
   selectedId: string | null;
   checked: string[];
   view: PlanViewId | null;
+  onJump: (transaction: {
+    id: string;
+    accountId: string;
+    date: string;
+  }) => void;
 }) {
   const { categories, loans, readyToAssign } = useShellData();
   if (screen.type === "plan") {
@@ -62,7 +69,11 @@ export function Inspector({
         ) : checked.length > 1 ? (
           <CheckedDetails ids={checked} />
         ) : category ? (
-          <CategoryDetails key={category.id} category={category} />
+          <CategoryDetails
+            key={category.id}
+            category={category}
+            onJump={onJump}
+          />
         ) : (
           <MonthDetails />
         )}
@@ -315,7 +326,17 @@ function SelectionAutoAssign({ categories }: { categories: Category[] }) {
   );
 }
 
-function CategoryDetails({ category }: { category: Category }) {
+function CategoryDetails({
+  category,
+  onJump,
+}: {
+  category: Category;
+  onJump: (transaction: {
+    id: string;
+    accountId: string;
+    date: string;
+  }) => void;
+}) {
   const fallback =
     category.available > 0 ? "Money available" : "No money assigned yet";
   return (
@@ -344,7 +365,9 @@ function CategoryDetails({ category }: { category: Category }) {
       {category.pairs && <PairedBalance category={category} />}
       <Card>
         <Property label="Assigned">{money(category.assigned)}</Property>
-        <Property label="Activity">{money(category.activity)}</Property>
+        <Property label="Activity">
+          <ActivityProperty category={category} onJump={onJump} />
+        </Property>
         <Property label="Last month">{money(category.carryover)}</Property>
         <Property label="Group" icon={FolderIcon}>
           {category.group}

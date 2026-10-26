@@ -1015,8 +1015,11 @@ button.actionItem:disabled {
   width: 100%;
   padding: 0 var(--space-row-x) 0 var(--row-gutter);
 }
+/* Activity widens to fit the plan's widest figure; see PlanView. */
 .columns {
-  grid-template-columns: minmax(0, 1fr) 104px 104px 116px;
+  grid-template-columns:
+    minmax(0, 1fr) 104px var(--activity-column, 104px)
+    116px;
 }
 .txColumns {
   grid-template-columns: var(--tx-columns);
