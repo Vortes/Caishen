@@ -23,6 +23,35 @@ The user's decisions about how to allocate existing Ready to Assign cash among e
 **Category target**:
 An amount and timing goal attached to an envelope that determines and displays its funding needs and progress using YNAB-style target behavior. It guides the user's funding decisions without assigning money or changing the cash available.
 
+**Bookkeeping**:
+Keeping a budget's recorded facts matching what happened: categorizing bank imports, applying remembered shares, matching transfers and imports, updating amounts as they post, and reconciling. The agent does bookkeeping. It changes what happened, never what the user planned.
+
+**Budgeting decision**:
+Any change to assigned money: a funding plan, overspending coverage, a move between envelopes or to or from Ready to Assign, or a target. Always the user's; the agent never makes or proposes one, and an agent action that would assign is refused. Ready to Assign and category balances may still rise or fall as the consequence of a booked fact, such as income, a refund, or a reclassified transfer.
+
+**Booking**:
+The agent's categorization of a bank import, or of the user's side of a partner's purchase, applied as a reviewed transaction and marked as the agent's work. Manual entries the user typed are never booked. It never waits on the user; one tap corrects it. The agent only sets what is empty or what it set itself, never a choice a user made, and it never invents a share: a share is applied only from the user's precedent, and a new payee is booked as entirely the user's own.
+_Avoid_: Suggestion, suggested category, approval
+
+**Agent status**:
+The agent's current real state: resting, booked overnight, has a question, stuck because a bank needs attention, or learning. Any presence the agent has in the interface, including a character, shows only this status and never asks for anything bookkeeping does not need: no feeding, streaks, or rewards.
+
+**Precedent**:
+A categorization or share the user chose, together with the facts of that import: payee, location and store number, amount, account, day, and time. The agent books with precedent when a new import matches one on the facts that distinguish it from the others, and the booking names that fact. When precedents at one payee disagree, the agent must find the fact that separates them or it is a guess. Payee memory is not precedent: it prefills manual entries with the most recent choice, while the agent reads the user's history.
+_Avoid_: Rule, memorized payee
+
+**Guess**:
+A booking with no precedent that fits. It is still booked, its mark says it was guessed, and the daily review leads with guesses. Correcting a guess makes a precedent; so does leaving it alone after seeing it in a daily review.
+
+**Handoff**:
+The first booking made from a new precedent: the agent watched the user categorize something, and now does it the same way. The daily review names each handoff.
+
+**Evidence**:
+What the agent may reason over: the import record, the user's own budget and history, and the partner ledger entries it already matches against. It may look up public facts about a merchant, such as the location a Costco store number names, but it never sends anything about the user to do so, and it never reaches the user's calendar, email, device location, or the partner's private categories.
+
+**Payee**:
+An imported transaction's payee as the bank provides it: the bank's merchant name when it gives one, otherwise the raw statement descriptor. Caishen never rewrites it, and keeps the raw descriptor on the transaction so it can always be tied back to the card or bank statement.
+
 **Transaction**:
 A single financial activity, such as a purchase or repayment. Its reported amount can change as the activity is finalized without becoming a second purchase or repayment.
 
@@ -80,10 +109,11 @@ The full amount of an actual payment from a person's account. It can differ from
 _Avoid_: Personal share
 
 **Daily review**:
-A daily summary of spending, suggested categories, and automatic transaction updates that points to the persistent review inbox. Individual category suggestions can be corrected and the remaining suggestions approved together.
+A daily account of the agent's work since the user last looked, in this order: the review inbox's questions, then guesses, then handoffs, then the bookings with precedent as a count with a way in. Nothing in it waits on the user; corrections are one tap.
+_Avoid_: Approval queue, suggestions to approve
 
 **Review inbox**:
-A single current list of unresolved items, including transactions awaiting category approval, uncertain matches, and unexplained discrepancies. Items remain until resolved, so missed daily reviews do not create separate reports that must each be cleared.
+A single current list of the agent's questions: uncertain matches, unexplained discrepancies, transfers with no found other side, and anything else where being wrong would misstate money between people or between the user and the bank. Each item is a question with a proposed answer and one-tap acceptance, never a blank form. A category guess is never an inbox item. Items remain until resolved, so missed daily reviews do not create separate reports that must each be cleared.
 
 **Bank connection**:
 One login at one financial institution, authorized through Plaid, through which Caishen receives account updates for the accounts the user shares. Its status is connected, login required, pending disconnect, revoked, or disconnected, and is set from what the institution reports, never inferred from an account going unmentioned.
@@ -114,7 +144,7 @@ The facts inside a mirrored partner entry's source that let either partner's bro
 _Avoid_: Shared category, provisional preview
 
 **Partner's purchase**:
-A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and stays uncategorized, held from Ready to Assign, until you choose your own category for it.
+A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and is held from Ready to Assign until it has your own category, which the agent books from your precedent at that payee or which you choose. Your partner's category is never evidence for it.
 
 **Recorded purchase**:
 A partner ledger entry either partner records for a purchase before the payer's bank import arrives, naming who paid. It counts in both budgets at once; the payer's paired envelope doesn't move until the import pays it, so anything settled toward it meanwhile stays in that envelope.
