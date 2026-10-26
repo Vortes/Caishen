@@ -120,7 +120,8 @@ A list split into groups (plan category groups, the register's date
 headers) heads each group with a header row:
 
 - `--surface-group` fill, `--size-row-lg` tall, `--radius-row` corners,
-  4px above it.
+  4px above it and 4px between it and its first row. Rows within a group
+  stay flush so selection runs join.
 - Name in `--text-secondary` at weight 500; `--text-primary` on hover.
   Group totals in `--text-tertiary` at weight 400.
 - In a column of pills, the header label and group total inset by the
