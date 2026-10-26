@@ -1,6 +1,7 @@
 # Scale tokens
 
-Source: the "Scale" block in `src/styles/tokens.css`. Never write a raw
+Sources: the "Scale" block in `src/styles/tokens.css` and the numeric
+positioning tokens in `src/components/ui/tokens.ts`. Never write a raw
 `px` value for a font size, a control height, or a corner radius; use the
 token. Raw pixels are fine for one-off geometry such as icon offsets and
 hairline insets.
@@ -76,6 +77,16 @@ Popovers are `--size-popover` (320px) wide.
 | `--space-row-x`  | 14px  | A row's horizontal padding         |
 | `--space-card`   | 16px  | A card's padding                   |
 
+The trigger gap is `POPOVER_GAP` (6px), exported from
+`src/components/ui/tokens.ts`. Use `sideOffset={POPOVER_GAP}` for every
+popover, dropdown menu, and tooltip. Radix takes a pixel number, so this
+token is TypeScript rather than a CSS custom property. Never hardcode a
+separate gap or omit the offset, which defaults to zero.
+
+This is the space between the trigger button and the floating surface.
+It does not replace internal padding (`--space-inset`, `--space-card`)
+or `collisionPadding`, which keeps the surface inside the viewport.
+
 ## Radii
 
 Inner radii are fixed. An outer radius is the inner radius plus the padding
@@ -100,3 +111,17 @@ Hover and press feedback is 150ms on color and 100ms on transform. A
 skeleton's shine takes `--duration-shimmer` (1600ms) per pass. Under
 `prefers-reduced-motion`, panel motion is 0ms and skeletons hold still;
 never add animation that ignores it.
+
+Frequent-use popovers and dropdown menus open and close instantly. Only
+occasional secondary actions opt into the [surface motion pattern](surfaces.md#popover-and-dropdown-menu-motion):
+
+| Token                      | Value | Use                                |
+| -------------------------- | ----- | ---------------------------------- |
+| `--duration-popover-enter` | 180ms | Entrance with `--ease-panel`       |
+| `--duration-popover-exit`  | 120ms | Exit with `ease-in`                |
+| `--scale-popover`          | 0.97  | Starting and exiting scale         |
+| `--distance-popover`       | 4px   | Entrance offset toward the trigger |
+
+Use the shared motion stylesheet and hook rather than copying transitions or
+timings. Keyboard opening and `prefers-reduced-motion: reduce` are instant.
+Keep popup triggers stationary during press so the positioned surface cannot jump.

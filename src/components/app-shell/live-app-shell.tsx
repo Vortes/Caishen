@@ -452,16 +452,6 @@ function LiveWorkspace({
         `Rejected ${count(transactionIds)}`,
       );
     },
-    categorize: (transactionIds, categoryId) =>
-      run(
-        {
-          type: "transaction.categorize.batch",
-          id: newId(),
-          transactionIds,
-          categoryId,
-        },
-        `Categorized ${count(transactionIds)}`,
-      ),
   };
   const saveImportedTransaction = async (
     item: (typeof imports)[number],
@@ -550,28 +540,34 @@ function LiveWorkspace({
       );
       return null;
     },
-    saveShares: (changes, refused) => {
+    saveSelection: (changes, action, refused) => {
       const queuedIds: string[] = [];
       const failures: { payee: string; message: string }[] = [];
       let remaining = changes.length;
-      for (const { rowId, imported, command, summary } of changes) {
+      for (const { rowIds, imported, command, summary } of changes) {
         shownInPlace.current.add(command.id);
         const settled = (result: Settled) => {
           remaining--;
           if (!result.ok) {
             failures.push({
-              payee: "payee" in command ? command.payee : summary,
+              payee:
+                ("payee" in command ? command.payee : undefined) ??
+                count(rowIds),
               message: result.message,
             });
-            refused(rowId);
+            rowIds.forEach(refused);
             notify(
-              `Couldn’t share ${failures.map((item) => item.payee).join(", ")}. ${[...new Set(failures.map((item) => item.message))].join(" ")}`,
+              `Couldn’t ${action} ${failures.map((item) => item.payee).join(", ")}. ${[...new Set(failures.map((item) => item.message))].join(" ")}`,
               "attention",
             );
           } else {
             shownInPlace.current.delete(command.id);
             if (remaining === 0 && !failures.length)
-              notify(`Shared ${count(queuedIds)}`, "neutral", command.id);
+              notify(
+                `${action === "share" ? "Shared" : "Categorized"} ${count(queuedIds)}`,
+                "neutral",
+                command.id,
+              );
           }
         };
         const result = imported
@@ -581,7 +577,7 @@ function LiveWorkspace({
           shownInPlace.current.delete(command.id);
           return { queuedIds, error: result.message };
         }
-        queuedIds.push(rowId);
+        queuedIds.push(...rowIds);
       }
       return { queuedIds };
     },

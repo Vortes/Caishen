@@ -100,6 +100,7 @@
 
 /* The menu takes the trigger's width, on the popover surface. */
 .menu {
+  composes: content from "../ui/popover-motion.module.css";
   z-index: 60;
   width: var(--radix-dropdown-menu-trigger-width);
   min-width: 260px;
@@ -109,14 +110,6 @@
   background: var(--surface-raised);
   box-shadow: var(--shadow-drawer);
   font-size: var(--type-body);
-  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
-  animation: menu-in 150ms var(--ease-panel);
-}
-@keyframes menu-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
 }
 .option {
   display: flex;
@@ -181,11 +174,5 @@
   .option,
   .check {
     min-height: 44px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .menu {
-    animation: none;
   }
 }

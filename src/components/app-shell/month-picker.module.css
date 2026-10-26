@@ -1,4 +1,5 @@
 .popover {
+  composes: content from "../ui/popover-motion.module.css";
   z-index: 60;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-menu);
@@ -6,19 +7,6 @@
   box-shadow: var(--shadow-drawer);
   color: var(--text-secondary);
   font-size: var(--type-body);
-  transform-origin: var(--radix-popover-content-transform-origin);
-  animation: popover-in 150ms var(--ease-panel);
-}
-@keyframes popover-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .popover {
-    animation: none;
-  }
 }
 
 .monthTrigger {

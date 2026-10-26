@@ -8,6 +8,8 @@ import { newId, parseMoney, today } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import type { Command } from "~/domain/engine";
 import { useTransactionEntry } from "./transaction-entry";
 import styles from "./account-entry.module.css";
@@ -20,6 +22,7 @@ export function AccountEntry() {
   const container = usePortalContainer();
   const id = useId();
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open, "occasional");
   const { holdOpen } = entry;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const [name, setName] = useState("");
@@ -90,8 +93,10 @@ export function AccountEntry() {
       <Popover.Portal container={container}>
         <Popover.Content
           className={styles.popover}
+          {...motion}
           side="top"
           align="start"
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
         >
           <form

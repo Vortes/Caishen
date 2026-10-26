@@ -1,5 +1,6 @@
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
+import type { BankImport } from "./import-draft";
 import { isCleared, isCounterparty, type Command } from "~/domain/engine";
 import {
   classifyRegisterEntry,
@@ -14,6 +15,13 @@ import {
 import { budgetDay } from "~/domain/user-command";
 
 type Transaction = View["budget"]["transactions"][number];
+
+export type PreparedTransactionChange = {
+  rowIds: string[];
+  imported?: BankImport;
+  command: Command;
+  summary: string;
+};
 
 export { READY_TO_ASSIGN } from "~/domain/transfers";
 

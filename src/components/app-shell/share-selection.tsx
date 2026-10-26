@@ -10,6 +10,8 @@ import {
 } from "~/components/transactions/transaction-share";
 import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { usePopoverMotion } from "~/components/ui/popover-motion";
+import { POPOVER_GAP } from "~/components/ui/tokens";
 import { money, type Transaction } from "./model";
 import { ShareChoices, useShareParties } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
@@ -34,6 +36,7 @@ export function ShareSelection({
   const categoryInput = useRef<HTMLInputElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const motion = usePopoverMotion(open);
   const [targets, setTargets] = useState<Transaction[]>([]);
   const [choice, setChoice] = useState<ShareChoice | null>(null);
   const [categoryId, setCategoryId] = useState("");
@@ -114,12 +117,15 @@ export function ShareSelection({
           Share
         </Button>
       </Popover.Trigger>
+      {/* Register after Trigger to replace its default anchor. */}
+      <Popover.Anchor className={styles.islandAnchor} aria-hidden />
       <Popover.Portal container={container}>
         <Popover.Content
+          {...motion}
           className={`${moveStyles.popover} ${styles.sharePopover}`}
           side="top"
           align="end"
-          sideOffset={8}
+          sideOffset={POPOVER_GAP}
           collisionPadding={12}
           aria-label="Share selected transactions"
           onKeyDown={(event) => event.stopPropagation()}
@@ -160,6 +166,7 @@ export function ShareSelection({
                         value={categoryId}
                         options={options}
                         wide={false}
+                        placement="inline"
                         placeholder="Choose a category"
                         onChange={setCategoryId}
                         inputRef={categoryInput}

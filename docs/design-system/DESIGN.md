@@ -43,7 +43,7 @@ you use.
 | [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`            |
 | [rows.md](rows.md)         | Shared row-selection outline, grouping, states, motion      |
 | [labels.md](labels.md)     | `Tag`, the review dot                                       |
-| [surfaces.md](surfaces.md) | `Card`, `Tooltip`, portals                                  |
+| [surfaces.md](surfaces.md) | `Card`, `Tooltip`, popover spacing and motion, portals      |
 | [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                      |
 | [loading.md](loading.md)   | `Skeleton`, and which loading state to use                  |
 
@@ -61,6 +61,7 @@ the screen needs the missing primitive. Never invent a new primitive inline.
   Spending Breakdown / Trends report tabs.
 - **Form fields**: text inputs, selects, amount fields.
 - **Popover and dialog surfaces**: the shell styles its own popover.
+  Every popover follows the shared gap and motion rules in [surfaces.md](surfaces.md).
   For a confirm dialog, use Radix `AlertDialog` with that surface, Cancel
   as `secondary`, and the confirm as `danger` or `primary`.
 - **Base styles**: the focus ring (`--focus-ring`, 2px) and the button font

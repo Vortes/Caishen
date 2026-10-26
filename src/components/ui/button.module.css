@@ -34,7 +34,7 @@
   width: 13px;
   height: 13px;
 }
-.button:active:not(:disabled) {
+.button:active:not(:disabled, [aria-haspopup], [aria-expanded="true"]) {
   transform: scale(0.97);
 }
 .button:disabled {
@@ -60,6 +60,16 @@
 .button[data-variant="secondary"][aria-pressed="true"] {
   border-color: var(--control-border-active);
   background: var(--control-bg-active);
+  color: var(--text-primary);
+}
+
+.button[data-variant="subtle"] {
+  background: none;
+  color: var(--text-secondary);
+}
+.button[data-variant="subtle"]:hover:not(:disabled),
+.button[data-variant="subtle"]:focus-visible:not(:disabled) {
+  background: var(--control-bg-hover);
   color: var(--text-primary);
 }
 
