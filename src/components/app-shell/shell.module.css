@@ -698,6 +698,11 @@
   container-type: inline-size;
   outline: none;
 }
+/* With overlay scrollbars, the list's scrollbar shows only while it scrolls
+   (see AppShell): Firefox flashes it on load and on every resize. */
+.root[data-overlay-scrollbars] .content:not([data-scrolling]) {
+  scrollbar-width: none;
+}
 
 /* ---------- Controls: Linear-style filled pills ---------- */
 
@@ -715,8 +720,9 @@
 .handle[data-side="left"] {
   left: calc(var(--space-gutter) * -1 - 2px);
 }
+/* Details: over the gap before the cards, the list's 16px side padding. */
 .handle[data-side="right"] {
-  left: 0;
+  left: -14px;
 }
 /* Linear-style resize affordance: a 1px beam that stops short of the ends
    and fades out toward them. The short delay keeps it quiet when the cursor
@@ -775,7 +781,9 @@
   flex-direction: column;
   gap: var(--space-stack);
   height: 100%;
-  padding: 0 var(--space-inset) var(--space-inset) 12px;
+  /* No left padding: the list's 16px side padding is the gap before the
+     cards, matching its inset from the panel's left edge. */
+  padding: 0 var(--space-inset) var(--space-inset) 0;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -2017,22 +2025,12 @@ button.actionItem:disabled {
 .snoozeRow[data-disabled] {
   cursor: default;
 }
-.snoozeText {
+.snoozeLabel {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.snoozeLabel {
   color: var(--text-primary);
   font-weight: 500;
 }
 .snoozeRow[data-disabled] .snoozeLabel {
   color: var(--text-secondary);
-}
-.snoozeHint {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
 }
