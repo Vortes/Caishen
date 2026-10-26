@@ -1114,6 +1114,13 @@ button.actionItem:disabled {
 .groupRow:hover {
   color: var(--text-primary);
 }
+/* The same 4px below a header as above it, so the first category's hover
+   and selection surfaces don't butt against the header. Categories stay
+   flush with each other so a selection run reads as one shape. */
+.groupRow + .row,
+.rowWrap:has(> .groupRow) + .rowWrap {
+  margin-top: 4px;
+}
 .groupRow .numeric {
   color: var(--text-tertiary);
   font-weight: 400;
