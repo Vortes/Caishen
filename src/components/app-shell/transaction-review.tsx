@@ -106,7 +106,8 @@ export function SelectAll({
               ? true
               : "indeterminate"
         }
-        onCheckedChange={(value) => onCheck(all, value === true)}
+        // With anything checked, the box clears the selection.
+        onCheckedChange={() => onCheck(all, selected.length === 0)}
       />
     </label>
   );
