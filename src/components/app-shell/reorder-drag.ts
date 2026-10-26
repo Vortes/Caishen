@@ -10,8 +10,8 @@ import {
 
 // Dragging a row to reorder its list, like YNAB's plan: the grabbed row
 // follows the pointer and a gap opens where it will land. On release it
-// settles into the gap. The plan drags category groups, each folded to its
-// header while one moves; the sidebar drags accounts within their section.
+// settles into the gap. The plan drags groups or categories within a group;
+// the sidebar drags accounts within their section.
 
 // How far a press travels before it's a drag rather than a click.
 const THRESHOLD = 4;
@@ -74,7 +74,9 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
     // Every row is the same height while dragging, so the slots are evenly
     // spaced from the first.
     const slots = () => {
-      const wraps = list.querySelectorAll<HTMLElement>("[data-reorder-slot]");
+      const wraps = list.querySelectorAll<HTMLElement>(
+        ":scope > [data-reorder-slot]",
+      );
       const first = wraps[0]?.offsetTop ?? 0;
       const pitch = wraps[1] ? wraps[1].offsetTop - first : 1;
       return { first, pitch };

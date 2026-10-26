@@ -463,14 +463,6 @@ export function toShellData(
   );
   if (people && !view.budget.groups?.includes(people.name))
     groups.unshift(...groups.splice(groups.indexOf(people), 1));
-  // People's envelopes follow their accounts' order in the sidebar.
-  if (people) {
-    const place = (category: Category) =>
-      view.accounts.findIndex(
-        (account) => account.id === category.pairs?.accountId,
-      );
-    people.categories.sort((a, b) => place(a) - place(b));
-  }
 
   const active = view.budget.transactions.filter((item) => !item.removed);
   const imported = balanceImports(view.budget, state.imports, todayKey);

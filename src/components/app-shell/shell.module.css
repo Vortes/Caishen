@@ -1139,7 +1139,8 @@ button.actionItem:disabled {
    and selection surfaces don't butt against the header. Categories stay
    flush with each other so a selection run reads as one shape. */
 .groupRow + .row,
-.rowWrap:has(> .groupRow) + .rowWrap {
+.rowWrap:has(> .groupRow) + .rowWrap,
+.rowWrap:has(> .groupRow) + .categoryList {
   margin-top: 4px;
 }
 .groupRow .numeric {
@@ -1218,24 +1219,34 @@ button.actionItem:disabled {
 .planList {
   position: relative;
 }
+.categoryList {
+  position: relative;
+}
 .planList .rowName {
   padding-left: 20px;
 }
 .planList[data-dragging],
-.planList[data-dragging] * {
+.planList[data-dragging] *,
+.categoryList[data-dragging],
+.categoryList[data-dragging] * {
   cursor: grabbing;
 }
-.planList[data-dragging] [data-reorder-slot] {
+.planList[data-dragging] [data-reorder-slot],
+.categoryList[data-dragging] > [data-reorder-slot] {
   pointer-events: none;
 }
-.dropSlot {
+.dropSlot,
+.categoryDropSlot {
   height: var(--size-row-lg);
-  margin-top: 4px;
   border-radius: 6px;
   background: var(--surface-app);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
-.groupGhost {
+.dropSlot {
+  margin-top: 4px;
+}
+.groupGhost,
+.categoryGhost {
   position: absolute;
   z-index: 3;
   top: 0;
@@ -1244,6 +1255,14 @@ button.actionItem:disabled {
   left: 16px;
   pointer-events: none;
   will-change: transform;
+}
+.categoryGhost {
+  right: 0;
+  left: 0;
+}
+.categoryGhost .row {
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
 }
 /* Folded, like every group while one is dragged. */
 .groupGhost .groupCaret {
