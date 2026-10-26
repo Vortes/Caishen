@@ -200,12 +200,15 @@ export function AppShell({
   const [checked, setChecked] = useState<string[]>(() =>
     screen.type === "register" && selectedId ? [selectedId] : [],
   );
-  const check = (ids: string[], value: boolean) =>
+  // Unchecking the selected row deselects it, as clicking it again does.
+  const check = (ids: string[], value: boolean) => {
+    if (!value && selectedId && ids.includes(selectedId)) setSelectedId(null);
     setChecked((current) =>
       value
         ? [...new Set([...current, ...ids])]
         : current.filter((id) => !ids.includes(id)),
     );
+  };
   const selectedActions = transactionSelectionActions(
     transactions.filter((transaction) => checked.includes(transaction.id)),
   );
