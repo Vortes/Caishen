@@ -67,7 +67,7 @@ function currentMonth(zone: string) {
 }
 // A user's bank connections as the app reads them with their imports.
 const savedBankConnections = async (db: Database, userId: string) => {
-  await migrateBankAccounts(db, userId);
+  await migrateBankAccounts(db, userId, { reportUnreadable: false });
   return withBankAccountSuccessors(
     db,
     db.bankConnection.findMany({

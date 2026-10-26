@@ -42,15 +42,18 @@ export const connectionColumnSchema = z
   })
   .strict();
 
-export function decodeLegacyBankAccounts(connection: {
-  id: string;
-  clerkUserId: string;
-  imports: unknown;
-  accountMappings?: unknown;
-}) {
+export function decodeLegacyBankAccounts(
+  connection: {
+    id: string;
+    clerkUserId: string;
+    imports: unknown;
+    accountMappings?: unknown;
+  },
+  { reportUnreadable: report = true }: { reportUnreadable?: boolean } = {},
+) {
   const column = connectionColumnSchema.safeParse(connection.imports);
   const links = mappingsSchema.safeParse(connection.accountMappings ?? {});
-  if (!column.success)
+  if (!column.success && report)
     reportUnreadable(
       {
         record: "BankConnection.imports",
@@ -59,7 +62,7 @@ export function decodeLegacyBankAccounts(connection: {
       },
       [{ issues: zodIssues(column.error) }],
     );
-  if (!links.success)
+  if (!links.success && report)
     reportUnreadable(
       {
         record: "BankConnection.accountMappings",
@@ -74,7 +77,11 @@ export function decodeLegacyBankAccounts(connection: {
 }
 
 /** Copy legacy identities and links once, while the rollback writer is locked out. */
-export async function migrateBankAccounts(db: Database, userId: string) {
+export async function migrateBankAccounts(
+  db: Database,
+  userId: string,
+  options: { reportUnreadable?: boolean } = {},
+) {
   const legacy = await db.bankConnection.findMany({
     where: { clerkUserId: userId, bankAccounts: { none: {} } },
     select: { id: true },
@@ -98,7 +105,7 @@ export async function migrateBankAccounts(db: Database, userId: string) {
           },
         });
         for (const connection of connections) {
-          const legacy = decodeLegacyBankAccounts(connection);
+          const legacy = decodeLegacyBankAccounts(connection, options);
           if (!legacy) continue;
           const { column, links } = legacy;
           const accounts = new Map(
