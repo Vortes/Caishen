@@ -3170,18 +3170,78 @@ void test("an unreadable provider account puts only its connection under mainten
   assert.match((await h.state()).connections[0]!.error!, /under maintenance/);
 });
 
-void test("imports naming a retired provider id still reach its live linked account", async () => {
+void test("imports follow retired provider chains across connections while preserving their original opening boundary", async () => {
   const h = await linkedHarness();
-  const record = applyTransactionSync(
+  const before = await h.state();
+  const opening = applyTransactionSync(
     [],
-    { added: [importFact("retired-id-purchase")], modified: [], removed: [] },
+    { added: [importFact("opening-purchase")], modified: [], removed: [] },
     h.connection.id,
-  ).records[0]!;
-  await h.setImports({ records: [record] });
+  ).records;
+  const records = applyTransactionSync(
+    opening,
+    {
+      added: [
+        importFact("retired-id-purchase"),
+        { ...importFact("before-original-start"), date: "2026-10-01" },
+      ],
+      modified: [],
+      removed: [],
+    },
+    h.connection.id,
+  ).records;
+  await h.setImports({ records });
   await h.setMappings({});
+  const workspaceId = (await readHouseholdRevision(db, alice))!.workspaceId;
+  const sourceLink = {
+    workspaceId,
+    userId: alice,
+    accountId: "cash",
+    startDate: "2026-10-10",
+    openingSnapshot: openingSnapshot(opening, "provider-checking"),
+    unlinkedAt: new Date(),
+  };
+  const source = await db.bankAccount.upsert({
+    where: {
+      connectionId_providerAccountId: {
+        connectionId: h.connection.id,
+        providerAccountId: "provider-checking",
+      },
+    },
+    create: {
+      connectionId: h.connection.id,
+      providerAccountId: "provider-checking",
+      name: "Checking",
+      type: "depository",
+      status: "retired",
+      link: { create: sourceLink },
+    },
+    update: {
+      status: "retired",
+      link: { upsert: { create: sourceLink, update: sourceLink } },
+    },
+  });
+  const intermediateConnection = await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: `intermediate-${randomUUID()}`,
+      encryptedToken: "",
+      imports: {},
+      accountMappings: {},
+    },
+  });
+  const replacementConnection = await db.bankConnection.create({
+    data: {
+      clerkUserId: alice,
+      itemId: `replacement-${randomUUID()}`,
+      encryptedToken: "",
+      imports: {},
+      accountMappings: {},
+    },
+  });
   const replacement = await db.bankAccount.create({
     data: {
-      connectionId: h.connection.id,
+      connectionId: replacementConnection.id,
       providerAccountId: "provider-replacement",
       name: "Checking",
       type: "depository",
@@ -3192,30 +3252,56 @@ void test("imports naming a retired provider id still reach its live linked acco
       historyComplete: true,
       link: {
         create: {
-          workspaceId: (await readHouseholdRevision(db, alice))!.workspaceId,
+          workspaceId,
           userId: alice,
           accountId: "cash",
-          startDate: "2026-10-01",
+          startDate: "2026-10-25",
         },
       },
     },
   });
-  await db.bankAccount.create({
+  const intermediate = await db.bankAccount.create({
     data: {
-      connectionId: h.connection.id,
-      providerAccountId: "provider-checking",
+      connectionId: intermediateConnection.id,
+      providerAccountId: "provider-intermediate",
       name: "Checking",
       type: "depository",
       status: "retired",
       supersededById: replacement.id,
+      link: {
+        create: {
+          workspaceId,
+          userId: alice,
+          accountId: "cash",
+          startDate: "2026-10-22",
+          unlinkedAt: new Date(),
+        },
+      },
     },
   });
+  await db.bankAccount.update({
+    where: { id: source.id },
+    data: { supersededById: intermediate.id },
+  });
   const result = await h.state();
+  assert.equal(
+    result.connections.find((connection) => connection.id === h.connection.id)!
+      .error,
+    "Reconnect your bank",
+  );
+  assert.deepEqual(result.view, before.view);
+  assert.equal(result.imports.length, 1);
   assert.equal(result.imports[0]?.accountId, "cash");
   assert.equal(result.imports[0]?.providerAccountId, "provider-checking");
-  assert.deepEqual(Object.keys(result.connections[0]!.accountMappings), [
-    "provider-replacement",
-  ]);
+  assert.deepEqual(
+    Object.keys(
+      result.connections.find(
+        (connection) => connection.id === replacementConnection.id,
+      )!.accountMappings,
+    ),
+    ["provider-replacement"],
+  );
+  assert.deepEqual(await bankInbox(db, alice), result.imports);
   await assert.rejects(
     h.api.budget.execute({
       baseRevision: result.revision,

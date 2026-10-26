@@ -1,5 +1,7 @@
 import {
   bankAccountRowsSelection,
+  withBankAccountSuccessors,
+  type BankAccountSuccessor,
   lockBankConnections,
   readBankAccountRows,
 } from "./bank-account-rows";
@@ -152,6 +154,7 @@ type StoredConnection = {
   accountMappings: unknown;
   unavailableAccountIds?: string[];
   bankAccounts?: Prisma.BankAccountGetPayload<{ include: { link: true } }>[];
+  bankAccountSuccessors?: BankAccountSuccessor[];
 };
 export type ReadConnection<C extends StoredConnection = StoredConnection> =
   | {
@@ -166,7 +169,10 @@ export type ReadConnection<C extends StoredConnection = StoredConnection> =
 export type ImportStates = ReadonlyMap<string, ImportRowState | "unreadable">;
 
 function readColumn<T>(
-  connection: Pick<StoredConnection, "id" | "clerkUserId" | "bankAccounts">,
+  connection: Pick<
+    StoredConnection,
+    "id" | "clerkUserId" | "bankAccounts" | "bankAccountSuccessors"
+  >,
   record: "BankConnection.imports" | "BankConnection.accountMappings",
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   value: unknown,
@@ -407,10 +413,13 @@ export async function linkBankToken(
 ) {
   try {
     const connection = connectionId
-      ? await db.bankConnection.findFirst({
-          include: { bankAccounts: bankAccountRowsSelection },
-          where: { id: connectionId, clerkUserId: userId },
-        })
+      ? await withBankAccountSuccessors(
+          db,
+          db.bankConnection.findFirst({
+            include: { bankAccounts: bankAccountRowsSelection },
+            where: { id: connectionId, clerkUserId: userId },
+          }),
+        )
       : null;
     if (connectionId && !connection) throw new TRPCError({ code: "NOT_FOUND" });
     if (connection) {
@@ -470,10 +479,13 @@ export async function exchangeBankToken(
             message:
               "Another bank connection is being saved. Wait for it to finish and try again.",
           });
-        const connections = await tx.bankConnection.findMany({
-          include: { bankAccounts: bankAccountRowsSelection },
-          where: { clerkUserId: userId },
-        });
+        const connections = await withBankAccountSuccessors(
+          tx,
+          tx.bankConnection.findMany({
+            include: { bankAccounts: bankAccountRowsSelection },
+            where: { clerkUserId: userId },
+          }),
+        );
         for (const saved of connections) {
           const details = readColumn(
             saved,
@@ -510,10 +522,13 @@ export async function exchangeBankToken(
             });
         }
         const result = await client().exchangePublicToken(publicToken);
-        const existing = await tx.bankConnection.findUnique({
-          include: { bankAccounts: bankAccountRowsSelection },
-          where: { itemId: result.itemId },
-        });
+        const existing = await withBankAccountSuccessors(
+          tx,
+          tx.bankConnection.findUnique({
+            include: { bankAccounts: bankAccountRowsSelection },
+            where: { itemId: result.itemId },
+          }),
+        );
         if (existing && existing.clerkUserId !== userId)
           throw new TRPCError({
             code: "CONFLICT",
@@ -625,10 +640,13 @@ async function refreshBankAccounts(
   userId: string,
   connectionId: string,
 ) {
-  const requested = await db.bankConnection.findFirst({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { id: connectionId, clerkUserId: userId },
-  });
+  const requested = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findFirst({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { id: connectionId, clerkUserId: userId },
+    }),
+  );
   if (!requested) throw new TRPCError({ code: "NOT_FOUND" });
   requireAccountWrites(requested);
   requireConnected(requested);
@@ -700,10 +718,13 @@ export async function reconnectBank(
   connectionId: string,
 ): Promise<{ id: string; warning?: string }> {
   try {
-    const connection = await db.bankConnection.findFirst({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { id: connectionId, clerkUserId: userId },
-    });
+    const connection = await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findFirst({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { id: connectionId, clerkUserId: userId },
+      }),
+    );
     if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
     requireAccountWrites(connection);
     requireConnected(connection);
@@ -809,10 +830,13 @@ async function prepareDuplicateBankRepair(
     throw new Error("Choose two different connections.");
   const opened = await openHousehold(db, userId);
   if (opened?.ledger.status !== "ready") throw budgetMaintenance();
-  const connections = await db.bankConnection.findMany({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { clerkUserId: userId },
-  });
+  const connections = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { clerkUserId: userId },
+    }),
+  );
   const imports = readImportStates(opened.household.rows, userId);
   const read = (id: string) => {
     const connection = connections.find((item) => item.id === id);
@@ -1115,10 +1139,13 @@ export async function repairDuplicateBankAccounts(
 
 export async function bankInbox(db: Database, userId: string) {
   const [connections, opened] = await Promise.all([
-    db.bankConnection.findMany({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { clerkUserId: userId },
-    }),
+    withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { clerkUserId: userId },
+      }),
+    ),
     openHousehold(db, userId),
   ]);
   if (opened && opened.ledger.status !== "ready") throw budgetMaintenance();
@@ -1274,10 +1301,13 @@ async function openConnection(
   connectionId: string,
   options: { writeAccountDetails?: boolean } = {},
 ) {
-  const connection = await db.bankConnection.findFirst({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { id: connectionId, clerkUserId: userId },
-  });
+  const connection = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findFirst({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { id: connectionId, clerkUserId: userId },
+    }),
+  );
   if (!connection) throw new TRPCError({ code: "NOT_FOUND" });
   if (options.writeAccountDetails) requireAccountWrites(connection);
   const opened = await requireHousehold(db, userId);
@@ -1385,10 +1415,13 @@ export async function setupBankAccounts(
         message:
           "Update your bank accounts before setup so today's opening balances include the latest activity.",
       });
-    const connections = await db.bankConnection.findMany({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { clerkUserId: userId },
-    });
+    const connections = await withBankAccountSuccessors(
+      db,
+      db.bankConnection.findMany({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { clerkUserId: userId },
+      }),
+    );
     const allMappings = connectionMappings(connections);
     const remainingMappings = allMappings.map((mapping) => ({ ...mapping }));
     const details = connections.map((saved) => {
@@ -1773,10 +1806,13 @@ export async function setupBankAccounts(
 }
 
 export async function syncBanks(db: Database, userId: string) {
-  const connections = await db.bankConnection.findMany({
-    include: { bankAccounts: bankAccountRowsSelection },
-    where: { clerkUserId: userId },
-  });
+  const connections = await withBankAccountSuccessors(
+    db,
+    db.bankConnection.findMany({
+      include: { bankAccounts: bankAccountRowsSelection },
+      where: { clerkUserId: userId },
+    }),
+  );
   if (!connections.length)
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
@@ -1917,10 +1953,13 @@ async function applyBankUpdate(
   accounts: Awaited<ReturnType<PlaidClient["getAccounts"]>>,
 ) {
   const [fresh, opened] = await Promise.all([
-    db.bankConnection.findFirstOrThrow({
-      include: { bankAccounts: bankAccountRowsSelection },
-      where: { id: connection.id, clerkUserId: userId },
-    }),
+    withBankAccountSuccessors(
+      db,
+      db.bankConnection.findFirstOrThrow({
+        include: { bankAccounts: bankAccountRowsSelection },
+        where: { id: connection.id, clerkUserId: userId },
+      }),
+    ),
     requireHousehold(db, userId),
   ]);
   if (

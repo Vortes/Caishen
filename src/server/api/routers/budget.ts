@@ -1,4 +1,7 @@
-import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
+import {
+  bankAccountRowsSelection,
+  withBankAccountSuccessors,
+} from "~/server/services/bank-account-rows";
 import {
   createPartnerInvite,
   checkPartnerInvite,
@@ -62,21 +65,24 @@ function currentMonth(zone: string) {
 }
 // A user's bank connections as the app reads them with their imports.
 const savedBankConnections = (db: Database, userId: string) =>
-  db.bankConnection.findMany({
-    where: { clerkUserId: userId },
-    select: {
-      id: true,
-      clerkUserId: true,
-      itemId: true,
-      lastSyncedAt: true,
-      lastAttemptAt: true,
-      error: true,
-      accountMappings: true,
-      unavailableAccountIds: true,
-      imports: true,
-      bankAccounts: bankAccountRowsSelection,
-    },
-  });
+  withBankAccountSuccessors(
+    db,
+    db.bankConnection.findMany({
+      where: { clerkUserId: userId },
+      select: {
+        id: true,
+        clerkUserId: true,
+        itemId: true,
+        lastSyncedAt: true,
+        lastAttemptAt: true,
+        error: true,
+        accountMappings: true,
+        unavailableAccountIds: true,
+        imports: true,
+        bankAccounts: bankAccountRowsSelection,
+      },
+    }),
+  );
 
 // The partner's first name from their profile, which names the partner
 // account in the shell.
