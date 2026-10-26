@@ -20,6 +20,7 @@ export type Settings = {
   palette: string | null;
   // The plan's focused view; like YNAB, remembered on this device.
   planView: PlanView | null;
+  sidebarSectionOrder: string[];
 };
 
 export const defaults: Settings = {
@@ -28,12 +29,22 @@ export const defaults: Settings = {
   theme: "dark",
   palette: null,
   planView: null,
+  sidebarSectionOrder: ["cash", "credit", "tracking", "people", "loans"],
 };
 
 function parse(saved: string | null): Settings {
-  return saved
-    ? { ...defaults, ...(JSON.parse(saved) as Partial<Settings>) }
-    : defaults;
+  if (!saved) return defaults;
+  const { peopleBefore, ...stored } = JSON.parse(saved) as Partial<Settings> & {
+    peopleBefore?: string | null;
+  };
+  const settings = { ...defaults, ...stored };
+  if (!stored.sidebarSectionOrder && peopleBefore !== undefined) {
+    const order = defaults.sidebarSectionOrder.filter((id) => id !== "people");
+    const before = order.indexOf(peopleBefore ?? "");
+    order.splice(before < 0 ? order.length : before, 0, "people");
+    settings.sidebarSectionOrder = order;
+  }
+  return settings;
 }
 
 // The settings saved on this device, read once.

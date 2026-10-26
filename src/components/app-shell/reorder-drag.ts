@@ -74,7 +74,9 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
     // Every row is the same height while dragging, so the slots are evenly
     // spaced from the first.
     const slots = () => {
-      const wraps = list.querySelectorAll<HTMLElement>("[data-reorder-slot]");
+      const wraps = list.querySelectorAll<HTMLElement>(
+        ":scope > [data-reorder-slot]",
+      );
       const first = wraps[0]?.offsetTop ?? 0;
       const pitch = wraps[1] ? wraps[1].offsetTop - first : 1;
       return { first, pitch };
