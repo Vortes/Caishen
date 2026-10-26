@@ -1,5 +1,6 @@
 import {
   applyChangeSet,
+  composeChangeSets,
   changeSetVisibleTo,
   executeRevert,
   rowsIn,
@@ -7,6 +8,7 @@ import {
   toRowSet,
 } from "~/domain/change-sets";
 import { canonicalJson } from "~/domain/canonical-json";
+import { rejectImportChange } from "~/domain/bank-import-rejection";
 import {
   AccountingError,
   addMember,
@@ -21,6 +23,9 @@ import {
 import {
   bookToRows,
   rowKeyParts,
+  rowKey,
+  type WireRow,
+  diffRows,
   rowsToBook,
   rowVisibleTo,
   type ChangeSet,
@@ -85,6 +90,122 @@ export class FakeServer {
 
   book(): Book {
     return rowsToBook(rowsIn(this.rows));
+  }
+
+  seedImports(
+    userId: string,
+    imports: { connectionId: string; logicalId: string }[],
+  ) {
+    const rows: WireRow[] = imports.flatMap((item, sort) => {
+      const id = rowKey(userId, item.connectionId, item.logicalId);
+      if (this.rows.get("bankImport")?.has(id)) return [];
+      return [
+        {
+          table: "bankImport",
+          id,
+          revision: this.revision,
+          deleted: false,
+          data: {
+            userId,
+            sort,
+            connectionId: item.connectionId,
+            logicalId: item.logicalId,
+            record: { id: item.logicalId },
+          },
+        },
+      ];
+    });
+    this.rows = applyChangeSet(this.rows, {
+      operationId: "",
+      revision: this.revision,
+      before: [],
+      after: rows,
+    });
+  }
+
+  rejectImport(
+    userId: string,
+    input: {
+      operationId?: string;
+      connectionId: string;
+      logicalId: string;
+      expectedFingerprint?: string;
+      decidedAt?: string;
+    },
+  ): ExecuteResult {
+    const operationId = input.operationId!;
+    const previous = this.operations.get(operationId);
+    if (previous)
+      return {
+        revision: previous.revision,
+        changeSet: previous.changeSet,
+        rebased: false,
+      };
+    const changeSet = {
+      ...rejectImportChange(
+        this.rows,
+        userId,
+        input.connectionId,
+        input.logicalId,
+        input.expectedFingerprint!,
+        input.decidedAt ?? new Date().toISOString(),
+      ),
+      operationId,
+    };
+    return {
+      ...this.commit(userId, canonicalJson(input), changeSet),
+      rebased: false,
+    };
+  }
+
+  resolveImportRow(
+    userId: string,
+    input: {
+      connectionId: string;
+      logicalId: string;
+      expectedFingerprint?: string;
+      command?: Command;
+    },
+    result: ExecuteResult,
+  ): ExecuteResult {
+    if (
+      !result.changeSet ||
+      !input.command ||
+      !("transactionId" in input.command)
+    )
+      return result;
+    const row = this.rows
+      .get("bankImport")
+      ?.get(rowKey(userId, input.connectionId, input.logicalId));
+    if (row?.table !== "bankImport" || !row.data) return result;
+    const changeSet = composeChangeSets(result.changeSet.operationId, [
+      result.changeSet,
+      {
+        operationId: "",
+        revision: 0,
+        ...diffRows(
+          [row],
+          [
+            {
+              ...row,
+              data: {
+                ...row.data,
+                resolved: {
+                  fingerprint: input.expectedFingerprint,
+                  transactionId: input.command.transactionId,
+                  decidedAt: new Date().toISOString(),
+                },
+              },
+            },
+          ],
+        ),
+      },
+    ]);
+    const stamped = stampChangeSet(changeSet, result.revision, this.rows);
+    this.rows = applyChangeSet(this.rows, stamped);
+    const operation = this.operations.get(changeSet.operationId);
+    if (operation) operation.changeSet = stamped;
+    return { ...result, changeSet: stamped };
   }
 
   /** A change made elsewhere: the partner, or another tab or device. */
@@ -199,12 +320,16 @@ export class FakeServer {
         "Your partner changed this budget at the same time",
         this.revision,
       );
+    return this.commit(actorId, canonicalJson(input), changeSet);
+  }
+
+  private commit(actorId: string, hash: string, changeSet: ChangeSet) {
     const stamped = stampChangeSet(changeSet, this.revision + 1, this.rows);
     this.revision++;
     this.rows = applyChangeSet(this.rows, stamped);
-    this.operations.set(command.id, {
+    this.operations.set(changeSet.operationId, {
       actorId,
-      hash: canonicalJson(input),
+      hash,
       revision: this.revision,
       changeSet: stamped,
     });

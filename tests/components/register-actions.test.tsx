@@ -10,6 +10,7 @@ import {
   readyOverview,
   renderShell,
   transactionRow,
+  waitForSaves,
   type Overview,
 } from "./shell-harness";
 
@@ -472,6 +473,148 @@ test("pending imports offer Enter now instead of Approve and stay pending after 
     screen.getByRole("checkbox", { name: "Select Posted lunch" }),
   );
   expect(entered.queryByRole("button", { name: /^Approve/ })).toBeNull();
+});
+
+test("Enter now supports immediate batch Undo and Redo before saves finish", async () => {
+  const saving = deferred<void>();
+  let imports = [
+    bankImport({ pending: true }),
+    bankImport({ logicalId: "lunch", payee: "Lunch", pending: true }),
+  ];
+  const shell = await renderShell({
+    overview: () => readyOverview({ imports }),
+    resolveImport: async (input, server) => {
+      await saving.promise;
+      const saved = server.execute("owner", {
+        command: input.command!,
+        baseRevision: input.expectedRevision,
+        clientId: "import",
+      });
+      imports = imports.filter((item) => item.logicalId !== input.logicalId);
+      return { ...saved, resolved: true };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Lunch"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(screen.getByRole("button", { name: "Enter now (2)" }));
+  expect(screen.getByRole("link", { name: /^Checking/ }).textContent).toContain(
+    "$950.00",
+  );
+  for (let repeat = 0; repeat < 3; repeat++) {
+    await shell.user.keyboard("{Meta>}z{/Meta}");
+    expect(
+      screen.getByRole("link", { name: /^Checking/ }).textContent,
+    ).toContain("$1,000.00");
+    expect(screen.getByRole("button", { name: "Enter now (2)" })).toBeTruthy();
+    await shell.user.keyboard("{Meta>}{Shift>}z{/Shift}{/Meta}");
+    expect(
+      screen.getByRole("link", { name: /^Checking/ }).textContent,
+    ).toContain("$950.00");
+    expect(screen.queryByRole("button", { name: /^Enter now/ })).toBeNull();
+  }
+  await act(async () => saving.resolve());
+  await waitForSaves();
+  expect(screen.getByRole("link", { name: /^Checking/ }).textContent).toContain(
+    "$950.00",
+  );
+  await shell.user.keyboard("{Meta>}z{/Meta}");
+  expect(screen.getByRole("link", { name: /^Checking/ }).textContent).toContain(
+    "$1,000.00",
+  );
+  for (const payee of ["Coffee", "Lunch"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  expect(screen.getByRole("button", { name: "Enter now (2)" })).toBeTruthy();
+  await waitForSaves();
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(screen.getByRole("link", { name: /^Checking/ }).textContent).toContain(
+    "$1,000.00",
+  );
+});
+
+test("a rejected bank selection supports immediate Undo and Redo before rejection saves", async () => {
+  const saving = deferred<void>();
+  const imports = [
+    bankImport({ pending: true }),
+    bankImport({ logicalId: "lunch", payee: "Lunch" }),
+  ];
+  const shell = await renderShell({
+    overview: () => readyOverview({ imports }),
+    resolveImport: async (_input, server) => {
+      await saving.promise;
+      return {
+        revision: server.revision,
+        changeSet: null,
+        rebased: false,
+        resolved: true,
+      };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Coffee", "Lunch"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(screen.getByRole("button", { name: "Reject" }));
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull();
+  for (let repeat = 0; repeat < 3; repeat++) {
+    await shell.user.keyboard("{Meta>}z{/Meta}");
+    expect(transactionRow("Coffee")).toBeTruthy();
+    expect(transactionRow("Lunch")).toBeTruthy();
+    await shell.user.keyboard("{Meta>}{Shift>}z{/Shift}{/Meta}");
+    expect(
+      screen.queryByRole("checkbox", { name: "Select Coffee" }),
+    ).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull();
+  }
+  await act(async () => saving.resolve());
+  await waitForSaves();
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull();
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(screen.queryByRole("checkbox", { name: "Select Coffee" })).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull();
+});
+
+test("a refused rejection reports the failed payee after immediate Undo and Redo", async () => {
+  const saving = deferred<void>();
+  const imports = [
+    bankImport({ logicalId: "lunch", payee: "Lunch" }),
+    bankImport({ pending: true }),
+  ];
+  const shell = await renderShell({
+    overview: () => readyOverview({ imports }),
+    resolveImport: async (input, server) => {
+      await saving.promise;
+      if (input.logicalId === "coffee")
+        throw new SyncError("conflict", "Bank changed Coffee.");
+      return {
+        revision: server.revision,
+        changeSet: null,
+        rebased: false,
+        resolved: true,
+      };
+    },
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  for (const payee of ["Lunch", "Coffee"])
+    await shell.user.click(
+      screen.getByRole("checkbox", { name: `Select ${payee}` }),
+    );
+  await shell.user.click(screen.getByRole("button", { name: "Reject" }));
+  await shell.user.keyboard("{Meta>}z{/Meta}");
+  await shell.user.keyboard("{Meta>}{Shift>}z{/Shift}{/Meta}");
+  await act(async () => saving.resolve());
+  await findToast("Couldn’t reject Coffee. Bank changed Coffee.");
+  expect(await findTransactionRow("Coffee")).toBeTruthy();
+  expect(screen.queryByRole("checkbox", { name: "Select Lunch" })).toBeNull();
 });
 
 test("Reject dismisses pending and posted bank imports without recording them and keeps unselected activity", async () => {

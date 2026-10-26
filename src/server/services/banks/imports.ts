@@ -2,6 +2,7 @@ import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Import application: fetches account activity and applies each provider update or user inbox decision as a household operation. It owns transaction matching, reconciliation, quarantine, and the corresponding change sets. */
 
 import { isBankAccountLive } from "~/lib/bank-account-identity";
+import { rejectImportChange } from "~/domain/bank-import-rejection";
 
 import {
   type Database,
@@ -650,6 +651,7 @@ export async function resolveImport(
     command?: Command;
     review?: "approve" | "enter";
     operationId?: string;
+    decidedAt?: string;
     existingTransactionId?: string;
     expectedRevision: number;
     expectedFingerprint?: string;
@@ -738,17 +740,30 @@ export async function resolveImport(
           "Your bank updated this transaction. Reopen it before saving.",
           household.revision,
         );
-      state.resolved[input.logicalId] = {
-        fingerprint: quarantineFingerprint(quarantined.transaction),
-        ignored: true,
-        decidedAt: new Date().toISOString(),
-      };
       const operationId = input.operationId ?? randomUUID();
-      return await write(
-        operationId,
-        input.operationId ? rejectedIdentity : { ...input, operationId },
-        [],
-      );
+      return {
+        resolved: true,
+        ...(await writeServerOperation(db, opened, {
+          actorId: userId,
+          operationId,
+          source: "user",
+          type: "bank.import.resolve",
+          submitted: input.operationId
+            ? rejectedIdentity
+            : { ...input, operationId },
+          changeSet: {
+            ...rejectImportChange(
+              household.rows,
+              userId,
+              connection.id,
+              input.logicalId,
+              quarantineFingerprint(quarantined.transaction),
+              input.decidedAt ?? new Date().toISOString(),
+            ),
+            operationId,
+          },
+        })),
+      };
     }
     if (
       input.expectedFingerprint &&
@@ -775,10 +790,26 @@ export async function resolveImport(
           "Your budget changed. Refresh before rejecting this import.",
           household.revision,
         );
-      state.resolved[record.id] = {
-        fingerprint: fingerprint(record),
-        ignored: true,
-        decidedAt: new Date().toISOString(),
+      return {
+        resolved: true,
+        ...(await writeServerOperation(db, opened, {
+          actorId: userId,
+          operationId,
+          source: "user",
+          type: "bank.import.resolve",
+          submitted,
+          changeSet: {
+            ...rejectImportChange(
+              household.rows,
+              userId,
+              connection.id,
+              record.id,
+              fingerprint(record),
+              input.decidedAt ?? new Date().toISOString(),
+            ),
+            operationId,
+          },
+        })),
       };
     } else {
       const imported: BankInboxItem = {

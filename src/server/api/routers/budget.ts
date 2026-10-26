@@ -404,6 +404,7 @@ export const budgetRouter = createTRPCRouter({
         command: commandSchema.optional(),
         review: z.enum(["approve", "enter"]).optional(),
         operationId: z.string().optional(),
+        decidedAt: z.string().datetime().optional(),
         existingTransactionId: z.string().optional(),
         expectedRevision: revision,
         ignore: z.boolean().default(false),

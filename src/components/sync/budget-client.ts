@@ -29,6 +29,7 @@ export type BudgetClient = {
   /** Resolves once stored rows are shown and the first pull has finished. */
   readonly ready: Promise<void>;
   run: (command: Command, options: RunOptions) => RunResult;
+  runChange: BudgetStore["runChange"];
   runOnServer: (
     operationId: string,
     send: (baseRevision: number) => Promise<ExecuteResult>,
@@ -108,6 +109,8 @@ export function createBudgetClient(options: BudgetClientOptions): BudgetClient {
     signal,
     ready,
     run: (command, runOptions) => started(store.run(command, runOptions)),
+    runChange: (change, runOptions) =>
+      started(store.runChange(change, runOptions)),
     runOnServer: (operationId, send, runOptions) =>
       started(store.runOnServer(operationId, send, runOptions)),
     undo: (onSettled) => {

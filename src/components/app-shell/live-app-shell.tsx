@@ -46,6 +46,8 @@ import {
   MAINTENANCE_TITLE,
 } from "~/components/workspace/maintenance";
 import type { Command } from "~/domain/engine";
+import { rejectImportChange } from "~/domain/bank-import-rejection";
+import { sameJson } from "~/domain/rows";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { serverRevisions } from "~/trpc/links";
 import { AppShell, type CategoryAdder } from "./app-shell";
@@ -276,7 +278,7 @@ type Notice = {
   tone: "neutral" | "attention";
   message: string;
   // The change this toast confirms, while it offers to undo it.
-  operationId?: string;
+  actionId?: string;
 };
 
 const noImports: Overview["imports"] = [];
@@ -302,46 +304,57 @@ function LiveWorkspace({
   const renewSession = useRenewSession();
   const services = overview?.services ?? noServices;
   const connections = overview?.connections ?? noConnections;
-  // Imports a save just resolved stay hidden until the inbox catches up.
-  const [resolved, setResolved] = useState<ReadonlySet<string>>(new Set());
-  const [importRejections, setImportRejections] = useState<
-    ReadonlyMap<string, { operationId: string; fingerprint: string }>
-  >(new Map());
+  const seenImports = useRef(
+    new Map<string, { item: BankImport; record: unknown }>(),
+  );
   const [importPreviews, setImportPreviews] = useState<
     ReadonlyMap<string, { fingerprint: string; transactionId: string }>
   >(new Map());
   const allImports = overview?.imports ?? noImports;
-  const imports = useMemo(
-    () =>
-      allImports.filter((item) => {
-        if (resolved.has(importRowId(item))) return false;
-        const rejection = importRejections.get(importRowId(item));
-        // Hide with the published queue state so selection survives a refusal.
-        if (
-          rejection?.fingerprint === item.fingerprint &&
-          snapshot.pending.some(
-            (operation) => operation.operationId === rejection.operationId,
-          )
+  const imports = useMemo(() => {
+    const candidates = new Map(
+      allImports.map((item) => [importRowId(item), item]),
+    );
+    for (const item of allImports) {
+      const state = snapshot.importState(item.connectionId, item.logicalId);
+      const previous = seenImports.current.get(importRowId(item));
+      if (previous?.item.fingerprint !== item.fingerprint)
+        seenImports.current.set(importRowId(item), {
+          item,
+          record: state?.record,
+        });
+    }
+    for (const [id, cached] of seenImports.current) {
+      const state = snapshot.importState(
+        cached.item.connectionId,
+        cached.item.logicalId,
+      );
+      if (!state || !sameJson(state.record, cached.record)) {
+        seenImports.current.delete(id);
+        continue;
+      }
+      if (
+        !candidates.has(id) &&
+        state.resolvedFingerprint !== cached.item.fingerprint
+      )
+        candidates.set(id, cached.item);
+    }
+    return [...candidates.values()].filter((item) => {
+      if (
+        snapshot.importState(item.connectionId, item.logicalId)
+          ?.resolvedFingerprint === item.fingerprint
+      )
+        return false;
+      const preview = importPreviews.get(importRowId(item));
+      return (
+        preview?.fingerprint !== item.fingerprint ||
+        !view.budget.transactions.some(
+          (transaction) =>
+            transaction.id === preview.transactionId && !transaction.removed,
         )
-          return false;
-        const preview = importPreviews.get(importRowId(item));
-        return (
-          preview?.fingerprint !== item.fingerprint ||
-          !view.budget.transactions.some(
-            (transaction) =>
-              transaction.id === preview.transactionId && !transaction.removed,
-          )
-        );
-      }),
-    [
-      allImports,
-      resolved,
-      importRejections,
-      importPreviews,
-      snapshot.pending,
-      view.budget.transactions,
-    ],
-  );
+      );
+    });
+  }, [allImports, importPreviews, snapshot, view.budget.transactions]);
   useEffect(() => {
     setImportPreviews((current) => {
       const next = new Map(
@@ -365,8 +378,8 @@ function LiveWorkspace({
 
   const [notice, setNotice] = useState<Notice | null>(null);
   const notify = useCallback(
-    (message: string, tone: Notice["tone"] = "neutral", operationId?: string) =>
-      setNotice({ id: crypto.randomUUID(), tone, message, operationId }),
+    (message: string, tone: Notice["tone"] = "neutral", actionId?: string) =>
+      setNotice({ id: crypto.randomUUID(), tone, message, actionId }),
     [],
   );
   // Refusals a form shows next to its fields, by operation id.
@@ -414,7 +427,7 @@ function LiveWorkspace({
     operationId: string,
     send: Parameters<ServerRunner>[1],
     summary: string,
-    options: { inPlace?: boolean; undoable?: boolean } = {},
+    options: { inPlace?: boolean } = {},
   ) =>
     new Promise<void>((resolve, reject) => {
       const result = client.runOnServer(
@@ -423,7 +436,6 @@ function LiveWorkspace({
           serverOperation(() => send(baseRevision), renewSession),
         {
           summary,
-          undoable: options.undoable,
           onSettled: (settled) =>
             settled.ok ? resolve() : reject(new Error(settled.message)),
         },
@@ -483,82 +495,139 @@ function LiveWorkspace({
       return;
     }
     const recordedIds = recorded.map((item) => item.id);
-    if (recordedIds.length) {
-      if (action === "approve")
-        run(
-          approveCommand(recordedIds),
-          `Marked ${count(recordedIds)} reviewed`,
-        );
-      else
-        run(
-          {
-            type: "transaction.reject",
-            id: newId(),
-            transactionIds: recordedIds,
+    if (action === "reject") {
+      const actionId = newId();
+      const summary =
+        transactionIds.length === 1 && selectedImports[0]
+          ? `Rejected ${selectedImports[0].payee}`
+          : `Rejected ${count(transactionIds)}`;
+      let remaining = selectedImports.length + (recordedIds.length ? 1 : 0);
+      const failures: { payee: string; message: string }[] = [];
+      const settled = (payee: string, result: Settled) => {
+        if (!result.ok) failures.push({ payee, message: result.message });
+        if (--remaining !== 0) return;
+        if (failures.length)
+          notify(
+            `Couldn’t reject ${failures.map((item) => item.payee).join(", ")}. ${[...new Set(failures.map((item) => item.message))].join(" ")}`,
+            "attention",
+          );
+        else notify(summary, "neutral", actionId);
+        void utils.budget.overview.invalidate();
+      };
+      if (recordedIds.length) {
+        const command: Command = {
+          type: "transaction.reject",
+          id: newId(),
+          transactionIds: recordedIds,
+        };
+        const result = client.run(command, {
+          summary,
+          action: actionId,
+          onSettled: (result) => {
+            if (result.ok) shownInPlace.current.delete(command.id);
+            settled(count(recordedIds), result);
           },
-          `Rejected ${count(recordedIds)}`,
-        );
-    }
-    let rejectionFailed = false;
-    for (const item of selectedImports) {
-      if (action === "reject") {
-        const operationId = newId();
-        const summary = `Rejected ${item.payee}`;
-        const rowId = importRowId(item);
-        const clearPreview = () =>
-          setImportRejections((current) => {
-            if (current.get(rowId)?.operationId !== operationId) return current;
-            const next = new Map(current);
-            next.delete(rowId);
-            return next;
+        });
+        if (result.ok) shownInPlace.current.add(command.id);
+        else
+          settled(count(recordedIds), {
+            ok: false,
+            kind: "local",
+            message: result.message,
           });
-        const result = client.runOnServer(
-          operationId,
-          (expectedRevision) =>
-            serverOperation(
-              () =>
-                trpc.budget.resolveImport.mutate({
-                  connectionId: item.connectionId,
-                  logicalId: item.logicalId,
-                  expectedFingerprint: item.fingerprint,
-                  expectedRevision,
-                  operationId,
-                  ignore: true,
-                }),
-              renewSession,
+      }
+      for (const item of selectedImports) {
+        const operationId = newId();
+        const decidedAt = new Date().toISOString();
+        const result = client.runChange(
+          (rows) => ({
+            ...rejectImportChange(
+              rows,
+              client.store.userId,
+              item.connectionId,
+              item.logicalId,
+              item.fingerprint,
+              decidedAt,
             ),
+            operationId,
+          }),
           {
             summary,
-            undoable: true,
-            onSettled: (settled) => {
-              if (settled.ok) {
-                shownInPlace.current.delete(operationId);
-                if (!rejectionFailed) notify(summary, "neutral", operationId);
-                void refreshResolvedImport(item).finally(clearPreview);
-              } else {
-                rejectionFailed = true;
-                clearPreview();
-                notify(
-                  `Couldn’t reject ${item.payee}. ${settled.message}`,
-                  "attention",
-                );
-              }
+            action: actionId,
+            send: (expectedRevision) =>
+              serverOperation(
+                () =>
+                  trpc.budget.resolveImport.mutate({
+                    connectionId: item.connectionId,
+                    logicalId: item.logicalId,
+                    expectedFingerprint: item.fingerprint,
+                    expectedRevision,
+                    operationId,
+                    decidedAt,
+                    ignore: true,
+                  }),
+                renewSession,
+              ),
+            onSettled: (result) => {
+              if (result.ok) shownInPlace.current.delete(operationId);
+              settled(item.payee, result);
             },
           },
         );
-        if (result.ok) {
-          shownInPlace.current.add(operationId);
-          setImportRejections((current) =>
-            new Map(current).set(rowId, {
-              operationId,
-              fingerprint: item.fingerprint,
-            }),
-          );
-        } else notify(result.message, "attention");
-        continue;
+        if (result.ok) shownInPlace.current.add(operationId);
+        else
+          settled(item.payee, {
+            ok: false,
+            kind: "local",
+            message: result.message,
+          });
       }
+      return;
+    }
+    if (action === "enter") {
+      const actionId = newId();
+      const summary = `Entered ${selectedImports.length === 1 ? selectedImports[0]!.payee : count(transactionIds)}`;
+      let remaining = selectedImports.length;
+      const failures: { payee: string; message: string }[] = [];
+      const settled = (payee: string, result: Settled) => {
+        if (!result.ok) failures.push({ payee, message: result.message });
+        if (--remaining !== 0) return;
+        if (failures.length)
+          notify(
+            `Couldn’t enter ${failures.map((item) => item.payee).join(", ")}. ${[...new Set(failures.map((item) => item.message))].join(" ")}`,
+            "attention",
+          );
+        else notify(summary, "neutral", actionId);
+      };
+      for (const item of selectedImports) {
+        const command = importReviewCommand(view, item);
+        const result = previewImport(
+          item,
+          command,
+          summary,
+          (result) => {
+            if (result.ok) shownInPlace.current.delete(command.id);
+            settled(item.payee, result);
+          },
+          action,
+          actionId,
+        );
+        if (result.ok) shownInPlace.current.add(command.id);
+        else
+          settled(item.payee, {
+            ok: false,
+            kind: "local",
+            message: result.message,
+          });
+      }
+      return;
+    }
+    if (recordedIds.length) {
+      run(approveCommand(recordedIds), `Marked ${count(recordedIds)} reviewed`);
+    }
+    for (const item of selectedImports) {
       const command = importReviewCommand(view, item);
-      const summary = `${action === "enter" ? "Entered" : "Approved"} ${item.payee}`;
+      const summary = `Approved ${item.payee}`;
       const result = previewImport(
         item,
         command,
@@ -576,39 +645,34 @@ function LiveWorkspace({
     enter: (ids) => reviewSelection(ids, "enter"),
     reject: (ids) => reviewSelection(ids, "reject"),
   };
-  const refreshResolvedImport = async (item: BankImport) => {
-    const rowId = importRowId(item);
-    setResolved((ids) => new Set(ids).add(rowId));
-    try {
-      await utils.budget.overview.invalidate();
-    } finally {
-      setResolved((ids) => {
-        const next = new Set(ids);
-        next.delete(rowId);
-        return next;
-      });
-    }
-  };
   const saveImportedTransaction = async (
     item: (typeof imports)[number],
     command: Command,
     summary: string,
     inPlace = false,
   ) => {
-    await runOnServer(
-      command.id,
-      (expectedRevision) =>
-        trpc.budget.resolveImport.mutate({
-          connectionId: item.connectionId,
-          logicalId: item.logicalId,
-          expectedFingerprint: item.fingerprint,
-          expectedRevision,
-          command,
-        }),
-      summary,
-      { inPlace, undoable: true },
-    );
-    await refreshResolvedImport(item);
+    await new Promise<void>((resolve, reject) => {
+      const result = client.run(command, {
+        summary,
+        send: (expectedRevision) =>
+          serverOperation(
+            () =>
+              trpc.budget.resolveImport.mutate({
+                connectionId: item.connectionId,
+                logicalId: item.logicalId,
+                expectedFingerprint: item.fingerprint,
+                expectedRevision,
+                command,
+              }),
+            renewSession,
+          ),
+        onSettled: (result) =>
+          result.ok ? resolve() : reject(new Error(result.message)),
+      });
+      if (!result.ok) reject(new Error(result.message));
+      else if (inPlace) shownInPlace.current.add(command.id);
+    });
+    await utils.budget.overview.invalidate();
   };
   const previewImport = (
     item: BankImport,
@@ -616,11 +680,13 @@ function LiveWorkspace({
     summary: string,
     onSettled: (result: Settled) => void,
     review?: "approve" | "enter",
+    action?: string,
   ): RunResult => {
     if (command.type !== "transaction.upsert")
       return { ok: false, message: "This bank operation cannot be previewed." };
     const result = client.run(command, {
       summary,
+      action,
       send: (expectedRevision) =>
         serverOperation(
           () =>
@@ -717,9 +783,9 @@ function LiveWorkspace({
   // Undo and redo cover this browser load. Each is a change of its own,
   // confirmed like any other.
   const travel = (direction: "undo" | "redo") => {
+    setNotice(null);
     const result = client[direction]((settled) => {
       if (settled.ok) {
-        notify(direction === "undo" ? "Action undone." : "Action redone.");
         void utils.budget.overview.invalidate();
       }
     });
@@ -733,8 +799,8 @@ function LiveWorkspace({
   // A confirmation offers Undo while its change is still the latest one
   // this browser can undo.
   const offerUndo =
-    notice?.operationId !== undefined &&
-    snapshot.undo?.operationId === notice.operationId;
+    notice?.actionId !== undefined &&
+    snapshot.undo?.actionId === notice.actionId;
 
   return (
     <TransactionReviewProvider value={review}>

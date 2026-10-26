@@ -8,6 +8,7 @@ import {
   databaseClientBuild,
 } from "./fixtures";
 import { createBudgetClient } from "../../src/components/sync/budget-client";
+import { rejectImportChange } from "../../src/domain/bank-import-rejection";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { toShellData } from "../../src/components/app-shell/model";
 import { PrismaClient } from "../../src/generated/prisma";
@@ -1498,24 +1499,38 @@ void test("the budget client undoes and redoes a rejected pending import through
   t.after(() => client.dispose());
   await client.ready;
   const operationId = randomUUID();
-  client.runOnServer(
-    operationId,
-    (expectedRevision) =>
-      h.api.budget.resolveImport({
-        connectionId: h.input.connectionId,
-        logicalId: h.input.logicalId,
-        expectedRevision,
-        expectedFingerprint: h.input.expectedFingerprint,
-        operationId,
-        ignore: true,
-      }),
-    { summary: "Rejected Coffee shop", undoable: true },
+  const decidedAt = new Date().toISOString();
+  client.runChange(
+    (rows) => ({
+      ...rejectImportChange(
+        rows,
+        alice,
+        h.input.connectionId,
+        h.input.logicalId,
+        h.input.expectedFingerprint,
+        decidedAt,
+      ),
+      operationId,
+    }),
+    {
+      summary: "Rejected Coffee shop",
+      send: (expectedRevision) =>
+        h.api.budget.resolveImport({
+          connectionId: h.input.connectionId,
+          logicalId: h.input.logicalId,
+          expectedRevision,
+          expectedFingerprint: h.input.expectedFingerprint,
+          operationId,
+          decidedAt,
+          ignore: true,
+        }),
+    },
   );
   await client.idle();
   assert.deepEqual((await h.state()).imports, []);
 
   assert.deepEqual(client.store.getSnapshot().undo, {
-    operationId,
+    actionId: operationId,
     label: "Rejected Coffee shop",
   });
   assert.equal(client.undo()?.ok, true, "Undo restores the rejected import");
