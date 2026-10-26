@@ -354,6 +354,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     names: z.array(z.string().max(120)).max(500),
   }),
   z.object({
+    type: z.literal("category.reorder"),
+    id: identifier,
+    group: z.string().max(120),
+    categoryIds: z.array(identifier).max(500),
+  }),
+  z.object({
     type: z.literal("category.add"),
     id: identifier,
     categoryId: identifier,
@@ -2839,6 +2845,7 @@ function executeAccountingState<T extends AccountingState>(
     "account.reorder",
     "group.add",
     "group.reorder",
+    "category.reorder",
     "category.add",
     "category.import",
     "settings.update",
@@ -3493,6 +3500,17 @@ function applyCommand(
         ...named,
         ...current.filter((name) => !named.includes(name)),
       ];
+      break;
+    }
+    case "category.reorder": {
+      const ids = command.categoryIds.filter((id) =>
+        budget.categories.some(
+          (category) => category.id === id && category.group === command.group,
+        ),
+      );
+      budget.categories = reorder(budget.categories, ids, (item) =>
+        changes.category(budget, item),
+      );
       break;
     }
     case "category.add": {

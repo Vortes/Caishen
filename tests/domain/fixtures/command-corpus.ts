@@ -513,5 +513,10 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     amount: 1_000,
     counterpartyName: "Employer",
   });
+  alex({
+    type: "category.reorder",
+    group: "Fun",
+    categoryIds: ["travel", "dining"],
+  });
   return { book, steps };
 }

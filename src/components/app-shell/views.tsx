@@ -390,81 +390,16 @@ export function PlanView({
                   </div>
                 </div>
               )}
-              {open &&
-                group.categories.map((category) => {
-                  const isChecked = checked.includes(category.id);
-                  return (
-                    <div
-                      key={category.id}
-                      className={`${styles.rowWrap} ${selectionStyles.row}`}
-                      {...selectionStyle.rowProps(category.id)}
-                    >
-                      <RowCheckbox
-                        label={`Select ${category.name}`}
-                        state={isChecked}
-                        onChange={() => onCheck([category.id], !isChecked)}
-                      />
-                      <button
-                        type="button"
-                        data-row
-                        data-id={category.id}
-                        className={`${styles.columns} ${styles.row}`}
-                        aria-current={
-                          checked.length === 1 && checked[0] === category.id
-                            ? "true"
-                            : undefined
-                        }
-                        onClick={() => onSelect(category.id)}
-                      >
-                        <span className={styles.rowName}>
-                          <FundingBar category={category}>
-                            <span className={styles.truncate}>
-                              {category.name}
-                            </span>
-                          </FundingBar>
-                        </span>
-                        <span
-                          className={`${styles.numeric} ${styles.muted}`}
-                          data-optional
-                          aria-hidden
-                        >
-                          <span className={moveStyles.placeholder}>
-                            {money(category.assigned)}
-                          </span>
-                        </span>
-                        <span
-                          className={`${styles.numeric} ${styles.muted}`}
-                          data-optional
-                          aria-hidden
-                        >
-                          <span className={moveStyles.placeholder}>
-                            {money(category.activity)}
-                          </span>
-                        </span>
-                        <span className={styles.numeric} aria-hidden>
-                          <span className={moveStyles.placeholder}>
-                            <AvailablePill category={category} />
-                          </span>
-                        </span>
-                      </button>
-                      <AssignedCell category={category} />
-                      <ActivityCell category={category} onJump={onJump} />
-                      <MoveMoneyPopover category={category} align="end">
-                        <button
-                          type="button"
-                          className={moveStyles.pillButton}
-                          aria-label={`${money(category.available)} available in ${category.name}. ${
-                            category.available < 0
-                              ? "Cover overspending"
-                              : "Move money"
-                          }`}
-                        >
-                          <AvailablePill category={category} />
-                        </button>
-                      </MoveMoneyPopover>
-                    </div>
-                  );
-                })}
+              {open && (
+                <PlanCategoryList
+                  group={group}
+                  checked={checked}
+                  selectionStyle={selectionStyle}
+                  onCheck={onCheck}
+                  onSelect={onSelect}
+                  onJump={onJump}
+                />
+              )}
             </motion.div>
           );
         })}
@@ -494,6 +429,183 @@ export function PlanView({
         )}
       </div>
     </MotionConfig>
+  );
+}
+
+function PlanCategoryList({
+  group,
+  checked,
+  selectionStyle,
+  onCheck,
+  onSelect,
+  onJump,
+}: Pick<
+  Parameters<typeof PlanView>[0],
+  "checked" | "onCheck" | "onSelect" | "onJump"
+> & {
+  group: { id: string; categories: Category[] };
+  selectionStyle: ReturnType<typeof useRowSelection>;
+}) {
+  const { add } = useAddCategory();
+  const byId = new Map(
+    group.categories.map((category) => [category.id, category]),
+  );
+  const reorder = useReorderDrag({
+    ids: group.categories.map((category) => category.id),
+    enabled: group.categories.length > 1,
+    onDrop: (categoryIds, id, done) => {
+      const blocked = add(
+        { type: "category.reorder", id: newId(), group: group.id, categoryIds },
+        `Moved ${byId.get(id)?.name ?? "category"}`,
+        done,
+      );
+      if (blocked) done();
+    },
+  });
+  const dragged = reorder.drag && byId.get(reorder.drag.id);
+  return (
+    <div
+      ref={reorder.listRef}
+      className={styles.categoryList}
+      data-dragging={reorder.drag ? true : undefined}
+      onKeyDown={(event) => {
+        const focused = document.activeElement;
+        const id =
+          focused instanceof HTMLElement ? focused.dataset.id : undefined;
+        if (
+          !event.altKey ||
+          !id ||
+          (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        reorder.nudge(id, event.key === "ArrowUp" ? -1 : 1);
+        requestAnimationFrame(() =>
+          reorder.listRef.current
+            ?.querySelector<HTMLElement>(
+              `[data-row][data-id="${CSS.escape(id)}"]`,
+            )
+            ?.focus(),
+        );
+      }}
+    >
+      {reorder.order.map((id) => {
+        const category = byId.get(id);
+        if (!category) return null;
+        const isChecked = checked.includes(id);
+        return (
+          <motion.div
+            key={id}
+            data-reorder-slot
+            className={`${styles.rowWrap} ${selectionStyles.row}`}
+            {...selectionStyle.rowProps(id)}
+            layout={reorder.animating ? "position" : false}
+            transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
+          >
+            {reorder.drag?.id === id ? (
+              <div className={styles.categoryDropSlot} aria-hidden />
+            ) : (
+              <>
+                <RowCheckbox
+                  label={`Select ${category.name}`}
+                  state={isChecked}
+                  onChange={() => onCheck([id], !isChecked)}
+                />
+                <button
+                  type="button"
+                  data-row
+                  data-id={id}
+                  className={`${styles.columns} ${styles.row}`}
+                  aria-current={
+                    checked.length === 1 && checked[0] === id
+                      ? "true"
+                      : undefined
+                  }
+                  aria-keyshortcuts={
+                    reorder.enabled ? "Alt+ArrowUp Alt+ArrowDown" : undefined
+                  }
+                  onPointerDown={(event) => reorder.start(event, id)}
+                  onClick={() => onSelect(id)}
+                >
+                  <PlanCategoryContents category={category} placeholder />
+                </button>
+                <AssignedCell category={category} />
+                <ActivityCell category={category} onJump={onJump} />
+                <MoveMoneyPopover category={category} align="end">
+                  <button
+                    type="button"
+                    className={moveStyles.pillButton}
+                    aria-label={`${money(category.available)} available in ${category.name}. ${
+                      category.available < 0
+                        ? "Cover overspending"
+                        : "Move money"
+                    }`}
+                  >
+                    <AvailablePill category={category} />
+                  </button>
+                </MoveMoneyPopover>
+              </>
+            )}
+          </motion.div>
+        );
+      })}
+      {dragged && (
+        <motion.div
+          className={styles.categoryGhost}
+          style={{ y: reorder.y }}
+          initial={{ scale: 1 }}
+          animate={{ scale: 1.01 }}
+          transition={{ duration: 0.15, ease: EASE }}
+          aria-hidden
+        >
+          <div className={`${styles.columns} ${styles.row}`}>
+            <PlanCategoryContents category={dragged} />
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+function PlanCategoryContents({
+  category,
+  placeholder = false,
+}: {
+  category: Category;
+  placeholder?: boolean;
+}) {
+  return (
+    <>
+      <span className={styles.rowName}>
+        <FundingBar category={category}>
+          <span className={styles.truncate}>{category.name}</span>
+        </FundingBar>
+      </span>
+      <span
+        className={`${styles.numeric} ${styles.muted}`}
+        data-optional
+        aria-hidden
+      >
+        <span className={placeholder ? moveStyles.placeholder : undefined}>
+          {money(category.assigned)}
+        </span>
+      </span>
+      <span
+        className={`${styles.numeric} ${styles.muted}`}
+        data-optional
+        aria-hidden
+      >
+        <span className={placeholder ? moveStyles.placeholder : undefined}>
+          {money(category.activity)}
+        </span>
+      </span>
+      <span className={styles.numeric} aria-hidden>
+        <span className={placeholder ? moveStyles.placeholder : undefined}>
+          <AvailablePill category={category} />
+        </span>
+      </span>
+    </>
   );
 }
 
