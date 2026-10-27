@@ -1,0 +1,43 @@
+/* Playground pages hold one column of concepts at settings width. */
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 20px 96px;
+}
+.title {
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.label {
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+.hint {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+.index {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.indexLink {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-stack) var(--space-row-x);
+  border-radius: var(--radius-row);
+  color: inherit;
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .indexLink:hover {
+    background: var(--surface-hover);
+  }
+}

@@ -1,0 +1,216 @@
+/* A lab, not a product screen: a large stage and a control panel. */
+.lab {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100dvh;
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.canvas {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+}
+.regenerate {
+  cursor: pointer;
+}
+.signZone {
+  cursor: crosshair;
+}
+.draggable {
+  cursor: grab;
+}
+.draggable:active {
+  cursor: grabbing;
+}
+.stageActions {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-gutter);
+  transform: translateX(-50%);
+}
+.stageHint {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+
+.cardTitle {
+  font-family: ui-serif, Georgia, serif;
+  font-size: 28px;
+  font-style: italic;
+}
+.cardLine {
+  font-family: ui-serif, Georgia, serif;
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+}
+.cardSmall {
+  font-family: ui-serif, Georgia, serif;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+.cardSeam {
+  font-family: ui-serif, Georgia, serif;
+  font-size: 8px;
+  letter-spacing: 0.5em;
+  opacity: 0.7;
+}
+.cardHint {
+  font-family: ui-serif, Georgia, serif;
+  font-size: 12px;
+  font-style: italic;
+}
+.sealText {
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+}
+.doneTitle {
+  fill: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+}
+.doneHint {
+  fill: var(--text-secondary);
+  font-size: var(--type-body);
+  font-weight: 400;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  padding: var(--space-card);
+  border-left: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+}
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-gutter);
+  margin: 0;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.groupTitle {
+  padding: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-caption);
+  font-weight: 500;
+}
+.seedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.seed {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.status {
+  color: var(--text-secondary);
+  font-size: var(--type-caption);
+  overflow-wrap: anywhere;
+}
+.rail {
+  display: flex;
+  flex-direction: column;
+}
+.railItem {
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .railItem:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+}
+.knob {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.knobLabel {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.knobValue {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.knob input {
+  width: 100%;
+  accent-color: var(--accent-solid);
+}
+
+/* The 3D plane is drawn over the SVG, in the same box, and never takes
+   the pointer. */
+.plane {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.plane canvas {
+  display: block;
+}
+
+.papers {
+  display: flex;
+  flex-direction: column;
+}
+.paper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-gutter);
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-align: left;
+  cursor: pointer;
+}
+.paper[aria-checked="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+@media (hover: hover) {
+  .paper:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+}
+/* A sample of the dye, ringed in the pattern's ink. */
+.swatch {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid;
+  border-radius: 50%;
+}
