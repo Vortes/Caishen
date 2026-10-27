@@ -4,6 +4,7 @@ Caishen is a Next.js app for personal budgeting, shared expenses, and daily mone
 
 - Create persistent project documentation only when the user explicitly requests it.
 - For every UI fix, show the user the running local dev server with the fix in place.
+- When the user asks to view the app remotely on their phone, serve it over Tailscale.
 - Before finishing, delete one-off scripts and temporary artifacts created for the task, including ignored and untracked files.
 - "Clean up" means: stop servers you started, remove task worktrees, and delete merged or pushed local branches.
 
