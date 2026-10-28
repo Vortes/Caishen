@@ -11,7 +11,7 @@ export type Rect = { left: number; top: number; width: number; height: number };
 // The mark's box in the nav, as the icons beside it.
 const MARK_SIZE = 14;
 
-// The end of the invitation: Jordan's half, left on the table once you've
+// The end of the invitation: the sender's half, left on the table once you've
 // taken yours, shrinks down into the Partner mark, the picture of their
 // half the app will show beside Partner from now on.
 export function Filed({
@@ -127,7 +127,7 @@ export function Filed({
   );
 }
 
-// Jordan's half, pictured from the 3D card, at icon size. It keeps the
+// The sender's half, pictured from the 3D card, at icon size. It keeps the
 // half's shape, a little narrower than it is tall, in the middle of an
 // icon's square box so labels line up.
 function PartnerMark({

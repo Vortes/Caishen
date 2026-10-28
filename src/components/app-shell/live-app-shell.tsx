@@ -820,11 +820,6 @@ function LiveWorkspace({
                 `Renamed your budget to ${name}`,
               )
             }
-            joinBlocked={
-              snapshot.pending.length
-                ? "Wait for your changes to finish saving before connecting budgets."
-                : undefined
-            }
             updatePreferences={(change) =>
               run(
                 { type: "settings.update", id: newId(), ...change },

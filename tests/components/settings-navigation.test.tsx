@@ -189,7 +189,7 @@ test("settings opens Profile and Partner at their app addresses and returns to t
   await user.click(screen.getByRole("link", { name: "Partner" }));
   expect(window.location.pathname).toBe("/app/settings/partner");
   await screen.findByRole("heading", { name: "Partner" });
-  expect(screen.getByRole("button", { name: "Create code" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Write invitation" })).toBeTruthy();
 
   await user.click(screen.getByRole("link", { name: "Back to app" }));
   expect(window.location.pathname).toBe("/app");

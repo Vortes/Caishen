@@ -16,10 +16,11 @@ import { createCloud, updateCloud } from "./cloud";
 import { CAMERA_DISTANCE, LANDING, SCENE, sceneFit } from "./geometry";
 import { shapeSheet } from "./harrier";
 import type { Stroke } from "./ink";
+import { washiById } from "./config";
 import { createPaperMaterial } from "./paper-material";
 import type { PlaneFrame } from "./plane-motion";
 import { measure, perf } from "./perf";
-import { printTexture } from "./print";
+import { printTexture, type Invitation } from "./print";
 import { sealTexture } from "./seal";
 import {
   THEIRS_BOX,
@@ -49,6 +50,7 @@ type Three = {
 };
 
 export function Plane3D({
+  invitation,
   night,
   plane,
   card: cardAt,
@@ -56,6 +58,8 @@ export function Plane3D({
   inkAt,
   onKeepsake,
 }: {
+  // Read once, when the renderer starts.
+  invitation: Invitation;
   night: boolean;
   // The paper plane at a moment, while it flies in and unfolds.
   plane: (now: number) => PlaneFrame | null;
@@ -66,7 +70,7 @@ export function Plane3D({
   // the torn card carries it as wet as it was then.
   strokes: Stroke[];
   inkAt: number | null;
-  // Called once, soon after the card is bonded, with a picture of Jordan's
+  // Called once, soon after the card is bonded, with a picture of the sender's
   // half on its own, flat and lit as it is here, for the Partner mark: an
   // object URL, which the caller revokes.
   onKeepsake?: (mark: string) => void;
@@ -91,8 +95,9 @@ export function Plane3D({
     element.appendChild(renderer.domElement);
     const camera = new PerspectiveCamera(30, 1, 200, 60000);
     const geometry = new BufferGeometry();
-    const mesh = new Mesh(geometry, createPaperMaterial());
-    const print = printTexture();
+    const washi = washiById(invitation.washi);
+    const mesh = new Mesh(geometry, createPaperMaterial(washi));
+    const print = printTexture(invitation);
     mesh.material.uniforms.uPrint!.value = print;
     const seal = sealTexture();
     mesh.matrixAutoUpdate = false;
@@ -100,7 +105,7 @@ export function Plane3D({
     const scene = new Scene();
     const vapor = createVapor();
     const cloud = createCloud();
-    const torn = createTornCard();
+    const torn = createTornCard(washi);
     scene.add(mesh, vapor, cloud, torn);
     // The paper's shader is big. Compiled now, in the background, it's
     // ready before the tap that throws the plane.
@@ -147,12 +152,14 @@ export function Plane3D({
       renderer.domElement.remove();
       three.current = null;
     };
+    // The renderer starts once; the invitation doesn't change under it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The torn card's print carries the user's signature, as of the tear.
   const cardPrint = useMemo(
-    () => (inkAt === null ? null : printTexture(strokes, inkAt)),
-    [inkAt, strokes],
+    () => (inkAt === null ? null : printTexture(invitation, strokes, inkAt)),
+    [invitation, inkAt, strokes],
   );
   useLayoutEffect(() => () => cardPrint?.dispose(), [cardPrint]);
 

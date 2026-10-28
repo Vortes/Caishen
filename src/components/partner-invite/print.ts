@@ -1,18 +1,29 @@
 import { CanvasTexture, SRGBColorSpace } from "three";
-import { config, palette } from "./config";
+import { config, palette, type WashiId } from "./config";
 import { CARD } from "./geometry";
-import { signature, strokeSegments, wetness, type Stroke } from "./ink";
+import { strokeSegments, wetness, type Stroke } from "./ink";
 
-// What's printed on the card, shared by the SVG card and the 3D sheet.
-export const PARTNER = "Jordan Lee";
-export const PARTNER_FIRST_NAME = PARTNER.split(" ")[0]!;
-// The partner signed before folding, so their ink is dry.
-export const PARTNER_STROKES = signature(config.seed, "partner", {
-  x: -250,
-  y: 34,
-  width: 180,
-  height: 46,
-});
+// One invitation: who sent it, their signature on their half of the card
+// (signed before folding, so dry), and the washi it's folded from.
+export type Invitation = {
+  from: string;
+  signature: Stroke[];
+  washi: WashiId;
+};
+
+export const firstName = (name: string) => name.split(" ")[0]!;
+
+// Who's looking at the card: the sender writing it, or the partner it
+// arrives for. It sets the names under the two signing lines, sender's
+// first.
+export type Viewer = "sender" | "partner";
+export const lineLabels = (
+  invitation: Invitation,
+  viewer: Viewer,
+): [string, string] =>
+  viewer === "sender"
+    ? ["You", "Partner"]
+    : [firstName(invitation.from), "You"];
 
 // The invitation reads as one sentence from the partner, set flush left on
 // their half. It stays clear of the seam: when the halves bond they overlap
@@ -27,22 +38,28 @@ export const INVITE = {
     leading: 28,
     lines: ["invited you to join", "Caishen together!"],
   },
-  // A signing rule on each half; the partner's sits under their signature.
+  // A signing rule on each half; the sender's sits under their signature.
   rule: {
     y: 92,
-    partner: { x1: -250, x2: -50 },
-    you: { x1: 40, x2: 240 },
+    from: { x1: -250, x2: -50 },
+    to: { x1: 40, x2: 240 },
   },
   labels: { y: 112 },
+  // Where a signature made from the sender's name sits, over their line.
+  signed: { x: -250, y: 34, width: 180, height: 46 },
+  // Where each half takes the pen: more of the half than the line itself,
+  // so a fingertip on a phone doesn't have to start inside a 55px strip.
+  pen: {
+    from: { x: -275, y: -20, width: 260, height: 150 },
+    to: { x: 10, y: -20, width: 270, height: 150 },
+  },
 };
 
 // The sentence is set at 24px (.cardSentence); a long name shrinks until
 // it fits the measure. Serif italic sets at about 0.58em per character.
 const SENTENCE_SIZE = 24;
-export const NAME_SIZE = Math.min(
-  SENTENCE_SIZE,
-  INVITE.measure / (PARTNER.length * 0.58),
-);
+export const nameSize = (name: string) =>
+  Math.min(SENTENCE_SIZE, INVITE.measure / (name.length * 0.58));
 
 const RESOLUTION = 3;
 // Labels print lighter than the sentence; matches .cardMeta.
@@ -52,7 +69,12 @@ const serif = "ui-serif, Georgia, serif";
 // The invitation as a texture for the inside of the folded sheet, laid out
 // like the SVG card so the two match when the sheet lies flat. The tear
 // prints the user's own signature too, as wet as it is at `now`.
-export function printTexture(strokes: Stroke[] = [], now = 0) {
+export function printTexture(
+  invitation: Invitation,
+  strokes: Stroke[] = [],
+  now = 0,
+  viewer: Viewer = "partner",
+) {
   const canvas = document.createElement("canvas");
   canvas.width = CARD.width * RESOLUTION;
   canvas.height = CARD.height * RESOLUTION;
@@ -79,10 +101,10 @@ export function printTexture(strokes: Stroke[] = [], now = 0) {
   };
   const meta = `10px ${serif}`;
   text(
-    PARTNER,
+    invitation.from,
     INVITE.left,
     INVITE.name.y,
-    `italic ${NAME_SIZE}px ${serif}`,
+    `italic ${nameSize(invitation.from)}px ${serif}`,
     0,
     "left",
   );
@@ -100,28 +122,31 @@ export function printTexture(strokes: Stroke[] = [], now = 0) {
   context.strokeStyle = palette.printed;
   context.globalAlpha = 0.35;
   context.lineWidth = 0.6;
-  for (const { x1, x2 } of [INVITE.rule.partner, INVITE.rule.you]) {
+  for (const { x1, x2 } of [INVITE.rule.from, INVITE.rule.to]) {
     context.beginPath();
     context.moveTo(x1, INVITE.rule.y);
     context.lineTo(x2, INVITE.rule.y);
     context.stroke();
   }
   context.globalAlpha = 1;
-  const label = PARTNER_FIRST_NAME.toUpperCase();
-  text(label, INVITE.left, INVITE.labels.y, meta, 1.6, "left", META_ALPHA);
-  text(
-    "YOU",
-    INVITE.rule.you.x1,
-    INVITE.labels.y,
-    meta,
-    1.6,
-    "left",
-    META_ALPHA,
-  );
+  const [fromLabel, toLabel] = lineLabels(invitation, viewer);
+  for (const [label, x] of [
+    [fromLabel, INVITE.rule.from.x1],
+    [toLabel, INVITE.rule.to.x1],
+  ] as const)
+    text(
+      label.toUpperCase(),
+      x,
+      INVITE.labels.y,
+      meta,
+      1.6,
+      "left",
+      META_ALPHA,
+    );
 
   context.lineCap = "round";
   const pool = config.ink.thick * 0.42 * config.ink.pool;
-  for (const stroke of [...PARTNER_STROKES, ...strokes]) {
+  for (const stroke of [...invitation.signature, ...strokes]) {
     const ink = palette.ink(wetness(stroke, now));
     context.strokeStyle = ink;
     context.fillStyle = ink;

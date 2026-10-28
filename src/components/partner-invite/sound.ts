@@ -654,7 +654,7 @@ export function createSound() {
         attack: 0.005,
       });
     },
-    // Jordan's half shrinking into the mark: a small, fading draw-in.
+    // the sender's half shrinking into the mark: a small, fading draw-in.
     filing(seconds: number) {
       burst({
         length: seconds,

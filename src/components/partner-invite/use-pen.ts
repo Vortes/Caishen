@@ -24,7 +24,7 @@ export function usePen({
     last: Point & { at: number };
   } | null>(null);
 
-  const penDown = (event: ReactPointerEvent<SVGRectElement>) => {
+  const penDown = (event: ReactPointerEvent<Element>) => {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     const at = performance.now();
@@ -35,7 +35,7 @@ export function usePen({
       { points: [{ ...toCard(event), t: 0 }], dried: -1 },
     ]);
   };
-  const penMove = (event: ReactPointerEvent<SVGRectElement>) => {
+  const penMove = (event: ReactPointerEvent<Element>) => {
     const pen = drawing.current;
     if (!pen) return;
     const time = performance.now();
@@ -71,6 +71,8 @@ export function usePen({
     strokes,
     undo: () => setStrokes((all) => all.slice(0, -1)),
     clear: () => setStrokes([]),
+    // A whole signature at once, in place of what's there.
+    replace: setStrokes,
     handlers: {
       onPointerDown: penDown,
       onPointerMove: penMove,
