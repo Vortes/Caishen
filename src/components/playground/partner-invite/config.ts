@@ -51,6 +51,10 @@ export type Config = {
     gold: number;
   };
   trail: { life: number; width: number; spread: number; opacity: number };
+  // How hazy the day sky is, from clear (0) to hazy (1), how fast its
+  // clouds drift (× their natural speed), and how much of the open sky
+  // they fill (0 to 1).
+  sky: { haze: number; drift: number; clouds: number };
   // Where on the flight the plane crashes into a cloud (a fraction of its
   // time in the air), how big it is (× the card's width), and how long the
   // poof takes.
@@ -62,6 +66,17 @@ export type Config = {
   // (seconds after yours is gone), how long that takes, and how long the
   // mark holds before the clouds close.
   filed: { at: number; duration: number; hold: number };
+  // The clouds closing over the stage once the mark has held: how long they
+  // take to close in, when they start to part (seconds after they start
+  // closing), and how long parting takes. The mark's plate fades out when
+  // they start closing, give or take `plateAt` seconds, over `plateFade`.
+  veil: {
+    gather: number;
+    partAt: number;
+    part: number;
+    plateAt: number;
+    plateFade: number;
+  };
   // How wide the joined card shows on the Partner page.
   partnerPage: { width: number };
   plane: {
@@ -189,9 +204,11 @@ export const defaultConfig: Config = {
     gold: 0.1,
   },
   trail: { life: 0.2, width: 6, spread: 0, opacity: 1 },
+  sky: { haze: 0, drift: 1, clouds: 0.5 },
   cloud: { at: 0.55, size: 1.35, poof: 0.9 },
   reveal: { at: 0.38, duration: 0.5 },
   filed: { at: 0.15, duration: 0.8, hold: 1.6 },
+  veil: { gather: 1.4, partAt: 1.7, part: 3.6, plateAt: -0.1, plateFade: 0.3 },
   partnerPage: { width: 320 },
   plane: {
     keel: 8,
@@ -492,25 +509,6 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
     ],
   },
   {
-    title: "Reveal",
-    knobs: [
-      {
-        path: "reveal.at",
-        label: "Onboarding starts (of the parting)",
-        min: 0,
-        max: 0.9,
-        step: 0.01,
-      },
-      {
-        path: "reveal.duration",
-        label: "Onboarding settle (s)",
-        min: 0.2,
-        max: 1.5,
-        step: 0.05,
-      },
-    ],
-  },
-  {
     title: "Filed as the Partner mark",
     knobs: [
       {
@@ -535,11 +533,70 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
         step: 0.05,
       },
       {
+        path: "veil.plateAt",
+        label: "Plate fades (s from clouds closing)",
+        min: -1.5,
+        max: 1.4,
+        step: 0.05,
+      },
+      {
+        path: "veil.plateFade",
+        label: "Plate fade (s)",
+        min: 0.05,
+        max: 1.4,
+        step: 0.05,
+      },
+      {
         path: "partnerPage.width",
         label: "Card on the Partner page (px)",
         min: 220,
         max: 460,
         step: 5,
+      },
+    ],
+  },
+  {
+    title: "Clouds closing",
+    knobs: [
+      {
+        path: "veil.gather",
+        label: "Close in (s)",
+        min: 0.4,
+        max: 3,
+        step: 0.05,
+      },
+      {
+        path: "veil.partAt",
+        label: "Start parting (s from closing)",
+        min: 0.4,
+        max: 4,
+        step: 0.05,
+      },
+      {
+        path: "veil.part",
+        label: "Part (s)",
+        min: 1,
+        max: 6,
+        step: 0.1,
+      },
+    ],
+  },
+  {
+    title: "Reveal",
+    knobs: [
+      {
+        path: "reveal.at",
+        label: "Onboarding starts (of the parting)",
+        min: 0,
+        max: 0.9,
+        step: 0.01,
+      },
+      {
+        path: "reveal.duration",
+        label: "Onboarding settle (s)",
+        min: 0.2,
+        max: 1.5,
+        step: 0.05,
       },
     ],
   },

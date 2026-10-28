@@ -1,5 +1,5 @@
 {
-  "seed": 78558,
+  "seed": 34231,
   "pattern": "seigaiha",
   "flight": {
     "far": 0.065,
@@ -16,9 +16,9 @@
   "paper": {
     "lightness": 0.95,
     "warmth": 0.007,
-    "grain": 0.21,
     "deckle": 1.5,
-    "crease": 0.2
+    "crease": 0.2,
+    "grain": 0.21
   },
   "ink": {
     "thin": 0.9,
@@ -63,6 +63,11 @@
     "spread": 0,
     "opacity": 1
   },
+  "sky": {
+    "haze": 0,
+    "drift": 5.4,
+    "clouds": 0.67
+  },
   "cloud": {
     "at": 0.55,
     "size": 1.35,
@@ -76,6 +81,13 @@
     "at": 0.15,
     "duration": 0.8,
     "hold": 1.6
+  },
+  "veil": {
+    "gather": 1.4,
+    "partAt": 1.7,
+    "part": 3.6,
+    "plateAt": -0.1,
+    "plateFade": 0.3
   },
   "partnerPage": {
     "width": 320

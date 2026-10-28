@@ -14,7 +14,8 @@ import {
   writeKnob,
   type Config,
 } from "./config";
-import { Scene, type Phase, type Scrub } from "./scene";
+import { endingSeconds, Scene, type Phase, type Scrub } from "./scene";
+import type { SkyTime } from "./sky";
 import styles from "./lab.module.css";
 
 const ENDPOINT = "/playground/partner-invite/configs";
@@ -25,7 +26,8 @@ const subscribeMotion = (onChange: () => void) => {
   return () => query.removeEventListener("change", onChange);
 };
 
-export type SkyTime = "day" | "night";
+// The ending steps a frame at a time, at 60 frames a second.
+const FPS = 60;
 
 export function PartnerInviteLab({
   initialSky,
@@ -73,6 +75,18 @@ export function PartnerInviteLab({
     history.replaceState(null, "", url);
   };
 
+  // Holding the ending replays it from your half coming free, then holds
+  // the frame asked for.
+  const endingFrames = Math.ceil(endingSeconds(config) * FPS);
+  const endingFrame =
+    scrub?.phase === "ending" ? Math.round(scrub.at * FPS) : null;
+  const holdEnding = (frame: number) => {
+    if (endingFrame === null)
+      setRun((current) => ({ id: current.id + 1, start: "taking" }));
+    const clamped = Math.min(Math.max(frame, 0), endingFrames);
+    setScrub({ phase: "ending", at: clamped / FPS });
+  };
+
   const save = async () => {
     const json = JSON.stringify(config, null, 2);
     await navigator.clipboard.writeText(json).catch(() => undefined);
@@ -90,7 +104,7 @@ export function PartnerInviteLab({
       <Scene
         key={run.id}
         config={config}
-        night={sky === "night"}
+        sky={sky}
         startPhase={run.start}
         reducedMotion={reducedMotion}
         scrub={scrub}
@@ -122,6 +136,37 @@ export function PartnerInviteLab({
             <SegmentedControlItem value="day">Day</SegmentedControlItem>
             <SegmentedControlItem value="night">Night</SegmentedControlItem>
           </SegmentedControl>
+          {(
+            [
+              ["haze", "Haze", 0, 1, 0.01],
+              ["drift", "Cloud drift (× speed)", 0, 10, 0.1],
+              ["clouds", "Background clouds", 0, 1, 0.01],
+            ] as const
+          )
+            .filter(([key]) => key !== "haze" || sky === "day")
+            .map(([key, label, min, max, step]) => (
+              <label key={key} className={styles.knob}>
+                <span className={styles.knobLabel}>
+                  {label}
+                  <span className={styles.knobValue}>
+                    {Number(config.sky[key].toFixed(2))}
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={config.sky[key]}
+                  onChange={(event) =>
+                    setConfig({
+                      ...config,
+                      sky: { ...config.sky, [key]: Number(event.target.value) },
+                    })
+                  }
+                />
+              </label>
+            ))}
           <div className={styles.seedRow}>
             <span className={styles.seed}>Seed {config.seed}</span>
             <Button size="sm" onClick={regenerate}>
@@ -181,6 +226,50 @@ export function PartnerInviteLab({
               </label>
             );
           })}
+          <label className={styles.knob}>
+            <span className={styles.knobLabel}>
+              Hold ending at
+              <span className={styles.knobValue}>
+                {endingFrame === null
+                  ? "playing"
+                  : `frame ${endingFrame} · ${(endingFrame / FPS).toFixed(2)}s`}
+              </span>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={endingFrames}
+              step={1}
+              value={endingFrame ?? 0}
+              onChange={(event) => holdEnding(Number(event.target.value))}
+            />
+          </label>
+          <div className={styles.actions}>
+            <Button
+              size="sm"
+              variant="quiet"
+              aria-label="Previous frame"
+              onClick={() => holdEnding((endingFrame ?? 0) - 1)}
+            >
+              ‹ Frame
+            </Button>
+            <Button
+              size="sm"
+              variant="quiet"
+              aria-label="Next frame"
+              onClick={() => holdEnding((endingFrame ?? 0) + 1)}
+            >
+              Frame ›
+            </Button>
+            <Button
+              size="sm"
+              variant="quiet"
+              disabled={endingFrame === null}
+              onClick={() => replay("taking")}
+            >
+              Play ending
+            </Button>
+          </div>
         </div>
 
         <div className={styles.group}>

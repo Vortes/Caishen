@@ -46,12 +46,13 @@ import {
 } from "./torn-card";
 import { Filed, PartnerPage, type Rect } from "./partner-mark";
 import { INVITE, PARTNER, PARTNER_SIGNATURE, nameSize } from "./print";
-import { Sky, type Veil } from "./sky";
+import { Sky, type SkyTime, type Veil } from "./sky";
 import styles from "./lab.module.css";
 
 // Holds a moment, for study: a fraction of the arrival, or of the tear
-// that opens the bond.
-export type Scrub = { phase: "arrive" | "bond"; at: number };
+// that opens the bond; or, for the ending, a time in seconds since your
+// half came free.
+export type Scrub = { phase: "arrive" | "bond" | "ending"; at: number };
 
 export type Phase =
   | "arrive"
@@ -99,9 +100,14 @@ const UNCURL_SECONDS = 0.8;
 const SHIMMER = [0.8, 1.7] as const;
 const GENIE = { at: 1.8, seconds: 0.55 };
 const GONE = GENIE.at + GENIE.seconds;
-const GATHER_SECONDS = 1.4;
-const PART_DELAY = 1.7;
-const PART_SECONDS = 3.6;
+// From your half coming free to the clouds having parted.
+export const endingSeconds = (config: Config) =>
+  GONE +
+  config.filed.at +
+  config.filed.duration +
+  config.filed.hold +
+  config.veil.partAt +
+  config.veil.part;
 const SIGN_ZONE = { x: 30, y: 6, width: 230, height: 88 };
 // The pen takes the pointer over more of the card than the line itself, so
 // a fingertip on a phone doesn't have to start inside a 55px strip.
@@ -165,14 +171,14 @@ function useNow() {
 
 export function Scene({
   config,
-  night,
+  sky,
   startPhase,
   reducedMotion,
   scrub,
   onRegenerate,
 }: {
   config: Config;
-  night: boolean;
+  sky: SkyTime;
   startPhase: Phase;
   reducedMotion: boolean;
   scrub: Scrub | null;
@@ -204,7 +210,17 @@ export function Scene({
   const [settling, setSettling] = useState<(Peel & { at: number }) | null>(
     null,
   );
-  const [thrown, setThrown] = useState<Thrown | null>(null);
+  // Starting at "taking" (to study the ending) acts out a flick of the
+  // curled corner.
+  const [thrown, setThrown] = useState<Thrown | null>(() => {
+    if (startPhase !== "taking") return null;
+    const angle = (config.part.angle * Math.PI) / 180;
+    return {
+      along: { x: -Math.sin(angle), y: Math.cos(angle) },
+      reach: config.part.curl,
+      velocity: FLICK_OFF,
+    };
+  });
   // Pictures of the halves, for the Partner mark and page.
   const [halves, setHalves] = useState<Halves | null>(null);
   // Until anything happens, the corner curls in as the step begins.
@@ -219,8 +235,10 @@ export function Scene({
   // already closed, just about to part.
   const [takenAt, setTakenAt] = useState<number | null>(() =>
     startPhase === "done"
-      ? performance.now() - (cloudsAt + PART_DELAY - 0.2) * 1000
-      : null,
+      ? performance.now() - (cloudsAt + config.veil.partAt - 0.2) * 1000
+      : startPhase === "taking"
+        ? performance.now()
+        : null,
   );
 
   const arriveTotal = arrivalSeconds(config);
@@ -245,15 +263,22 @@ export function Scene({
   const bondProgress = reducedMotion
     ? 1
     : clamp((elapsed - tearSeconds) / config.bondDuration);
-  const sinceTaken = takenAt === null ? 0 : (now - takenAt) / 1000;
+  const ending = scrub?.phase === "ending" ? scrub.at : null;
+  const sinceTaken =
+    ending ?? (takenAt === null ? 0 : (now - takenAt) / 1000);
   const sinceClouds = sinceTaken - cloudsAt;
+  const { gather, partAt, part: partSeconds } = config.veil;
   const veil: Veil =
     takenAt === null
       ? { cover: 0, open: 0 }
       : {
-          cover: easeInOut(clamp(sinceClouds / GATHER_SECONDS)),
-          open: easeOut(clamp((sinceClouds - PART_DELAY) / PART_SECONDS)),
+          cover: easeInOut(clamp(sinceClouds / gather)),
+          open: easeOut(clamp((sinceClouds - partAt) / partSeconds)),
         };
+  // The mark's plate is gone before the clouds have packed in around it.
+  const plateFade = easeInOut(
+    clamp((sinceClouds - config.veil.plateAt) / config.veil.plateFade),
+  );
   const revealed = phase.name === "done" && (reducedMotion || veil.open > 0);
   // Your half gone, Jordan's hands over from 3D to its picture, which
   // shrinks into the mark.
@@ -263,11 +288,11 @@ export function Scene({
   useEffect(() => {
     if (phase.name === "arrive" && elapsed >= arriveTotal) go("sign");
     if (phase.name === "bond" && bondProgress >= 1) go("take");
-    if (
-      phase.name === "taking" &&
-      (reducedMotion || sinceClouds >= GATHER_SECONDS)
-    )
+    if (phase.name === "taking" && (reducedMotion || sinceClouds >= gather))
       go("done");
+    // Scrubbed back before the clouds closed.
+    if (phase.name === "done" && ending !== null && sinceClouds < gather)
+      go("taking");
   }, [
     phase.name,
     elapsed,
@@ -275,6 +300,8 @@ export function Scene({
     bondProgress,
     reducedMotion,
     sinceClouds,
+    gather,
+    ending,
   ]);
 
   const toCard = (event: ReactPointerEvent): Point => {
@@ -619,7 +646,9 @@ export function Scene({
       strokes,
       inkAt: 0,
     };
-  } else if (!filing) {
+  } else if (!filing || !halves) {
+    // Filing needs the halves pictured; a scrub straight into it draws the
+    // card unseen for a frame to get them.
     // Taken, your half comes free and rises to you, then is gone.
     const free = phase.name === "taking" && thrown;
     const kept = free ? keptPose() : null;
@@ -664,7 +693,7 @@ export function Scene({
             to: intoBottom(kept.z),
           }
         : null,
-      opacity: 1,
+      opacity: filing ? 0 : 1,
       strokes,
       inkAt: bondAt ?? 0,
     };
@@ -699,14 +728,23 @@ export function Scene({
   }
 
   return (
-    <div ref={stage} className={styles.stage} data-night={night || undefined}>
+    <div
+      ref={stage}
+      className={styles.stage}
+      data-night={sky === "night" || undefined}
+    >
       {revealed && (
         <div
           className={styles.next}
           style={
             {
-              "--arrive-delay": `${config.reveal.at * PART_SECONDS}s`,
+              "--arrive-delay": `${config.reveal.at * partSeconds}s`,
               "--arrive-duration": `${config.reveal.duration}s`,
+              // Scrubbed, it holds at the moment the parting has reached.
+              ...(ending !== null && {
+                animationDelay: `${config.reveal.at * partSeconds - (sinceClouds - partAt)}s`,
+                animationPlayState: "paused",
+              }),
             } as CSSProperties
           }
         >
@@ -720,7 +758,14 @@ export function Scene({
         </div>
       )}
       {!(reducedMotion && revealed) && (
-        <Sky still={reducedMotion} night={night} veil={veil} />
+        <Sky
+          still={reducedMotion}
+          time={sky}
+          haze={config.sky.haze}
+          drift={config.sky.drift}
+          clouds={config.sky.clouds}
+          veil={veil}
+        />
       )}
       <svg
         ref={svg}
@@ -746,17 +791,20 @@ export function Scene({
       </svg>
       <Plane3D
         config={config}
-        night={night}
+        night={sky === "night"}
         frame={phase.name === "arrive" ? arrivalFrame(config, elapsed) : null}
         card={cardFrame}
         onKeepsake={setHalves}
       />
-      {phase.name === "taking" && filing && (
+      {phase.name === "taking" && filing && halves && (
         <Filed
+          // The shrink is set up once, so a new duration starts it afresh.
+          key={config.filed.duration}
           config={config}
-          src={halves?.mark ?? null}
+          src={halves.mark}
           from={theirsRect}
-          fade={veil.cover}
+          fade={plateFade}
+          at={ending === null ? null : sinceTaken - filedAt}
           reducedMotion={reducedMotion}
         />
       )}

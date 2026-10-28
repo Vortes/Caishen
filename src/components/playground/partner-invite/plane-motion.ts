@@ -1,5 +1,6 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
 import { cloudHit, poofProgress } from "./cloud";
+import { NEAR_DRIFT } from "./sky";
 import { clamp, easeInOut, span, type Config } from "./config";
 import {
   airSeconds,
@@ -8,7 +9,7 @@ import {
   followed,
   viewTilt,
 } from "./flight";
-import { CARD, LANDING } from "./geometry";
+import { CAMERA_DISTANCE, CARD, LANDING, SCENE } from "./geometry";
 import {
   PLANE_CENTER,
   folded,
@@ -122,10 +123,22 @@ function jolt(config: Config, seconds: number): [number, number] {
   ];
 }
 
+// The cloud drifts across the screen with the sky's near clouds, timed so
+// it's where the plane meets it at the moment they touch. Its drift is
+// across the screen, not the world, so the camera's turn doesn't bend it;
+// nearer the camera than the table, it moves less to cover the same ground.
 function cloudFrame(config: Config, elapsed: number) {
-  const { center } = cloudHit(config);
+  const { center, contact } = cloudHit(config);
+  const speed =
+    NEAR_DRIFT *
+    SCENE.height *
+    config.sky.drift *
+    ((CAMERA_DISTANCE - center.z) / CAMERA_DISTANCE);
+  const drifted = -speed * (elapsed - contact);
   return {
-    matrix: tilt(config, 0)
+    matrix: new Matrix4()
+      .makeTranslation(drifted, 0, 0)
+      .multiply(tilt(config, 0))
       .multiply(camera(config, elapsed))
       .multiply(new Matrix4().makeTranslation(center.x, center.y, center.z)),
     poof: poofProgress(config, elapsed),
