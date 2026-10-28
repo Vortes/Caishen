@@ -1,5 +1,7 @@
 "use client";
 
+import { DialRoot, useDialKit } from "dialkit";
+import "dialkit/styles.css";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   Mesh,
@@ -11,7 +13,8 @@ import {
   WebGLRenderer,
 } from "three";
 import { cloudNoise } from "./cloud";
-import { createSkywriting, type Lettering } from "./skywriting";
+import { createSkywriting } from "./skywriting";
+import { FACES, type Face } from "./skywriting-faces";
 import styles from "./lab.module.css";
 
 // A sky behind the whole stage. By day: a deep, saturated blue, lighter
@@ -253,17 +256,37 @@ const fragment = (variant: string) => /* glsl */ `
   }
 `;
 
-// The line is lettered in the stage's own face, heavy and spaced out,
-// unless the page around it names another through these properties.
-function lettering(style: CSSStyleDeclaration): Lettering {
-  const tracking = parseFloat(style.getPropertyValue("--skywriting-tracking"));
-  return {
-    family:
-      style.getPropertyValue("--skywriting-family").trim() || style.fontFamily,
-    weight: style.getPropertyValue("--skywriting-weight").trim() || "900",
-    tracking: Number.isNaN(tracking) ? 0.16 : tracking,
-  };
-}
+type Slider = [number, number, number, number];
+
+// The line in the sky on sliders: its lettering, and how the pointer
+// breathes it away and how it heals (see Breath in skywriting.ts). In development DialKit shows them;
+// production builds use the defaults.
+const DIALS = {
+  Lettering: {
+    face: {
+      type: "select" as const,
+      options: Object.keys(FACES) as Face[],
+      default: "Gloria Hallelujah" as Face,
+    },
+    capitals: false,
+    trail: [0.082, 0.03, 0.14, 0.002] as Slider,
+    spacing: [0.12, 0, 0.3, 0.01] as Slider,
+  },
+  Breath: {
+    reach: [1.46, 0.2, 2, 0.01] as Slider,
+    strength: [2.6, 0.2, 12, 0.1] as Slider,
+    depth: [0.85, 0.1, 1, 0.01] as Slider,
+    push: [900, 0, 3000, 10] as Slider,
+    drag: [4.6, 0.2, 8, 0.1] as Slider,
+  },
+  Healing: {
+    delay: [0, 0, 3, 0.05] as Slider,
+    home: [7.7, 0.2, 12, 0.1] as Slider,
+    swirl: [0, 0, 2, 0.01] as Slider,
+    wander: [200, 0, 400, 1] as Slider,
+    thicken: [3.3, 0.1, 4, 0.05] as Slider,
+  },
+};
 
 export function Sky({
   still,
@@ -291,8 +314,32 @@ export function Sky({
   const host = useRef<HTMLDivElement>(null);
   // The scene re-renders every frame; the draw loop reads the latest veil
   // and haze.
-  const latest = useRef({ veil, haze, drift, clouds, words, onBreathe });
-  latest.current = { veil, haze, drift, clouds, words, onBreathe };
+  const dials = useDialKit("Skywriting", DIALS, {
+    id: "skywriting-v4",
+    persist: true,
+  });
+  const lettering = { ...dials.Lettering, face: dials.Lettering.face as Face };
+  const breath = { ...dials.Breath, ...dials.Healing };
+  const latest = useRef({
+    veil,
+    haze,
+    drift,
+    clouds,
+    words,
+    onBreathe,
+    lettering,
+    breath,
+  });
+  latest.current = {
+    veil,
+    haze,
+    drift,
+    clouds,
+    words,
+    onBreathe,
+    lettering,
+    breath,
+  };
   // Held still, the sky only draws when asked.
   const redraw = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -306,8 +353,10 @@ export function Sky({
     renderer.setPixelRatio(1);
     element.appendChild(renderer.domElement);
     const size = new Vector2(1, 1);
-    // The line in the sky, and where the pointer rests over it.
+    // The line in the sky, on its own sharper canvas over the sky's, and
+    // where the pointer rests over it.
     const writing = createSkywriting();
+    element.appendChild(writing.canvas);
     let pointer: { x: number; y: number } | null = null;
     const point = (event: PointerEvent) => {
       const box = element.getBoundingClientRect();
@@ -341,7 +390,6 @@ export function Sky({
     const geometry = new PlaneGeometry(2, 2);
     const scene = new Scene();
     scene.add(new Mesh(geometry, material));
-    scene.add(writing.mesh);
     const camera = new OrthographicCamera();
 
     const isNight = time === "night";
@@ -362,12 +410,7 @@ export function Sky({
       uniforms.uClouds!.value = latest.current.clouds;
       const line = latest.current.words;
       if (line)
-        writing.write(
-          line.lines,
-          size.x,
-          size.y,
-          lettering(getComputedStyle(element)),
-        );
+        writing.write(line.lines, size.x, size.y, latest.current.lettering);
       const breathed = writing.update({
         width: size.x,
         height: size.y,
@@ -377,14 +420,17 @@ export function Sky({
         pointer,
         dt,
         night: isNight,
+        breath: latest.current.breath,
       });
       latest.current.onBreathe?.(breathed, dt);
       renderer.render(scene, camera);
+      writing.render();
     };
     const fit = () => {
       const { width, height } = element.getBoundingClientRect();
       if (!width || !height) return;
       renderer.setSize(width, height);
+      writing.resize(width, height);
       size.set(width, height);
       draw(performance.now());
     };
@@ -417,5 +463,12 @@ export function Sky({
     };
   }, [still, time]);
 
-  return <div ref={host} className={styles.sky} aria-hidden />;
+  return (
+    <>
+      <div ref={host} className={styles.sky} aria-hidden />
+      {process.env.NODE_ENV === "development" && (
+        <DialRoot position="bottom-right" />
+      )}
+    </>
+  );
 }
