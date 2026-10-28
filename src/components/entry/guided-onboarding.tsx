@@ -21,6 +21,7 @@ import batch from "./entry.module.css";
 import styles from "./onboarding.module.css";
 
 export type BudgetBasics = {
+  yourName: string;
   name: string;
   timezone: string;
   emailEnabled: boolean;
@@ -41,6 +42,7 @@ export function GuidedOnboarding({
   onStageChange,
   partner,
   email,
+  initialName = "",
   onSignOut,
   initialDraft = initialCategories,
   onDraftChange,
@@ -55,6 +57,7 @@ export function GuidedOnboarding({
   onStageChange?: (stage: SetupStage) => void;
   partner?: ReactNode;
   email?: string;
+  initialName?: string;
   onSignOut?: () => void;
   initialDraft?: CategoryDraft;
   onDraftChange?: (draft: CategoryDraft) => void;
@@ -62,6 +65,7 @@ export function GuidedOnboarding({
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const [stage, setStage] = useState(initialStage);
+  const [yourName, setYourName] = useState(initialName);
   const [name, setName] = useState("My budget");
   const [timezone, setTimezone] = useState("America/Los_Angeles");
   const [emailEnabled, setEmailEnabled] = useState(true);
@@ -175,6 +179,10 @@ export function GuidedOnboarding({
                 className={styles.form}
                 onSubmit={(event) => {
                   event.preventDefault();
+                  if (!yourName.trim()) {
+                    setError("Tell us your name.");
+                    return;
+                  }
                   if (!name.trim()) {
                     setError("Give your budget a name.");
                     return;
@@ -188,6 +196,7 @@ export function GuidedOnboarding({
                   void submit(
                     () =>
                       onCreate({
+                        yourName: yourName.trim(),
                         name: name.trim(),
                         timezone,
                         emailEnabled,
@@ -199,6 +208,23 @@ export function GuidedOnboarding({
               >
                 <Card>
                   <div className={styles.fields}>
+                    <div className={batch.field}>
+                      <label
+                        className={batch.fieldLabel}
+                        htmlFor={`${id}-you`}
+                      >
+                        Your name
+                      </label>
+                      <input
+                        id={`${id}-you`}
+                        className={batch.input}
+                        value={yourName}
+                        maxLength={80}
+                        aria-required
+                        autoComplete="name"
+                        onChange={(event) => setYourName(event.target.value)}
+                      />
+                    </div>
                     <div className={batch.field}>
                       <label
                         className={batch.fieldLabel}

@@ -131,6 +131,9 @@ export function Onboarding() {
     ["cash", "credit", "tracking"].includes(account.kind),
   );
   const createBudget = async (input: BudgetBasics) => {
+    const [firstName = "", ...rest] = input.yourName.split(/\s+/);
+    if (user && input.yourName !== (user.fullName ?? ""))
+      await user.update({ firstName, lastName: rest.join(" ") });
     const start = currentMonth(input.timezone);
     const current = await utils.client.budget.state.query({ month: start });
     if (!current.view)
@@ -149,6 +152,7 @@ export function Onboarding() {
     <BankConnectionsProvider value={banks}>
       <GuidedOnboarding
         email={user?.primaryEmailAddress?.emailAddress}
+        initialName={user?.fullName ?? ""}
         onSignOut={() =>
           void deleteStoredBudgets().finally(() =>
             clerk.signOut({ redirectUrl: "/" }),
