@@ -47,8 +47,14 @@ const ring = (step: number) => E6 * 2 ** ([0, 4, 7, 9, 12, 16][step]! / 12);
 
 export type Sound = ReturnType<typeof createSound>;
 
+// Everything here is synthesized, so it's made at 48 kHz whatever the
+// output runs at: on a 192 kHz device the noise and the room's tail would
+// otherwise take four times as long to build.
 export function createSound() {
-  const context = new AudioContext({ latencyHint: "interactive" });
+  const context = new AudioContext({
+    latencyHint: "interactive",
+    sampleRate: 48000,
+  });
   const now = () => context.currentTime;
 
   // Clouds closing over the stage muffle everything; this is that muffle.

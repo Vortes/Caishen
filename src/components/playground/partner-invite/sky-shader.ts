@@ -225,12 +225,21 @@ const fragment = (variant: string) => /* glsl */ `
     float thin = uOpen > 0.0 ? 1.0 - smoothstep(cut, cut + 0.08, density) : 0.0;
     sky = mix(sky, cloudColor(1.0, near), thin * 0.35);
 
-    gl_FragColor = vec4(sky, 1.0);
-    #include <colorspace_fragment>
-    // The canvas composites premultiplied, in display space.
+    // In display space here: the sky is drawn off screen and copied onto
+    // the canvas as it is. The canvas composites premultiplied.
+    gl_FragColor = sRGBTransferOETF(vec4(sky, 1.0));
     gl_FragColor = vec4(gl_FragColor.rgb * alpha, alpha);
   }
 `;
 
 export const skyFragment = (night: boolean) =>
   fragment(night ? nightSky : daySky);
+
+// The sky as drawn, stretched over the canvas.
+export const copyFragment = /* glsl */ `
+  uniform sampler2D uSky;
+  varying vec2 vUv;
+  void main() {
+    gl_FragColor = texture2D(uSky, vUv);
+  }
+`;

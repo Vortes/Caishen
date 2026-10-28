@@ -18,6 +18,7 @@ import { shapeSheet } from "./harrier";
 import type { Stroke } from "./ink";
 import { createPaperMaterial } from "./paper-material";
 import type { PlaneFrame } from "./plane-motion";
+import { measure, perf } from "./perf";
 import { printTexture } from "./print";
 import { sealTexture } from "./seal";
 import {
@@ -65,8 +66,9 @@ export function Plane3D({
   // the torn card carries it as wet as it was then.
   strokes: Stroke[];
   inkAt: number | null;
-  // Called once, as soon as the card is bonded, with a picture of Jordan's
-  // half on its own, flat and lit as it is here, for the Partner mark.
+  // Called once, soon after the card is bonded, with a picture of Jordan's
+  // half on its own, flat and lit as it is here, for the Partner mark: an
+  // object URL, which the caller revokes.
   onKeepsake?: (mark: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -77,9 +79,15 @@ export function Plane3D({
   // first frame draws.
   useLayoutEffect(() => {
     const element = host.current!;
-    const renderer = new WebGLRenderer({ antialias: true, alpha: true });
+    // At twice the CSS pixels or more, edges are fine without multisampling,
+    // which would cost four samples a pixel over the whole stage.
+    const renderer = new WebGLRenderer({
+      antialias: window.devicePixelRatio < 2,
+      alpha: true,
+    });
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    perf?.watch("plane", renderer);
     element.appendChild(renderer.domElement);
     const camera = new PerspectiveCamera(30, 1, 200, 60000);
     const geometry = new BufferGeometry();
@@ -94,6 +102,9 @@ export function Plane3D({
     const cloud = createCloud();
     const torn = createTornCard();
     scene.add(mesh, vapor, cloud, torn);
+    // The paper's shader is big. Compiled now, in the background, it's
+    // ready before the tap that throws the plane.
+    void renderer.compileAsync(scene, camera);
     three.current = {
       renderer,
       scene,
@@ -169,7 +180,12 @@ export function Plane3D({
           shimmer: -1,
           genie: null,
         });
-      onKeepsake(pictureCard(current, theirsAlone, THEIRS_BOX));
+      // Encoded off the frame; it isn't needed until the half is filed.
+      measure("keepsake", () =>
+        pictureCard(current, theirsAlone, THEIRS_BOX),
+      ).toBlob((picture) => {
+        if (picture) onKeepsake(URL.createObjectURL(picture));
+      });
     }
     if (card && cardPrint && cardOpacity(card) > 0) {
       canvas.style.visibility = "visible";
@@ -178,7 +194,9 @@ export function Plane3D({
       current.vapor.visible = false;
       current.cloud.visible = false;
       current.card.visible = true;
-      updateTornCard(current.card, cardPrint, current.seal, card);
+      measure("card", () =>
+        updateTornCard(current.card, cardPrint, current.seal, card),
+      );
       current.renderer.render(current.scene, current.camera);
       return;
     }
@@ -190,7 +208,9 @@ export function Plane3D({
     current.card.visible = false;
     canvas.style.visibility = "visible";
     canvas.style.opacity = String(frame.opacity);
-    const { positions, rests } = shapeSheet(frame.shape);
+    const { positions, rests } = measure("plane:shape", () =>
+      shapeSheet(frame.shape),
+    );
     writeAttribute(current.mesh.geometry, "position", positions, 3);
     writeAttribute(current.mesh.geometry, "rest", rests, 2);
     current.mesh.matrix.copy(frame.matrix);
@@ -246,5 +266,5 @@ function pictureCard(
       picture.width,
       picture.height,
     );
-  return picture.toDataURL("image/png");
+  return picture;
 }
