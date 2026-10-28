@@ -10,7 +10,8 @@ import { EntryPage } from "./entry-page";
 import { Brand } from "./brand";
 import { CodeField, isComplete } from "./invite-code";
 import {
-  CategoriesPanel,
+  CategoryQuestions,
+  CategoryReview,
   categoriesFor,
   initialCategories,
   type Group,
@@ -69,14 +70,22 @@ export function GuidedOnboarding({
   const [inviter, setInviter] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
+  // Categories open on the questions; their answers then fill the list.
+  const [reviewing, setReviewing] = useState(false);
+  const [answered, setAnswered] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(
     () => setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone),
     [],
   );
+  const review = (on: boolean) => {
+    setReviewing(on);
+    requestAnimationFrame(() => heading.current?.focus());
+  };
   const go = (next: SetupStage) => {
     setStage(next);
+    setReviewing(false);
     setError(null);
     onStageChange?.(next);
     requestAnimationFrame(() => heading.current?.focus());
@@ -102,7 +111,12 @@ export function GuidedOnboarding({
     ),
   }));
   if (draft.custom.length)
-    groups.push({ name: "Your own", categories: draft.custom });
+    groups.push({
+      name: "Your own",
+      categories: draft.custom.filter(
+        (category) => !draft.unchecked.includes(category),
+      ),
+    });
   const step = stages.indexOf(stage);
   return (
     <EntryPage>
@@ -133,51 +147,29 @@ export function GuidedOnboarding({
                 ) : (
                   <span className={styles.stepNumber}>{index + 1}</span>
                 )}
-                {label}
+                <span className={styles.stepLabel}>{label}</span>
               </li>
             ))}
           </ol>
           <section className={styles.step} aria-labelledby="setup-title">
-            <div className={styles.stepIntro}>
-              {stage !== "basics" && stage !== "categories" && (
-                <Button
-                  size="sm"
-                  variant="quiet"
-                  disabled={busy}
-                  onClick={() =>
-                    go(stage === "ready" ? "accounts" : "categories")
-                  }
-                >
-                  <ArrowLeftIcon aria-hidden />
-                  Back
-                </Button>
-              )}
-              <h1
-                ref={heading}
-                id="setup-title"
-                tabIndex={-1}
-                className={styles.title}
-              >
-                {stage === "basics"
-                  ? inviter
-                    ? `${inviter} invited you. Let’s set up your budget.`
-                    : "Welcome. Let’s set up your budget."
-                  : stage === "categories"
-                    ? "Make the categories yours"
-                    : stage === "accounts"
-                      ? "Add the accounts you spend from"
-                      : "Your budget is ready"}
-              </h1>
-              <p className={styles.lede}>
-                {stage === "basics"
-                  ? "Your budget plans the money you have today. It’s yours alone; a partner gets their own and sees only what you share."
-                  : stage === "categories"
-                    ? "A few questions give you a starting point. Keep what fits, remove what doesn’t, and add your own."
-                    : stage === "accounts"
-                      ? "Start with checking and the cards you use. Each starts at today’s balance, and that cash is what you’ll assign. Savings and others can wait."
-                      : "Everything here can change later in the plan and Settings."}
-              </p>
-            </div>
+            <h1
+              ref={heading}
+              id="setup-title"
+              tabIndex={-1}
+              className={styles.title}
+            >
+              {stage === "basics"
+                ? inviter
+                  ? `${inviter} invited you. Let’s set up your budget.`
+                  : "Welcome. Let’s set up your budget."
+                : stage === "categories"
+                  ? reviewing
+                    ? "Keep what fits"
+                    : "A few questions about you"
+                  : stage === "accounts"
+                    ? "Add the accounts you spend from"
+                    : "Your budget is ready"}
+            </h1>
             {stage === "basics" && (
               <form
                 className={styles.form}
@@ -238,22 +230,16 @@ export function GuidedOnboarding({
                       >
                         <TimezoneOptions include={timezone} />
                       </select>
-                      <span className={batch.fieldHint}>
-                        Decides when a new month starts and when your daily
-                        email arrives.
-                      </span>
                     </div>
-                    <label className={styles.check}>
+                    <label className={styles.switchRow}>
+                      <span className={styles.switchLabel}>
+                        Daily review email
+                      </span>
                       <Switch
                         checked={emailEnabled}
                         onCheckedChange={setEmailEnabled}
                       />
-                      Daily review email
                     </label>
-                    <p className={batch.fieldHint}>
-                      At 8 a.m. in your timezone. Change or disable it in
-                      Settings.
-                    </p>
                   </div>
                 </Card>
                 {onCheckInvite && (
@@ -270,7 +256,6 @@ export function GuidedOnboarding({
                           setInviter(null);
                         }}
                       >
-                        {" "}
                         {codeOpen ? "Cancel" : "Enter their code"}
                       </Button>
                     </div>
@@ -331,9 +316,23 @@ export function GuidedOnboarding({
                 </div>
               </form>
             )}
-            {stage === "categories" && (
-              <>
-                <CategoriesPanel
+            {stage === "categories" && !reviewing && (
+              <CategoryQuestions
+                flow={draft}
+                update={(change) => {
+                  const next = { ...draft, ...change };
+                  setDraft(next);
+                  onDraftChange?.(next);
+                }}
+                answered={answered}
+                onAnswered={setAnswered}
+                onDone={() => review(true)}
+                onSkip={() => go("accounts")}
+              />
+            )}
+            {stage === "categories" && reviewing && (
+              <div className={styles.reveal}>
+                <CategoryReview
                   flow={draft}
                   update={(change) => {
                     const next = { ...draft, ...change };
@@ -347,13 +346,16 @@ export function GuidedOnboarding({
                   </p>
                 )}
                 <div className={batch.actions} data-end>
-                  <Button
-                    variant="quiet"
-                    disabled={busy}
-                    onClick={() => go("accounts")}
-                  >
-                    Skip for now
-                  </Button>
+                  <div className={styles.back}>
+                    <Button
+                      variant="quiet"
+                      disabled={busy}
+                      onClick={() => review(false)}
+                    >
+                      <ArrowLeftIcon aria-hidden />
+                      Back
+                    </Button>
+                  </div>
                   <Button
                     variant="primary"
                     disabled={busy}
@@ -364,12 +366,25 @@ export function GuidedOnboarding({
                     {busy ? "Saving categories…" : "Continue"}
                   </Button>
                 </div>
-              </>
+              </div>
             )}
             {stage === "accounts" && (
               <>
                 {accounts}
                 <div className={batch.actions} data-end>
+                  <div className={styles.back}>
+                    <Button
+                      variant="quiet"
+                      disabled={busy}
+                      onClick={() => {
+                        go("categories");
+                        setReviewing(true);
+                      }}
+                    >
+                      <ArrowLeftIcon aria-hidden />
+                      Back
+                    </Button>
+                  </div>
                   <Button variant="quiet" onClick={() => go("ready")}>
                     Skip for now
                   </Button>
@@ -382,22 +397,28 @@ export function GuidedOnboarding({
             {stage === "ready" && (
               <>
                 <Card>
-                  <div className={styles.fields}>
+                  <div className={styles.figure}>
                     <span className={batch.fieldLabel}>Ready to Assign</span>
-                    <strong className={styles.title}>
+                    <strong data-empty={readyToAssign === 0 || undefined}>
                       {new Intl.NumberFormat("en-US", {
                         style: "currency",
                         currency: "USD",
                       }).format(readyToAssign / 100)}
                     </strong>
-                    <p className={batch.fieldHint}>
-                      Give the money you have a purpose. Expected income isn’t
-                      included.
-                    </p>
                   </div>
                 </Card>
                 {partner}
                 <div className={batch.actions} data-end>
+                  <div className={styles.back}>
+                    <Button
+                      variant="quiet"
+                      disabled={busy}
+                      onClick={() => go("accounts")}
+                    >
+                      <ArrowLeftIcon aria-hidden />
+                      Back
+                    </Button>
+                  </div>
                   <Button variant="primary" onClick={onComplete}>
                     Open my budget
                     <ChevronRightIcon aria-hidden />

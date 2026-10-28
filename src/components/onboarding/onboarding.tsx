@@ -3,7 +3,7 @@
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { useAuth, useUser, useClerk } from "@clerk/nextjs";
 import { useCallback, useState } from "react";
-import { LandmarkIcon } from "lucide-react";
+import { LandmarkIcon, PlusIcon } from "lucide-react";
 import {
   currentMonth,
   newId,
@@ -55,7 +55,6 @@ export function Onboarding() {
   const join = api.budget.join.useMutation();
   const check = api.budget.checkInvite.useMutation();
   const [notice, setNotice] = useState<string | null>(null);
-  const [manual, setManual] = useState(false);
   const refresh = () => utils.budget.state.invalidate();
   const run = async (command: Command) => {
     const current = await utils.client.budget.state.query({ month });
@@ -128,6 +127,9 @@ export function Onboarding() {
       </EntryPage>
     );
   const view = state.data.view;
+  const cashAccounts = (view?.accounts ?? []).filter((account) =>
+    ["cash", "credit", "tracking"].includes(account.kind),
+  );
   const createBudget = async (input: BudgetBasics) => {
     const start = currentMonth(input.timezone);
     const current = await utils.client.budget.state.query({ month: start });
@@ -185,74 +187,13 @@ export function Onboarding() {
         }}
         accounts={
           <>
-            <Card>
-              <div className={styles.fields}>
-                <LandmarkIcon size={20} aria-hidden />
-                <h2 className={styles.groupName}>Connect your bank</h2>
-                <p className={batch.fieldHint}>
-                  Choose your bank in Plaid’s secure window. Caishen never sees
-                  your bank password.
-                </p>
-                <div>
-                  <Button
-                    variant="primary"
-                    disabled={!banks.available || banks.busy}
-                    onClick={() => banks.start()}
-                  >
-                    {banks.opening ? "Opening Plaid…" : "Connect a bank"}
-                  </Button>
-                </div>
-                {!banks.available && (
-                  <p className={batch.fieldHint}>
-                    Bank connections aren’t configured yet. You can add an
-                    account by hand.
-                  </p>
-                )}
-                {banks.connections.map((connection) => (
-                  <div key={connection.id}>
-                    <span>
-                      {connection.institutionName ?? "Connected bank"}
-                    </span>{" "}
-                    <Button
-                      size="sm"
-                      onClick={() => banks.setUp(connection.id)}
-                    >
-                      Set up accounts
-                    </Button>
-                  </div>
-                ))}
-                {view && (
-                  <ul className={styles.checkList}>
-                    {view.accounts
-                      .filter((account) =>
-                        ["cash", "credit", "tracking"].includes(account.kind),
-                      )
-                      .map((account) => (
-                        <li key={account.id}>
-                          {account.name} · {formatMoney(account.balance)}
-                        </li>
-                      ))}
-                  </ul>
-                )}
-                <div>
-                  <Button variant="quiet" onClick={() => setManual(!manual)}>
-                    {manual ? "Cancel" : "Add an account by hand"}
-                  </Button>
-                </div>
-                {manual && (
-                  <ManualAccount
-                    onSave={async (command) => {
-                      await run(command);
-                      setManual(false);
-                    }}
-                    timezone={
-                      view?.budget.settings.timezone ?? "America/Los_Angeles"
-                    }
-                  />
-                )}
-                {notice && <p role="status">{notice}</p>}
-              </div>
-            </Card>
+            <AccountsCard
+              banks={banks}
+              accounts={cashAccounts}
+              notice={notice}
+              timezone={view?.budget.settings.timezone ?? "America/Los_Angeles"}
+              onAdd={run}
+            />
             <BankDialog />
           </>
         }
@@ -268,11 +209,96 @@ export function Onboarding() {
   );
 }
 
+export function AccountsCard({
+  banks,
+  accounts,
+  notice,
+  timezone,
+  onAdd,
+}: {
+  banks: ReturnType<typeof useBankConnections>;
+  accounts: { id: string; name: string; balance: number }[];
+  notice: string | null;
+  timezone: string;
+  onAdd: (command: Command) => Promise<void>;
+}) {
+  const [manual, setManual] = useState(false);
+  return (
+    <Card>
+      <div className={styles.connect}>
+        <LandmarkIcon size={15} className={styles.connectIcon} aria-hidden />
+        <div className={styles.bankHead}>
+          <h2 className={styles.cardHeading}>Connect your bank</h2>
+          <p className={batch.fieldHint}>
+            {banks.available
+              ? "Caishen never sees your bank password."
+              : "Bank connections aren’t set up yet. Add an account by hand."}
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          disabled={!banks.available || banks.busy}
+          onClick={() => banks.start()}
+        >
+          {banks.opening ? "Opening Plaid…" : "Connect a bank"}
+        </Button>
+      </div>
+      {(banks.connections.length > 0 || accounts.length > 0) && (
+        <ul className={styles.accountList} data-spaced>
+          {banks.connections.map((connection) => (
+            <li key={connection.id} className={styles.accountRow}>
+              <span className={styles.accountName}>
+                {connection.institutionName ?? "Connected bank"}
+              </span>
+              <Button size="sm" onClick={() => banks.setUp(connection.id)}>
+                Set up accounts
+              </Button>
+            </li>
+          ))}
+          {accounts.map((account) => (
+            <li key={account.id} className={styles.accountRow}>
+              <span className={styles.accountName}>{account.name}</span>
+              <span className={styles.amount}>
+                {formatMoney(account.balance)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className={styles.divider} />
+      {manual ? (
+        <ManualAccount
+          onCancel={() => setManual(false)}
+          onSave={async (command) => {
+            await onAdd(command);
+            setManual(false);
+          }}
+          timezone={timezone}
+        />
+      ) : (
+        <div>
+          <Button variant="quiet" onClick={() => setManual(true)}>
+            <PlusIcon aria-hidden />
+            Add an account by hand
+          </Button>
+        </div>
+      )}
+      {notice && (
+        <p className={styles.bankNote} role="status">
+          {notice}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function ManualAccount({
   onSave,
+  onCancel,
   timezone,
 }: {
   onSave: (command: Command) => Promise<void>;
+  onCancel: () => void;
   timezone: string;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -309,42 +335,44 @@ function ManualAccount({
   );
   return (
     <form
-      className={styles.form}
+      className={styles.manual}
       onSubmit={(event) => {
         event.preventDefault();
         void save(event.currentTarget);
       }}
     >
-      <label className={batch.field}>
-        Account name
-        <input
-          className={batch.input}
-          name="name"
-          autoComplete="off"
-          required
-          maxLength={80}
-        />
-      </label>
-      <label className={batch.field}>
-        Account type
-        <select className={batch.select} name="kind">
-          <option value="cash">Checking or savings</option>
-          <option value="credit">Credit card</option>
-        </select>
-      </label>
-      <label className={batch.field}>
-        Current balance
-        <input
-          className={batch.input}
-          name="balance"
-          inputMode="decimal"
-          onChange={(event) => {
-            event.target.value = groupAmountInput(event.target);
-          }}
-          placeholder="0.00"
-          required
-        />
-      </label>
+      <div className={styles.manualFields}>
+        <label className={batch.field}>
+          <span className={batch.fieldLabel}>Account name</span>
+          <input
+            className={batch.input}
+            name="name"
+            autoComplete="off"
+            required
+            maxLength={80}
+          />
+        </label>
+        <label className={batch.field}>
+          <span className={batch.fieldLabel}>Type</span>
+          <select className={batch.select} name="kind">
+            <option value="cash">Checking or savings</option>
+            <option value="credit">Credit card</option>
+          </select>
+        </label>
+        <label className={batch.field}>
+          <span className={batch.fieldLabel}>Balance today</span>
+          <input
+            className={`${batch.input} ${styles.amountInput}`}
+            name="balance"
+            inputMode="decimal"
+            onChange={(event) => {
+              event.target.value = groupAmountInput(event.target);
+            }}
+            placeholder="0.00"
+            required
+          />
+        </label>
+      </div>
       <p className={batch.fieldHint}>
         For a credit card, enter the amount you owe.
       </p>
@@ -354,6 +382,9 @@ function ManualAccount({
         </p>
       )}
       <div className={batch.actions} data-end>
+        <Button variant="quiet" onClick={onCancel}>
+          Cancel
+        </Button>
         <Button variant="primary" type="submit" disabled={busy}>
           {busy ? "Adding…" : "Add account"}
         </Button>

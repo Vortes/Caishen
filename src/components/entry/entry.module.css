@@ -82,8 +82,10 @@
   font: inherit;
   transition: border-color 150ms;
 }
+/* The native select insets its text by 4px; trim the padding so the value
+   lines up with the inputs above it. */
 .select {
-  padding-right: 6px;
+  padding: 0 6px;
 }
 .input:hover,
 .select:hover {

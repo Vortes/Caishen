@@ -26,5 +26,5 @@ test("failed budget creation keeps the entered details and does not advance to c
   expect(screen.getByLabelText<HTMLInputElement>("Budget name").value).toBe(
     "My home",
   );
-  expect(screen.queryByText("Make the categories yours")).toBeNull();
+  expect(screen.queryByText("A few questions about you")).toBeNull();
 });
