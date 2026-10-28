@@ -13,15 +13,21 @@ import {
 import { cloudNoise } from "./cloud";
 import styles from "./lab.module.css";
 
-// A sky behind the whole stage. By day: deep blue overhead fading to a
-// pale haze low down, a soft sun up to the right, and two layers of
-// fair-weather cloud drifting past, the nearer one faster. By night, see
-// nightSky. A bank of thicker cloud crowds the edges. When the halves part
-// the bank closes over the stage, then parts along the seams between
-// its masses to show what's underneath.
+// A sky behind the whole stage. By day: a deep, saturated blue, lighter
+// low down, and two layers of soft, wispy cloud drifting past, the nearer
+// one faster, all of it hazier as asked. By night, see nightSky. A bank of thicker cloud crowds the
+// edges. When the halves part the bank closes over the stage, then parts
+// along the seams between its masses to show what's underneath.
 
 // How far the bank has closed in, and how far it has parted again.
 export type Veil = { cover: number; open: number };
+
+export type SkyTime = "day" | "night";
+
+// The near clouds' scale, and how fast they drift: in stage heights a
+// second, leftward, at their natural speed.
+const NEAR_SCALE = 1.3;
+export const NEAR_DRIFT = 0.014 / NEAR_SCALE;
 
 const vertex = /* glsl */ `
   varying vec2 vUv;
@@ -33,22 +39,31 @@ const vertex = /* glsl */ `
 
 // Each sky supplies its backdrop, where its light sits, and how that light
 // falls on cloud; the clouds and the veil are shared.
+
+// By day, haze runs from a deep, even blue with thin, bright cloud, like a
+// photo shot looking up (0), to a paler sky fading to white low down, a
+// soft sun up to the right, and puffier cloud with blue-grey shadows (1).
 const daySky = /* glsl */ `
-  #define FAR_COVER 0.56
-  #define NEAR_COVER 0.6
+  #define FAR_COVER mix(0.58, 0.56, uHaze)
+  #define NEAR_COVER mix(0.64, 0.6, uHaze)
+  #define SOFTNESS mix(0.32, 0.18, uHaze)
   vec2 lightAt(float aspect) { return vec2(aspect * 0.86, 0.94); }
 
   vec3 backdrop(vec2 p, vec2 light) {
-    vec3 zenith = vec3(0.16, 0.45, 0.86);
-    vec3 horizon = vec3(0.70, 0.86, 0.97);
-    vec3 sky = mix(horizon, zenith, pow(vUv.y, 0.8));
+    vec3 zenith = mix(vec3(0.035, 0.22, 0.72), vec3(0.16, 0.45, 0.86), uHaze);
+    vec3 horizon = mix(vec3(0.16, 0.42, 0.84), vec3(0.70, 0.86, 0.97), uHaze);
+    float rise = mix(smoothstep(0.0, 1.0, vUv.y), pow(vUv.y, 0.8), uHaze);
+    vec3 sky = mix(horizon, zenith, rise);
     float toward = distance(p, light);
-    sky += vec3(1.0, 0.93, 0.78) * (0.55 * exp(-toward * 7.0) + 0.18 * exp(-toward * 1.8));
-    return sky;
+    vec3 clear = vec3(0.5, 0.6, 0.7) * 0.12 * exp(-toward * 1.6);
+    vec3 hazy = vec3(1.0, 0.93, 0.78) * (0.55 * exp(-toward * 7.0) + 0.18 * exp(-toward * 1.8));
+    return sky + mix(clear, hazy, uHaze);
   }
 
   vec3 cloudColor(float shade, float near) {
-    return mix(vec3(0.72, 0.80, 0.92), vec3(1.0, 0.995, 0.97), shade);
+    vec3 shadow = mix(vec3(0.52, 0.66, 0.88), vec3(0.72, 0.80, 0.92), uHaze);
+    vec3 lit = mix(vec3(1.0, 1.0, 0.99), vec3(1.0, 0.995, 0.97), uHaze);
+    return mix(shadow, lit, shade);
   }
 `;
 
@@ -59,6 +74,7 @@ const daySky = /* glsl */ `
 const nightSky = /* glsl */ `
   #define FAR_COVER 0.62
   #define NEAR_COVER 0.66
+  #define SOFTNESS 0.18
   #define MOON_RADIUS 0.06
   vec2 lightAt(float aspect) { return vec2(max(aspect * 0.2, 0.14), 0.85); }
 
@@ -143,9 +159,14 @@ const nightSky = /* glsl */ `
 
 const fragment = (variant: string) => /* glsl */ `
   uniform float uTime;
+  // How far the clouds have drifted, in seconds at their natural speed.
+  uniform float uDrift;
   uniform vec2 uSize;
   uniform float uCover;
   uniform float uOpen;
+  uniform float uHaze;
+  // How much of the open sky the drifting clouds fill, 0 to 1.
+  uniform float uClouds;
   varying vec2 vUv;
   ${cloudNoise}
   ${variant}
@@ -160,7 +181,7 @@ const fragment = (variant: string) => /* glsl */ `
   vec4 clouds(vec2 p, float cover, vec2 toLight, float near) {
     vec2 warp = vec2(fbm(p * 0.6 + 3.1), fbm(p * 0.6 - 5.7));
     float density = fbm(p + warp * 0.8);
-    float shape = smoothstep(cover, cover + 0.18, density);
+    float shape = smoothstep(cover, cover + SOFTNESS, density);
     float lit = fbm(p + warp * 0.8 + toLight * 0.12);
     float shade = clamp(0.5 + (density - lit) * 4.0, 0.0, 1.0);
     return vec4(cloudColor(shade, near), shape);
@@ -177,20 +198,20 @@ const fragment = (variant: string) => /* glsl */ `
     float edge = length(fromMiddle / middle);
     // Parting, the clouds stream outward past the edges.
     vec2 q = middle + fromMiddle / (1.0 + uOpen * 1.8);
-    float ragged = fbm(q * 3.0 + uTime * 0.02) - 0.5;
+    float ragged = fbm(q * 3.0 + uDrift * 0.02) - 0.5;
 
     vec3 sky = backdrop(p, light);
     vec2 toLight = normalize(light - p);
     float near = exp(-distance(p, light) * 4.0);
-    vec4 far = clouds(p * 2.2 + vec2(uTime * 0.006, 0.0), FAR_COVER, toLight, near);
+    vec4 far = clouds(p * 2.2 + vec2(uDrift * 0.006, 0.0), FAR_COVER - uClouds * 0.14, toLight, near);
     sky = mix(sky, mix(far.rgb, sky, 0.35), far.a * 0.8);
-    vec4 close = clouds(p * 1.3 + vec2(uTime * 0.014, 7.0), NEAR_COVER, toLight, near);
+    vec4 close = clouds(p * ${NEAR_SCALE.toFixed(4)} + vec2(uDrift * ${(NEAR_DRIFT * NEAR_SCALE).toFixed(4)}, 7.0), NEAR_COVER - uClouds * 0.12, toLight, near);
     sky = mix(sky, close.rgb, close.a * 0.95);
 
     // The bank's inner front sits near the edges and closes to the middle.
     float front = mix(0.72, -0.4, uCover);
     float bank = smoothstep(front, front + 0.5, edge + ragged * 0.5);
-    vec2 heapAt = q * 1.6 + vec2(uTime * 0.01, -3.0);
+    vec2 heapAt = q * 1.6 + vec2(uDrift * 0.01, -3.0);
     if (uOpen > 0.0) {
       // Parting, each mass draws back from the seams around it: the heap is
       // read from a little further down its own broad slope.
@@ -229,17 +250,27 @@ const fragment = (variant: string) => /* glsl */ `
 
 export function Sky({
   still,
-  night,
+  time,
+  haze,
+  drift,
+  clouds,
   veil,
 }: {
   still: boolean;
-  night: boolean;
+  time: SkyTime;
+  // From a clear sky (0) to a hazy one (1), by day.
+  haze: number;
+  // How fast the clouds drift, × their natural speed.
+  drift: number;
+  // How much of the open sky the drifting clouds fill, 0 to 1.
+  clouds: number;
   veil: Veil;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  // The scene re-renders every frame; the draw loop reads the latest veil.
-  const latest = useRef(veil);
-  latest.current = veil;
+  // The scene re-renders every frame; the draw loop reads the latest veil
+  // and haze.
+  const latest = useRef({ veil, haze, drift, clouds });
+  latest.current = { veil, haze, drift, clouds };
 
   useLayoutEffect(() => {
     const element = host.current!;
@@ -250,12 +281,15 @@ export function Sky({
     const size = new Vector2(1, 1);
     const material = new ShaderMaterial({
       vertexShader: vertex,
-      fragmentShader: fragment(night ? nightSky : daySky),
+      fragmentShader: fragment(time === "night" ? nightSky : daySky),
       uniforms: {
         uTime: { value: 0 },
+        uDrift: { value: 40 },
         uSize: { value: size },
         uCover: { value: 0 },
         uOpen: { value: 0 },
+        uHaze: { value: 0 },
+        uClouds: { value: 0 },
       },
     });
     const geometry = new PlaneGeometry(2, 2);
@@ -263,11 +297,20 @@ export function Sky({
     scene.add(new Mesh(geometry, material));
     const camera = new OrthographicCamera();
 
+    // Drift adds up frame by frame, so a change of speed never jumps.
+    let drifted = 40;
+    let last: number | null = null;
     const draw = (time: number) => {
       const { uniforms } = material;
+      if (!still && last !== null)
+        drifted += ((time - last) / 1000) * latest.current.drift;
+      last = time;
       uniforms.uTime!.value = still ? 40 : 40 + time / 1000;
-      uniforms.uCover!.value = latest.current.cover;
-      uniforms.uOpen!.value = latest.current.open;
+      uniforms.uDrift!.value = drifted;
+      uniforms.uCover!.value = latest.current.veil.cover;
+      uniforms.uOpen!.value = latest.current.veil.open;
+      uniforms.uHaze!.value = latest.current.haze;
+      uniforms.uClouds!.value = latest.current.clouds;
       renderer.render(scene, camera);
     };
     const fit = () => {
@@ -296,7 +339,7 @@ export function Sky({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [still, night]);
+  }, [still, time]);
 
   return <div ref={host} className={styles.sky} aria-hidden />;
 }

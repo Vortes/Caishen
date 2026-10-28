@@ -29,13 +29,16 @@ export function Filed({
   src,
   from,
   fade,
+  at,
   reducedMotion,
 }: {
   config: Config;
   src: string | null;
   from: () => Rect;
-  // How far the clouds have closed over it.
+  // How far the plate has faded out.
   fade: number;
+  // Held at this many seconds in, for study; playing if null.
+  at: number | null;
   reducedMotion: boolean;
 }) {
   const picture = useRef<HTMLImageElement>(null);
@@ -43,6 +46,7 @@ export function Filed({
   const label = useRef<HTMLSpanElement>(null);
   const hint = useRef<HTMLSpanElement>(null);
   const plate = useRef<HTMLDivElement>(null);
+  const flight = useRef<Animation[]>([]);
 
   useLayoutEffect(() => {
     const element = picture.current;
@@ -105,10 +109,19 @@ export function Filed({
         },
       ),
     ];
+    flight.current = animations;
     return () => animations.forEach((animation) => animation.cancel());
     // Only the arrival flies; `from` changes with every frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useLayoutEffect(() => {
+    if (at === null) return;
+    for (const animation of flight.current) {
+      animation.pause();
+      animation.currentTime = Math.max(0, at * 1000);
+    }
+  }, [at]);
 
   return (
     <div className={styles.filed} style={{ opacity: 1 - fade }}>

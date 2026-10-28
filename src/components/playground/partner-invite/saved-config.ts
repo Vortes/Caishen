@@ -8,14 +8,24 @@ export const savedConfigFile =
   "src/components/playground/partner-invite/saved-config.json";
 const absolute = path.join(process.cwd(), savedConfigFile);
 
-// Laid over the defaults, so knobs added since it was saved still get a value.
+// Laid over the defaults, group by group, so knobs added since it was saved
+// still get a value.
 export async function readSavedConfig(): Promise<Config> {
   const saved = await readFile(absolute, "utf8").then(
-    (text) => JSON.parse(text) as Partial<Config>,
+    (text) => JSON.parse(text) as Record<string, unknown>,
     () => ({}),
   );
-  return { ...defaultConfig, ...saved };
+  const merged: Record<string, unknown> = { ...defaultConfig };
+  for (const [key, value] of Object.entries(saved)) {
+    const fallback = merged[key];
+    merged[key] =
+      isGroup(fallback) && isGroup(value) ? { ...fallback, ...value } : value;
+  }
+  return merged as Config;
 }
+
+const isGroup = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 export async function writeSavedConfig(config: Config) {
   await writeFile(absolute, `${JSON.stringify(config, null, 2)}\n`);
