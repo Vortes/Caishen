@@ -3,9 +3,11 @@
 import { useId, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Skeleton } from "~/components/ui/skeleton";
 import { useUser } from "@clerk/nextjs";
 import { ComposeInvitation } from "~/components/partner-invite/compose";
 import { useShellData } from "~/components/app-shell/shell-data";
+import { api } from "~/trpc/react";
 import styles from "~/components/app-shell/shell.module.css";
 import additions from "~/components/entry/settings.module.css";
 import batch from "~/components/entry/entry.module.css";
@@ -30,7 +32,7 @@ export function PartnerSettings() {
               </div>
             </div>
           ) : (
-            <InviteByEmail />
+            <Invitation />
           )}
         </Card>
       </section>
@@ -38,23 +40,124 @@ export function PartnerSettings() {
   );
 }
 
+const expiry = (at: Date) =>
+  at.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+// The sender's invitation: pending, expired, or not written yet.
+function Invitation() {
+  const utils = api.useUtils();
+  const invitation = api.budget.invitation.useQuery();
+  const resend = api.budget.resendInvitation.useMutation();
+  const cancel = api.budget.cancelInvitation.useMutation({
+    onSuccess: () => utils.budget.invitation.setData(undefined, null),
+  });
+  const [rewriting, setRewriting] = useState<string | null>(null);
+
+  if (invitation.isPending)
+    return (
+      <div className={styles.settingRow} aria-busy>
+        <span role="status" className="sr-only">
+          Opening your invitation…
+        </span>
+        <div className={styles.settingText} aria-hidden>
+          <Skeleton width={180} />
+          <Skeleton width={260} />
+        </div>
+      </div>
+    );
+
+  const sent = invitation.data;
+  if (sent && rewriting === null) {
+    const failure = resend.error ?? cancel.error ?? invitation.error;
+    return (
+      <div className={styles.settingRow}>
+        <div className={styles.settingText}>
+          <span className={`${styles.settingLabel} ${additions.address}`}>
+            {sent.expired
+              ? `Invitation to ${sent.email} expired`
+              : `Invited ${sent.email}`}
+          </span>
+          <span className={styles.settingHint}>
+            {sent.expired
+              ? "Invitations last seven days. Write a new one to invite them again."
+              : resend.isSuccess
+                ? `Sent again. The link works until ${expiry(sent.expiresAt)}.`
+                : `The link in their email works until ${expiry(sent.expiresAt)}.`}
+          </span>
+          {failure && (
+            <span className={styles.settingError} role="alert">
+              {failure.message}
+            </span>
+          )}
+        </div>
+        <div className={styles.settingActions}>
+          {sent.expired ? (
+            <Button variant="primary" onClick={() => setRewriting(sent.email)}>
+              Write a new one
+            </Button>
+          ) : (
+            <>
+              <Button
+                disabled={resend.isPending || cancel.isPending}
+                onClick={() => {
+                  cancel.reset();
+                  resend.mutate();
+                }}
+              >
+                {resend.isPending ? "Sending…" : "Resend"}
+              </Button>
+              <Button
+                disabled={resend.isPending || cancel.isPending}
+                onClick={() => {
+                  resend.reset();
+                  cancel.mutate();
+                }}
+              >
+                Cancel
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <InviteByEmail
+      initialEmail={rewriting ?? ""}
+      onSent={(result) => {
+        setRewriting(null);
+        resend.reset();
+        utils.budget.invitation.setData(undefined, {
+          ...result,
+          expired: false,
+        });
+      }}
+    />
+  );
+}
+
 // Invite a partner by email: they get the invitation the sender writes
 // here, and it plays when they open it.
-function InviteByEmail() {
+function InviteByEmail({
+  initialEmail,
+  onSent,
+}: {
+  initialEmail: string;
+  onSent: (sent: { email: string; expiresAt: Date }) => void;
+}) {
   const id = useId();
   const { user } = useUser();
-  const [email, setEmail] = useState("");
+  const send = api.budget.sendInvitation.useMutation();
+  const [email, setEmail] = useState(initialEmail);
   const [error, setError] = useState<string | null>(null);
   const [writing, setWriting] = useState(false);
-  const [sent, setSent] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const own = user?.emailAddresses.map((address) =>
     address.emailAddress.toLowerCase(),
   );
-  const from =
-    user?.fullName ??
-    user?.firstName ??
-    user?.primaryEmailAddress?.emailAddress;
+  // The card prints the sender's name; there's none to guess from an email.
+  const from = user?.fullName ?? user?.firstName;
 
   const check = (value: string) => {
     const address = value.trim();
@@ -64,20 +167,6 @@ function InviteByEmail() {
       return "That’s your own email. Enter your partner’s.";
     return null;
   };
-
-  if (sent)
-    return (
-      <div className={styles.settingRow}>
-        <div className={styles.settingText}>
-          <span className={styles.settingLabel}>Invitation sent</span>
-          <span className={styles.settingHint}>
-            {sent} gets it by email. It brings them into your budget when they
-            open it.
-          </span>
-        </div>
-        <Button onClick={() => setSent(null)}>Cancel invitation</Button>
-      </div>
-    );
 
   const field = (
     <input
@@ -143,18 +232,20 @@ function InviteByEmail() {
           <ComposeInvitation
             from={from}
             onCancel={() => setWriting(false)}
-            onSend={async () => {
+            onSend={async (invitation) => {
               const problem = check(email);
               if (problem) {
                 setError(problem);
                 input.current?.focus();
                 return;
               }
-              // Not wired to the server yet: the invitation isn't stored or
-              // emailed.
-              setWriting(false);
-              setSent(email.trim());
-              setEmail("");
+              onSent(
+                await send.mutateAsync({
+                  email: email.trim(),
+                  washi: invitation.washi,
+                  signature: invitation.signature,
+                }),
+              );
             }}
           />
         </>

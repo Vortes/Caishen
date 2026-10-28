@@ -3,6 +3,12 @@ import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
 import {
   createPartnerInvite,
   checkPartnerInvite,
+  cancelPartnerInvitation,
+  readSentInvitation,
+  resendPartnerInvitation,
+  sendPartnerInvitation,
+  signatureSchema,
+  washiSchema,
 } from "~/server/services/partner-invites";
 import {
   readEmailSubscription,
@@ -295,6 +301,26 @@ export const budgetRouter = createTRPCRouter({
     createPartnerInvite(ctx.db, ctx.userId),
   ),
 
+  invitation: protectedProcedure.query(({ ctx }) =>
+    readSentInvitation(ctx.db, ctx.userId),
+  ),
+  sendInvitation: protectedProcedure
+    .input(
+      z.object({
+        email: z.string().max(400),
+        washi: washiSchema,
+        signature: signatureSchema,
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      sendPartnerInvitation(ctx.db, ctx.userId, input, ctx.outbox),
+    ),
+  resendInvitation: protectedProcedure.mutation(({ ctx }) =>
+    resendPartnerInvitation(ctx.db, ctx.userId, ctx.outbox),
+  ),
+  cancelInvitation: protectedProcedure.mutation(({ ctx }) =>
+    cancelPartnerInvitation(ctx.db, ctx.userId),
+  ),
   checkInvite: protectedProcedure
     .input(z.object({ code: z.string().trim().min(8).max(100) }))
     .mutation(({ ctx, input }) =>

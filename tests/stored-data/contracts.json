@@ -539,6 +539,19 @@
       }
     }
   ],
+  "PartnerInvite.signature": [
+    {
+      "fields": [
+        "[].points",
+        "[].points[].x",
+        "[].points[].y",
+        "[].points[].t"
+      ],
+      "optional": [],
+      "nullable": [],
+      "values": {}
+    }
+  ],
   "PartnerSettlement.history": [
     {
       "fields": [

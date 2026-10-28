@@ -215,8 +215,8 @@ export async function joinHousehold(
             data: { revision: { increment: 1 } },
           });
           const used = await tx.partnerInvite.updateMany({
-            where: { id: invite.id, usedBy: null },
-            data: { usedBy: userId },
+            where: { id: invite.id, usedBy: null, cancelledAt: null },
+            data: { usedBy: userId, usedAt: new Date() },
           });
           if (left.count !== 1 || used.count !== 1)
             throw new TRPCError({

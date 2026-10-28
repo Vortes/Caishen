@@ -12,8 +12,13 @@ import {
   MINIMUM_CLIENT_FORMAT,
 } from "~/domain/client-format";
 import { refusal } from "~/server/services/sync-refusal";
+import type { InvitationOutbox } from "~/server/services/partner-invites";
 
-export const createTRPCContext = async (opts: { headers: Headers }) => {
+export const createTRPCContext = async (opts: {
+  headers: Headers;
+  // Stands in for Clerk and Resend when an invitation is sent; tests only.
+  outbox?: Partial<InvitationOutbox>;
+}) => {
   const { userId } = await auth();
 
   return { db, userId, revision: new ObservedRevision(), ...opts };

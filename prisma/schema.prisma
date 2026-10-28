@@ -58,6 +58,17 @@ model PartnerInvite {
   usedBy      String?
   recipient   User?     @relation("InviteRecipient", fields: [usedBy], references: [clerkUserId], onDelete: Restrict)
   createdAt   DateTime  @default(now())
+  // Set on an invitation by email (ADR 0011); a partner code leaves them empty.
+  email       String?
+  senderName  String?
+  washi       String?
+  signature   Json?
+  // Emails sent for this invitation, which keys the next one's idempotency.
+  emails      Int       @default(0)
+  usedAt      DateTime?
+  cancelledAt DateTime?
+
+  @@index([createdBy])
 }
 
 model BankConnection {
@@ -68,7 +79,7 @@ model BankConnection {
   encryptedToken         String
   cursor                 String?
   imports                Json
-  accountMappings        Json     @default("{}")
+  accountMappings        Json          @default("{}")
   unavailableAccountIds  String[]      @default([])
   status                 String        @default("connected")
   consentExpiresAt       DateTime?
@@ -208,27 +219,29 @@ model DailyDelivery {
 }
 
 model User {
-  id              String              @id @default(cuid())
-  clerkUserId     String              @unique
-  firstName       String?
-  lastName        String?
-  imageUrl        String?
-  primaryEmail    String?
-  active          Boolean             @default(true)
-  inviteChecks    Int                 @default(0)
-  inviteWindow    DateTime?
-  clerkUpdatedAt  BigInt?
-  deletedAt       DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  memberships     WorkspaceMember[]
-  bankConnections BankConnection[]
-  evidence        ReviewEvidence[]
-  deliveries      DailyDelivery[]
-  invitesCreated  PartnerInvite[]     @relation("InviteCreator")
-  invitesUsed     PartnerInvite[]     @relation("InviteRecipient")
-  webhookEvents   ClerkWebhookEvent[]
-  operationLog    Operation[]
+  id               String              @id @default(cuid())
+  clerkUserId      String              @unique
+  firstName        String?
+  lastName         String?
+  imageUrl         String?
+  primaryEmail     String?
+  active           Boolean             @default(true)
+  inviteChecks     Int                 @default(0)
+  inviteWindow     DateTime?
+  inviteSends      Int                 @default(0)
+  inviteSendWindow DateTime?
+  clerkUpdatedAt   BigInt?
+  deletedAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  memberships      WorkspaceMember[]
+  bankConnections  BankConnection[]
+  evidence         ReviewEvidence[]
+  deliveries       DailyDelivery[]
+  invitesCreated   PartnerInvite[]     @relation("InviteCreator")
+  invitesUsed      PartnerInvite[]     @relation("InviteRecipient")
+  webhookEvents    ClerkWebhookEvent[]
+  operationLog     Operation[]
 }
 
 model ClerkWebhookEvent {

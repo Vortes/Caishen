@@ -223,6 +223,58 @@ export function createResendClient(
         .object({ id: z.literal(id) })
         .parse(await readJsonResponse(response, "Email", 20_000));
     },
+    async sendInvitation(input: {
+      to: string;
+      idempotencyKey: string;
+      subject: string;
+      html: string;
+      text: string;
+    }): Promise<{ id: string }> {
+      const message = z
+        .object({
+          to: z.string().email().max(320),
+          idempotencyKey: z
+            .string()
+            .min(1)
+            .max(256)
+            .regex(/^[\x21-\x7e]+$/),
+          subject: z
+            .string()
+            .min(1)
+            .max(200)
+            .refine((value) => !/[\r\n]/.test(value)),
+          html: z.string().min(1).max(50_000),
+          text: z.string().min(1).max(10_000),
+        })
+        .strict()
+        .parse(input);
+      const response = await fetcher("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": message.idempotencyKey,
+        },
+        body: JSON.stringify({
+          from,
+          to: [message.to],
+          subject: message.subject,
+          html: message.html,
+          text: message.text,
+        }),
+        signal: AbortSignal.timeout(20_000),
+        cache: "no-store",
+      });
+      if (!response.ok)
+        throw new IntegrationError(
+          "Email",
+          "REQUEST_FAILED",
+          `Email delivery failed (HTTP ${response.status}).`,
+        );
+      return z
+        .object({ id: z.string().min(1).max(256) })
+        .parse(await readJsonResponse(response, "Email", 20_000));
+    },
     async sendDailyReview(input: {
       to: string;
       dedupeKey: string;
