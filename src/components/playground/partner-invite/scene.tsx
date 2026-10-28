@@ -30,6 +30,7 @@ import {
   path,
   type Point,
 } from "./geometry";
+import { BannerPlane } from "./banner-plane";
 import { harrierCreases } from "./harrier";
 import { signature, strokeSegments, wetness, type Stroke } from "./ink";
 import { Plane3D, type Halves } from "./plane-3d";
@@ -237,8 +238,14 @@ export function Scene({
     if (name === "bond") setBondAt(at);
     setPhase({ name, at });
   };
+  // How long the line had been up when the plane was caught, so the
+  // banner plane climbs away from where it was.
+  const [caughtAfter, setCaughtAfter] = useState(0);
   // Caught: the plane is thrown, and the line blows away as it comes.
-  const caught = () => go(reducedMotion ? "sign" : "arrive");
+  const caught = () => {
+    setCaughtAfter(elapsed);
+    go(reducedMotion ? "sign" : "arrive");
+  };
   const words =
     phase.name === "invite"
       ? {
@@ -848,6 +855,17 @@ export function Scene({
           }}
         />
       )}
+      {stageSize &&
+        (phase.name === "invite" ||
+          (phase.name === "arrive" && elapsed < 2)) && (
+          <BannerPlane
+            width={stageSize.width}
+            height={stageSize.height}
+            elapsed={phase.name === "invite" ? elapsed : caughtAfter}
+            caught={phase.name === "invite" ? null : elapsed}
+            still={reducedMotion}
+          />
+        )}
       <svg
         ref={svg}
         viewBox={viewBox}

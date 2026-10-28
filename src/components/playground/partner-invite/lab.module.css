@@ -117,6 +117,61 @@
   filter: brightness(0.8) saturate(0.82);
 }
 
+/* The banner plane flies over the sky, under everything else, and never
+   takes the pointer: a tap anywhere, banner included, catches the paper
+   plane. A painted world, so its colors are its own, not tokens. */
+.banner {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bannerHull {
+  fill: oklch(0.95 0.02 85);
+  stroke: oklch(0.42 0.03 260);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+.bannerStripe {
+  fill: oklch(0.6 0.17 28);
+}
+.bannerWing {
+  fill: oklch(0.88 0.03 85);
+  stroke: oklch(0.42 0.03 260);
+  stroke-width: 0.5;
+}
+.bannerWindow {
+  fill: oklch(0.62 0.05 240);
+}
+.bannerLine {
+  fill: none;
+  stroke: oklch(0.36 0.03 260);
+  stroke-width: 0.8;
+  stroke-linecap: round;
+}
+.bannerWheel {
+  fill: oklch(0.3 0.02 260);
+}
+.bannerProp {
+  fill: oklch(0.4 0.02 260);
+}
+.bannerCloth {
+  fill: oklch(0.98 0.01 85);
+  stroke: oklch(0.86 0.02 85);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1px oklch(0.3 0.05 250 / 0.18));
+}
+.bannerText {
+  fill: oklch(0.55 0.17 28);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.stage[data-night] .banner {
+  filter: brightness(0.72) saturate(0.8);
+}
+
 /* The 3D plane is drawn over the SVG, in the same box, and never takes
    the pointer. */
 .plane {

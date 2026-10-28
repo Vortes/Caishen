@@ -1,7 +1,5 @@
 "use client";
 
-import { DialRoot, useDialKit } from "dialkit";
-import "dialkit/styles.css";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   Mesh,
@@ -13,8 +11,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { cloudNoise } from "./cloud";
-import { createSkywriting } from "./skywriting";
-import { FACES, type Face } from "./skywriting-faces";
+import { createSkywriting, type Breath, type Lettering } from "./skywriting";
 import styles from "./lab.module.css";
 
 // A sky behind the whole stage. By day: a deep, saturated blue, lighter
@@ -256,36 +253,29 @@ const fragment = (variant: string) => /* glsl */ `
   }
 `;
 
-type Slider = [number, number, number, number];
-
-// The line in the sky on sliders: its lettering, and how the pointer
-// breathes it away and how it heals (see Breath in skywriting.ts). In development DialKit shows them;
-// production builds use the defaults.
-const DIALS = {
-  Lettering: {
-    face: {
-      type: "select" as const,
-      options: Object.keys(FACES) as Face[],
-      default: "Gloria Hallelujah" as Face,
-    },
-    capitals: false,
-    trail: [0.082, 0.03, 0.14, 0.002] as Slider,
-    spacing: [0.12, 0, 0.3, 0.01] as Slider,
-  },
-  Breath: {
-    reach: [1.46, 0.2, 2, 0.01] as Slider,
-    strength: [2.6, 0.2, 12, 0.1] as Slider,
-    depth: [0.85, 0.1, 1, 0.01] as Slider,
-    push: [900, 0, 3000, 10] as Slider,
-    drag: [4.6, 0.2, 8, 0.1] as Slider,
-  },
-  Healing: {
-    delay: [0, 0, 3, 0.05] as Slider,
-    home: [7.7, 0.2, 12, 0.1] as Slider,
-    swirl: [0, 0, 2, 0.01] as Slider,
-    wander: [200, 0, 400, 1] as Slider,
-    thicken: [3.3, 0.1, 4, 0.05] as Slider,
-  },
+// How the line in the sky is lettered, and how the pointer breathes it
+// away and how it heals (see Breath in skywriting.ts).
+const LETTERING: Lettering = {
+  face: "Indie Flower",
+  capitals: false,
+  trail: 0.068,
+  spacing: 0.11,
+};
+const BREATH: Breath = {
+  reach: 1.63,
+  spread: 0.5,
+  strength: 0.2,
+  depth: 0.1,
+  push: 520,
+  sweep: 0.9,
+  drag: 3.8,
+  linger: 0.58,
+  turn: 30,
+  delay: 0,
+  home: 7.7,
+  swirl: 0,
+  wander: 200,
+  thicken: 3.3,
 };
 
 export function Sky({
@@ -314,12 +304,6 @@ export function Sky({
   const host = useRef<HTMLDivElement>(null);
   // The scene re-renders every frame; the draw loop reads the latest veil
   // and haze.
-  const dials = useDialKit("Skywriting", DIALS, {
-    id: "skywriting-v4",
-    persist: true,
-  });
-  const lettering = { ...dials.Lettering, face: dials.Lettering.face as Face };
-  const breath = { ...dials.Breath, ...dials.Healing };
   const latest = useRef({
     veil,
     haze,
@@ -327,8 +311,6 @@ export function Sky({
     clouds,
     words,
     onBreathe,
-    lettering,
-    breath,
   });
   latest.current = {
     veil,
@@ -337,8 +319,6 @@ export function Sky({
     clouds,
     words,
     onBreathe,
-    lettering,
-    breath,
   };
   // Held still, the sky only draws when asked.
   const redraw = useRef<(() => void) | null>(null);
@@ -409,8 +389,7 @@ export function Sky({
       uniforms.uHaze!.value = latest.current.haze;
       uniforms.uClouds!.value = latest.current.clouds;
       const line = latest.current.words;
-      if (line)
-        writing.write(line.lines, size.x, size.y, latest.current.lettering);
+      if (line) writing.write(line.lines, size.x, size.y, LETTERING);
       const breathed = writing.update({
         width: size.x,
         height: size.y,
@@ -420,7 +399,7 @@ export function Sky({
         pointer,
         dt,
         night: isNight,
-        breath: latest.current.breath,
+        breath: BREATH,
       });
       latest.current.onBreathe?.(breathed, dt);
       renderer.render(scene, camera);
@@ -463,12 +442,5 @@ export function Sky({
     };
   }, [still, time]);
 
-  return (
-    <>
-      <div ref={host} className={styles.sky} aria-hidden />
-      {process.env.NODE_ENV === "development" && (
-        <DialRoot position="bottom-right" />
-      )}
-    </>
-  );
+  return <div ref={host} className={styles.sky} aria-hidden />;
 }
