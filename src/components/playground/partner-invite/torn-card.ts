@@ -123,6 +123,68 @@ export function fullReach(along: Point) {
   return high;
 }
 
+// A peel's shape, ready to move points of your half by.
+const shaped = ({ along, reach }: Peel) => ({
+  along,
+  lead: extent(along).lead,
+  ...peelShape(reach),
+});
+
+// How far a peel moves a point of your half (its own card coordinates).
+function peelAt(
+  x: number,
+  y: number,
+  { along, lead, radius, lift, arc, fold, bend }: ReturnType<typeof shaped>,
+) {
+  const s = x * along.x + y * along.y - lead;
+  const u = fold - s;
+  if (u <= 0) return { x: 0, y: 0, z: 0 };
+  let to: number;
+  let z: number;
+  if (u < arc) {
+    const turn = u / radius;
+    to = fold - radius * Math.sin(turn);
+    z = radius * (1 - Math.cos(turn));
+  } else {
+    // Turning on by `bend` per px past the cylinder.
+    const past = u - arc;
+    const turned = lift + bend * past;
+    to = fold - radius * Math.sin(lift);
+    z = radius * (1 - Math.cos(lift));
+    if (bend > 0) {
+      to -= (Math.sin(turned) - Math.sin(lift)) / bend;
+      z += (Math.cos(lift) - Math.cos(turned)) / bend;
+    } else {
+      to -= past * Math.cos(lift);
+      z += past * Math.sin(lift);
+    }
+  }
+  return { x: along.x * (to - s), y: along.y * (to - s), z };
+}
+
+// How far a peel carries your half's middle: the average of how far it
+// moves each point of the half.
+const SAMPLES = 12;
+export function peelShift(peel: Peel) {
+  const sum = { x: 0, y: 0, z: 0 };
+  if (peel.reach <= 0) return sum;
+  const shape = shaped(peel);
+  for (let i = 0; i <= SAMPLES; i++) {
+    for (let j = 0; j <= SAMPLES; j++) {
+      const moved = peelAt(
+        (hw * i) / SAMPLES,
+        -hh + (CARD.height * j) / SAMPLES,
+        shape,
+      );
+      sum.x += moved.x;
+      sum.y += moved.y;
+      sum.z += moved.z;
+    }
+  }
+  const count = (SAMPLES + 1) ** 2;
+  return { x: sum.x / count, y: sum.y / count, z: sum.z / count };
+}
+
 // The box your half fills on its own, in its own coordinates (y down),
 // fibers included; and where its middle is.
 export const KEPT_BOX = {
@@ -321,43 +383,7 @@ export function updateTornCard(
 
   const ink = sealInk(config, frame.sealWet);
 
-  const peels = frame.peels
-    .filter((peel) => peel.reach > 0)
-    .map(({ along, reach }) => ({
-      along,
-      lead: extent(along).lead,
-      ...peelShape(reach),
-    }));
-  const peelAt = (
-    x: number,
-    y: number,
-    { along, lead, radius, lift, arc, fold, bend }: (typeof peels)[number],
-  ) => {
-    const s = x * along.x + y * along.y - lead;
-    const u = fold - s;
-    if (u <= 0) return { x: 0, y: 0, z: 0 };
-    let to: number;
-    let z: number;
-    if (u < arc) {
-      const turn = u / radius;
-      to = fold - radius * Math.sin(turn);
-      z = radius * (1 - Math.cos(turn));
-    } else {
-      // Turning on by `bend` per px past the cylinder.
-      const past = u - arc;
-      const turned = lift + bend * past;
-      to = fold - radius * Math.sin(lift);
-      z = radius * (1 - Math.cos(lift));
-      if (bend > 0) {
-        to -= (Math.sin(turned) - Math.sin(lift)) / bend;
-        z += (Math.cos(lift) - Math.cos(turned)) / bend;
-      } else {
-        to -= past * Math.cos(lift);
-        z += past * Math.sin(lift);
-      }
-    }
-    return { x: along.x * (to - s), y: along.y * (to - s), z };
-  };
+  const peels = frame.peels.filter((peel) => peel.reach > 0).map(shaped);
 
   // A seal-shaped dent, softened over a few px of paper, in a half's own
   // card coordinates.

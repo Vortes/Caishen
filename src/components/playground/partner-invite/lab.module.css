@@ -1,16 +1,9 @@
-/* A lab, not a product screen: a large stage and a control panel. */
-.lab {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  grid-template-rows: minmax(0, 1fr);
-  height: 100dvh;
-}
-
+/* The invite fills the screen. */
 .stage {
   position: relative;
   display: grid;
   place-items: center;
-  min-width: 0;
+  height: 100dvh;
   overflow: hidden;
 }
 /* The sky fills the stage behind everything. */
@@ -52,11 +45,16 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.regenerate {
+/* Over the signing line the pointer is a pencil, drawing from its tip:
+   dark like the ink, with a white halo so it shows on the paper's creases. */
+.catch {
   cursor: pointer;
 }
 .signZone {
-  cursor: crosshair;
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4%22 stroke=%22white%22 stroke-width=%224%22/%3E%3Cpath d=%22M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4%22 fill=%22white%22 stroke=%22%231d2540%22 stroke-width=%221.75%22/%3E%3C/svg%3E")
+      2 22,
+    crosshair;
 }
 .draggable {
   cursor: grab;
@@ -64,22 +62,33 @@
 .draggable:active {
   cursor: grabbing;
 }
-.stageActions {
+/* Under the card's bottom right corner, beneath where you sign, but never
+   lower than the bottom of the stage. Clear keeps its distance from Sign. */
+.signActions {
   position: absolute;
-  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
+  top: min(
+    calc(var(--card-bottom) + 16px),
+    calc(100% - var(--size-control) - 16px - env(safe-area-inset-bottom, 0px))
+  );
+  right: max(var(--card-right), 16px);
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-gutter);
-  width: max-content;
-  max-width: calc(100% - 32px);
-  transform: translateX(-50%);
+  gap: 16px;
+  animation: signActionsIn 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
-.stageHint {
-  color: var(--text-secondary);
-  font-size: var(--type-small);
+.signEdits {
+  display: flex;
+  gap: var(--space-gutter);
+}
+@keyframes signActionsIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .signActions {
+    animation: none;
+  }
 }
 
 /* Matches SENTENCE_SIZE in print.ts. */
@@ -101,69 +110,6 @@
   font-style: italic;
 }
 
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;
-  padding: var(--space-card);
-  border-left: 1px solid var(--border-subtle);
-  background: var(--surface-panel);
-}
-.group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-gutter);
-  margin: 0;
-  padding: 12px 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.groupTitle {
-  padding: 0;
-  color: var(--text-tertiary);
-  font-size: var(--type-caption);
-  font-weight: 500;
-}
-.seedRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.seed {
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.status {
-  color: var(--text-secondary);
-  font-size: var(--type-caption);
-  overflow-wrap: anywhere;
-}
-.knob {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.knobLabel {
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-}
-.knobValue {
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-.knob input {
-  width: 100%;
-  accent-color: var(--accent-solid);
-}
-
 /* By moonlight the paper reads dimmer and greyer. The flat card and the 3D
    sheet take the same filter, so the hand-off between them stays seamless. */
 .stage[data-night] .canvas,
@@ -182,124 +128,12 @@
   display: block;
 }
 
-.papers {
-  display: flex;
-  flex-direction: column;
-}
-.paper {
-  display: flex;
-  align-items: center;
-  gap: var(--space-gutter);
-  padding: 6px 8px;
-  border: 0;
-  border-radius: var(--radius-row);
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  text-align: left;
-  cursor: pointer;
-}
-.paper[aria-checked="true"] {
-  background: var(--surface-selected);
-  color: var(--text-primary);
-}
-@media (hover: hover) and (pointer: fine) {
-  .paper:hover {
-    background: var(--surface-hover);
-    color: var(--text-primary);
-  }
-}
-/* A sample of the dye, ringed in the pattern's ink. */
-.swatch {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  border: 2px solid;
-  border-radius: 50%;
-}
-
-/* Fingers need taller rows than a cursor does. */
-@media (pointer: coarse) {
-  .paper {
-    min-height: 44px;
-  }
-}
-
 /* Mute, in the stage's corner, on every screen. */
 .mute {
   position: fixed;
   z-index: 2;
   top: calc(12px + env(safe-area-inset-top, 0px));
   left: calc(12px + env(safe-area-inset-left, 0px));
-}
-
-.controlsToggle {
-  display: none;
-}
-
-/* Beside the stage, the panel can be put away; the stage takes its room. */
-.dockToggle {
-  position: fixed;
-  z-index: 2;
-  top: 12px;
-  right: calc(300px + 12px);
-}
-.lab[data-undocked] {
-  grid-template-columns: minmax(0, 1fr);
-}
-.lab[data-undocked] .panel {
-  display: none;
-}
-.lab[data-undocked] .dockToggle {
-  right: 12px;
-}
-
-/* On a phone the stage takes the whole screen and the panel becomes a
-   sheet over its lower part, opened from a button in the corner. */
-@media (max-width: 720px) {
-  .lab {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .dockToggle {
-    display: none;
-  }
-  .lab[data-undocked] .panel {
-    display: flex;
-  }
-  .controlsToggle {
-    position: fixed;
-    z-index: 2;
-    top: calc(12px + env(safe-area-inset-top, 0px));
-    right: calc(12px + env(safe-area-inset-right, 0px));
-    display: block;
-  }
-  .panel {
-    position: fixed;
-    z-index: 1;
-    inset: auto 0 0;
-    max-height: 70dvh;
-    padding-bottom: calc(var(--space-card) + env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid var(--border-subtle);
-    border-left: 0;
-    border-radius: var(--radius-card) var(--radius-card) 0 0;
-    overscroll-behavior: contain;
-    transform: translateY(100%);
-    visibility: hidden;
-    transition:
-      transform var(--duration-panel) var(--ease-panel),
-      visibility 0s var(--duration-panel);
-  }
-  .panel[data-open] {
-    transform: none;
-    visibility: visible;
-    transition: transform var(--duration-panel) var(--ease-panel);
-  }
-}
-@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
-  .panel,
-  .panel[data-open] {
-    transition: none;
-  }
 }
 
 /* The half you kept, beside the welcome. Unseen until it arrives. */
