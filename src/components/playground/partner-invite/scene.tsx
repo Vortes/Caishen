@@ -65,11 +65,15 @@ export function Scene({
   sky,
   reducedMotion,
   sound,
+  onSettled,
 }: {
   sky: SkyTime;
   reducedMotion: boolean;
   // Null while sound is off.
   sound: Sound | null;
+  // The clouds have parted all the way onto the onboarding: the invite is
+  // over.
+  onSettled?: () => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -277,6 +281,9 @@ export function Scene({
   const play = useScore(sound);
   useEffect(() => sound?.sky(sky === "night"), [sound, sky]);
   useEffect(() => perf?.phase(phase.name), [phase.name]);
+  useEffect(() => {
+    if (moment.settled) onSettled?.();
+  }, [moment.settled, onSettled]);
 
   useFrame((now) => {
     // A new step is on its way to the page; wait for it.

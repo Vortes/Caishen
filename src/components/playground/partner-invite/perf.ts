@@ -5,7 +5,7 @@ import type { Camera, Object3D, WebGLRenderer } from "three";
 // parts), what each WebGL canvas cost the GPU and how many draw calls each
 // of its passes made, and any long frame that held the page up. Figures are kept per
 // segment: each step of the scene, or a span marked from outside through
-// `window.__invitePerf.mark`. A small readout shows the last second live.
+// `window.__invitePerf.mark`, and read back through its `report`.
 // Off, every hook here costs nothing but a null check.
 
 type Stats = { mean: number; p50: number; p95: number; max: number };
@@ -195,51 +195,6 @@ function createProbe() {
         }
       }).observe({ type, buffered: true });
   }
-
-  const readout = document.createElement("pre");
-  Object.assign(readout.style, {
-    position: "fixed",
-    left: "8px",
-    bottom: "8px",
-    zIndex: "1000",
-    margin: "0",
-    padding: "6px 8px",
-    font: "11px/1.35 ui-monospace, monospace",
-    color: "#fff",
-    background: "rgb(0 0 0 / 0.7)",
-    borderRadius: "4px",
-    pointerEvents: "none",
-    whiteSpace: "pre",
-  });
-  const show = () => {
-    if (!readout.isConnected) document.body.appendChild(readout);
-    const recent = (values: number[]) => values.slice(-60);
-    const interval = stats(recent(segment.intervals));
-    const script = stats(recent(segment.scripts));
-    const lines = [
-      `${segment.name}  ${interval.mean ? Math.round(1000 / interval.mean) : 0} fps`,
-      `frame p50 ${interval.p50.toFixed(1)}  p95 ${interval.p95.toFixed(1)}  max ${interval.max.toFixed(1)} ms`,
-      `script ${script.mean.toFixed(2)}  p95 ${script.p95.toFixed(2)} ms`,
-    ];
-    for (const [name, canvas] of canvases) {
-      if (!canvas.live) continue;
-      const gpu = stats(recent(segment.gpu.get(name) ?? []));
-      lines.push(
-        `${name.padEnd(10)} gpu ${gpu.mean.toFixed(2)}  p95 ${gpu.p95.toFixed(2)} ms  ${canvas.width}×${canvas.height}${canvas.samples ? ` ×${canvas.samples}` : ""}`,
-      );
-    }
-    for (const [name, frames] of segment.renders) {
-      const shown = [...frames.values()].slice(-60);
-      lines.push(
-        `  ${name.padEnd(18)} cpu ${stats(shown.map((each) => each.cpu)).mean.toFixed(2)}  calls ${shown.at(-1)?.calls ?? 0}`,
-      );
-    }
-    const contexts = [...canvases.values()].filter((each) => each.live).length;
-    lines.push(`contexts ${contexts}  long ${segment.long.length}`);
-    for (const [name, value] of notes) lines.push(`${name} ${round(value)}`);
-    readout.textContent = lines.join("\n");
-  };
-  setInterval(show, 500);
 
   const probe = {
     // The scene moved on to a step.
