@@ -155,10 +155,11 @@ const fragment = (variant: string) => /* glsl */ `
   }
 
   // Puffy cumulus: warped fbm, cut off below a coverage threshold, lit from
-  // the light's side by sampling a step toward it.
-  vec4 clouds(vec2 p, float cover, vec2 toLight, float near) {
+  // the light's side by sampling a step toward it. Hands back the density
+  // too, so the bank's seams can be cut from it without working it out again.
+  vec4 clouds(vec2 p, float cover, vec2 toLight, float near, out float density) {
     vec2 warp = vec2(fbm(p * 0.6 + 3.1), fbm(p * 0.6 - 5.7));
-    float density = fbm(p + warp * 0.8);
+    density = fbm(p + warp * 0.8);
     float shape = smoothstep(cover, cover + SOFTNESS, density);
     float lit = fbm(p + warp * 0.8 + toLight * 0.12);
     float shade = clamp(0.5 + (density - lit) * 4.0, 0.0, 1.0);
@@ -181,27 +182,33 @@ const fragment = (variant: string) => /* glsl */ `
     vec3 sky = backdrop(p, light);
     vec2 toLight = normalize(light - p);
     float near = exp(-distance(p, light) * 4.0);
-    vec4 far = clouds(p * 2.2 + vec2(uDrift * 0.006, 0.0), FAR_COVER - uClouds * 0.14, toLight, near);
+    float unused;
+    vec4 far = clouds(p * 2.2 + vec2(uDrift * 0.006, 0.0), FAR_COVER - uClouds * 0.14, toLight, near, unused);
     sky = mix(sky, mix(far.rgb, sky, 0.35), far.a * 0.8);
-    vec4 close = clouds(p * ${NEAR_SCALE.toFixed(4)} + vec2(uDrift * ${(NEAR_DRIFT * NEAR_SCALE).toFixed(4)}, 7.0), NEAR_COVER - uClouds * 0.12, toLight, near);
+    vec4 close = clouds(p * ${NEAR_SCALE.toFixed(4)} + vec2(uDrift * ${(NEAR_DRIFT * NEAR_SCALE).toFixed(4)}, 7.0), NEAR_COVER - uClouds * 0.12, toLight, near, unused);
     sky = mix(sky, close.rgb, close.a * 0.95);
 
     // The bank's inner front sits near the edges and closes to the middle.
     float front = mix(0.72, -0.4, uCover);
     float bank = smoothstep(front, front + 0.5, edge + ragged * 0.5);
-    vec2 heapAt = q * 1.6 + vec2(uDrift * 0.01, -3.0);
-    if (uOpen > 0.0) {
-      // Parting, each mass draws back from the seams around it: the heap is
-      // read from a little further down its own broad slope.
-      float e = 0.12;
-      vec2 slope = vec2(
-        heapDensity(heapAt + vec2(e, 0.0)) - heapDensity(heapAt - vec2(e, 0.0)),
-        heapDensity(heapAt + vec2(0.0, e)) - heapDensity(heapAt - vec2(0.0, e))
-      );
-      heapAt -= slope / (length(slope) + 0.04) * uOpen * 0.22;
+    // Where the bank hasn't reached and nothing is parting, the heap would
+    // add nothing, so it's skipped. Its density is only read while parting.
+    float density = 0.0;
+    if (bank > 0.0 || uOpen > 0.0) {
+      vec2 heapAt = q * 1.6 + vec2(uDrift * 0.01, -3.0);
+      if (uOpen > 0.0) {
+        // Parting, each mass draws back from the seams around it: the heap
+        // is read from a little further down its own broad slope.
+        float e = 0.12;
+        vec2 slope = vec2(
+          heapDensity(heapAt + vec2(e, 0.0)) - heapDensity(heapAt - vec2(e, 0.0)),
+          heapDensity(heapAt + vec2(0.0, e)) - heapDensity(heapAt - vec2(0.0, e))
+        );
+        heapAt -= slope / (length(slope) + 0.04) * uOpen * 0.22;
+      }
+      vec4 heap = clouds(heapAt, mix(0.62, 0.02, bank), toLight, near, density);
+      sky = mix(sky, heap.rgb, heap.a * bank);
     }
-    vec4 heap = clouds(heapAt, mix(0.62, 0.02, bank), toLight, near);
-    sky = mix(sky, heap.rgb, heap.a * bank);
 
     // The heap opens at its seams: the thinnest parts clear first, all
     // across the stage, then each gap widens until only the thickest cores
@@ -213,7 +220,6 @@ const fragment = (variant: string) => /* glsl */ `
     // have time to read before the bank goes.
     float cut = mix(0.12, 0.82, pow(uOpen, 1.6)) + 0.3 * smoothstep(0.8, 1.0, uOpen)
       + 0.08 * (0.6 - edge) * (1.0 - uOpen);
-    float density = heapDensity(heapAt);
     float alpha = uOpen > 0.0 ? smoothstep(cut - 0.04, cut + 0.04, density) : 1.0;
     // Where it's about to open the cloud is thin, and the light comes through.
     float thin = uOpen > 0.0 ? 1.0 - smoothstep(cut, cut + 0.08, density) : 0.0;

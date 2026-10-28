@@ -350,6 +350,10 @@ export function createSkywriting() {
   // How stirred each puff is, and which way the breath carries it.
   let stir = new Float32Array(0);
   let heading = new Float32Array(0);
+  // Each frame's stir and heading are worked out into these, then swapped
+  // in, rather than into new arrays every frame.
+  let stirred = new Float32Array(0);
+  let aimed = new Float32Array(0);
   // The puffs each one touches: those of puff i run from touching[i] to
   // touching[i + 1] in neighbors.
   let touching = new Int32Array(1);
@@ -467,6 +471,8 @@ export function createSkywriting() {
       velocity = new Float32Array(puffs.length * 2);
       stir = new Float32Array(puffs.length);
       heading = new Float32Array(puffs.length * 2);
+      stirred = new Float32Array(puffs.length);
+      aimed = new Float32Array(puffs.length * 2);
       puffGeometry.instanceCount = puffs.length;
       puffGeometry.setAttribute(
         "puff",
@@ -552,9 +558,10 @@ export function createSkywriting() {
       // stirred it most: the pointer, pushing away and along its sweep,
       // or the neighbor it caught the stir from.
       const fade = Math.exp(-dt / Math.max(0.01, BREATH.linger));
-      const stirred = new Float32Array(stir.length);
-      const aimed = new Float32Array(heading.length);
-      if (scatter === 0)
+      if (scatter > 0) {
+        stirred.fill(0);
+        aimed.fill(0);
+      } else
         puffs.forEach((puff, index) => {
           let most = stir[index]! * fade;
           let aimX = heading[index * 2]!;
@@ -591,8 +598,11 @@ export function createSkywriting() {
           aimed[index * 2] = wasX + (aimX / length - wasX) * fresh;
           aimed[index * 2 + 1] = wasY + (aimY / length - wasY) * fresh;
         });
+      const was = { stir, heading };
       stir = stirred;
       heading = aimed;
+      stirred = was.stir;
+      aimed = was.heading;
 
       puffs.forEach((puff, index) => {
         const size = (puff.radius * puff.radius) / typical;

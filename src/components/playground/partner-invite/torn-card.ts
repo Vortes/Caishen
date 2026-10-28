@@ -113,15 +113,17 @@ const shaped = ({ along, reach }: Peel) => ({
   ...peelShape(reach),
 });
 
-// How far a peel moves a point of your half (its own card coordinates).
+// How far a peel moves a point of your half (its own card coordinates),
+// added onto `moved`, so the card's vertices don't each make a new point.
 function peelAt(
   x: number,
   y: number,
   { along, lead, radius, lift, arc, fold, bend }: ReturnType<typeof shaped>,
+  moved: { x: number; y: number; z: number },
 ) {
   const s = x * along.x + y * along.y - lead;
   const u = fold - s;
-  if (u <= 0) return { x: 0, y: 0, z: 0 };
+  if (u <= 0) return;
   let to: number;
   let z: number;
   if (u < arc) {
@@ -142,7 +144,9 @@ function peelAt(
       z += past * Math.sin(lift);
     }
   }
-  return { x: along.x * (to - s), y: along.y * (to - s), z };
+  moved.x += along.x * (to - s);
+  moved.y += along.y * (to - s);
+  moved.z += z;
 }
 
 // How far a peel carries your half's middle: the average of how far it
@@ -154,14 +158,7 @@ export function peelShift(peel: Peel) {
   const shape = shaped(peel);
   for (let i = 0; i <= SAMPLES; i++) {
     for (let j = 0; j <= SAMPLES; j++) {
-      const moved = peelAt(
-        (hw * i) / SAMPLES,
-        -hh + (CARD.height * j) / SAMPLES,
-        shape,
-      );
-      sum.x += moved.x;
-      sum.y += moved.y;
-      sum.z += moved.z;
+      peelAt((hw * i) / SAMPLES, -hh + (CARD.height * j) / SAMPLES, shape, sum);
     }
   }
   const count = (SAMPLES + 1) ** 2;
@@ -237,6 +234,12 @@ function tearLine(): Point[] {
   return points;
 }
 const LINE = tearLine();
+// The paper bends about the tear's overall course, not its jags, or every
+// row would catch the light differently.
+const COURSE = LINE.map((_, row) => {
+  const near = LINE.slice(Math.max(0, row - 12), row + 13);
+  return near.reduce((sum, point) => sum + point.x, 0) / near.length;
+});
 
 type Half = Mesh<BufferGeometry, ShaderMaterial> & {
   userData: { side: 1 | -1 };
@@ -332,12 +335,6 @@ export function updateTornCard(
   });
   const right = offset(1, PARTING);
   const left = offset(-1, PARTING);
-  // The paper bends about the tear's overall course, not its jags, or
-  // every row would catch the light differently.
-  const course = LINE.map((_, row) => {
-    const near = LINE.slice(Math.max(0, row - 12), row + 13);
-    return near.reduce((sum, point) => sum + point.x, 0) / near.length;
-  });
 
   const ink = sealInk(frame.sealWet);
 
@@ -356,50 +353,62 @@ export function updateTornCard(
       radius;
     return 1 - smoothstep((outside + 3) / 6);
   };
+  // The paper's shape only changes with these, so while the card sits
+  // still, its vertices stay as they are.
+  const shape = JSON.stringify([
+    tip,
+    slide,
+    flat,
+    dent,
+    frame.peels,
+    frame.keep,
+    frame.genie,
+  ]);
+  const reshape = group.userData.shape !== shape;
+  group.userData.shape = shape;
+  const peeled = { x: 0, y: 0, z: 0 };
   for (const child of group.children) {
     const mesh = child as Half;
     const { side } = mesh.userData;
     // Where the seal meets this half, in its own card coordinates.
     const own = side > 0 ? right : left;
     const sealAt = { x: -own.x, y: placement.y - own.y };
+    // Placed once it's free; otherwise parted, then slid over.
+    const keep = side > 0 ? frame.keep : null;
+    const genieing = keep && frame.genie;
+    const kept = keep && keptBox(keep);
     const attributes = mesh.geometry.attributes;
     const position = attributes.position!.array as Float32Array;
     const rest = attributes.rest!.array as Float32Array;
     const seam = attributes.seam!.array as Float32Array;
     const torn = attributes.torn!.array as Float32Array;
-    for (let row = 0; row <= ROWS; row++) {
+    for (let row = 0; reshape && row <= ROWS; row++) {
       const { x: x0, y } = LINE[row]!;
       const behind = tip - (y + hh);
       const open = smoothstep(behind / OPENING);
       const reached = clamp(behind / 6);
       const width = hw - side * x0 + REACH;
-      const shift = offset(side, PARTING * open);
+      const placed = keep
+        ? { x: keep.x - KEPT_MIDDLE, y: keep.y, z: keep.z }
+        : offset(side, PARTING * open);
       for (let column = 0; column <= COLUMNS; column++) {
         const i = row * (COLUMNS + 1) + column;
         // Columns crowd toward the seam, where the paper bends.
         const e = -REACH + width * (column / COLUMNS) ** 1.6;
         const x = x0 + side * e;
-        const bend = Math.exp(-Math.max(side * (x - course[row]!), 0) / 70);
+        const bend = Math.exp(-Math.max(side * (x - COURSE[row]!), 0) / 70);
         const rise = lift * open * bend * (1 - flat);
-        const peeled = { x: 0, y: 0, z: 0 };
-        if (side > 0) {
-          for (const peel of peels) {
-            const moved = peelAt(x, y, peel);
-            peeled.x += moved.x;
-            peeled.y += moved.y;
-            peeled.z += moved.z;
-          }
+        peeled.x = peeled.y = peeled.z = 0;
+        if (side > 0) for (const peel of peels) peelAt(x, y, peel, peeled);
+        let atX = x + peeled.x + placed.x;
+        let atY = y + peeled.y + placed.y;
+        if (genieing) {
+          const poured = genie({ x: atX, y: atY }, kept!, frame.genie!);
+          atX = poured.x;
+          atY = poured.y;
         }
-        const placed =
-          side > 0 && frame.keep
-            ? { ...frame.keep, x: frame.keep.x - KEPT_MIDDLE }
-            : shift;
-        let at = { x: x + peeled.x + placed.x, y: y + peeled.y + placed.y };
-        if (side > 0 && frame.keep && frame.genie) {
-          at = genie(at, keptBox(frame.keep), frame.genie);
-        }
-        position[i * 3] = at.x;
-        position[i * 3 + 1] = -at.y;
+        position[i * 3] = atX;
+        position[i * 3 + 1] = -atY;
         const pressed = dent > 0 ? DEPTH * dent * dentAt(x, y, sealAt) : 0;
         position[i * 3 + 2] =
           (side > 0 ? rise : -rise * 0.5) + placed.z - pressed + peeled.z;
@@ -409,8 +418,10 @@ export function updateTornCard(
         torn[i] = reached;
       }
     }
-    for (const name of ["position", "rest", "seam", "torn"]) {
-      attributes[name]!.needsUpdate = true;
+    if (reshape) {
+      for (const name of ["position", "rest", "seam", "torn"]) {
+        attributes[name]!.needsUpdate = true;
+      }
     }
 
     const u = mesh.material.uniforms;
