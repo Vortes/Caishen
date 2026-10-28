@@ -22,7 +22,12 @@ import { readImportStates, importStateChange } from "../bank-import-rows";
 import { itemHealthChange } from "../bank-connection-status";
 import { decryptBankToken } from "~/server/token-crypto";
 import { RevisionConflictError, findOperation } from "~/server/storage/rows";
-import { isPrismaError, domainError, operationHash } from "../safety";
+import {
+  isPrismaError,
+  domainError,
+  domainRefusal,
+  operationHash,
+} from "../safety";
 import { settleFromImports } from "../partner-settlements";
 import {
   applyTransactionSync,
@@ -81,13 +86,44 @@ import {
   openConnection,
 } from "./accounts";
 
-export async function syncBanks(db: Database, userId: string) {
+/**
+ * How one connection's update ended. A deferred update lost to another that
+ * committed first, so the connection is current and nothing was recorded.
+ */
+export type BankUpdateOutcome =
+  | { connectionId: string; kind: "synced" | "skipped" }
+  | { connectionId: string; kind: "deferred" | "failed"; error: TRPCError };
+
+/** Another update of the connection committed after this one read Plaid. */
+class SupersededBankUpdate extends TRPCError {
+  constructor() {
+    super({
+      code: "CONFLICT",
+      message: "Another bank update finished first. Try again.",
+    });
+  }
+}
+
+/**
+ * Updates each of a member's connections in turn, or only those named. A
+ * failing connection records its error and the others still update; every
+ * outcome is returned.
+ */
+export async function syncBanks(
+  db: Database,
+  userId: string,
+  { connectionIds }: { connectionIds?: string[] } = {},
+) {
   await migrateBankAccounts(db, userId);
   const connections = await withBankAccountSuccessors(
     db,
     db.bankConnection.findMany({
       include: { bankAccounts: bankAccountRowsSelection },
-      where: { clerkUserId: userId },
+      where: {
+        clerkUserId: userId,
+        ...(connectionIds ? { id: { in: connectionIds } } : {}),
+      },
+      orderBy: { id: "asc" },
     }),
   );
   if (!connections.length)
@@ -100,11 +136,18 @@ export async function syncBanks(db: Database, userId: string) {
   const readable = readImportStates(first.household.rows, userId);
   let imported = 0,
     updated = 0;
+  const outcomes: BankUpdateOutcome[] = [];
   for (const connection of connections) {
     const read = readBankConnection(connection, readable);
-    if (read.status === "maintenance" || read.state.disconnectedAt) continue;
-    // No update can reach an Item the user has revoked or disconnected.
-    if (["revoked", "disconnected"].includes(connection.status)) continue;
+    if (
+      read.status === "maintenance" ||
+      read.state.disconnectedAt ||
+      // No update can reach an Item the user has revoked or disconnected.
+      ["revoked", "disconnected"].includes(connection.status)
+    ) {
+      outcomes.push({ connectionId: connection.id, kind: "skipped" });
+      continue;
+    }
     // The Item's health is read first, so a sign-in problem it reports is
     // recorded even when the update itself fails.
     let health: ReturnType<typeof itemHealthChange> | undefined;
@@ -187,6 +230,7 @@ export async function syncBanks(db: Database, userId: string) {
       }
       imported += counts.imported;
       updated += counts.updated;
+      outcomes.push({ connectionId: connection.id, kind: "synced" });
       if (delta.skipped.quarantined.length || delta.skipped.unidentifiable)
         console.warn("Bank update left out transactions it could not import", {
           connectionId: connection.id,
@@ -216,13 +260,17 @@ export async function syncBanks(db: Database, userId: string) {
                   ),
         },
       });
-      domainError(error);
+      outcomes.push({
+        connectionId: connection.id,
+        kind: error instanceof SupersededBankUpdate ? "deferred" : "failed",
+        error: domainRefusal(error),
+      });
     }
   }
   // Payments between people that the update brought in, recognized as
   // transfers to and from the counterparty accounts.
   const { settled, repaid } = await settleFromImports(db, userId);
-  return { imported, updated: updated + settled + repaid };
+  return { imported, updated: updated + settled + repaid, outcomes };
 }
 
 type PlaidClient = ReturnType<typeof client>;
@@ -254,10 +302,7 @@ async function applyBankUpdate(
     fresh.cursor !== connection.cursor ||
     fresh.updatedAt.getTime() !== connection.updatedAt.getTime()
   )
-    throw new TRPCError({
-      code: "CONFLICT",
-      message: "Another bank update finished first. Try again.",
-    });
+    throw new SupersededBankUpdate();
   const { state: old, mappings: saved } = readyConnection(
     fresh,
     readImportStates(opened.household.rows, userId),
@@ -542,11 +587,7 @@ async function applyBankUpdate(
         error: null,
       },
     });
-    if (saved.count !== 1)
-      throw new TRPCError({
-        code: "CONFLICT",
-        message: "Another bank update finished first. Try again.",
-      });
+    if (saved.count !== 1) throw new SupersededBankUpdate();
     await writeProviderAccounts(
       tx,
       userId,

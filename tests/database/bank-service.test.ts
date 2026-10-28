@@ -115,6 +115,15 @@ const linkMetadata = (response = accountsResponse()) => ({
   })),
 });
 
+// What an update brought in, apart from each connection's outcome.
+const counts = ({
+  imported,
+  updated,
+}: {
+  imported: number;
+  updated: number;
+}) => ({ imported, updated });
+
 const requestUrl = (input: string | URL | Request) =>
   new URL(input instanceof Request ? input.url : input);
 
@@ -280,7 +289,10 @@ void test("stored disconnected connections remain readable without contacting th
   });
   const before = await h.state();
   assert.equal(before.connections[0]!.disconnectedAt, disconnectedAt);
-  assert.deepEqual(await syncBanks(db, alice), { imported: 0, updated: 0 });
+  assert.deepEqual(counts(await syncBanks(db, alice)), {
+    imported: 0,
+    updated: 0,
+  });
   await assert.rejects(
     linkBankToken(db, alice, h.connection.id),
     /link again/i,
@@ -2278,7 +2290,7 @@ for (const delivery of [
       return Response.json(accountsResponse());
     });
     if (delivery !== "same sync") {
-      assert.deepEqual(await syncBanks(h.db, alice), {
+      assert.deepEqual(counts(await syncBanks(h.db, alice)), {
         imported: 0,
         updated: delivery === "user deletion" ? 0 : 1,
       });
@@ -2289,7 +2301,7 @@ for (const delivery of [
       if (delivery !== "user deletion")
         assert.deepEqual(await bankInbox(h.db, alice), []);
     }
-    assert.deepEqual(await syncBanks(h.db, alice), {
+    assert.deepEqual(counts(await syncBanks(h.db, alice)), {
       imported: 0,
       updated: delivery === "user deletion" ? 0 : 1,
     });
@@ -2305,7 +2317,7 @@ for (const delivery of [
     assert.equal(Boolean(purchase.removed), delivery === "user deletion");
     if (delivery !== "user deletion")
       assert.deepEqual(await bankInbox(h.db, alice), []);
-    assert.deepEqual(await syncBanks(h.db, alice), {
+    assert.deepEqual(counts(await syncBanks(h.db, alice)), {
       imported: 0,
       updated: 0,
     });
@@ -3456,7 +3468,10 @@ void test("bank sync updates cached account details without creating ledger acco
     assert.equal(requestUrl(url).pathname, "/accounts/get");
     return Response.json(accountsResponse());
   });
-  assert.deepEqual(await syncBanks(h.db, alice), { imported: 0, updated: 0 });
+  assert.deepEqual(counts(await syncBanks(h.db, alice)), {
+    imported: 0,
+    updated: 0,
+  });
   assert.equal((await h.details()).error, null);
   assert.equal((await h.details()).accounts[0]!.availableBalance, 100);
   assert.deepEqual(
@@ -3609,7 +3624,7 @@ void test("a non-USD transaction is quarantined for review while the rest of the
     },
     { next_cursor: "after-eur" },
   ]);
-  assert.deepEqual(await syncBanks(h.db, alice), {
+  assert.deepEqual(counts(await syncBanks(h.db, alice)), {
     imported: 1,
     updated: 0,
   });
@@ -3637,7 +3652,10 @@ void test("a non-USD transaction is quarantined for review while the rest of the
     ),
     "logs leave out merchant details",
   );
-  assert.deepEqual(await syncBanks(h.db, alice), { imported: 0, updated: 0 });
+  assert.deepEqual(counts(await syncBanks(h.db, alice)), {
+    imported: 0,
+    updated: 0,
+  });
   assert.equal(requests.at(-1)!.cursor, "after-eur");
 });
 
@@ -3666,7 +3684,7 @@ void test("malformed sync records are quarantined or skipped without blocking th
     },
     { next_cursor: "after-malformed" },
   ]);
-  assert.deepEqual(await syncBanks(h.db, alice), {
+  assert.deepEqual(counts(await syncBanks(h.db, alice)), {
     imported: 1,
     updated: 0,
   });
@@ -3687,7 +3705,10 @@ void test("malformed sync records are quarantined or skipped without blocking th
     quarantined.find((item) => item.logicalId.includes("bad-date"))!.date,
     new Date().toISOString().slice(0, 10),
   );
-  assert.deepEqual(await syncBanks(h.db, alice), { imported: 0, updated: 0 });
+  assert.deepEqual(counts(await syncBanks(h.db, alice)), {
+    imported: 0,
+    updated: 0,
+  });
   assert.equal(requests.at(-1)!.cursor, "after-malformed");
 });
 
@@ -4149,7 +4170,10 @@ void test("a failed account update stores an error naming the Plaid request id a
       { status: 503 },
     ),
   );
-  await assert.rejects(syncBanks(h.db, alice));
+  assert.deepEqual(
+    (await syncBanks(h.db, alice)).outcomes.map((outcome) => outcome.kind),
+    ["failed"],
+  );
   const details = await h.details();
   assert.match(details.error!, /Plaid request id: req-down-7/);
   assert.ok(!details.error!.includes("private provider details"));
@@ -5898,4 +5922,151 @@ void test("duplicate repair preserves older provider chains when it removes thei
   const state = await h.state();
   assert.equal(state.imports.length, 1);
   assert.equal(state.imports[0]!.accountId, "original-gold");
+});
+
+void test("one institution failing leaves the user's other connections updating, and each reports its outcome", async () => {
+  const h = await harness();
+  const healthy = await db.bankConnection.create({
+    data: {
+      id: `zz-connection-${randomUUID()}`,
+      clerkUserId: alice,
+      itemId: `item-${randomUUID()}`,
+      encryptedToken: encryptBankToken("healthy-access-token", alice),
+      imports: {},
+      accountMappings: {},
+    },
+  });
+  mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, init?: RequestInit) => {
+      const { access_token } = JSON.parse(init!.body as string) as {
+        access_token: string;
+      };
+      if (access_token === "private-access-token")
+        return Response.json(
+          {
+            error_code: "INSTITUTION_DOWN",
+            error_message: "private provider details",
+            request_id: "req-down-8",
+          },
+          { status: 503 },
+        );
+      const path = requestUrl(url).pathname;
+      if (path === "/item/get") return Response.json(itemResponse());
+      if (path === "/transactions/sync")
+        return Response.json({
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: "next",
+          has_more: false,
+          accounts: [],
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      assert.equal(path, "/accounts/get");
+      return Response.json({ ...accountsResponse(), accounts: [] });
+    },
+  );
+  const result = await syncBanks(db, alice);
+  assert.deepEqual(
+    result.outcomes.map(({ connectionId, kind }) => ({ connectionId, kind })),
+    [
+      { connectionId: h.connection.id, kind: "failed" },
+      { connectionId: healthy.id, kind: "synced" },
+    ],
+  );
+  const [failed, synced] = await Promise.all([
+    h.saved(),
+    db.bankConnection.findUniqueOrThrow({ where: { id: healthy.id } }),
+  ]);
+  assert.match(failed.error!, /Plaid request id: req-down-8/);
+  assert.equal(failed.lastSyncedAt, null);
+  assert.ok(failed.lastAttemptAt);
+  assert.ok(synced.lastSyncedAt);
+  assert.equal(synced.cursor, "next");
+});
+
+void test("two overlapping updates of one connection commit once; the later is deferred and imports nothing", async () => {
+  const h = await linkedHarness();
+  let arrived = 0;
+  let bothRead!: () => void;
+  const reads = new Promise<void>((resolve) => {
+    bothRead = resolve;
+  });
+  mockPlaid(async (url: string | URL | Request) => {
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [
+          {
+            transaction_id: "overlap-coffee",
+            account_id: "provider-checking",
+            pending: false,
+            amount: 4.5,
+            iso_currency_code: "USD",
+            date: "2026-10-20",
+            name: "Coffee",
+          },
+        ],
+        modified: [],
+        removed: [],
+        next_cursor: "next",
+        has_more: false,
+        accounts: accountsResponse().accounts,
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      });
+    assert.equal(requestUrl(url).pathname, "/accounts/get");
+    if (++arrived === 2) bothRead();
+    await reads;
+    return Response.json(accountsResponse());
+  });
+  const results = await Promise.all([
+    syncBanks(db, alice),
+    syncBanks(db, alice),
+  ]);
+  assert.deepEqual(results.map((result) => result.outcomes[0]!.kind).sort(), [
+    "deferred",
+    "synced",
+  ]);
+  assert.equal(results[0].imported + results[1].imported, 1);
+  assert.equal((await bankInbox(db, alice)).length, 1);
+  assert.equal((await h.saved()).cursor, "next");
+});
+
+void test("an update limited to some connections leaves the member's others untouched", async () => {
+  const h = await harness();
+  const named = await db.bankConnection.create({
+    data: {
+      id: `zz-connection-${randomUUID()}`,
+      clerkUserId: alice,
+      itemId: `item-${randomUUID()}`,
+      encryptedToken: encryptBankToken("named-access-token", alice),
+      imports: {},
+      accountMappings: {},
+    },
+  });
+  const tokens = new Set<string>();
+  mockPlaid(async (url: string | URL | Request, init?: RequestInit) => {
+    tokens.add(
+      (JSON.parse(init!.body as string) as { access_token: string })
+        .access_token,
+    );
+    if (requestUrl(url).pathname === "/transactions/sync")
+      return Response.json({
+        added: [],
+        modified: [],
+        removed: [],
+        next_cursor: "next",
+        has_more: false,
+        accounts: [],
+        transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+      });
+    return Response.json({ ...accountsResponse(), accounts: [] });
+  });
+  const result = await syncBanks(db, alice, { connectionIds: [named.id] });
+  assert.deepEqual(result.outcomes, [
+    { connectionId: named.id, kind: "synced" },
+  ]);
+  assert.deepEqual([...tokens], ["named-access-token"]);
+  assert.equal((await h.saved()).lastSyncedAt, null);
 });

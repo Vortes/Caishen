@@ -58,19 +58,24 @@ export function jsonValue(value: unknown): Prisma.InputJsonValue {
 }
 
 export function domainError(error: unknown): never {
-  if (error instanceof TRPCError) throw error;
+  throw domainRefusal(error);
+}
+
+/** The refusal a member sees for an error: its message, never internals. */
+export function domainRefusal(error: unknown): TRPCError {
+  if (error instanceof TRPCError) return error;
   if (isPrismaError(error)) {
     if (
       error.name === "PrismaClientKnownRequestError" &&
       (error.code === "P2034" || error.code === "P2002")
     )
-      throw refusal("conflict", "Your budget changed. Refresh and try again.");
-    throw new TRPCError({
+      return refusal("conflict", "Your budget changed. Refresh and try again.");
+    return new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: DATABASE_ERROR_MESSAGE,
     });
   }
-  throw refusal(
+  return refusal(
     "rejected",
     error instanceof Error ? error.message : "Check the entered values.",
   );

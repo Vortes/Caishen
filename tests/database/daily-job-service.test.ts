@@ -14,6 +14,7 @@ import {
   type Command,
 } from "../../src/domain/engine";
 import { runDailyJob } from "../../src/server/services/daily-job";
+import { respondToDailyJob } from "../../src/server/daily-job-endpoint";
 import {
   cancelScheduledDailyReviews,
   type DailyDeliveryPayload,
@@ -124,6 +125,14 @@ async function fixture(
       dailyDelivery: {
         findMany({ args, query }) {
           args.where = { ...args.where, clerkUserId: { in: users } };
+          return query(args);
+        },
+      },
+      bankConnection: {
+        findMany({ args, query }) {
+          args.where = {
+            AND: [args.where ?? {}, { clerkUserId: { in: users } }],
+          };
           return query(args);
         },
       },
@@ -378,7 +387,7 @@ void test("the daily job still updates every connection, and records each Item's
     },
   );
   const result = await runDailyJob(h.db, now, h.dependencies);
-  assert.equal(result.synced, 1);
+  assert.equal(result.synced, 2);
   assert.equal(result.failed, 0);
   const saved = await base.bankConnection.findMany({
     where: { clerkUserId: h.userId },
@@ -625,16 +634,17 @@ for (const failedCancel of [false, true])
           h.send,
         ),
     };
+    // Maintenance follows delivery, so the same run retries a failed cancel.
     const first = await runDailyJob(h.db, now, dependencies);
     assert.equal(first.failed, failedCancel ? 1 : 0);
-    assert.equal(first.canceled, failedCancel ? 0 : 1);
+    assert.equal(first.canceled, 1);
     const retry = await runDailyJob(
       h.db,
       new Date("2026-10-17T01:00:00Z"),
       dependencies,
     );
     assert.equal(retry.failed, 0);
-    assert.equal(retry.canceled, failedCancel ? 1 : 0);
+    assert.equal(retry.canceled, 0);
     assert.equal(retry.scheduled, 0);
     assert.deepEqual(h.canceled, ["email_1"]);
     assert.equal(h.accepted.size, 1);
@@ -665,4 +675,241 @@ void test("the daily job purges provider events older than the 90-day retention 
     "req-last-day",
     "req-today",
   ]);
+});
+
+/** Plaid answering every update for the given access tokens with an empty delta, and failing the rest. */
+function fakePlaid(t: TestContext, healthy: (token: string) => boolean) {
+  const contacted: string[] = [];
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, init?: RequestInit) => {
+      const path = new URL(url instanceof Request ? url.url : url).pathname;
+      const token = (
+        JSON.parse(init!.body as string) as { access_token: string }
+      ).access_token;
+      if (path === "/item/get") contacted.push(token);
+      if (!healthy(token))
+        return Response.json(
+          {
+            error_code: "INSTITUTION_DOWN",
+            error_message: "down",
+            request_id: `req-${token}`,
+          },
+          { status: 503 },
+        );
+      if (path === "/item/get")
+        return Response.json({
+          item: { consent_expiration_time: null, error: null },
+          status: null,
+        });
+      if (path === "/transactions/sync")
+        return Response.json({
+          added: [],
+          modified: [],
+          removed: [],
+          accounts: [],
+          has_more: false,
+          next_cursor: "next",
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      assert.equal(path, "/accounts/get");
+      return Response.json({ accounts: [], item: {} });
+    },
+  );
+  return contacted;
+}
+
+async function connect(
+  userId: string,
+  token: string,
+  data: Partial<Prisma.BankConnectionUncheckedCreateInput> = {},
+) {
+  const id = `connection-${token}-${randomUUID()}`;
+  await createBankConnection(base, {
+    data: {
+      id,
+      clerkUserId: userId,
+      itemId: randomUUID(),
+      encryptedToken: encryptBankToken(token, userId),
+      accountMappings: {},
+      imports: {},
+      ...data,
+    },
+  });
+  return id;
+}
+
+void test("each run updates exactly the connections that are due, one connection at a time", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now });
+  const h = await fixture(t, { emailEnabled: false });
+  const yesterday = new Date("2026-10-16T00:50:00Z");
+  const earlierToday = new Date("2026-10-17T00:05:00Z");
+  await connect(h.userId, "synced-today", { lastSyncedAt: earlierToday });
+  await connect(h.userId, "synced-yesterday", { lastSyncedAt: yesterday });
+  await connect(h.userId, "never-synced");
+  await connect(h.userId, "webhook-since-sync", {
+    lastSyncedAt: earlierToday,
+    updateRequestedAt: new Date("2026-10-17T00:10:00Z"),
+  });
+  await connect(h.userId, "pending-disconnect", {
+    lastSyncedAt: yesterday,
+    status: "pending_disconnect",
+  });
+  await connect(h.userId, "revoked", {
+    lastSyncedAt: yesterday,
+    status: "revoked",
+  });
+  const contacted = fakePlaid(t, () => true);
+  const result = await runDailyJob(h.db, now, h.dependencies);
+  assert.deepEqual(contacted.sort(), [
+    "never-synced",
+    "pending-disconnect",
+    "synced-yesterday",
+    "webhook-since-sync",
+  ]);
+  assert.equal(result.synced, 4);
+  assert.equal(result.failed, 0);
+});
+
+void test("a database failure in cancellation recovery, as on October 27, leaves the run's bank updates and reviews done", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now });
+  const h = await fixture(t);
+  const connectionId = await connect(h.userId, "due", {
+    lastSyncedAt: new Date("2026-10-16T00:50:00Z"),
+  });
+  fakePlaid(t, () => true);
+  const unreachable = h.db.$extends({
+    query: {
+      dailyDelivery: {
+        findMany() {
+          throw new Error("Can't reach database server");
+        },
+      },
+    },
+  }) as unknown as Database;
+  const result = await runDailyJob(unreachable, now, h.dependencies);
+  assert.equal(result.synced, 1);
+  assert.equal(result.scheduled, 1);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(
+    (
+      await base.bankConnection.findUniqueOrThrow({
+        where: { id: connectionId },
+      })
+    ).lastSyncedAt,
+    now,
+  );
+});
+
+void test("a connection is reported stale only once it has gone 28 hours without a committed update", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now });
+  const h = await fixture(t, { emailEnabled: false });
+  const lastMidnight = new Date("2026-10-16T00:20:00Z");
+  const flaky = await connect(h.userId, "flaky", {
+    lastSyncedAt: lastMidnight,
+  });
+  await connect(h.userId, "healthy", { lastSyncedAt: lastMidnight });
+  await connect(h.userId, "needs-sign-in", {
+    lastSyncedAt: new Date("2026-10-12T00:20:00Z"),
+    status: "login_required",
+  });
+  fakePlaid(t, (token) => token === "healthy");
+  const midnight = await runDailyJob(h.db, now, h.dependencies);
+  assert.deepEqual(midnight.stale, []);
+  assert.equal(midnight.failed, 2);
+  const retryAt = new Date("2026-10-17T06:20:00Z");
+  t.mock.timers.setTime(retryAt.getTime());
+  const retry = await runDailyJob(h.db, retryAt, h.dependencies);
+  assert.deepEqual(retry.stale, [flaky]);
+});
+
+const cronSecret = "c".repeat(32);
+const pingUrl = "https://hc-ping.example/check-uuid";
+/** The scheduler's request to the job route, and the monitor pings it sends. */
+function scheduled(t: TestContext) {
+  const previous = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = cronSecret;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = previous;
+  });
+  const pings: { url: string; body: unknown }[] = [];
+  const ping = async (url: string, body: unknown) => {
+    pings.push({ url, body });
+  };
+  const request = () =>
+    new Request("https://caishen.example/api/jobs/daily", {
+      headers: { authorization: `Bearer ${cronSecret}` },
+    });
+  return { pings, ping, request };
+}
+
+void test("a run that reaches its end answers 200 and pings the monitor, even when an institution failed", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now });
+  const h = await fixture(t, { emailEnabled: false });
+  await connect(h.userId, "down", {
+    lastSyncedAt: new Date("2026-10-16T00:20:00Z"),
+  });
+  fakePlaid(t, () => false);
+  const s = scheduled(t);
+  const response = await respondToDailyJob(s.request(), {
+    db: h.db,
+    now: () => now,
+    overrides: h.dependencies,
+    pingUrl,
+    ping: s.ping,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(((await response.json()) as { failed: number }).failed, 1);
+  assert.deepEqual(
+    s.pings.map((ping) => ping.url),
+    [pingUrl],
+  );
+});
+
+void test("a run that leaves a connection stale pings the monitor's failure URL naming it", async (t) => {
+  const retryAt = new Date("2026-10-17T06:20:00Z");
+  t.mock.timers.enable({ apis: ["Date"], now: retryAt });
+  const h = await fixture(t, { emailEnabled: false });
+  const down = await connect(h.userId, "down", {
+    lastSyncedAt: new Date("2026-10-16T00:20:00Z"),
+  });
+  fakePlaid(t, () => false);
+  const s = scheduled(t);
+  const response = await respondToDailyJob(s.request(), {
+    db: h.db,
+    now: () => retryAt,
+    overrides: h.dependencies,
+    pingUrl,
+    ping: s.ping,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(s.pings.length, 1);
+  assert.equal(s.pings[0]!.url, `${pingUrl}/fail`);
+  assert.deepEqual((s.pings[0]!.body as { stale: string[] }).stale, [down]);
+});
+
+void test("a run that cannot read which connections are due answers 503 and sends no ping", async (t) => {
+  const h = await fixture(t);
+  const unreachable = h.db.$extends({
+    query: {
+      bankConnection: {
+        findMany() {
+          throw new Error("Can't reach database server");
+        },
+      },
+    },
+  }) as unknown as Database;
+  const s = scheduled(t);
+  const response = await respondToDailyJob(s.request(), {
+    db: unreachable,
+    now: () => now,
+    overrides: h.dependencies,
+    pingUrl,
+    ping: s.ping,
+  });
+  assert.equal(response.status, 503);
+  assert.deepEqual(s.pings, []);
+  assert.deepEqual(h.sent, []);
 });

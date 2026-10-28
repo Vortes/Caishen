@@ -223,7 +223,7 @@ for (const committed of [false, true]) {
   });
 }
 
-void test("daily retry recovers a failed cancellation for an inactive owner excluded from member processing", async () => {
+void test("a failed cancellation for an owner who became inactive is recovered by the run's maintenance", async () => {
   const current = await fixture();
   let sends = 0;
   let cancels = 0;
@@ -262,8 +262,10 @@ void test("daily retry recovers a failed cancellation for an inactive owner excl
       }),
   };
   try {
+    // Maintenance follows delivery, so the same run retries the cancel.
     const first = await runDailyJob(db, batchTime, dependencies);
     assert.equal(first.scheduled, 1);
+    assert.equal(first.canceled, 1);
     assert.equal(first.failed, 1);
     const retry = await runDailyJob(
       db,
@@ -272,7 +274,7 @@ void test("daily retry recovers a failed cancellation for an inactive owner excl
     );
     assert.equal(retry.processed, 0);
     assert.equal(retry.scheduled, 0);
-    assert.equal(retry.canceled, 1);
+    assert.equal(retry.canceled, 0);
     assert.equal(retry.failed, 0);
     assert.equal(sends, 1);
     assert.equal(cancels, 2);
