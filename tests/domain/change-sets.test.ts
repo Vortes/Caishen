@@ -56,15 +56,8 @@ void test("every corpus change set equals a full comparison of the household's r
       `step ${index + 1}, ${item.command.type}`,
     );
     assert.equal(item.changeSet.operationId, item.command.id);
-    // Only an unposted card credit is checked without being recorded.
-    const recorded = !(
-      item.command.type === "transaction.upsert" &&
-      item.command.status === "pending" &&
-      item.command.payee === "Posted statement credit"
-    );
-    assert.equal(
+    assert.ok(
       item.changeSet.after.length > 0,
-      recorded,
       `${item.command.type} (${item.command.id})`,
     );
   }
