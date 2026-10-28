@@ -1,6 +1,10 @@
-import { clamp, lerp, random, type Config } from "./config";
+import { config } from "./config";
+import { clamp, lerp } from "./motion";
+import { random } from "./random";
 
 export type Point = { x: number; y: number };
+// A part of the scene in view, in scene units.
+export type View = { x: number; y: number; width: number; height: number };
 
 // The scene is drawn in a fixed 1200 × 760 box; the card lands in the middle.
 export const SCENE = { width: 1200, height: 760 };
@@ -19,15 +23,13 @@ export function sceneFit(width: number, height: number) {
   const scale = Math.min(width / shown, height / SCENE.height);
   const viewWidth = width / scale;
   const viewHeight = height / scale;
-  return {
-    scale,
-    viewBox: [
-      (SCENE.width - viewWidth) / 2,
-      (SCENE.height - viewHeight) / 2,
-      viewWidth,
-      viewHeight,
-    ].join(" "),
+  const view: View = {
+    x: (SCENE.width - viewWidth) / 2,
+    y: (SCENE.height - viewHeight) / 2,
+    width: viewWidth,
+    height: viewHeight,
   };
+  return { scale, view };
 }
 
 const hw = CARD.width / 2;
@@ -37,7 +39,7 @@ const p = (x: number, y: number): Point => ({ x, y });
 
 // Deckle: a handmade sheet's edge is never straight. Points only move
 // inward, so the card keeps its size.
-export function deckleOutline(config: Config): Point[] {
+function deckleOutline(): Point[] {
   const rng = random(config.seed, "deckle");
   const amount = config.paper.deckle;
   const points: Point[] = [];
@@ -62,10 +64,10 @@ export function deckleOutline(config: Config): Point[] {
   return points;
 }
 
-export const path = (points: Point[], closed = false) =>
-  points
-    .map(
-      (point, index) =>
-        `${index ? "L" : "M"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
-    )
-    .join(" ") + (closed ? " Z" : "");
+// The card's deckled outline, in card coordinates, and as an SVG path.
+export const DECKLE = deckleOutline();
+export const DECKLE_PATH =
+  DECKLE.map(
+    (point, index) =>
+      `${index ? "L" : "M"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
+  ).join(" ") + " Z";

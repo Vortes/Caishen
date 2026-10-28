@@ -1,13 +1,13 @@
 import {
-  BufferAttribute,
   BufferGeometry,
   DoubleSide,
   Mesh,
   ShaderMaterial,
   Vector3,
 } from "three";
-import type { Config } from "./config";
+import { config } from "./config";
 import type { Trail } from "./plane-motion";
+import { writeAttribute } from "./write-attribute";
 
 // Wingtip vapor: a ribbon along each trail that always faces the camera,
 // thin and faint right behind the tip, spreading and thinning out as it
@@ -59,7 +59,6 @@ export function createVapor() {
 export function updateVapor(
   mesh: Mesh<BufferGeometry, ShaderMaterial>,
   trails: Trail[],
-  config: Config,
   camera: Vector3,
 ) {
   const { life, width, spread, opacity } = config.trail;
@@ -106,18 +105,8 @@ export function updateVapor(
     }
   }
 
-  const geometry = mesh.geometry;
-  geometry.setAttribute(
-    "position",
-    new BufferAttribute(new Float32Array(positions), 3),
-  );
-  geometry.setAttribute(
-    "alpha",
-    new BufferAttribute(new Float32Array(alphas), 1),
-  );
-  geometry.setAttribute(
-    "across",
-    new BufferAttribute(new Float32Array(acrosses), 1),
-  );
+  writeAttribute(mesh.geometry, "position", positions, 3);
+  writeAttribute(mesh.geometry, "alpha", alphas, 1);
+  writeAttribute(mesh.geometry, "across", acrosses, 1);
   mesh.visible = positions.length > 0;
 }

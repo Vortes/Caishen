@@ -6,13 +6,13 @@ import {
   Vector3,
   Vector4,
 } from "three";
-import { CARD } from "./geometry";
-import type { Config, Pattern } from "./config";
-import { sheetCreases } from "./harrier";
+import { config } from "./config";
 import { deckleMask } from "./deckle-mask";
+import { CARD } from "./geometry";
+import { sheetCreases } from "./harrier";
 
 // Japanese origami paper. The outside of the plane is chiyogami: a dyed
-// washi ground, a silkscreened pattern in one ink, and the odd fleck of gold
+// washi ground, silkscreened seigaiha waves in one ink, and the odd fleck of gold
 // leaf, with kozo fibers (long, pale, wandering) and the uneven density of
 // handmade pulp showing through the dye. The inside is the printed card:
 // the same paper and deckle as the SVG card it hands over to.
@@ -47,7 +47,6 @@ const fragment = /* glsl */ `
   uniform vec3 uDye;
   uniform vec3 uInk;
   uniform vec3 uGold;
-  uniform int uPattern;
   uniform float uScale;
   uniform float uFibers;
   uniform float uMottle;
@@ -153,43 +152,6 @@ const fragment = /* glsl */ `
         return abs(rings - floor(rings + 0.5)) / 4.0;
       }
     }
-    return 1.0;
-  }
-
-  // Asanoha: a triangular lattice, each triangle split from its center to
-  // its corners, making six-pointed hemp leaves.
-  float asanoha(vec2 p) {
-    const float h = 0.8660254;
-    float b = p.y / h;
-    float a = p.x - 0.5 * b;
-    vec2 cell = floor(vec2(a, b));
-    vec2 f = vec2(a, b) - cell;
-    vec2 origin = vec2(cell.x + 0.5 * cell.y, cell.y * h);
-    vec2 v0 = origin;
-    vec2 v1 = origin + vec2(1.0, 0.0);
-    vec2 v2 = origin + vec2(0.5, h);
-    if (f.x + f.y >= 1.0) v0 = origin + vec2(1.5, h);
-    vec2 c = (v0 + v1 + v2) / 3.0;
-    float d = min(min(segment(p, v0, v1), segment(p, v1, v2)), segment(p, v2, v0));
-    return min(d, min(min(segment(p, c, v0), segment(p, c, v1)), segment(p, c, v2)));
-  }
-
-  // Shippo: interlocking rings, one on every lattice point.
-  float shippo(vec2 p) {
-    vec2 base = floor(p);
-    float d = 1.0;
-    for (int i = 0; i < 2; i++) {
-      for (int j = 0; j < 2; j++) {
-        d = min(d, abs(length(p - base - vec2(float(i), float(j))) - 0.70710678));
-      }
-    }
-    return d;
-  }
-
-  float pattern(vec2 p) {
-    if (uPattern == 0) return seigaiha(p);
-    if (uPattern == 1) return asanoha(p);
-    if (uPattern == 2) return shippo(p);
     return 1.0;
   }
 
@@ -299,11 +261,9 @@ const fragment = /* glsl */ `
       // The outside: dyed unevenly, so pale fibers and thin pulp show.
       color = uDye * (1.0 + pulp * 0.32 * uMottle);
       color = mix(color, color * 1.45 + 0.025, strands * 0.55);
-      float d = pattern(p / uScale);
+      float d = seigaiha(p / uScale);
       float edge = fwidth(d) * 1.4;
-      // Seigaiha's rings sit closer together than the other lattices.
-      float width = uPattern == 0 ? 0.014 : 0.035;
-      float line = 1.0 - smoothstep(width, width + edge, d);
+      float line = 1.0 - smoothstep(0.014, 0.014 + edge, d);
       // Screen ink sits unevenly and skips where fibers stand proud.
       line *= (0.78 + 0.22 * noise(p * 0.35)) * (1.0 - strands * 0.35);
       color = mix(color, uInk, line);
@@ -352,13 +312,6 @@ const fragment = /* glsl */ `
   }
 `;
 
-const patterns: Record<Pattern, number> = {
-  seigaiha: 0,
-  asanoha: 1,
-  shippo: 2,
-  plain: 3,
-};
-
 // OKLCH to linear sRGB, so shader colors match the CSS colors exactly.
 export function oklchLinear(l: number, c: number, h: number) {
   const a = c * Math.cos((h * Math.PI) / 180);
@@ -378,39 +331,63 @@ export function oklchLinear(l: number, c: number, h: number) {
 }
 
 export function createPaperMaterial() {
+  const { washi, paper, plane } = config;
+  const angle = (plane.light * Math.PI) / 180;
   return new ShaderMaterial({
     vertexShader: vertex,
     fragmentShader: fragment,
     side: DoubleSide,
     uniforms: {
-      uPaper: { value: new Vector3() },
-      uDye: { value: new Vector3() },
-      uInk: { value: new Vector3() },
+      uPaper: { value: oklchLinear(paper.lightness, paper.warmth, 80) },
+      uDye: { value: oklchLinear(washi.lightness, washi.chroma, washi.hue) },
+      uInk: {
+        value: oklchLinear(
+          washi.inkLightness,
+          Math.min(washi.chroma, 0.1),
+          washi.inkHue,
+        ),
+      },
       uGold: { value: oklchLinear(0.8, 0.12, 85) },
-      uPattern: { value: 0 },
-      uScale: { value: 22 },
-      uFibers: { value: 0.5 },
-      uMottle: { value: 0.5 },
-      uGoldAmount: { value: 0.3 },
-      uSeed: { value: 0 },
+      uScale: { value: washi.scale },
+      uFibers: { value: washi.fibers },
+      uMottle: { value: washi.mottle },
+      uGoldAmount: { value: washi.gold },
+      uSeed: { value: (config.seed % 1000) / 1000 },
       uPrint: { value: new Texture() },
       uSheet: { value: new Vector2(CARD.height, CARD.width) },
-      uLight: { value: new Vector3(0, 0, 1) },
+      // Low and from the upper left, so each facet catches it differently.
+      uLight: {
+        value: new Vector3(
+          -Math.cos(angle) * 1.1,
+          Math.sin(angle) * 1.1,
+          1,
+        ).normalize(),
+      },
       uCreases: {
         value: sheetCreases.map(([a, b]) => new Vector4(a.x, a.y, b.x, b.y)),
       },
-      uCrease: { value: 0.55 },
-      uCreaseShadow: { value: new Vector3() },
-      uCreaseLight: { value: new Vector3() },
+      uCrease: { value: paper.crease },
+      uCreaseShadow: {
+        value: oklchLinear(paper.lightness - 0.16, paper.warmth, 80),
+      },
+      uCreaseLight: {
+        value: oklchLinear(paper.lightness + 0.04, paper.warmth, 80),
+      },
       uTear: { value: 0 },
       uLifted: { value: 0 },
-      uRagged: { value: 1 },
-      uCore: { value: new Vector3() },
+      uRagged: { value: config.tear.ragged },
+      uCore: {
+        value: oklchLinear(
+          Math.min(1, paper.lightness + 0.045),
+          paper.warmth * 0.2,
+          80,
+        ),
+      },
       uSeal: { value: new Texture() },
       uStamped: { value: 0 },
       uSealAt: { value: new Vector2() },
       uSealTilt: { value: 0 },
-      uSealSize: { value: 74 },
+      uSealSize: { value: config.seal.size },
       uSealField: { value: new Vector3() },
       uSealPool: { value: new Vector3() },
       uSealWet: { value: 0 },
@@ -420,46 +397,7 @@ export function createPaperMaterial() {
       uOver: { value: new Vector2(1e4, 0) },
       uShown: { value: 1 },
       uShimmer: { value: -1 },
-      uDeckle: { value: new Texture() },
+      uDeckle: { value: deckleMask() },
     },
   });
-}
-
-export function updatePaperMaterial(material: ShaderMaterial, config: Config) {
-  const { washi, paper, plane } = config;
-  const u = material.uniforms;
-  u.uDeckle!.value = deckleMask(config);
-  u.uPaper!.value = oklchLinear(paper.lightness, paper.warmth, 80);
-  u.uCrease!.value = paper.crease;
-  u.uCreaseShadow!.value = oklchLinear(
-    paper.lightness - 0.16,
-    paper.warmth,
-    80,
-  );
-  u.uCreaseLight!.value = oklchLinear(paper.lightness + 0.04, paper.warmth, 80);
-  u.uCore!.value = oklchLinear(
-    Math.min(1, paper.lightness + 0.045),
-    paper.warmth * 0.2,
-    80,
-  );
-  u.uRagged!.value = config.tear.ragged;
-  u.uDye!.value = oklchLinear(washi.lightness, washi.chroma, washi.hue);
-  u.uInk!.value = oklchLinear(
-    washi.inkLightness,
-    Math.min(washi.chroma, 0.1),
-    washi.inkHue,
-  );
-  u.uPattern!.value = patterns[config.pattern];
-  u.uScale!.value = washi.scale;
-  u.uFibers!.value = washi.fibers;
-  u.uMottle!.value = washi.mottle;
-  u.uGoldAmount!.value = washi.gold;
-  u.uSeed!.value = (config.seed % 1000) / 1000;
-  const angle = (plane.light * Math.PI) / 180;
-  // Low and from the upper left, so each facet catches it differently.
-  u.uLight!.value = new Vector3(
-    -Math.cos(angle) * 1.1,
-    Math.sin(angle) * 1.1,
-    1,
-  ).normalize();
 }

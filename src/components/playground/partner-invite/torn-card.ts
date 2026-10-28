@@ -8,22 +8,17 @@ import {
   type Texture,
   type Vector2,
 } from "three";
-import {
-  clamp,
-  easeInOut,
-  easeOut,
-  lerp,
-  random,
-  span,
-  type Config,
-} from "./config";
+import { config } from "./config";
 import { CARD, LANDING, type Point } from "./geometry";
-import type { Stroke } from "./ink";
-import { createPaperMaterial, updatePaperMaterial } from "./paper-material";
+import { clamp, easeInOut, easeOut, lerp, smoothstep, span } from "./motion";
+import { createPaperMaterial } from "./paper-material";
+import { random } from "./random";
 import { sealInk, sealPlacement } from "./seal";
+import { timeline } from "./timeline";
 
-// The card from the moment it tears to the moment it's taken, in 3D. A tear starts at the top edge and runs down: behind its tip the flap
-// on the right rises toward you and curls, the left dips away, and the
+// The card from the moment it tears to the moment it's taken, in 3D. A
+// tear starts at the top edge and runs down: behind its tip the flap on
+// the right rises toward you and curls, the left dips away, and the
 // halves part. Still curled, the right flap slides over the left and
 // flattens onto it as it lands, and the seal presses into the overlap.
 // Then your half is peeled off and lifts away, and Jordan's stays.
@@ -43,24 +38,12 @@ const OPENING = 150;
 // How far the flaps part while tearing.
 const PARTING = 5;
 
-// The tear's timeline, as fractions of its duration: the sheet fades in
-// over the printed card, and the tip runs top to bottom.
-export const SHOWN = 0.06;
-export const TORN = 0.7;
-// The slide over runs from late in the tear (a fraction of the tear) into
-// the start of the bond (a fraction of the bond), so the flap never stops.
-export const SLIDE_FROM = 0.6;
-export const SLIDE_TO = 0.25;
 // How far through the slide the flap starts flattening onto the left.
 const LANDING_FROM = 0.4;
 
-// The bond's timeline, as fractions of its duration: once the halves
-// overlap, the seal presses into both. Nothing shows the stone; the paper
-// gives under it, and the ink takes from the high spots of the face
-// outward, leaving a dent that stays.
-const PRESS = [0.36, 0.56] as const;
-export const STAMP = 0.42;
-export const TAKE = [0.4, 0.56] as const;
+// Once the halves overlap, the seal presses into both (see timeline.bond).
+// Nothing shows the stone; the paper gives under it, and the ink takes
+// from the high spots of the face outward, leaving a dent that stays.
 // How deep the press goes, how much dent the paper keeps, and how much
 // the whole card gives.
 const DEPTH = 3;
@@ -193,76 +176,52 @@ export const KEPT_BOX = {
   top: -hh - 2,
   bottom: hh + 2,
 };
-export const KEPT_MIDDLE = (KEPT_BOX.left + KEPT_BOX.right) / 2;
-// The box the bonded card fills, halves overlapped, in card coordinates
-// (y down); and where your half's own box sits inside it.
-export const joinedBox = (config: Config) => ({
-  left: -hw + config.seal.overlap / 2 - 8,
-  right: hw - config.seal.overlap / 2 + 8,
-  top: -hh - 10,
-  bottom: hh + 10,
-});
-export const keptInJoined = (config: Config) => {
-  const { drop } = sealPlacement(config);
-  const x = -config.seal.overlap / 2;
-  return {
-    left: KEPT_BOX.left + x,
-    right: KEPT_BOX.right + x,
-    top: KEPT_BOX.top + drop,
-    bottom: KEPT_BOX.bottom + drop,
-  };
-};
+const KEPT_MIDDLE = (KEPT_BOX.left + KEPT_BOX.right) / 2;
 // Jordan's half's box, fibers included, in card coordinates, where it lies
 // on the bonded card.
-export const theirsBox = (config: Config) => ({
+export const THEIRS_BOX = {
   left: -hw - 2 + config.seal.overlap / 2,
   right: 10 + config.seal.overlap / 2,
   top: -hh - 2,
   bottom: hh + 2,
-});
+};
 // Where your half sits on the card before it's taken, as a place for its
 // middle (card coordinates, z toward you).
-export const keptFrom = (config: Config) => ({
+export const KEPT_FROM = {
   x: -config.seal.overlap / 2 + KEPT_MIDDLE,
-  y: sealPlacement(config).drop,
+  y: sealPlacement.drop,
   z: RESTS,
-});
+};
 
 // Your half once it's free: where its middle is (card coordinates, z
 // toward you).
 export type Kept = { x: number; y: number; z: number };
 
 // The card at one moment. `tear` and `bond` are progress through each;
-// `y` and `size` place the card's middle in the scene; `peels` lift your
-// half, `keep` holds it once it's free, and `shown` is how much of each
-// half shows; `shimmer` is how far a sheen has swept across your half (off
-// outside 0 to 1), and `genie` how far it has poured into a point (card
-// coordinates, in its own plane); `inkAt` is when the print was taken,
-// which fixes how wet the signature is.
+// `peels` lift your half, `keep` holds it once it's free, and `shown` is
+// how much of your half shows; `shimmer` is how far a sheen has swept
+// across your half (off outside 0 to 1), and `genie` how far it has poured
+// into a point (card coordinates, in its own plane).
 export type CardFrame = {
   tear: number;
   bond: number;
   sealWet: number;
-  y: number;
-  size: number;
   peels: Peel[];
   keep: Kept | null;
-  shown: { yours: number; theirs: number };
+  shown: number;
   shimmer: number;
   genie: { progress: number; to: Point } | null;
   opacity: number;
-  strokes: Stroke[];
-  inkAt: number;
 };
 
 // Fading in over the printed card while the tear starts, and out into the
 // clouds once it's taken.
 export const cardOpacity = (frame: CardFrame) =>
-  span(frame.tear, 0, SHOWN) * frame.opacity;
+  span(frame.tear, 0, timeline.tear.shown) * frame.opacity;
 
 // A neat tear still wanders: a slow drift where the hands pulled unevenly,
 // and short jags where bundles of fibers gave way.
-export function tearLine(config: Config): Point[] {
+function tearLine(): Point[] {
   const rng = random(config.seed, "tear");
   const [a, b] = [rng() * 6, rng() * 6];
   const lean = (rng() - 0.5) * 4;
@@ -277,6 +236,7 @@ export function tearLine(config: Config): Point[] {
   }
   return points;
 }
+const LINE = tearLine();
 
 type Half = Mesh<BufferGeometry, ShaderMaterial> & {
   userData: { side: 1 | -1 };
@@ -338,33 +298,31 @@ export function disposeTornCard(group: Group) {
 
 export function updateTornCard(
   group: Group,
-  config: Config,
-  line: Point[],
   print: Texture,
   seal: Texture,
   frame: CardFrame,
 ) {
-  const tearing = easeInOut(span(frame.tear, SHOWN, TORN));
+  const { tear, bond } = timeline;
+  const tearing = easeInOut(span(frame.tear, tear.shown, tear.torn));
   // The tip's depth below the top edge. It starts just above the card, and
   // ends far enough past the bottom that the whole tear has opened.
   const tip = lerp(-4, CARD.height + OPENING, tearing);
   const { lift } = config.tear;
   const { overlap, size } = config.seal;
-  const placement = sealPlacement(config);
+  const placement = sealPlacement;
   // Seconds into the bond phase, which starts with the tear.
-  const { duration } = config.tear;
-  const seconds = frame.tear * duration + frame.bond * config.bondDuration;
+  const seconds = frame.tear * tear.duration + frame.bond * bond.duration;
   const slide = easeInOut(
     span(
       seconds,
-      SLIDE_FROM * duration,
-      duration + SLIDE_TO * config.bondDuration,
+      tear.slideFrom * tear.duration,
+      tear.duration + bond.slideTo * bond.duration,
     ),
   );
   const flat = easeInOut(span(slide, LANDING_FROM, 1));
-  const press = Math.sin(Math.PI * span(frame.bond, ...PRESS));
-  const take = easeOut(span(frame.bond, ...TAKE));
-  const dent = frame.bond >= STAMP ? Math.max(press, KEPT) : press;
+  const press = Math.sin(Math.PI * span(frame.bond, ...bond.press));
+  const take = easeOut(span(frame.bond, ...bond.take));
+  const dent = frame.bond >= bond.stamp ? Math.max(press, KEPT) : press;
   // Each half's offset once flat: parted by the tear, slid together, then
   // pulled apart again.
   const offset = (side: 1 | -1, gap: number) => ({
@@ -376,12 +334,12 @@ export function updateTornCard(
   const left = offset(-1, PARTING);
   // The paper bends about the tear's overall course, not its jags, or
   // every row would catch the light differently.
-  const course = line.map((_, row) => {
-    const near = line.slice(Math.max(0, row - 12), row + 13);
+  const course = LINE.map((_, row) => {
+    const near = LINE.slice(Math.max(0, row - 12), row + 13);
     return near.reduce((sum, point) => sum + point.x, 0) / near.length;
   });
 
-  const ink = sealInk(config, frame.sealWet);
+  const ink = sealInk(frame.sealWet);
 
   const peels = frame.peels.filter((peel) => peel.reach > 0).map(shaped);
 
@@ -410,7 +368,7 @@ export function updateTornCard(
     const seam = attributes.seam!.array as Float32Array;
     const torn = attributes.torn!.array as Float32Array;
     for (let row = 0; row <= ROWS; row++) {
-      const { x: x0, y } = line[row]!;
+      const { x: x0, y } = LINE[row]!;
       const behind = tip - (y + hh);
       const open = smoothstep(behind / OPENING);
       const reached = clamp(behind / 6);
@@ -455,9 +413,7 @@ export function updateTornCard(
       attributes[name]!.needsUpdate = true;
     }
 
-    const material = mesh.material;
-    updatePaperMaterial(material, config);
-    const u = material.uniforms;
+    const u = mesh.material.uniforms;
     u.uPrint!.value = print;
     u.uSeal!.value = seal;
     u.uStamped!.value = take > 0 ? 1 : 0;
@@ -469,22 +425,21 @@ export function updateTornCard(
     u.uSealField!.value = ink.field;
     u.uSealPool!.value = ink.pool;
     u.uSealWet!.value = frame.sealWet;
-    u.uShown!.value = side > 0 ? frame.shown.yours : frame.shown.theirs;
+    u.uShown!.value = side > 0 ? frame.shown : 1;
     u.uShimmer!.value = side > 0 ? frame.shimmer : -1;
     // The curled edge rides higher than the rest of the flap, so its
     // shadow is softer until it lands. Gone, or lifted free, your half
     // shades nothing.
     (u.uOver!.value as Vector2).set(
-      frame.keep || !frame.shown.yours ? 1e4 : right.x - left.x,
+      frame.keep || !frame.shown ? 1e4 : right.x - left.x,
       right.z + lift * (1 - flat) * 0.5,
     );
   }
 
   group.matrix.copy(
     new Matrix4()
-      .makeTranslation(LANDING.x, -frame.y, 0)
+      .makeTranslation(LANDING.x, -LANDING.y, 0)
       // The card gives a little under the press.
-      .multiply(new Matrix4().makeScale(frame.size, frame.size, frame.size))
       .multiply(new Matrix4().makeTranslation(0, -placement.y, 0))
       .multiply(new Matrix4().makeScale(1 - GIVE * press, 1 - GIVE * press, 1))
       .multiply(new Matrix4().makeTranslation(0, placement.y, 0)),
@@ -523,8 +478,3 @@ function genie(
     y,
   };
 }
-
-const smoothstep = (t: number) => {
-  const x = clamp(t);
-  return x * x * (3 - 2 * x);
-};

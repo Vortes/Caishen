@@ -1,14 +1,15 @@
 import { useEffect, useRef } from "react";
 import { cloudHit } from "./cloud";
-import { clamp, easeInOut, type Config } from "./config";
+import { config } from "./config";
 import { airSeconds, flightPose, flightSeconds } from "./flight";
 import { CAMERA_DISTANCE, SCENE } from "./geometry";
+import { clamp, easeInOut } from "./motion";
 import { SEGMENTS } from "./plane-motion";
-import { SHOWN, SLIDE_FROM, SLIDE_TO, STAMP, TAKE, TORN } from "./torn-card";
 import type { Cue, Sound, Track } from "./sound";
+import { ending, timeline } from "./timeline";
 
 // When each sound in the invite happens, read off the same timelines the
-// scene is drawn from, so a retuned knob moves its sound with it.
+// scene is drawn from, so a retimed step moves its sound with it.
 
 // How fast an eased stretch is moving at `t`, from 0 (still) to 1 (its
 // fastest).
@@ -22,8 +23,8 @@ const shape = (samples = 96) =>
 
 // Where the plane is on screen, roughly: its scale (1 at the card's size)
 // and how far across, from -1 to 1.
-function sighted(config: Config, t: number) {
-  const pose = flightPose(config, t);
+function sighted(t: number) {
+  const pose = flightPose(t);
   const scale = CAMERA_DISTANCE / (CAMERA_DISTANCE - pose.z);
   const middle = SCENE.width / 2;
   return {
@@ -36,11 +37,12 @@ function sighted(config: Config, t: number) {
 
 // The plane thrown from far off, through the cloud, onto the table, and
 // opening into the card.
-export function arrivalTrack(config: Config): Track {
-  const air = airSeconds(config);
-  const landed = flightSeconds(config);
-  const { contact } = cloudHit(config);
-  const panAt = (t: number) => sighted(config, t).pan;
+export function arrivalTrack(): Track {
+  const air = airSeconds();
+  const landed = flightSeconds();
+  const { contact } = cloudHit();
+  const { duration, stagger } = timeline.unfold;
+  const panAt = (t: number) => sighted(t).pan;
   const cues: Cue[] = [];
   if (config.cloud.size > 0)
     cues.push({
@@ -53,15 +55,15 @@ export function arrivalTrack(config: Config): Track {
   // biggest.
   let start = 0;
   SEGMENTS.forEach((length, index) => {
-    const from = Math.max(0, start - length * config.unfold.stagger);
+    const from = Math.max(0, start - length * stagger);
     cues.push({
-      at: landed + from * config.unfold.duration,
+      at: landed + from * duration,
       play: (sound) => sound.unfold(index === 0 ? 1 : 0.45),
     });
     start += length;
   });
   cues.push({
-    at: landed + 0.94 * config.unfold.duration,
+    at: landed + 0.94 * duration,
     play: (sound) => sound.settle(),
   });
 
@@ -69,8 +71,8 @@ export function arrivalTrack(config: Config): Track {
     cues,
     tick: (sound, t) => {
       if (t < air) {
-        const here = sighted(config, t);
-        const next = sighted(config, t + 1 / 60);
+        const here = sighted(t);
+        const next = sighted(t + 1 / 60);
         const since = t - contact;
         sound.flight({
           scale: here.scale,
@@ -92,20 +94,22 @@ export function arrivalTrack(config: Config): Track {
 }
 
 // The card tearing in two, the right half sliding over, and the seal.
-export function bondTrack(config: Config, reducedMotion: boolean): Track {
-  const tear = reducedMotion ? 0 : config.tear.duration;
-  const bond = reducedMotion ? 0 : config.bondDuration;
-  const slideFrom = SLIDE_FROM * tear;
-  const slideTo = tear + SLIDE_TO * bond;
+export function bondTrack(reducedMotion: boolean): Track {
+  const { shown, torn, slideFrom: tornBy } = timeline.tear;
+  const { slideTo: bondBy, stamp, take } = timeline.bond;
+  const tear = reducedMotion ? 0 : timeline.tear.duration;
+  const bond = reducedMotion ? 0 : timeline.bond.duration;
+  const slideFrom = tornBy * tear;
+  const slideTo = tear + bondBy * bond;
   const cues: Cue[] = [
-    { at: tear + STAMP * bond, play: (sound) => sound.stamp() },
-    { at: tear + TAKE[1] * bond, play: (sound) => sound.tack() },
+    { at: tear + stamp * bond, play: (sound) => sound.stamp() },
+    { at: tear + take[1] * bond, play: (sound) => sound.tack() },
   ];
   if (!reducedMotion)
     cues.push(
       {
-        at: SHOWN * tear,
-        play: (sound) => sound.tear(shape(), (TORN - SHOWN) * tear),
+        at: shown * tear,
+        play: (sound) => sound.tear(shape(), (torn - shown) * tear),
       },
       {
         at: slideFrom,
@@ -118,17 +122,14 @@ export function bondTrack(config: Config, reducedMotion: boolean): Track {
 
 // Waiting to be peeled: the corner curling up as the step begins, then
 // flicking now and then.
-export function curlTrack(timing: {
-  delay: number;
-  after: number;
-  every: number;
-  count: number;
-}): Track {
+export function curlTrack(): Track {
+  const { delay } = timeline.curl;
+  const { after, every, count } = timeline.flick;
   return {
     cues: [
-      { at: timing.delay, play: (sound) => sound.curl(1) },
-      ...Array.from({ length: timing.count }, (_, index) => ({
-        at: timing.delay + timing.after + index * timing.every,
+      { at: delay, play: (sound) => sound.curl(1) },
+      ...Array.from({ length: count }, (_, index) => ({
+        at: delay + after + index * every,
         play: (sound: Sound) => sound.curl(0.6),
       })),
     ],
@@ -136,38 +137,28 @@ export function curlTrack(timing: {
 }
 
 // From your half coming free to the clouds having parted on what's next.
-export function endingTrack(
-  config: Config,
-  timing: {
-    speed: number;
-    rise: number;
-    shimmer: readonly [number, number];
-    genie: { at: number; seconds: number };
-    filedAt: number;
-    cloudsAt: number;
-  },
-): Track {
-  const { genie, filedAt, cloudsAt } = timing;
-  const { gather, partAt, part } = config.veil;
+// `speed` is how fast your half's tip was going when it came free (px/s).
+export function endingTrack(speed: number): Track {
+  const { rise, shimmer, genie } = timeline.keep;
+  const { filedAt, cloudsAt } = ending;
+  const { gather, partAt, part } = timeline.veil;
+  const filed = timeline.filed.duration;
   const parting = cloudsAt + partAt;
   return {
     cues: [
-      { at: 0, play: (sound) => sound.release(timing.speed) },
-      { at: 0.05, play: (sound) => sound.rise(timing.rise) },
+      { at: 0, play: (sound) => sound.release(speed) },
+      { at: 0.05, play: (sound) => sound.rise(rise) },
       {
-        at: timing.shimmer[0],
-        play: (sound) => sound.shimmer(timing.shimmer[1] - timing.shimmer[0]),
+        at: shimmer[0],
+        play: (sound) => sound.shimmer(shimmer[1] - shimmer[0]),
       },
       { at: genie.at, play: (sound) => sound.genie(genie.seconds) },
       { at: genie.at + genie.seconds, play: (sound) => sound.tuck() },
-      {
-        at: filedAt,
-        play: (sound) => sound.filing(config.filed.duration),
-      },
-      { at: filedAt + config.filed.duration, play: (sound) => sound.filed() },
+      { at: filedAt, play: (sound) => sound.filing(filed) },
+      { at: filedAt + filed, play: (sound) => sound.filed() },
       { at: parting, play: (sound) => sound.part(part) },
       {
-        at: parting + config.reveal.at * part,
+        at: parting + timeline.reveal.at * part,
         play: (sound) => sound.reveal(),
       },
     ],
@@ -180,36 +171,27 @@ export function endingTrack(
   };
 }
 
-// Plays a track against its timeline's time. Cues fire as the time passes
-// them; a held or rewound time fires nothing and silences what runs
-// continuously.
-export function useScore(
-  sound: Sound | null,
-  track: Track | null,
-  t: number,
-  playing: boolean,
-) {
-  const last = useRef<{
-    track: Track | null;
-    t: number;
-    playing: boolean;
-  } | null>(null);
-  useEffect(() => {
+// Plays a track against its timeline's time, called once a frame. Cues
+// fire as the time passes them; once there's no track, whatever runs
+// continuously is hushed.
+export function useScore(sound: Sound | null) {
+  const last = useRef<{ track: Track | null; t: number } | null>(null);
+  useEffect(() => () => sound?.hush(), [sound]);
+  return (track: Track | null, t: number) => {
     const previous = last.current;
-    last.current = { track, t, playing };
-    if (!sound || !track || !playing) {
+    last.current = { track, t };
+    if (!sound || !track) {
       // Only on the way out, so it never cuts the pen or the peel short.
-      if (previous?.track && previous.playing) sound?.hush();
+      if (previous?.track) sound?.hush();
       return;
     }
     // A track starting hears its first cues, even when its first frame is
-    // late (the bond's is: its sheet is set up then); one joined well in,
-    // as a replay from the parting does, only hears what comes next.
+    // late (the bond's is: its sheet is set up then); one joined well in
+    // only hears what comes next.
     const from = previous?.track === track ? previous.t : t < 1 ? -Infinity : t;
     if (t < from) return;
     for (const cue of track.cues)
       if (cue.at > from && cue.at <= t) cue.play(sound);
     track.tick?.(sound, t, clamp(t - (previous?.t ?? t), 0, 0.1));
-  }, [sound, track, t, playing]);
-  useEffect(() => () => sound?.hush(), [sound]);
+  };
 }

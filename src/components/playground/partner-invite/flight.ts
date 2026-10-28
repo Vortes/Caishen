@@ -1,5 +1,6 @@
 import { CatmullRomCurve3, Matrix4, Quaternion, Vector3 } from "three";
-import { clamp, easeOut, type Config } from "./config";
+import { config } from "./config";
+import { clamp, easeOut } from "./motion";
 import { CAMERA_DISTANCE, LANDING, SCENE } from "./geometry";
 
 // The plane is thrown from the far side and loops in from the distance
@@ -130,11 +131,9 @@ const withFacing = (
   return points.map((point, i) => ({ ...point, facing: facings[i]! }));
 };
 
-let cache: { key: string; value: Route } | null = null;
-
 // Leans the whole scene back like a tabletop seen at an angle, so depth
 // reads; it eases to straight overhead as the card settles.
-export function viewTilt(config: Config, settled = 0) {
+export function viewTilt(settled = 0) {
   const angle = (-config.plane.tilt * (1 - settled) * Math.PI) / 180;
   return new Matrix4()
     .makeTranslation(LANDING.x, -LANDING.y, 0)
@@ -170,7 +169,7 @@ const GLIDE = [
 ];
 const FAR_SAMPLES = 1600;
 
-function farRoute(config: Config): Route {
+function farRoute(): Route {
   const { far, near, loop, slide } = config.flight;
 
   // Points on screen at a given apparent size sit along the camera's line
@@ -181,7 +180,7 @@ function farRoute(config: Config): Route {
     -SCENE.height / 2,
     CAMERA_DISTANCE,
   );
-  const tilt = viewTilt(config);
+  const tilt = viewTilt();
   const untilt = tilt.clone().invert();
   const sighted = (x: number, y: number, size: number) =>
     camera
@@ -252,24 +251,17 @@ function farRoute(config: Config): Route {
   };
 }
 
-function route(config: Config): Route {
-  const key = JSON.stringify([config.flight, config.plane.tilt]);
-  if (cache?.key === key) return cache.value;
-  const value = farRoute(config);
-  cache = { key, value };
-  return value;
-}
+// Traced once, on first use.
+let traced: Route | null = null;
+const route = () => (traced ??= farRoute());
 
 // Time in the air, before touchdown.
-export const airSeconds = (config: Config) => route(config).air;
+export const airSeconds = () => route().air;
 
-export const flightSeconds = (config: Config) => {
-  const { air, skid } = route(config);
+export const flightSeconds = () => {
+  const { air, skid } = route();
   return air + skid;
 };
-
-// When the camera starts following the plane in: as it comes over the hump.
-export const followSeconds = (config: Config) => route(config).follow;
 
 // Which sample a moment in the air falls after, and how far on to the next.
 function locate(samples: Sample[], t: number) {
@@ -288,7 +280,7 @@ function locate(samples: Sample[], t: number) {
 // How far along the card it has skidded, a given time after touchdown.
 // Friction bites hardest at first. The curve's steepness matches the speed
 // it touched down at, so it doesn't brake the instant it lands.
-function skidded(config: Config, path: Route, since: number) {
+function skidded(path: Route, since: number) {
   const into = path.skid ? clamp(since / path.skid) : 1;
   const { slide } = config.flight;
   const bite = slide > 0 ? Math.max(2, (path.landing * path.skid) / slide) : 2;
@@ -296,31 +288,26 @@ function skidded(config: Config, path: Route, since: number) {
 }
 
 // Distance covered over the table, at each sample of the flight.
-const groundCache = new WeakMap<Route, number[]>();
+let covered: number[] | null = null;
 function ground(path: Route) {
-  let covered = groundCache.get(path);
-  if (!covered) {
-    covered = [0];
-    for (let i = 1; i < path.samples.length; i++) {
-      const a = path.samples[i - 1]!;
-      const b = path.samples[i]!;
-      covered.push(covered[i - 1]! + Math.hypot(b.x - a.x, b.y - a.y));
-    }
-    groundCache.set(path, covered);
+  if (covered) return covered;
+  covered = [0];
+  for (let i = 1; i < path.samples.length; i++) {
+    const a = path.samples[i - 1]!;
+    const b = path.samples[i]!;
+    covered.push(covered[i - 1]! + Math.hypot(b.x - a.x, b.y - a.y));
   }
   return covered;
 }
 
 // How far over the table the plane has come since the camera started
 // following it, out of the whole way to where it stops.
-export function followed(config: Config, at: number) {
-  const path = route(config);
+export function followed(at: number) {
+  const path = route();
   const covered = ground(path);
   const along = (t: number) => {
     if (t >= path.air)
-      return (
-        covered[covered.length - 1]! + skidded(config, path, t - path.air).slid
-      );
+      return covered[covered.length - 1]! + skidded(path, t - path.air).slid;
     const { low, high, f } = locate(path.samples, t);
     return covered[low]! + (covered[high]! - covered[low]!) * f;
   };
@@ -341,8 +328,8 @@ type FlightPose = {
   facing: Quaternion;
 };
 
-export function flightPose(config: Config, at: number): FlightPose {
-  const path = route(config);
+export function flightPose(at: number): FlightPose {
+  const path = route();
   const { samples } = path;
   const { stall } = config.flight;
   // The scene's first frame can read a hair before the start.
@@ -374,7 +361,7 @@ export function flightPose(config: Config, at: number): FlightPose {
   // On the table: friction eases it to a stop in the line it touched down
   // on, and it settles flat, still facing the way it was going.
   const last = samples[samples.length - 1]!;
-  const { into, slid } = skidded(config, path, t - path.air);
+  const { into, slid } = skidded(path, t - path.air);
   const heading = Math.atan2(-path.along.y, path.along.x);
   const level = new Quaternion().setFromAxisAngle(
     new Vector3(0, 0, 1),

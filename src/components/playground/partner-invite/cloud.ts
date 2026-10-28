@@ -5,7 +5,9 @@ import {
   ShaderMaterial,
   Vector3,
 } from "three";
-import { clamp, random, type Config } from "./config";
+import { config } from "./config";
+import { clamp } from "./motion";
+import { random } from "./random";
 import { airSeconds, flightPose } from "./flight";
 import { CARD } from "./geometry";
 
@@ -108,17 +110,13 @@ const fragment = /* glsl */ `
 const PUFFS = 26;
 
 // Where the cloud sits (table frame, y up the screen) and when the plane
-// first touches it.
-let hitCache: {
-  key: string;
-  value: { center: Vector3; contact: number; push: Vector3 };
-} | null = null;
-export function cloudHit(config: Config) {
-  const key = JSON.stringify([config.flight, config.plane.tilt, config.cloud]);
-  if (hitCache?.key === key) return hitCache.value;
-  const at = config.cloud.at * airSeconds(config);
+// first touches it. Found once, on first use.
+let hit: { center: Vector3; contact: number; push: Vector3 } | null = null;
+export function cloudHit() {
+  if (hit) return hit;
+  const at = config.cloud.at * airSeconds();
   const position = (t: number) => {
-    const pose = flightPose(config, t);
+    const pose = flightPose(t);
     return new Vector3(pose.x, -pose.y, pose.z);
   };
   const center = position(at);
@@ -130,9 +128,8 @@ export function cloudHit(config: Config) {
     .sub(position(at - 0.05))
     .normalize()
     .multiplyScalar(reach * 0.9);
-  const value = { center, contact, push };
-  hitCache = { key, value };
-  return value;
+  hit = { center, contact, push };
+  return hit;
 }
 
 // The cloud gathers out of the clear sky over this long, finishing just
@@ -140,18 +137,18 @@ export function cloudHit(config: Config) {
 const GATHER = { seconds: 1.6, before: 0.12 };
 
 // How far it has gathered, a given time into the arrival.
-export function gatherProgress(config: Config, elapsed: number) {
-  const { contact } = cloudHit(config);
+export function gatherProgress(elapsed: number) {
+  const { contact } = cloudHit();
   const end = Math.max(0.2, contact - GATHER.before);
   const start = Math.max(0, end - GATHER.seconds);
   return clamp((elapsed - start) / (end - start));
 }
 
 // How far the burst has got, a given time into the arrival.
-export const poofProgress = (config: Config, elapsed: number) =>
-  clamp((elapsed - cloudHit(config).contact) / config.cloud.poof);
+export const poofProgress = (elapsed: number) =>
+  clamp((elapsed - cloudHit().contact) / config.cloud.poof);
 
-function puffGeometry(config: Config) {
+function puffGeometry() {
   const rng = random(config.seed, "cloud");
   const radius = config.cloud.size * CARD.width;
   const offsets: number[] = [];
@@ -202,7 +199,7 @@ function puffGeometry(config: Config) {
 
 export function createCloud() {
   const mesh = new Mesh(
-    new BufferGeometry(),
+    puffGeometry(),
     new ShaderMaterial({
       vertexShader: vertex,
       fragmentShader: fragment,
@@ -211,8 +208,8 @@ export function createCloud() {
       uniforms: {
         uPoof: { value: 0 },
         uGather: { value: 1 },
-        uPush: { value: new Vector3() },
-        uRadius: { value: 1 },
+        uPush: { value: cloudHit().push },
+        uRadius: { value: config.cloud.size * CARD.width },
         uNight: { value: 0 },
       },
     }),
@@ -223,25 +220,15 @@ export function createCloud() {
   return mesh;
 }
 
-let shapeKey = "";
 export function updateCloud(
   mesh: Mesh<BufferGeometry, ShaderMaterial>,
-  config: Config,
   poof: number,
   gather: number,
   night: boolean,
 ) {
-  const key = JSON.stringify([config.seed, config.cloud.size]);
-  if (key !== shapeKey || !mesh.geometry.getAttribute("offset")) {
-    mesh.geometry.dispose();
-    mesh.geometry = puffGeometry(config);
-    shapeKey = key;
-  }
   const { uniforms } = mesh.material;
   uniforms.uPoof!.value = poof;
   uniforms.uGather!.value = gather;
-  uniforms.uPush!.value = cloudHit(config).push;
-  uniforms.uRadius!.value = config.cloud.size * CARD.width;
   uniforms.uNight!.value = night ? 1 : 0;
   mesh.visible = config.cloud.size > 0 && gather > 0 && poof < 1;
 }
