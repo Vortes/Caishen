@@ -49,8 +49,10 @@ const vertex = /* glsl */ `
   attribute vec2 corner;
   attribute vec3 puff;
   uniform float uPoof;
+  uniform float uGather;
   uniform vec3 uPush;
   varying vec2 vCorner;
+  varying float vGathered;
   varying float vSeed;
   varying float vHeight;
   void main() {
@@ -58,22 +60,26 @@ const vertex = /* glsl */ `
     float speed = puff.y;
     vSeed = puff.z;
     vCorner = corner;
+    // Gathering, each puff condenses in its own time, swelling into place.
+    vGathered = smoothstep(puff.z * 0.5, puff.z * 0.5 + 0.5, uGather);
     float burst = 1.0 - pow(1.0 - uPoof, 3.0);
     vec3 center = offset * (1.0 + 2.4 * speed * burst) + uPush * speed * burst;
     vHeight = offset.z;
     vec4 view = modelViewMatrix * vec4(center, 1.0);
-    view.xy += corner * size * (1.0 + 1.1 * burst);
+    view.xy += corner * size * (1.0 + 1.1 * burst) * (0.45 + 0.55 * vGathered);
     gl_Position = projectionMatrix * view;
   }
 `;
 
 const fragment = /* glsl */ `
   uniform float uPoof;
+  uniform float uGather;
   uniform float uRadius;
   uniform float uNight;
   varying vec2 vCorner;
   varying float vSeed;
   varying float vHeight;
+  varying float vGathered;
   ${cloudNoise}
   void main() {
     float r = length(vCorner);
@@ -84,7 +90,10 @@ const fragment = /* glsl */ `
     body *= body;
     // Bursting, it frays: the thin parts go first.
     float fray = smoothstep(uPoof * 0.8, uPoof * 0.8 + 0.3, n);
-    float alpha = body * mix(1.0, fray, uPoof) * pow(1.0 - uPoof, 1.4);
+    // Gathering is fraying run backwards: the thickest parts come first.
+    float wisp = smoothstep((1.0 - vGathered) * 0.8, (1.0 - vGathered) * 0.8 + 0.3, n);
+    float alpha = body * mix(1.0, fray, uPoof) * pow(1.0 - uPoof, 1.4)
+      * mix(wisp, 1.0, vGathered) * vGathered;
     // Lit from above: bright tops, cool blue-grey undersides. By moonlight
     // the tops are silver and the undersides nearly the night sky.
     float light = clamp(0.62 + 0.3 * vCorner.y + 0.35 * vHeight / uRadius + 0.2 * (n - 0.5), 0.0, 1.0);
@@ -124,6 +133,18 @@ export function cloudHit(config: Config) {
   const value = { center, contact, push };
   hitCache = { key, value };
   return value;
+}
+
+// The cloud gathers out of the clear sky over this long, finishing just
+// before the plane reaches it (or as soon as it can, on a short flight).
+const GATHER = { seconds: 1.6, before: 0.12 };
+
+// How far it has gathered, a given time into the arrival.
+export function gatherProgress(config: Config, elapsed: number) {
+  const { contact } = cloudHit(config);
+  const end = Math.max(0.2, contact - GATHER.before);
+  const start = Math.max(0, end - GATHER.seconds);
+  return clamp((elapsed - start) / (end - start));
 }
 
 // How far the burst has got, a given time into the arrival.
@@ -189,6 +210,7 @@ export function createCloud() {
       depthWrite: false,
       uniforms: {
         uPoof: { value: 0 },
+        uGather: { value: 1 },
         uPush: { value: new Vector3() },
         uRadius: { value: 1 },
         uNight: { value: 0 },
@@ -206,6 +228,7 @@ export function updateCloud(
   mesh: Mesh<BufferGeometry, ShaderMaterial>,
   config: Config,
   poof: number,
+  gather: number,
   night: boolean,
 ) {
   const key = JSON.stringify([config.seed, config.cloud.size]);
@@ -216,8 +239,9 @@ export function updateCloud(
   }
   const { uniforms } = mesh.material;
   uniforms.uPoof!.value = poof;
+  uniforms.uGather!.value = gather;
   uniforms.uPush!.value = cloudHit(config).push;
   uniforms.uRadius!.value = config.cloud.size * CARD.width;
   uniforms.uNight!.value = night ? 1 : 0;
-  mesh.visible = config.cloud.size > 0 && poof < 1;
+  mesh.visible = config.cloud.size > 0 && gather > 0 && poof < 1;
 }

@@ -1,5 +1,5 @@
 {
-  "seed": 34231,
+  "seed": 6943,
   "pattern": "seigaiha",
   "flight": {
     "far": 0.065,
@@ -74,7 +74,7 @@
     "poof": 0.9
   },
   "reveal": {
-    "at": 0.38,
+    "at": 0.55,
     "duration": 0.5
   },
   "filed": {

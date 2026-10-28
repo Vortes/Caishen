@@ -233,7 +233,13 @@ export function Plane3D({
     updateVapor(current.vapor, frame.trails, config, current.camera.position);
     current.cloud.matrix.copy(frame.cloud.matrix);
     current.cloud.matrixWorldNeedsUpdate = true;
-    updateCloud(current.cloud, config, frame.cloud.poof, night);
+    updateCloud(
+      current.cloud,
+      config,
+      frame.cloud.poof,
+      frame.cloud.gather,
+      night,
+    );
     current.renderer.render(current.scene, current.camera);
   });
 
