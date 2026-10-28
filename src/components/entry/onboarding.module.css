@@ -61,8 +61,26 @@
 .stepper li[data-state="done"] {
   color: var(--text-secondary);
 }
+/* Centering the boxes leaves the badge 0.7px under the label's cap height,
+   the check 0.25px. Half a pixel, one device pixel on a 2x screen, lands both
+   within a quarter pixel of it. */
+.stepper li > :first-child {
+  transform: translateY(-0.5px);
+}
 .stepper li[data-state="done"] > svg {
   color: var(--feedback-success);
+}
+/* On a phone the four labels wrap; only the current step keeps its label on
+   screen. The others stay readable to screen readers. */
+@media (max-width: 520px) {
+  .stepper li:not([data-state="current"]) .stepLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .stepNumber {
   display: grid;
@@ -81,13 +99,6 @@
   flex-direction: column;
   gap: var(--space-stack);
 }
-.stepIntro {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  margin-bottom: 10px;
-}
 .title {
   font-size: var(--type-figure);
   font-weight: 600;
@@ -96,10 +107,12 @@
   text-wrap: balance;
   outline: none;
 }
-.lede {
-  color: var(--text-secondary);
-  line-height: 1.55;
-  text-wrap: pretty;
+.step > .title {
+  margin-bottom: 14px;
+}
+/* Back sits at the footer's start, away from the forward actions. */
+.back {
+  margin-right: auto;
 }
 .stepFooter {
   display: flex;
@@ -135,6 +148,10 @@
 .switchLabel {
   font-weight: 500;
 }
+.cardHeading {
+  font-size: var(--type-body);
+  font-weight: 500;
+}
 .currency {
   color: var(--text-tertiary);
   font-size: var(--type-small);
@@ -143,7 +160,7 @@
 /* Partner code */
 .codeHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
@@ -182,73 +199,155 @@
 }
 
 /* Categories */
-.categories {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-stack);
-}
 .questions {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 .question {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 .questionLabel {
-  font-weight: 500;
+  font-size: var(--type-title);
+  font-weight: 600;
+  transition: color 150ms;
+}
+/* Answered questions step back so the newest one leads. */
+.question[data-answered] .questionLabel {
+  color: var(--text-secondary);
 }
 .answers {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
-.groups {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px 24px;
+/* The answers' categories, laid out like the plan's groups and rows. */
+/* The plan's panel surface, so group headers stand out as they do there.
+   Rows are inset 6px inside a 1px border, so the corner is row + 7px. */
+.reviewPanel {
+  padding: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: calc(var(--radius-row) + 7px);
+  background: var(--surface-panel);
 }
-.group {
+.review {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.groupName {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  font-weight: 500;
-}
-.checkList {
+.reviewGroup {
   display: flex;
   flex-direction: column;
-  margin: 2px 0 0;
+  gap: 4px;
+}
+.reviewHeader,
+.reviewRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-row-lg);
+  padding: 0 var(--space-row-x) 0 34px;
+  border-radius: var(--radius-row);
+}
+.reviewHeader {
+  background: var(--surface-group);
+  color: var(--text-secondary);
+  font-weight: 500;
+  transition: color 150ms;
+}
+.reviewHeader:hover {
+  color: var(--text-primary);
+}
+.reviewToggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 30px;
+  /* Room for the focus ring, without moving the name off the column. */
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.reviewCaret {
+  flex: none;
+  color: var(--text-tertiary);
+  transition: transform 150ms var(--ease-panel);
+}
+.reviewToggle[aria-expanded="false"] .reviewCaret {
+  transform: translateX(1px) rotate(-90deg);
+}
+.reviewCount {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.reviewCheck {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  cursor: pointer;
+}
+.reviewRows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
-.checkList[data-rows] {
-  margin-top: 8px;
-}
-.checkList[data-rows] li + li {
-  border-top: 1px solid var(--border-subtle);
-}
-.check {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 30px;
+.reviewRow {
   cursor: pointer;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.reviewRow:hover {
+  background: var(--surface-hover);
+}
+.reviewRow[data-dropped] {
+  color: var(--text-tertiary);
+}
+.reveal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-stack);
+  animation: reveal 220ms var(--ease-panel) both;
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
+}
+.addRow[data-review] {
+  margin: 6px -6px 0;
+  padding: 10px 10px 4px;
+  border-top: 1px solid var(--border-subtle);
 }
 .addRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-inset);
-}
-@media (max-width: 520px) {
-  .groups {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Accounts */
@@ -263,6 +362,16 @@
   margin: -6px 0;
   padding: 0;
   list-style: none;
+}
+.accountList[data-spaced] {
+  margin: 10px 0 -14px;
+}
+.accountName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .accountRow,
 .bankRow {
@@ -298,8 +407,10 @@
 }
 .bankHead {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 .connect {
   display: flex;
@@ -309,7 +420,7 @@
 .connectIcon {
   flex: none;
   align-self: flex-start;
-  margin-top: 2px;
+  margin-top: 3px;
   color: var(--text-tertiary);
 }
 .bankProgress {
@@ -330,7 +441,7 @@
 }
 .manualFields {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
   gap: 12px;
 }
 .amountInput {
@@ -348,7 +459,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 8px;
 }
 .figure strong {
   color: var(--money-positive);

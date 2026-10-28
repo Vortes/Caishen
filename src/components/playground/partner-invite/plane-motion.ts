@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
-import { cloudHit, poofProgress } from "./cloud";
+import { cloudHit, gatherProgress, poofProgress } from "./cloud";
 import { NEAR_DRIFT } from "./sky";
 import { clamp, easeInOut, span, type Config } from "./config";
 import {
@@ -25,8 +25,9 @@ export type PlaneFrame = {
   matrix: Matrix4;
   opacity: number;
   trails: Trail[];
-  // The cloud on the plane's path: where it sits and how far it has burst.
-  cloud: { matrix: Matrix4; poof: number };
+  // The cloud on the plane's path: where it sits, how far it has gathered,
+  // and how far it has burst.
+  cloud: { matrix: Matrix4; gather: number; poof: number };
 };
 
 // A vapor trail: where a wingtip has been, newest first, and how many
@@ -48,7 +49,7 @@ const middle = PLANE_CENTER - CARD.width / 2;
 // How the unfolding is divided: open the fuselage while turning the sheet
 // over (a plane's wing tops are the back of the sheet, and the invitation
 // is on the front), then undo the flat folds, last first.
-const SEGMENTS = [0.34, 0.14, 0.2, 0.16, 0.16];
+export const SEGMENTS = [0.34, 0.14, 0.2, 0.16, 0.16];
 
 const world = (x: number, y: number, z: number) =>
   new Matrix4().makeTranslation(x, -y, z);
@@ -141,6 +142,7 @@ function cloudFrame(config: Config, elapsed: number) {
       .multiply(tilt(config, 0))
       .multiply(camera(config, elapsed))
       .multiply(new Matrix4().makeTranslation(center.x, center.y, center.z)),
+    gather: gatherProgress(config, elapsed),
     poof: poofProgress(config, elapsed),
   };
 }

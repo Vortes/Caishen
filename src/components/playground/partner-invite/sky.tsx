@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   Mesh,
   OrthographicCamera,
@@ -11,6 +11,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { cloudNoise } from "./cloud";
+import { createSkywriting, type Lettering } from "./skywriting";
 import styles from "./lab.module.css";
 
 // A sky behind the whole stage. By day: a deep, saturated blue, lighter
@@ -23,6 +24,10 @@ import styles from "./lab.module.css";
 export type Veil = { cover: number; open: number };
 
 export type SkyTime = "day" | "night";
+
+// A line written in cloud: how far it has formed (0 to 1), and how far
+// it has blown apart once it's been read (0 to 1).
+export type Words = { lines: string[]; form: number; scatter: number };
 
 // The near clouds' scale, and how fast they drift: in stage heights a
 // second, leftward, at their natural speed.
@@ -248,6 +253,18 @@ const fragment = (variant: string) => /* glsl */ `
   }
 `;
 
+// The line is lettered in the stage's own face, heavy and spaced out,
+// unless the page around it names another through these properties.
+function lettering(style: CSSStyleDeclaration): Lettering {
+  const tracking = parseFloat(style.getPropertyValue("--skywriting-tracking"));
+  return {
+    family:
+      style.getPropertyValue("--skywriting-family").trim() || style.fontFamily,
+    weight: style.getPropertyValue("--skywriting-weight").trim() || "900",
+    tracking: Number.isNaN(tracking) ? 0.16 : tracking,
+  };
+}
+
 export function Sky({
   still,
   time,
@@ -255,6 +272,8 @@ export function Sky({
   drift,
   clouds,
   veil,
+  words,
+  onBreathe,
 }: {
   still: boolean;
   time: SkyTime;
@@ -265,12 +284,20 @@ export function Sky({
   // How much of the open sky the drifting clouds fill, 0 to 1.
   clouds: number;
   veil: Veil;
+  words: Words | null;
+  // Each frame the pointer breathes some of the line away: how much.
+  onBreathe?: (amount: number, dt: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   // The scene re-renders every frame; the draw loop reads the latest veil
   // and haze.
-  const latest = useRef({ veil, haze, drift, clouds });
-  latest.current = { veil, haze, drift, clouds };
+  const latest = useRef({ veil, haze, drift, clouds, words, onBreathe });
+  latest.current = { veil, haze, drift, clouds, words, onBreathe };
+  // Held still, the sky only draws when asked.
+  const redraw = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (still) redraw.current?.();
+  });
 
   useLayoutEffect(() => {
     const element = host.current!;
@@ -279,6 +306,25 @@ export function Sky({
     renderer.setPixelRatio(1);
     element.appendChild(renderer.domElement);
     const size = new Vector2(1, 1);
+    // The line in the sky, and where the pointer rests over it.
+    const writing = createSkywriting();
+    let pointer: { x: number; y: number } | null = null;
+    const point = (event: PointerEvent) => {
+      const box = element.getBoundingClientRect();
+      pointer = { x: event.clientX - box.left, y: event.clientY - box.top };
+    };
+    // A finger lifted is gone; a mouse that leaves the window is too.
+    const lift = (event: PointerEvent) => {
+      if (event.pointerType !== "mouse") pointer = null;
+    };
+    const leave = (event: PointerEvent) => {
+      if (!event.relatedTarget) pointer = null;
+    };
+    window.addEventListener("pointermove", point);
+    window.addEventListener("pointerdown", point);
+    window.addEventListener("pointerup", lift);
+    window.addEventListener("pointercancel", lift);
+    document.addEventListener("pointerout", leave);
     const material = new ShaderMaterial({
       vertexShader: vertex,
       fragmentShader: fragment(time === "night" ? nightSky : daySky),
@@ -295,15 +341,18 @@ export function Sky({
     const geometry = new PlaneGeometry(2, 2);
     const scene = new Scene();
     scene.add(new Mesh(geometry, material));
+    scene.add(writing.mesh);
     const camera = new OrthographicCamera();
 
+    const isNight = time === "night";
     // Drift adds up frame by frame, so a change of speed never jumps.
     let drifted = 40;
     let last: number | null = null;
     const draw = (time: number) => {
       const { uniforms } = material;
-      if (!still && last !== null)
-        drifted += ((time - last) / 1000) * latest.current.drift;
+      const dt =
+        still || last === null ? 0 : Math.min(0.1, (time - last) / 1000);
+      drifted += dt * latest.current.drift;
       last = time;
       uniforms.uTime!.value = still ? 40 : 40 + time / 1000;
       uniforms.uDrift!.value = drifted;
@@ -311,6 +360,25 @@ export function Sky({
       uniforms.uOpen!.value = latest.current.veil.open;
       uniforms.uHaze!.value = latest.current.haze;
       uniforms.uClouds!.value = latest.current.clouds;
+      const line = latest.current.words;
+      if (line)
+        writing.write(
+          line.lines,
+          size.x,
+          size.y,
+          lettering(getComputedStyle(element)),
+        );
+      const breathed = writing.update({
+        width: size.x,
+        height: size.y,
+        form: line?.form ?? 0,
+        scatter: line?.scatter ?? 0,
+        drifted,
+        pointer,
+        dt,
+        night: isNight,
+      });
+      latest.current.onBreathe?.(breathed, dt);
       renderer.render(scene, camera);
     };
     const fit = () => {
@@ -321,6 +389,7 @@ export function Sky({
       draw(performance.now());
     };
     fit();
+    redraw.current = () => draw(performance.now());
     const observer = new ResizeObserver(fit);
     observer.observe(element);
 
@@ -334,8 +403,15 @@ export function Sky({
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      redraw.current = null;
       geometry.dispose();
       material.dispose();
+      writing.dispose();
+      window.removeEventListener("pointermove", point);
+      window.removeEventListener("pointerdown", point);
+      window.removeEventListener("pointerup", lift);
+      window.removeEventListener("pointercancel", lift);
+      document.removeEventListener("pointerout", leave);
       renderer.dispose();
       renderer.domElement.remove();
     };
