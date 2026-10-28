@@ -13,11 +13,44 @@
   min-width: 0;
   overflow: hidden;
 }
+/* The sky fills the stage behind everything. */
+.sky {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* The screen after the invite, under the sky until the clouds part. */
+.next {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Flying down through the parting clouds, what's underneath comes up to
+     meet you. It mounts as the parting starts; the delay picks the moment. */
+  animation: arrive var(--arrive-duration) cubic-bezier(0.32, 0.72, 0, 1)
+    var(--arrive-delay) both;
+}
+@keyframes arrive {
+  from {
+    transform: scale(1.04);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .next {
+    animation: none;
+  }
+}
+.sky canvas {
+  display: block;
+}
 .canvas {
+  position: relative;
   width: 100%;
   height: 100%;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .regenerate {
   cursor: pointer;
@@ -33,11 +66,15 @@
 }
 .stageActions {
   position: absolute;
-  bottom: 28px;
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: var(--space-gutter);
+  width: max-content;
+  max-width: calc(100% - 32px);
   transform: translateX(-50%);
 }
 .stageHint {
@@ -45,44 +82,23 @@
   font-size: var(--type-small);
 }
 
-.cardTitle {
+/* Matches SENTENCE_SIZE in print.ts. */
+.cardSentence {
   font-family: ui-serif, Georgia, serif;
-  font-size: 28px;
+  font-size: 24px;
   font-style: italic;
 }
-.cardLine {
+.cardMeta {
   font-family: ui-serif, Georgia, serif;
-  font-size: 10.5px;
-  letter-spacing: 0.22em;
-}
-.cardSmall {
-  font-family: ui-serif, Georgia, serif;
-  font-size: 9px;
-  letter-spacing: 0.2em;
-}
-.cardSeam {
-  font-family: ui-serif, Georgia, serif;
-  font-size: 8px;
-  letter-spacing: 0.5em;
-  opacity: 0.7;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.75;
 }
 .cardHint {
   font-family: ui-serif, Georgia, serif;
   font-size: 12px;
   font-style: italic;
-}
-.sealText {
-  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
-}
-.doneTitle {
-  fill: var(--text-primary);
-  font-size: 20px;
-  font-weight: 600;
-}
-.doneHint {
-  fill: var(--text-secondary);
-  font-size: var(--type-body);
-  font-weight: 400;
 }
 
 .panel {
@@ -128,26 +144,6 @@
   font-size: var(--type-caption);
   overflow-wrap: anywhere;
 }
-.rail {
-  display: flex;
-  flex-direction: column;
-}
-.railItem {
-  padding: 6px 8px;
-  border: 0;
-  border-radius: var(--radius-row);
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  text-align: left;
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .railItem:hover {
-    background: var(--surface-hover);
-    color: var(--text-primary);
-  }
-}
 .knob {
   display: flex;
   flex-direction: column;
@@ -166,6 +162,13 @@
 .knob input {
   width: 100%;
   accent-color: var(--accent-solid);
+}
+
+/* By moonlight the paper reads dimmer and greyer. The flat card and the 3D
+   sheet take the same filter, so the hand-off between them stays seamless. */
+.stage[data-night] .canvas,
+.stage[data-night] .plane {
+  filter: brightness(0.8) saturate(0.82);
 }
 
 /* The 3D plane is drawn over the SVG, in the same box, and never takes
@@ -200,7 +203,7 @@
   background: var(--surface-selected);
   color: var(--text-primary);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .paper:hover {
     background: var(--surface-hover);
     color: var(--text-primary);
@@ -213,4 +216,130 @@
   height: 14px;
   border: 2px solid;
   border-radius: 50%;
+}
+
+/* Fingers need taller rows than a cursor does. */
+@media (pointer: coarse) {
+  .paper {
+    min-height: 44px;
+  }
+}
+
+.controlsToggle {
+  display: none;
+}
+
+/* On a phone the stage takes the whole screen and the panel becomes a
+   sheet over its lower part, opened from a button in the corner. */
+@media (max-width: 720px) {
+  .lab {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .controlsToggle {
+    position: fixed;
+    z-index: 2;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    display: block;
+  }
+  .panel {
+    position: fixed;
+    z-index: 1;
+    inset: auto 0 0;
+    max-height: 70dvh;
+    padding-bottom: calc(var(--space-card) + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border-subtle);
+    border-left: 0;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    overscroll-behavior: contain;
+    transform: translateY(100%);
+    visibility: hidden;
+    transition:
+      transform var(--duration-panel) var(--ease-panel),
+      visibility 0s var(--duration-panel);
+  }
+  .panel[data-open] {
+    transform: none;
+    visibility: visible;
+    transition: transform var(--duration-panel) var(--ease-panel);
+  }
+}
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .panel,
+  .panel[data-open] {
+    transition: none;
+  }
+}
+
+/* The half you kept, beside the welcome. Unseen until it arrives. */
+/* The end of the invitation: Jordan's half filed away as the Partner mark,
+   shown large enough to read against the sky. */
+.filed {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.filedPlate {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 6px 10px;
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  background: var(--surface-panel);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.18);
+  scale: 1.4;
+}
+.filedRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+  height: var(--size-row-md);
+  padding: 0 8px;
+  border-radius: var(--radius-row);
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+.partnerMark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  filter: drop-shadow(0 0.5px 0.5px oklch(0 0 0 / 0.3));
+}
+.filedHint {
+  padding: 0 8px;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.filedPicture {
+  position: fixed;
+  transform-origin: top left;
+  filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.18));
+}
+/* The mock app sits in the stage, not the window. */
+.registerShell {
+  position: absolute;
+}
+@media (max-width: 699px) {
+  .registerShell .registerSidebar {
+    display: none;
+  }
+}
+.bondPaper {
+  position: relative;
+  max-width: 100%;
+  margin: 0 auto;
+}
+.bondPaper img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.18));
 }

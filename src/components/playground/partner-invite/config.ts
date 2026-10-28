@@ -4,27 +4,14 @@
 
 // Chiyogami prints: waves, hemp leaf, seven treasures, or plain kami.
 export type Pattern = "seigaiha" | "asanoha" | "shippo" | "plain";
-// Where the plane is thrown from: in front of the viewer, or the far side.
-export type Thrown = "foreground" | "background";
 
 export type Config = {
   seed: number;
   pattern: Pattern;
-  thrown: Thrown;
   flight: {
     far: number;
     near: number;
     loop: number;
-    depth: number;
-    offset: number;
-    approach: number;
-    height: number;
-    start: number;
-    peak: number;
-    tail: number;
-    top: number;
-    gravity: number;
-    glide: number;
     stall: number;
     bank: number;
     slide: number;
@@ -33,7 +20,6 @@ export type Config = {
   paper: {
     lightness: number;
     warmth: number;
-    grain: number;
     deckle: number;
     crease: number;
   };
@@ -44,9 +30,15 @@ export type Config = {
     dry: number;
   };
   accent: { hue: number; chroma: number };
+  // Tearing the card in two before the bond: how long, how far the right
+  // flap rises toward you (px), and how ragged the line and fibers are.
+  tear: { duration: number; lift: number; ragged: number };
   bondDuration: number;
   seal: { size: number; overlap: number; wear: number };
-  slot: { scale: number; catch: number; hold: number; pull: number };
+  // Peeling your half off: how far its tip has to travel before letting go
+  // takes it (px), how far the corner curls back to show it peels (px),
+  // and which way that corner curls (° left of straight down).
+  part: { pull: number; curl: number; angle: number };
   washi: {
     hue: number;
     chroma: number;
@@ -59,6 +51,19 @@ export type Config = {
     gold: number;
   };
   trail: { life: number; width: number; spread: number; opacity: number };
+  // Where on the flight the plane crashes into a cloud (a fraction of its
+  // time in the air), how big it is (× the card's width), and how long the
+  // poof takes.
+  cloud: { at: number; size: number; poof: number };
+  // When what's underneath starts coming up through the parting clouds (a
+  // fraction of the parting) and how long it takes to settle.
+  reveal: { at: number; duration: number };
+  // Jordan's half filed away as the Partner mark: when it starts shrinking
+  // (seconds after yours is gone), how long that takes, and how long the
+  // mark holds before the clouds close.
+  filed: { at: number; duration: number; hold: number };
+  // How wide the joined card shows on the Partner page.
+  partnerPage: { width: number };
   plane: {
     keel: number;
     dihedral: number;
@@ -150,38 +155,27 @@ export const choosePaper = (config: Config, name: string): Config => {
 export const defaultConfig: Config = {
   seed: 1729,
   pattern: "seigaiha",
-  thrown: "background",
   flight: {
     far: 0.065,
     near: 1.3,
-    loop: 3.6,
-    depth: 750,
-    offset: 40,
-    approach: 40,
-    height: 260,
-    start: 150,
-    peak: 0.36,
-    tail: 1.8,
-    top: 240,
-    gravity: 900,
-    glide: 0.35,
+    loop: 3.45,
     stall: 10,
     bank: 6,
     slide: 90,
   },
-  unfold: { duration: 1.3, stagger: 0.25 },
+  unfold: { duration: 1.8, stagger: 0.25 },
   paper: {
     lightness: 0.95,
     warmth: 0.018,
-    grain: 0.12,
     deckle: 2.5,
-    crease: 0.55,
+    crease: 0.25,
   },
   ink: { thin: 0.9, thick: 3.2, pool: 0.6, dry: 1.1 },
   accent: { hue: 28, chroma: 0.17 },
+  tear: { duration: 1.3, lift: 46, ragged: 1 },
   bondDuration: 2.4,
   seal: { size: 74, overlap: 36, wear: 0.4 },
-  slot: { scale: 0.85, catch: 0.66, hold: 1.6, pull: 0.45 },
+  part: { pull: 140, curl: 56, angle: 25 },
   // Jordan's choice, "Indigo waves" (see papers).
   washi: {
     hue: 262,
@@ -194,7 +188,11 @@ export const defaultConfig: Config = {
     mottle: 0.45,
     gold: 0.1,
   },
-  trail: { life: 0.9, width: 1.6, spread: 7, opacity: 0.55 },
+  trail: { life: 0.2, width: 6, spread: 0, opacity: 1 },
+  cloud: { at: 0.55, size: 1.35, poof: 0.9 },
+  reveal: { at: 0.38, duration: 0.5 },
+  filed: { at: 0.15, duration: 0.8, hold: 1.6 },
+  partnerPage: { width: 320 },
   plane: {
     keel: 8,
     dihedral: 10,
@@ -217,76 +215,6 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
     title: "Flight",
     knobs: [
       {
-        path: "flight.depth",
-        label: "Thrown from in front",
-        min: 200,
-        max: 1400,
-        step: 10,
-      },
-      {
-        path: "flight.approach",
-        label: "Touchdown angle into the scene (°)",
-        min: 0,
-        max: 80,
-        step: 1,
-      },
-      {
-        path: "flight.offset",
-        label: "Thrown from left/right",
-        min: -700,
-        max: 200,
-        step: 10,
-      },
-      {
-        path: "flight.height",
-        label: "Height of the climb",
-        min: 80,
-        max: 420,
-        step: 5,
-      },
-      {
-        path: "flight.start",
-        label: "Height out of the hand",
-        min: 0,
-        max: 150,
-        step: 5,
-      },
-      {
-        path: "flight.peak",
-        label: "Where it tops out",
-        min: 0.15,
-        max: 0.6,
-        step: 0.01,
-      },
-      {
-        path: "flight.tail",
-        label: "Length of the glide-out",
-        min: 1,
-        max: 3,
-        step: 0.05,
-      },
-      {
-        path: "flight.top",
-        label: "Speed over the top (px/s)",
-        min: 100,
-        max: 600,
-        step: 10,
-      },
-      {
-        path: "flight.gravity",
-        label: "Gravity (px/s²)",
-        min: 300,
-        max: 2500,
-        step: 20,
-      },
-      {
-        path: "flight.glide",
-        label: "Gravity kept gliding down",
-        min: 0.1,
-        max: 1,
-        step: 0.05,
-      },
-      {
         path: "flight.stall",
         label: "Nose-up over the top (°)",
         min: 0,
@@ -301,11 +229,6 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
         max: 200,
         step: 5,
       },
-    ],
-  },
-  {
-    title: "Far-side throw",
-    knobs: [
       {
         path: "flight.far",
         label: "Size far away (× card)",
@@ -322,10 +245,10 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
       },
       {
         path: "flight.loop",
-        label: "Time in the air (s)",
+        label: "Time to the hump (s)",
         min: 1.5,
         max: 7,
-        step: 0.1,
+        step: 0.05,
       },
     ],
   },
@@ -343,7 +266,7 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
         path: "trail.width",
         label: "Width at the wingtip",
         min: 0.5,
-        max: 6,
+        max: 12,
         step: 0.1,
       },
       {
@@ -354,6 +277,32 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
         step: 0.5,
       },
       { path: "trail.opacity", label: "Opacity", min: 0, max: 1, step: 0.05 },
+    ],
+  },
+  {
+    title: "Cloud",
+    knobs: [
+      {
+        path: "cloud.at",
+        label: "Where it's hit (of the flight)",
+        min: 0.1,
+        max: 0.95,
+        step: 0.01,
+      },
+      {
+        path: "cloud.size",
+        label: "Size (× card)",
+        min: 0,
+        max: 1.6,
+        step: 0.05,
+      },
+      {
+        path: "cloud.poof",
+        label: "Poof (s)",
+        min: 0.3,
+        max: 2,
+        step: 0.05,
+      },
     ],
   },
   {
@@ -457,7 +406,6 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
         max: 0.045,
         step: 0.001,
       },
-      { path: "paper.grain", label: "Grain", min: 0, max: 0.3, step: 0.01 },
       { path: "paper.deckle", label: "Deckle", min: 0, max: 7, step: 0.25 },
       {
         path: "paper.crease",
@@ -516,6 +464,20 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
     ],
   },
   {
+    title: "Tear",
+    knobs: [
+      {
+        path: "tear.duration",
+        label: "Duration (s)",
+        min: 0.5,
+        max: 3,
+        step: 0.05,
+      },
+      { path: "tear.lift", label: "Flap lift", min: 0, max: 140, step: 1 },
+      { path: "tear.ragged", label: "Raggedness", min: 0, max: 3, step: 0.05 },
+    ],
+  },
+  {
     title: "Tally seal",
     knobs: [
       { path: "seal.size", label: "Seal size", min: 40, max: 110, step: 1 },
@@ -530,29 +492,80 @@ export const knobGroups: { title: string; knobs: Knob[] }[] = [
     ],
   },
   {
-    title: "Slot",
+    title: "Reveal",
     knobs: [
-      { path: "slot.scale", label: "Card size", min: 0.6, max: 1, step: 0.01 },
       {
-        path: "slot.catch",
-        label: "Caught depth",
-        min: 0.4,
-        max: 0.85,
+        path: "reveal.at",
+        label: "Onboarding starts (of the parting)",
+        min: 0,
+        max: 0.9,
         step: 0.01,
       },
       {
-        path: "slot.hold",
-        label: "Reading hold (s)",
+        path: "reveal.duration",
+        label: "Onboarding settle (s)",
+        min: 0.2,
+        max: 1.5,
+        step: 0.05,
+      },
+    ],
+  },
+  {
+    title: "Filed as the Partner mark",
+    knobs: [
+      {
+        path: "filed.at",
+        label: "Starts shrinking (s after yours is gone)",
         min: 0,
-        max: 3.5,
-        step: 0.1,
+        max: 1.5,
+        step: 0.05,
       },
       {
-        path: "slot.pull",
-        label: "Pull-in (s)",
-        min: 0.2,
-        max: 1.2,
+        path: "filed.duration",
+        label: "Shrinking (s)",
+        min: 0.3,
+        max: 1.6,
         step: 0.05,
+      },
+      {
+        path: "filed.hold",
+        label: "Mark holds (s)",
+        min: 0.4,
+        max: 3.5,
+        step: 0.05,
+      },
+      {
+        path: "partnerPage.width",
+        label: "Card on the Partner page (px)",
+        min: 220,
+        max: 460,
+        step: 5,
+      },
+    ],
+  },
+  {
+    title: "Peeling your half",
+    knobs: [
+      {
+        path: "part.pull",
+        label: "Peel to take (px of tip travel)",
+        min: 40,
+        max: 300,
+        step: 5,
+      },
+      {
+        path: "part.curl",
+        label: "Corner curl hint (px)",
+        min: 0,
+        max: 80,
+        step: 1,
+      },
+      {
+        path: "part.angle",
+        label: "Hint curl direction (°)",
+        min: 0,
+        max: 60,
+        step: 1,
       },
     ],
   },
@@ -599,28 +612,55 @@ export const lerp = (from: number, to: number, t: number) =>
 export const easeInOut = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 export const easeOut = (t: number) => 1 - (1 - t) ** 3;
+// A spring from `from` toward `to`, `t` seconds after it was let go with
+// `velocity` (units per second). A pure function of time, so a frame can be
+// drawn at any moment. Configured like Apple's: how long it takes to
+// settle, and how much it overshoots (0 is critically damped).
+export function spring(
+  {
+    from,
+    to,
+    velocity = 0,
+    duration,
+    bounce = 0,
+  }: {
+    from: number;
+    to: number;
+    velocity?: number;
+    duration: number;
+    bounce?: number;
+  },
+  t: number,
+) {
+  if (t <= 0) return from;
+  const omega = (2 * Math.PI) / duration;
+  const x = from - to;
+  if (bounce <= 0) {
+    return to + (x + (velocity + omega * x) * t) * Math.exp(-omega * t);
+  }
+  const damping = 1 - bounce;
+  const ringing = omega * Math.sqrt(1 - damping * damping);
+  return (
+    to +
+    Math.exp(-damping * omega * t) *
+      (x * Math.cos(ringing * t) +
+        ((velocity + damping * omega * x) / ringing) * Math.sin(ringing * t))
+  );
+}
+
 // The slice of an overall progress that belongs to one step.
 export const span = (t: number, from: number, to: number) =>
   clamp((t - from) / (to - from));
 
-// Paper, ink, and the bond mark. There are no paper tokens in the design
+// Paper and ink. There are no paper tokens in the design
 // system yet; these become tokens when a config is harvested.
 export function colors(config: Config) {
   const { lightness, warmth } = config.paper;
-  const { hue, chroma } = config.accent;
   return {
     paper: (shade = 0) => `oklch(${lightness + shade} ${warmth} 80)`,
     crease: `oklch(${lightness - 0.16} ${warmth} 80)`,
     printed: `oklch(0.34 ${warmth * 1.4} 60)`,
-    faint: `oklch(${lightness - 0.3} ${warmth} 70)`,
     ink: (wet: number) =>
       `oklch(${lerp(0.3, 0.17, wet)} ${lerp(0.05, 0.09, wet)} 262)`,
-    accent: `oklch(0.56 ${chroma} ${hue})`,
-    // Like pen ink, seal ink is darker and richer while wet.
-    seal: (wet: number) =>
-      `oklch(${lerp(0.56, 0.47, wet)} ${chroma * lerp(1, 1.12, wet)} ${hue})`,
-    sealPool: (wet: number) =>
-      `oklch(${lerp(0.45, 0.38, wet)} ${chroma * 1.05} ${hue})`,
-    accentDeep: `oklch(0.44 ${chroma} ${hue})`,
   };
 }

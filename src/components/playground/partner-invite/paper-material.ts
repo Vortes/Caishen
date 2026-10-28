@@ -1,19 +1,36 @@
-import { DoubleSide, ShaderMaterial, Texture, Vector2, Vector3 } from "three";
+import {
+  DoubleSide,
+  ShaderMaterial,
+  Texture,
+  Vector2,
+  Vector3,
+  Vector4,
+} from "three";
 import { CARD } from "./geometry";
 import type { Config, Pattern } from "./config";
+import { sheetCreases } from "./harrier";
+import { deckleMask } from "./deckle-mask";
 
 // Japanese origami paper. The outside of the plane is chiyogami: a dyed
 // washi ground, a silkscreened pattern in one ink, and the odd fleck of gold
-// leaf. The inside is undyed washi carrying the printed invitation. Both
-// sides show kozo fibers (long, pale, wandering) and the uneven density of
-// handmade pulp.
+// leaf, with kozo fibers (long, pale, wandering) and the uneven density of
+// handmade pulp showing through the dye. The inside is the printed card:
+// the same paper and deckle as the SVG card it hands over to.
 
 const vertex = /* glsl */ `
   attribute vec2 rest;
+  attribute float seam;
+  attribute float torn;
   varying vec2 vRest;
   varying vec3 vWorld;
+  varying vec3 vLocal;
+  varying float vSeam;
+  varying float vTorn;
   void main() {
     vRest = rest;
+    vLocal = position;
+    vSeam = seam;
+    vTorn = torn;
     vec4 world = modelMatrix * vec4(position, 1.0);
     vWorld = world.xyz;
     gl_Position = projectionMatrix * viewMatrix * world;
@@ -21,6 +38,11 @@ const vertex = /* glsl */ `
 `;
 
 const fragment = /* glsl */ `
+  #define CREASES ${sheetCreases.length}
+  uniform vec4 uCreases[CREASES];
+  uniform float uCrease;
+  uniform vec3 uCreaseShadow;
+  uniform vec3 uCreaseLight;
   uniform vec3 uPaper;
   uniform vec3 uDye;
   uniform vec3 uInk;
@@ -34,8 +56,29 @@ const fragment = /* glsl */ `
   uniform sampler2D uPrint;
   uniform vec2 uSheet;
   uniform vec3 uLight;
+  uniform float uTear;
+  uniform float uLifted;
+  uniform float uRagged;
+  uniform vec3 uCore;
+  uniform sampler2D uSeal;
+  uniform float uStamped;
+  uniform vec2 uSealAt;
+  uniform float uSealTilt;
+  uniform float uSealSize;
+  uniform vec3 uSealField;
+  uniform vec3 uSealPool;
+  uniform float uSealWet;
+  uniform float uInkTake;
+  uniform float uDent;
+  uniform vec2 uOver;
+  uniform float uShown;
+  uniform float uShimmer;
+  uniform sampler2D uDeckle;
   varying vec2 vRest;
   varying vec3 vWorld;
+  varying vec3 vLocal;
+  varying float vSeam;
+  varying float vTorn;
 
   float hash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21) + uSeed);
@@ -84,6 +127,17 @@ const fragment = /* glsl */ `
     vec2 pa = p - a;
     vec2 ba = b - a;
     return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+  }
+
+  // How much of this pixel a crease line covers. The lines are thinner
+  // than a pixel, so they fade by coverage rather than vanish.
+  float crease(vec2 p) {
+    float d = 1e4;
+    for (int i = 0; i < CREASES; i++) {
+      d = min(d, segment(p, uCreases[i].xy, uCreases[i].zw));
+    }
+    float px = max(fwidth(d), 1e-4);
+    return (1.0 - smoothstep(0.0, px, d - 0.35)) * min(1.0, 0.7 / px);
   }
 
   // Seigaiha: rows of concentric arcs, each row tucked under the one below.
@@ -144,7 +198,83 @@ const fragment = /* glsl */ `
     return 0.22 + 0.9 * wrap;
   }
 
+  // A torn edge, for one half of a sheet torn in two. vSeam is how far
+  // inside this half's paper the pixel sits; vTorn is whether the tear has
+  // reached it yet. Returns coverage, and how much bare pulp shows.
+  vec2 tornEdge() {
+    if (vTorn <= 0.0) return vec2(step(0.0, vSeam), 0.0);
+    float along = vRest.x;
+    float side = uLifted * 9.0;
+    // The line wavers at the scale of single fiber bundles.
+    float rag = (noise(vec2(along * 0.7, 3.0 + side)) - 0.5) * 2.2 * uRagged;
+    float body = vSeam + rag * vTorn;
+    // Fibers pulled out of the edge reach across the gap, thinning toward
+    // their tips.
+    float reach = (1.5 + 3.5 * noise(vec2(along * 0.45, 11.0 + side))) * uRagged * vTorn;
+    float past = clamp(-body / max(reach, 1e-3), 0.0, 1.0);
+    float strand = smoothstep(0.5 + 0.35 * past, 0.62 + 0.35 * past,
+      noise(vec2(along * 1.9, 40.0 + side)));
+    float coverage = body >= 0.0 ? 1.0 : strand * (1.0 - past) * 0.8;
+    // The flap torn toward you is beveled: its top layer gives way first,
+    // leaving a band of bare, unsized pulp along the edge.
+    float width = (1.0 + 2.8 * noise(vec2(along * 0.22, 7.0))) * uRagged;
+    float pulp = body < 0.0 ? 1.0 : (1.0 - smoothstep(0.0, width, body)) * uLifted;
+    return vec2(coverage, pulp * vTorn);
+  }
+
+  vec2 turn(vec2 p, float a) {
+    return vec2(cos(a) * p.x - sin(a) * p.y, sin(a) * p.x + cos(a) * p.y);
+  }
+
+  // The seal's impression, in card coordinates (y down) like the print.
+  vec3 stamp(vec3 color) {
+    vec2 card = vec2(vRest.y - uSheet.y * 0.5, vRest.x);
+    vec2 uv = turn(card - uSealAt, -uSealTilt) / (uSealSize * 2.0) + 0.5;
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+      return color;
+    }
+    vec3 mask = texture2D(uSeal, uv).rgb;
+    // The face is never quite flat, so ink takes where it first touches
+    // and spreads out from there, unevenly, through the fibers.
+    vec2 q = card - uSealAt;
+    float contact = 0.55 * length(q) / (uSealSize * 0.72)
+      + 0.45 * fbm(card * 0.22 + 7.0);
+    float taken = smoothstep(contact - 0.12, contact, uInkTake * 1.15);
+    vec3 ink = mix(uSealField, uSealPool, mask.g);
+    color = mix(color, ink, 0.92 * max(mask.r, mask.g) * taken);
+    color = mix(color, vec3(1.0), 0.37 * uSealWet * mask.b * taken);
+    // The press leaves a dent the shape of the face. Lit from the upper
+    // left, its far wall catches light and its near wall falls in shade.
+    vec2 toLight = turn(vec2(-0.7, -0.7), -uSealTilt) / (uSealSize * 2.0);
+    float here = max(mask.r, mask.g);
+    float wall = here - max(texture2D(uSeal, uv + toLight * 1.4).r,
+      texture2D(uSeal, uv + toLight * 1.4).g);
+    color *= 1.0 - 0.16 * max(wall, 0.0) * uDent;
+    color += 0.05 * max(-wall, 0.0) * uDent;
+    return color;
+  }
+
+  // The right half, lying over the left, shades a sliver beside its torn
+  // edge: vSeam + uOver.x is how far this pixel is from that edge, and the
+  // higher the right half rides, the softer the shadow.
+  float shaded() {
+    if (uTear < 0.5 || uLifted > 0.5) return 0.0;
+    float d = vSeam + uOver.x;
+    // Below the tear's tip the paper is still one sheet: nothing to shade.
+    return 0.24 * vTorn * exp(-max(d, 0.0) / (1.2 + uOver.y * 0.5));
+  }
+
   void main() {
+    vec2 edge = uTear > 0.5 ? tornEdge() : vec2(1.0, 0.0);
+    // The card's deckled outline, shared with the printed card.
+    float cut = texture2D(uDeckle, vec2(
+      vRest.y / uSheet.y,
+      (vRest.x + uSheet.x * 0.5) / uSheet.x
+    )).r;
+    // Only the torn card blends; the folded sheet cuts its edge clean.
+    edge.x *= uTear > 0.5 ? cut : step(0.5, cut);
+    edge.x *= uShown;
+    if (edge.x < 0.03) discard;
     vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
     vec3 view = normalize(cameraPosition - vWorld);
     if (dot(n, view) < 0.0) n = -n;
@@ -158,9 +288,10 @@ const fragment = /* glsl */ `
     // A paper plane's wing tops and nose flaps show the back of the sheet,
     // so the pattern goes there (-z) and the invitation on the front.
     if (gl_FrontFacing) {
-      // The inside: undyed washi with the invitation printed on it.
-      color = uPaper * (1.0 + pulp * 0.07 * uMottle);
-      color = mix(color, color * 1.04 + 0.015, strands * 0.7);
+      // The inside: undyed washi with the invitation printed on it. It's
+      // the printed card's paper exactly, so the two can hand over without
+      // the surface changing.
+      color = uPaper;
       vec2 uv = vec2(p.y / uSheet.y, (p.x + uSheet.x * 0.5) / uSheet.x);
       vec4 ink = texture2D(uPrint, uv);
       color = mix(color, ink.rgb, ink.a * (0.88 + 0.12 * noise(p * 0.4)));
@@ -183,12 +314,40 @@ const fragment = /* glsl */ `
       shine = fleck;
     }
 
+    // The folds stay pressed into the paper: a shadow along each crease
+    // and a sliver of light just beside it, as on the printed card.
+    float shadow = crease(p) * uCrease;
+    float light = crease(p - vec2(0.6, 0.8)) * uCrease;
+    if (gl_FrontFacing) {
+      color = mix(color, uCreaseShadow, shadow);
+      color = mix(color, uCreaseLight, light);
+    } else {
+      color = mix(color, color * 0.62, shadow);
+      color = mix(color, color * 1.12, light);
+    }
+
+    if (uStamped > 0.5 && gl_FrontFacing) color = stamp(color);
+    color = mix(color, uCore * (1.0 + pulp * 0.05), edge.y * 0.92);
+    color *= 1.0 - shaded();
+    // The other flap's edge dips away, a shade darker.
+    float dip = (1.0 - smoothstep(0.0, 0.9, vSeam)) * vTorn * (1.0 - uLifted);
+    color *= 1.0 - 0.16 * dip * uTear;
+
     // Normalized so paper lying flat shows its true color.
     float lit = lighting(n) / lighting(vec3(0.0, 0.0, 1.0));
     color *= lit;
     float glint = pow(max(dot(reflect(-uLight, n), view), 0.0), 18.0);
     color += uGold * glint * shine * 0.8;
-    gl_FragColor = vec4(color, 1.0);
+    // Once, a sheen sweeps across the face as it catches the light, the
+    // fibers standing proud of it catching most.
+    if (uShimmer > 0.0 && uShimmer < 1.0 && gl_FrontFacing) {
+      float across = (p.y - uSheet.y * 0.5) / (uSheet.y * 0.5)
+        + (p.x / uSheet.x + 0.5) * 0.45;
+      float band = exp(-pow((across - mix(-0.35, 1.8, uShimmer)) / 0.12, 2.0));
+      color += vec3(1.0, 0.95, 0.85) * band * (0.22 + 0.35 * strands);
+      color += uGold * band * 0.08;
+    }
+    gl_FragColor = vec4(color, edge.x);
     #include <colorspace_fragment>
   }
 `;
@@ -237,6 +396,31 @@ export function createPaperMaterial() {
       uPrint: { value: new Texture() },
       uSheet: { value: new Vector2(CARD.height, CARD.width) },
       uLight: { value: new Vector3(0, 0, 1) },
+      uCreases: {
+        value: sheetCreases.map(([a, b]) => new Vector4(a.x, a.y, b.x, b.y)),
+      },
+      uCrease: { value: 0.55 },
+      uCreaseShadow: { value: new Vector3() },
+      uCreaseLight: { value: new Vector3() },
+      uTear: { value: 0 },
+      uLifted: { value: 0 },
+      uRagged: { value: 1 },
+      uCore: { value: new Vector3() },
+      uSeal: { value: new Texture() },
+      uStamped: { value: 0 },
+      uSealAt: { value: new Vector2() },
+      uSealTilt: { value: 0 },
+      uSealSize: { value: 74 },
+      uSealField: { value: new Vector3() },
+      uSealPool: { value: new Vector3() },
+      uSealWet: { value: 0 },
+      uInkTake: { value: 0 },
+      uDent: { value: 0 },
+      // How far the right half's edge sits from the left's, and how high.
+      uOver: { value: new Vector2(1e4, 0) },
+      uShown: { value: 1 },
+      uShimmer: { value: -1 },
+      uDeckle: { value: new Texture() },
     },
   });
 }
@@ -244,7 +428,21 @@ export function createPaperMaterial() {
 export function updatePaperMaterial(material: ShaderMaterial, config: Config) {
   const { washi, paper, plane } = config;
   const u = material.uniforms;
+  u.uDeckle!.value = deckleMask(config);
   u.uPaper!.value = oklchLinear(paper.lightness, paper.warmth, 80);
+  u.uCrease!.value = paper.crease;
+  u.uCreaseShadow!.value = oklchLinear(
+    paper.lightness - 0.16,
+    paper.warmth,
+    80,
+  );
+  u.uCreaseLight!.value = oklchLinear(paper.lightness + 0.04, paper.warmth, 80);
+  u.uCore!.value = oklchLinear(
+    Math.min(1, paper.lightness + 0.045),
+    paper.warmth * 0.2,
+    80,
+  );
+  u.uRagged!.value = config.tear.ragged;
   u.uDye!.value = oklchLinear(washi.lightness, washi.chroma, washi.hue);
   u.uInk!.value = oklchLinear(
     washi.inkLightness,

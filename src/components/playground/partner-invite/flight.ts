@@ -1,25 +1,10 @@
 import { CatmullRomCurve3, Matrix4, Quaternion, Vector3 } from "three";
 import { clamp, easeOut, type Config } from "./config";
-import { CAMERA_DISTANCE, CARD, LANDING, SCENE } from "./geometry";
-import { PLANE_CENTER } from "./harrier";
+import { CAMERA_DISTANCE, LANDING, SCENE } from "./geometry";
 
-// Two throws. From the far side, it loops in from the distance (see
-// farRoute). From in front, it flies in from the foreground: It leaves a hand
-// just in front of the viewer, below the frame, climbs steeply as it heads
-// into the scene, rounds over the top, and glides down in a long descent
-// that flattens onto the table. Over the ground it curves in, leaning into
-// the turn, touches down still angled into the scene, and slews straight
-// along the card as it skids to a stop.
-//
-// The height follows a drawn shape; the timing comes from energy. Speed at
-// any height is what the plane had over the top plus what it gains falling
-// from there (v² = top² + 2g·drop), so it's fastest out of the hand, slowest
-// over the top, and picks up again on the way down. The wings' drag takes
-// a share of the descent, so it lands gently.
+// The plane is thrown from the far side and loops in from the distance
+// (see farRoute), then glides down, touches down, and skids to a stop.
 
-// Where the plane's middle sits once the sheet lies on the card.
-const REST_X = LANDING.x + (PLANE_CENTER - CARD.width / 2);
-const SAMPLES = 800;
 // How many samples either side the lean is averaged over, so it eases in
 // and out of turns rather than twitching with every wiggle in the path.
 const LEAN_SMOOTHING = 24;
@@ -41,6 +26,8 @@ type Sample = {
 type Route = {
   samples: Sample[];
   apex: number;
+  // When the camera starts following the plane in to land.
+  follow: number;
   air: number;
   landing: number;
   skid: number;
@@ -145,17 +132,6 @@ const withFacing = (
 
 let cache: { key: string; value: Route } | null = null;
 
-function height(config: Config, p: number) {
-  const { height: top, start, peak, tail } = config.flight;
-  if (p <= peak) {
-    // An S up: flat out of the hand, steep in the middle, round at the top.
-    return start + ((top - start) * (1 - Math.cos((Math.PI * p) / peak))) / 2;
-  }
-  // Down: steepest just past the top, flattening into a long, level tail.
-  const q = 1 - (1 - (p - peak) / (1 - peak)) ** tail;
-  return (top * (1 + Math.cos(Math.PI * q))) / 2;
-}
-
 // Leans the whole scene back like a tabletop seen at an angle, so depth
 // reads; it eases to straight overhead as the card settles.
 export function viewTilt(config: Config, settled = 0) {
@@ -168,12 +144,12 @@ export function viewTilt(config: Config, settled = 0) {
 
 // The far-side throw, traced from a sketch: it starts as a speck in the
 // distance, curls up and out to the left, loops down the left side, sweeps
-// across the front at its biggest, then rises over a small hump and
-// settles onto the card. Far away, each point is where it sits on screen
-// and how big it looks there (0 is the far size, 1 the near size). Close
-// in, points sit over the table itself (SVG x and y, height above it), so
-// the swoop to the card stays above the table. The flight between is a
-// smooth curve.
+// across the front at its biggest, and rises over a small hump. From
+// there it glides on the way it was going, flattening out as it skims onto
+// the table. Far away, each point is where it sits on screen and how big
+// it looks there (0 is the far size, 1 the near size). Close in, points sit
+// over the table itself (SVG x and y, height above it), so the glide stays
+// above the table. The flight between is a smooth curve.
 const LOOP = [
   { x: 760, y: 397, size: 0 },
   { x: 610, y: 250, size: 0.15 },
@@ -184,6 +160,13 @@ const SWOOP = [
   { x: 210, y: 560, z: 150 },
   { x: 300, y: 690, z: 85 },
   { x: 395, y: 610, z: 95 },
+];
+// Off the hump, along the line it came over on, curving gently right and
+// flattening out to touch down near the middle of the table.
+const GLIDE = [
+  { x: 465, y: 520, z: 58 },
+  { x: 545, y: 430, z: 16 },
+  { x: 620, y: 360, z: 0 },
 ];
 const FAR_SAMPLES = 1600;
 
@@ -209,39 +192,45 @@ function farRoute(config: Config): Route {
     ...LOOP.map((point) =>
       sighted(point.x, point.y, far * (near / far) ** point.size),
     ),
-    ...SWOOP.map((point) => new Vector3(point.x, -point.y, point.z)),
+    ...[...SWOOP, ...GLIDE].map(
+      (point) => new Vector3(point.x, -point.y, point.z),
+    ),
   ];
-  // From the hump it runs straight down onto the card, touches down, and
-  // skids on in the same line, so the path never doubles back.
-  const hump = controls[controls.length - 1]!;
-  const rest = new Vector3(REST_X, -LANDING.y, 0);
-  const line = rest.clone().sub(hump).setZ(0).normalize();
-  const touchdown = rest.clone().addScaledVector(line, -slide);
-  const lead = Math.min(80, touchdown.distanceTo(hump) / 3);
-  controls.push(
-    touchdown.clone().addScaledVector(line, -lead).setZ(25),
-    touchdown,
-  );
-  const along = { x: line.x, y: -line.y };
   const curve = new CatmullRomCurve3(controls, false, "centripetal");
   const spaced = curve.getSpacedPoints(FAR_SAMPLES);
+  // It skids on the way it was heading at touchdown.
+  const line = spaced[FAR_SAMPLES]!.clone()
+    .sub(spaced[FAR_SAMPLES - 8]!)
+    .setZ(0)
+    .normalize();
+  const along = { x: line.x, y: -line.y };
 
   // Speed in proportion to distance from the camera, so the plane crosses
   // the screen at a steady pace while it grows, and slows as it nears.
+  // The loop takes its set time to reach the hump; the glide takes however
+  // long it takes at that pace.
   const away = spaced.map((point) =>
     point.clone().applyMatrix4(tilt).distanceTo(camera),
   );
+  const hump = controls[LOOP.length + SWOOP.length - 1]!;
+  const over = spaced.reduce(
+    (best, point, i) =>
+      point.distanceTo(hump) < spaced[best]!.distanceTo(hump) ? i : best,
+    0,
+  );
   let total = 0;
-  for (let i = 1; i < spaced.length; i++)
+  for (let i = 1; i <= over; i++)
     total += spaced[i]!.distanceTo(spaced[i - 1]!) / away[i]!;
   const rate = total / loop;
 
   const points: { t: number; x: number; y: number; z: number }[] = [];
   let t = 0;
   let apex = 0;
+  let follow = 0;
   let highest = -Infinity;
   spaced.forEach((point, i) => {
     if (i > 0) t += spaced[i]!.distanceTo(spaced[i - 1]!) / away[i]! / rate;
+    if (i === over) follow = t;
     points.push({ t, x: point.x, y: -point.y, z: point.z });
     // Over the top of the loop, where it hangs for a moment.
     const screenY = point.clone().applyMatrix4(tilt).y;
@@ -255,6 +244,7 @@ function farRoute(config: Config): Route {
   return {
     samples: withFacing(points, config.flight.bank),
     apex,
+    follow,
     air: t,
     landing,
     skid,
@@ -263,75 +253,11 @@ function farRoute(config: Config): Route {
 }
 
 function route(config: Config): Route {
-  const key = JSON.stringify([config.thrown, config.flight, config.plane.tilt]);
+  const key = JSON.stringify([config.flight, config.plane.tilt]);
   if (cache?.key === key) return cache.value;
-  const value =
-    config.thrown === "background" ? farRoute(config) : nearRoute(config);
+  const value = farRoute(config);
   cache = { key, value };
   return value;
-}
-
-function nearRoute(config: Config): Route {
-  const { top, gravity, glide, slide, depth, offset, peak } = config.flight;
-  // From in front, it heads into the scene (up the screen, so SVG y runs
-  // negative).
-  const toward = -1;
-  const angle = (config.flight.approach * Math.PI) / 180;
-  const along = { x: Math.cos(angle), y: toward * Math.sin(angle) };
-
-  // Over the ground: a curve from the thrower, in front of the scene, to
-  // touchdown, arriving along the approach so the skid carries straight on
-  // to the card.
-  const from = { x: REST_X + offset, y: LANDING.y + depth };
-  const to = { x: REST_X - along.x * slide, y: LANDING.y - along.y * slide };
-  const reach = Math.hypot(to.x - from.x, to.y - from.y);
-  const bend = {
-    x: to.x - along.x * reach * 0.45,
-    y: to.y - along.y * reach * 0.45,
-  };
-  const ground = (u: number) => ({
-    x: (1 - u) ** 2 * from.x + 2 * (1 - u) * u * bend.x + u * u * to.x,
-    y: (1 - u) ** 2 * from.y + 2 * (1 - u) * u * bend.y + u * u * to.y,
-  });
-
-  const speed = (z: number, descending: boolean) =>
-    Math.sqrt(
-      top * top +
-        2 * gravity * (descending ? glide : 1) * (config.flight.height - z),
-    );
-
-  const points: { t: number; x: number; y: number; z: number }[] = [];
-  let t = 0;
-  let apex = 0;
-  for (let i = 0; i <= SAMPLES; i++) {
-    const p = i / SAMPLES;
-    const point = { t, ...ground(p), z: height(config, p) };
-    if (i > 0) {
-      const previous = points[i - 1]!;
-      const distance = Math.hypot(
-        point.x - previous.x,
-        point.y - previous.y,
-        point.z - previous.z,
-      );
-      const descending = p > peak;
-      t +=
-        distance /
-        ((speed(previous.z, descending) + speed(point.z, descending)) / 2);
-      point.t = t;
-    }
-    if (p <= peak) apex = t;
-    points.push(point);
-  }
-  const landing = speed(0, true);
-  const skid = Math.max(SETTLE, slide > 0 ? (2 * slide) / landing : 0);
-  return {
-    samples: withFacing(points, config.flight.bank),
-    apex,
-    air: t,
-    landing,
-    skid,
-    along,
-  };
 }
 
 // Time in the air, before touchdown.
@@ -341,6 +267,69 @@ export const flightSeconds = (config: Config) => {
   const { air, skid } = route(config);
   return air + skid;
 };
+
+// When the camera starts following the plane in: as it comes over the hump.
+export const followSeconds = (config: Config) => route(config).follow;
+
+// Which sample a moment in the air falls after, and how far on to the next.
+function locate(samples: Sample[], t: number) {
+  let low = 0;
+  let high = samples.length - 1;
+  while (high - low > 1) {
+    const middle = (low + high) >> 1;
+    if (samples[middle]!.t <= t) low = middle;
+    else high = middle;
+  }
+  const a = samples[low]!;
+  const b = samples[high]!;
+  return { low, high, f: clamp((t - a.t) / (b.t - a.t || 1)) };
+}
+
+// How far along the card it has skidded, a given time after touchdown.
+// Friction bites hardest at first. The curve's steepness matches the speed
+// it touched down at, so it doesn't brake the instant it lands.
+function skidded(config: Config, path: Route, since: number) {
+  const into = path.skid ? clamp(since / path.skid) : 1;
+  const { slide } = config.flight;
+  const bite = slide > 0 ? Math.max(2, (path.landing * path.skid) / slide) : 2;
+  return { into, slid: slide * (1 - (1 - into) ** bite) };
+}
+
+// Distance covered over the table, at each sample of the flight.
+const groundCache = new WeakMap<Route, number[]>();
+function ground(path: Route) {
+  let covered = groundCache.get(path);
+  if (!covered) {
+    covered = [0];
+    for (let i = 1; i < path.samples.length; i++) {
+      const a = path.samples[i - 1]!;
+      const b = path.samples[i]!;
+      covered.push(covered[i - 1]! + Math.hypot(b.x - a.x, b.y - a.y));
+    }
+    groundCache.set(path, covered);
+  }
+  return covered;
+}
+
+// How far over the table the plane has come since the camera started
+// following it, out of the whole way to where it stops.
+export function followed(config: Config, at: number) {
+  const path = route(config);
+  const covered = ground(path);
+  const along = (t: number) => {
+    if (t >= path.air)
+      return (
+        covered[covered.length - 1]! + skidded(config, path, t - path.air).slid
+      );
+    const { low, high, f } = locate(path.samples, t);
+    return covered[low]! + (covered[high]! - covered[low]!) * f;
+  };
+  const from = along(path.follow);
+  const whole = along(path.air + path.skid) - from;
+  return whole > 0
+    ? clamp((along(Math.max(at, path.follow)) - from) / whole)
+    : 1;
+}
 
 type FlightPose = {
   // World x, SVG y, and height above the table, all in scene units.
@@ -360,16 +349,9 @@ export function flightPose(config: Config, at: number): FlightPose {
   const t = Math.max(0, at);
 
   if (t < path.air) {
-    let low = 0;
-    let high = samples.length - 1;
-    while (high - low > 1) {
-      const middle = (low + high) >> 1;
-      if (samples[middle]!.t <= t) low = middle;
-      else high = middle;
-    }
+    const { low, high, f } = locate(samples, t);
     const a = samples[low]!;
     const b = samples[high]!;
-    const f = clamp((t - a.t) / (b.t - a.t || 1));
     // The nose lifts a touch as it slows over the top.
     const width = 0.3 * path.apex + 0.1;
     const nose = stall * Math.exp(-(((t - path.apex) / width) ** 2));
@@ -389,15 +371,19 @@ export function flightPose(config: Config, at: number): FlightPose {
     };
   }
 
-  // On the table: friction eases it to a stop while it slews straight
-  // along the card and settles flat.
+  // On the table: friction eases it to a stop in the line it touched down
+  // on, and it settles flat, still facing the way it was going.
   const last = samples[samples.length - 1]!;
-  const into = path.skid ? clamp((t - path.air) / path.skid) : 1;
-  const slid = config.flight.slide * (1 - (1 - into) ** 2);
+  const { into, slid } = skidded(config, path, t - path.air);
+  const heading = Math.atan2(-path.along.y, path.along.x);
+  const level = new Quaternion().setFromAxisAngle(
+    new Vector3(0, 0, 1),
+    heading,
+  );
   return {
     x: last.x + path.along.x * slid,
     y: last.y + path.along.y * slid,
     z: 0,
-    facing: last.facing.clone().slerp(new Quaternion(), easeOut(into)),
+    facing: last.facing.clone().slerp(level, easeOut(into)),
   };
 }

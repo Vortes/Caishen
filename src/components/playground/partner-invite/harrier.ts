@@ -246,6 +246,9 @@ function simulate() {
 
 const model = simulate();
 
+// Every crease the folding left behind, in sheet coordinates.
+export const sheetCreases = model.creases;
+
 // Every crease the folding left behind, in card coordinates.
 export const harrierCreases = model.creases.map(
   ([a, b]) =>

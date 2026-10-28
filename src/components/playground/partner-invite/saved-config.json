@@ -1,0 +1,95 @@
+{
+  "seed": 78558,
+  "pattern": "seigaiha",
+  "flight": {
+    "far": 0.065,
+    "near": 1.3,
+    "loop": 3.45,
+    "stall": 10,
+    "bank": 6,
+    "slide": 90
+  },
+  "unfold": {
+    "duration": 1.8,
+    "stagger": 0.25
+  },
+  "paper": {
+    "lightness": 0.95,
+    "warmth": 0.007,
+    "grain": 0.21,
+    "deckle": 1.5,
+    "crease": 0.2
+  },
+  "ink": {
+    "thin": 0.9,
+    "thick": 3.2,
+    "pool": 0.6,
+    "dry": 1.1
+  },
+  "accent": {
+    "hue": 28,
+    "chroma": 0.17
+  },
+  "tear": {
+    "duration": 1.3,
+    "lift": 46,
+    "ragged": 1
+  },
+  "bondDuration": 2.4,
+  "seal": {
+    "size": 74,
+    "overlap": 36,
+    "wear": 0.4
+  },
+  "part": {
+    "pull": 300,
+    "curl": 56,
+    "angle": 25
+  },
+  "washi": {
+    "hue": 262,
+    "chroma": 0.09,
+    "lightness": 0.4,
+    "inkHue": 85,
+    "inkLightness": 0.92,
+    "scale": 22,
+    "fibers": 0.55,
+    "mottle": 0.45,
+    "gold": 0.1
+  },
+  "trail": {
+    "life": 0.2,
+    "width": 6,
+    "spread": 0,
+    "opacity": 1
+  },
+  "cloud": {
+    "at": 0.55,
+    "size": 1.35,
+    "poof": 0.9
+  },
+  "reveal": {
+    "at": 0.38,
+    "duration": 0.5
+  },
+  "filed": {
+    "at": 0.15,
+    "duration": 0.8,
+    "hold": 1.6
+  },
+  "partnerPage": {
+    "width": 320
+  },
+  "plane": {
+    "keel": 8,
+    "dihedral": 10,
+    "light": 40,
+    "tilt": 40
+  },
+  "slot": {
+    "scale": 0.85,
+    "catch": 0.66,
+    "hold": 1.6,
+    "pull": 0.45
+  }
+}
