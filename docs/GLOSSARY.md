@@ -78,6 +78,14 @@ The private counterparty account for everyone except your partner. Each of its e
 **Partner account**:
 The counterparty account for your partner, showing the partner ledger. Its balance is the opposite of the same account in your partner's budget.
 
+**Invitation**:
+A handwritten card one person sends by email to the partner they want. Opening its link is what proves it; it is live until it is used, cancelled, replaced by a newer one, or expires.
+_Avoid_: Invite code, token
+
+**Former partner**:
+A partner who disconnected, or whose account was deleted. Each side keeps the partner ledger as it stood, frozen under a closed counterparty account named after the former partner, which can neither be settled nor added to and leaves the partner slot free.
+_Avoid_: Ex-partner, removed member
+
 **Paired envelope**:
 The budget category that belongs to a counterparty account and holds its cash, including the entire cost of a fully reimbursable purchase. Its available amount is its float minus the account's balance, and it never resets at monthly rollover.
 
