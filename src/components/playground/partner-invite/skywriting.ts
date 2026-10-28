@@ -32,7 +32,10 @@ import { FACES, type Face } from "./skywriting-faces";
 // Each puff can be breathed away on its own: where the pointer rests it
 // thins, swells, and drifts off, opening holes and breaking wisps loose;
 // then, left alone, each wisp finds its own way back and the letters knit
-// together again.
+// together again. The breath runs on along the letters from where it
+// lands, rather than cutting a round hole, and the stir it leaves fades
+// rather than stopping dead, so the wisps follow the pointer's sweep a
+// moment after it has passed. The thick of a stroke holds; its rims fly.
 //
 // Two passes: the puffs, free to drift anywhere, are summed into a soft
 // height field; then the field is lit and grained into cloud. It draws on
@@ -51,19 +54,28 @@ export type Lettering = {
 
 // How the pointer breathes the line away, and how it heals.
 //
-// A puff within `reach` (× the letters' size) thins as fast as `strength`
-// (of the whole puff, a second), never past `depth`, so you can watch it
-// find its way home. It drifts off on a `push` (px/s²), slowed by `drag`.
+// A puff within `reach` (× the letters' size) is stirred, and passes
+// `spread` of its stir on to the puffs touching it, so the stir runs on
+// along the letters. Stirred, it thins as fast as `strength` (of the whole
+// puff, a second), never past `depth`, so you can watch it find its way
+// home. It drifts off on a `push` (px/s²), away from the pointer and
+// `sweep` times as much the way the pointer is moving, slowed by `drag`.
+// The stir fades over `linger` seconds; a puff's heading turns toward
+// the breath at `turn` a second, slower the faster it's already going.
 // After `delay` seconds' rest it's drawn back: a spring of `home`, turned
 // sideways by `swirl` (each puff its own way round) and wandering up to
 // `wander` px/s², overshooting a touch, thickening back up `thicken` times
 // as fast as it would on its own as it nears its place.
 export type Breath = {
   reach: number;
+  spread: number;
   strength: number;
   depth: number;
   push: number;
+  sweep: number;
   drag: number;
+  linger: number;
+  turn: number;
   delay: number;
   home: number;
   swirl: number;
@@ -90,7 +102,12 @@ const LOOSE = 0.35;
 const FADE = 0.7;
 // How fast the written line sways, against the clouds' drift.
 const SWAY = 1 / 3;
-
+// Puffs this close (× the trail) touch, and pass the breath on.
+const TOUCHING = 0.9;
+// How fast (letters a second) the pointer has to move to sweep at full.
+const BRISK = 6;
+// How much a puff on the stroke moves, against one at the trail's rim.
+const HOLD = 0.4;
 const noise = /* glsl */ `
   vec2 hash2(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -144,8 +161,10 @@ const puffVertex = /* glsl */ `
     vGone = state.x;
     // Forming, the puffs billow up in a scattered order, swelling into place.
     vShown = smoothstep(seed * 0.55, seed * 0.55 + 0.45, uForm);
-    // Dissipating, a puff swells as it thins.
-    vRadius = puff.z * (0.55 + 0.45 * vShown) * (1.0 + 0.6 * state.x);
+    // Dissipating, a puff swells as it thins; carried off, it beads into
+    // a little dot of cloud.
+    float carried = smoothstep(0.0, uTrail * 3.0, length(state.yz));
+    vRadius = puff.z * (0.55 + 0.45 * vShown) * (1.0 + 0.6 * state.x) * (1.0 - 0.55 * carried);
     // A slow wave runs through the letters, each puff riding it a little
     // out of step, so the line billows rather than wobbles.
     float wave = uBreeze * 0.5 + puff.x * 0.012 + seed * 2.4;
@@ -242,7 +261,14 @@ const compositeFragment = /* glsl */ `
   }
 `;
 
-type Puff = { x: number; y: number; radius: number; seed: number };
+// Where a puff sits (px), its radius (px), a seed, and how freely it moves.
+type Puff = {
+  x: number;
+  y: number;
+  radius: number;
+  seed: number;
+  mobility: number;
+};
 
 export type Skywriting = ReturnType<typeof createSkywriting>;
 
@@ -333,6 +359,16 @@ export function createSkywriting() {
   // Each puff's drift speed (px/s), and seconds since it was breathed on.
   let velocity = new Float32Array(0);
   let rested = new Float32Array(0);
+  // How stirred each puff is, and which way the breath carries it.
+  let stir = new Float32Array(0);
+  let heading = new Float32Array(0);
+  // The puffs each one touches: those of puff i run from touching[i] to
+  // touching[i + 1] in neighbors.
+  let touching = new Int32Array(1);
+  let neighbors = new Int32Array(0);
+  // The pointer as last seen, and how fast it's going (px/s), smoothed.
+  let last: { x: number; y: number } | null = null;
+  const motion = { x: 0, y: 0 };
   let clock = 0;
   let trail = 1;
   // The letters' size (px), which the breath's reach is measured in.
@@ -402,15 +438,49 @@ export function createSkywriting() {
           for (let gx = 0; gx < width / cell; gx++) {
             const x = (gx + 0.15 + 0.7 * rng()) * cell;
             const y = (gy + 0.15 + 0.7 * rng()) * cell;
-            const radius =
-              body * trail * (0.8 + 0.4 * rng()) - fall * strokeAt(x, y);
-            if (radius > 0) puffs.push({ x, y, radius, seed: rng() });
+            const out = strokeAt(x, y);
+            const radius = body * trail * (0.8 + 0.4 * rng()) - fall * out;
+            const mobility = HOLD + (1 - HOLD) * Math.min(1, out / trail);
+            if (radius > 0) puffs.push({ x, y, radius, seed: rng(), mobility });
           }
       }
+
+      // Which puffs touch, found by sorting them into cells that size.
+      const near = trail * TOUCHING;
+      const cells = new Map<string, number[]>();
+      const cellOf = (x: number, y: number) =>
+        `${Math.floor(x / near)}:${Math.floor(y / near)}`;
+      puffs.forEach((puff, index) => {
+        const key = cellOf(puff.x, puff.y);
+        const cell = cells.get(key);
+        if (cell) cell.push(index);
+        else cells.set(key, [index]);
+      });
+      const found: number[] = [];
+      touching = new Int32Array(puffs.length + 1);
+      puffs.forEach((puff, index) => {
+        touching[index] = found.length;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++)
+            for (const other of cells.get(
+              cellOf(puff.x + dx * near, puff.y + dy * near),
+            ) ?? []) {
+              const them = puffs[other]!;
+              if (
+                other !== index &&
+                Math.hypot(them.x - puff.x, them.y - puff.y) < near
+              )
+                found.push(other);
+            }
+      });
+      touching[puffs.length] = found.length;
+      neighbors = Int32Array.from(found);
 
       state = new Float32Array(puffs.length * 3);
       velocity = new Float32Array(puffs.length * 2);
       rested = new Float32Array(puffs.length).fill(Infinity);
+      stir = new Float32Array(puffs.length);
+      heading = new Float32Array(puffs.length * 2);
       puffGeometry.instanceCount = puffs.length;
       puffGeometry.setAttribute(
         "puff",
@@ -478,6 +548,68 @@ export function createSkywriting() {
       const typical = (stroke * 0.2) ** 2;
       clock += dt;
       let breathed = 0;
+      const breathing = pointer && form >= 1 && scatter === 0 ? pointer : null;
+
+      // The pointer's sweep, eased so a flick carries the wisps on after it.
+      const seen = breathing && last && dt > 0;
+      const ease = 1 - Math.exp(-dt / 0.06);
+      motion.x += ((seen ? (breathing.x - last!.x) / dt : 0) - motion.x) * ease;
+      motion.y += ((seen ? (breathing.y - last!.y) / dt : 0) - motion.y) * ease;
+      last = breathing ? { ...breathing } : null;
+      const brisk = Math.min(
+        1,
+        Math.hypot(motion.x, motion.y) / (stroke * BRISK),
+      );
+      const sweepX = (motion.x / (Math.hypot(motion.x, motion.y) || 1)) * brisk;
+      const sweepY = (motion.y / (Math.hypot(motion.x, motion.y) || 1)) * brisk;
+
+      // The stir: where the pointer is, and passed on from the puffs each
+      // one touches, fading. Each puff takes its heading from whichever
+      // stirred it most: the pointer, pushing away and along its sweep,
+      // or the neighbor it caught the stir from.
+      const fade = Math.exp(-dt / Math.max(0.01, breath.linger));
+      const stirred = new Float32Array(stir.length);
+      const aimed = new Float32Array(heading.length);
+      if (scatter === 0)
+        puffs.forEach((puff, index) => {
+          let most = stir[index]! * fade;
+          let aimX = heading[index * 2]!;
+          let aimY = heading[index * 2 + 1]!;
+          if (breathing) {
+            const dx = puff.x + rock.x + state[index * 3 + 1]! - breathing.x;
+            const dy = puff.y + rock.y + state[index * 3 + 2]! - breathing.y;
+            const distance = Math.hypot(dx, dy);
+            const direct = Math.max(0, 1 - distance / reach) ** 2;
+            if (direct > most) {
+              most = direct;
+              aimX = dx / (distance || 1) + breath.sweep * sweepX;
+              aimY = dy / (distance || 1) + breath.sweep * sweepY;
+            }
+          }
+          for (let k = touching[index]!; k < touching[index + 1]!; k++) {
+            const other = neighbors[k]!;
+            const passed = stir[other]! * breath.spread;
+            if (passed > most) {
+              most = passed;
+              aimX = heading[other * 2]!;
+              aimY = heading[other * 2 + 1]!;
+            }
+          }
+          stirred[index] = most < 0.01 ? 0 : most;
+          // Already on the move, it comes round more slowly.
+          const going =
+            Math.hypot(velocity[index * 2]!, velocity[index * 2 + 1]!) / stroke;
+          const turn = 1 - Math.exp((-dt * breath.turn) / (1 + going));
+          const length = Math.hypot(aimX, aimY) || 1;
+          const wasX = heading[index * 2]!;
+          const wasY = heading[index * 2 + 1]!;
+          const fresh = wasX === 0 && wasY === 0 ? 1 : turn;
+          aimed[index * 2] = wasX + (aimX / length - wasX) * fresh;
+          aimed[index * 2 + 1] = wasY + (aimY / length - wasY) * fresh;
+        });
+      stir = stirred;
+      heading = aimed;
+
       puffs.forEach((puff, index) => {
         const size = (puff.radius * puff.radius) / typical;
         const at = index * 3;
@@ -489,24 +621,20 @@ export function createSkywriting() {
         if (gone >= 1 && scatter > 0) return;
         let pushX = 0;
         let pushY = 0;
-        // Breathed on: it thins where the pointer is, pushed away from it.
-        let touched = false;
-        if (pointer && form >= 1 && scatter === 0) {
-          const dx = puff.x + rock.x + shiftX - pointer.x;
-          const dy = puff.y + rock.y + shiftY - pointer.y;
-          const distance = Math.hypot(dx, dy);
-          const near = Math.max(0, 1 - distance / reach) ** 2;
-          if (near > 0) {
-            touched = true;
-            const more = Math.max(
-              0,
-              Math.min(breath.depth - gone, near * breath.strength * dt),
-            );
-            gone += more;
-            breathed += more * size;
-            pushX += (dx / (distance || 1)) * breath.push * near;
-            pushY += (dy / (distance || 1)) * breath.push * near;
-          }
+        // Stirred: it thins, carried the way the breath is going, the thick
+        // of the stroke less than its rims.
+        const touched = stir[index]! > 0.05;
+        if (stir[index]! > 0) {
+          const near = stir[index]! * puff.mobility;
+          const more = Math.max(
+            0,
+            Math.min(breath.depth - gone, near * breath.strength * dt),
+          );
+          gone += more;
+          breathed += more * size;
+          const push = breath.push * near;
+          pushX += heading[index * 2]! * push;
+          pushY += heading[index * 2 + 1]! * push;
         }
         rested[index] = touched ? 0 : rested[index]! + dt;
         const away = Math.hypot(shiftX, shiftY);
