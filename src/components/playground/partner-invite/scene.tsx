@@ -24,6 +24,7 @@ import {
 import { freed, intoBottom } from "./keep";
 import { clamp, easeInOut, easeOut, span } from "./motion";
 import { Filed, type Rect } from "./partner-mark";
+import { perf } from "./perf";
 import { Plane3D } from "./plane-3d";
 import { arrivalFrame, arrivalProgress, arrivalSeconds } from "./plane-motion";
 import { INVITE, PARTNER, PARTNER_FIRST_NAME } from "./print";
@@ -94,6 +95,9 @@ export function Scene({
   const [bondAt, setBondAt] = useState<number | null>(null);
   // A picture of Jordan's half, for the Partner mark.
   const [mark, setMark] = useState<string | null>(null);
+  useEffect(() => {
+    if (mark) return () => URL.revokeObjectURL(mark);
+  }, [mark]);
 
   const go = (name: Phase) => {
     const at = performance.now();
@@ -133,7 +137,8 @@ export function Scene({
     setCaughtAfter((performance.now() - phase.at) / 1000);
     go(reducedMotion ? "sign" : "arrive");
   };
-  // Always two lines, so the letters can be big and fat.
+  // Always two lines, so the letters can be big and fat; broken where they
+  // fit the stage, so not until it has a size.
   const lines =
     stageSize && stageSize.width < stageSize.height
       ? [`${PARTNER_FIRST_NAME} sent`, "you something"]
@@ -169,6 +174,7 @@ export function Scene({
   const wordsAt = (now: number): Words | null => {
     const { elapsed } = timesAt(now);
     const { write } = timeline;
+    if (!stageSize) return null;
     if (phase.name === "invite")
       return {
         lines,
@@ -270,6 +276,7 @@ export function Scene({
   const parting = useMemo(() => endingTrack(flung), [flung]);
   const play = useScore(sound);
   useEffect(() => sound?.sky(sky === "night"), [sound, sky]);
+  useEffect(() => perf?.phase(phase.name), [phase.name]);
 
   useFrame((now) => {
     // A new step is on its way to the page; wait for it.

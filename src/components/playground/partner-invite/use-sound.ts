@@ -26,7 +26,19 @@ export function useSound() {
   const soundOn = useSyncExternalStore(subscribeSound, soundWanted, () => true);
   const engine = useRef<Sound | null>(null);
   const [sound, setSound] = useState<Sound | null>(null);
-  useEffect(() => () => engine.current?.close(), []);
+  useEffect(
+    () => () => {
+      engine.current?.close();
+      engine.current = null;
+    },
+    [],
+  );
+  // Opening the audio device takes a good fraction of a second, so it's
+  // done as the page loads, suspended, rather than in the tap that throws
+  // the plane; the tap only resumes it.
+  useEffect(() => {
+    if (soundOn) engine.current ??= createSound();
+  }, [soundOn]);
   // Only ever called inside a tap, click, or key.
   const startSound = () => {
     engine.current ??= createSound();

@@ -2,17 +2,21 @@
 
 import { useEffect, useLayoutEffect, useRef } from "react";
 import {
+  LinearFilter,
   Mesh,
+  NoBlending,
   OrthographicCamera,
   PlaneGeometry,
   Scene,
   ShaderMaterial,
   Vector2,
   WebGLRenderer,
+  WebGLRenderTarget,
 } from "three";
 import { config } from "./config";
+import { measure, perf } from "./perf";
 import { createSkywriting } from "./skywriting";
-import { skyFragment, skyVertex } from "./sky-shader";
+import { copyFragment, skyFragment, skyVertex } from "./sky-shader";
 import { useFrame } from "./use-frame";
 import styles from "./lab.module.css";
 
@@ -22,6 +26,18 @@ import styles from "./lab.module.css";
 // bank of thicker cloud crowds the edges. When the halves part the bank
 // closes over the stage, then parts along the seams between its masses to
 // show what's underneath.
+
+// How finely the sky is drawn, in pixels per CSS pixel: by day, all soft
+// shapes, at half; by night at one, for the stars. If frames keep running
+// slow it draws coarser, a step at a time, down to a floor.
+const DETAIL = { day: 0.5, night: 1, floor: { day: 0.3, night: 0.5 } };
+const COARSER = 0.8;
+// Slow: the middle frame of a second's worth (60) took longer than this
+// (ms), twice running.
+const SLOW = { ms: 20, frames: 60, times: 2 };
+// The sky draws at most this often (ms), so a 120 Hz display doesn't draw
+// it twice as often for drift too slow to see between frames.
+const SKY_EVERY = 1000 / 75;
 
 // How far the bank has closed in, and how far it has parted again.
 export type Veil = { cover: number; open: number };
@@ -57,13 +73,38 @@ export function Sky({
 
   useLayoutEffect(() => {
     const element = host.current!;
-    // Soft shapes only, so the sky draws at one pixel per CSS pixel.
-    const renderer = new WebGLRenderer({ antialias: false, alpha: true });
-    renderer.setPixelRatio(1);
+    // One canvas for the sky and the line in it. While the line is up the
+    // canvas runs at the screen's resolution, for the letters, and the sky
+    // is drawn off screen at its own detail and stretched over it; after,
+    // the canvas runs at the sky's detail and the sky draws straight on.
+    const renderer = new WebGLRenderer({
+      antialias: false,
+      alpha: true,
+      depth: false,
+      stencil: false,
+    });
+    const sharp = Math.min(2, window.devicePixelRatio);
+    renderer.setClearColor(0x000000, 0);
+    renderer.autoClear = false;
+    perf?.watch("sky", renderer);
     element.appendChild(renderer.domElement);
     const size = new Vector2(1, 1);
-    // The line in the sky, on its own sharper canvas over the sky's, while
-    // it's up; and where the pointer rests over it.
+    const isNight = time === "night";
+    let detail = isNight ? DETAIL.night : DETAIL.day;
+    const floor = isNight ? DETAIL.floor.night : DETAIL.floor.day;
+    perf?.note("sky detail", detail);
+    const drawn = new WebGLRenderTarget(1, 1, {
+      depthBuffer: false,
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+    });
+    const fitDrawn = () =>
+      drawn.setSize(
+        Math.max(1, Math.round(size.x * detail)),
+        Math.max(1, Math.round(size.y * detail)),
+      );
+    // The line in the sky, while it's up; and where the pointer rests
+    // over it.
     let writing: ReturnType<typeof createSkywriting> | null = null;
     let pointer: { x: number; y: number } | null = null;
     const point = (event: PointerEvent) => {
@@ -97,47 +138,95 @@ export function Sky({
     const geometry = new PlaneGeometry(2, 2);
     const scene = new Scene();
     scene.add(new Mesh(geometry, material));
+    scene.userData.pass = "sky";
+    const copy = new ShaderMaterial({
+      vertexShader: skyVertex,
+      fragmentShader: copyFragment,
+      blending: NoBlending,
+      depthTest: false,
+      depthWrite: false,
+      uniforms: { uSky: { value: drawn.texture } },
+    });
+    const copyScene = new Scene();
+    copyScene.add(new Mesh(geometry, copy));
+    copyScene.userData.pass = "sky:copy";
     const camera = new OrthographicCamera();
 
-    const isNight = time === "night";
     // Drift adds up frame by frame, so it holds while the sky is still.
     let drifted = 40;
     let last: number | null = null;
+    // When the sky was last drawn, and whether it must be drawn afresh.
+    let skyAt = -Infinity;
+    let stale = true;
+    // A second's frame times (ms), and how many seconds have run slow.
+    let frames: number[] = [];
+    let slow = 0;
+    const keepUp = (ms: number) => {
+      frames.push(ms);
+      if (frames.length < SLOW.frames) return;
+      frames.sort((a, b) => a - b);
+      slow = frames[SLOW.frames / 2]! > SLOW.ms ? slow + 1 : 0;
+      frames = [];
+      if (slow < SLOW.times || detail <= floor) return;
+      slow = 0;
+      detail = Math.max(floor, detail * COARSER);
+      perf?.note("sky detail", detail);
+      fitDrawn();
+      stale = true;
+    };
     draw.current = (time: number) => {
       const { uniforms } = material;
       const dt =
         still || last === null ? 0 : Math.min(0.1, (time - last) / 1000);
       drifted += dt * config.sky.drift;
       last = time;
+      if (dt > 0) keepUp(dt * 1000);
       const { veil, words: line } = latest.current.read(time);
       uniforms.uTime!.value = still ? 40 : 40 + time / 1000;
       uniforms.uDrift!.value = drifted;
       uniforms.uCover!.value = veil.cover;
       uniforms.uOpen!.value = veil.open;
-      renderer.render(scene, camera);
-      // Once the line has blown away it's gone for good, and so is its
-      // canvas.
+      const ratio = line ? sharp : detail;
+      if (renderer.getPixelRatio() !== ratio) {
+        renderer.setPixelRatio(ratio);
+        stale = true;
+      }
+      const due = still || stale || time - skyAt >= SKY_EVERY;
+      if (due) {
+        renderer.setRenderTarget(line ? drawn : null);
+        renderer.render(scene, camera);
+        skyAt = time;
+        stale = false;
+      }
+      // Once the line has blown away it's gone for good.
       if (!line) {
         writing?.dispose();
         writing = null;
         return;
       }
+      renderer.setRenderTarget(null);
+      renderer.render(copyScene, camera);
       if (!writing) {
-        writing = createSkywriting();
+        writing = createSkywriting(renderer, () => {
+          if (still) draw.current?.(performance.now());
+        });
         writing.resize(size.x, size.y);
-        element.appendChild(writing.canvas);
       }
-      writing.write(line.lines, size.x, size.y);
-      const breathed = writing.update({
-        width: size.x,
-        height: size.y,
-        form: line.form,
-        scatter: line.scatter,
-        drifted,
-        pointer,
-        dt,
-        night: isNight,
-      });
+      measure("skywriting:write", () =>
+        writing!.write(line.lines, size.x, size.y),
+      );
+      const breathed = measure("skywriting:update", () =>
+        writing!.update({
+          width: size.x,
+          height: size.y,
+          form: line.form,
+          scatter: line.scatter,
+          drifted,
+          pointer,
+          dt,
+          night: isNight,
+        }),
+      );
       latest.current.onBreathe?.(breathed, dt);
       writing.render();
     };
@@ -147,6 +236,8 @@ export function Sky({
       renderer.setSize(width, height);
       writing?.resize(width, height);
       size.set(width, height);
+      fitDrawn();
+      stale = true;
       draw.current?.(performance.now());
     };
     fit();
@@ -158,6 +249,8 @@ export function Sky({
       draw.current = null;
       geometry.dispose();
       material.dispose();
+      copy.dispose();
+      drawn.dispose();
       writing?.dispose();
       window.removeEventListener("pointermove", point);
       window.removeEventListener("pointerdown", point);

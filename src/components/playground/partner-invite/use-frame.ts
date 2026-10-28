@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import { perf } from "./perf";
 
 type Tick = (now: number) => void;
 
@@ -8,7 +9,10 @@ type Tick = (now: number) => void;
 const ticks = new Set<{ current: Tick }>();
 let frame = 0;
 const run = (now: number) => {
+  perf?.loop();
+  const started = performance.now();
   for (const tick of [...ticks]) tick.current(now);
+  perf?.frame(now, performance.now() - started);
   frame = ticks.size ? requestAnimationFrame(run) : 0;
 };
 

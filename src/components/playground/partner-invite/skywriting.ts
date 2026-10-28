@@ -9,14 +9,14 @@ import {
   InstancedBufferGeometry,
   LinearFilter,
   Mesh,
-  NoBlending,
   OneFactor,
+  OneMinusSrcAlphaFactor,
   OrthographicCamera,
   PlaneGeometry,
   RedFormat,
   Scene,
   ShaderMaterial,
-  WebGLRenderer,
+  type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
 import { random } from "./random";
@@ -38,9 +38,11 @@ import { SKY_HAND } from "./skywriting-font";
 // moment after it has passed. The thick of a stroke holds; its rims fly.
 //
 // Two passes: the puffs, free to drift anywhere, are summed into a soft
-// height field; then the field is lit and grained into cloud. It draws on
-// its own canvas at the screen's full resolution, over the sky (which
-// draws at one pixel per CSS pixel, too soft for letters).
+// height field; then the field is lit and grained into cloud. It draws
+// over the sky, on the sky's own canvas, at the screen's full resolution
+// (the sky itself is drawn smaller and stretched, too soft for letters).
+// Only the box the puffs fill is drawn, and while nothing is stirring them
+// they aren't worked out at all.
 
 // How far the trail reaches either side of the pen's stroke (em), and how
 // far apart the letters are spaced (em), so trails don't run together.
@@ -205,6 +207,8 @@ const compositeFragment = /* glsl */ `
   uniform sampler2D uField;
   uniform sampler2D uDistance;
   uniform vec2 uSize;
+  // The stage's size when the letters were laid out (px).
+  uniform vec2 uLaid;
   // The trail's reach either side of the stroke, and how far out the
   // distance is kept (px).
   uniform float uTrail;
@@ -221,7 +225,7 @@ const compositeFragment = /* glsl */ `
     vec4 field = texture2D(uField, vUv);
     float soft = uTrail * 0.12;
     float height = field.x > 1e-7 ? max(0.0, soft * log(field.x) + uTrail) : 0.0;
-    float far = texture2D(uDistance, (p - uRock) / uSize).r * uReach;
+    float far = texture2D(uDistance, (p - uRock) / uLaid).r * uReach;
     if (height <= 0.0 && far > uTrail * 1.8) discard;
 
     // Cotton: fine, fibrous grain all through it, frayed at the rims.
@@ -247,7 +251,7 @@ const compositeFragment = /* glsl */ `
 
     gl_FragColor = vec4(color, 1.0);
     #include <colorspace_fragment>
-    // The canvas composites premultiplied.
+    // Laid over the sky, premultiplied.
     gl_FragColor = vec4(gl_FragColor.rgb * alpha, alpha);
   }
 `;
@@ -261,13 +265,10 @@ type Puff = {
   mobility: number;
 };
 
-export function createSkywriting() {
-  const renderer = new WebGLRenderer({ antialias: false, alpha: true });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-  renderer.setClearColor(0x000000, 0);
-  const canvas = renderer.domElement;
-  canvas.style.position = "absolute";
-  canvas.style.inset = "0";
+// Draws with the sky's renderer, onto its canvas, after the sky. Calls
+// `onReady` once the hand it letters in has loaded, so a sky held still
+// knows to draw again.
+export function createSkywriting(renderer: WebGLRenderer, onReady: () => void) {
   const camera = new OrthographicCamera();
 
   // The puffs, summed into the field.
@@ -314,6 +315,7 @@ export function createSkywriting() {
   puffMesh.frustumCulled = false;
   const puffScene = new Scene();
   puffScene.add(puffMesh);
+  puffScene.userData.pass = "skywriting:target";
 
   // The field, lit and grained into cloud.
   const empty = new DataTexture(new Uint8Array(1), 1, 1, RedFormat);
@@ -321,13 +323,21 @@ export function createSkywriting() {
   const material = new ShaderMaterial({
     vertexShader: compositeVertex,
     fragmentShader: compositeFragment,
-    blending: NoBlending,
+    // Over the sky, premultiplied.
+    transparent: true,
+    blending: CustomBlending,
+    blendEquation: AddEquation,
+    blendSrc: OneFactor,
+    blendDst: OneMinusSrcAlphaFactor,
+    blendSrcAlpha: OneFactor,
+    blendDstAlpha: OneMinusSrcAlphaFactor,
     depthTest: false,
     depthWrite: false,
     uniforms: {
       uField: { value: field.texture },
       uDistance: { value: empty },
       uSize: { value: [1, 1] },
+      uLaid: { value: [1, 1] },
       uTrail: { value: 1 },
       uReach: { value: 1 },
       uForm: { value: 0 },
@@ -342,6 +352,9 @@ export function createSkywriting() {
   mesh.frustumCulled = false;
   const scene = new Scene();
   scene.add(mesh);
+  scene.userData.pass = "skywriting";
+  // For sizing the letters without laying them out.
+  const measuring = document.createElement("canvas").getContext("2d")!;
 
   let puffs: Puff[] = [];
   let state = new Float32Array(0);
@@ -366,11 +379,31 @@ export function createSkywriting() {
   // The letters' size (px), which the breath's reach is measured in.
   let stroke = 1;
   let written = "";
+  let loading = false;
+  // How the letters were laid out: on a mask this size, at this size; and
+  // how far the line has slid down since, when only the stage's height
+  // has changed.
+  let laid: {
+    lines: string;
+    width: number;
+    height: number;
+    fontSize: number;
+  } | null = null;
+  let lift = 0;
+  // How far a point is from the pen's stroke (px), on the line as laid.
+  let strokeAt = (_x: number, _y: number) => Infinity;
+  // Whether every puff sat still at home last frame, untouched.
+  let resting = false;
+  // The box the puffs fill at home, and where they've drifted to, before
+  // the line rocks (px); the biggest of them; and the stage and how far
+  // the line has rocked, as last drawn.
+  const box = { left: 0, top: 0, right: 0, bottom: 0 };
+  const filled = { ...box };
+  let biggest = 0;
+  const drawn = { width: 1, height: 1, rockX: 0, rockY: 0 };
 
   return {
-    canvas,
     resize(width: number, height: number) {
-      renderer.setSize(width, height);
       field.setSize(width, height);
     },
     // Letters the line, for a stage this size. Waits for the hand to load.
@@ -379,16 +412,43 @@ export function createSkywriting() {
       if (key === written || !width || !height) return;
       const face = `40px ${SKY_HAND}`;
       if (!document.fonts.check(face)) {
-        void document.fonts.load(face);
+        if (!loading) {
+          loading = true;
+          void document.fonts.load(face).then(() => {
+            loading = false;
+            onReady();
+          });
+        }
         return;
       }
       written = key;
       const scale = Math.max(1, width / MASK_WIDTH);
-      const mask = lettered(
-        lines,
-        Math.round(width / scale),
-        Math.round(height / scale),
-      );
+      const maskWidth = Math.round(width / scale);
+      const maskHeight = Math.round(height / scale);
+      // Only the stage's height changed (a phone's address bar, say) and
+      // the letters would come out the same size: the line slides to where
+      // it would be laid, rather than being laid out again.
+      const text = lines.join("\n");
+      if (
+        laid?.lines === text &&
+        laid.width === maskWidth &&
+        Math.abs(
+          letterSize(measuring, lines, maskWidth, maskHeight) / laid.fontSize -
+            1,
+        ) < 0.005
+      ) {
+        lift = (maskHeight - laid.height) * 0.4 * scale;
+        return;
+      }
+      const mask = lettered(lines, maskWidth, maskHeight);
+      laid = {
+        lines: text,
+        width: maskWidth,
+        height: maskHeight,
+        fontSize: mask.fontSize,
+      };
+      lift = 0;
+      material.uniforms.uLaid!.value = [maskWidth * scale, maskHeight * scale];
       stroke = mask.fontSize * scale;
       trail = stroke * LETTERING.trail;
       const reach = trail * REACH;
@@ -412,8 +472,7 @@ export function createSkywriting() {
       puffMaterial.uniforms.uTrail!.value = trail;
       puffMaterial.uniforms.uBillow!.value = trail * 0.4;
 
-      // How far a point is from the pen's stroke (px).
-      const strokeAt = (x: number, y: number) => {
+      strokeAt = (x: number, y: number) => {
         const mx = Math.min(mask.width - 1, Math.max(0, Math.round(x / scale)));
         const my = Math.min(
           mask.height - 1,
@@ -438,9 +497,10 @@ export function createSkywriting() {
 
       // Which puffs touch, found by sorting them into cells that size.
       const near = trail * TOUCHING;
-      const cells = new Map<string, number[]>();
+      const cells = new Map<number, number[]>();
+      const columns = Math.ceil(width / near) + 3;
       const cellOf = (x: number, y: number) =>
-        `${Math.floor(x / near)}:${Math.floor(y / near)}`;
+        (Math.floor(y / near) + 1) * columns + Math.floor(x / near) + 1;
       puffs.forEach((puff, index) => {
         const key = cellOf(puff.x, puff.y);
         const cell = cells.get(key);
@@ -473,15 +533,24 @@ export function createSkywriting() {
       heading = new Float32Array(puffs.length * 2);
       stirred = new Float32Array(puffs.length);
       aimed = new Float32Array(puffs.length * 2);
+      const placed = new Float32Array(puffs.length * 4);
+      box.left = box.top = Infinity;
+      box.right = box.bottom = -Infinity;
+      biggest = 0;
+      puffs.forEach((puff, index) => {
+        placed.set([puff.x, puff.y, puff.radius, puff.seed], index * 4);
+        box.left = Math.min(box.left, puff.x);
+        box.right = Math.max(box.right, puff.x);
+        box.top = Math.min(box.top, puff.y);
+        box.bottom = Math.max(box.bottom, puff.y);
+        biggest = Math.max(biggest, puff.radius);
+      });
+      Object.assign(filled, box);
+      resting = true;
       puffGeometry.instanceCount = puffs.length;
       puffGeometry.setAttribute(
         "puff",
-        new InstancedBufferAttribute(
-          new Float32Array(
-            puffs.flatMap((puff) => [puff.x, puff.y, puff.radius, puff.seed]),
-          ),
-          4,
-        ),
+        new InstancedBufferAttribute(placed, 4),
       );
       puffGeometry.setAttribute(
         "state",
@@ -521,8 +590,9 @@ export function createSkywriting() {
           trail *
           0.5 *
           (Math.sin(swayed * 0.23) + 0.4 * Math.sin(swayed * 0.61)),
-        y: trail * 0.2 * Math.sin(swayed * 0.31 + 1.3),
+        y: trail * 0.2 * Math.sin(swayed * 0.31 + 1.3) + lift,
       };
+      Object.assign(drawn, { width, height, rockX: rock.x, rockY: rock.y });
       for (const { uniforms } of [material, puffMaterial]) {
         uniforms.uSize!.value = [width, height];
         uniforms.uForm!.value = form;
@@ -552,6 +622,20 @@ export function createSkywriting() {
       );
       const sweepX = (motion.x / (Math.hypot(motion.x, motion.y) || 1)) * brisk;
       const sweepY = (motion.y / (Math.hypot(motion.x, motion.y) || 1)) * brisk;
+
+      // Every puff at home and nothing stirring, with no breath near enough
+      // the letters to reach one: nothing would move, so nothing is
+      // worked out, and the puffs stay as they were sent.
+      const within =
+        breathing &&
+        strokeAt(breathing.x - rock.x, breathing.y - rock.y) <
+          reach + trail * 1.5;
+      if (resting && scatter === 0 && !within) return 0;
+      let moving = 0;
+      let left = box.left;
+      let right = box.right;
+      let top = box.top;
+      let bottom = box.bottom;
 
       // The stir: where the pointer is, and passed on from the puffs each
       // one touches, fading. Each puff takes its heading from whichever
@@ -674,17 +758,51 @@ export function createSkywriting() {
         state[at + 2] = shiftY;
         velocity[index * 2] = speedX;
         velocity[index * 2 + 1] = speedY;
+        if (
+          stir[index]! > 0 ||
+          gone > 0 ||
+          Math.hypot(shiftX, shiftY) > 0.5 ||
+          Math.abs(speedX) + Math.abs(speedY) > 0.5
+        ) {
+          moving++;
+          left = Math.min(left, puff.x + shiftX);
+          right = Math.max(right, puff.x + shiftX);
+          top = Math.min(top, puff.y + shiftY);
+          bottom = Math.max(bottom, puff.y + shiftY);
+        }
       });
+      resting = moving === 0;
+      Object.assign(filled, { left, right, top, bottom });
       puffGeometry.getAttribute("state").needsUpdate = true;
       return breathed;
     },
+    // Draws the line over whatever the canvas holds: only inside the box
+    // its puffs fill, with room for the biggest swollen and billowing,
+    // and the haze round the strokes.
     render() {
-      if (mesh.visible) {
-        renderer.setRenderTarget(field);
-        renderer.render(puffScene, camera);
-        renderer.setRenderTarget(null);
-      }
+      if (!mesh.visible) return;
+      const extent = biggest * 1.6 + trail * 2.5;
+      const { width, height, rockX, rockY } = drawn;
+      const left = Math.max(0, Math.floor(filled.left + rockX - extent));
+      const right = Math.min(width, Math.ceil(filled.right + rockX + extent));
+      const top = Math.max(0, Math.floor(filled.top + rockY - extent));
+      const bottom = Math.min(
+        height,
+        Math.ceil(filled.bottom + rockY + extent),
+      );
+      if (right <= left || bottom <= top) return;
+      // The scissor counts up from the bottom.
+      const [x, y, w, h] = [left, height - bottom, right - left, bottom - top];
+      field.scissor.set(x, y, w, h);
+      field.scissorTest = true;
+      renderer.setRenderTarget(field);
+      renderer.clear();
+      renderer.render(puffScene, camera);
+      renderer.setRenderTarget(null);
+      renderer.setScissor(x, y, w, h);
+      renderer.setScissorTest(true);
       renderer.render(scene, camera);
+      renderer.setScissorTest(false);
     },
     dispose() {
       puffGeometry.dispose();
@@ -694,8 +812,6 @@ export function createSkywriting() {
       (material.uniforms.uDistance!.value as DataTexture).dispose();
       empty.dispose();
       material.dispose();
-      renderer.dispose();
-      canvas.remove();
     },
   };
 }
@@ -710,15 +826,9 @@ function lettered(lines: string[], width: number, height: number) {
   const pen = canvas.getContext("2d", { willReadFrequently: true })!;
   pen.fillStyle = "black";
   pen.fillRect(0, 0, width, height);
-  let fontSize = height * 0.25;
-  const type = () => {
-    pen.font = `${fontSize}px ${SKY_HAND}`;
-    pen.letterSpacing = `${fontSize * spacing}px`;
-  };
-  type();
-  const widest = Math.max(...lines.map((line) => pen.measureText(line).width));
-  fontSize *= Math.min(1, (width * 0.84) / widest);
-  type();
+  const fontSize = letterSize(pen, lines, width, height);
+  pen.font = `${fontSize}px ${SKY_HAND}`;
+  pen.letterSpacing = `${fontSize * spacing}px`;
   pen.fillStyle = "white";
   pen.textAlign = "center";
   pen.textBaseline = "middle";
@@ -736,6 +846,21 @@ function lettered(lines: string[], width: number, height: number) {
   const ink = new Uint8Array(width * height);
   for (let i = 0; i < ink.length; i++) ink[i] = pixels[i * 4]! > 110 ? 1 : 0;
   return { ink, width, height, fontSize };
+}
+
+// How big the line is lettered on a mask this size: a quarter of its
+// height, or smaller if that's too wide.
+function letterSize(
+  pen: CanvasRenderingContext2D,
+  lines: string[],
+  width: number,
+  height: number,
+) {
+  const fontSize = height * 0.25;
+  pen.font = `${fontSize}px ${SKY_HAND}`;
+  pen.letterSpacing = `${fontSize * LETTERING.spacing}px`;
+  const widest = Math.max(...lines.map((line) => pen.measureText(line).width));
+  return fontSize * Math.min(1, (width * 0.84) / widest);
 }
 
 // How far each pixel is from the nearest inked one (px): an exact
