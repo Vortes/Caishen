@@ -8,7 +8,7 @@ import {
   type Texture,
   type Vector2,
 } from "three";
-import { config } from "./config";
+import { config, type Washi } from "./config";
 import { CARD, LANDING, type Point } from "./geometry";
 import { clamp, easeInOut, easeOut, lerp, smoothstep, span } from "./motion";
 import { createPaperMaterial } from "./paper-material";
@@ -21,7 +21,7 @@ import { timeline } from "./timeline";
 // the right rises toward you and curls, the left dips away, and the
 // halves part. Still curled, the right flap slides over the left and
 // flattens onto it as it lands, and the seal presses into the overlap.
-// Then your half is peeled off and lifts away, and Jordan's stays.
+// Then your half is peeled off and lifts away, and the sender's stays.
 
 const hw = CARD.width / 2;
 const hh = CARD.height / 2;
@@ -174,7 +174,7 @@ export const KEPT_BOX = {
   bottom: hh + 2,
 };
 const KEPT_MIDDLE = (KEPT_BOX.left + KEPT_BOX.right) / 2;
-// Jordan's half's box, fibers included, in card coordinates, where it lies
+// The sender's half's box, fibers included, in card coordinates, where it lies
 // on the bonded card.
 export const THEIRS_BOX = {
   left: -hw - 2 + config.seal.overlap / 2,
@@ -245,11 +245,11 @@ type Half = Mesh<BufferGeometry, ShaderMaterial> & {
   userData: { side: 1 | -1 };
 };
 
-export function createTornCard() {
+export function createTornCard(washi: Washi) {
   const group = new Group();
   group.matrixAutoUpdate = false;
   for (const side of [-1, 1] as const) {
-    const material = createPaperMaterial();
+    const material = createPaperMaterial(washi);
     material.transparent = true;
     material.uniforms.uTear!.value = 1;
     // The right flap tears toward you; it's the one on top when they bond.

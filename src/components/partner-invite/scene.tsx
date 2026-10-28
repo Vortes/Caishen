@@ -27,7 +27,7 @@ import { Filed, type Rect } from "./partner-mark";
 import { perf } from "./perf";
 import { Plane3D } from "./plane-3d";
 import { arrivalFrame, arrivalProgress, arrivalSeconds } from "./plane-motion";
-import { INVITE, PARTNER, PARTNER_FIRST_NAME } from "./print";
+import { firstName, INVITE, type Invitation } from "./print";
 import {
   arrivalTrack,
   bondTrack,
@@ -51,9 +51,7 @@ export type Phase =
   "invite" | "arrive" | "sign" | "bond" | "take" | "taking" | "done";
 
 const hh = CARD.height / 2;
-// The pen takes the pointer over more of the card than the line itself, so
-// a fingertip on a phone doesn't have to start inside a 55px strip.
-const PEN_AREA = { x: 10, y: -20, width: 270, height: 150 };
+const PEN_AREA = INVITE.pen.to;
 // What's in view before the stage has a size.
 const WHOLE_SCENE: View = { x: 0, y: 0, ...SCENE };
 
@@ -62,11 +60,13 @@ const WHOLE_SCENE: View = { x: 0, y: 0, ...SCENE };
 // moves in between is drawn on the frame loop from the `...At(now)`
 // functions below, by the sky, the 3D card, and the banner plane.
 export function Scene({
+  invitation,
   sky,
   reducedMotion,
   sound,
   onSettled,
 }: {
+  invitation: Invitation;
   sky: SkyTime;
   reducedMotion: boolean;
   // Null while sound is off.
@@ -97,7 +97,7 @@ export function Scene({
   // The step as last set, ahead of the page catching up with it.
   const latestPhase = useRef(phase);
   const [bondAt, setBondAt] = useState<number | null>(null);
-  // A picture of Jordan's half, for the Partner mark.
+  // A picture of the sender's half, for the Partner mark.
   const [mark, setMark] = useState<string | null>(null);
   useEffect(() => {
     if (mark) return () => URL.revokeObjectURL(mark);
@@ -122,6 +122,7 @@ export function Scene({
     return { x: at.x + config.seal.overlap / 2, y: at.y };
   };
   const pen = usePen({ toCard, sound });
+  const sender = firstName(invitation.from);
   const { strokes } = pen;
   const peel = usePeel({
     active: phase.name === "take",
@@ -145,8 +146,8 @@ export function Scene({
   // fit the stage, so not until it has a size.
   const lines =
     stageSize && stageSize.width < stageSize.height
-      ? [`${PARTNER_FIRST_NAME} sent`, "you something"]
-      : [`${PARTNER_FIRST_NAME} sent you`, "something"];
+      ? [`${sender} sent`, "you something"]
+      : [`${sender} sent you`, "something"];
 
   // Seconds into this step, since your half came free, and since the
   // clouds started closing.
@@ -214,7 +215,7 @@ export function Scene({
       sheetUp:
         phase.name === "bond" &&
         progressAt(elapsed).tear >= timeline.tear.shown,
-      // Your half gone, Jordan's hands over from 3D to its picture, which
+      // Your half gone, the sender's hands over from 3D to its picture, which
       // shrinks into the mark.
       filing: ended && sinceTaken >= ending.filedAt,
       revealed: phase.name === "done" && (reducedMotion || open > 0),
@@ -226,7 +227,7 @@ export function Scene({
   const [, setMomentKey] = useState("");
   const momentKey = useRef("");
 
-  // The torn card at a moment, from the tear until Jordan's half has been
+  // The torn card at a moment, from the tear until the sender's half has been
   // pictured for the mark. Taken, your half comes free and rises to you,
   // then is gone.
   const cardAt = (now: number): CardFrame | null => {
@@ -306,7 +307,7 @@ export function Scene({
     }
   }, !moment.settled);
 
-  // Where Jordan's half lies on the table, on screen.
+  // Where the sender's half lies on the table, on screen.
   const theirsRect = (): Rect => {
     const box = stage.current!.getBoundingClientRect();
     const { scale, view } = sceneFit(box.width, box.height);
@@ -322,13 +323,17 @@ export function Scene({
   if (phase.name === "arrive") {
     body = moment.landed && (
       <g transform={`translate(${LANDING.x} ${LANDING.y})`}>
-        <CardFace strokes={strokes} hint />
+        <CardFace invitation={invitation} strokes={strokes} hint />
       </g>
     );
   } else if (phase.name === "sign") {
     body = (
       <g transform={`translate(${LANDING.x} ${LANDING.y})`}>
-        <CardFace strokes={strokes} hint={strokes.length === 0} />
+        <CardFace
+          invitation={invitation}
+          strokes={strokes}
+          hint={strokes.length === 0}
+        />
         <rect
           className={styles.signZone}
           x={PEN_AREA.x}
@@ -349,7 +354,7 @@ export function Scene({
       phase.name === "bond" && !moment.sheetUp ? (
         // The printed card, until the 3D sheet has faded in over it.
         <g transform={`translate(${LANDING.x} ${LANDING.y})`}>
-          <CardFace strokes={strokes} />
+          <CardFace invitation={invitation} strokes={strokes} />
         </g>
       ) : (
         // The card itself is drawn in 3D; this is what the hand grabs.
@@ -423,8 +428,8 @@ export function Scene({
         role="img"
         aria-label={
           phase.name === "invite"
-            ? `${PARTNER_FIRST_NAME} sent you something`
-            : `${PARTNER} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`
+            ? `${sender} sent you something`
+            : `${invitation.from} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`
         }
       >
         {phase.name === "invite" && (
@@ -441,6 +446,7 @@ export function Scene({
       </svg>
       {!moment.settled && (
         <Plane3D
+          invitation={invitation}
           night={sky === "night"}
           plane={(now) =>
             phase.name === "arrive" ? arrivalFrame(timesAt(now).elapsed) : null

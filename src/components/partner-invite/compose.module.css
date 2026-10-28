@@ -1,0 +1,170 @@
+/* Writing the invitation, inside the Partner settings card. */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.title {
+  margin: 0;
+  font-size: inherit;
+  text-wrap: balance;
+}
+.hints {
+  display: grid;
+}
+.hints > * {
+  grid-area: 1 / 1;
+}
+.hints > :not([data-shown]) {
+  visibility: hidden;
+}
+/* Full bleed across the card, like the shell's settings divider; with the
+   gap, 14px clears it on each side. */
+.divider {
+  height: 1px;
+  margin: 2px calc(var(--space-card) * -1);
+  background: var(--border-subtle);
+}
+
+/* The card as the partner receives it, on a well so it reads as a preview. */
+.preview {
+  position: relative;
+  /* The sheet, the card, and the pad stack inside, never above the page. */
+  isolation: isolate;
+  aspect-ratio: var(--aspect);
+  border-radius: var(--radius-row);
+  background: var(--surface-group);
+  overflow: hidden;
+}
+/* Over the card a finger still scrolls the page; only the pad takes it. */
+.canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.pad {
+  position: absolute;
+  border-radius: var(--radius-row);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.pad:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.tools {
+  display: grid;
+  align-items: center;
+}
+.tools > * {
+  grid-area: 1 / 1;
+}
+.tools > :not([data-shown]) {
+  visibility: hidden;
+}
+/* Quiet buttons have no pill, so they need more room between them than
+   bordered ones. */
+.signTools {
+  display: flex;
+  gap: 16px;
+}
+
+/* The washi swatches. A swatch picker isn't in the system yet. */
+.papers {
+  /* A fieldset won't shrink below its content unless told to. */
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.paperLegend {
+  float: left;
+  margin-right: 4px;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  font-weight: 500;
+}
+.paperName {
+  /* Room for the longest name, so choosing one never rewraps the row. */
+  min-width: 9ch;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.swatches {
+  display: flex;
+}
+/* A 44px target around a 24px swatch. */
+.swatch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+.swatch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.dye {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 1px var(--border-subtle),
+    0 0 0 2px var(--surface-raised),
+    0 0 0 3.5px transparent;
+  transition:
+    box-shadow 150ms,
+    transform 150ms var(--ease-panel);
+}
+@media (hover: hover) {
+  .swatch:hover .dye {
+    transform: scale(1.08);
+  }
+}
+.swatch:active .dye {
+  transform: scale(0.96);
+}
+.swatch input:checked + .dye {
+  box-shadow:
+    inset 0 0 0 1px var(--border-subtle),
+    0 0 0 2px var(--surface-raised),
+    0 0 0 3.5px var(--text-primary);
+}
+.swatch input:focus-visible {
+  outline: none;
+}
+.swatch:has(input:focus-visible) .dye {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dye {
+    transition: none;
+  }
+}
+
+/* The actions sit under the divider: going back on the left, going on to
+   the right. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-gutter);
+}

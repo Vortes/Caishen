@@ -6,7 +6,7 @@ import {
   Vector3,
   Vector4,
 } from "three";
-import { config } from "./config";
+import { config, type Washi } from "./config";
 import { deckleMask } from "./deckle-mask";
 import { CARD } from "./geometry";
 import { sheetCreases } from "./harrier";
@@ -330,23 +330,31 @@ export function oklchLinear(l: number, c: number, h: number) {
   );
 }
 
-export function createPaperMaterial() {
+// Dyes the outside of the sheet.
+export function dyePaper(material: ShaderMaterial, { dye, ink }: Washi) {
+  material.uniforms.uDye!.value = oklchLinear(
+    dye.lightness,
+    dye.chroma,
+    dye.hue,
+  );
+  material.uniforms.uInk!.value = oklchLinear(
+    ink.lightness,
+    Math.min(dye.chroma, 0.1),
+    ink.hue,
+  );
+}
+
+export function createPaperMaterial(dyed: Washi) {
   const { washi, paper, plane } = config;
   const angle = (plane.light * Math.PI) / 180;
-  return new ShaderMaterial({
+  const material = new ShaderMaterial({
     vertexShader: vertex,
     fragmentShader: fragment,
     side: DoubleSide,
     uniforms: {
       uPaper: { value: oklchLinear(paper.lightness, paper.warmth, 80) },
-      uDye: { value: oklchLinear(washi.lightness, washi.chroma, washi.hue) },
-      uInk: {
-        value: oklchLinear(
-          washi.inkLightness,
-          Math.min(washi.chroma, 0.1),
-          washi.inkHue,
-        ),
-      },
+      uDye: { value: new Vector3() },
+      uInk: { value: new Vector3() },
       uGold: { value: oklchLinear(0.8, 0.12, 85) },
       uScale: { value: washi.scale },
       uFibers: { value: washi.fibers },
@@ -400,4 +408,6 @@ export function createPaperMaterial() {
       uDeckle: { value: deckleMask() },
     },
   });
+  dyePaper(material, dyed);
+  return material;
 }

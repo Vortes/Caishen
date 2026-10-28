@@ -191,7 +191,7 @@
   left: calc(12px + env(safe-area-inset-left, 0px));
 }
 
-/* The end of the invitation: Jordan's half filed away as the Partner mark,
+/* The end of the invitation: the sender's half filed away as the Partner mark,
    shown large enough to read against the sky. */
 .filed {
   position: absolute;

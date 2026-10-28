@@ -4,10 +4,20 @@ import { Volume2, VolumeOff } from "lucide-react";
 import { useState } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { IconButton } from "~/components/ui/icon-button";
+import { config } from "./config";
+import { signature } from "./ink";
+import { INVITE, type Invitation } from "./print";
 import { Scene } from "./scene";
 import type { SkyTime } from "./sky";
 import { useSound } from "./use-sound";
 import styles from "./lab.module.css";
+
+// Stand-in invitation for the playground.
+const invitation: Invitation = {
+  from: "Jordan Lee",
+  signature: signature(config.seed, "partner", INVITE.signed),
+  washi: "indigo",
+};
 
 export function PartnerInviteLab({ sky }: { sky: SkyTime }) {
   // On the onboarding, the invite and its sound are over.
@@ -18,6 +28,7 @@ export function PartnerInviteLab({ sky }: { sky: SkyTime }) {
   return (
     <>
       <Scene
+        invitation={invitation}
         sky={sky}
         reducedMotion={reducedMotion}
         sound={sound}

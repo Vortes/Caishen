@@ -5,10 +5,10 @@ import { harrierCreases } from "./harrier";
 import { strokeSegments, wetness, type Stroke } from "./ink";
 import {
   INVITE,
-  NAME_SIZE,
-  PARTNER,
-  PARTNER_FIRST_NAME,
-  PARTNER_STROKES,
+  lineLabels,
+  nameSize,
+  type Invitation,
+  type Viewer,
 } from "./print";
 import { useFrame } from "./use-frame";
 import styles from "./lab.module.css";
@@ -16,13 +16,22 @@ import styles from "./lab.module.css";
 // The invitation as printed on the flat card, in card coordinates: what
 // the 3D sheet hands over to once it lies flat, and what you sign.
 export function CardFace({
+  invitation,
   strokes,
   hint = false,
+  viewer = "partner",
 }: {
+  invitation: Invitation;
+  // The signature being drawn now.
   strokes: Stroke[];
-  // Whether to ask for your signature.
+  // Whether to ask for that signature.
   hint?: boolean;
+  // Who's signing: the sender on their line before the card is sent, or
+  // the partner on theirs once it arrives.
+  viewer?: Viewer;
 }) {
+  const line = INVITE.rule[viewer === "sender" ? "from" : "to"];
+  const [fromLabel, toLabel] = lineLabels(invitation, viewer);
   const id = useId();
   return (
     <g>
@@ -59,9 +68,9 @@ export function CardFace({
         x={INVITE.left}
         y={INVITE.name.y}
         className={styles.cardSentence}
-        style={{ fontSize: NAME_SIZE }}
+        style={{ fontSize: nameSize(invitation.from) }}
       >
-        {PARTNER}
+        {invitation.from}
       </Printed>
       {INVITE.sentence.lines.map((line, index) => (
         <Printed
@@ -74,7 +83,7 @@ export function CardFace({
         </Printed>
       ))}
 
-      {[INVITE.rule.partner, INVITE.rule.you].map(({ x1, x2 }) => (
+      {[INVITE.rule.from, INVITE.rule.to].map(({ x1, x2 }) => (
         <line
           key={x1}
           x1={x1}
@@ -87,18 +96,18 @@ export function CardFace({
         />
       ))}
       <Printed x={INVITE.left} y={INVITE.labels.y} className={styles.cardMeta}>
-        {PARTNER_FIRST_NAME}
+        {fromLabel}
       </Printed>
       <Printed
-        x={INVITE.rule.you.x1}
+        x={INVITE.rule.to.x1}
         y={INVITE.labels.y}
         className={styles.cardMeta}
       >
-        You
+        {toLabel}
       </Printed>
       {hint && (
         <text
-          x={(INVITE.rule.you.x1 + INVITE.rule.you.x2) / 2}
+          x={(line.x1 + line.x2) / 2}
           y={78}
           textAnchor="middle"
           className={styles.cardHint}
@@ -109,7 +118,7 @@ export function CardFace({
         </text>
       )}
 
-      {PARTNER_STROKES.map((stroke, index) => (
+      {invitation.signature.map((stroke, index) => (
         <Ink key={`p${index}`} stroke={stroke} />
       ))}
       {strokes.map((stroke, index) => (

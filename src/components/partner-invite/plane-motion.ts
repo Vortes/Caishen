@@ -40,7 +40,7 @@ const TRAIL_POINTS = 48;
 // Sheet (u across, v along, z) to card-centered world axes: the length
 // runs along x with the nose to the right, the center crease along y = 0.
 // prettier-ignore
-const sheet = new Matrix4().set(
+export const sheet = new Matrix4().set(
   0, 1, 0, -CARD.width / 2,
   -1, 0, 0, 0,
   0, 0, 1, 0,

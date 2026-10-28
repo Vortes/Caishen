@@ -135,7 +135,6 @@ export function AppShell({
   targetEditing,
   renameBudget,
   updatePreferences,
-  joinBlocked,
   reconciling,
   overlays,
 }: {
@@ -148,7 +147,6 @@ export function AppShell({
   // Returns why the rename can't run yet, or null once it's sent.
   renameBudget: (name: string) => string | null;
   updatePreferences?: UpdatePreferences;
-  joinBlocked?: string;
   reconciling: Reconciling;
   // Dialogs and the ToastRegion, rendered inside the themed root.
   overlays: ReactNode;
@@ -451,7 +449,9 @@ export function AppShell({
       // A popover handles its own keys; Escape there closes it and nothing else.
       if (
         event.target instanceof Element &&
-        event.target.closest('[role="dialog"], [role="menu"]')
+        event.target.closest(
+          '[role="dialog"], [role="alertdialog"], [role="menu"]',
+        )
       )
         return;
       if (settingsOpen) {
@@ -858,7 +858,7 @@ export function AppShell({
                       tabIndex={-1}
                     >
                       {settingsPage === "partner" ? (
-                        <PartnerSettings blocked={joinBlocked} />
+                        <PartnerSettings />
                       ) : settingsPage === "profile" ? (
                         <ProfileSettings
                           onRename={renameBudget}

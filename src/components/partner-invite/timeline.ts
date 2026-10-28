@@ -38,7 +38,7 @@ export const timeline = {
     shimmer: [0.8, 1.7],
     genie: { at: 1.8, seconds: 0.55 },
   },
-  // Jordan's half, filed away as the Partner mark: when it starts shrinking
+  // The sender's half, filed away as the Partner mark: when it starts shrinking
   // (after yours is gone), how long that takes, and how long the mark holds
   // before the clouds close.
   filed: { at: 0.15, duration: 0.8, hold: 1.6 },

@@ -1,40 +1,20 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
-import { api } from "~/trpc/react";
-import {
-  CodeDisplay,
-  CodeField,
-  isComplete,
-  useLock,
-} from "~/components/entry/invite-code";
+import { useUser } from "@clerk/nextjs";
+import { ComposeInvitation } from "~/components/partner-invite/compose";
 import { useShellData } from "~/components/app-shell/shell-data";
 import styles from "~/components/app-shell/shell.module.css";
 import additions from "~/components/entry/settings.module.css";
+import batch from "~/components/entry/entry.module.css";
 
-export function PartnerSettings({ blocked }: { blocked?: string } = {}) {
+export function PartnerSettings() {
   const { partner } = useShellData();
-  const id = useId();
-  const invite = api.budget.invite.useMutation();
-  const utils = api.useUtils();
-  const join = api.budget.join.useMutation({
-    onSuccess: async () => {
-      await utils.budget.invalidate();
-      window.location.reload();
-    },
-  });
-  const [code, setCode] = useState("");
-  const locked = useLock(join.error?.data?.code === "TOO_MANY_REQUESTS");
   return (
     <div className={styles.settingsPage}>
       <section className={styles.settingsSection} aria-label="Partner">
-        <p className={styles.settingsIntro}>
-          Share costs like rent with one partner. They see the purchases you
-          share with them and the payments between you; your categories, other
-          transactions, and balances stay private.
-        </p>
         <Card>
           {partner ? (
             <div className={styles.settingRow}>
@@ -50,88 +30,135 @@ export function PartnerSettings({ blocked }: { blocked?: string } = {}) {
               </div>
             </div>
           ) : (
-            <>
-              <div className={styles.settingRow}>
-                <div className={styles.settingText}>
-                  <span className={styles.settingLabel}>
-                    Invite your partner
-                  </span>
-                  <span className={styles.settingHint}>
-                    They enter the code in their own Caishen account. It works
-                    once and expires in 24 hours.
-                  </span>
-                  {invite.error && (
-                    <span className={styles.settingError} role="alert">
-                      {invite.error.message}
-                    </span>
-                  )}
-                </div>
-                {!invite.data && (
-                  <Button
-                    variant="primary"
-                    disabled={invite.isPending}
-                    onClick={() => invite.mutate()}
-                  >
-                    {invite.isPending ? "Creating code…" : "Create code"}
-                  </Button>
-                )}
-              </div>
-              {invite.data && (
-                <CodeDisplay
-                  code={invite.data.code}
-                  expires={new Intl.DateTimeFormat("en-US", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }).format(invite.data.expiresAt)}
-                  onNew={invite.isPending ? undefined : () => invite.mutate()}
-                />
-              )}
-              <div className={styles.settingDivider} />
-              <div className={styles.settingRow}>
-                <div className={styles.settingText}>
-                  <span className={styles.settingLabel}>
-                    Have your partner’s code?
-                  </span>
-                  <span className={styles.settingHint}>
-                    Connect your budgets while keeping personal spending
-                    private.
-                  </span>
-                  {blocked && (
-                    <span className={styles.settingHint}>{blocked}</span>
-                  )}
-                  <div className={additions.inlineForm}>
-                    <CodeField
-                      id={`${id}-join`}
-                      label="Invitation code"
-                      value={code}
-                      onChange={(next) => {
-                        setCode(next);
-                        join.reset();
-                      }}
-                      locked={locked}
-                      error={join.error?.message ?? null}
-                      action={
-                        <Button
-                          variant="primary"
-                          disabled={
-                            !isComplete(code) ||
-                            join.isPending ||
-                            Boolean(locked) ||
-                            Boolean(blocked)
-                          }
-                          onClick={() => join.mutate({ code })}
-                        >
-                          {join.isPending ? "Connecting…" : "Connect budgets"}
-                        </Button>
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            </>
+            <InviteByEmail />
           )}
         </Card>
       </section>
     </div>
+  );
+}
+
+// Invite a partner by email: they get the invitation the sender writes
+// here, and it plays when they open it.
+function InviteByEmail() {
+  const id = useId();
+  const { user } = useUser();
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [writing, setWriting] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const own = user?.emailAddresses.map((address) =>
+    address.emailAddress.toLowerCase(),
+  );
+  const from =
+    user?.fullName ??
+    user?.firstName ??
+    user?.primaryEmailAddress?.emailAddress;
+
+  const check = (value: string) => {
+    const address = value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
+      return "Enter your partner’s full email address, like name@example.com.";
+    if (own?.includes(address.toLowerCase()))
+      return "That’s your own email. Enter your partner’s.";
+    return null;
+  };
+
+  if (sent)
+    return (
+      <div className={styles.settingRow}>
+        <div className={styles.settingText}>
+          <span className={styles.settingLabel}>Invitation sent</span>
+          <span className={styles.settingHint}>
+            {sent} gets it by email. It brings them into your budget when they
+            open it.
+          </span>
+        </div>
+        <Button onClick={() => setSent(null)}>Cancel invitation</Button>
+      </div>
+    );
+
+  const field = (
+    <input
+      ref={input}
+      id={`${id}-email`}
+      className={batch.input}
+      // Alone in the row while writing, it takes the button's column too.
+      style={writing ? { gridColumn: "1 / -1" } : undefined}
+      type="email"
+      autoComplete="off"
+      spellCheck={false}
+      data-1p-ignore
+      value={email}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? `${id}-error` : undefined}
+      onChange={(event) => {
+        setEmail(event.target.value);
+        // Once wrong, it's checked as they fix it.
+        if (error) setError(check(event.target.value));
+      }}
+    />
+  );
+
+  return (
+    <>
+      <div className={styles.settingText}>
+        <span className={styles.settingLabel}>Invite your partner</span>
+        <form
+          className={additions.inlineForm}
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            const problem = check(email);
+            setError(problem);
+            if (!problem) setWriting(true);
+          }}
+        >
+          <div className={batch.field}>
+            <label className={batch.fieldLabel} htmlFor={`${id}-email`}>
+              Partner’s email
+            </label>
+            <div className={additions.joinRow}>
+              {field}
+              {/* While the invitation is being written, its Send is the
+                  card's one primary action. */}
+              {!writing && (
+                <Button type="submit" variant="primary" disabled={!from}>
+                  Write invitation
+                </Button>
+              )}
+            </div>
+            {error && (
+              <span id={`${id}-error`} className={styles.settingError}>
+                {error}
+              </span>
+            )}
+          </div>
+        </form>
+      </div>
+      {writing && from && (
+        <>
+          <div className={styles.settingDivider} />
+          <ComposeInvitation
+            from={from}
+            onCancel={() => setWriting(false)}
+            onSend={async () => {
+              const problem = check(email);
+              if (problem) {
+                setError(problem);
+                input.current?.focus();
+                return;
+              }
+              // Not wired to the server yet: the invitation isn't stored or
+              // emailed.
+              setWriting(false);
+              setSent(email.trim());
+              setEmail("");
+            }}
+          />
+        </>
+      )}
+    </>
   );
 }

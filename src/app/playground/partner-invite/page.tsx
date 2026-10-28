@@ -1,5 +1,5 @@
 import type { Viewport } from "next";
-import { PartnerInviteLab } from "~/components/playground/partner-invite/lab";
+import { PartnerInviteLab } from "~/components/partner-invite/lab";
 
 // The sky runs edge to edge under the notch and home indicator; the
 // signing buttons pad themselves back out with the safe-area insets.
