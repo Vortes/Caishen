@@ -1,5 +1,7 @@
 import { CanvasTexture, NoColorSpace } from "three";
-import { lerp, random, type Config } from "./config";
+import { config } from "./config";
+import { lerp } from "./motion";
+import { random } from "./random";
 import { oklchLinear } from "./paper-material";
 
 // The tally seal: a hanko stamped across both halves once they overlap.
@@ -8,21 +10,19 @@ import { oklchLinear } from "./paper-material";
 
 // Where the seal lands on the bonded card, and how the halves sit when it
 // does: a hand never stamps quite straight, or lays the halves quite level.
-export function sealPlacement(config: Config) {
-  const rng = random(config.seed, "seal");
-  return {
-    y: 34,
-    tilt: ((rng() - 0.5) * 8 * Math.PI) / 180,
-    drop: (rng() < 0.5 ? -1 : 1) * 4,
-  };
-}
+const placementRng = random(config.seed, "seal");
+export const sealPlacement = {
+  y: 34,
+  tilt: ((placementRng() - 0.5) * 8 * Math.PI) / 180,
+  drop: (placementRng() < 0.5 ? -1 : 1) * 4,
+};
 
 // The impression as masks, for the paper shader to ink: red is the field,
 // green where ink pooled, blue the gloss along the lit edges while wet.
 // Worn spots, where the stone didn't take ink, are missing from all three.
 // The texture spans twice the seal's size, centered on it.
 const RESOLUTION = 4;
-export function sealTexture(config: Config) {
+export function sealTexture() {
   const { size, wear } = config.seal;
   const { pool } = config.ink;
   const span = size * 2;
@@ -159,7 +159,7 @@ function wearNoise(seed: number, pixels: number, frequency: number) {
 }
 
 // Seal ink is darker and richer while wet, like the pen's.
-export function sealInk(config: Config, wet: number) {
+export function sealInk(wet: number) {
   const { hue, chroma } = config.accent;
   return {
     field: oklchLinear(lerp(0.56, 0.47, wet), chroma * lerp(1, 1.12, wet), hue),

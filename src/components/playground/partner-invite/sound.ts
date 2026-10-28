@@ -457,23 +457,6 @@ export function createSound() {
     nibUp() {
       nib.set(0);
     },
-    // "Sign for me": a few quick flourishes.
-    scribble() {
-      const at = now();
-      [0, 0.16, 0.3, 0.52].forEach((start, index) =>
-        burst({
-          at: at + start,
-          length: [0.15, 0.13, 0.2, 0.09][index]!,
-          filter: "bandpass",
-          frequency: 3600 + index * 500,
-          to: 5200,
-          q: 1.2,
-          gain: 0.14,
-          attack: 0.03,
-        }),
-      );
-    },
-
     // The tear, as fast as its tip runs (0 to 1 over `seconds`). Written
     // out sample by sample, then given the sheet's ring: paper rips in
     // runs of fibers snapping in quick succession, and the runs crowd

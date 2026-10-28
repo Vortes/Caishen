@@ -2,7 +2,6 @@
 
 import { useLayoutEffect, useMemo, useRef } from "react";
 import {
-  BufferAttribute,
   BufferGeometry,
   type Group,
   Mesh,
@@ -10,33 +9,29 @@ import {
   Scene,
   WebGLRenderer,
   type ShaderMaterial,
+  type Texture,
   Vector3,
 } from "three";
 import { createCloud, updateCloud } from "./cloud";
-import type { Config } from "./config";
 import { CAMERA_DISTANCE, LANDING, SCENE, sceneFit } from "./geometry";
 import { shapeSheet } from "./harrier";
-import { createPaperMaterial, updatePaperMaterial } from "./paper-material";
+import type { Stroke } from "./ink";
+import { createPaperMaterial } from "./paper-material";
 import type { PlaneFrame } from "./plane-motion";
 import { printTexture } from "./print";
 import { sealTexture } from "./seal";
 import {
+  THEIRS_BOX,
   cardOpacity,
   createTornCard,
   disposeTornCard,
-  joinedBox,
-  tearLine,
-  theirsBox,
   updateTornCard,
   type CardFrame,
 } from "./torn-card";
+import { useFrame } from "./use-frame";
 import { createVapor, updateVapor } from "./vapor";
+import { writeAttribute } from "./write-attribute";
 import styles from "./lab.module.css";
-
-// The bonded card's halves, pictured apart in the same box, so laid one
-// over the other they make the whole card again; and Jordan's on its own,
-// cropped to its box, for the Partner mark.
-export type Halves = { yours: string; theirs: string; mark: string };
 
 // The camera sits straight above the middle of the scene, at a distance
 // where the z = 0 plane lines up with the SVG drawn underneath.
@@ -49,24 +44,30 @@ type Three = {
   vapor: Mesh<BufferGeometry, ShaderMaterial>;
   cloud: Mesh<BufferGeometry, ShaderMaterial>;
   card: Group;
+  seal: Texture;
 };
 
 export function Plane3D({
-  config,
   night,
-  frame,
-  card,
+  plane,
+  card: cardAt,
+  strokes,
+  inkAt,
   onKeepsake,
 }: {
-  config: Config;
   night: boolean;
-  frame: PlaneFrame | null;
-  // The torn and bonded card, from the tear until your half is put away.
-  card: CardFrame | null;
-  // Called once, as soon as the card is bonded, with pictures of each half
-  // on its own, flat and lit as they are here, to carry into the next
-  // screen.
-  onKeepsake?: (halves: Halves) => void;
+  // The paper plane at a moment, while it flies in and unfolds.
+  plane: (now: number) => PlaneFrame | null;
+  // The torn and bonded card at a moment, from the tear until your half is
+  // put away.
+  card: (now: number) => CardFrame | null;
+  // Your signature, and when the card was printed with it (the bond), so
+  // the torn card carries it as wet as it was then.
+  strokes: Stroke[];
+  inkAt: number | null;
+  // Called once, as soon as the card is bonded, with a picture of Jordan's
+  // half on its own, flat and lit as it is here, for the Partner mark.
+  onKeepsake?: (mark: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const three = useRef<Three | null>(null);
@@ -83,6 +84,9 @@ export function Plane3D({
     const camera = new PerspectiveCamera(30, 1, 200, 60000);
     const geometry = new BufferGeometry();
     const mesh = new Mesh(geometry, createPaperMaterial());
+    const print = printTexture();
+    mesh.material.uniforms.uPrint!.value = print;
+    const seal = sealTexture();
     mesh.matrixAutoUpdate = false;
     mesh.frustumCulled = false;
     const scene = new Scene();
@@ -98,6 +102,7 @@ export function Plane3D({
       vapor,
       cloud,
       card: torn,
+      seal,
     };
 
     const fit = () => {
@@ -125,87 +130,55 @@ export function Plane3D({
       cloud.geometry.dispose();
       cloud.material.dispose();
       disposeTornCard(torn);
+      print.dispose();
+      seal.dispose();
       renderer.dispose();
       renderer.domElement.remove();
       three.current = null;
     };
   }, []);
 
-  // The print only changes with the seed, paper, and ink.
-  const printKey = JSON.stringify([config.seed, config.paper, config.ink]);
-  const print = useMemo(
-    () => (typeof document === "undefined" ? null : printTexture(config)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [printKey],
-  );
-  useLayoutEffect(() => {
-    if (!print || !three.current) return;
-    three.current.mesh.material.uniforms.uPrint!.value = print;
-    return () => print.dispose();
-  }, [print]);
-
   // The torn card's print carries the user's signature, as of the tear.
-  const inkAt = card?.inkAt ?? null;
-  const strokes = card?.strokes;
   const cardPrint = useMemo(
-    () =>
-      inkAt === null || !strokes ? null : printTexture(config, strokes, inkAt),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inkAt, strokes, printKey],
+    () => (inkAt === null ? null : printTexture(strokes, inkAt)),
+    [inkAt, strokes],
   );
   useLayoutEffect(() => () => cardPrint?.dispose(), [cardPrint]);
-  const sealKey = JSON.stringify([config.seed, config.seal, config.ink.pool]);
-  const seal = useMemo(
-    () => (typeof document === "undefined" ? null : sealTexture(config)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sealKey],
-  );
-  useLayoutEffect(() => () => seal?.dispose(), [seal]);
-  const line = useMemo(
-    () => tearLine(config),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [config.seed, config.tear.ragged],
-  );
 
-  useLayoutEffect(() => {
+  useFrame((now) => {
     const current = three.current;
     if (!current) return;
+    const frame = plane(now);
+    const card = cardAt(now);
     const canvas = current.renderer.domElement;
     if (
       card &&
       cardPrint &&
-      seal &&
       onKeepsake &&
       !keepsakeTaken.current &&
       card.bond >= 1
     ) {
       keepsakeTaken.current = true;
-      const pose = (shown: CardFrame["shown"]) => () =>
-        updateTornCard(current.card, config, line, cardPrint, seal, {
+      const theirsAlone = () =>
+        updateTornCard(current.card, cardPrint, current.seal, {
           ...card,
           sealWet: 0,
           peels: [],
           keep: null,
-          shown,
+          shown: 0,
           shimmer: -1,
           genie: null,
         });
-      const box = joinedBox(config);
-      const theirs = pose({ yours: 0, theirs: 1 });
-      onKeepsake({
-        yours: pictureCard(current, pose({ yours: 1, theirs: 0 }), box),
-        theirs: pictureCard(current, theirs, box),
-        mark: pictureCard(current, theirs, theirsBox(config)),
-      });
+      onKeepsake(pictureCard(current, theirsAlone, THEIRS_BOX));
     }
-    if (card && cardPrint && seal && cardOpacity(card) > 0) {
+    if (card && cardPrint && cardOpacity(card) > 0) {
       canvas.style.visibility = "visible";
       canvas.style.opacity = String(cardOpacity(card));
       current.mesh.visible = false;
       current.vapor.visible = false;
       current.cloud.visible = false;
       current.card.visible = true;
-      updateTornCard(current.card, config, line, cardPrint, seal, card);
+      updateTornCard(current.card, cardPrint, current.seal, card);
       current.renderer.render(current.scene, current.camera);
       return;
     }
@@ -218,28 +191,14 @@ export function Plane3D({
     canvas.style.visibility = "visible";
     canvas.style.opacity = String(frame.opacity);
     const { positions, rests } = shapeSheet(frame.shape);
-    const geometry = current.mesh.geometry;
-    geometry.setAttribute(
-      "position",
-      new BufferAttribute(new Float32Array(positions), 3),
-    );
-    geometry.setAttribute(
-      "rest",
-      new BufferAttribute(new Float32Array(rests), 2),
-    );
+    writeAttribute(current.mesh.geometry, "position", positions, 3);
+    writeAttribute(current.mesh.geometry, "rest", rests, 2);
     current.mesh.matrix.copy(frame.matrix);
     current.mesh.matrixWorldNeedsUpdate = true;
-    updatePaperMaterial(current.mesh.material, config);
-    updateVapor(current.vapor, frame.trails, config, current.camera.position);
+    updateVapor(current.vapor, frame.trails, current.camera.position);
     current.cloud.matrix.copy(frame.cloud.matrix);
     current.cloud.matrixWorldNeedsUpdate = true;
-    updateCloud(
-      current.cloud,
-      config,
-      frame.cloud.poof,
-      frame.cloud.gather,
-      night,
-    );
+    updateCloud(current.cloud, frame.cloud.poof, frame.cloud.gather, night);
     current.renderer.render(current.scene, current.camera);
   });
 

@@ -1,4 +1,6 @@
-import { clamp, lerp, random, type Config } from "./config";
+import { config } from "./config";
+import { clamp, lerp } from "./motion";
+import { random } from "./random";
 
 // A pen stroke in card coordinates; t is milliseconds since the pen went
 // down. `dried` is when the pen lifted (performance.now()), or 0 for ink
@@ -9,14 +11,14 @@ export type Stroke = {
 };
 
 // How wet a stroke still is, 1 while drawing down to 0 once dry.
-export function wetness(stroke: Stroke, now: number, config: Config) {
+export function wetness(stroke: Stroke, now: number) {
   if (stroke.dried === 0) return 0;
   if (stroke.dried < 0) return 1;
   return 1 - clamp((now - stroke.dried) / (config.ink.dry * 1000));
 }
 
 // Slow pen, wide line; fast pen, thin line. Smoothed so width never jumps.
-export function strokeSegments(stroke: Stroke, config: Config) {
+export function strokeSegments(stroke: Stroke) {
   const { thin, thick } = config.ink;
   const segments: {
     x1: number;
@@ -38,7 +40,7 @@ export function strokeSegments(stroke: Stroke, config: Config) {
 
 // A loopy signature from a prolate cycloid, one loop per letter, with a
 // capital up front and an underline flourish. Seeded, so the partner signs
-// the same way every time for the same config.
+// the same way every time.
 export function signature(
   seed: number,
   salt: string,

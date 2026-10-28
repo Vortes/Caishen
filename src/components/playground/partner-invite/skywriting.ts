@@ -19,8 +19,8 @@ import {
   WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
-import { random } from "./config";
-import { FACES, type Face } from "./skywriting-faces";
+import { random } from "./random";
+import { SKY_HAND } from "./skywriting-font";
 
 // A line skywritten in cloud. A plane lays one trail of smoke, an even
 // width all along, so the line is lettered in a plain, even-stroked hand
@@ -42,15 +42,9 @@ import { FACES, type Face } from "./skywriting-faces";
 // its own canvas at the screen's full resolution, over the sky (which
 // draws at one pixel per CSS pixel, too soft for letters).
 
-// How the line is lettered: in which hand, in capitals or not, how far
-// the trail reaches either side of the pen's stroke (em), and how far
-// apart the letters are spaced (em), so trails don't run together.
-export type Lettering = {
-  face: Face;
-  capitals: boolean;
-  trail: number;
-  spacing: number;
-};
+// How far the trail reaches either side of the pen's stroke (em), and how
+// far apart the letters are spaced (em), so trails don't run together.
+const LETTERING = { trail: 0.068, spacing: 0.11 };
 
 // How the pointer breathes the line away, and how it heals.
 //
@@ -62,25 +56,22 @@ export type Lettering = {
 // `sweep` times as much the way the pointer is moving, slowed by `drag`.
 // The stir fades over `linger` seconds; a puff's heading turns toward
 // the breath at `turn` a second, slower the faster it's already going.
-// After `delay` seconds' rest it's drawn back: a spring of `home`, turned
-// sideways by `swirl` (each puff its own way round) and wandering up to
+// Left alone it's drawn back: a spring of `home`, wandering up to
 // `wander` px/s², overshooting a touch, thickening back up `thicken` times
 // as fast as it would on its own as it nears its place.
-export type Breath = {
-  reach: number;
-  spread: number;
-  strength: number;
-  depth: number;
-  push: number;
-  sweep: number;
-  drag: number;
-  linger: number;
-  turn: number;
-  delay: number;
-  home: number;
-  swirl: number;
-  wander: number;
-  thicken: number;
+const BREATH = {
+  reach: 1.63,
+  spread: 0.5,
+  strength: 0.2,
+  depth: 0.1,
+  push: 520,
+  sweep: 0.9,
+  drag: 3.8,
+  linger: 0.58,
+  turn: 30,
+  home: 7.7,
+  wander: 200,
+  thicken: 3.3,
 };
 
 // The letters are measured out on a mask at most this wide.
@@ -270,8 +261,6 @@ type Puff = {
   mobility: number;
 };
 
-export type Skywriting = ReturnType<typeof createSkywriting>;
-
 export function createSkywriting() {
   const renderer = new WebGLRenderer({ antialias: false, alpha: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
@@ -356,9 +345,8 @@ export function createSkywriting() {
 
   let puffs: Puff[] = [];
   let state = new Float32Array(0);
-  // Each puff's drift speed (px/s), and seconds since it was breathed on.
+  // Each puff's drift speed (px/s).
   let velocity = new Float32Array(0);
-  let rested = new Float32Array(0);
   // How stirred each puff is, and which way the breath carries it.
   let stir = new Float32Array(0);
   let heading = new Float32Array(0);
@@ -382,10 +370,10 @@ export function createSkywriting() {
       field.setSize(width, height);
     },
     // Letters the line, for a stage this size. Waits for the hand to load.
-    write(lines: string[], width: number, height: number, look: Lettering) {
-      const key = `${lines.join("\n")}:${width}x${height}:${JSON.stringify(look)}`;
+    write(lines: string[], width: number, height: number) {
+      const key = `${lines.join("\n")}:${width}x${height}`;
       if (key === written || !width || !height) return;
-      const face = `40px ${FACES[look.face]}`;
+      const face = `40px ${SKY_HAND}`;
       if (!document.fonts.check(face)) {
         void document.fonts.load(face);
         return;
@@ -393,13 +381,12 @@ export function createSkywriting() {
       written = key;
       const scale = Math.max(1, width / MASK_WIDTH);
       const mask = lettered(
-        look.capitals ? lines.map((line) => line.toUpperCase()) : lines,
+        lines,
         Math.round(width / scale),
         Math.round(height / scale),
-        look,
       );
       stroke = mask.fontSize * scale;
-      trail = stroke * look.trail;
+      trail = stroke * LETTERING.trail;
       const reach = trail * REACH;
       const far = distances(mask.ink, mask.width, mask.height);
       const data = new Uint8Array(far.length);
@@ -478,7 +465,6 @@ export function createSkywriting() {
 
       state = new Float32Array(puffs.length * 3);
       velocity = new Float32Array(puffs.length * 2);
-      rested = new Float32Array(puffs.length).fill(Infinity);
       stir = new Float32Array(puffs.length);
       heading = new Float32Array(puffs.length * 2);
       puffGeometry.instanceCount = puffs.length;
@@ -510,7 +496,6 @@ export function createSkywriting() {
       pointer,
       dt,
       night,
-      breath,
     }: {
       width: number;
       height: number;
@@ -520,7 +505,6 @@ export function createSkywriting() {
       pointer: { x: number; y: number } | null;
       dt: number;
       night: boolean;
-      breath: Breath;
     }) {
       // It stays where it was written but sways in the breeze the clouds
       // drift on: the whole line rocks a little, slow and uneven, and its
@@ -544,7 +528,7 @@ export function createSkywriting() {
       mesh.visible = form > 0 && puffs.length > 0;
       if (!mesh.visible) return 0;
 
-      const reach = stroke * breath.reach;
+      const reach = stroke * BREATH.reach;
       const typical = (stroke * 0.2) ** 2;
       clock += dt;
       let breathed = 0;
@@ -567,7 +551,7 @@ export function createSkywriting() {
       // one touches, fading. Each puff takes its heading from whichever
       // stirred it most: the pointer, pushing away and along its sweep,
       // or the neighbor it caught the stir from.
-      const fade = Math.exp(-dt / Math.max(0.01, breath.linger));
+      const fade = Math.exp(-dt / Math.max(0.01, BREATH.linger));
       const stirred = new Float32Array(stir.length);
       const aimed = new Float32Array(heading.length);
       if (scatter === 0)
@@ -582,13 +566,13 @@ export function createSkywriting() {
             const direct = Math.max(0, 1 - distance / reach) ** 2;
             if (direct > most) {
               most = direct;
-              aimX = dx / (distance || 1) + breath.sweep * sweepX;
-              aimY = dy / (distance || 1) + breath.sweep * sweepY;
+              aimX = dx / (distance || 1) + BREATH.sweep * sweepX;
+              aimY = dy / (distance || 1) + BREATH.sweep * sweepY;
             }
           }
           for (let k = touching[index]!; k < touching[index + 1]!; k++) {
             const other = neighbors[k]!;
-            const passed = stir[other]! * breath.spread;
+            const passed = stir[other]! * BREATH.spread;
             if (passed > most) {
               most = passed;
               aimX = heading[other * 2]!;
@@ -599,7 +583,7 @@ export function createSkywriting() {
           // Already on the move, it comes round more slowly.
           const going =
             Math.hypot(velocity[index * 2]!, velocity[index * 2 + 1]!) / stroke;
-          const turn = 1 - Math.exp((-dt * breath.turn) / (1 + going));
+          const turn = 1 - Math.exp((-dt * BREATH.turn) / (1 + going));
           const length = Math.hypot(aimX, aimY) || 1;
           const wasX = heading[index * 2]!;
           const wasY = heading[index * 2 + 1]!;
@@ -623,20 +607,18 @@ export function createSkywriting() {
         let pushY = 0;
         // Stirred: it thins, carried the way the breath is going, the thick
         // of the stroke less than its rims.
-        const touched = stir[index]! > 0.05;
         if (stir[index]! > 0) {
           const near = stir[index]! * puff.mobility;
           const more = Math.max(
             0,
-            Math.min(breath.depth - gone, near * breath.strength * dt),
+            Math.min(BREATH.depth - gone, near * BREATH.strength * dt),
           );
           gone += more;
           breathed += more * size;
-          const push = breath.push * near;
+          const push = BREATH.push * near;
           pushX += heading[index * 2]! * push;
           pushY += heading[index * 2 + 1]! * push;
         }
-        rested[index] = touched ? 0 : rested[index]! + dt;
         const away = Math.hypot(shiftX, shiftY);
         let pullX = 0;
         let pullY = 0;
@@ -653,32 +635,28 @@ export function createSkywriting() {
           if (gone > LOOSE) gone = Math.min(1, gone + FADE * dt);
           const gust = GUST * (0.25 * scatter + torn) * (0.6 + 0.8 * puff.seed);
           pullX =
-            -gust + breath.wander * Math.sin(clock * 1.7 + puff.seed * 40);
+            -gust + BREATH.wander * Math.sin(clock * 1.7 + puff.seed * 40);
           pullY =
             -0.25 * gust +
-            breath.wander * Math.cos(clock * 1.3 + puff.seed * 23);
-        } else if (rested[index] >= breath.delay && (away > 0.5 || gone > 0)) {
-          // Home: a spring toward its place, turned a little sideways (each
-          // puff its own way round) and wandering, more the further out.
-          const spin = puff.seed < 0.5 ? -1 : 1;
+            BREATH.wander * Math.cos(clock * 1.3 + puff.seed * 23);
+        } else if (away > 0.5 || gone > 0) {
+          // Home: a spring toward its place, wandering more the further out.
           const out = Math.min(1, away / stroke);
           pullX =
-            -breath.home * shiftX -
-            spin * breath.swirl * breath.home * shiftY +
-            breath.wander * out * Math.sin(clock * 1.3 + puff.seed * 40);
+            -BREATH.home * shiftX +
+            BREATH.wander * out * Math.sin(clock * 1.3 + puff.seed * 40);
           pullY =
-            -breath.home * shiftY +
-            spin * breath.swirl * breath.home * shiftX +
-            breath.wander * out * Math.cos(clock * 1.1 + puff.seed * 23);
+            -BREATH.home * shiftY +
+            BREATH.wander * out * Math.cos(clock * 1.1 + puff.seed * 23);
           // Thickening back up as it nears its place.
           const close = 1 - out;
           gone = Math.max(
             0,
-            gone - dt * breath.thicken * (0.12 + 0.75 * close * close),
+            gone - dt * BREATH.thicken * (0.12 + 0.75 * close * close),
           );
         }
-        speedX += (pushX + pullX - breath.drag * speedX) * dt;
-        speedY += (pushY + pullY - breath.drag * speedY) * dt;
+        speedX += (pushX + pullX - BREATH.drag * speedX) * dt;
+        speedY += (pushY + pullY - BREATH.drag * speedY) * dt;
         shiftX += speedX * dt;
         shiftY += speedY * dt;
         state[at] = gone;
@@ -714,12 +692,8 @@ export function createSkywriting() {
 
 // The line, inked white on black into a mask the shape of the stage, as
 // big as fits with room for the trail, in the upper middle of the sky.
-function lettered(
-  lines: string[],
-  width: number,
-  height: number,
-  { face, spacing }: Lettering,
-) {
+function lettered(lines: string[], width: number, height: number) {
+  const { spacing } = LETTERING;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -728,7 +702,7 @@ function lettered(
   pen.fillRect(0, 0, width, height);
   let fontSize = height * 0.25;
   const type = () => {
-    pen.font = `${fontSize}px ${FACES[face]}`;
+    pen.font = `${fontSize}px ${SKY_HAND}`;
     pen.letterSpacing = `${fontSize * spacing}px`;
   };
   type();

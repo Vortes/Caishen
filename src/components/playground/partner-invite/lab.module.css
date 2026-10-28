@@ -20,8 +20,8 @@
   overscroll-behavior: contain;
   /* Flying down through the parting clouds, what's underneath comes up to
      meet you. It mounts as the parting starts; the delay picks the moment. */
-  animation: arrive var(--arrive-duration) cubic-bezier(0.32, 0.72, 0, 1)
-    var(--arrive-delay) both;
+  animation: arrive var(--arrive-duration) var(--ease-panel) var(--arrive-delay)
+    both;
 }
 @keyframes arrive {
   from {
@@ -91,7 +91,7 @@
   }
 }
 
-/* Matches SENTENCE_SIZE in print.ts. */
+/* print.ts sets the 3D card's sentence at the same size. */
 .cardSentence {
   font-family: ui-serif, Georgia, serif;
   font-size: 24px;
@@ -191,7 +191,6 @@
   left: calc(12px + env(safe-area-inset-left, 0px));
 }
 
-/* The half you kept, beside the welcome. Unseen until it arrives. */
 /* The end of the invitation: Jordan's half filed away as the Partner mark,
    shown large enough to read against the sky. */
 .filed {
@@ -239,27 +238,5 @@
 .filedPicture {
   position: fixed;
   transform-origin: top left;
-  filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.18));
-}
-/* The mock app sits in the stage, not the window. */
-.registerShell {
-  position: absolute;
-}
-@media (max-width: 699px) {
-  .registerShell .registerSidebar {
-    display: none;
-  }
-}
-.bondPaper {
-  position: relative;
-  max-width: 100%;
-  margin: 0 auto;
-}
-.bondPaper img {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
   filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.18));
 }
