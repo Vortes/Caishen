@@ -37,33 +37,20 @@ import { arrivalFrame, arrivalProgress, arrivalSeconds } from "./plane-motion";
 import {
   SHOWN,
   STAMP,
+  KEPT_BOX,
   fullReach,
   keptFrom,
+  peelShift,
   theirsBox,
   type CardFrame,
-  type Kept,
   type Peel,
 } from "./torn-card";
-import { Filed, PartnerPage, type Rect } from "./partner-mark";
+import { Filed, type Rect } from "./partner-mark";
 import { INVITE, PARTNER, PARTNER_SIGNATURE, nameSize } from "./print";
 import { Sky, type SkyTime, type Veil } from "./sky";
 import styles from "./lab.module.css";
 
-// Holds a moment, for study: a fraction of the arrival, or of the tear
-// that opens the bond; or, for the ending, a time in seconds since your
-// half came free.
-export type Scrub = { phase: "arrive" | "bond" | "ending"; at: number };
-
-export type Phase =
-  | "arrive"
-  | "sign"
-  | "bond"
-  | "take"
-  | "taking"
-  | "done"
-  // Not a step: the app's Partner page, for a look at where the bond is
-  // kept.
-  | "partner";
+type Phase = "arrive" | "sign" | "bond" | "take" | "taking" | "done";
 
 const hh = CARD.height / 2;
 // Once stamped, your half's corner curls back to show it peels, a beat
@@ -80,35 +67,28 @@ const FLICK = { after: 1.6, every: 3.5, count: 3, rise: 0.16, lift: 0.4 };
 const SNAP = { seconds: 0.1, flat: 0.18, curl: 0.25, bounce: 0.45 };
 // How far from the curled corner a grab still takes hold of the curl.
 const CURL_GRIP = 60;
-// Taken with the button, the corner is flicked off this fast (px/s), as a
-// let-go hand would.
-const FLICK_OFF = 900;
+// However hard it was pulled, the follow-through stays a flick (px/s).
+const THROW_LIMIT = 2000;
 // Once started, a peel comes away more easily than it began: past the
 // pull, the tip gains on the finger. Nothing lets go while it's held: all
 // the way off, the half just hangs from the finger until it's let go.
 const EASIER = 1.5;
-// Free, your half uncurls as it rises toward you, the peel rolling back out
-// of it until it lies flat and face up. It's held a moment for a sheen of
-// light to sweep across it once, then poured down into the bottom of the
-// screen, the way a window goes into the Dock. Once it's gone, Jordan's,
+// Free, your half carries on the way it was pulled, as fast as it was
+// going, while the peel rolls back out of it and it rises toward you, flat
+// and face up. It's held a moment for a sheen of light to sweep across it
+// once, then poured down into the bottom of the screen, the way a window
+// goes into the Dock. Once it's gone, Jordan's,
 // left on the table, shrinks down into the Partner mark, which holds a
 // beat; the clouds close over it, hold, and part slowly to show the
 // onboarding.
 const KEEP_LIFT = 280;
+// How far inside the screen's edge your half comes to rest, at the least.
+const KEEP_MARGIN = 48;
 const KEEP_SECONDS = 0.9;
 const UNCURL_SECONDS = 0.8;
 const SHIMMER = [0.8, 1.7] as const;
 const GENIE = { at: 1.8, seconds: 0.55 };
 const GONE = GENIE.at + GENIE.seconds;
-// From your half coming free to the clouds having parted.
-export const endingSeconds = (config: Config) =>
-  GONE +
-  config.filed.at +
-  config.filed.duration +
-  config.filed.hold +
-  config.veil.partAt +
-  config.veil.part;
-const SIGN_ZONE = { x: 30, y: 6, width: 230, height: 88 };
 // The pen takes the pointer over more of the card than the line itself, so
 // a fingertip on a phone doesn't have to start inside a 55px strip.
 const PEN_AREA = { x: 10, y: -20, width: 270, height: 150 };
@@ -126,7 +106,7 @@ type Curl =
     }
   | "held";
 
-// The peel that freed your half, and how fast it was going.
+// The peel that freed your half, and how fast its tip was going (px/s).
 type Thrown = Peel & { velocity: number };
 
 // A flick of the corner: up fast, then settling slowly, like paper let go.
@@ -172,29 +152,35 @@ function useNow() {
 export function Scene({
   config,
   sky,
-  startPhase,
   reducedMotion,
-  scrub,
-  onRegenerate,
 }: {
   config: Config;
   sky: SkyTime;
-  startPhase: Phase;
   reducedMotion: boolean;
-  scrub: Scrub | null;
-  onRegenerate: () => void;
 }) {
   const now = useNow();
   const svg = useRef<SVGSVGElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const stageSize = useSize(stage);
-  const [phase, setPhase] = useState(() => ({
-    name: reducedMotion && startPhase === "arrive" ? "sign" : startPhase,
+  const viewBox = stageSize
+    ? sceneFit(stageSize.width, stageSize.height).viewBox
+    : `0 0 ${SCENE.width} ${SCENE.height}`;
+  // The card's bottom right corner on the stage, in px from the stage's
+  // top and right, where the signing buttons hang.
+  const cardCorner = (() => {
+    if (!stageSize) return null;
+    const { scale } = sceneFit(stageSize.width, stageSize.height);
+    const [viewX, viewY] = viewBox.split(" ").map(Number) as [number, number];
+    return {
+      top: (LANDING.y + hh - viewY) * scale,
+      right: stageSize.width - (LANDING.x + CARD.width / 2 - viewX) * scale,
+    };
+  })();
+  const [phase, setPhase] = useState<{ name: Phase; at: number }>(() => ({
+    name: reducedMotion ? "sign" : "arrive",
     at: performance.now(),
   }));
-  const [strokes, setStrokes] = useState<Stroke[]>(() =>
-    startPhase === "arrive" || startPhase === "sign" ? [] : autoSign(config, 0),
-  );
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
   const drawing = useRef<{ start: number } | null>(null);
   // Where the pointer took hold of your half (half coordinates), the peel
   // it picked up there if any, how far the leading edge was behind it, and
@@ -210,47 +196,20 @@ export function Scene({
   const [settling, setSettling] = useState<(Peel & { at: number }) | null>(
     null,
   );
-  // Starting at "taking" (to study the ending) acts out a flick of the
-  // curled corner.
-  const [thrown, setThrown] = useState<Thrown | null>(() => {
-    if (startPhase !== "taking") return null;
-    const angle = (config.part.angle * Math.PI) / 180;
-    return {
-      along: { x: -Math.sin(angle), y: Math.cos(angle) },
-      reach: config.part.curl,
-      velocity: FLICK_OFF,
-    };
-  });
-  // Pictures of the halves, for the Partner mark and page.
+  const [thrown, setThrown] = useState<Thrown | null>(null);
+  // Pictures of the halves, for the Partner mark.
   const [halves, setHalves] = useState<Halves | null>(null);
   // Until anything happens, the corner curls in as the step begins.
   const [hint, setHint] = useState<Curl | null>(null);
   const hovering = useRef(false);
-  const [bondAt, setBondAt] = useState(() =>
-    startPhase === "bond" ? performance.now() : null,
-  );
+  const [bondAt, setBondAt] = useState<number | null>(null);
   const filedAt = GONE + config.filed.at;
   const cloudsAt = filedAt + config.filed.duration + config.filed.hold;
-  // When your half came free. Starting at "done" jumps to the clouds
-  // already closed, just about to part.
-  const [takenAt, setTakenAt] = useState<number | null>(() =>
-    startPhase === "done"
-      ? performance.now() - (cloudsAt + config.veil.partAt - 0.2) * 1000
-      : startPhase === "taking"
-        ? performance.now()
-        : null,
-  );
+  // When your half came free.
+  const [takenAt, setTakenAt] = useState<number | null>(null);
 
   const arriveTotal = arrivalSeconds(config);
-  const held =
-    scrub?.phase === phase.name
-      ? scrub.at *
-        (scrub.phase === "arrive"
-          ? arriveTotal
-          : config.tear.duration + config.bondDuration) *
-        0.999
-      : null;
-  const elapsed = held ?? (now - phase.at) / 1000;
+  const elapsed = (now - phase.at) / 1000;
   const go = (name: Phase) => {
     const at = performance.now();
     if (name === "bond") setBondAt(at);
@@ -263,9 +222,7 @@ export function Scene({
   const bondProgress = reducedMotion
     ? 1
     : clamp((elapsed - tearSeconds) / config.bondDuration);
-  const ending = scrub?.phase === "ending" ? scrub.at : null;
-  const sinceTaken =
-    ending ?? (takenAt === null ? 0 : (now - takenAt) / 1000);
+  const sinceTaken = takenAt === null ? 0 : (now - takenAt) / 1000;
   const sinceClouds = sinceTaken - cloudsAt;
   const { gather, partAt, part: partSeconds } = config.veil;
   const veil: Veil =
@@ -290,9 +247,6 @@ export function Scene({
     if (phase.name === "bond" && bondProgress >= 1) go("take");
     if (phase.name === "taking" && (reducedMotion || sinceClouds >= gather))
       go("done");
-    // Scrubbed back before the clouds closed.
-    if (phase.name === "done" && ending !== null && sinceClouds < gather)
-      go("taking");
   }, [
     phase.name,
     elapsed,
@@ -301,7 +255,6 @@ export function Scene({
     reducedMotion,
     sinceClouds,
     gather,
-    ending,
   ]);
 
   const toCard = (event: ReactPointerEvent): Point => {
@@ -434,14 +387,16 @@ export function Scene({
     setHolding(null);
     setSettling(null);
     if (peel.along === hintAlong) setHint("held");
-    // However hard it was pulled, the follow-through stays a flick.
-    setThrown({ ...peel, velocity: clamp(velocity, 0, FLICK_OFF * 1.5) });
+    setThrown({ ...peel, velocity: clamp(velocity, 0, THROW_LIMIT) });
     setTakenAt(performance.now());
     go("taking");
   };
-  const speed = (samples: { at: number; reach: number }[]) => {
-    const [first] = samples;
-    const last = samples[samples.length - 1];
+  // How fast the tip was going over the last tenth of a second before
+  // `time`: held still before letting go, it wasn't going anywhere.
+  const speed = (samples: { at: number; reach: number }[], time: number) => {
+    const recent = samples.filter((sample) => time - sample.at < 100);
+    const [first] = recent;
+    const last = recent[recent.length - 1];
     return first && last && last.at > first.at
       ? ((last.reach - first.reach) / (last.at - first.at)) * 1000
       : 0;
@@ -522,7 +477,7 @@ export function Scene({
     if (!current) return;
     grip.current = null;
     const time = performance.now();
-    const velocity = speed(current.samples);
+    const velocity = speed(current.samples, time);
     if (holding && holding.reach >= needed) return take(holding, velocity);
     if (holding) setSettling({ ...holding, at: time });
     setHolding(null);
@@ -554,13 +509,12 @@ export function Scene({
   // The bottom middle of the screen, just past its edge, as a point in the
   // plane `z` above the table: where your half pours in.
   const intoBottom = (z: number): Point => {
-    const [, viewY, , viewHeight] = (
-      stageSize
-        ? sceneFit(stageSize.width, stageSize.height).viewBox
-        : `0 0 ${SCENE.width} ${SCENE.height}`
-    )
-      .split(" ")
-      .map(Number) as [number, number, number, number];
+    const [, viewY, , viewHeight] = viewBox.split(" ").map(Number) as [
+      number,
+      number,
+      number,
+      number,
+    ];
     const middle = SCENE.height / 2;
     const bottom = viewY + viewHeight + 12;
     return {
@@ -571,37 +525,90 @@ export function Scene({
         LANDING.y,
     };
   };
-  // Your half, free: rising to you from where it lay.
-  const keptPose = (): Kept => {
-    const rest = keptFrom(config);
-    const rise = (from: number, to: number) =>
-      reducedMotion
-        ? to
-        : spring(
-            { from, to, duration: KEEP_SECONDS, bounce: 0.12 },
-            sinceTaken,
-          );
+  // Your half, free. The peel rolls back out of it, carried on a little by
+  // the pull that freed it, then settling without overshoot so it never
+  // curls the other way. Meanwhile its middle carries on from where the
+  // pull had it, the way it was going and as fast, then rises to you: the
+  // half moves as one sheet, so the paper never rolls back against the
+  // pull.
+  // Where your half's middle can come to rest in the plane `z` above the
+  // table with all of it still on screen.
+  const room = (z: number) => {
+    const [, , viewWidth, viewHeight] = viewBox.split(" ").map(Number) as [
+      number,
+      number,
+      number,
+      number,
+    ];
+    const near = (CAMERA_DISTANCE - z) / CAMERA_DISTANCE;
+    const x = Math.max(
+      0,
+      (viewWidth / 2) * near -
+        (KEPT_BOX.right - KEPT_BOX.left) / 2 -
+        KEEP_MARGIN,
+    );
+    const y = Math.max(
+      0,
+      (viewHeight / 2) * near -
+        (KEPT_BOX.bottom - KEPT_BOX.top) / 2 -
+        KEEP_MARGIN,
+    );
+    const middle = {
+      x: SCENE.width / 2 - LANDING.x,
+      y: SCENE.height / 2 - LANDING.y,
+    };
     return {
-      x: rise(rest.x, 0),
-      y: rise(rest.y, 0),
-      z: rise(rest.z, KEEP_LIFT),
+      x: [middle.x - x, middle.x + x] as const,
+      y: [middle.y - y, middle.y + y] as const,
     };
   };
-  // And the peel rolling back out of it: carried on a little by the pull
-  // that freed it, then settling without overshoot so it never curls the
-  // other way.
-  const uncurl = ({ along, reach, velocity }: Thrown): Peel => ({
-    along,
-    reach: reducedMotion
-      ? 0
-      : Math.max(
-          0,
-          spring(
-            { from: reach, to: 0, velocity, duration: UNCURL_SECONDS },
-            sinceTaken,
-          ),
+  const freed = ({ along, reach, velocity }: Thrown) => {
+    if (reducedMotion)
+      return { keep: { x: 0, y: 0, z: KEEP_LIFT }, peel: { along, reach: 0 } };
+    const peel = {
+      along,
+      reach: clamp(
+        spring(
+          { from: reach, to: 0, velocity, duration: UNCURL_SECONDS },
+          sinceTaken,
         ),
-  });
+        0,
+        fullReach(along),
+      ),
+    };
+    const rest = keptFrom(config);
+    const from = peelShift({ along, reach });
+    const ahead = peelShift({ along, reach: reach + 1 });
+    const shift = peelShift(peel);
+    const start = (axis: "x" | "y" | "z") => rest[axis] + from[axis];
+    const push = (axis: "x" | "y" | "z") =>
+      (ahead[axis] - from[axis]) * velocity;
+    // Across the table it glides to a stop where its own speed takes it,
+    // short of leaving the screen; toward you it rises with a little give.
+    const coast = KEEP_SECONDS / (2 * Math.PI);
+    const bounds = room(KEEP_LIFT);
+    const glide = (axis: "x" | "y") =>
+      clamp(start(axis) + push(axis) * coast, ...bounds[axis]);
+    const carry = (axis: "x" | "y" | "z", to: number, bounce: number) =>
+      spring(
+        {
+          from: start(axis),
+          to,
+          velocity: push(axis),
+          duration: KEEP_SECONDS,
+          bounce,
+        },
+        sinceTaken,
+      ) - shift[axis];
+    return {
+      keep: {
+        x: carry("x", glide("x"), 0),
+        y: carry("y", glide("y"), 0),
+        z: carry("z", KEEP_LIFT, 0.12),
+      },
+      peel,
+    };
+  };
 
   let body: React.ReactNode;
   let cardFrame: CardFrame | null = null;
@@ -625,33 +632,15 @@ export function Scene({
           onPointerMove={penMove}
           onPointerUp={penUp}
           onPointerCancel={penUp}
-          onClick={(event) => event.stopPropagation()}
         />
       </g>
     );
-  } else if (phase.name === "partner") {
-    // Unseen, only so the halves get pictured for the page.
-    cardFrame = {
-      tear: 1,
-      bond: 1,
-      sealWet: 0,
-      y: LANDING.y,
-      size: 1,
-      peels: [],
-      keep: null,
-      shown: { yours: 1, theirs: 1 },
-      shimmer: -1,
-      genie: null,
-      opacity: 0,
-      strokes,
-      inkAt: 0,
-    };
   } else if (!filing || !halves) {
     // Filing needs the halves pictured; a scrub straight into it draws the
     // card unseen for a frame to get them.
     // Taken, your half comes free and rises to you, then is gone.
-    const free = phase.name === "taking" && thrown;
-    const kept = free ? keptPose() : null;
+    const free = phase.name === "taking" && thrown ? freed(thrown) : null;
+    const kept = free?.keep ?? null;
     const genie = kept && sinceTaken >= GENIE.at;
     cardFrame = {
       tear: phase.name === "bond" ? tearProgress : 1,
@@ -679,7 +668,7 @@ export function Scene({
                 }),
             ].filter((peel): peel is Peel => !!peel)
           : free
-            ? [uncurl(free)]
+            ? [free.peel]
             : [],
       keep: kept,
       shown: {
@@ -720,7 +709,6 @@ export function Scene({
             onPointerUp={letGo}
             onPointerCancel={letGo}
             onPointerLeave={leave}
-            onClick={(event) => event.stopPropagation()}
           />
         )}
       </>
@@ -740,11 +728,6 @@ export function Scene({
             {
               "--arrive-delay": `${config.reveal.at * partSeconds}s`,
               "--arrive-duration": `${config.reveal.duration}s`,
-              // Scrubbed, it holds at the moment the parting has reached.
-              ...(ending !== null && {
-                animationDelay: `${config.reveal.at * partSeconds - (sinceClouds - partAt)}s`,
-                animationPlayState: "paused",
-              }),
             } as CSSProperties
           }
         >
@@ -769,24 +752,13 @@ export function Scene({
       )}
       <svg
         ref={svg}
-        viewBox={
-          stageSize
-            ? sceneFit(stageSize.width, stageSize.height).viewBox
-            : `0 0 ${SCENE.width} ${SCENE.height}`
-        }
+        viewBox={viewBox}
         className={styles.canvas}
         // Gone once the onboarding is up, so it takes the pointer.
         style={phase.name === "done" ? { display: "none" } : undefined}
         role="img"
         aria-label={`${PARTNER} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`}
       >
-        <rect
-          width={SCENE.width}
-          height={SCENE.height}
-          fill="transparent"
-          onClick={onRegenerate}
-          className={styles.regenerate}
-        />
         {body}
       </svg>
       <Plane3D
@@ -804,65 +776,34 @@ export function Scene({
           src={halves.mark}
           from={theirsRect}
           fade={plateFade}
-          at={ending === null ? null : sinceTaken - filedAt}
           reducedMotion={reducedMotion}
         />
       )}
-      {phase.name === "partner" && (
-        <PartnerPage config={config} halves={halves} />
+      {/* Nothing to undo, clear, or sign until there's ink; the card's own
+          "sign here" asks for it first. */}
+      {phase.name === "sign" && strokes.length > 0 && cardCorner && (
+        <div
+          className={styles.signActions}
+          style={
+            {
+              "--card-bottom": `${cardCorner.top}px`,
+              "--card-right": `${cardCorner.right}px`,
+            } as CSSProperties
+          }
+        >
+          <div className={styles.signEdits}>
+            <Button onClick={() => setStrokes((all) => all.slice(0, -1))}>
+              Undo
+            </Button>
+            <Button onClick={() => setStrokes([])}>Clear</Button>
+          </div>
+          <Button variant="primary" onClick={() => go("bond")}>
+            Sign
+          </Button>
+        </div>
       )}
-      <div className={styles.stageActions}>
-        {phase.name === "sign" && (
-          <>
-            <Button
-              variant="quiet"
-              disabled={strokes.length === 0}
-              onClick={() => setStrokes([])}
-            >
-              Clear
-            </Button>
-            <Button
-              variant="quiet"
-              onClick={() => setStrokes(autoSign(config, performance.now()))}
-            >
-              Sign for me
-            </Button>
-            <Button
-              variant="primary"
-              disabled={strokes.length === 0}
-              onClick={() => go("bond")}
-            >
-              Sign
-            </Button>
-          </>
-        )}
-        {phase.name === "take" && (
-          <>
-            <span className={styles.stageHint}>Peel off your half</span>
-            <Button
-              onClick={() =>
-                take(
-                  { along: hintAlong, reach: hintReach(performance.now()) },
-                  FLICK_OFF,
-                )
-              }
-            >
-              Take your half
-            </Button>
-          </>
-        )}
-      </div>
     </div>
   );
-}
-
-function autoSign(config: Config, dried: number): Stroke[] {
-  return signature(config.seed, "you", {
-    x: SIGN_ZONE.x + 20,
-    y: 34,
-    width: 180,
-    height: 46,
-  }).map((stroke) => ({ ...stroke, dried }));
 }
 
 function Arrival({

@@ -3,7 +3,7 @@ import { PartnerInviteLab } from "~/components/playground/partner-invite/lab";
 import { readSavedConfig } from "~/components/playground/partner-invite/saved-config";
 
 // The sky runs edge to edge under the notch and home indicator; the
-// controls pad themselves back out with the safe-area insets.
+// signing buttons pad themselves back out with the safe-area insets.
 export const viewport: Viewport = { viewportFit: "cover" };
 
 export default async function PartnerInvitePage({
@@ -14,8 +14,8 @@ export default async function PartnerInvitePage({
   const { sky } = await searchParams;
   return (
     <PartnerInviteLab
-      initialSky={sky === "night" ? "night" : "day"}
-      initialConfig={await readSavedConfig()}
+      sky={sky === "night" ? "night" : "day"}
+      config={await readSavedConfig()}
     />
   );
 }
