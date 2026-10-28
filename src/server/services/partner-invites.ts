@@ -9,6 +9,7 @@ import {
 } from "~/components/partner-invite/config";
 import { createResendClient } from "~/server/integrations/daily-review";
 import type { Household } from "~/server/storage/households";
+import { firstName } from "~/components/partner-invite/print";
 import type { Database } from "./household";
 import { requireHousehold } from "./household";
 import { commandHash } from "./safety";
@@ -385,7 +386,7 @@ export async function sendPartnerInvitation(
     await tx.$queryRaw`SELECT 1 FROM "User" WHERE "clerkUserId" = ${userId} FOR UPDATE`;
     await tx.partnerInvite.updateMany({
       where: live(userId),
-      data: { cancelledAt: new Date() },
+      data: { cancelledAt: new Date(), replaced: true },
     });
     await tx.partnerInvite.create({
       data: {
@@ -456,4 +457,108 @@ export async function cancelPartnerInvitation(db: Database, userId: string) {
     where: live(userId),
     data: { cancelledAt: new Date() },
   });
+}
+
+type StoredInvitation = NonNullable<
+  Awaited<ReturnType<Database["partnerInvite"]["findUnique"]>>
+>;
+
+// Where an invitation by email stands. Used, cancelled, and replaced are
+// final; expired is only told once nothing else ended it.
+function standing(invitation: StoredInvitation) {
+  if (invitation.usedBy) return "used";
+  if (invitation.replaced) return "replaced";
+  if (invitation.cancelledAt) return "cancelled";
+  if (invitation.expiresAt <= new Date()) return "expired";
+  return "live";
+}
+
+/**
+ * What an invitation's link opens: the card, or why it no longer works.
+ * Anyone holding the link may read it; the person who accepted it is sent
+ * on to their budget.
+ */
+export async function openPartnerInvitation(
+  db: Database,
+  userId: string | null,
+  token: string,
+) {
+  const invitation = await db.partnerInvite.findUnique({
+    where: { tokenHash: commandHash(token) },
+  });
+  if (!invitation?.email) return { status: "invalid", from: null } as const;
+  const status = standing(invitation);
+  if (status === "used" && userId && invitation.usedBy === userId)
+    return { status: "joined" } as const;
+  if (status !== "live")
+    return { status, from: invitation.senderName } as const;
+  return {
+    status,
+    id: invitation.id,
+    from: invitation.senderName!,
+    email: invitation.email,
+    washi: washiSchema.parse(invitation.washi),
+    signature: signatureSchema.parse(invitation.signature),
+  } as const;
+}
+
+const refuse = (message: string) =>
+  new TRPCError({ code: "BAD_REQUEST", message });
+
+/**
+ * The invitation `userId` accepts by signing it, once it's still live and
+ * both sides have room: the recipient has no partner, and the sender is
+ * still in their budget, alone.
+ */
+export async function readInvitationToJoin(
+  db: Database,
+  userId: string,
+  id: string,
+) {
+  const invitation = await db.partnerInvite.findUnique({ where: { id } });
+  if (!invitation?.email)
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message:
+        "This invitation doesn’t exist. Open the link in its email again.",
+    });
+  const sender = firstName(invitation.senderName!);
+  const status = standing(invitation);
+  if (status === "used") throw refuse("This invitation was already accepted.");
+  if (status === "replaced")
+    throw refuse(
+      `${sender} sent a newer invitation. Open the link in the latest email.`,
+    );
+  if (status === "cancelled")
+    throw refuse(`${sender} cancelled this invitation.`);
+  if (status === "expired")
+    throw refuse(
+      `This invitation expired. Invitations last seven days; ask ${sender} for a new one.`,
+    );
+  if (invitation.createdBy === userId)
+    throw refuse(
+      "That’s your own invitation. Your partner accepts it from their email.",
+    );
+  const own = await db.workspaceMember.findUnique({
+    where: { clerkUserId: userId },
+  });
+  if (
+    own &&
+    (await db.workspaceMember.count({
+      where: { workspaceId: own.workspaceId },
+    })) >= 2
+  )
+    throw refuse(
+      "You already share a budget with a partner, and a budget has room for one.",
+    );
+  const members = await db.workspaceMember.findMany({
+    where: { workspaceId: invitation.workspaceId },
+  });
+  if (!members.some((member) => member.clerkUserId === invitation.createdBy))
+    throw refuse(
+      `${sender} isn’t using that budget anymore, so this invitation can’t be accepted.`,
+    );
+  if (members.length >= 2)
+    throw refuse(`${sender} already shares a budget with someone else.`);
+  return invitation;
 }

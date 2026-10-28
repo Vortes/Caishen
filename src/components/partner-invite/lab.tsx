@@ -2,6 +2,7 @@
 
 import { Volume2, VolumeOff } from "lucide-react";
 import { useState } from "react";
+import { GuidedOnboarding } from "~/components/entry/guided-onboarding";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { IconButton } from "~/components/ui/icon-button";
 import { config } from "./config";
@@ -32,6 +33,15 @@ export function PartnerInviteLab({ sky }: { sky: SkyTime }) {
         sky={sky}
         reducedMotion={reducedMotion}
         sound={sound}
+        next={
+          <GuidedOnboarding
+            onCreate={async () => undefined}
+            onCategories={async () => undefined}
+            accounts={null}
+            readyToAssign={0}
+            onComplete={() => undefined}
+          />
+        }
         onSettled={() => setOver(true)}
       />
       {!over && (

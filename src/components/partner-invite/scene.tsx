@@ -7,8 +7,8 @@ import {
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
-import { GuidedOnboarding } from "~/components/entry/guided-onboarding";
 import { Button } from "~/components/ui/button";
 import { BannerPlane } from "./banner-plane";
 import { CardFace } from "./card-face";
@@ -27,7 +27,7 @@ import { Filed, type Rect } from "./partner-mark";
 import { perf } from "./perf";
 import { Plane3D } from "./plane-3d";
 import { arrivalFrame, arrivalProgress, arrivalSeconds } from "./plane-motion";
-import { firstName, INVITE, type Invitation } from "./print";
+import { firstName, INVITE, mergeWarning, type Invitation } from "./print";
 import {
   arrivalTrack,
   bondTrack,
@@ -64,6 +64,8 @@ export function Scene({
   sky,
   reducedMotion,
   sound,
+  onSign,
+  next,
   onSettled,
 }: {
   invitation: Invitation;
@@ -71,6 +73,11 @@ export function Scene({
   reducedMotion: boolean;
   // Null while sound is off.
   sound: Sound | null;
+  // Signing accepts the invitation: the card bonds only once this says it
+  // went through. Without it, signing just plays on.
+  onSign?: () => Promise<boolean>;
+  // What the clouds part onto.
+  next?: ReactNode;
   // The clouds have parted all the way onto the onboarding: the invite is
   // over.
   onSettled?: () => void;
@@ -97,6 +104,7 @@ export function Scene({
   // The step as last set, ahead of the page catching up with it.
   const latestPhase = useRef(phase);
   const [bondAt, setBondAt] = useState<number | null>(null);
+  const [signing, setSigning] = useState(false);
   // A picture of the sender's half, for the Partner mark.
   const [mark, setMark] = useState<string | null>(null);
   useEffect(() => {
@@ -123,6 +131,12 @@ export function Scene({
   };
   const pen = usePen({ toCard, sound });
   const sender = firstName(invitation.from);
+  const warning = mergeWarning(invitation.from);
+  const sign = async () => {
+    setSigning(true);
+    if (!onSign || (await onSign())) go("bond");
+    else setSigning(false);
+  };
   const { strokes } = pen;
   const peel = usePeel({
     active: phase.name === "take",
@@ -333,6 +347,7 @@ export function Scene({
           invitation={invitation}
           strokes={strokes}
           hint={strokes.length === 0}
+          note={warning}
         />
         <rect
           className={styles.signZone}
@@ -341,7 +356,7 @@ export function Scene({
           width={PEN_AREA.width}
           height={PEN_AREA.height}
           fill="transparent"
-          {...pen.handlers}
+          {...(signing ? {} : pen.handlers)}
         />
       </g>
     );
@@ -387,13 +402,7 @@ export function Scene({
             } as CSSProperties
           }
         >
-          <GuidedOnboarding
-            onCreate={async () => undefined}
-            onCategories={async () => undefined}
-            accounts={null}
-            readyToAssign={0}
-            onComplete={() => undefined}
-          />
+          {next}
         </div>
       )}
       {!(reducedMotion && moment.revealed) && !moment.settled && (
@@ -429,7 +438,7 @@ export function Scene({
         aria-label={
           phase.name === "invite"
             ? `${sender} sent you something`
-            : `${invitation.from} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`
+            : `${invitation.from} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step${phase.name === "sign" ? `. ${warning}` : ""}`
         }
       >
         {phase.name === "invite" && (
@@ -478,11 +487,19 @@ export function Scene({
           }
         >
           <div className={styles.signEdits}>
-            <Button onClick={pen.undo}>Undo</Button>
-            <Button onClick={pen.clear}>Clear</Button>
+            <Button disabled={signing} onClick={pen.undo}>
+              Undo
+            </Button>
+            <Button disabled={signing} onClick={pen.clear}>
+              Clear
+            </Button>
           </div>
-          <Button variant="primary" onClick={() => go("bond")}>
-            Sign
+          <Button
+            variant="primary"
+            disabled={signing}
+            onClick={() => void sign()}
+          >
+            {signing ? "Signing…" : "Sign"}
           </Button>
         </div>
       )}

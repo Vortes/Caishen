@@ -104,6 +104,23 @@
   text-transform: uppercase;
   opacity: 0.75;
 }
+/* The merge warning on the partner's half; it comes in with the pen. */
+.cardNote {
+  font-family: ui-serif, Georgia, serif;
+  font-size: 13px;
+  opacity: 0.85;
+  animation: cardNoteIn 400ms ease-out both;
+}
+@keyframes cardNoteIn {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cardNote {
+    animation: none;
+  }
+}
 .cardHint {
   font-family: ui-serif, Georgia, serif;
   font-size: 12px;
@@ -239,4 +256,32 @@
   position: fixed;
   transform-origin: top left;
   filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.18));
+}
+
+/* When the signed-in account's addresses don't include the one the
+   invitation went to: said once, in the corner opposite Mute, on a plate
+   that reads against the sky. */
+.sentTo {
+  position: fixed;
+  z-index: 2;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  max-width: min(440px, calc(100% - 80px));
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-card);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.4;
+}
+.sentToAddress {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }

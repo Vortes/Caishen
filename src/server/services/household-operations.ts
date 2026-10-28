@@ -36,7 +36,11 @@ import {
 } from "./household";
 import { domainError, operationHash } from "./safety";
 import { budgetMaintenance } from "./stored-data";
-import { readPartnerInvite, limitInviteChecks } from "./partner-invites";
+import {
+  limitInviteChecks,
+  readInvitationToJoin,
+  readPartnerInvite,
+} from "./partner-invites";
 
 // The server's household operations outside bank updates: creating a
 // budget, joining a partner, and applying category changes together.
@@ -168,9 +172,28 @@ export async function joinHousehold(
   observe?: RevisionObserver,
 ): Promise<OperationResult> {
   await limitInviteChecks(db, userId);
+  return join(db, userId, () => readPartnerInvite(db, userId, code), observe);
+}
+
+/** Accepts an invitation by email: signing it joins the sender's household. */
+export function joinByInvitation(
+  db: Database,
+  userId: string,
+  id: string,
+  observe?: RevisionObserver,
+): Promise<OperationResult> {
+  return join(db, userId, () => readInvitationToJoin(db, userId, id), observe);
+}
+
+async function join(
+  db: Database,
+  userId: string,
+  read: () => Promise<{ id: string; workspaceId: string; createdBy: string }>,
+  observe?: RevisionObserver,
+): Promise<OperationResult> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const invite = await readPartnerInvite(db, userId, code);
+      const invite = await read();
       const own = await wholeBook(db, userId);
       const host = await wholeBook(db, invite.createdBy);
       if (host.household.workspaceId !== invite.workspaceId)

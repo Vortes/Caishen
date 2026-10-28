@@ -67,6 +67,8 @@ model PartnerInvite {
   emails      Int       @default(0)
   usedAt      DateTime?
   cancelledAt DateTime?
+  // Cancelled by sending a newer invitation, which its link says.
+  replaced    Boolean   @default(false)
 
   @@index([createdBy])
 }

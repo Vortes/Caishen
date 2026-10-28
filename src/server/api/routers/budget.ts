@@ -3,6 +3,7 @@ import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
 import {
   createPartnerInvite,
   checkPartnerInvite,
+  openPartnerInvitation,
   cancelPartnerInvitation,
   readSentInvitation,
   resendPartnerInvitation,
@@ -34,6 +35,7 @@ import { integrationStatus } from "~/server/integrations/status";
 import { domainError } from "~/server/services/safety";
 import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import {
+  joinByInvitation,
   joinHousehold,
   onboard,
   setOnboardingCategories,
@@ -321,6 +323,16 @@ export const budgetRouter = createTRPCRouter({
   cancelInvitation: protectedProcedure.mutation(({ ctx }) =>
     cancelPartnerInvitation(ctx.db, ctx.userId),
   ),
+  openInvitation: publicProcedure
+    .input(z.object({ token: z.string().min(1).max(200) }))
+    .query(({ ctx, input }) =>
+      openPartnerInvitation(ctx.db, ctx.userId, input.token),
+    ),
+  joinInvitation: protectedProcedure
+    .input(z.object({ id: z.string().min(1).max(100) }))
+    .mutation(({ ctx, input }) =>
+      joinByInvitation(ctx.db, ctx.userId, input.id, ctx.revision.observe),
+    ),
   checkInvite: protectedProcedure
     .input(z.object({ code: z.string().trim().min(8).max(100) }))
     .mutation(({ ctx, input }) =>

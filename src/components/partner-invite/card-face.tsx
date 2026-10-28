@@ -19,6 +19,7 @@ export function CardFace({
   invitation,
   strokes,
   hint = false,
+  note,
   viewer = "partner",
 }: {
   invitation: Invitation;
@@ -26,6 +27,8 @@ export function CardFace({
   strokes: Stroke[];
   // Whether to ask for that signature.
   hint?: boolean;
+  // A note printed over the partner's half, above their line.
+  note?: string;
   // Who's signing: the sender on their line before the card is sent, or
   // the partner on theirs once it arrives.
   viewer?: Viewer;
@@ -105,6 +108,19 @@ export function CardFace({
       >
         {toLabel}
       </Printed>
+      {note && (
+        <text className={styles.cardNote} fill={palette.printed}>
+          {noteLines(note).map((line, index) => (
+            <tspan
+              key={index}
+              x={INVITE.note.x}
+              y={INVITE.note.y + index * INVITE.note.leading}
+            >
+              {line}
+            </tspan>
+          ))}
+        </text>
+      )}
       {hint && (
         <text
           x={(line.x1 + line.x2) / 2}
@@ -126,6 +142,20 @@ export function CardFace({
       ))}
     </g>
   );
+}
+
+// SVG text doesn't wrap: break the note into lines that fit its measure.
+// The serif sets at about 0.5em per character at the note's 13px.
+function noteLines(note: string) {
+  const perLine = Math.floor(INVITE.note.measure / (13 * 0.5));
+  const lines: string[] = [];
+  for (const word of note.split(" ")) {
+    const last = lines.at(-1);
+    if (last !== undefined && `${last} ${word}`.length <= perLine)
+      lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return lines;
 }
 
 // Letterpress, set flush left: ink sits in a shallow bite, so the paper
