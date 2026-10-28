@@ -46,7 +46,15 @@ import {
 } from "./torn-card";
 import { Filed, PartnerPage, type Rect } from "./partner-mark";
 import { INVITE, PARTNER, PARTNER_SIGNATURE, nameSize } from "./print";
+import {
+  arrivalTrack,
+  bondTrack,
+  curlTrack,
+  endingTrack,
+  useScore,
+} from "./score";
 import { Sky, type SkyTime, type Veil } from "./sky";
+import type { Sound } from "./sound";
 import styles from "./lab.module.css";
 
 // Holds a moment, for study: a fraction of the arrival, or of the tear
@@ -55,6 +63,9 @@ import styles from "./lab.module.css";
 export type Scrub = { phase: "arrive" | "bond" | "ending"; at: number };
 
 export type Phase =
+  // Waiting in the sky, with the line written in cloud, for the tap that
+  // throws the plane (and lets sound start).
+  | "invite"
   | "arrive"
   | "sign"
   | "bond"
@@ -66,6 +77,10 @@ export type Phase =
   | "partner";
 
 const hh = CARD.height / 2;
+// The line in the sky billows up over this long, and blows apart over
+// this long once the plane is thrown.
+const WRITE = { form: 2.2, scatter: 2.2 };
+const FIRST_NAME = PARTNER.split(" ")[0]!;
 // Once stamped, your half's corner curls back to show it peels, a beat
 // after the seal lands: in quickly, settling with no bounce, and letting
 // go faster than it came. Then it flicks up a few times, a few seconds
@@ -175,6 +190,7 @@ export function Scene({
   startPhase,
   reducedMotion,
   scrub,
+  sound,
   onRegenerate,
 }: {
   config: Config;
@@ -182,6 +198,8 @@ export function Scene({
   startPhase: Phase;
   reducedMotion: boolean;
   scrub: Scrub | null;
+  // Null while sound is off.
+  sound: Sound | null;
   onRegenerate: () => void;
 }) {
   const now = useNow();
@@ -193,9 +211,15 @@ export function Scene({
     at: performance.now(),
   }));
   const [strokes, setStrokes] = useState<Stroke[]>(() =>
-    startPhase === "arrive" || startPhase === "sign" ? [] : autoSign(config, 0),
+    startPhase === "invite" || startPhase === "arrive" || startPhase === "sign"
+      ? []
+      : autoSign(config, 0),
   );
-  const drawing = useRef<{ start: number } | null>(null);
+  // When the pen went down, and where it was last, for how fast it moves.
+  const drawing = useRef<{
+    start: number;
+    last: Point & { at: number };
+  } | null>(null);
   // Where the pointer took hold of your half (half coordinates), the peel
   // it picked up there if any, how far the leading edge was behind it, and
   // recent tip positions for the speed at release.
@@ -256,6 +280,23 @@ export function Scene({
     if (name === "bond") setBondAt(at);
     setPhase({ name, at });
   };
+  // Caught: the plane is thrown, and the line blows away as it comes.
+  const [invited] = useState(startPhase === "invite");
+  const caught = () => go(reducedMotion ? "sign" : "arrive");
+  const words =
+    phase.name === "invite"
+      ? {
+          form: reducedMotion ? 1 : easeOut(clamp(elapsed / WRITE.form)),
+          scatter: 0,
+        }
+      : invited && phase.name === "arrive" && elapsed < WRITE.scatter
+        ? { form: 1, scatter: elapsed / WRITE.scatter }
+        : null;
+  // Always two lines, so the letters can be big and fat.
+  const lines =
+    stageSize && stageSize.width < stageSize.height
+      ? [`${FIRST_NAME} sent`, "you something"]
+      : [`${FIRST_NAME} sent you`, "something"];
 
   // The bond phase tears the card in two, then seals the halves together.
   const tearSeconds = reducedMotion ? 0 : config.tear.duration;
@@ -264,8 +305,7 @@ export function Scene({
     ? 1
     : clamp((elapsed - tearSeconds) / config.bondDuration);
   const ending = scrub?.phase === "ending" ? scrub.at : null;
-  const sinceTaken =
-    ending ?? (takenAt === null ? 0 : (now - takenAt) / 1000);
+  const sinceTaken = ending ?? (takenAt === null ? 0 : (now - takenAt) / 1000);
   const sinceClouds = sinceTaken - cloudsAt;
   const { gather, partAt, part: partSeconds } = config.veil;
   const veil: Veil =
@@ -304,6 +344,42 @@ export function Scene({
     ending,
   ]);
 
+  // Heard: each step's timeline, played against the time the scene is
+  // drawn at.
+  const arrival = useMemo(() => arrivalTrack(config), [config]);
+  const bonding = useMemo(
+    () => bondTrack(config, reducedMotion),
+    [config, reducedMotion],
+  );
+  const curling = useMemo(() => curlTrack({ delay: CURL.delay, ...FLICK }), []);
+  const flung = thrown?.velocity ?? FLICK_OFF;
+  const parting = useMemo(
+    () =>
+      endingTrack(config, {
+        speed: flung,
+        rise: KEEP_SECONDS,
+        shimmer: SHIMMER,
+        genie: GENIE,
+        filedAt: GONE + config.filed.at,
+        cloudsAt:
+          GONE + config.filed.at + config.filed.duration + config.filed.hold,
+      }),
+    [config, flung],
+  );
+  const [track, trackTime] =
+    phase.name === "arrive"
+      ? [arrival, elapsed]
+      : phase.name === "bond"
+        ? [bonding, elapsed]
+        : phase.name === "take"
+          ? [hint === null ? curling : null, elapsed]
+          : (phase.name === "taking" || phase.name === "done") &&
+              takenAt !== null
+            ? [parting, sinceTaken]
+            : [null, 0];
+  useScore(sound, track, trackTime, scrub === null);
+  useEffect(() => sound?.sky(sky === "night"), [sound, sky]);
+
   const toCard = (event: ReactPointerEvent): Point => {
     const matrix = svg.current!.getScreenCTM()!.inverse();
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(
@@ -315,7 +391,9 @@ export function Scene({
   const penDown = (event: ReactPointerEvent<SVGRectElement>) => {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    drawing.current = { start: performance.now() };
+    const at = performance.now();
+    drawing.current = { start: at, last: { ...toCard(event), at } };
+    sound?.nibDown();
     setStrokes((all) => [
       ...all,
       { points: [{ ...toCard(event), t: 0 }], dried: -1 },
@@ -324,10 +402,15 @@ export function Scene({
   const penMove = (event: ReactPointerEvent<SVGRectElement>) => {
     const pen = drawing.current;
     if (!pen) return;
-    const point = {
-      ...toCard(event),
-      t: performance.now() - pen.start,
-    };
+    const time = performance.now();
+    const point = { ...toCard(event), t: time - pen.start };
+    const dt = time - pen.last.at;
+    if (dt > 0)
+      sound?.nib(
+        Math.hypot(point.x - pen.last.x, point.y - pen.last.y) / dt,
+        dt / 1000,
+      );
+    pen.last = { x: point.x, y: point.y, at: time };
     setStrokes((all) => {
       const last = all[all.length - 1]!;
       return [
@@ -339,6 +422,7 @@ export function Scene({
   const penUp = () => {
     if (!drawing.current) return;
     drawing.current = null;
+    sound?.nibUp();
     const lifted = performance.now();
     setStrokes((all) =>
       all.map((stroke) =>
@@ -463,6 +547,7 @@ export function Scene({
           ? { along: hintAlong, reach: curled }
           : null;
     hovering.current = false;
+    sound?.curl(0.8);
     if (base?.along === hintAlong) setHint("held");
     else bend(0, time);
     grip.current = { start, base, gap: null, samples: [] };
@@ -476,6 +561,7 @@ export function Scene({
     const near = nearCurl(toHalf(event), curlAt(hint, time));
     if (near === hovering.current || hint === "held") return;
     hovering.current = near;
+    if (near) sound?.curl(0.5);
     bend(near ? curl * CURL.hover : curl, time);
   };
   const leave = () => {
@@ -511,10 +597,13 @@ export function Scene({
       fullReach(along),
     );
     const time = performance.now();
+    const previous = current.samples[current.samples.length - 1];
     current.samples = [
       ...current.samples.filter((sample) => time - sample.at < 100),
       { at: time, reach },
     ];
+    if (previous)
+      sound?.peel(speed(current.samples), (time - previous.at) / 1000);
     setHolding({ along, reach });
   };
   const letGo = () => {
@@ -523,8 +612,13 @@ export function Scene({
     grip.current = null;
     const time = performance.now();
     const velocity = speed(current.samples);
+    sound?.peelStop();
     if (holding && holding.reach >= needed) return take(holding, velocity);
-    if (holding) setSettling({ ...holding, at: time });
+    if (holding) {
+      setSettling({ ...holding, at: time });
+      sound?.slap(SNAP.seconds);
+    }
+    sound?.curl(0.6, SNAP.flat + 0.05);
     setHolding(null);
     // Flat for a beat, then the corner springs back up. You've found the
     // peel by now, so no more flicks.
@@ -605,7 +699,9 @@ export function Scene({
 
   let body: React.ReactNode;
   let cardFrame: CardFrame | null = null;
-  if (phase.name === "arrive") {
+  if (phase.name === "invite") {
+    // Only the sky, and the line written in it.
+  } else if (phase.name === "arrive") {
     body = (
       <Arrival config={config} elapsed={elapsed} strokes={strokes} now={now} />
     );
@@ -765,6 +861,10 @@ export function Scene({
           drift={config.sky.drift}
           clouds={config.sky.clouds}
           veil={veil}
+          words={words && { lines, ...words }}
+          onBreathe={(amount, dt) => {
+            if (dt > 0) sound?.breathe(amount / dt);
+          }}
         />
       )}
       <svg
@@ -778,13 +878,17 @@ export function Scene({
         // Gone once the onboarding is up, so it takes the pointer.
         style={phase.name === "done" ? { display: "none" } : undefined}
         role="img"
-        aria-label={`${PARTNER} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`}
+        aria-label={
+          phase.name === "invite"
+            ? `${FIRST_NAME} sent you something`
+            : `${PARTNER} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`
+        }
       >
         <rect
           width={SCENE.width}
           height={SCENE.height}
           fill="transparent"
-          onClick={onRegenerate}
+          onClick={phase.name === "invite" ? caught : onRegenerate}
           className={styles.regenerate}
         />
         {body}
@@ -812,6 +916,11 @@ export function Scene({
         <PartnerPage config={config} halves={halves} />
       )}
       <div className={styles.stageActions}>
+        {phase.name === "invite" && (
+          <Button variant="primary" onClick={caught}>
+            Catch it
+          </Button>
+        )}
         {phase.name === "sign" && (
           <>
             <Button
@@ -823,7 +932,10 @@ export function Scene({
             </Button>
             <Button
               variant="quiet"
-              onClick={() => setStrokes(autoSign(config, performance.now()))}
+              onClick={() => {
+                sound?.scribble();
+                setStrokes(autoSign(config, performance.now()));
+              }}
             >
               Sign for me
             </Button>

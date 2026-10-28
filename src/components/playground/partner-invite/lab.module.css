@@ -225,8 +225,33 @@
   }
 }
 
+/* Mute, in the stage's corner, on every screen. */
+.mute {
+  position: fixed;
+  z-index: 2;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
 .controlsToggle {
   display: none;
+}
+
+/* Beside the stage, the panel can be put away; the stage takes its room. */
+.dockToggle {
+  position: fixed;
+  z-index: 2;
+  top: 12px;
+  right: calc(300px + 12px);
+}
+.lab[data-undocked] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.lab[data-undocked] .panel {
+  display: none;
+}
+.lab[data-undocked] .dockToggle {
+  right: 12px;
 }
 
 /* On a phone the stage takes the whole screen and the panel becomes a
@@ -234,6 +259,12 @@
 @media (max-width: 720px) {
   .lab {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .dockToggle {
+    display: none;
+  }
+  .lab[data-undocked] .panel {
+    display: flex;
   }
   .controlsToggle {
     position: fixed;

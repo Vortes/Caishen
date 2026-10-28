@@ -46,11 +46,11 @@ const PARTING = 5;
 // The tear's timeline, as fractions of its duration: the sheet fades in
 // over the printed card, and the tip runs top to bottom.
 export const SHOWN = 0.06;
-const TORN = 0.7;
+export const TORN = 0.7;
 // The slide over runs from late in the tear (a fraction of the tear) into
 // the start of the bond (a fraction of the bond), so the flap never stops.
-const SLIDE_FROM = 0.6;
-const SLIDE_TO = 0.25;
+export const SLIDE_FROM = 0.6;
+export const SLIDE_TO = 0.25;
 // How far through the slide the flap starts flattening onto the left.
 const LANDING_FROM = 0.4;
 
@@ -60,7 +60,7 @@ const LANDING_FROM = 0.4;
 // outward, leaving a dent that stays.
 const PRESS = [0.36, 0.56] as const;
 export const STAMP = 0.42;
-const TAKE = [0.4, 0.56] as const;
+export const TAKE = [0.4, 0.56] as const;
 // How deep the press goes, how much dent the paper keeps, and how much
 // the whole card gives.
 const DEPTH = 3;
