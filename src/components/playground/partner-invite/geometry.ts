@@ -1,4 +1,4 @@
-import { lerp, random, type Config } from "./config";
+import { clamp, lerp, random, type Config } from "./config";
 
 export type Point = { x: number; y: number };
 
@@ -8,8 +8,27 @@ export const CARD = { width: 560, height: 340 };
 export const LANDING = { x: 600, y: 360 };
 // The 3D camera sits this far straight above the middle of the scene.
 export const CAMERA_DISTANCE = 1600;
-// The slot sits under the card; the chevron sits halfway across the gap.
-export const SLOT = { y: 580, gap: 84 };
+
+// How the scene sits in a stage of this size. Landscape stages see the
+// whole scene, scaled to fit. Portrait stages crop the sides, down to the
+// card and a margin on a phone, so the card fills the width instead of
+// shrinking to a third of it. The scene's middle stays in the middle.
+export function sceneFit(width: number, height: number) {
+  const portrait = clamp((width / height - 0.6) / 0.4);
+  const shown = lerp(CARD.width + 60, SCENE.width, portrait);
+  const scale = Math.min(width / shown, height / SCENE.height);
+  const viewWidth = width / scale;
+  const viewHeight = height / scale;
+  return {
+    scale,
+    viewBox: [
+      (SCENE.width - viewWidth) / 2,
+      (SCENE.height - viewHeight) / 2,
+      viewWidth,
+      viewHeight,
+    ].join(" "),
+  };
+}
 
 const hw = CARD.width / 2;
 const hh = CARD.height / 2;

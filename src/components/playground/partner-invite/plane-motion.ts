@@ -1,6 +1,13 @@
-import { Matrix4, Vector3 } from "three";
+import { Matrix4, Quaternion, Vector3 } from "three";
+import { cloudHit, poofProgress } from "./cloud";
 import { clamp, easeInOut, span, type Config } from "./config";
-import { airSeconds, flightPose, flightSeconds, viewTilt } from "./flight";
+import {
+  airSeconds,
+  flightPose,
+  flightSeconds,
+  followed,
+  viewTilt,
+} from "./flight";
 import { CARD, LANDING } from "./geometry";
 import {
   PLANE_CENTER,
@@ -17,6 +24,8 @@ export type PlaneFrame = {
   matrix: Matrix4;
   opacity: number;
   trails: Trail[];
+  // The cloud on the plane's path: where it sits and how far it has burst.
+  cloud: { matrix: Matrix4; poof: number };
 };
 
 // A vapor trail: where a wingtip has been, newest first, and how many
@@ -56,20 +65,71 @@ export function arrivalProgress(config: Config, elapsed: number) {
 export const arrivalSeconds = (config: Config) =>
   flightSeconds(config) + config.unfold.duration;
 
+// Where the plane's middle has to sit for the opened card to land in the
+// middle of the scene.
+const CENTER = { x: LANDING.x + middle, y: LANDING.y };
+
+// The camera follows the plane in to land. From where it starts following,
+// it pans in step with how far the plane has come over the table, so the
+// plane keeps its line on screen, slowing into the middle of the frame
+// instead of doubling back. The pan eases in over the first stretch so the
+// plane's path doesn't kink where the camera starts moving. While the sheet
+// opens, the camera turns to square the card up, about the card's middle.
+// As a matrix, it's the world as seen from there.
+const EASE_IN = 0.25;
+function camera(config: Config, elapsed: number) {
+  const rest = flightPose(config, flightSeconds(config));
+  const come = followed(config, elapsed);
+  const pan =
+    (come < EASE_IN ? (come * come) / (2 * EASE_IN) : come - EASE_IN / 2) /
+    (1 - EASE_IN / 2);
+  const square = easeInOut(span(arrivalProgress(config, elapsed).open, 0, 0.4));
+  const turn = new Quaternion().slerp(rest.facing.clone().invert(), square);
+  return world(CENTER.x, CENTER.y, 0)
+    .multiply(new Matrix4().makeRotationFromQuaternion(turn))
+    .multiply(world(-CENTER.x, -CENTER.y, 0))
+    .multiply(world((CENTER.x - rest.x) * pan, (CENTER.y - rest.y) * pan, 0));
+}
+
 // Flying keel-down (rolled half a turn from the sheet's frame), nose
 // pitched along its path, leaning as the throw dictates. The plane's middle
-// follows the flight; at rest it sits exactly where the unfold begins.
+// follows the flight, on the table before the camera's view.
 function flyingMatrix(config: Config, seconds: number) {
   const pose = flightPose(config, seconds);
+  const [roll, pitch] = jolt(config, seconds);
   return (
-    tilt(config, 0)
-      .multiply(world(pose.x, pose.y, pose.z))
+    world(pose.x, pose.y, pose.z)
       .multiply(new Matrix4().makeRotationFromQuaternion(pose.facing))
+      .multiply(new Matrix4().makeRotationX(roll))
+      .multiply(new Matrix4().makeRotationY(pitch))
       // Keel down: the sheet's frame is half a turn from the flying plane's.
       .multiply(new Matrix4().makeRotationX(Math.PI))
       .multiply(new Matrix4().makeTranslation(-middle, 0, 0))
       .multiply(sheet)
   );
+}
+
+// Hitting the cloud knocks the plane about: a quick, fading wobble in roll
+// and pitch.
+function jolt(config: Config, seconds: number): [number, number] {
+  if (config.cloud.size <= 0) return [0, 0];
+  const since = seconds - cloudHit(config).contact;
+  if (since <= 0) return [0, 0];
+  const fade = Math.exp(-since / 0.18);
+  return [
+    0.2 * Math.sin(since * 34) * fade,
+    0.08 * Math.sin(since * 23 + 1) * fade,
+  ];
+}
+
+function cloudFrame(config: Config, elapsed: number) {
+  const { center } = cloudHit(config);
+  return {
+    matrix: tilt(config, 0)
+      .multiply(camera(config, elapsed))
+      .multiply(new Matrix4().makeTranslation(center.x, center.y, center.z)),
+    poof: poofProgress(config, elapsed),
+  };
 }
 
 // The trailing wingtips of the folded plane, in sheet coordinates: the
@@ -97,8 +157,8 @@ function wingtips(config: Config) {
 
 // Each wingtip sheds vapor while the plane is in the air. The flight is a
 // pure function of time, so the trail is just where each tip was over the
-// last moments, recomputed every frame; it stops growing at touchdown and
-// fades out on its own.
+// last moments, recomputed every frame and seen from where the camera is
+// now; it stops growing at touchdown and fades out on its own.
 function vaporTrails(config: Config, elapsed: number): Trail[] {
   const { life, opacity } = config.trail;
   if (life <= 0 || opacity <= 0) return [];
@@ -110,9 +170,10 @@ function vaporTrails(config: Config, elapsed: number): Trail[] {
     points: [] as Vector3[],
     ages: [] as number[],
   }));
+  const view = tilt(config, 0).multiply(camera(config, elapsed));
   for (let i = 0; i < TRAIL_POINTS; i++) {
     const at = newest - ((newest - oldest) * i) / (TRAIL_POINTS - 1);
-    const matrix = flyingMatrix(config, at);
+    const matrix = view.clone().multiply(flyingMatrix(config, at));
     tips.forEach((tip, index) => {
       trails[index]!.points.push(tip.clone().applyMatrix4(matrix));
       trails[index]!.ages.push(elapsed - at);
@@ -129,9 +190,12 @@ export function arrivalFrame(config: Config, elapsed: number): PlaneFrame {
   if (open === 0) {
     return {
       shape: folded(keel, dihedral),
-      matrix: flyingMatrix(config, flying),
+      matrix: tilt(config, 0)
+        .multiply(camera(config, elapsed))
+        .multiply(flyingMatrix(config, flying)),
       opacity: 1,
       trails,
+      cloud: cloudFrame(config, elapsed),
     };
   }
 
@@ -148,13 +212,20 @@ export function arrivalFrame(config: Config, elapsed: number): PlaneFrame {
   unfoldOrder.forEach((group, index) => {
     for (const fold of group) angles[fold] = Math.PI * (1 - flat[index]!);
   });
+  // The sheet opens where the plane came to rest; the camera brings it
+  // square to the middle of the frame.
+  const rest = flightPose(config, flightSeconds(config));
   return {
     shape: { folds: angles, body: 1 - body, keel, dihedral },
     matrix: tilt(config, easeInOut(span(open, 0.4, 0.93)))
-      .multiply(world(LANDING.x, LANDING.y, 60 * Math.sin(Math.PI * body)))
+      .multiply(camera(config, elapsed))
+      .multiply(world(rest.x, rest.y, 60 * Math.sin(Math.PI * body)))
+      .multiply(new Matrix4().makeRotationFromQuaternion(rest.facing))
       .multiply(new Matrix4().makeRotationX(Math.PI * (1 - body)))
+      .multiply(new Matrix4().makeTranslation(-middle, 0, 0))
       .multiply(sheet),
     opacity: 1 - span(open, 0.94, 1),
     trails,
+    cloud: cloudFrame(config, elapsed),
   };
 }

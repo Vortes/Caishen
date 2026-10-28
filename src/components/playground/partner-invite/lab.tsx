@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Button } from "~/components/ui/button";
 import {
   SegmentedControl,
@@ -8,18 +8,14 @@ import {
 } from "~/components/ui/segmented-control";
 import {
   choosePaper,
-  defaultConfig,
   papers,
   knobGroups,
   readKnob,
   writeKnob,
   type Config,
-  type Thrown,
 } from "./config";
-import { Scene, type Phase } from "./scene";
+import { Scene, type Phase, type Scrub } from "./scene";
 import styles from "./lab.module.css";
-
-type Saved = { savedAt: string; config: Config };
 
 const ENDPOINT = "/playground/partner-invite/configs";
 
@@ -29,24 +25,28 @@ const subscribeMotion = (onChange: () => void) => {
   return () => query.removeEventListener("change", onChange);
 };
 
-export function PartnerInviteLab() {
-  const [config, setConfig] = useState(defaultConfig);
+export type SkyTime = "day" | "night";
+
+export function PartnerInviteLab({
+  initialSky,
+  initialConfig,
+}: {
+  initialSky: SkyTime;
+  initialConfig: Config;
+}) {
+  const [config, setConfig] = useState(initialConfig);
+  const [sky, setSky] = useState(initialSky);
   // Bumping the run remounts the scene, replaying from `start`.
   const [run, setRun] = useState({ id: 0, start: "arrive" as Phase });
-  const [saved, setSaved] = useState<Saved[]>([]);
   const [status, setStatus] = useState<string | null>(null);
-  const [scrub, setScrub] = useState<number | null>(null);
+  const [scrub, setScrub] = useState<Scrub | null>(null);
+  // On a phone the panel is a sheet over the stage, closed until asked for.
+  const [controlsOpen, setControlsOpen] = useState(false);
   const reducedMotion = useSyncExternalStore(
     subscribeMotion,
     () => matchMedia("(prefers-reduced-motion: reduce)").matches,
     () => false,
   );
-
-  useEffect(() => {
-    void fetch(ENDPOINT)
-      .then((response) => response.json() as Promise<Saved[]>)
-      .then(setSaved);
-  }, []);
 
   const replay = (start: Phase = "arrive") => {
     setScrub(null);
@@ -64,6 +64,15 @@ export function PartnerInviteLab() {
     replay();
   };
 
+  // The sky rides in the URL, so a night link opens at night.
+  const chooseSky = (next: SkyTime) => {
+    setSky(next);
+    const url = new URL(location.href);
+    if (next === "night") url.searchParams.set("sky", "night");
+    else url.searchParams.delete("sky");
+    history.replaceState(null, "", url);
+  };
+
   const save = async () => {
     const json = JSON.stringify(config, null, 2);
     await navigator.clipboard.writeText(json).catch(() => undefined);
@@ -72,8 +81,7 @@ export function PartnerInviteLab() {
       headers: { "content-type": "application/json" },
       body: json,
     });
-    const result = (await response.json()) as { path: string; saved: Saved[] };
-    setSaved(result.saved);
+    const result = (await response.json()) as { path: string };
     setStatus(`Saved to ${result.path} and copied`);
   };
 
@@ -82,13 +90,38 @@ export function PartnerInviteLab() {
       <Scene
         key={run.id}
         config={config}
+        night={sky === "night"}
         startPhase={run.start}
         reducedMotion={reducedMotion}
         scrub={scrub}
         onRegenerate={regenerate}
       />
-      <aside className={styles.panel} aria-label="Controls">
+      <div className={styles.controlsToggle}>
+        <Button
+          size="sm"
+          aria-expanded={controlsOpen}
+          aria-controls="partner-invite-controls"
+          onClick={() => setControlsOpen((open) => !open)}
+        >
+          {controlsOpen ? "Done" : "Controls"}
+        </Button>
+      </div>
+      <aside
+        id="partner-invite-controls"
+        className={styles.panel}
+        data-open={controlsOpen || undefined}
+        aria-label="Controls"
+      >
         <div className={styles.group}>
+          <SegmentedControl
+            aria-label="Sky"
+            fill
+            value={sky}
+            onValueChange={(value) => chooseSky(value as SkyTime)}
+          >
+            <SegmentedControlItem value="day">Day</SegmentedControlItem>
+            <SegmentedControlItem value="night">Night</SegmentedControlItem>
+          </SegmentedControl>
           <div className={styles.seedRow}>
             <span className={styles.seed}>Seed {config.seed}</span>
             <Button size="sm" onClick={regenerate}>
@@ -96,59 +129,58 @@ export function PartnerInviteLab() {
             </Button>
           </div>
           <div className={styles.actions}>
-            {(["arrive", "sign", "bond", "insert"] as const).map((phase) => (
+            {(
+              ["arrive", "sign", "bond", "take", "done", "partner"] as const
+            ).map((phase) => (
               <Button
                 key={phase}
                 size="sm"
                 variant="quiet"
                 onClick={() => replay(phase)}
               >
-                {phase === "arrive" ? "Replay" : `From ${phase}`}
+                {phase === "arrive"
+                  ? "Replay"
+                  : phase === "done"
+                    ? "From parting"
+                    : phase === "partner"
+                      ? "Partner page"
+                      : `From ${phase}`}
               </Button>
             ))}
           </div>
-          <label className={styles.knob}>
-            <span className={styles.knobLabel}>
-              Hold arrival at
-              <span className={styles.knobValue}>
-                {scrub === null ? "playing" : scrub.toFixed(2)}
-              </span>
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.005}
-              value={scrub ?? 0}
-              onChange={(event) => {
-                if (scrub === null)
-                  setRun((current) => ({
-                    id: current.id + 1,
-                    start: "arrive",
-                  }));
-                setScrub(Number(event.target.value));
-              }}
-            />
-          </label>
-        </div>
-
-        <div className={styles.group}>
-          <span className={styles.groupTitle}>Thrown from</span>
-          <SegmentedControl
-            fill
-            aria-label="Thrown from"
-            value={config.thrown}
-            onValueChange={(value) =>
-              apply({ ...config, thrown: value as Thrown })
-            }
-          >
-            <SegmentedControlItem value="background">
-              The far side
-            </SegmentedControlItem>
-            <SegmentedControlItem value="foreground">
-              In front
-            </SegmentedControlItem>
-          </SegmentedControl>
+          {(
+            [
+              ["arrive", "Hold arrival at"],
+              ["bond", "Hold bond at"],
+            ] as const
+          ).map(([phase, label]) => {
+            const held = scrub?.phase === phase ? scrub.at : null;
+            return (
+              <label key={phase} className={styles.knob}>
+                <span className={styles.knobLabel}>
+                  {label}
+                  <span className={styles.knobValue}>
+                    {held === null ? "playing" : held.toFixed(2)}
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.005}
+                  value={held ?? 0}
+                  onChange={(event) => {
+                    if (held === null)
+                      setRun((current) => ({
+                        id: current.id + 1,
+                        start: phase,
+                      }));
+                    setScrub({ phase, at: Number(event.target.value) });
+                  }}
+                />
+              </label>
+            );
+          })}
         </div>
 
         <div className={styles.group}>
@@ -189,20 +221,6 @@ export function PartnerInviteLab() {
             Save config
           </Button>
           {status && <span className={styles.status}>{status}</span>}
-          {saved.length > 0 && (
-            <div className={styles.rail}>
-              {saved.map((entry, index) => (
-                <button
-                  key={entry.savedAt}
-                  type="button"
-                  className={styles.railItem}
-                  onClick={() => apply(entry.config)}
-                >
-                  #{index + 1} · seed {entry.config.seed}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {knobGroups.map((group) => (
