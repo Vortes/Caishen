@@ -27,7 +27,7 @@ import { Filed, type Rect } from "./partner-mark";
 import { perf } from "./perf";
 import { Plane3D } from "./plane-3d";
 import { arrivalFrame, arrivalProgress, arrivalSeconds } from "./plane-motion";
-import { firstName, INVITE, mergeWarning, type Invitation } from "./print";
+import { firstName, INVITE, type Invitation } from "./print";
 import {
   arrivalTrack,
   bondTrack,
@@ -131,7 +131,6 @@ export function Scene({
   };
   const pen = usePen({ toCard, sound });
   const sender = firstName(invitation.from);
-  const warning = mergeWarning(invitation.from);
   const sign = async () => {
     setSigning(true);
     if (!onSign || (await onSign())) go("bond");
@@ -347,7 +346,6 @@ export function Scene({
           invitation={invitation}
           strokes={strokes}
           hint={strokes.length === 0}
-          note={warning}
         />
         <rect
           className={styles.signZone}
@@ -438,7 +436,7 @@ export function Scene({
         aria-label={
           phase.name === "invite"
             ? `${sender} sent you something`
-            : `${invitation.from} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step${phase.name === "sign" ? `. ${warning}` : ""}`
+            : `${invitation.from} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`
         }
       >
         {phase.name === "invite" && (

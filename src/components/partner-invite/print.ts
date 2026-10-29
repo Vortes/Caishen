@@ -13,11 +13,6 @@ export type Invitation = {
 
 export const firstName = (name: string) => name.split(" ")[0]!;
 
-// Printed on the partner's half before they sign, since signing merges
-// their budget into the sender's household.
-export const mergeWarning = (from: string) =>
-  `Signing connects your budget with ${firstName(from)}’s. They’ll see only the purchases you share and payments between you; your categories, other transactions, and balances stay private.`;
-
 // Who's looking at the card: the sender writing it, or the partner it
 // arrives for. It sets the names under the two signing lines, sender's
 // first.
@@ -50,8 +45,6 @@ export const INVITE = {
     to: { x1: 40, x2: 240 },
   },
   labels: { y: 112 },
-  // The merge warning, set over the partner's half above where they sign.
-  note: { x: 30, y: -128, measure: 225, leading: 17 },
   // Where a signature made from the sender's name sits, over their line.
   signed: { x: -250, y: 34, width: 180, height: 46 },
   // Where each half takes the pen: more of the half than the line itself,
