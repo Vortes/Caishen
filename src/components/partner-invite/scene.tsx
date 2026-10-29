@@ -157,8 +157,12 @@ function Flight({
     setCaughtAfter((performance.now() - phase.at) / 1000);
     go(reducedMotion ? "sign" : "arrive");
   };
-  // Always two lines, so the letters can be big and fat.
-  const lines = [`${sender} sent you`, "a paper plane"];
+  // Always two lines, so the letters can be big and fat; broken where they
+  // fit the stage, so not until it has a size.
+  const lines =
+    stageSize && stageSize.width < stageSize.height
+      ? [`${sender} sent`, "you something..."]
+      : [`${sender} sent you`, "something..."];
   // Enter or Space catches it too, unless it's pressing a control.
   useEffect(() => {
     if (phase.name !== "invite") return;
@@ -449,7 +453,7 @@ function Flight({
         role="img"
         aria-label={
           phase.name === "invite"
-            ? `${sender} sent you a paper plane`
+            ? `${sender} sent you something`
             : `${invitation.from} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`
         }
       >
