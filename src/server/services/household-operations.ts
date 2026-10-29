@@ -198,8 +198,9 @@ async function join(
   read: () => Promise<{ id: string; workspaceId: string; createdBy: string }>,
   observe?: RevisionObserver,
 ): Promise<OperationResult> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
+  return retryOnConflict(
+    "A budget changed while joining. Try again.",
+    async () => {
       const invite = await read();
       const own = await wholeBook(db, userId);
       const host = await wholeBook(db, invite.createdBy);
@@ -271,19 +272,29 @@ async function join(
       );
       observe?.(written.revision);
       return { revision: written.revision, changeSet: null, rebased: false };
+    },
+  );
+}
+
+// Runs a write that rereads its households on each try, trying again up to
+// twice when another write got there first.
+async function retryOnConflict<T>(
+  message: string,
+  write: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await write();
     } catch (error) {
-      if (
+      if (!(
         (error instanceof Prisma.PrismaClientKnownRequestError &&
           error.code === "P2034") ||
         error instanceof RevisionConflictError
-      ) {
-        if (attempt < 2) continue;
-        throw refusal("conflict", "A budget changed while joining. Try again.");
-      }
-      domainError(error);
+      ))
+        domainError(error);
+      if (attempt === 2) throw refusal("conflict", message);
     }
   }
-  throw refusal("conflict", "A budget changed while joining. Try again.");
 }
 
 /**
@@ -300,8 +311,9 @@ export async function disconnectPartner(
   userId: string,
   options: { deleting?: boolean; observe?: RevisionObserver } = {},
 ): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
+  return retryOnConflict(
+    "Your budget changed while disconnecting. Try again.",
+    async () => {
       const { household, book } = await wholeBook(db, userId);
       const formerId = Object.keys(book.budgets).find((id) => id !== userId);
       if (!formerId)
@@ -389,22 +401,8 @@ export async function disconnectPartner(
         },
       );
       if (revision !== undefined) options.observe?.(revision);
-      return;
-    } catch (error) {
-      if (
-        (error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2034") ||
-        error instanceof RevisionConflictError
-      ) {
-        if (attempt < 2) continue;
-        throw refusal(
-          "conflict",
-          "Your budget changed while disconnecting. Try again.",
-        );
-      }
-      domainError(error);
-    }
-  }
+    },
+  );
 }
 
 export async function setOnboardingCategories(
