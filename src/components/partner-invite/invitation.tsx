@@ -3,10 +3,11 @@
 import { SignIn, SignUp, useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { CircleAlertIcon, MailIcon, Volume2, VolumeOff } from "lucide-react";
 import Link from "next/link";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Brand } from "~/components/entry/brand";
 import { EntryPage } from "~/components/entry/entry-page";
 import { useMediaQuery } from "~/components/shared/use-media-query";
+import { useBrowserValue } from "~/components/shared/use-browser-value";
 import {
   Onboarding,
   savedInvitation,
@@ -217,13 +218,10 @@ function Account({
 // can say.
 function useResumed(token: string) {
   const { userId } = useAuth();
-  return useSyncExternalStore(
-    noChange,
-    () => (userId ? savedInvitation(userId) === token : undefined),
-    () => undefined,
+  return useBrowserValue(() =>
+    userId ? savedInvitation(userId) === token : undefined,
   );
 }
-const noChange = () => () => undefined;
 
 // The invitation plays. For someone with a budget, signing it accepts it and
 // joins the sender's household, and the clouds part onto the shared budget.

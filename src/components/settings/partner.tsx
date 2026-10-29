@@ -45,7 +45,7 @@ export function PartnerSettings() {
                         {disconnectedBy.name} disconnected on{" "}
                         {new Date(disconnectedBy.at).toLocaleDateString(
                           "en-US",
-                          { month: "short", day: "numeric", year: "numeric" },
+                          { ...DAY, year: "numeric" },
                         )}
                         ; your shared history is kept.
                       </span>
@@ -125,8 +125,8 @@ function Disconnect({ name }: { name: string }) {
   );
 }
 
-const expiry = (at: Date) =>
-  at.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const DAY: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+const expiry = (at: Date) => at.toLocaleDateString("en-US", DAY);
 
 // The sender's invitation: pending, expired, or not written yet.
 function Invitation() {

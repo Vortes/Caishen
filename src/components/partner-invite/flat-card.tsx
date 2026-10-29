@@ -3,11 +3,11 @@
 import {
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { useBrowserValue } from "~/components/shared/use-browser-value";
 import { CardFace } from "./card-face";
 import { LANDING, sceneFit, type Point } from "./geometry";
 import { INVITE, type Invitation } from "./print";
@@ -34,9 +34,7 @@ const canDrawWebGL = () => {
   }
   return webgl;
 };
-const noChange = () => () => undefined;
-export const useWebGL = () =>
-  useSyncExternalStore(noChange, canDrawWebGL, () => undefined);
+export const useWebGL = () => useBrowserValue(canDrawWebGL);
 
 // Without WebGL there's no sky to fly through and no sheet to tear: the
 // card lies flat on a painted sky, ready for the pen, and signing it goes

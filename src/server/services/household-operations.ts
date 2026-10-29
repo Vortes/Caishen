@@ -11,6 +11,7 @@ import {
   type Book,
   type Command,
 } from "~/domain/engine";
+import { FORMER_PARTNER } from "~/domain/register-entry";
 import { bookToRows, diffRows, tombstone, type ChangeSet } from "~/domain/rows";
 import { Prisma } from "~/generated/prisma";
 import {
@@ -331,7 +332,7 @@ export async function disconnectPartner(
           .find((user) => user.clerkUserId === id)
           ?.firstName?.trim();
         if (name) return name;
-        return "Former partner";
+        return FORMER_PARTNER;
       };
       const close = {
         id: randomUUID(),
