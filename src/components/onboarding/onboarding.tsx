@@ -36,7 +36,7 @@ import {
   categoryDraftSchema,
   initialCategories,
 } from "~/components/entry/onboarding-categories";
-import { firstName } from "~/components/partner-invite/print";
+import { firstName } from "~/domain/invitation";
 import batch from "~/components/entry/entry.module.css";
 import styles from "~/components/entry/onboarding.module.css";
 

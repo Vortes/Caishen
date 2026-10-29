@@ -17,7 +17,7 @@ import { IconButton } from "~/components/ui/icon-button";
 import { SHELL_PATH } from "~/components/workspace/routes";
 import type { RouterOutputs } from "~/trpc/react";
 import { api } from "~/trpc/react";
-import { firstName } from "./print";
+import { firstName } from "~/domain/invitation";
 import { Scene } from "./scene";
 import { useSound } from "./use-sound";
 import batch from "~/components/entry/entry.module.css";

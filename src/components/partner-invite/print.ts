@@ -1,5 +1,6 @@
 import { CanvasTexture, SRGBColorSpace } from "three";
-import { config, palette, type WashiId } from "./config";
+import { firstName, type WashiId } from "~/domain/invitation";
+import { config, palette } from "./config";
 import { CARD } from "./geometry";
 import { strokeSegments, wetness, type Stroke } from "./ink";
 
@@ -10,8 +11,6 @@ export type Invitation = {
   signature: Stroke[];
   washi: WashiId;
 };
-
-export const firstName = (name: string) => name.split(" ")[0]!;
 
 // Who's looking at the card: the sender writing it, or the partner it
 // arrives for. It sets the names under the two signing lines, sender's

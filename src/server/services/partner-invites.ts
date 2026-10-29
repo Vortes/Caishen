@@ -2,14 +2,9 @@ import { createHmac, randomUUID } from "node:crypto";
 import { clerkClient } from "@clerk/nextjs/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import {
-  WASHI,
-  washiById,
-  type WashiId,
-} from "~/components/partner-invite/config";
 import { createResendClient } from "~/server/integrations/daily-review";
 import type { Household } from "~/server/storage/households";
-import { firstName } from "~/components/partner-invite/print";
+import { firstName, WASHI, washiById, type WashiId } from "~/domain/invitation";
 import type { Database } from "./household";
 import { requireHousehold } from "./household";
 import { commandHash } from "./safety";

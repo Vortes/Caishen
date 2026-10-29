@@ -11,7 +11,8 @@ import {
   type Texture,
   WebGLRenderer,
 } from "three";
-import { config, washiById } from "./config";
+import { washiById } from "~/domain/invitation";
+import { config } from "./config";
 import { CAMERA_DISTANCE, LANDING, type View } from "./geometry";
 import { shapeSheet } from "./harrier";
 import type { Stroke } from "./ink";

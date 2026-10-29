@@ -27,7 +27,8 @@ import { Filed, type Rect } from "./partner-mark";
 import { perf } from "./perf";
 import { Plane3D } from "./plane-3d";
 import { arrivalFrame, arrivalProgress, arrivalSeconds } from "./plane-motion";
-import { firstName, INVITE, type Invitation } from "./print";
+import { firstName } from "~/domain/invitation";
+import { INVITE, type Invitation } from "./print";
 import {
   arrivalTrack,
   bondTrack,
