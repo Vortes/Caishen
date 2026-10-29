@@ -562,3 +562,22 @@ export async function readInvitationToJoin(
     throw refuse(`${sender} already shares a budget with someone else.`);
   return invitation;
 }
+
+/**
+ * Deletes invitations that are used, cancelled, replaced, or past expiry,
+ * which removes the invited address and the signature with them. Run by the
+ * daily job; live invitations are untouched.
+ */
+export async function sweepSpentInvitations(db: Database, now: Date) {
+  const { count } = await db.partnerInvite.deleteMany({
+    where: {
+      OR: [
+        { usedBy: { not: null } },
+        { cancelledAt: { not: null } },
+        { replaced: true },
+        { expiresAt: { lte: now } },
+      ],
+    },
+  });
+  return count;
+}

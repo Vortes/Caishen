@@ -19,6 +19,7 @@ import type { Budget } from "~/domain/engine";
 import { openHousehold, type Database } from "./household";
 import { budgetMaintenance, reportUnreadable, zodIssues } from "./stored-data";
 import { emailPreferenceToken } from "./email-preferences";
+import { sweepSpentInvitations } from "./partner-invites";
 
 /**
  * A member's budget and their household's revision, or null when they have
@@ -240,13 +241,21 @@ export async function runDailyJob(
     scheduled = 0,
     canceled = recovered.canceled,
     failed = recovered.failed,
-    purgedEvents = 0;
+    purgedEvents = 0,
+    sweptInvitations = 0;
   // The audit trail's retention purge runs with the daily backstop; a failed
   // purge is reported like any other failure and never holds up delivery.
   try {
     purgedEvents = await purgeBankProviderEvents(db, now);
   } catch (error) {
     console.error("Bank provider events could not be purged", error);
+    failed++;
+  }
+  // Spent invitations go with the same backstop, on the same terms.
+  try {
+    sweptInvitations = await sweepSpentInvitations(db, now);
+  } catch (error) {
+    console.error("Spent invitations could not be swept", error);
     failed++;
   }
   const emailReady = !!(
@@ -382,6 +391,7 @@ export async function runDailyJob(
     canceled,
     failed,
     purgedEvents,
+    sweptInvitations,
     emailConfigured: emailReady,
   };
 }

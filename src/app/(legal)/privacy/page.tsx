@@ -109,6 +109,12 @@ export default function PrivacyPage() {
           separate from the shared view. Only invite people you intend to share
           with, and avoid putting private information in shared descriptions.
         </p>
+        <p>
+          When you invite someone by email, the invitation holds the address you
+          typed, your name, and your handwritten signature. It lasts seven days.
+          We delete it as soon as it is accepted, cancelled, replaced, or
+          expired.
+        </p>
       </section>
       <section>
         <h2>Cookies and security</h2>
