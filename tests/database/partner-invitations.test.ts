@@ -8,6 +8,7 @@ import {
   CLIENT_FORMAT,
   CLIENT_FORMAT_HEADER,
 } from "../../src/domain/client-format";
+import { invitationFrom } from "./fixtures";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
 assertDevelopmentDatabase(process.env);
@@ -192,8 +193,9 @@ void test("an invitation is emailed, resent with the same link, replaced by a ne
 
   // Once a partner joins, there's no one left to invite.
   const partner = await member("Alex Kim", ["alex@example.com"]);
-  const code = await sender.api.budget.invite();
-  await partner.api.budget.join({ code: code.code });
+  await partner.api.budget.joinInvitation({
+    id: await invitationFrom(db, sender.id),
+  });
   await assert.rejects(
     () =>
       sender.api.budget.sendInvitation({
@@ -286,12 +288,6 @@ void test("an opened link shows its invitation, or says it expired, was used, ca
       { status, from: token === "not-a-real-token" ? null : "Jordan Lee" },
       `${status} link`,
     );
-  // A partner code is no link.
-  const code = await sender.api.budget.invite();
-  assert.equal(
-    (await visitor().budget.openInvitation({ token: code.code })).status,
-    "invalid",
-  );
 });
 
 void test("signing the card joins the sender's household, and is refused when either side can't take a partner", async () => {
@@ -317,8 +313,8 @@ void test("signing the card joins the sender's household, and is refused when ei
   // Someone who already shares a budget can't take a second partner.
   const partnered = await member("Pat Doe", ["pat@example.com"]);
   const theirPartner = await member("Quinn Roe", ["quinn@example.com"]);
-  await theirPartner.api.budget.join({
-    code: (await partnered.api.budget.invite()).code,
+  await theirPartner.api.budget.joinInvitation({
+    id: await invitationFrom(db, partnered.id),
   });
   await assert.rejects(
     () => partnered.api.budget.joinInvitation({ id: opened.id }),
@@ -355,7 +351,6 @@ void test("signing the card joins the sender's household, and is refused when ei
 
   // An invitation from someone whose budget has since taken a partner.
   const full = await member("Morgan Ash", ["morgan@example.com"]);
-  const fullCode = await full.api.budget.invite();
   await full.api.budget.sendInvitation({
     email: "sam@example.com",
     washi: "matcha",
@@ -366,7 +361,9 @@ void test("signing the card joins the sender's household, and is refused when ei
   });
   assert.ok(fullInvitation.status === "live");
   const riley = await member("Riley Fox", ["riley@example.com"]);
-  await riley.api.budget.join({ code: fullCode.code });
+  await riley.api.budget.joinInvitation({
+    id: await invitationFrom(db, full.id),
+  });
 
   // And from someone who has since left for another household.
   const gone = await member("Taylor Bay", ["taylor@example.com"]);
@@ -380,7 +377,9 @@ void test("signing the card joins the sender's household, and is refused when ei
   });
   assert.ok(goneInvitation.status === "live");
   const uma = await member("Uma Lin", ["uma@example.com"]);
-  await gone.api.budget.join({ code: (await uma.api.budget.invite()).code });
+  await gone.api.budget.joinInvitation({
+    id: await invitationFrom(db, uma.id),
+  });
 
   const sam = await member("Sam Ito", ["sam@example.com"]);
   await assert.rejects(

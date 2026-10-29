@@ -12,6 +12,7 @@ import { emailPreferenceToken } from "../../src/server/services/email-preference
 import { deletePersonalBudget } from "../../src/server/services/account-deletion";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import type { Command } from "../../src/domain/engine";
+import { invitationFrom } from "./fixtures";
 
 assertDevelopmentDatabase(process.env);
 const db = new PrismaClient();
@@ -91,38 +92,6 @@ void test("revisiting setup replaces only the categories selected during onboard
   );
 });
 
-void test("a short partner code identifies its budget and can be joined only once", async () => {
-  const host = await member("Jordan’s budget");
-  const guest = await member("Alex’s budget");
-  const third = await member("Someone else");
-  const invite = await host.api.budget.invite();
-  assert.match(
-    invite.code,
-    /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/,
-  );
-  const entered = invite.code.toLowerCase().replace("-", " ");
-  const checked = await guest.api.budget.checkInvite({ code: entered });
-  assert.equal(checked.name, "Jordan’s budget");
-  await guest.api.budget.join({ code: entered });
-  assert.equal((await guest.api.budget.overview()).status, "ready");
-  await assert.rejects(() => third.api.budget.join({ code: invite.code }), {
-    message: /already used/,
-  });
-});
-
-void test("repeated invite guesses are limited before another code can be checked", async () => {
-  const guest = await member("My budget");
-  for (let attempt = 0; attempt < 10; attempt++)
-    await assert.rejects(
-      () => guest.api.budget.checkInvite({ code: "ZZZZ-ZZZZ" }),
-      { code: "NOT_FOUND" },
-    );
-  await assert.rejects(
-    () => guest.api.budget.checkInvite({ code: "YYYY-YYYY" }),
-    { code: "TOO_MANY_REQUESTS" },
-  );
-});
-
 void test("opening an email link leaves delivery on until its signed token is submitted", async () => {
   process.env.CLERK_SECRET_KEY = "batch1-test-signing-key";
   const owner = await member("My budget");
@@ -167,8 +136,9 @@ void test("opening an email link leaves delivery on until its signed token is su
 void test("deleting a personal budget erases private data and freezes the partner’s existing balance", async () => {
   const owner = await member("Private budget");
   const partner = await member("Partner budget");
-  const invite = await owner.api.budget.invite();
-  await partner.api.budget.join({ code: invite.code });
+  await partner.api.budget.joinInvitation({
+    id: await invitationFrom(db, owner.id),
+  });
   const run = async (api: typeof owner.api, command: Command) => {
     const state = await api.budget.state({ month });
     return api.budget.execute({

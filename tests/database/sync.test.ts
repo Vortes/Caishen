@@ -11,6 +11,7 @@ import { formatTRPCError } from "../../src/server/api/error-formatter";
 import {
   createDatabaseCaller as createCaller,
   databaseClientBuild as build,
+  invitationFrom,
 } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
@@ -230,8 +231,9 @@ void test("a retried operation answers with its first result, even after its cha
 
 void test("joining resets every browser, and partners see only their own rows", async () => {
   const before = await pullAll(jordan.api, null);
-  const { code } = await alex.api.budget.invite();
-  const joined = await jordan.api.budget.join({ code });
+  const joined = await jordan.api.budget.joinInvitation({
+    id: await invitationFrom(db, alexId),
+  });
   assert.equal(joined.changeSet, null);
   // Jordan's browser holds a revision of the budget Jordan left.
   const reset = await pullAll(jordan.api, before.revision);
@@ -307,8 +309,9 @@ void test("joining resets every browser, and partners see only their own rows", 
 });
 
 async function joinPartners() {
-  const { code } = await alex.api.budget.invite();
-  await jordan.api.budget.join({ code });
+  await jordan.api.budget.joinInvitation({
+    id: await invitationFrom(db, alexId),
+  });
 }
 
 void test("a command made against an older revision runs again when it changes only the actor's budget", async () => {

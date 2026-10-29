@@ -1,8 +1,6 @@
 import { withBankAccountSuccessors } from "~/server/services/bank-account-rows";
 import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
 import {
-  createPartnerInvite,
-  checkPartnerInvite,
   openPartnerInvitation,
   cancelPartnerInvitation,
   readSentInvitation,
@@ -37,7 +35,6 @@ import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import {
   disconnectPartner,
   joinByInvitation,
-  joinHousehold,
   onboard,
   onboardByInvitation,
   setOnboardingCategories,
@@ -311,10 +308,6 @@ export const budgetRouter = createTRPCRouter({
       return result;
     }),
 
-  invite: protectedProcedure.mutation(({ ctx }) =>
-    createPartnerInvite(ctx.db, ctx.userId),
-  ),
-
   invitation: protectedProcedure.query(({ ctx }) =>
     readSentInvitation(ctx.db, ctx.userId),
   ),
@@ -344,17 +337,6 @@ export const budgetRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1).max(100) }))
     .mutation(({ ctx, input }) =>
       joinByInvitation(ctx.db, ctx.userId, input.id, ctx.revision.observe),
-    ),
-  checkInvite: protectedProcedure
-    .input(z.object({ code: z.string().trim().min(8).max(100) }))
-    .mutation(({ ctx, input }) =>
-      checkPartnerInvite(ctx.db, ctx.userId, input.code),
-    ),
-
-  join: protectedProcedure
-    .input(z.object({ code: z.string().trim().min(8).max(100) }))
-    .mutation(({ ctx, input }) =>
-      joinHousehold(ctx.db, ctx.userId, input.code, ctx.revision.observe),
     ),
   // Either partner ends the partnership alone, after a confirmation.
   disconnect: protectedProcedure.mutation(({ ctx }) =>

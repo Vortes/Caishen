@@ -39,11 +39,7 @@ import {
 } from "./household";
 import { domainError, operationHash } from "./safety";
 import { budgetMaintenance } from "./stored-data";
-import {
-  limitInviteChecks,
-  readInvitationToJoin,
-  readPartnerInvite,
-} from "./partner-invites";
+import { readInvitationToJoin } from "./partner-invites";
 
 // The server's household operations outside bank updates: creating a
 // budget, joining or leaving a partner, and applying category changes
@@ -163,20 +159,6 @@ async function wholeBook(db: Database, userId: string) {
   if (ledger.status !== "ready" || ledger.personal || ledger.failures.length)
     throw budgetMaintenance();
   return { household, book: ledger.state as Book };
-}
-
-/**
- * Moves a member's personal budget into the household that invited them.
- * The household changes shape, so every browser downloads it again.
- */
-export async function joinHousehold(
-  db: Database,
-  userId: string,
-  code: string,
-  observe?: RevisionObserver,
-): Promise<OperationResult> {
-  await limitInviteChecks(db, userId);
-  return join(db, userId, () => readPartnerInvite(db, userId, code), observe);
 }
 
 /** Accepts an invitation by email: signing it joins the sender's household. */

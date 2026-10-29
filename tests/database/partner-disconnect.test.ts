@@ -10,6 +10,7 @@ import {
 } from "../../src/domain/client-format";
 import type { Command } from "../../src/domain/engine";
 import { partnerEntryId } from "../../src/domain/partner-ledger";
+import { invitationFrom } from "./fixtures";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
 assertDevelopmentDatabase(process.env);
@@ -92,7 +93,9 @@ const workspaceOf = async (userId: string) =>
 void test("disconnecting splits the household and freezes the partner ledger on both sides", async () => {
   const jordan = await member("Jordan");
   const alex = await member("Alex");
-  await alex.api.budget.join({ code: (await jordan.api.budget.invite()).code });
+  await alex.api.budget.joinInvitation({
+    id: await invitationFrom(db, jordan.id),
+  });
   await jordan.run(shared("dinner", -10_000, 5_000));
   await alex.run(shared("groceries", -6_000, 3_000));
   await alex.run({
@@ -157,7 +160,9 @@ void test("disconnecting splits the household and freezes the partner ledger on 
   });
 
   // Partnering again, even with the same person, opens a fresh ledger.
-  await jordan.api.budget.join({ code: (await alex.api.budget.invite()).code });
+  await jordan.api.budget.joinInvitation({
+    id: await invitationFrom(db, alex.id),
+  });
   const again = await jordan.view();
   assert.equal(partnerBalance(again), 0);
   assert.equal(

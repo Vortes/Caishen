@@ -1921,23 +1921,6 @@ button.actionItem:disabled {
   color: var(--feedback-attention);
   font-size: var(--type-small);
 }
-.inviteCode {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-}
-.inviteCode code {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: var(--type-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .settingHint {
   color: var(--text-secondary);
   font-size: var(--type-small);

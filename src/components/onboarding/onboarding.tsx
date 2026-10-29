@@ -71,8 +71,6 @@ export function Onboarding({
     { enabled: Boolean(userId) },
   );
   const create = api.budget.onboard.useMutation();
-  const join = api.budget.join.useMutation();
-  const check = api.budget.checkInvite.useMutation();
   const [notice, setNotice] = useState<string | null>(null);
   const refresh = () => utils.budget.state.invalidate();
   const run = async (command: Command) => {
@@ -180,7 +178,6 @@ export function Onboarding({
         emailEnabled: input.emailEnabled,
         month: start,
       });
-    if (input.inviteCode) await join.mutateAsync({ code: input.inviteCode });
     window.sessionStorage.setItem(stageKey, "categories");
     setMonth(start);
     await refresh();
@@ -205,9 +202,6 @@ export function Onboarding({
         }
         onCreate={createBudget}
         invitedBy={invitation && firstName(invitation.from)}
-        onCheckInvite={
-          invitation ? undefined : (code) => check.mutateAsync({ code })
-        }
         onCategories={async (groups) => {
           const current = await utils.client.budget.state.query({ month });
           await utils.client.budget.setupCategories.mutate({

@@ -86,7 +86,7 @@ export function componentFetch(
       plaidExchange: mutation("budget.plaidExchange"),
       plaidReconnect: mutation("budget.plaidReconnect"),
       sync: mutation("budget.sync"),
-      invite: mutation("budget.invite"),
+      cancelInvitation: mutation("budget.cancelInvitation"),
     }),
     sync: t.router({
       pull: query("sync.pull", (input) => server.pull(viewerId, input)),

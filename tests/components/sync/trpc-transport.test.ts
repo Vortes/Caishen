@@ -60,7 +60,7 @@ test("executes and pulls over the sync contract, and every answer reports the ho
   // brings what it reports, and one that failed is retried on its own
   // schedule, not again at once.
   server.act("jordan", food("j1", 500));
-  await client.budget.invite.mutate().catch(() => undefined);
+  await client.budget.cancelInvitation.mutate().catch(() => undefined);
   await transport.pull({ since: 2, clientBuild });
   expect(revisions).toEqual([1, 2]);
   stop();
@@ -253,7 +253,7 @@ test("sync calls go alone so each answer carries the revision; other calls are b
   const server = new FakeServer(household());
   const requests: string[] = [];
   const served = componentFetch(server, "alex", {
-    "budget.invite": () => ({ code: "invite" }),
+    "budget.cancelInvitation": () => null,
     "budget.sync": () => ({ synced: true }),
   });
   const client = createTRPCClient<AppRouter>({
@@ -290,10 +290,10 @@ test("sync calls go alone so each answer carries the revision; other calls are b
   requests.length = 0;
   server.act("jordan", food("j1", 500));
   await Promise.all([
-    client.budget.invite.mutate(),
+    client.budget.cancelInvitation.mutate(),
     client.budget.sync.mutate(),
   ]);
-  expect(requests).toEqual(["budget.invite,budget.sync (batch)"]);
+  expect(requests).toEqual(["budget.cancelInvitation,budget.sync (batch)"]);
   expect(revisions).toEqual([1, 2, 2]);
   stop();
 });
