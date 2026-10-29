@@ -13,7 +13,10 @@ import {
 } from "~/components/budget/format";
 import type { State, View } from "~/components/budget/types";
 import { partnerOf } from "~/components/partner/partner";
-import { transactionCategory } from "~/components/transactions/transaction-category";
+import {
+  cardPaymentCategoryLabel,
+  transactionCategory,
+} from "~/components/transactions/transaction-category";
 import {
   transactionActions,
   transactionNeedsReview,
@@ -520,7 +523,9 @@ export function toShellData(
         needsReview: transactionNeedsReview(view, item),
         categoryId: item.categoryId,
         categoryLabel: categoryNotNeeded
-          ? "Category not needed"
+          ? entry.shape.kind === "card-payment"
+            ? cardPaymentCategoryLabel(view.budget, item.accountId, other?.id)
+            : "Category not needed"
           : needsCategory
             ? "Needs category"
             : item.lines?.length === 1

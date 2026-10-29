@@ -2,6 +2,7 @@ import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Import application: fetches account activity and applies each provider update or user inbox decision as a household operation. It owns transaction matching, reconciliation, quarantine, and the corresponding change sets. */
 
 import { isBankAccountLive } from "~/lib/bank-account-identity";
+import { isCardPaymentOutflow } from "~/lib/card-payment-recognition";
 import { rejectImportChange } from "~/domain/bank-import-rejection";
 
 import {
@@ -267,8 +268,7 @@ export async function syncBanks(
       });
     }
   }
-  // Payments between people that the update brought in, recognized as
-  // transfers to and from the counterparty accounts.
+  // Match payments across the member's owned accounts and counterparty accounts.
   const { settled, repaid } = await settleFromImports(db, userId);
   return { imported, updated: updated + settled + repaid, outcomes };
 }
@@ -645,6 +645,7 @@ function rememberedImport(
   if (record.removed || record.current.pending) return undefined;
   const fact = record.current;
   const amount = -fact.amountCents;
+  if (amount < 0 && isCardPaymentOutflow(fact.name)) return undefined;
   const payee = (fact.merchantName ?? fact.name).slice(0, 240);
   const categoryId = rememberedCategory(budget, { payee, accountId, amount });
   const counterpartyShare = rememberedCounterpartyShare(budget, {

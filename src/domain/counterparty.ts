@@ -6,6 +6,24 @@ import type {
   TransactionLine,
 } from "./engine";
 
+export function reimbursementPeople(budget: Pick<Budget, "transactions">) {
+  return [
+    ...new Set(
+      [...budget.transactions]
+        .filter((item) => !item.removed)
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .flatMap((item) => [
+          item.counterpartyName,
+          item.counterpartyShare?.counterpartyName,
+          ...(item.lines ?? []).map(
+            (line) => line.counterpartyShare?.counterpartyName,
+          ),
+        ])
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ];
+}
+
 export function counterpartyLines(
   transaction: Pick<
     Transaction,

@@ -6,7 +6,7 @@ import type {
   Transaction,
 } from "./engine";
 import { READY_TO_ASSIGN } from "./transfers";
-import { isFullShare } from "./counterparty";
+import { isFullShare, reimbursementPeople } from "./counterparty";
 
 // Payee memory, like YNAB's memorized payee category: the user's most recent
 // categorization of each payee prefills that payee's new bank imports and
@@ -75,6 +75,26 @@ export function rememberedCounterpartyShare(
 ): CounterpartyShare | undefined {
   const account = budget.accounts.find((item) => item.id === accountId);
   const memory = budget.payeeMemory?.[payeeKey(payee)];
+  if (
+    !memory &&
+    account &&
+    (account.kind === "cash" || account.kind === "credit") &&
+    amount !== undefined &&
+    amount < 0
+  ) {
+    const people = reimbursementPeople(budget).filter(
+      (name) => payeeKey(name) === payeeKey(payee),
+    );
+    const reimbursements = budget.accounts.find(
+      (item) => item.kind === "reimbursements",
+    );
+    if (people.length === 1 && reimbursements)
+      return {
+        accountId: reimbursements.id,
+        counterpartyName: people[0]!,
+        amount: Math.abs(amount),
+      };
+  }
   if (
     !account ||
     (account.kind !== "cash" && account.kind !== "credit") ||

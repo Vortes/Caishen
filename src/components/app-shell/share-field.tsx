@@ -16,6 +16,7 @@ import {
   type ShareBasis,
 } from "~/components/transactions/transaction-share";
 import type { CounterpartyShare } from "~/domain/engine";
+import { reimbursementPeople } from "~/domain/counterparty";
 import { money } from "./model";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
@@ -40,21 +41,7 @@ export function useShareParties() {
   const reimbursements = accounts.find(
     (item) => item.kind === "reimbursements",
   );
-  const people = [
-    ...new Set(
-      [...view.budget.transactions]
-        .filter((item) => !item.removed)
-        .sort((a, b) => b.date.localeCompare(a.date))
-        .flatMap((item) => [
-          item.counterpartyName,
-          item.counterpartyShare?.counterpartyName,
-          ...(item.lines ?? []).map(
-            (line) => line.counterpartyShare?.counterpartyName,
-          ),
-        ])
-        .filter((name): name is string => Boolean(name)),
-    ),
-  ];
+  const people = reimbursementPeople(view.budget);
   const who = (share: CounterpartyShare) =>
     share.counterpartyName ??
     accounts.find((item) => item.id === share.accountId)?.name ??

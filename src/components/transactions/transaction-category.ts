@@ -1,4 +1,5 @@
 import type { View } from "~/components/budget/types";
+import type { Budget } from "~/domain/engine";
 import { newId } from "~/components/budget/format";
 import { transactionActions } from "./transaction-actions";
 import {
@@ -12,6 +13,19 @@ import {
 } from "./transaction-draft";
 
 type Transaction = View["budget"]["transactions"][number];
+
+export function cardPaymentCategoryLabel(
+  budget: Budget,
+  accountId: string,
+  otherAccountId?: string,
+) {
+  const card = budget.accounts.find(
+    (account) =>
+      account.kind === "credit" &&
+      (account.id === accountId || account.id === otherAccountId),
+  );
+  return card ? `Payments: ${card.name}` : "Category not needed";
+}
 
 export function prepareTransactionCategories(
   view: View,

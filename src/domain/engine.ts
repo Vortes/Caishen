@@ -432,6 +432,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: identifier,
     ...transactionInput,
     transferAccountId: identifier.optional(),
+    transferCounterpart: z
+      .object({
+        date: daySchema,
+        providerId: identifier,
+      })
+      .optional(),
     loanId: identifier.optional(),
     interest: nonnegativeCents.optional(),
   }),
@@ -3667,6 +3673,11 @@ function applyCommand(
       break;
     }
     case "transaction.upsert": {
+      if (
+        command.transferCounterpart &&
+        (source !== "provider" || !command.transferAccountId)
+      )
+        fail("Only a bank update can attach the other side's bank facts");
       requireDate(budget, command.date);
       const account = accountAtDate(budget, command.accountId, command.date);
       const existing = budget.transactions.find(
@@ -3804,11 +3815,29 @@ function applyCommand(
         if (command.transferAccountId) {
           if (command.transferAccountId === account.id)
             fail("Choose a different account");
+          const counterpartDate =
+            command.transferCounterpart?.date ??
+            (otherPrevious?.accountId === command.transferAccountId &&
+            otherPrevious.providerId
+              ? otherPrevious.date
+              : command.date);
           const other = accountAtDate(
             budget,
             command.transferAccountId,
-            command.date,
+            counterpartDate,
           );
+          if (command.transferCounterpart) {
+            requireDate(budget, command.transferCounterpart.date);
+            if (
+              budget.transactions.some(
+                (item) =>
+                  active(item) &&
+                  item.id !== otherPrevious?.id &&
+                  item.providerId === command.transferCounterpart!.providerId,
+              )
+            )
+              fail("Provider transaction already exists");
+          }
           let categoryId: string | undefined;
           if (transferNeedsCategory(account, other)) {
             const budgetAmount =
@@ -3836,7 +3865,7 @@ function applyCommand(
               budget,
               sending.id,
               receiving.id,
-              command.date,
+              sending.id === account.id ? command.date : counterpartDate,
               Math.abs(command.amount),
             );
           const reusable =
@@ -3863,10 +3892,17 @@ function applyCommand(
               id: retainedCounterpart,
               accountId: other.id,
               amount: -command.amount,
+              date: counterpartDate,
+              expenseMonth: reusable?.providerId
+                ? reusable.expenseMonth
+                : command.transferCounterpart
+                  ? monthOf(counterpartDate)
+                  : base.expenseMonth,
               payee: transferPayee(other, account, -command.amount),
               // Each side clears its own bank.
               cleared: nextCleared(undefined, command.status, reusable),
-              providerId: reusable?.providerId,
+              providerId:
+                reusable?.providerId ?? command.transferCounterpart?.providerId,
               kind,
               linkedId,
               categoryId,
