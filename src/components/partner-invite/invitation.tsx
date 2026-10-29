@@ -1,12 +1,16 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
+import { SignIn, SignUp, useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { CircleAlertIcon, MailIcon, Volume2, VolumeOff } from "lucide-react";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Brand } from "~/components/entry/brand";
 import { EntryPage } from "~/components/entry/entry-page";
 import { useMediaQuery } from "~/components/shared/use-media-query";
+import {
+  Onboarding,
+  savedInvitation,
+} from "~/components/onboarding/onboarding";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
@@ -26,12 +30,19 @@ type Opened = Exclude<
 >;
 type Live = Extract<Opened, { status: "live" }>;
 
+type Visitor =
+  // Signed out, choosing to create an account or sign in.
+  | { signedIn: false; signIn: boolean }
+  // Signed in; a newcomer has no budget yet.
+  | { signedIn: true; newcomer: boolean };
+
 // The page an invitation email links to: the card itself, or why the link
 // no longer works.
 export function InvitationLink(props: {
+  token: string;
   path: string;
   invitation: Opened;
-  signedIn: boolean;
+  visitor: Visitor;
 }) {
   return (
     <EntryPage>
@@ -41,13 +52,15 @@ export function InvitationLink(props: {
 }
 
 function OpenedLink({
+  token,
   path,
   invitation,
-  signedIn,
+  visitor,
 }: {
+  token: string;
   path: string;
   invitation: Opened;
-  signedIn: boolean;
+  visitor: Visitor;
 }) {
   if (invitation.status !== "live") {
     const sender = invitation.from ? firstName(invitation.from) : "They";
@@ -82,26 +95,167 @@ function OpenedLink({
       </Message>
     );
   }
-  if (!signedIn)
+  if (!visitor.signedIn)
     return (
-      <Message
-        icon="mail"
-        title={`${invitation.from} invited you to share a budget`}
-        body="Sign in to open the invitation."
-      >
-        <Button variant="primary" asChild>
-          <Link href={`/sign-in?redirect_url=${encodeURIComponent(path)}`}>
-            Sign in
-          </Link>
-        </Button>
-      </Message>
+      <Account path={path} invitation={invitation} signIn={visitor.signIn} />
     );
-  return <Card path={path} invitation={invitation} />;
+  return (
+    <Card
+      token={token}
+      path={path}
+      invitation={invitation}
+      newcomer={visitor.newcomer}
+    />
+  );
 }
 
-// The invitation plays; signing it accepts it and joins the sender's
-// household, and the clouds part onto the shared budget.
-function Card({ path, invitation }: { path: string; invitation: Live }) {
+// Clerk's form, set flat on the page's own card and in its colors.
+const appearance = {
+  options: {
+    elevation: "flush",
+    // OAuth providers refuse to run inside mail apps' browsers, so the
+    // email code comes first.
+    socialButtonsPlacement: "bottom",
+    logoPlacement: "none",
+  },
+  variables: {
+    colorBackground: "var(--surface-panel)",
+    colorForeground: "var(--text-primary)",
+    colorMutedForeground: "var(--text-secondary)",
+    colorMuted: "var(--control-bg)",
+    colorPrimary: "var(--accent-solid)",
+    colorPrimaryForeground: "var(--text-on-accent)",
+    colorInput: "var(--control-bg)",
+    colorInputForeground: "var(--text-primary)",
+    colorNeutral: "var(--text-primary)",
+    colorBorder: "var(--control-border)",
+    colorRing: "var(--focus-ring)",
+    colorDanger: "var(--danger-text)",
+    fontFamily: "inherit",
+    fontSize: "var(--type-body)",
+    borderRadius: "var(--radius-row)",
+  },
+  elements: {
+    rootBox: { width: "100%" },
+    cardBox: {
+      width: "100%",
+      maxWidth: "none",
+      boxShadow: "none",
+      border: "none",
+    },
+    card: { padding: 0, background: "transparent" },
+    footer: { background: "transparent" },
+    otpCodeFieldInput: { border: "1px solid var(--border-strong)" },
+  },
+} as const;
+
+// Signed out: create an account, or sign in, without leaving the link. The
+// invited address is filled in, Clerk's own heading says which it is, and
+// either way back is this page.
+function Account({
+  path,
+  invitation,
+  signIn,
+}: {
+  path: string;
+  invitation: Live;
+  signIn: boolean;
+}) {
+  return (
+    <div className={message.page}>
+      <Brand />
+      <main className={message.card}>
+        <div className={message.message}>
+          <span className={message.icon}>
+            <MailIcon size={20} aria-hidden />
+          </span>
+          <div className={message.text}>
+            <h1 className={message.title}>
+              {invitation.from} invited you to share a budget
+            </h1>
+          </div>
+        </div>
+        <div className={styles.account}>
+          {signIn ? (
+            <SignIn
+              routing="hash"
+              forceRedirectUrl={path}
+              signUpForceRedirectUrl={path}
+              signUpUrl={path}
+              initialValues={{ emailAddress: invitation.email }}
+              appearance={appearance}
+            />
+          ) : (
+            <SignUp
+              routing="hash"
+              forceRedirectUrl={path}
+              signInForceRedirectUrl={path}
+              signInUrl={`${path}?sign-in`}
+              initialValues={{ emailAddress: invitation.email }}
+              appearance={appearance}
+            />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// Whether this tab was setting up a budget from the link, once the browser
+// can say.
+function useResumed(token: string) {
+  const { userId } = useAuth();
+  return useSyncExternalStore(
+    noChange,
+    () => (userId ? savedInvitation(userId) === token : undefined),
+    () => undefined,
+  );
+}
+const noChange = () => () => undefined;
+
+// The invitation plays. For someone with a budget, signing it accepts it and
+// joins the sender's household, and the clouds part onto the shared budget.
+// For a newcomer they part onto setting one up, which accepts it.
+function Card({
+  token,
+  path,
+  invitation,
+  newcomer,
+}: {
+  token: string;
+  path: string;
+  invitation: Live;
+  newcomer: boolean;
+}) {
+  const resumed = useResumed(token);
+  const [setup] = useState(() => ({
+    token,
+    id: invitation.id,
+    from: invitation.from,
+  }));
+  if (!newcomer) return <Ceremony path={path} invitation={invitation} />;
+  if (resumed === undefined) return null;
+  if (resumed) return <Onboarding invitation={setup} />;
+  return (
+    <Ceremony
+      path={path}
+      invitation={invitation}
+      next={<Onboarding invitation={setup} />}
+    />
+  );
+}
+
+function Ceremony({
+  path,
+  invitation,
+  next,
+}: {
+  path: string;
+  invitation: Live;
+  // The setup a newcomer accepts the invitation in; without it, signing
+  // accepts it.
+  next?: ReactNode;
+}) {
   const { user } = useUser();
   const clerk = useClerk();
   const join = api.budget.joinInvitation.useMutation();
@@ -154,22 +308,27 @@ function Card({ path, invitation }: { path: string; invitation: Live }) {
         sky="day"
         reducedMotion={reducedMotion}
         sound={sound}
-        onSign={() =>
-          join.mutateAsync({ id: invitation.id }).then(
-            () => true,
-            () => false,
-          )
+        onSign={
+          next
+            ? undefined
+            : () =>
+                join.mutateAsync({ id: invitation.id }).then(
+                  () => true,
+                  () => false,
+                )
         }
         next={
-          <div className={message.page}>
-            <p role="status" className={message.body}>
-              Opening your shared budget…
-            </p>
-          </div>
+          next ?? (
+            <div className={message.page}>
+              <p role="status" className={message.body}>
+                Opening your shared budget…
+              </p>
+            </div>
+          )
         }
         onSettled={() => {
           setOver(true);
-          window.location.assign(SHELL_PATH);
+          if (!next) window.location.assign(SHELL_PATH);
         }}
       />
       {!over && (
@@ -184,7 +343,7 @@ function Card({ path, invitation }: { path: string; invitation: Live }) {
           </IconButton>
         </div>
       )}
-      {elsewhere && !join.isSuccess && (
+      {elsewhere && !join.isSuccess && !over && (
         <div className={styles.sentTo} role="note">
           <span>
             This was sent to{" "}
@@ -208,24 +367,21 @@ function Card({ path, invitation }: { path: string; invitation: Live }) {
 }
 
 function Message({
-  icon = "alert",
   title,
   body,
   children,
 }: {
-  icon?: "alert" | "mail";
   title: string;
   body: string;
   children: ReactNode;
 }) {
-  const Icon = icon === "mail" ? MailIcon : CircleAlertIcon;
   return (
     <div className={message.page}>
       <Brand />
       <main className={message.card}>
         <div className={message.message}>
           <span className={message.icon}>
-            <Icon size={20} aria-hidden />
+            <CircleAlertIcon size={20} aria-hidden />
           </span>
           <div className={message.text}>
             <h1 className={message.title}>{title}</h1>

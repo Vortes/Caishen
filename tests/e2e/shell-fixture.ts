@@ -50,6 +50,10 @@ export type TestBudget = {
 };
 type Budgets = {
   create: (options?: BudgetOptions) => Promise<TestBudget>;
+  // An address for someone who signs up in the browser during the test.
+  newcomer: () => Promise<string>;
+  // Marks the account signed up with `email` as this run's, for cleanup.
+  claim: (email: string) => Promise<string>;
   signIn: (page: Page, budget: TestBudget) => Promise<void>;
   signOut: (page: Page) => Promise<void>;
 };
@@ -85,6 +89,18 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
       await provide({
         signIn,
         signOut,
+        newcomer: () => journal.reserveIdentity(),
+        claim: async (email) => {
+          const [user] = (
+            await auth.users.getUserList({ emailAddress: [email], limit: 2 })
+          ).data;
+          if (!user) throw new Error("The newcomer's account wasn't created.");
+          await auth.users.updateUserMetadata(user.id, {
+            privateMetadata: { caishenE2ERun: journal.runId },
+          });
+          await journal.recordIdentity(email, user.id);
+          return user.id;
+        },
         create: async (options = {}) => {
           const email = await journal.reserveIdentity();
           const user = await auth.users.createUser({
@@ -250,7 +266,10 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
         failures.push(error);
       }
       try {
-        await cleanupRun(journal, cleanupServices(auth, db));
+        await cleanupRun(
+          journal,
+          cleanupServices(auth, db, () => journal.userIds),
+        );
       } catch (error) {
         failures.push(error);
       } finally {

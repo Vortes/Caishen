@@ -185,6 +185,27 @@ export function joinByInvitation(
   return join(db, userId, () => readInvitationToJoin(db, userId, id), observe);
 }
 
+/**
+ * Creates a newcomer's budget and accepts their invitation with it, since
+ * joining needs a budget to merge. An invitation that can't be accepted
+ * leaves no budget behind; a budget made before a join that failed is used
+ * when they try again.
+ */
+export async function onboardByInvitation(
+  db: Database,
+  userId: string,
+  input: Parameters<typeof onboard>[2],
+  invitation: string,
+  observe?: RevisionObserver,
+): Promise<OperationResult> {
+  await readInvitationToJoin(db, userId, invitation);
+  if (
+    !(await db.workspaceMember.findUnique({ where: { clerkUserId: userId } }))
+  )
+    await onboard(db, userId, input);
+  return joinByInvitation(db, userId, invitation, observe);
+}
+
 async function join(
   db: Database,
   userId: string,

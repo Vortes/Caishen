@@ -285,3 +285,7 @@
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
+/* Clerk's form under the invitation's heading, on the same card. */
+.account {
+  margin-top: 20px;
+}

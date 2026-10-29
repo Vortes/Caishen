@@ -35,6 +35,7 @@ export function GuidedOnboarding({
   onCreate,
   onCategories,
   onCheckInvite,
+  invitedBy,
   accounts,
   readyToAssign,
   onComplete,
@@ -50,6 +51,8 @@ export function GuidedOnboarding({
   onCreate: (input: BudgetBasics) => Promise<void>;
   onCategories: (groups: Group[]) => Promise<void>;
   onCheckInvite?: (code: string) => Promise<{ name: string }>;
+  // Who sent the invitation this setup accepts.
+  invitedBy?: string;
   accounts: ReactNode;
   readyToAssign: number;
   onComplete: () => void;
@@ -163,8 +166,8 @@ export function GuidedOnboarding({
               className={styles.title}
             >
               {stage === "basics"
-                ? inviter
-                  ? `${inviter} invited you. Let’s set up your budget.`
+                ? (inviter ?? invitedBy)
+                  ? `${inviter ?? invitedBy} invited you. Let’s set up your budget.`
                   : "Welcome. Let’s set up your budget."
                 : stage === "categories"
                   ? reviewing
@@ -209,10 +212,7 @@ export function GuidedOnboarding({
                 <Card>
                   <div className={styles.fields}>
                     <div className={batch.field}>
-                      <label
-                        className={batch.fieldLabel}
-                        htmlFor={`${id}-you`}
-                      >
+                      <label className={batch.fieldLabel} htmlFor={`${id}-you`}>
                         Your name
                       </label>
                       <input

@@ -38,6 +38,7 @@ import {
   joinByInvitation,
   joinHousehold,
   onboard,
+  onboardByInvitation,
   setOnboardingCategories,
 } from "~/server/services/household-operations";
 import {
@@ -230,10 +231,20 @@ export const budgetRouter = createTRPCRouter({
         month,
         timezone: z.string().max(100),
         emailEnabled: z.boolean().optional(),
+        // The invitation a newcomer signed: their budget joins its sender's.
+        invitation: z.string().min(1).max(100).optional(),
       }),
     )
-    .mutation(({ ctx, input }) =>
-      onboard(ctx.db, ctx.userId, input, ctx.revision.observe),
+    .mutation(({ ctx, input: { invitation, ...input } }) =>
+      invitation
+        ? onboardByInvitation(
+            ctx.db,
+            ctx.userId,
+            input,
+            invitation,
+            ctx.revision.observe,
+          )
+        : onboard(ctx.db, ctx.userId, input, ctx.revision.observe),
     ),
 
   setupCategories: protectedProcedure

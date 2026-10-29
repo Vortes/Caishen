@@ -1,6 +1,8 @@
 import nextEnv from "@next/env";
 import { defineConfig } from "@playwright/test";
-import { e2eEnvironment, shellPath } from "./tests/e2e/environment";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { e2eEnvironment, outboxPath, shellPath } from "./tests/e2e/environment";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 const environment = e2eEnvironment(process.env);
@@ -16,7 +18,15 @@ export default defineConfig({
     { name: "api-smoke", testMatch: "api-authorization.spec.ts" },
   ],
   webServer: {
-    env: { CLERK_WEBHOOK_SIGNING_SECRET: "" },
+    env: {
+      CLERK_WEBHOOK_SIGNING_SECRET: "",
+      // Email goes to files the specs can open, never to Resend.
+      NODE_OPTIONS: `--import=${pathToFileURL(resolve("tests/e2e/resend-fetch-fixture.mjs")).href}`,
+      CAISHEN_E2E_OUTBOX: resolve(outboxPath),
+      RESEND_API_KEY: "e2e-resend-key",
+      EMAIL_FROM: "Caishen <invites@caishen.example>",
+      APP_BASE_URL: environment.baseURL,
+    },
     command: `npm run dev -- --hostname ${environment.hostname} --port ${environment.port}`,
     url: `${environment.baseURL}${shellPath}`,
     reuseExistingServer: false,

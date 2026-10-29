@@ -18,8 +18,10 @@ export const viewport: Viewport = { viewportFit: "cover" };
 // the person who already accepted it goes on to their budget.
 export default async function InvitationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ "sign-in"?: string }>;
 }) {
   const { token } = await params;
   const { userId } = await auth();
@@ -27,9 +29,23 @@ export default async function InvitationPage({
   if (invitation.status === "joined") redirect(SHELL_PATH);
   return (
     <InvitationLink
+      token={token}
       path={`/invite/${encodeURIComponent(token)}`}
       invitation={invitation}
-      signedIn={Boolean(userId)}
+      visitor={
+        userId
+          ? {
+              signedIn: true,
+              // No budget yet: setting one up accepts the invitation.
+              newcomer: !(await db.workspaceMember.findUnique({
+                where: { clerkUserId: userId },
+              })),
+            }
+          : {
+              signedIn: false,
+              signIn: (await searchParams)["sign-in"] !== undefined,
+            }
+      }
     />
   );
 }

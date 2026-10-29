@@ -2,14 +2,28 @@ import type { createClerkClient } from "@clerk/backend";
 import type { Prisma, PrismaClient } from "../../src/generated/prisma/index.js";
 import type { CleanupServices } from "./cleanup";
 
-async function ownedWorkspaces(db: Prisma.TransactionClient, userId: string) {
+// The user's household, and any budget they left behind by joining a
+// partner. Partners are fine only when they belong to the same run.
+async function ownedWorkspaces(
+  db: Prisma.TransactionClient,
+  userId: string,
+  runUsers: string[],
+) {
   const workspaces = await db.workspace.findMany({
-    where: { members: { some: { clerkUserId: userId } } },
-    include: { members: true },
+    where: {
+      OR: [
+        { members: { some: { clerkUserId: userId } } },
+        { budgetMembers: { some: { userId } } },
+      ],
+    },
+    include: { members: true, budgetMembers: true },
   });
+  const owned = new Set([userId, ...runUsers]);
   if (
-    workspaces.some((workspace) =>
-      workspace.members.some((member) => member.clerkUserId !== userId),
+    workspaces.some(
+      (workspace) =>
+        workspace.members.some((member) => !owned.has(member.clerkUserId)) ||
+        workspace.budgetMembers.some((member) => !owned.has(member.userId)),
     )
   )
     throw new Error(
@@ -21,6 +35,8 @@ async function ownedWorkspaces(db: Prisma.TransactionClient, userId: string) {
 export function cleanupServices(
   auth: ReturnType<typeof createClerkClient>,
   db: PrismaClient,
+  // Everyone the run created, so partners made in one run clean up together.
+  runUsers: () => string[] = () => [],
 ): CleanupServices {
   return {
     findIdentity: async (email) => {
@@ -37,7 +53,7 @@ export function cleanupServices(
       }));
     },
     assertOwnedData: async (userId) => {
-      await ownedWorkspaces(db, userId);
+      await ownedWorkspaces(db, userId, runUsers());
     },
     deleteIdentity: async (userId) => {
       await auth.users.deleteUser(userId);
@@ -47,7 +63,7 @@ export function cleanupServices(
       // lose a write conflict; it is idempotent, so it is safe to retry.
       for (let attempt = 1; ; attempt++) {
         try {
-          await clearOwnedData(db, userId);
+          await clearOwnedData(db, userId, runUsers());
           return;
         } catch (error) {
           if (attempt >= 5 || !isSerializationFailure(error)) throw error;
@@ -67,11 +83,15 @@ function isSerializationFailure(error: unknown) {
   );
 }
 
-async function clearOwnedData(db: PrismaClient, userId: string) {
+async function clearOwnedData(
+  db: PrismaClient,
+  userId: string,
+  runUsers: string[],
+) {
   await db.$transaction(
     async (tx) => {
       // Recheck inside the transaction as well as before deleting Clerk.
-      const workspaces = await ownedWorkspaces(tx, userId);
+      const workspaces = await ownedWorkspaces(tx, userId, runUsers);
       await tx.workspace.deleteMany({
         where: { id: { in: workspaces.map(({ id }) => id) } },
       });

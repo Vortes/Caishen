@@ -31,6 +31,11 @@ after(async () => {
     if (original[key] === undefined) delete process.env[key];
     else process.env[key] = original[key];
   }
+  // Including budgets left behind by joining.
+  for (const { id } of await db.workspace.findMany({
+    where: { budgetMembers: { some: { userId: { in: users } } } },
+  }))
+    workspaces.add(id);
   await db.workspace.deleteMany({ where: { id: { in: [...workspaces] } } });
   await db.user.deleteMany({ where: { clerkUserId: { in: users } } });
   await db.$disconnect();
@@ -394,4 +399,75 @@ void test("signing the card joins the sender's household, and is refused when ei
     ).workspaceId,
     household.workspaceId,
   );
+});
+
+void test("someone new accepts the invitation in the step that creates their budget", async () => {
+  const sender = await member("Jordan Lee", ["jordan@example.com"]);
+  await sender.api.budget.sendInvitation({
+    email: "alex@example.com",
+    washi: "vermilion",
+    signature,
+  });
+  const first = tokenOf(sender.sent[0]!.link);
+  await sender.api.budget.sendInvitation({
+    email: "alex@example.com",
+    washi: "vermilion",
+    signature,
+  });
+  const token = tokenOf(sender.sent[1]!.link);
+  const alex = `test-invitation-${randomUUID()}`;
+  users.push(alex);
+  const newcomer = visitor(alex);
+  const basics = {
+    name: "Alex’s budget",
+    month: "2026-10",
+    timezone: "America/New_York",
+  };
+
+  // Signing a replaced card doesn't leave a budget behind.
+  const replaced = await visitor().budget.openInvitation({ token: first });
+  assert.equal(replaced.status, "replaced");
+  const stale = await db.partnerInvite.findFirstOrThrow({
+    where: { createdBy: sender.id, replaced: true },
+  });
+  await assert.rejects(
+    () => newcomer.budget.onboard({ ...basics, invitation: stale.id }),
+    { code: "BAD_REQUEST", message: /Jordan sent a newer invitation/ },
+  );
+  assert.equal(
+    await db.workspaceMember.findUnique({ where: { clerkUserId: alex } }),
+    null,
+    "no budget was created",
+  );
+
+  const opened = await newcomer.budget.openInvitation({ token });
+  assert.ok(opened.status === "live");
+  await newcomer.budget.onboard({ ...basics, invitation: opened.id });
+
+  const household = await db.workspaceMember.findUniqueOrThrow({
+    where: { clerkUserId: sender.id },
+  });
+  assert.equal(
+    (
+      await db.workspaceMember.findUniqueOrThrow({
+        where: { clerkUserId: alex },
+      })
+    ).workspaceId,
+    household.workspaceId,
+    "the newcomer is in the sender's household",
+  );
+  const theirs = await newcomer.budget.state({ month: "2026-10" });
+  assert.equal(theirs.view?.budget.name, "Alex’s budget");
+  assert.equal(theirs.view?.budget.settings.timezone, "America/New_York");
+  assert.equal(theirs.view?.members.length, 2);
+  const shared = await sender.api.budget.state({ month: "2026-10" });
+  assert.equal(shared.view?.members.length, 2, "the sender sees a partner");
+  assert.equal(await sender.api.budget.invitation(), null);
+  assert.deepEqual(await newcomer.budget.openInvitation({ token }), {
+    status: "joined",
+  });
+  assert.deepEqual(await visitor().budget.openInvitation({ token }), {
+    status: "used",
+    from: "Jordan Lee",
+  });
 });
