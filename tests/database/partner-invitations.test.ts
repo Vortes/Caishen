@@ -316,6 +316,11 @@ void test("signing the card joins the sender's household, and is refused when ei
   await theirPartner.api.budget.joinInvitation({
     id: await invitationFrom(db, partnered.id),
   });
+  // They're told so when the link opens, before the card flies in.
+  assert.deepEqual(await partnered.api.budget.openInvitation({ token }), {
+    status: "partnered",
+    from: "Jordan Lee",
+  });
   await assert.rejects(
     () => partnered.api.budget.joinInvitation({ id: opened.id }),
     { code: "BAD_REQUEST", message: /already share a budget/ },
@@ -356,8 +361,9 @@ void test("signing the card joins the sender's household, and is refused when ei
     washi: "matcha",
     signature,
   });
+  const fullToken = tokenOf(full.sent[0]!.link);
   const fullInvitation = await visitor().budget.openInvitation({
-    token: tokenOf(full.sent[0]!.link),
+    token: fullToken,
   });
   assert.ok(fullInvitation.status === "live");
   const riley = await member("Riley Fox", ["riley@example.com"]);
@@ -372,8 +378,9 @@ void test("signing the card joins the sender's household, and is refused when ei
     washi: "sumi",
     signature,
   });
+  const goneToken = tokenOf(gone.sent[0]!.link);
   const goneInvitation = await visitor().budget.openInvitation({
-    token: tokenOf(gone.sent[0]!.link),
+    token: goneToken,
   });
   assert.ok(goneInvitation.status === "live");
   const uma = await member("Uma Lin", ["uma@example.com"]);
@@ -382,6 +389,19 @@ void test("signing the card joins the sender's household, and is refused when ei
   });
 
   const sam = await member("Sam Ito", ["sam@example.com"]);
+  assert.deepEqual(await sam.api.budget.openInvitation({ token: fullToken }), {
+    status: "full",
+    from: "Morgan Ash",
+  });
+  assert.deepEqual(await sam.api.budget.openInvitation({ token: goneToken }), {
+    status: "left",
+    from: "Taylor Bay",
+  });
+  assert.equal(
+    (await visitor().budget.openInvitation({ token: fullToken })).status,
+    "live",
+    "someone signed out still sees the card",
+  );
   await assert.rejects(
     () => sam.api.budget.joinInvitation({ id: fullInvitation.id }),
     { code: "BAD_REQUEST", message: /Morgan already shares a budget/ },

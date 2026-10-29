@@ -355,7 +355,7 @@ function standing(invitation: StoredInvitation) {
 /**
  * What an invitation's link opens: the card, or why it no longer works.
  * Anyone holding the link may read it; the person who accepted it is sent
- * on to their budget.
+ * on to their budget, and someone signed in who can't accept it is told why.
  */
 export async function openPartnerInvitation(
   db: Database,
@@ -371,6 +371,12 @@ export async function openPartnerInvitation(
     return { status: "joined" } as const;
   if (status !== "live")
     return { status, from: invitation.senderName } as const;
+  // Someone signed in hears why they can't accept before the card flies.
+  if (userId) {
+    const room = await roomFor(db, userId, invitation);
+    if (room !== "room")
+      return { status: room, from: invitation.senderName } as const;
+  }
   return {
     status,
     id: invitation.id,
@@ -379,6 +385,32 @@ export async function openPartnerInvitation(
     washi: washiSchema.parse(invitation.washi),
     signature: signatureSchema.parse(invitation.signature),
   } as const;
+}
+
+// Whether both sides still have room: `userId` has no partner, and the
+// sender is still in their budget, alone.
+async function roomFor(
+  db: Database,
+  userId: string,
+  invitation: Pick<StoredInvitation, "workspaceId" | "createdBy">,
+) {
+  const own = await db.workspaceMember.findUnique({
+    where: { clerkUserId: userId },
+  });
+  if (
+    own &&
+    (await db.workspaceMember.count({
+      where: { workspaceId: own.workspaceId },
+    })) >= 2
+  )
+    return "partnered";
+  const members = await db.workspaceMember.findMany({
+    where: { workspaceId: invitation.workspaceId },
+  });
+  if (!members.some((member) => member.clerkUserId === invitation.createdBy))
+    return "left";
+  if (members.length >= 2) return "full";
+  return "room";
 }
 
 const refuse = (message: string) =>
@@ -418,26 +450,16 @@ export async function readInvitationToJoin(
     throw refuse(
       "That’s your own invitation. Your partner accepts it from their email.",
     );
-  const own = await db.workspaceMember.findUnique({
-    where: { clerkUserId: userId },
-  });
-  if (
-    own &&
-    (await db.workspaceMember.count({
-      where: { workspaceId: own.workspaceId },
-    })) >= 2
-  )
+  const room = await roomFor(db, userId, invitation);
+  if (room === "partnered")
     throw refuse(
       "You already share a budget with a partner, and a budget has room for one.",
     );
-  const members = await db.workspaceMember.findMany({
-    where: { workspaceId: invitation.workspaceId },
-  });
-  if (!members.some((member) => member.clerkUserId === invitation.createdBy))
+  if (room === "left")
     throw refuse(
       `${sender} isn’t using that budget anymore, so this invitation can’t be accepted.`,
     );
-  if (members.length >= 2)
+  if (room === "full")
     throw refuse(`${sender} already shares a budget with someone else.`);
   return invitation;
 }

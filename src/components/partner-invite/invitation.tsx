@@ -85,6 +85,18 @@ function OpenedLink({
         `${sender} sent a newer invitation`,
         "Open the link in the latest invitation email instead.",
       ],
+      partnered: [
+        "You already share a budget",
+        "A budget has room for one partner, so this invitation can’t be accepted.",
+      ],
+      full: [
+        `${sender} already shares a budget`,
+        "They connected with someone else, so this invitation can’t be accepted.",
+      ],
+      left: [
+        `${sender} isn’t using that budget anymore`,
+        "So this invitation can’t be accepted. They can send you a new one.",
+      ],
     };
     const [title, body] = copy[invitation.status];
     return (
