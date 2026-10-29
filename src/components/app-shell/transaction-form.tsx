@@ -6,6 +6,7 @@ import {
   accountKindLabels,
 } from "~/domain/register-entry";
 import { transferNeedsCategory } from "~/domain/transfers";
+import { cardPaymentCategoryLabel } from "~/components/transactions/transaction-category";
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon, XIcon } from "lucide-react";
 import {
@@ -500,7 +501,15 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         id={id("categoryId")}
         className={styles.input}
         aria-label="Category"
-        value="Category not needed"
+        value={
+          draftEntry?.shape.kind === "card-payment"
+            ? cardPaymentCategoryLabel(
+                view.budget,
+                draft.accountId,
+                draft.transferAccountId,
+              )
+            : "Category not needed"
+        }
         disabled
       />
     </div>

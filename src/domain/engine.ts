@@ -436,6 +436,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: identifier,
     ...transactionInput,
     transferAccountId: identifier.optional(),
+    transferCounterpart: z
+      .object({
+        date: daySchema,
+        providerId: identifier,
+      })
+      .optional(),
     loanId: identifier.optional(),
     interest: nonnegativeCents.optional(),
   }),
@@ -1909,7 +1915,10 @@ function replay(
         continue;
       }
       if (transaction.kind === "card-payment") {
-        if (account.kind === "credit") payments.push(transaction);
+        if (account.kind === "cash") {
+          const card = index.transferCounterpart(transaction);
+          if (card) payments.push({ ...card, amount: -transaction.amount });
+        }
         continue;
       }
       if (transaction.linkedCounterpartyAccountId) {
@@ -3871,6 +3880,11 @@ function applyCommand(
       break;
     }
     case "transaction.upsert": {
+      if (
+        command.transferCounterpart &&
+        (source !== "provider" || !command.transferAccountId)
+      )
+        fail("Only a bank update can attach the other side's bank facts");
       requireDate(budget, command.date);
       const account = accountAtDate(budget, command.accountId, command.date);
       const existing = budget.transactions.find(
@@ -3971,7 +3985,12 @@ function applyCommand(
             reviewed:
               source === "user"
                 ? (previous?.reviewed ?? command.reviewed ?? true)
-                : false,
+                : Boolean(
+                    before?.reviewed &&
+                    before.amount === facts.amount &&
+                    before.status === facts.status &&
+                    before.kind === facts.kind,
+                  ),
             history: [
               ...(before?.history ?? []),
               {
@@ -3982,6 +4001,7 @@ function applyCommand(
                 payee: facts.payee,
                 operationId: command.id,
                 reason: before ? "updated" : "created",
+                ...(source === "user" ? { actorId: budget.userId } : {}),
               },
             ],
           };
@@ -4008,11 +4028,29 @@ function applyCommand(
         if (command.transferAccountId) {
           if (command.transferAccountId === account.id)
             fail("Choose a different account");
+          const counterpartDate =
+            command.transferCounterpart?.date ??
+            (otherPrevious?.accountId === command.transferAccountId &&
+            (source === "provider" || otherPrevious.providerId)
+              ? otherPrevious.date
+              : command.date);
           const other = accountAtDate(
             budget,
             command.transferAccountId,
-            command.date,
+            counterpartDate,
           );
+          if (command.transferCounterpart) {
+            requireDate(budget, command.transferCounterpart.date);
+            if (
+              budget.transactions.some(
+                (item) =>
+                  active(item) &&
+                  item.id !== otherPrevious?.id &&
+                  item.providerId === command.transferCounterpart!.providerId,
+              )
+            )
+              fail("Provider transaction already exists");
+          }
           let categoryId: string | undefined;
           if (transferNeedsCategory(account, other)) {
             const budgetAmount =
@@ -4040,7 +4078,7 @@ function applyCommand(
               budget,
               sending.id,
               receiving.id,
-              command.date,
+              sending.id === account.id ? command.date : counterpartDate,
               Math.abs(command.amount),
             );
           const reusable =
@@ -4067,10 +4105,26 @@ function applyCommand(
               id: retainedCounterpart,
               accountId: other.id,
               amount: -command.amount,
+              date: counterpartDate,
+              expenseMonth:
+                reusable && (source === "provider" || reusable.providerId)
+                  ? reusable.expenseMonth
+                  : command.transferCounterpart
+                    ? monthOf(counterpartDate)
+                    : base.expenseMonth,
               payee: transferPayee(other, account, -command.amount),
               // Each side clears its own bank.
-              cleared: nextCleared(undefined, command.status, reusable),
-              providerId: reusable?.providerId,
+              cleared: nextCleared(
+                command.transferCounterpart
+                  ? true
+                  : source === "provider" && !reusable
+                    ? false
+                    : undefined,
+                command.status,
+                reusable,
+              ),
+              providerId:
+                reusable?.providerId ?? command.transferCounterpart?.providerId,
               kind,
               linkedId,
               categoryId,

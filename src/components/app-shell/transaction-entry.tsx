@@ -26,6 +26,7 @@ import { prepareTransactionCategories } from "~/components/transactions/transact
 import {
   rememberedCategory,
   rememberedCounterpartyShare,
+  reimbursementShareForPayee,
 } from "~/domain/payee-memory";
 import {
   createImportDraft,
@@ -398,11 +399,19 @@ export function useTransactionEntryController({
         "lines" in next;
       if (
         !shareChosen &&
-        !current.initial &&
+        (!current.initial ||
+          (current.initial.kind === "purchase" &&
+            !current.initial.categoryId &&
+            !current.initial.counterpartyShare &&
+            !current.initial.lines?.length)) &&
         !draft.lines.length &&
         ["payee", "accountId", "outflow", "inflow"].some((key) => key in next)
       ) {
-        const share = rememberedCounterpartyShare(view.budget, {
+        const share = (
+          current.initial
+            ? reimbursementShareForPayee
+            : rememberedCounterpartyShare
+        )(view.budget, {
           payee: draft.payee,
           accountId: draft.accountId,
           amount:

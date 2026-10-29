@@ -13,6 +13,7 @@ import {
   READY_TO_ASSIGN,
 } from "~/domain/transfers";
 import { budgetDay } from "~/domain/user-command";
+import { reimbursementShareForPayee } from "~/domain/payee-memory";
 
 type Transaction = View["budget"]["transactions"][number];
 
@@ -171,6 +172,11 @@ export function createTransactionDraft(
         transaction?.counterpartyShare ??
         (transaction?.lines?.length === 1
           ? transaction.lines[0]?.counterpartyShare
+          : undefined) ??
+        (transaction?.kind === "purchase" &&
+        !transaction.categoryId &&
+        !transaction.lines?.length
+          ? reimbursementShareForPayee(view.budget, transaction)
           : undefined);
       return share
         ? { ...share, amount: (share.amount / 100).toFixed(2) }

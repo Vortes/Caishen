@@ -1,11 +1,16 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import type { Command } from "~/domain/engine";
+import {
+  execute,
+  withCounterpartyAccounts,
+  type Command,
+} from "~/domain/engine";
 import {
   findToast,
   findTransactionRow,
   readyOverview,
   renderShell,
+  budgetFixture,
   transactionRow as row,
   type Overview,
 } from "./shell-harness";
@@ -121,6 +126,114 @@ test("a new transaction takes its payee's remembered category", async () => {
     categoryId: "gifts",
     amount: -3150,
   });
+});
+
+test("an existing reimbursement person's payee fills that person's full category", async () => {
+  const shell = await renderShell({
+    book: execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+      type: "transaction.upsert",
+      id: "seed-mom",
+      transactionId: "for-mom",
+      accountId: "checking",
+      date: "2026-10-03",
+      payee: "Noodles Plus",
+      amount: -1154,
+      recordedAt: "2026-10-03T12:00:00Z",
+      counterpartyShare: {
+        accountId: "counterparty:reimbursements",
+        counterpartyName: "Mom",
+        amount: 1154,
+      },
+    }),
+  });
+  const form = await newTransaction(shell);
+  await shell.user.type(
+    form.getByLabelText("Outflow", { exact: true }),
+    "20.00",
+  );
+  await shell.user.type(form.getByLabelText("Payee", { exact: true }), "Mom");
+  expect(form.getByRole("combobox", { name: "Category" })).toHaveProperty(
+    "value",
+    "Mom",
+  );
+  await shell.user.click(form.getByRole("button", { name: "Save" }));
+  await findToast("Added Mom");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(
+    within(screen.getByRole("group", { name: "Transactions" })).getByRole(
+      "button",
+      { name: /^Oct 20.*Mom.*Mom.*\$20\.00/ },
+    ),
+  ).toBeTruthy();
+});
+
+test("opening an uncategorized transaction already named Mom fills and saves her reimbursement category", async () => {
+  let book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+    type: "transaction.upsert",
+    id: "known-mom",
+    transactionId: "known-mom",
+    accountId: "checking",
+    date: "2026-10-03",
+    payee: "Noodles",
+    amount: -1_000,
+    recordedAt: "2026-10-03T12:00:00Z",
+    counterpartyShare: {
+      accountId: "counterparty:reimbursements",
+      counterpartyName: "Mom",
+      amount: 1_000,
+    },
+  });
+  book = execute(book, "owner", {
+    type: "transaction.upsert",
+    id: "already-mom",
+    transactionId: "already-mom",
+    accountId: "checking",
+    date: "2026-10-04",
+    payee: "Mom",
+    amount: -2_000,
+  });
+  const shell = await renderShell({ book });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(
+    within(screen.getByRole("group", { name: "Transactions" })).getByRole(
+      "button",
+      { name: /Oct 4.*Mom.*\$20\.00/ },
+    ),
+  );
+  await shell.user.keyboard("e");
+  expect(editor().getByRole("combobox", { name: "Category" })).toHaveProperty(
+    "value",
+    "Mom",
+  );
+  await shell.user.clear(editor().getByLabelText("Payee", { exact: true }));
+  await shell.user.type(
+    editor().getByLabelText("Payee", { exact: true }),
+    "Someone else",
+  );
+  expect(editor().getByRole("combobox", { name: "Category" })).toHaveProperty(
+    "value",
+    "",
+  );
+  await shell.user.clear(editor().getByLabelText("Payee", { exact: true }));
+  await shell.user.type(
+    editor().getByLabelText("Payee", { exact: true }),
+    "Mom",
+  );
+  expect(editor().getByRole("combobox", { name: "Category" })).toHaveProperty(
+    "value",
+    "Mom",
+  );
+  await shell.user.click(editor().getByRole("button", { name: "Save" }));
+  await findToast("Saved Mom");
+  await shell.reload();
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(
+    within(screen.getByRole("group", { name: "Transactions" })).getByRole(
+      "button",
+      { name: /^Oct 4.*Mom.*Mom.*\$20\.00/ },
+    ),
+  ).toBeTruthy();
 });
 
 test("picking a remembered payee selects its whole category label for acceptance or replacement", async () => {

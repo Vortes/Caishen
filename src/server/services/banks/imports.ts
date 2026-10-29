@@ -2,6 +2,9 @@ import { withBankAccountSuccessors } from "../bank-account-rows";
 /** Import application: fetches account activity and applies each provider update or user inbox decision as a household operation. It owns transaction matching, reconciliation, quarantine, and the corresponding change sets. */
 
 import { isBankAccountLive } from "~/lib/bank-account-identity";
+import { isCardPaymentOutflow } from "~/lib/card-payment-recognition";
+import { rememberedPaymentDestinations } from "../bank-payment-memory";
+import { transferImportCommand } from "~/domain/transfers";
 import { rejectImportChange } from "~/domain/bank-import-rejection";
 
 import {
@@ -59,7 +62,7 @@ import {
   rememberedCategory,
   rememberedCounterpartyShare,
 } from "~/domain/payee-memory";
-import { MANUAL_MATCH_DAYS } from "~/domain/bank-import-balances";
+import { matchesManualImport } from "~/domain/bank-import-balances";
 import { READY_TO_ASSIGN } from "~/domain/transfers";
 import type { AccountingState } from "~/domain/shared-ledger";
 import {
@@ -267,8 +270,7 @@ export async function syncBanks(
       });
     }
   }
-  // Payments between people that the update brought in, recognized as
-  // transfers to and from the counterparty accounts.
+  // Match payments across the member's owned accounts and counterparty accounts.
   const { settled, repaid } = await settleFromImports(db, userId);
   return { imported, updated: updated + settled + repaid, outcomes };
 }
@@ -442,6 +444,10 @@ async function applyBankUpdate(
   let book = opened.ledger.state;
   const changeSets: ChangeSet[] = [];
   const operations: Command[] = [];
+  const paymentDestinations = rememberedPaymentDestinations(
+    budgetOf(book, userId),
+    [state],
+  );
   const partnerImports = planPartnerImports(
     book,
     budgetOf(book, userId),
@@ -475,12 +481,18 @@ async function applyBankUpdate(
       if (partnerImport === "wait") continue;
       const remembered =
         partnerImport ??
-        rememberedImport(
-          budgetOf(book, userId),
+        (paymentDestinations(
           mapped.accountId,
-          record,
-          `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
-        );
+          record.current.name,
+          -record.current.amountCents,
+        ).length
+          ? undefined
+          : rememberedImport(
+              budgetOf(book, userId),
+              mapped.accountId,
+              record,
+              `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
+            ));
       if (!remembered) continue;
       try {
         const result = executeWithChanges(book, userId, remembered, "provider");
@@ -645,6 +657,7 @@ function rememberedImport(
   if (record.removed || record.current.pending) return undefined;
   const fact = record.current;
   const amount = -fact.amountCents;
+  if (amount < 0 && isCardPaymentOutflow(fact.name)) return undefined;
   const payee = (fact.merchantName ?? fact.name).slice(0, 240);
   const categoryId = rememberedCategory(budget, { payee, accountId, amount });
   const counterpartyShare = rememberedCounterpartyShare(budget, {
@@ -653,16 +666,16 @@ function rememberedImport(
     amount,
   });
   if (!categoryId && !counterpartyShare) return undefined;
-  const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
   const twin = budget.transactions.some(
     (transaction) =>
       !transaction.removed &&
       transaction.accountId === accountId &&
       (transaction.providerId === fact.providerTransactionId ||
-        (!transaction.providerId &&
-          transaction.amount === amount &&
-          Math.abs(day(transaction.date) - day(fact.date)) <=
-            MANUAL_MATCH_DAYS)),
+        matchesManualImport(transaction, {
+          accountId,
+          amount,
+          date: fact.date,
+        })),
   );
   if (twin) return undefined;
   return {
@@ -917,6 +930,19 @@ export async function resolveImport(
             "The selected ledger record must have the same account, signed amount, and date. Uncertain matches need investigation.",
           );
         transactionId = transaction.id;
+        if (!record.current.pending) {
+          const command = transferImportCommand(budget, transaction, {
+            id: operationId,
+            date: record.current.date,
+            amount: -record.current.amountCents,
+            providerId: record.current.providerTransactionId,
+          });
+          if (command)
+            changeSets.push(
+              executeWithChanges(ledger.state, userId, command, "provider")
+                .changeSet,
+            );
+        }
       } else if (input.command?.type === "partner.match") {
         // The payer confirmed which recorded purchase this import is.
         if (state.resolved[record.id]?.transactionId)

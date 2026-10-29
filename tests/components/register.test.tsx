@@ -435,6 +435,24 @@ const cardSeeds: Command[] = [
   },
 ];
 
+test("both sides of a card payment display the card's payment category", async () => {
+  const shell = await renderShell({ seedCommands: cardSeeds });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(
+    within(row("Payment to Visa")).getByText("Payments: Visa"),
+  ).toBeTruthy();
+  await shell.user.click(screen.getByRole("link", { name: /^Visa/ }));
+  expect(
+    within(row("Payment from Checking")).getByText("Payments: Visa"),
+  ).toBeTruthy();
+  await shell.user.click(row("Payment from Checking"));
+  await shell.user.keyboard("e");
+  expect(editor().getByLabelText("Category", { exact: true })).toHaveProperty(
+    "value",
+    "Payments: Visa",
+  );
+});
+
 test("payment payees exclude the current account and a receiving-side edit submits the existing payment", async () => {
   const shell = await renderShell({ seedCommands: cardSeeds });
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
@@ -457,7 +475,7 @@ test("payment payees exclude the current account and a receiving-side edit submi
   );
   expect(editor().getByLabelText("Category", { exact: true })).toHaveProperty(
     "value",
-    "Category not needed",
+    "Payments: Visa",
   );
   await shell.user.clear(editor().getByLabelText("Inflow", { exact: true }));
   await shell.user.type(

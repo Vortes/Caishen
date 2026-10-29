@@ -1,4 +1,4 @@
-import type { Account, Budget, Transaction } from "./engine";
+import type { Account, Budget, Command, Transaction } from "./engine";
 
 export function isTransfer(transaction: Pick<Transaction, "kind">) {
   return transaction.kind === "transfer" || transaction.kind === "card-payment";
@@ -16,6 +16,28 @@ export function transferCounterparts(
       isTransfer(item) &&
       item.linkedId === transaction.linkedId,
   );
+}
+
+export function transferImportCommand(
+  budget: Pick<Budget, "transactions">,
+  transaction: Transaction,
+  fact: { id: string; date: string; amount: number; providerId: string },
+): Extract<Command, { type: "transaction.upsert" }> | undefined {
+  const counterparts = transferCounterparts(budget, transaction);
+  if (counterparts.length !== 1) return undefined;
+  return {
+    type: "transaction.upsert",
+    ...fact,
+    transactionId: transaction.id,
+    revision: transaction.revision + 1,
+    accountId: transaction.accountId,
+    transferAccountId: counterparts[0]!.accountId,
+    payee: transaction.payee,
+    expenseMonth: transaction.expenseMonth,
+    categoryId: transaction.categoryId ?? READY_TO_ASSIGN,
+    status: "posted",
+    cleared: true,
+  };
 }
 
 export function transferPayee(
