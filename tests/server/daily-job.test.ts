@@ -9,6 +9,7 @@ if (originalSkipValidation === undefined)
   delete process.env.SKIP_ENV_VALIDATION;
 else process.env.SKIP_ENV_VALIDATION = originalSkipValidation;
 const originalFindMany = db.workspaceMember.findMany.bind(db.workspaceMember);
+const originalConnections = db.bankConnection.findMany.bind(db.bankConnection);
 const originalDeliveries = db.dailyDelivery.findMany.bind(db.dailyDelivery);
 const originalPurge = db.bankProviderEvent.deleteMany.bind(
   db.bankProviderEvent,
@@ -23,6 +24,7 @@ after(() => {
 
 afterEach(() => {
   Object.assign(db.workspaceMember, { findMany: originalFindMany });
+  Object.assign(db.bankConnection, { findMany: originalConnections });
   Object.assign(db.dailyDelivery, { findMany: originalDeliveries });
   Object.assign(db.bankProviderEvent, { deleteMany: originalPurge });
 });
@@ -57,6 +59,7 @@ void test("authorized hosted jobs return their result without caching", async ()
   process.env.CRON_SECRET = secret;
   const members = mock.fn(async () => []);
   Object.assign(db.workspaceMember, { findMany: members });
+  Object.assign(db.bankConnection, { findMany: async () => [] });
   Object.assign(db.dailyDelivery, { findMany: async () => [] });
   Object.assign(db.bankProviderEvent, {
     deleteMany: async () => ({ count: 0 }),
@@ -69,7 +72,7 @@ void test("authorized hosted jobs return their result without caching", async ()
   assert.equal(result.failed, 0);
 });
 
-void test("failed daily work is visible as a failed hosted invocation", async () => {
+void test("daily work that completes with failures reports them in a successful invocation", async () => {
   process.env.CRON_SECRET = secret;
   const now = new Date();
   const members = mock.fn(async () => [
@@ -87,29 +90,31 @@ void test("failed daily work is visible as a failed hosted invocation", async ()
     },
   ]);
   Object.assign(db.workspaceMember, { findMany: members });
+  Object.assign(db.bankConnection, { findMany: async () => [] });
+  Object.assign(db.dailyDelivery, { findMany: async () => [] });
+  Object.assign(db.bankProviderEvent, {
+    deleteMany: async () => ({ count: 0 }),
+  });
+  const response = await GET(request(`Bearer ${secret}`));
+  assert.equal(response.status, 200);
+  const result = (await response.json()) as Record<string, unknown>;
+  assert.equal(result.processed, 1);
+  assert.equal(result.failed, 1);
+});
+
+void test("a run the database keeps from starting returns a non-cacheable 503", async () => {
+  process.env.CRON_SECRET = secret;
+  Object.assign(db.bankConnection, {
+    findMany: async () => {
+      throw new Error("database-fixture-error");
+    },
+  });
   Object.assign(db.dailyDelivery, { findMany: async () => [] });
   Object.assign(db.bankProviderEvent, {
     deleteMany: async () => ({ count: 0 }),
   });
   const response = await GET(request(`Bearer ${secret}`));
   assert.equal(response.status, 503);
-  const result = (await response.json()) as Record<string, unknown>;
-  assert.equal(result.processed, 1);
-  assert.equal(result.failed, 1);
-});
-
-void test("database failures return a non-cacheable hosted job error", async () => {
-  process.env.CRON_SECRET = secret;
-  const members = mock.fn(async () => {
-    throw new Error("database-fixture-error");
-  });
-  Object.assign(db.workspaceMember, { findMany: members });
-  Object.assign(db.dailyDelivery, { findMany: async () => [] });
-  Object.assign(db.bankProviderEvent, {
-    deleteMany: async () => ({ count: 0 }),
-  });
-  const response = await GET(request(`Bearer ${secret}`));
-  assert.equal(response.status, 500);
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.doesNotMatch(await response.text(), /database-fixture-error/);
 });

@@ -323,10 +323,30 @@ export async function respondToPlaidWebhook(
       where: { id: connection.id },
       data: decision.change,
     });
-  if (decision.update)
+  if (decision.update) {
+    // The request recorded above is the handoff: if this prompt update
+    // fails or is cut short, the next daily run updates the connection.
+    console.info("Plaid webhook requested an account update", {
+      connectionId: connection.id,
+    });
     schedule(() =>
-      syncBanks(db, connection.clerkUserId).then(
-        () => undefined,
+      syncBanks(db, connection.clerkUserId, {
+        connectionIds: [connection.id],
+      }).then(
+        ({ outcomes }) => {
+          for (const outcome of outcomes)
+            if (outcome.kind !== "synced")
+              console.warn(
+                "Account update after a Plaid webhook did not commit",
+                {
+                  connectionId: outcome.connectionId,
+                  outcome: outcome.kind,
+                  ...("error" in outcome
+                    ? { error: outcome.error.message }
+                    : {}),
+                },
+              );
+        },
         (error: unknown) =>
           console.error("Account update after a Plaid webhook failed", {
             connectionId: connection.id,
@@ -334,5 +354,6 @@ export async function respondToPlaidWebhook(
           }),
       ),
     );
+  }
   return Response.json({ received: true });
 }

@@ -6,6 +6,7 @@ import {
   dailyReviewSchedule,
 } from "~/server/integrations/daily-review";
 import { bankInbox, syncBanks } from "./banks";
+import type { BankUpdateOutcome } from "./banks/imports";
 import { purgeBankProviderEvents } from "./bank-provider-events";
 import {
   cancelScheduledDailyReviews,
@@ -14,7 +15,7 @@ import {
   type DailyDeliveryPayload,
   type DailyDeliveryTarget,
 } from "./daily-delivery";
-import { jsonValue } from "./safety";
+import { domainRefusal, jsonValue } from "./safety";
 import type { Budget } from "~/domain/engine";
 import { openHousehold, type Database } from "./household";
 import { budgetMaintenance, reportUnreadable, zodIssues } from "./stored-data";
@@ -215,6 +216,107 @@ async function recoverDailyCancellations(
   return { canceled, failed };
 }
 
+/**
+ * The connections a run updates, in a fixed order: every one not revoked or
+ * disconnected that has not synced since the run's UTC day began, or that a
+ * webhook asked to update since it last synced.
+ */
+async function dueConnections(db: Database, now: Date) {
+  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  const connections = await db.bankConnection.findMany({
+    where: {
+      status: { notIn: ["revoked", "disconnected"] },
+      user: { active: true },
+    },
+    select: {
+      id: true,
+      clerkUserId: true,
+      lastSyncedAt: true,
+      updateRequestedAt: true,
+    },
+    orderBy: { id: "asc" },
+  });
+  return connections.filter(
+    ({ lastSyncedAt, updateRequestedAt }) =>
+      !lastSyncedAt ||
+      lastSyncedAt < today ||
+      (updateRequestedAt && updateRequestedAt > lastSyncedAt),
+  );
+}
+
+/** Each due connection's update, grouped by owner; one never stops another. */
+async function reconcileBanks(
+  db: Database,
+  due: Awaited<ReturnType<typeof dueConnections>>,
+  dependencies: DailyJobDependencies,
+) {
+  const owners = new Map<string, string[]>();
+  for (const connection of due)
+    owners.set(connection.clerkUserId, [
+      ...(owners.get(connection.clerkUserId) ?? []),
+      connection.id,
+    ]);
+  const outcomes: BankUpdateOutcome[] = [];
+  for (const [userId, connectionIds] of owners) {
+    try {
+      outcomes.push(
+        ...(await dependencies.syncBanks(db, userId, { connectionIds }))
+          .outcomes,
+      );
+    } catch (error) {
+      const refused = domainRefusal(error);
+      outcomes.push(
+        ...connectionIds.map((connectionId) => ({
+          connectionId,
+          kind: "failed" as const,
+          error: refused,
+        })),
+      );
+    }
+  }
+  return outcomes;
+}
+
+/** How long a connection may go without a committed update before alerting. */
+const STALE_AFTER_MS = 28 * 60 * 60 * 1000;
+
+/**
+ * Connections whose update failed and that have now gone 28 hours without a
+ * committed one. Midnight and 06:00 runs put a connection that last synced at
+ * yesterday's midnight run at 24 and 30 hours, so one failed run is tolerated
+ * and a second is not. Connections waiting on the member to sign in again are
+ * left to the Banks panel.
+ */
+async function staleConnections(
+  db: Database,
+  outcomes: BankUpdateOutcome[],
+  now: Date,
+) {
+  const failed = outcomes
+    .filter((outcome) => outcome.kind === "failed")
+    .map((outcome) => outcome.connectionId);
+  if (!failed.length) return [];
+  const connections = await db.bankConnection.findMany({
+    where: {
+      id: { in: failed },
+      status: { notIn: ["login_required", "revoked", "disconnected"] },
+    },
+    select: { id: true, createdAt: true, lastSyncedAt: true },
+    orderBy: { id: "asc" },
+  });
+  return connections
+    .filter(
+      ({ createdAt, lastSyncedAt }) =>
+        now.getTime() - (lastSyncedAt ?? createdAt).getTime() > STALE_AFTER_MS,
+    )
+    .map((connection) => connection.id);
+}
+
+/**
+ * One daily run: bank updates first, then each member's daily review, then
+ * maintenance. Each phase's failures are counted and never stop the next, so
+ * running again is the retry. Throws only when the run cannot start.
+ */
 export async function runDailyJob(
   db: Database,
   now = new Date(),
@@ -234,13 +336,149 @@ export async function runDailyJob(
         undefined,
         dependencies.send,
       ));
-  const recovered = await recoverDailyCancellations(db, now, dependencies);
+  const started = Date.now();
+  const due = await dueConnections(db, now);
+  const outcomes = await reconcileBanks(db, due, dependencies);
+  console.info("Daily bank updates finished", {
+    eligible: due.length,
+    outcomes: outcomes.map((outcome) => ({
+      connectionId: outcome.connectionId,
+      outcome: outcome.kind,
+      // Refusals name a Plaid request id, never tokens or provider bodies.
+      ...("error" in outcome ? { error: outcome.error.message } : {}),
+    })),
+    durationMs: Date.now() - started,
+  });
   let processed = 0,
     synced = 0,
     scheduled = 0,
-    canceled = recovered.canceled,
-    failed = recovered.failed,
+    canceled = 0,
+    failed = 0,
     purgedEvents = 0;
+  for (const outcome of outcomes)
+    if (outcome.kind === "synced") synced++;
+    else if (outcome.kind === "failed") failed++;
+  const emailReady = !!(
+    process.env.RESEND_API_KEY &&
+    process.env.EMAIL_FROM &&
+    process.env.APP_BASE_URL
+  );
+  try {
+    let cursor: string | undefined;
+    for (;;) {
+      const members = await db.workspaceMember.findMany({
+        where: { user: { active: true } },
+        orderBy: { clerkUserId: "asc" },
+        take: 100,
+        ...(cursor ? { cursor: { clerkUserId: cursor }, skip: 1 } : {}),
+      });
+      processed += members.length;
+      for (const member of members) {
+        const userId = member.clerkUserId;
+        try {
+          const read = await dependencies.readBudget(db, userId);
+          if (!read) continue;
+          const { budget } = read;
+          if (!emailReady || !budget.settings.emailEnabled) continue;
+          const targets = dailyReviewSchedule(
+            userId,
+            {
+              enabled: budget.settings.emailEnabled,
+              timeZone: budget.settings.timezone,
+              localTime: `${String(budget.settings.emailHour).padStart(2, "0")}:00`,
+            },
+            batchDate,
+          );
+          for (const target of targets) {
+            const claim = await claimDailyDelivery(db, userId, target, now);
+            if (!claim) continue;
+            if (claim.kind === "expired") {
+              failed++;
+              continue;
+            }
+            const delivery = claim.delivery;
+            let accepted = false;
+            let attempted = false;
+            try {
+              const payload = delivery.payload
+                ? savedPayload(delivery)
+                : await preparePayload(db, userId, target, now, dependencies);
+              await db.dailyDelivery.update({
+                where: { id: delivery.id, leaseUntil: delivery.leaseUntil },
+                data: {
+                  status: "sending",
+                  payload: jsonValue(payload),
+                  firstAttemptAt: delivery.firstAttemptAt ?? now,
+                },
+              });
+              attempted = true;
+              const result = await dependencies.send(payload);
+              await db.dailyDelivery.update({
+                where: { id: delivery.id, leaseUntil: delivery.leaseUntil },
+                data: {
+                  status: "scheduled",
+                  providerId: result.id,
+                  sentAt: null,
+                  error: null,
+                },
+              });
+              scheduled++;
+              accepted = true;
+            } catch (error) {
+              await db.dailyDelivery.updateMany({
+                where: {
+                  id: delivery.id,
+                  leaseUntil: delivery.leaseUntil,
+                  status: { in: ["preparing", "sending"] },
+                  providerId: null,
+                },
+                data: {
+                  status: "failed",
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : "Daily email scheduling failed.",
+                },
+              });
+              failed++;
+            }
+            if (attempted) {
+              try {
+                if (!(await dailyEmailEnabled(db, userId, dependencies))) {
+                  const result = await dependencies.cancel(db, userId, now);
+                  canceled += result.canceled;
+                  if (
+                    accepted &&
+                    result.canceled &&
+                    delivery.scheduledAt &&
+                    delivery.scheduledAt > now
+                  )
+                    scheduled--;
+                }
+              } catch {
+                failed++;
+              }
+            }
+          }
+        } catch {
+          failed++;
+        }
+      }
+      if (members.length < 100) break;
+      cursor = members[members.length - 1]!.clerkUserId;
+    }
+  } catch (error) {
+    console.error("Daily reviews could not be scheduled", error);
+    failed++;
+  }
+  try {
+    const recovered = await recoverDailyCancellations(db, now, dependencies);
+    canceled += recovered.canceled;
+    failed += recovered.failed;
+  } catch (error) {
+    console.error("Daily review cancellations could not be recovered", error);
+    failed++;
+  }
   // The audit trail's retention purge runs with the daily backstop; a failed
   // purge is reported like any other failure and never holds up delivery.
   try {
@@ -249,133 +487,7 @@ export async function runDailyJob(
     console.error("Bank provider events could not be purged", error);
     failed++;
   }
-  const emailReady = !!(
-    process.env.RESEND_API_KEY &&
-    process.env.EMAIL_FROM &&
-    process.env.APP_BASE_URL
-  );
-  let cursor: string | undefined;
-  for (;;) {
-    const members = await db.workspaceMember.findMany({
-      where: { user: { active: true } },
-      orderBy: { clerkUserId: "asc" },
-      take: 100,
-      ...(cursor ? { cursor: { clerkUserId: cursor }, skip: 1 } : {}),
-    });
-    processed += members.length;
-    for (const member of members) {
-      const userId = member.clerkUserId;
-      try {
-        const read = await dependencies.readBudget(db, userId);
-        if (!read) continue;
-        const { budget } = read;
-        const connections = await db.bankConnection.findMany({
-          where: { clerkUserId: userId },
-          select: { lastSyncedAt: true },
-        });
-        if (
-          connections.some(
-            (connection) =>
-              !connection.lastSyncedAt ||
-              connection.lastSyncedAt.toISOString().slice(0, 10) < batchDate,
-          )
-        ) {
-          try {
-            await dependencies.syncBanks(db, userId);
-            synced++;
-          } catch {
-            failed++;
-          }
-        }
-        if (!emailReady || !budget.settings.emailEnabled) continue;
-        const targets = dailyReviewSchedule(
-          userId,
-          {
-            enabled: budget.settings.emailEnabled,
-            timeZone: budget.settings.timezone,
-            localTime: `${String(budget.settings.emailHour).padStart(2, "0")}:00`,
-          },
-          batchDate,
-        );
-        for (const target of targets) {
-          const claim = await claimDailyDelivery(db, userId, target, now);
-          if (!claim) continue;
-          if (claim.kind === "expired") {
-            failed++;
-            continue;
-          }
-          const delivery = claim.delivery;
-          let accepted = false;
-          let attempted = false;
-          try {
-            const payload = delivery.payload
-              ? savedPayload(delivery)
-              : await preparePayload(db, userId, target, now, dependencies);
-            await db.dailyDelivery.update({
-              where: { id: delivery.id, leaseUntil: delivery.leaseUntil },
-              data: {
-                status: "sending",
-                payload: jsonValue(payload),
-                firstAttemptAt: delivery.firstAttemptAt ?? now,
-              },
-            });
-            attempted = true;
-            const result = await dependencies.send(payload);
-            await db.dailyDelivery.update({
-              where: { id: delivery.id, leaseUntil: delivery.leaseUntil },
-              data: {
-                status: "scheduled",
-                providerId: result.id,
-                sentAt: null,
-                error: null,
-              },
-            });
-            scheduled++;
-            accepted = true;
-          } catch (error) {
-            await db.dailyDelivery.updateMany({
-              where: {
-                id: delivery.id,
-                leaseUntil: delivery.leaseUntil,
-                status: { in: ["preparing", "sending"] },
-                providerId: null,
-              },
-              data: {
-                status: "failed",
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : "Daily email scheduling failed.",
-              },
-            });
-            failed++;
-          }
-          if (attempted) {
-            try {
-              if (!(await dailyEmailEnabled(db, userId, dependencies))) {
-                const result = await dependencies.cancel(db, userId, now);
-                canceled += result.canceled;
-                if (
-                  accepted &&
-                  result.canceled &&
-                  delivery.scheduledAt &&
-                  delivery.scheduledAt > now
-                )
-                  scheduled--;
-              }
-            } catch {
-              failed++;
-            }
-          }
-        }
-      } catch {
-        failed++;
-      }
-    }
-    if (members.length < 100) break;
-    cursor = members[members.length - 1]!.clerkUserId;
-  }
-  return {
+  const result = {
     processed,
     synced,
     scheduled,
@@ -383,5 +495,11 @@ export async function runDailyJob(
     failed,
     purgedEvents,
     emailConfigured: emailReady,
+    stale: await staleConnections(db, outcomes, now),
   };
+  console.info("Daily job finished", {
+    ...result,
+    durationMs: Date.now() - started,
+  });
+  return result;
 }
