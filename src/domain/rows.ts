@@ -11,7 +11,11 @@ import type {
   TransactionHistory,
   TransactionLine,
 } from "./engine";
-import type { PartnerEntry, PartnerSide } from "./partner-ledger";
+import type {
+  FormerPartnerEntry,
+  PartnerEntry,
+  PartnerSide,
+} from "./partner-ledger";
 import type { PartnerRequest, PartnerSettlement } from "./partner-settlements";
 import type { PersonalLedger } from "./shared-ledger";
 
@@ -45,6 +49,7 @@ export const tableNames = [
   "partnerEntrySide",
   "partnerSettlement",
   "partnerRequest",
+  "formerPartnerEntry",
 ] as const;
 export type TableName = (typeof tableNames)[number];
 
@@ -103,6 +108,9 @@ export type TableData = {
   // Settling up between the partners (src/domain/partner-settlements.ts).
   partnerSettlement: Sorted & PartnerSettlement;
   partnerRequest: Sorted & PartnerRequest;
+  // A former partner's entry, kept frozen in one budget under its closed
+  // account (src/domain/partner-ledger.ts).
+  formerPartnerEntry: Owned & Sorted & FormerPartnerEntry;
 };
 
 /**
@@ -168,6 +176,7 @@ const budgetTables = new Set<TableName>([
   "bankImport",
   "payeeMemory",
   "partnerEntrySide",
+  "formerPartnerEntry",
 ]);
 
 /**
@@ -491,6 +500,13 @@ function budgetRows(budget: Budget, sort: number): WireRow[] {
     ...Object.entries(budget.partnerSides ?? {}).flatMap(([entryId, side]) =>
       partnerSideRows(userId, entryId, side),
     ),
+    ...(budget.formerPartnerEntries ?? []).map((entry, sort) =>
+      row("formerPartnerEntry", rowKey(userId, entry.accountId, entry.id), {
+        ...entry,
+        userId,
+        sort,
+      }),
+    ),
   ];
 }
 
@@ -697,6 +713,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   );
   const memory = groupBy(data.payeeMemory, owner);
   const sides = groupBy(data.partnerEntrySide, owner);
+  const former = groupBy(data.formerPartnerEntry, owner);
   const names = new Map(data.member.map((member) => [member.userId, member]));
   return userIds.map((userId): Budget => {
     const setting =
@@ -709,6 +726,7 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       .map((group) => group.name);
     const payees = memory.get(userId);
     const partnerSides = sides.get(userId);
+    const formerPartnerEntries = former.get(userId);
     return {
       userId,
       name: names.get(userId)?.name ?? "",
@@ -783,6 +801,13 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
                 side.entryId,
                 without(side, ["userId", "entryId"]),
               ]),
+            ),
+          }
+        : {}),
+      ...(formerPartnerEntries
+        ? {
+            formerPartnerEntries: formerPartnerEntries.map((entry) =>
+              without(entry, ["userId", "sort"]),
             ),
           }
         : {}),

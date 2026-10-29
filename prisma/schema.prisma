@@ -268,24 +268,25 @@ model ClerkWebhookEvent {
 // (ADR 0006), and the engine validates them.
 
 model Member {
-  workspaceId  String
-  userId       String
-  name         String
-  sort         Int
-  revision     Int
-  deleted      Boolean            @default(false)
-  workspace    Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  settings     BudgetSettings?
-  accounts     Account[]
-  groups       CategoryGroup[]
-  categories   Category[]
-  income       ExpectedIncome[]
-  transactions Transaction[]
-  loans        Loan[]
-  rules        Rule[]
-  bankImports  BankImport[]
-  payees       PayeeMemory[]
-  partnerSides PartnerEntrySide[]
+  workspaceId          String
+  userId               String
+  name                 String
+  sort                 Int
+  revision             Int
+  deleted              Boolean              @default(false)
+  workspace            Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  settings             BudgetSettings?
+  accounts             Account[]
+  groups               CategoryGroup[]
+  categories           Category[]
+  income               ExpectedIncome[]
+  transactions         Transaction[]
+  loans                Loan[]
+  rules                Rule[]
+  bankImports          BankImport[]
+  payees               PayeeMemory[]
+  partnerSides         PartnerEntrySide[]
+  formerPartnerEntries FormerPartnerEntry[]
 
   @@id([workspaceId, userId])
   @@index([workspaceId, revision])
@@ -316,6 +317,9 @@ model Account {
   date              String
   reconciledDate    String?
   reconciledBalance BigInt?
+  // A former partner's closed account: when it closed, and who disconnected.
+  closedAt          String?
+  closedBy          String?
   sort              Int
   revision          Int
   deleted           Boolean @default(false)
@@ -659,6 +663,33 @@ model PartnerEntrySide {
   member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
 
   @@id([workspaceId, userId, entryId])
+  @@index([workspaceId, revision])
+}
+
+// A former partner's ledger entry, frozen in one budget under the closed
+// account it belonged to when the partnership ended.
+model FormerPartnerEntry {
+  workspaceId              String
+  userId                   String
+  accountId                String
+  id                       String
+  payerId                  String
+  sourceTransactionId      String?
+  sourceLineId             String?
+  sourceHasPurposeCategory Boolean?
+  sourceOnSplitPurchase    Boolean?
+  date                     String
+  payee                    String
+  status                   String
+  amount                   BigInt
+  share                    BigInt
+  history                  Json
+  sort                     Int
+  revision                 Int
+  deleted                  Boolean  @default(false)
+  member                   Member   @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, accountId, id])
   @@index([workspaceId, revision])
 }
 

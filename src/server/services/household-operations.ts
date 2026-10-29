@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { rowsIn } from "~/domain/change-sets";
 import {
+  closePartnerLedger,
   createBook,
   budgetReferenceIssues,
   execute,
@@ -20,7 +21,9 @@ import {
 import {
   carryOperations,
   findOperation,
+  forgetOperationRecords,
   lacksCounterpartyAccounts,
+  resetHouseholdRows,
   RevisionConflictError,
   writeChangeSet,
 } from "~/server/storage/rows";
@@ -43,7 +46,8 @@ import {
 } from "./partner-invites";
 
 // The server's household operations outside bank updates: creating a
-// budget, joining a partner, and applying category changes together.
+// budget, joining or leaving a partner, and applying category changes
+// together.
 
 /** Creates a member's personal budget in a household of their own. */
 export async function onboard(
@@ -298,6 +302,127 @@ async function join(
     }
   }
   throw refusal("conflict", "A budget changed while joining. Try again.");
+}
+
+/**
+ * Ends a partnership (ADR 0012): the household splits, and the member
+ * leaving takes their budget to a household of their own. Each budget keeps
+ * the partner ledger as it stood, frozen under a closed account named after
+ * the former partner. Both households change shape, so every browser
+ * downloads its household again, and the rows of the budget that left don't
+ * stay behind. Account deletion runs it with the leaving member's name
+ * redacted and drops their budget instead of moving it.
+ */
+export async function disconnectPartner(
+  db: Database,
+  userId: string,
+  options: { deleting?: boolean; observe?: RevisionObserver } = {},
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { household, book } = await wholeBook(db, userId);
+      const formerId = Object.keys(book.budgets).find((id) => id !== userId);
+      if (!formerId)
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "You don’t share this budget with a partner.",
+        });
+      const profiles = await db.user.findMany({
+        where: { clerkUserId: { in: [userId, formerId] } },
+        select: { clerkUserId: true, firstName: true },
+      });
+      const nameOf = (id: string) => {
+        if (options.deleting && id === userId) return "Deleted partner";
+        const name = profiles
+          .find((user) => user.clerkUserId === id)
+          ?.firstName?.trim();
+        if (name) return name;
+        return "Former partner";
+      };
+      const close = {
+        id: randomUUID(),
+        at: new Date().toISOString(),
+        by: userId,
+      };
+      // Bank import state is kept beside the budgets, with its owner.
+      const imports = (owner: string) =>
+        rowsIn(household.rows).filter(
+          (row) =>
+            row.table === "bankImport" &&
+            !row.deleted &&
+            row.data?.userId === owner,
+        );
+      const staying = [
+        ...bookToRows(
+          closePartnerLedger(book, formerId, {
+            ...close,
+            name: nameOf(userId),
+          }),
+        ),
+        ...imports(formerId),
+      ];
+      const leaving = [
+        ...bookToRows(
+          closePartnerLedger(book, userId, {
+            ...close,
+            name: nameOf(formerId),
+          }),
+        ),
+        ...imports(userId),
+      ];
+      const revision = await db.$transaction(
+        async (tx) => {
+          const unchanged = await tx.workspace.updateMany({
+            where: { id: household.workspaceId, revision: household.revision },
+            data: { revision: { increment: 1 } },
+          });
+          if (unchanged.count !== 1)
+            throw new RevisionConflictError(household.revision);
+          await resetHouseholdRows(tx, household.workspaceId, staying);
+          if (options.deleting) {
+            // Past operations hold the deleted member's records.
+            await forgetOperationRecords(tx, household.workspaceId);
+            await tx.workspaceMember.delete({ where: { clerkUserId: userId } });
+            return undefined;
+          }
+          // Past any revision the leaving member's browser holds.
+          const own = await tx.workspace.create({
+            data: { revision: household.revision + 2 },
+          });
+          const written = await resetHouseholdRows(tx, own.id, leaving);
+          await tx.workspaceMember.update({
+            where: { clerkUserId: userId },
+            data: { workspaceId: own.id },
+          });
+          await carryOperations(tx, {
+            from: household.workspaceId,
+            to: own.id,
+            actorId: userId,
+          });
+          return written;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 30_000,
+        },
+      );
+      if (revision !== undefined) options.observe?.(revision);
+      return;
+    } catch (error) {
+      if (
+        (error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2034") ||
+        error instanceof RevisionConflictError
+      ) {
+        if (attempt < 2) continue;
+        throw refusal(
+          "conflict",
+          "Your budget changed while disconnecting. Try again.",
+        );
+      }
+      domainError(error);
+    }
+  }
 }
 
 export async function setOnboardingCategories(

@@ -34,7 +34,7 @@ import { POPOVER_GAP } from "~/components/ui/tokens";
 import { AccountEntry } from "./account-entry";
 import { useAddCategory } from "./add-category";
 import { BanksPopover } from "./banks";
-import { money } from "./model";
+import { isCounterparty, money } from "./model";
 import { type Screen, type SettingsPage } from "~/components/workspace/routes";
 import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
 import { useShellData } from "./shell-data";
@@ -123,15 +123,13 @@ export function Sidebar({
         })),
     },
     {
-      // The counterparty accounts: the partner and Reimbursements.
+      // The counterparty accounts: the partner, Reimbursements, and each
+      // former partner's closed account.
       id: "people",
       label: "People",
       empty: undefined,
       items: accounts
-        .filter(
-          (account) =>
-            account.kind === "partner" || account.kind === "reimbursements",
-        )
+        .filter((account) => isCounterparty(account))
         .map((account) => ({
           id: account.id,
           label: account.name,

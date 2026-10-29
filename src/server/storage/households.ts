@@ -1,4 +1,3 @@
-import { TRPCError } from "@trpc/server";
 import { applyChangeSet, rowsIn, toRowSet } from "~/domain/change-sets";
 import { budgetReferenceIssues, type Book, type Budget } from "~/domain/engine";
 import { rowIssues } from "~/domain/row-schemas";
@@ -228,24 +227,6 @@ export async function writeOperation(
   },
   cache: HouseholdCache = households,
 ): Promise<{ revision: number; changeSet: ChangeSet; household: Household }> {
-  const changesSharedBalances = input.changeSet.after.some((row) =>
-    ["partnerEntry", "partnerSettlement", "partnerRequest"].includes(row.table),
-  );
-  const members = [...(household.rows.get("member")?.values() ?? [])].filter(
-    (row) => !row.deleted,
-  );
-  if (
-    changesSharedBalances &&
-    members.length > 1 &&
-    (await db.workspaceMember.count({
-      where: { workspaceId: household.workspaceId },
-    })) < members.length
-  )
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message:
-        "Shared balances are frozen because your partner deleted their account. New spending stays in your personal budget.",
-    });
   for (const row of input.changeSet.after) {
     const issues = rowIssues(row);
     if (issues)

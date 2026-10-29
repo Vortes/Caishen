@@ -90,7 +90,13 @@ type CategoryGroup = { id: string; name: string; categories: Category[] };
 export type Account = {
   id: string;
   name: string;
-  kind: "cash" | "credit" | "tracking" | "partner" | "reimbursements";
+  kind:
+    | "cash"
+    | "credit"
+    | "tracking"
+    | "partner"
+    | "reimbursements"
+    | "former-partner";
   balance: number;
   uncleared: number;
   // Today's cleared balance, whatever month is showing: what reconciling
@@ -98,6 +104,8 @@ export type Account = {
   cleared: number;
   // The last time it matched the bank's.
   reconciled?: { date: string; balance: number };
+  // A former partner's account: when it closed, and who disconnected.
+  closed?: { at: string; by: string };
   importReviewRequired?: boolean;
   // This account has transactions waiting for review.
   toReview?: boolean;
@@ -192,6 +200,8 @@ export type ShellData = {
   costToBeMe: number;
   expectedIncome: number | null;
   partner?: { name: string };
+  // The latest former partner, when they were the one who disconnected.
+  disconnectedBy?: { name: string; at: string };
 };
 
 const relative = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
@@ -331,22 +341,34 @@ export function toShellData(
   const budgetTransaction = new Map(
     view.budget.transactions.map((item) => [item.id, item]),
   );
+  // Each partner ledger entry, with the account it moves: the Partner
+  // account's, or a former partner's closed account's.
   const partnerEntry = new Map(
-    view.partnerLedger.flatMap((row) =>
-      row.entryId ? [[row.entryId, row] as const] : [],
+    [
+      ...(partnerAccount
+        ? [[partnerAccount.id, view.partnerLedger] as const]
+        : []),
+      ...Object.entries(view.formerPartnerLedgers),
+    ].flatMap(([accountId, rows]) =>
+      rows.flatMap((row) =>
+        row.entryId ? [[row.entryId, { row, accountId }] as const] : [],
+      ),
     ),
   );
   const activityEntries = (item: View["categories"][number]) =>
     item.activityEntries
       .map((entry): ActivityEntry => {
         if (entry.source === "partner") {
-          const row = partnerEntry.get(entry.id);
+          const found = partnerEntry.get(entry.id);
+          const account = view.accounts.find(
+            (item) => item.id === found?.accountId,
+          );
           return {
             id: entry.id,
-            date: row?.date ?? "",
-            payee: row?.payee ?? "Partner purchase",
-            accountId: partnerAccount!.id,
-            account: partnerName ?? "Partner",
+            date: found?.row.date ?? "",
+            payee: found?.row.payee ?? "Partner purchase",
+            accountId: found?.accountId ?? "",
+            account: account ? displayName(account) : "Partner",
             amount: entry.amount,
           };
         }
@@ -629,6 +651,7 @@ export function toShellData(
       cleared: item.cleared + posted,
       importReviewRequired: activity.length > 0,
       reconciled: item.reconciled,
+      closed: item.closed,
       toReview:
         transactions.some(
           (transaction) =>
@@ -647,6 +670,10 @@ export function toShellData(
   });
 
   const partner = partnerOf(view);
+  const lastClosed = view.accounts
+    .flatMap((item) => (item.closed ? [{ ...item, closed: item.closed }] : []))
+    .sort((a, b) => a.closed.at.localeCompare(b.closed.at))
+    .at(-1);
   return {
     budgetName: view.budget.name,
     preferences: view.budget.settings,
@@ -698,6 +725,10 @@ export function toShellData(
     costToBeMe: view.costToBeMe,
     expectedIncome: view.expectedIncome,
     partner: partner && { name: partner.name },
+    disconnectedBy:
+      lastClosed && lastClosed.closed.by !== view.budget.userId
+        ? { name: lastClosed.name, at: lastClosed.closed.at }
+        : undefined,
   };
 }
 

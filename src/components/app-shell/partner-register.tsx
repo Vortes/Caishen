@@ -103,6 +103,36 @@ export function PartnerSummary({ account }: { account: Account }) {
   );
 }
 
+// A former partner's closed account: what was owed when the partnership
+// ended, kept as it stood. Nothing settles it or adds to it in the app.
+export function FormerPartnerSummary({ account }: { account: Account }) {
+  const balance = account.balance;
+  return (
+    <div className={styles.accountSummary}>
+      <dl className={styles.balances}>
+        <div data-total>
+          <dt>
+            {balance > 0
+              ? `${account.name} owed you`
+              : balance < 0
+                ? `You owed ${account.name}`
+                : `You and ${account.name} were even`}
+          </dt>
+          <dd className={local.owed}>{money(Math.abs(balance))}</dd>
+        </div>
+      </dl>
+      {account.closed && (
+        <div className={styles.summaryActions}>
+          <span className={styles.reconciledLabel}>
+            Closed {shortDay(account.closed.at.slice(0, 10))} · frozen as it
+            stood
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // A request is a record, not a reminder: how much, when, and what's been
 // paid toward it since.
 function RequestProgress({
@@ -320,11 +350,16 @@ export function PartnerRegister({
 }) {
   const { view } = useTransactionEntry();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A former partner's ledger reads as it stood when it closed.
+  const closed = account.kind === "former-partner";
+  const ledger = closed
+    ? (view.formerPartnerLedgers[account.id] ?? [])
+    : view.partnerLedger;
   const name = (id: string | undefined) =>
     view.categories.find((item) => item.id === id)?.name;
   const search = query.trim().toLowerCase();
   const payee = (row: Row) => settlementPayee(row, view, account.name);
-  const rows = view.partnerLedger.filter(
+  const rows = ledger.filter(
     (row) =>
       !search ||
       [payee(row), name(row.categoryId), money(row.shared), money(row.change)]
@@ -332,8 +367,12 @@ export function PartnerRegister({
         .toLowerCase()
         .includes(search),
   );
-  if (!view.partnerLedger.length)
-    return (
+  if (!ledger.length)
+    return closed ? (
+      <Empty title="Nothing was shared." icon={UsersIcon}>
+        You and {account.name} didn’t share a cost before they parted.
+      </Empty>
+    ) : (
       <Empty title="Nothing owed yet." icon={UsersIcon}>
         When you and {account.name} share a cost, what one of you owes the other
         shows here, in both budgets.

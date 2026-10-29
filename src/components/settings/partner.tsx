@@ -1,19 +1,22 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
+import { AlertDialog } from "radix-ui";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
+import { usePortalContainer } from "~/components/ui/tooltip";
 import { useUser } from "@clerk/nextjs";
 import { ComposeInvitation } from "~/components/partner-invite/compose";
 import { useShellData } from "~/components/app-shell/shell-data";
 import { api } from "~/trpc/react";
 import styles from "~/components/app-shell/shell.module.css";
+import dialog from "~/components/app-shell/banks.module.css";
 import additions from "~/components/entry/settings.module.css";
 import batch from "~/components/entry/entry.module.css";
 
 export function PartnerSettings() {
-  const { partner } = useShellData();
+  const { partner, disconnectedBy } = useShellData();
   return (
     <div className={styles.settingsPage}>
       <section className={styles.settingsSection} aria-label="Partner">
@@ -25,18 +28,100 @@ export function PartnerSettings() {
                   Connected with {partner.name}
                 </span>
                 <span className={styles.settingHint}>
-                  {partner.name === "Deleted partner"
-                    ? "Existing shared balances are frozen. New spending stays in your personal budget."
-                    : "A budget has room for one partner."}
+                  A budget has room for one partner.
                 </span>
+              </div>
+              <div className={styles.settingActions}>
+                <Disconnect name={partner.name} />
               </div>
             </div>
           ) : (
-            <Invitation />
+            <>
+              {disconnectedBy && (
+                <>
+                  <div className={styles.settingRow}>
+                    <div className={styles.settingText}>
+                      <span className={styles.settingLabel}>
+                        {disconnectedBy.name} disconnected on{" "}
+                        {new Date(disconnectedBy.at).toLocaleDateString(
+                          "en-US",
+                          { month: "short", day: "numeric", year: "numeric" },
+                        )}
+                        ; your shared history is kept.
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.settingDivider} />
+                </>
+              )}
+              <Invitation />
+            </>
           )}
         </Card>
       </section>
     </div>
+  );
+}
+
+// Either partner can end the partnership alone. The confirmation says what
+// stays and what ends, since nothing undoes it but a new invitation.
+function Disconnect({ name }: { name: string }) {
+  const utils = api.useUtils();
+  const container = usePortalContainer();
+  const [open, setOpen] = useState(false);
+  const disconnect = api.budget.disconnect.useMutation({
+    onSuccess: async () => {
+      setOpen(false);
+      await utils.budget.overview.invalidate();
+    },
+  });
+  return (
+    <AlertDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (disconnect.isPending) return;
+        disconnect.reset();
+        setOpen(next);
+      }}
+    >
+      <AlertDialog.Trigger asChild>
+        <Button>Disconnect…</Button>
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal container={container}>
+        <AlertDialog.Overlay className={dialog.overlay} />
+        <AlertDialog.Content className={dialog.dialog}>
+          <div className={dialog.header}>
+            <AlertDialog.Title className={dialog.title}>
+              Disconnect from {name}?
+            </AlertDialog.Title>
+            <AlertDialog.Description className={dialog.description}>
+              You’ll each keep a budget of your own. What you shared stays in
+              both budgets as it stands today, under an account named after the
+              other person, and what one of you owes the other is kept. Nothing
+              new can be shared or settled there. {name} will see that you
+              disconnected, and either of you can invite a partner again.
+            </AlertDialog.Description>
+          </div>
+          {disconnect.error && (
+            <span className={styles.settingError} role="alert">
+              {disconnect.error.message}
+            </span>
+          )}
+          <div className={dialog.footer}>
+            <AlertDialog.Cancel asChild>
+              <Button disabled={disconnect.isPending}>Cancel</Button>
+            </AlertDialog.Cancel>
+            <Button
+              variant="danger"
+              disabled={disconnect.isPending}
+              onClick={() => disconnect.mutate()}
+            >
+              {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+            </Button>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   );
 }
 

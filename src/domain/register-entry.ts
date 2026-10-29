@@ -471,6 +471,7 @@ export const accountKindLabels: Record<Account["kind"], string> = {
   tracking: "Tracking",
   partner: "Partner",
   reimbursements: "Reimbursements",
+  "former-partner": "Former partner",
 };
 const directAccountKinds: Record<Account["kind"], boolean> = {
   cash: true,
@@ -478,6 +479,7 @@ const directAccountKinds: Record<Account["kind"], boolean> = {
   tracking: true,
   partner: false,
   reimbursements: false,
+  "former-partner": false,
 };
 export function directEntryAccounts<T extends Account>(accounts: T[]): T[] {
   return accounts.filter((account) => directAccountKinds[account.kind]);

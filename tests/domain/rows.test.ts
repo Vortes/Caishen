@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   bookSchema,
+  closePartnerLedger,
   createBook,
   execute,
   personalLedger,
@@ -61,6 +62,15 @@ const books: [string, Book][] = [
     `corpus step ${index + 1} (${step.command.type})`,
     step.after,
   ]),
+  [
+    "a budget after its partnership ended",
+    closePartnerLedger(corpus.book, "alex", {
+      id: "parted",
+      name: "Jordan",
+      at: "2026-10-28T12:00:00.000Z",
+      by: "jordan",
+    }),
+  ],
   ...[1, 2].map((value): [string, Book] => [
     `edge ${value}`,
     syntheticBook({

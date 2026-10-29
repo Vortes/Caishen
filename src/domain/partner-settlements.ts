@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Budget, Transaction } from "./engine";
-import { partnerAccountOf } from "./partner-ledger";
+import { isPartnerLedger } from "./partner-ledger";
 
 // Settling up between partners (shared costs phase 4): money one partner
 // sends the other, and what one partner asks the other to pay.
@@ -142,21 +142,24 @@ export function isRejectedSettlementImport(
 
 /**
  * Why a budget's settlement legs don't read: a leg must be a repayment
- * linked to the budget's Partner account, out of a cash account, or into a
- * cash account or credit card.
+ * linked to the budget's Partner account, or the closed account of the
+ * former partner it settled with, out of a cash account, or into a cash
+ * account or credit card.
  */
 export function settlementLegIssues(
   budget: Pick<Budget, "accounts" | "transactions">,
 ): string[] {
-  const partner = partnerAccountOf(budget);
   return budget.transactions.some((transaction) => {
     if (transaction.removed || !isSettlementLeg(transaction)) return false;
     const account = budget.accounts.find(
       (item) => item.id === transaction.accountId,
     );
+    const linked = budget.accounts.find(
+      (item) => item.id === transaction.linkedCounterpartyAccountId,
+    );
     return (
-      !partner ||
-      transaction.linkedCounterpartyAccountId !== partner.id ||
+      !linked ||
+      !isPartnerLedger(linked) ||
       transaction.kind !== "reimbursement" ||
       !transaction.amount ||
       transaction.categoryId !== undefined ||

@@ -1,0 +1,45 @@
+{
+  "userId": "alex",
+  "accountId": "counterparty:former:parted",
+  "id": "shared-market",
+  "payerId": "alex",
+  "date": "2026-01-20",
+  "payee": "Market",
+  "status": "posted",
+  "amount": -4000,
+  "share": 1500,
+  "history": [
+    {
+      "actorId": "alex",
+      "operationId": "corpus-54",
+      "at": "2026-01-20T12:00:00Z",
+      "reason": "recorded"
+    },
+    {
+      "actorId": "jordan",
+      "operationId": "corpus-56",
+      "at": "2026-01-20T13:00:00Z",
+      "reason": "updated",
+      "changes": [
+        {
+          "field": "share",
+          "previous": 2000,
+          "next": 1500
+        }
+      ]
+    },
+    {
+      "actorId": "alex",
+      "operationId": "corpus-57",
+      "at": "2026-01-20T14:00:00Z",
+      "reason": "matched"
+    }
+  ],
+  "source": {
+    "transactionId": "market-import",
+    "lineId": "market-import",
+    "hasPurposeCategory": true,
+    "onSplitPurchase": false
+  },
+  "sort": 0
+}

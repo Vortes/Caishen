@@ -1,0 +1,19 @@
+{
+  "userId": "alex",
+  "accountId": "counterparty:former:parted",
+  "id": "shared-market",
+  "payerId": "alex",
+  "date": "2026-01-20",
+  "payee": "Market",
+  "status": "posted",
+  "amount": -4000,
+  "share": 1500,
+  "history": [
+    {
+      "actorId": "alex",
+      "operationId": "entry-recorded",
+      "reason": "recorded"
+    }
+  ],
+  "sort": 0
+}

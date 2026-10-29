@@ -217,11 +217,17 @@ void test("deleting a personal budget erases private data and freezes the partne
   });
   await deletePersonalBudget(db, owner.id);
   const after = await partner.api.budget.state({ month });
+  const closed = (view: typeof after.view) =>
+    view?.accounts.find((account) => account.kind === "former-partner");
+  assert.equal(closed(after.view)?.name, "Deleted partner");
+  assert.equal(closed(after.view)?.balance, -5_000);
   assert.equal(
-    after.view?.accounts.find((account) => account.kind === "partner")?.balance,
-    -5_000,
+    after.view?.accounts.find((account) => account.kind === "partner"),
+    undefined,
+    "the partner slot is free again",
   );
   assert.equal(after.view?.cash, before.view?.cash);
+  assert.equal(after.view?.readyToAssign, before.view?.readyToAssign);
   assert.equal(after.view?.personalSpending, before.view?.personalSpending);
   assert.ok(!JSON.stringify(after).includes("Private budget"));
   await assert.rejects(() => owner.api.budget.state({ month }), {
@@ -238,16 +244,12 @@ void test("deleting a personal budget erases private data and freezes the partne
     categoryId: "food",
   });
   assert.equal(
-    (await partner.api.budget.state({ month })).view?.accounts.find(
-      (account) => account.kind === "partner",
-    )?.balance,
+    closed((await partner.api.budget.state({ month })).view)?.balance,
     -5_000,
   );
   await deletePersonalBudget(db, owner.id);
   assert.equal(
-    (await partner.api.budget.state({ month })).view?.accounts.find(
-      (account) => account.kind === "partner",
-    )?.balance,
+    closed((await partner.api.budget.state({ month })).view)?.balance,
     -5_000,
   );
   await assert.rejects(
@@ -261,7 +263,7 @@ void test("deleting a personal budget erases private data and freezes the partne
         date: "2026-10-03",
         payee: "Market",
         categoryId: "food",
-        counterpartyShare: { accountId: "counterparty:partner", amount: 5_000 },
+        counterpartyShare: { accountId: closed(after.view)!.id, amount: 5_000 },
       }),
     { message: /frozen/ },
   );

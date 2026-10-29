@@ -55,6 +55,7 @@ const jsonColumns: Record<string, ZodTypeAny> = {
     .unwrap()
     .nullable(),
   "PartnerEntry.history": partnerEntryObject.shape.history,
+  "FormerPartnerEntry.history": partnerEntryObject.shape.history,
   "PartnerSettlement.history": partnerSettlementSchema.shape.history,
   "PartnerInvite.signature": signatureSchema.nullable(),
 };

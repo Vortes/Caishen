@@ -611,16 +611,21 @@
         "sort",
         "userId",
         "reconciled.balance",
-        "reconciled.date"
+        "reconciled.date",
+        "closed",
+        "closed.at",
+        "closed.by"
       ],
       "optional": [
-        "reconciled"
+        "reconciled",
+        "closed"
       ],
       "nullable": [],
       "values": {
         "kind": [
           "cash",
           "credit",
+          "former-partner",
           "partner",
           "reimbursements",
           "tracking"
@@ -1234,6 +1239,99 @@
       "optional": [],
       "nullable": ["openingSnapshot", "unlinkedAt"],
       "values": {}
+    }
+  ],
+  "FormerPartnerEntry.history": [
+    {
+      "fields": [
+        "[].actorId",
+        "[].at",
+        "[].changes",
+        "[].operationId",
+        "[].reason",
+        "[].changes[].field",
+        "[].changes[].next",
+        "[].changes[].previous"
+      ],
+      "optional": [
+        "[].at",
+        "[].changes"
+      ],
+      "nullable": [],
+      "values": {
+        "[].reason": [
+          "created",
+          "matched",
+          "recorded",
+          "removed",
+          "restored",
+          "updated"
+        ],
+        "[].changes[].field": [
+          "amount",
+          "date",
+          "payee",
+          "share",
+          "status"
+        ]
+      }
+    }
+  ],
+  "rows.formerPartnerEntry": [
+    {
+      "fields": [
+        "amount",
+        "date",
+        "history",
+        "id",
+        "payee",
+        "payerId",
+        "share",
+        "sort",
+        "source",
+        "status",
+        "source.lineId",
+        "source.transactionId",
+        "source.hasPurposeCategory",
+        "source.onSplitPurchase",
+        "history[].actorId",
+        "history[].at",
+        "history[].changes",
+        "history[].operationId",
+        "history[].reason",
+        "history[].changes[].field",
+        "history[].changes[].next",
+        "history[].changes[].previous",
+        "userId",
+        "accountId"
+      ],
+      "optional": [
+        "source",
+        "history[].at",
+        "history[].changes"
+      ],
+      "nullable": [],
+      "values": {
+        "status": [
+          "pending",
+          "posted"
+        ],
+        "history[].reason": [
+          "created",
+          "matched",
+          "recorded",
+          "removed",
+          "restored",
+          "updated"
+        ],
+        "history[].changes[].field": [
+          "amount",
+          "date",
+          "payee",
+          "share",
+          "status"
+        ]
+      }
     }
   ]
 }

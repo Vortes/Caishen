@@ -35,6 +35,7 @@ import { integrationStatus } from "~/server/integrations/status";
 import { domainError } from "~/server/services/safety";
 import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import {
+  disconnectPartner,
   joinByInvitation,
   joinHousehold,
   onboard,
@@ -355,6 +356,10 @@ export const budgetRouter = createTRPCRouter({
     .mutation(({ ctx, input }) =>
       joinHousehold(ctx.db, ctx.userId, input.code, ctx.revision.observe),
     ),
+  // Either partner ends the partnership alone, after a confirmation.
+  disconnect: protectedProcedure.mutation(({ ctx }) =>
+    disconnectPartner(ctx.db, ctx.userId, { observe: ctx.revision.observe }),
+  ),
 
   plaidLinkToken: protectedProcedure
     .input(

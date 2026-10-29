@@ -10,7 +10,7 @@ import {
   reconciledLabel,
   type Reconciling,
 } from "./reconcile";
-import { PartnerSummary } from "./partner-register";
+import { FormerPartnerSummary, PartnerSummary } from "./partner-register";
 import { ReimbursementsSummary } from "./reimbursements-register";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
@@ -36,6 +36,8 @@ export function AccountSummary({
   if (account?.kind === "reimbursements")
     return <ReimbursementsSummary account={account} who={owedBy} />;
   if (account?.kind === "partner") return <PartnerSummary account={account} />;
+  if (account?.kind === "former-partner")
+    return <FormerPartnerSummary account={account} />;
   // No bank clears a counterparty account's entries: its balance is just
   // what one side owes the other.
   if (account && isCounterparty(account))
