@@ -104,23 +104,6 @@
   text-transform: uppercase;
   opacity: 0.75;
 }
-/* The merge warning on the partner's half; it comes in with the pen. */
-.cardNote {
-  font-family: ui-serif, Georgia, serif;
-  font-size: 13px;
-  opacity: 0.85;
-  animation: cardNoteIn 400ms ease-out both;
-}
-@keyframes cardNoteIn {
-  from {
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .cardNote {
-    animation: none;
-  }
-}
 .cardHint {
   font-family: ui-serif, Georgia, serif;
   font-size: 12px;
