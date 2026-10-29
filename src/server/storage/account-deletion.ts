@@ -1,34 +1,22 @@
 import { Prisma, type PrismaClient } from "~/generated/prisma";
-import type { WireRow } from "~/domain/rows";
-import { resetHouseholdRows } from "./rows";
 
+// Erases what a deleted account leaves: its own household, when it has one
+// to itself, and everything kept about it beside the budgets.
 export async function removePersonalData(
   db: PrismaClient,
   userId: string,
-  household?: { workspaceId: string; revision: number; rows?: WireRow[] },
+  household?: { workspaceId: string; revision: number },
 ) {
   await db.$transaction(
     async (tx) => {
       if (household) {
-        const unchanged = await tx.workspace.updateMany({
+        const removed = await tx.workspace.deleteMany({
           where: { id: household.workspaceId, revision: household.revision },
-          data: { revision: { increment: 1 } },
         });
-        if (unchanged.count !== 1)
+        if (removed.count !== 1)
           throw new Error(
             "The household changed during account deletion. Retry cleanup.",
           );
-        if (household.rows) {
-          await resetHouseholdRows(tx, household.workspaceId, household.rows);
-          await tx.operation.updateMany({
-            where: { workspaceId: household.workspaceId },
-            data: { command: Prisma.DbNull, changeSet: Prisma.DbNull },
-          });
-          await tx.workspaceMember.deleteMany({
-            where: { clerkUserId: userId },
-          });
-        } else
-          await tx.workspace.delete({ where: { id: household.workspaceId } });
       }
       await tx.partnerInvite.deleteMany({
         where: { OR: [{ createdBy: userId }, { usedBy: userId }] },

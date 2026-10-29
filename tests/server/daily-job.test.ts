@@ -14,6 +14,7 @@ const originalDeliveries = db.dailyDelivery.findMany.bind(db.dailyDelivery);
 const originalPurge = db.bankProviderEvent.deleteMany.bind(
   db.bankProviderEvent,
 );
+const originalSweep = db.partnerInvite.deleteMany.bind(db.partnerInvite);
 const originalSecret = process.env.CRON_SECRET;
 const secret = "scheduler-fixture-secret-32-characters";
 
@@ -27,6 +28,7 @@ afterEach(() => {
   Object.assign(db.bankConnection, { findMany: originalConnections });
   Object.assign(db.dailyDelivery, { findMany: originalDeliveries });
   Object.assign(db.bankProviderEvent, { deleteMany: originalPurge });
+  Object.assign(db.partnerInvite, { deleteMany: originalSweep });
 });
 
 function request(authorization?: string) {
@@ -64,6 +66,9 @@ void test("authorized hosted jobs return their result without caching", async ()
   Object.assign(db.bankProviderEvent, {
     deleteMany: async () => ({ count: 0 }),
   });
+  Object.assign(db.partnerInvite, {
+    deleteMany: async () => ({ count: 0 }),
+  });
   const response = await GET(request(`Bearer ${secret}`));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
@@ -95,6 +100,9 @@ void test("daily work that completes with failures reports them in a successful 
   Object.assign(db.bankProviderEvent, {
     deleteMany: async () => ({ count: 0 }),
   });
+  Object.assign(db.partnerInvite, {
+    deleteMany: async () => ({ count: 0 }),
+  });
   const response = await GET(request(`Bearer ${secret}`));
   assert.equal(response.status, 200);
   const result = (await response.json()) as Record<string, unknown>;
@@ -111,6 +119,9 @@ void test("a run the database keeps from starting returns a non-cacheable 503", 
   });
   Object.assign(db.dailyDelivery, { findMany: async () => [] });
   Object.assign(db.bankProviderEvent, {
+    deleteMany: async () => ({ count: 0 }),
+  });
+  Object.assign(db.partnerInvite, {
     deleteMany: async () => ({ count: 0 }),
   });
   const response = await GET(request(`Bearer ${secret}`));

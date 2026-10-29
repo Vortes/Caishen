@@ -8,7 +8,6 @@ import { Switch } from "~/components/ui/switch";
 import { TimezoneOptions } from "~/components/settings/timezone-options";
 import { EntryPage } from "./entry-page";
 import { Brand } from "./brand";
-import { CodeField, isComplete } from "./invite-code";
 import {
   CategoryQuestions,
   CategoryReview,
@@ -21,10 +20,10 @@ import batch from "./entry.module.css";
 import styles from "./onboarding.module.css";
 
 export type BudgetBasics = {
+  yourName: string;
   name: string;
   timezone: string;
   emailEnabled: boolean;
-  inviteCode?: string;
 };
 export type SetupStage = "basics" | "categories" | "accounts" | "ready";
 const steps = ["Your budget", "Categories", "Accounts", "Ready"];
@@ -33,7 +32,7 @@ const stages: SetupStage[] = ["basics", "categories", "accounts", "ready"];
 export function GuidedOnboarding({
   onCreate,
   onCategories,
-  onCheckInvite,
+  invitedBy,
   accounts,
   readyToAssign,
   onComplete,
@@ -41,13 +40,15 @@ export function GuidedOnboarding({
   onStageChange,
   partner,
   email,
+  initialName = "",
   onSignOut,
   initialDraft = initialCategories,
   onDraftChange,
 }: {
   onCreate: (input: BudgetBasics) => Promise<void>;
   onCategories: (groups: Group[]) => Promise<void>;
-  onCheckInvite?: (code: string) => Promise<{ name: string }>;
+  // Who sent the invitation this setup accepts.
+  invitedBy?: string;
   accounts: ReactNode;
   readyToAssign: number;
   onComplete: () => void;
@@ -55,6 +56,7 @@ export function GuidedOnboarding({
   onStageChange?: (stage: SetupStage) => void;
   partner?: ReactNode;
   email?: string;
+  initialName?: string;
   onSignOut?: () => void;
   initialDraft?: CategoryDraft;
   onDraftChange?: (draft: CategoryDraft) => void;
@@ -62,13 +64,10 @@ export function GuidedOnboarding({
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const [stage, setStage] = useState(initialStage);
+  const [yourName, setYourName] = useState(initialName);
   const [name, setName] = useState("My budget");
   const [timezone, setTimezone] = useState("America/Los_Angeles");
   const [emailEnabled, setEmailEnabled] = useState(true);
-  const [codeOpen, setCodeOpen] = useState(false);
-  const [code, setCode] = useState("");
-  const [inviter, setInviter] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
   const [draft, setDraft] = useState(initialDraft);
   // Categories open on the questions; their answers then fill the list.
   const [reviewing, setReviewing] = useState(false);
@@ -159,8 +158,8 @@ export function GuidedOnboarding({
               className={styles.title}
             >
               {stage === "basics"
-                ? inviter
-                  ? `${inviter} invited you. Let’s set up your budget.`
+                ? invitedBy
+                  ? `${invitedBy} invited you. Let’s set up your budget.`
                   : "Welcome. Let’s set up your budget."
                 : stage === "categories"
                   ? reviewing
@@ -175,23 +174,21 @@ export function GuidedOnboarding({
                 className={styles.form}
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (!name.trim()) {
-                    setError("Give your budget a name.");
+                  if (!yourName.trim()) {
+                    setError("Tell us your name.");
                     return;
                   }
-                  if (codeOpen && code && !inviter) {
-                    setError(
-                      "Check your partner’s code before continuing, or clear it.",
-                    );
+                  if (!name.trim()) {
+                    setError("Give your budget a name.");
                     return;
                   }
                   void submit(
                     () =>
                       onCreate({
+                        yourName: yourName.trim(),
                         name: name.trim(),
                         timezone,
                         emailEnabled,
-                        ...(inviter ? { inviteCode: code } : {}),
                       }),
                     "categories",
                   );
@@ -199,6 +196,20 @@ export function GuidedOnboarding({
               >
                 <Card>
                   <div className={styles.fields}>
+                    <div className={batch.field}>
+                      <label className={batch.fieldLabel} htmlFor={`${id}-you`}>
+                        Your name
+                      </label>
+                      <input
+                        id={`${id}-you`}
+                        className={batch.input}
+                        value={yourName}
+                        maxLength={80}
+                        aria-required
+                        autoComplete="name"
+                        onChange={(event) => setYourName(event.target.value)}
+                      />
+                    </div>
                     <div className={batch.field}>
                       <label
                         className={batch.fieldLabel}
@@ -242,67 +253,6 @@ export function GuidedOnboarding({
                     </label>
                   </div>
                 </Card>
-                {onCheckInvite && (
-                  <Card>
-                    <div className={styles.codeHead}>
-                      <span className={styles.switchLabel}>
-                        Invited by your partner?
-                      </span>
-                      <Button
-                        variant="quiet"
-                        onClick={() => {
-                          setCodeOpen(!codeOpen);
-                          setCode("");
-                          setInviter(null);
-                        }}
-                      >
-                        {codeOpen ? "Cancel" : "Enter their code"}
-                      </Button>
-                    </div>
-                    {codeOpen && (
-                      <div className={styles.codeField}>
-                        <CodeField
-                          id={`${id}-code`}
-                          label="Invitation code"
-                          value={code}
-                          error={null}
-                          onChange={(value) => {
-                            setCode(value);
-                            setInviter(null);
-                          }}
-                          action={
-                            <Button
-                              disabled={!isComplete(code) || checking}
-                              onClick={async () => {
-                                setChecking(true);
-                                setError(null);
-                                try {
-                                  setInviter((await onCheckInvite(code)).name);
-                                } catch (caught) {
-                                  setError(
-                                    caught instanceof Error
-                                      ? caught.message
-                                      : "Couldn’t check this code.",
-                                  );
-                                } finally {
-                                  setChecking(false);
-                                }
-                              }}
-                            >
-                              {checking ? "Checking…" : "Check code"}
-                            </Button>
-                          }
-                        />
-                        {inviter && (
-                          <p className={batch.success}>
-                            Invited by {inviter}. Your budgets will be
-                            connected.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </Card>
-                )}
                 {error && (
                   <p className={batch.error} role="alert">
                     {error}

@@ -16,7 +16,7 @@ import { createCloud, updateCloud } from "./cloud";
 import { CAMERA_DISTANCE, LANDING, SCENE, sceneFit } from "./geometry";
 import { shapeSheet } from "./harrier";
 import type { Stroke } from "./ink";
-import { washiById } from "./config";
+import { washiById } from "~/domain/invitation";
 import { createPaperMaterial } from "./paper-material";
 import type { PlaneFrame } from "./plane-motion";
 import { measure, perf } from "./perf";

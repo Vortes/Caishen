@@ -8,7 +8,8 @@ import {
   type Texture,
   type Vector2,
 } from "three";
-import { config, type Washi } from "./config";
+import type { Washi } from "~/domain/invitation";
+import { config } from "./config";
 import { CARD, LANDING, type Point } from "./geometry";
 import { clamp, easeInOut, easeOut, lerp, smoothstep, span } from "./motion";
 import { createPaperMaterial } from "./paper-material";

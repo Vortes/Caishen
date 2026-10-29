@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
 import { PrismaClient } from "../../src/generated/prisma";
-import { createDatabaseCaller as createCaller } from "./fixtures";
+import {
+  createDatabaseCaller as createCaller,
+  invitationFrom,
+} from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 
@@ -120,8 +123,9 @@ void test("reverts persist, remain idempotent, and cannot undo another member’
       20_000,
     );
 
-    const { code } = await alice.budget.invite();
-    await bob.budget.join({ code });
+    await bob.budget.joinInvitation({
+      id: await invitationFrom(db, aliceId),
+    });
     const partner = await bob.budget.state({ month });
     assert.ok(!JSON.stringify(partner).includes("Groceries"));
     await assert.rejects(

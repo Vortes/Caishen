@@ -5,7 +5,11 @@ import { Prisma, PrismaClient } from "../../src/generated/prisma";
 import { isCounterparty } from "../../src/domain/engine";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
-import { apiFixture, createDatabaseCaller as createCaller } from "./fixtures";
+import {
+  apiFixture,
+  createDatabaseCaller as createCaller,
+  invitationFrom,
+} from "./fixtures";
 
 assertDevelopmentDatabase(process.env);
 const month = "2026-10";
@@ -183,7 +187,7 @@ void test("the API refuses future deposits and opening balances", async (t) => {
   assert.equal((await alice.state()).view!.cash, 500_000);
 });
 void test("another user's private accounts and purchases are inaccessible", async (t) => {
-  const { alice, bob, eve } = await purchaseFixture(t);
+  const { db, alice, bob, eve } = await purchaseFixture(t);
   assert.equal(
     (await bob.state()).view!.accounts.filter(
       (account) => !isCounterparty(account),
@@ -191,8 +195,8 @@ void test("another user's private accounts and purchases are inaccessible", asyn
     0,
   );
   await assert.rejects(bob.run({ ...purchase(-100), transactionId: "stolen" }));
-  const { code } = await alice.api.budget.invite();
-  await bob.api.budget.join({ code });
+  const invitation = await invitationFrom(db, alice.userId);
+  await bob.api.budget.joinInvitation({ id: invitation });
   const shared = await bob.state();
   assert.equal(shared.view!.members.length, 2);
   for (const privateValue of [
@@ -201,16 +205,16 @@ void test("another user's private accounts and purchases are inaccessible", asyn
     "Alice private bank",
   ])
     assert.ok(!JSON.stringify(shared).includes(privateValue));
-  await assert.rejects(eve.api.budget.join({ code }), {
+  await assert.rejects(eve.api.budget.joinInvitation({ id: invitation }), {
     code: "BAD_REQUEST",
-    message: /already used/,
+    message: /already accepted/,
   });
   assert.equal((await eve.state()).view!.members.length, 1);
   assert.ok(!JSON.stringify(await eve.state()).includes("Alice"));
 });
 void test("joining a household survives a serialization conflict", async (t) => {
   const { db, alice, bob } = await fixture(t);
-  const { code } = await alice.api.budget.invite();
+  const id = await invitationFrom(db, alice.userId);
   let conflict = true;
   const retrying = new Proxy(db, {
     get(target, property) {
@@ -245,13 +249,15 @@ void test("joining a household survives a serialization conflict", async (t) => 
     userId: bob.userId,
     headers: new Headers(),
     revision: new ObservedRevision(),
-  }).budget.join({ code });
+  }).budget.joinInvitation({ id });
   assert.equal(conflict, false, "the database failure was exercised");
   assert.equal((await bob.state()).view!.members.length, 2);
 });
 void test("concurrent personal changes both persist in a joined household", async (t) => {
-  const { alice, bob } = await fixture(t);
-  await bob.api.budget.join(await alice.api.budget.invite());
+  const { db, alice, bob } = await fixture(t);
+  await bob.api.budget.joinInvitation({
+    id: await invitationFrom(db, alice.userId),
+  });
   const baseRevision = (await alice.state()).revision;
   const results = await Promise.all(
     [alice, bob].map((person, index) =>

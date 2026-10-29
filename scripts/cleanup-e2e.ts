@@ -46,7 +46,10 @@ if (runId === "--list") {
   const auth = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
   const db = new PrismaClient();
   try {
-    await cleanupRun(journal, cleanupServices(auth, db));
+    await cleanupRun(
+      journal,
+      cleanupServices(auth, db, () => journal.userIds),
+    );
     console.log(`Cleaned E2E run ${runId}.`);
   } finally {
     await db.$disconnect();

@@ -109,6 +109,9 @@ export const rowDataSchemas = {
   }),
   partnerSettlement: partnerSettlementSchema.extend(sort),
   partnerRequest: partnerRequestSchema.extend(sort),
+  formerPartnerEntry: partnerEntryObject
+    .extend({ ...owned, ...sort, accountId: storedIdentifier })
+    .refine(...shareWithinAmount),
 } satisfies Record<TableName, z.ZodTypeAny>;
 
 /** Why a live row's data doesn't read, or null when it does. */

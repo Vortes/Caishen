@@ -26,6 +26,7 @@ import { bankImportColumnSchemas } from "../../src/server/services/bank-import-r
 import { connectionColumnSchema } from "../../src/server/services/banks";
 import { bankProviderEventDetailSchema } from "../../src/server/services/bank-provider-events";
 import { dailyDeliveryPayloadSchema } from "../../src/server/services/daily-delivery";
+import { signatureSchema } from "../../src/server/services/partner-invites";
 import {
   changeSetSchema,
   operationCommandSchema,
@@ -54,7 +55,9 @@ const jsonColumns: Record<string, ZodTypeAny> = {
     .unwrap()
     .nullable(),
   "PartnerEntry.history": partnerEntryObject.shape.history,
+  "FormerPartnerEntry.history": partnerEntryObject.shape.history,
   "PartnerSettlement.history": partnerSettlementSchema.shape.history,
+  "PartnerInvite.signature": signatureSchema.nullable(),
 };
 // Row tables store their data as columns: kinds and statuses are text, and
 // their values may only grow like any stored enum.

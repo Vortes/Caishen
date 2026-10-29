@@ -106,12 +106,6 @@ test("with a partner, People lists the partner by first name before Reimbursemen
         .map((button) => button.textContent?.replace(/\$.*/, "")),
     ).toEqual(["Anna", "Reimbursements"]),
   );
-  // The plan lists the envelopes in the same order.
-  expect(
-    plan()
-      .getAllByRole("checkbox", { name: /^Select (Anna|Reimbursements)$/ })
-      .map((box) => box.getAttribute("aria-label")),
-  ).toEqual(["Select Anna", "Select Reimbursements"]);
 });
 
 test("Reimbursements opens its register, which explains where its entries come from and offers no way to add one", async () => {

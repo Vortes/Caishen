@@ -157,13 +157,7 @@
   font-size: var(--type-small);
 }
 
-/* Partner code */
-.codeHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
+/* Invitation */
 .invitedBy {
   display: flex;
   align-items: center;
@@ -177,9 +171,6 @@
   display: flex;
   align-items: center;
   gap: 14px;
-}
-.codeField {
-  margin-top: 14px;
 }
 .avatar {
   flex: none;

@@ -465,12 +465,15 @@ export function classifyRegisterEntry(
 
 export const directEntryAccountMessage =
   "Entries on Partner and Reimbursements come from shares and settlements, not from the register";
+/** What a former partner's account is called when their name isn't known. */
+export const FORMER_PARTNER = "Former partner";
 export const accountKindLabels: Record<Account["kind"], string> = {
   cash: "Cash",
   credit: "Credit",
   tracking: "Tracking",
   partner: "Partner",
   reimbursements: "Reimbursements",
+  "former-partner": FORMER_PARTNER,
 };
 const directAccountKinds: Record<Account["kind"], boolean> = {
   cash: true,
@@ -478,6 +481,7 @@ const directAccountKinds: Record<Account["kind"], boolean> = {
   tracking: true,
   partner: false,
   reimbursements: false,
+  "former-partner": false,
 };
 export function directEntryAccounts<T extends Account>(accounts: T[]): T[] {
   return accounts.filter((account) => directAccountKinds[account.kind]);

@@ -2,7 +2,7 @@
 
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { useAuth, useUser, useClerk } from "@clerk/nextjs";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LandmarkIcon, PlusIcon } from "lucide-react";
 import {
   currentMonth,
@@ -36,12 +36,31 @@ import {
   categoryDraftSchema,
   initialCategories,
 } from "~/components/entry/onboarding-categories";
+import { firstName } from "~/domain/invitation";
 import batch from "~/components/entry/entry.module.css";
 import styles from "~/components/entry/onboarding.module.css";
 
 const holdOpen = () => () => undefined;
 
-export function Onboarding() {
+const stageKeyFor = (userId: string | null | undefined) =>
+  `caishen:onboarding:${userId ?? ""}`;
+
+/**
+ * The invitation link this tab's unfinished setup came from, kept beside
+ * the setup draft so reopening the link carries on with the setup. A closed
+ * tab loses it, and the link opens the invitation again.
+ */
+export function savedInvitation(userId: string) {
+  return window.sessionStorage.getItem(`${stageKeyFor(userId)}:invitation`);
+}
+
+// The invitation a newcomer signed, accepted in the step that creates their
+// budget.
+export type OnboardingInvitation = { token: string; id: string; from: string };
+
+export function Onboarding({
+  invitation,
+}: { invitation?: OnboardingInvitation } = {}) {
   const { userId } = useAuth();
   const { user } = useUser();
   const clerk = useClerk();
@@ -52,8 +71,6 @@ export function Onboarding() {
     { enabled: Boolean(userId) },
   );
   const create = api.budget.onboard.useMutation();
-  const join = api.budget.join.useMutation();
-  const check = api.budget.checkInvite.useMutation();
   const [notice, setNotice] = useState<string | null>(null);
   const refresh = () => utils.budget.state.invalidate();
   const run = async (command: Command) => {
@@ -79,8 +96,13 @@ export function Onboarding() {
       await refresh();
     },
   });
-  const stageKey = `caishen:onboarding:${userId ?? ""}`;
+  const stageKey = stageKeyFor(userId);
   const draftKey = `${stageKey}:categories`;
+  const invitationKey = `${stageKey}:invitation`;
+  useEffect(() => {
+    if (invitation && userId)
+      window.sessionStorage.setItem(invitationKey, invitation.token);
+  }, [invitation, userId, invitationKey]);
   const savedDraft = () => {
     // This is an unfinished setup draft; the saved budget remains on the server.
     try {
@@ -131,16 +153,31 @@ export function Onboarding() {
     ["cash", "credit", "tracking"].includes(account.kind),
   );
   const createBudget = async (input: BudgetBasics) => {
+    const [firstName = "", ...rest] = input.yourName.split(/\s+/);
+    if (user && input.yourName !== (user.fullName ?? ""))
+      await user.update({ firstName, lastName: rest.join(" ") });
     const start = currentMonth(input.timezone);
     const current = await utils.client.budget.state.query({ month: start });
-    if (!current.view)
+    // Accepting joins the sender's household, so it needs the budget made
+    // with it; the server makes it unless an earlier try already did.
+    if (invitation) {
+      await create.mutateAsync({
+        name: input.name,
+        timezone: input.timezone,
+        emailEnabled: input.emailEnabled,
+        month: start,
+        invitation: invitation.id,
+      });
+      window.sessionStorage.removeItem(invitationKey);
+      // The link is spent; a reload carries on with the setup.
+      window.history.replaceState(null, "", "/welcome");
+    } else if (!current.view)
       await create.mutateAsync({
         name: input.name,
         timezone: input.timezone,
         emailEnabled: input.emailEnabled,
         month: start,
       });
-    if (input.inviteCode) await join.mutateAsync({ code: input.inviteCode });
     window.sessionStorage.setItem(stageKey, "categories");
     setMonth(start);
     await refresh();
@@ -149,6 +186,7 @@ export function Onboarding() {
     <BankConnectionsProvider value={banks}>
       <GuidedOnboarding
         email={user?.primaryEmailAddress?.emailAddress}
+        initialName={user?.fullName ?? ""}
         onSignOut={() =>
           void deleteStoredBudgets().finally(() =>
             clerk.signOut({ redirectUrl: "/" }),
@@ -163,7 +201,7 @@ export function Onboarding() {
           window.sessionStorage.setItem(stageKey, stage)
         }
         onCreate={createBudget}
-        onCheckInvite={(code) => check.mutateAsync({ code })}
+        invitedBy={invitation && firstName(invitation.from)}
         onCategories={async (groups) => {
           const current = await utils.client.budget.state.query({ month });
           await utils.client.budget.setupCategories.mutate({
@@ -182,6 +220,7 @@ export function Onboarding() {
         readyToAssign={view?.readyToAssign ?? 0}
         onComplete={() => {
           window.sessionStorage.removeItem(stageKey);
+          window.sessionStorage.removeItem(invitationKey);
           window.sessionStorage.removeItem(draftKey);
           window.location.assign(`${SHELL_PATH}?assign=1`);
         }}

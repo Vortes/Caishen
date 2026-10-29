@@ -18,7 +18,11 @@ import { ObservedRevision } from "../../src/server/api/trpc";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { writeChangeSet } from "../../src/server/storage/rows";
 import { jsonValue } from "../../src/server/services/safety";
-import { createBankConnection, createHousehold } from "./fixtures";
+import {
+  createBankConnection,
+  createHousehold,
+  invitationFrom,
+} from "./fixtures";
 import {
   applyTransactionSync,
   normalizePlaidTransaction,
@@ -124,8 +128,9 @@ void test("joining a partner gives each budget a partner account and its envelop
   await onboard(alan, "Alan");
   await onboard(anna, "Anna");
 
-  const { code } = await alan.api.budget.invite();
-  await anna.api.budget.join({ code });
+  await anna.api.budget.joinInvitation({
+    id: await invitationFrom(db, alan.userId),
+  });
 
   for (const who of [alan, anna])
     assert.deepEqual(people((await pullAll(who)).rows), {

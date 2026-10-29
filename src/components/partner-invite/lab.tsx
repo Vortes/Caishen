@@ -3,6 +3,7 @@
 import { Volume2, VolumeOff } from "lucide-react";
 import { useState } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
+import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { config } from "./config";
 import { signature } from "./ink";
@@ -20,18 +21,33 @@ const invitation: Invitation = {
 };
 
 export function PartnerInviteLab({ sky }: { sky: SkyTime }) {
-  // On the onboarding, the invite and its sound are over.
+  // The clouds have parted: the invite and its sound are over.
   const [over, setOver] = useState(false);
+  const [take, setTake] = useState(0);
   const { sound, soundOn, chooseSound } = useSound(!over);
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   return (
     <>
       <Scene
+        key={take}
         invitation={invitation}
         sky={sky}
         reducedMotion={reducedMotion}
         sound={sound}
+        // The invite page parts onto onboarding; here, onto another go.
+        next={
+          <div className={styles.replay}>
+            <Button
+              onClick={() => {
+                setOver(false);
+                setTake(take + 1);
+              }}
+            >
+              Play again
+            </Button>
+          </div>
+        }
         onSettled={() => setOver(true)}
       />
       {!over && (

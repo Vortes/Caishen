@@ -1,4 +1,5 @@
 import type { View } from "~/components/budget/types";
+import { partnerAccountOf } from "~/domain/partner-ledger";
 import { classifyRegisterEntry } from "~/domain/register-entry";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
 import { importCategory, type BankImport } from "./import-draft";
@@ -23,8 +24,10 @@ export function transactionNeedsReview(
   return (
     !item.reviewed ||
     classifyRegisterEntry(view.budget, item).fields.needsCategory ||
+    // A settlement with a former partner stays as it was when they parted.
     Boolean(
       item.partnerSettlementId &&
+      item.linkedCounterpartyAccountId === partnerAccountOf(view.budget)?.id &&
       !view.partnerSettlements.some(
         (settlement) =>
           settlement.id === item.partnerSettlementId && settlement.confirmed,

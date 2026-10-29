@@ -6,6 +6,14 @@
   height: 100dvh;
   overflow: hidden;
 }
+/* Without WebGL, a painted sky: the shader's day blue, deep overhead and
+   lighter low down, or its night. */
+.flat {
+  background: linear-gradient(oklch(0.6 0.16 255), oklch(0.8 0.08 240));
+}
+.flat[data-night] {
+  background: linear-gradient(oklch(0.12 0.02 270), oklch(0.2 0.04 270));
+}
 /* The sky fills the stage behind everything. */
 .sky {
   position: absolute;
@@ -239,4 +247,36 @@
   position: fixed;
   transform-origin: top left;
   filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.18));
+}
+
+/* When the signed-in account's addresses don't include the one the
+   invitation went to: said once, in the corner opposite Mute, on a plate
+   that reads against the sky. */
+.sentTo {
+  position: fixed;
+  z-index: 2;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  max-width: min(440px, calc(100% - 80px));
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-card);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.4;
+}
+.sentToAddress {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+/* Clerk's form under the invitation's heading, on the same card. */
+.account {
+  margin-top: 20px;
 }

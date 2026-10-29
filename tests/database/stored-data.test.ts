@@ -7,6 +7,7 @@ import { PrismaClient } from "../../src/generated/prisma";
 import {
   createDatabaseCaller as createCaller,
   databaseClientBuild,
+  invitationFrom,
 } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import {
@@ -69,7 +70,7 @@ void test("an unreadable personal budget puts only its owner's plan under mainte
         month,
         timezone: "America/Los_Angeles",
       });
-    await bob.budget.join({ code: (await alice.budget.invite()).code });
+    await bob.budget.joinInvitation({ id: await invitationFrom(db, a) });
     let revision = (await alice.budget.state({ month })).revision;
     for (const [caller, userId] of [
       [alice, a],

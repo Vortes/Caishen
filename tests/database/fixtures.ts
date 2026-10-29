@@ -184,3 +184,29 @@ export async function apiFixture(t: TestContext, names = ["Alice"]) {
   }
   return { db, people, month };
 }
+
+/**
+ * A live invitation by email from `senderId`, stored as sending one stores it
+ * (without the email), for tests that need two people sharing a budget.
+ * Returns the id the recipient signs.
+ */
+export async function invitationFrom(db: PrismaClient, senderId: string) {
+  const { workspaceId } = await db.workspaceMember.findUniqueOrThrow({
+    where: { clerkUserId: senderId },
+  });
+  const id = randomUUID();
+  await db.partnerInvite.create({
+    data: {
+      id,
+      tokenHash: randomUUID(),
+      workspaceId,
+      createdBy: senderId,
+      expiresAt: new Date(Date.now() + 86_400_000),
+      email: "partner@example.com",
+      senderName: "Test Sender",
+      washi: "vermilion",
+      signature: [],
+    },
+  });
+  return id;
+}

@@ -1,8 +1,13 @@
 import { withBankAccountSuccessors } from "~/server/services/bank-account-rows";
 import { bankAccountRowsSelection } from "~/server/services/bank-account-rows";
 import {
-  createPartnerInvite,
-  checkPartnerInvite,
+  openPartnerInvitation,
+  cancelPartnerInvitation,
+  readSentInvitation,
+  resendPartnerInvitation,
+  sendPartnerInvitation,
+  signatureSchema,
+  washiSchema,
 } from "~/server/services/partner-invites";
 import {
   readEmailSubscription,
@@ -28,8 +33,10 @@ import { integrationStatus } from "~/server/integrations/status";
 import { domainError } from "~/server/services/safety";
 import { cancelScheduledDailyReviews } from "~/server/services/daily-delivery";
 import {
-  joinHousehold,
+  disconnectPartner,
+  joinByInvitation,
   onboard,
+  onboardByInvitation,
   setOnboardingCategories,
 } from "~/server/services/household-operations";
 import {
@@ -222,10 +229,20 @@ export const budgetRouter = createTRPCRouter({
         month,
         timezone: z.string().max(100),
         emailEnabled: z.boolean().optional(),
+        // The invitation a newcomer signed: their budget joins its sender's.
+        invitation: z.string().min(1).max(100).optional(),
       }),
     )
-    .mutation(({ ctx, input }) =>
-      onboard(ctx.db, ctx.userId, input, ctx.revision.observe),
+    .mutation(({ ctx, input: { invitation, ...input } }) =>
+      invitation
+        ? onboardByInvitation(
+            ctx.db,
+            ctx.userId,
+            input,
+            invitation,
+            ctx.revision.observe,
+          )
+        : onboard(ctx.db, ctx.userId, input, ctx.revision.observe),
     ),
 
   setupCategories: protectedProcedure
@@ -291,21 +308,40 @@ export const budgetRouter = createTRPCRouter({
       return result;
     }),
 
-  invite: protectedProcedure.mutation(({ ctx }) =>
-    createPartnerInvite(ctx.db, ctx.userId),
+  invitation: protectedProcedure.query(({ ctx }) =>
+    readSentInvitation(ctx.db, ctx.userId),
   ),
-
-  checkInvite: protectedProcedure
-    .input(z.object({ code: z.string().trim().min(8).max(100) }))
+  sendInvitation: protectedProcedure
+    .input(
+      z.object({
+        email: z.string().max(400),
+        washi: washiSchema,
+        signature: signatureSchema,
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      checkPartnerInvite(ctx.db, ctx.userId, input.code),
+      sendPartnerInvitation(ctx.db, ctx.userId, input, ctx.outbox),
     ),
-
-  join: protectedProcedure
-    .input(z.object({ code: z.string().trim().min(8).max(100) }))
+  resendInvitation: protectedProcedure.mutation(({ ctx }) =>
+    resendPartnerInvitation(ctx.db, ctx.userId, ctx.outbox),
+  ),
+  cancelInvitation: protectedProcedure.mutation(({ ctx }) =>
+    cancelPartnerInvitation(ctx.db, ctx.userId),
+  ),
+  openInvitation: publicProcedure
+    .input(z.object({ token: z.string().min(1).max(200) }))
+    .query(({ ctx, input }) =>
+      openPartnerInvitation(ctx.db, ctx.userId, input.token),
+    ),
+  joinInvitation: protectedProcedure
+    .input(z.object({ id: z.string().min(1).max(100) }))
     .mutation(({ ctx, input }) =>
-      joinHousehold(ctx.db, ctx.userId, input.code, ctx.revision.observe),
+      joinByInvitation(ctx.db, ctx.userId, input.id, ctx.revision.observe),
     ),
+  // Either partner ends the partnership alone, after a confirmation.
+  disconnect: protectedProcedure.mutation(({ ctx }) =>
+    disconnectPartner(ctx.db, ctx.userId, { observe: ctx.revision.observe }),
+  ),
 
   plaidLinkToken: protectedProcedure
     .input(

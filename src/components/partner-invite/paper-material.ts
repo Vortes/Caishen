@@ -6,7 +6,8 @@ import {
   Vector3,
   Vector4,
 } from "three";
-import { config, type Washi } from "./config";
+import type { Washi } from "~/domain/invitation";
+import { config } from "./config";
 import { deckleMask } from "./deckle-mask";
 import { CARD } from "./geometry";
 import { sheetCreases } from "./harrier";

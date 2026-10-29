@@ -380,3 +380,71 @@ for (const inactiveDuringSend of [false, true]) {
     }
   });
 }
+
+void test("the daily job sweeps spent invitations, keeps live ones, and is a no-op the second time", async () => {
+  const current = await fixture();
+  const recipient = `user_daily_${randomUUID()}`;
+  await base.user.create({ data: { clerkUserId: recipient } });
+  const workspace = await base.workspaceMember.findFirstOrThrow({
+    where: { clerkUserId: current.userId },
+  });
+  const day = 86_400_000;
+  const invite = (
+    name: string,
+    data: { expiresAt: Date } & Record<string, unknown>,
+  ) =>
+    base.partnerInvite.create({
+      data: {
+        tokenHash: `${name}-${randomUUID()}`,
+        workspaceId: workspace.workspaceId,
+        createdBy: current.userId,
+        email: `${name}@example.com`,
+        senderName: "Sender",
+        signature: [{ points: [{ x: 0, y: 0, t: 0 }] }],
+        ...data,
+      },
+    });
+  const future = new Date(batchTime.getTime() + 3 * day);
+  const spent = await Promise.all([
+    invite("used", { expiresAt: future, usedBy: recipient, usedAt: batchTime }),
+    invite("cancelled", { expiresAt: future, cancelledAt: batchTime }),
+    invite("replaced", {
+      expiresAt: future,
+      cancelledAt: batchTime,
+      replaced: true,
+    }),
+    invite("expired", { expiresAt: new Date(batchTime.getTime() - day) }),
+  ]);
+  const live = await invite("live", { expiresAt: future });
+  try {
+    const first = await runDailyJob(base, batchTime, {
+      readBudget: async () => null,
+    });
+    assert.equal(first.sweptInvitations, 4);
+    assert.deepEqual(
+      (
+        await base.partnerInvite.findMany({
+          where: { createdBy: current.userId },
+        })
+      ).map((row) => row.id),
+      [live.id],
+    );
+    assert.equal(
+      await base.partnerInvite.count({
+        where: { id: { in: spent.map((row) => row.id) } },
+      }),
+      0,
+    );
+    const again = await runDailyJob(base, batchTime, {
+      readBudget: async () => null,
+    });
+    assert.equal(again.sweptInvitations, 0);
+    assert.equal(await base.partnerInvite.count({ where: { id: live.id } }), 1);
+  } finally {
+    await base.partnerInvite.deleteMany({
+      where: { createdBy: current.userId },
+    });
+    await current.cleanup();
+    await base.user.delete({ where: { clerkUserId: recipient } });
+  }
+});

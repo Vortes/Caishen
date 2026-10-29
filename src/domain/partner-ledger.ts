@@ -150,6 +150,13 @@ export const partnerEntrySchema = partnerEntryObject.refine(
   ...shareWithinAmount,
 );
 
+// A former partner's entry, kept in each budget under the closed account it
+// belonged to when the partnership ended. It never changes again.
+export type FormerPartnerEntry = PartnerEntry & { accountId: string };
+export const formerPartnerEntrySchema = partnerEntryObject
+  .extend({ accountId: identifier })
+  .refine(...shareWithinAmount);
+
 export const partnerSideSchema = z.object({
   categoryId: identifier.optional(),
 });
@@ -174,16 +181,39 @@ export function partnerAccountOf(
 
 /**
  * The lines of a transaction that are shared with the partner: their share
- * names the payer's Partner account.
+ * names the payer's Partner account, or the given partner ledger account.
  */
 export function partnerLines(
   budget: Pick<Budget, "accounts">,
   transaction: Transaction,
+  accountId = partnerAccountOf(budget)?.id,
 ): TransactionLine[] {
-  const partner = partnerAccountOf(budget);
-  if (!partner) return [];
+  if (!accountId) return [];
   return counterpartyLines(transaction).filter(
-    (line) => line.counterpartyShare?.accountId === partner.id,
+    (line) => line.counterpartyShare?.accountId === accountId,
+  );
+}
+
+/** Whether an account holds a partner ledger: the partner's, or a former one's. */
+export const isPartnerLedger = (
+  account: Pick<Budget["accounts"][number], "kind">,
+) => account.kind === "partner" || account.kind === "former-partner";
+
+/**
+ * The ledger entries behind one partner ledger account: the household's
+ * shared entries for the Partner account, or the frozen entries a former
+ * partner's closed account keeps.
+ */
+export function ledgerEntries(
+  budget: Pick<Budget, "accounts" | "formerPartnerEntries">,
+  shared: PartnerEntry[] | undefined,
+  accountId: string,
+): PartnerEntry[] {
+  const account = budget.accounts.find((item) => item.id === accountId);
+  if (account?.kind === "partner") return shared ?? [];
+  if (account?.kind !== "former-partner") return [];
+  return (budget.formerPartnerEntries ?? []).filter(
+    (entry) => entry.accountId === accountId,
   );
 }
 
@@ -332,9 +362,9 @@ export function partnerLedgerRows(
   entries: PartnerEntry[] | undefined,
   cutoff: string,
   settlements?: PartnerSettlement[],
+  partner = partnerAccountOf(budget),
 ): PartnerLedgerRow[] {
   const viewerId = budget.userId;
-  const partner = partnerAccountOf(budget);
   if (!partner) return [];
   const bySource = entriesBySource(entries);
   const rows: Omit<PartnerLedgerRow, "balance">[] = [];
@@ -377,7 +407,7 @@ export function partnerLedgerRows(
     }
     const shareMode = classifyRegisterEntry(budget, transaction).capabilities
       .share;
-    for (const line of partnerLines(budget, transaction)) {
+    for (const line of partnerLines(budget, transaction, partner.id)) {
       const share = line.counterpartyShare!.amount;
       const entry = bySource.get(sourceKey(transaction.id, line.id));
       const shared = Math.abs(line.amount);
@@ -440,11 +470,24 @@ export function partnerLedgerRows(
     });
   }
   rows.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  // A former partner's ledger is closed: its shares can't change.
+  const frozen = partner.kind === "former-partner";
   let balance = 0;
   return rows
     .map((row) => {
       balance += row.change;
-      return { ...row, balance };
+      return {
+        ...row,
+        balance,
+        ...(frozen
+          ? {
+              shareMode: {
+                mode: "read" as const,
+                reason: "Shares with a former partner are frozen",
+              },
+            }
+          : {}),
+      };
     })
     .reverse();
 }

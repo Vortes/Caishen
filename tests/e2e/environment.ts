@@ -4,6 +4,8 @@ import {
 } from "../../src/server/dev/development-database";
 
 export const shellPath = "/app";
+// Where the shell test server leaves the emails it would have sent.
+export const outboxPath = ".next/cache/playwright/outbox";
 
 // Match the database suite's isolated branch check: dev-caishen or a verified
 // worktree branch under it. The managed web server inherits these same URLs;

@@ -1014,7 +1014,8 @@ export function AppShell({
                         )}
                         {screen.type === "register" && (
                           <>
-                            {account?.kind === "partner" ? (
+                            {account?.kind === "partner" ||
+                            account?.kind === "former-partner" ? (
                               <PartnerRegister
                                 key={account.id}
                                 account={account}

@@ -20,6 +20,7 @@ import type { Budget } from "~/domain/engine";
 import { openHousehold, type Database } from "./household";
 import { budgetMaintenance, reportUnreadable, zodIssues } from "./stored-data";
 import { emailPreferenceToken } from "./email-preferences";
+import { sweepSpentInvitations } from "./partner-invites";
 
 /**
  * A member's budget and their household's revision, or null when they have
@@ -354,7 +355,8 @@ export async function runDailyJob(
     scheduled = 0,
     canceled = 0,
     failed = 0,
-    purgedEvents = 0;
+    purgedEvents = 0,
+    sweptInvitations = 0;
   for (const outcome of outcomes)
     if (outcome.kind === "synced") synced++;
     else if (outcome.kind === "failed") failed++;
@@ -487,6 +489,13 @@ export async function runDailyJob(
     console.error("Bank provider events could not be purged", error);
     failed++;
   }
+  // Spent invitations go with the same backstop, on the same terms.
+  try {
+    sweptInvitations = await sweepSpentInvitations(db, now);
+  } catch (error) {
+    console.error("Spent invitations could not be swept", error);
+    failed++;
+  }
   const result = {
     processed,
     synced,
@@ -494,6 +503,7 @@ export async function runDailyJob(
     canceled,
     failed,
     purgedEvents,
+    sweptInvitations,
     emailConfigured: emailReady,
     stale: await staleConnections(db, outcomes, now),
   };

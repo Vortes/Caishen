@@ -69,6 +69,12 @@ without retaining the requesting user's identifiable financial data. If that
 cannot be done, delete the affected shared records unless a specific legal
 obligation requires retention. Explain the effect on the shared budget.
 
+Partner invitations:
+An invitation holds the invited email address, the sender's name, and the
+sender's handwritten signature. It is kept only until it is used, cancelled,
+replaced, or expires (seven days after it is sent). The daily job deletes spent
+invitations outright, so the address and signature are not retained.
+
 Operational records:
 Retain routine technical logs, delivery records, expired invitations,
 reconciliation evidence, and other temporary operational records for no more

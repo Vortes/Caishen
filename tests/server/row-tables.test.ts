@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { bookSchema } from "../../src/domain/engine";
+import { bookSchema, closePartnerLedger } from "../../src/domain/engine";
 import {
   bookToRows,
   rowKey,
@@ -54,6 +54,14 @@ function everyRow(): WireRow[] {
       ),
     ),
     ...corpus.steps.flatMap((step) => bookToRows(step.after)),
+    ...bookToRows(
+      closePartnerLedger(corpus.book, "alex", {
+        id: "parted",
+        name: "Jordan",
+        at: "2026-10-28T12:00:00.000Z",
+        by: "jordan",
+      }),
+    ),
     ...importStateRows(
       "alex",
       "connection",

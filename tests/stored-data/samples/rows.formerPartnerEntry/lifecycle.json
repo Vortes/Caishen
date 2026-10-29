@@ -1,0 +1,83 @@
+{
+  "userId": "alex",
+  "accountId": "counterparty:former:parted",
+  "id": "jordan:rent-2026-08:rent-2026-08",
+  "payerId": "jordan",
+  "source": {
+    "transactionId": "rent-2026-08",
+    "lineId": "rent-2026-08",
+    "hasPurposeCategory": true,
+    "onSplitPurchase": false
+  },
+  "date": "2026-08-02",
+  "payee": "Parkside Apartments · rent",
+  "status": "pending",
+  "amount": -260000,
+  "share": 130000,
+  "history": [
+    {
+      "actorId": "alex",
+      "operationId": "entry-0",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "created"
+    },
+    {
+      "actorId": "alex",
+      "operationId": "entry-1",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "recorded"
+    },
+    {
+      "actorId": "alex",
+      "operationId": "entry-2",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "matched"
+    },
+    {
+      "actorId": "alex",
+      "operationId": "entry-3",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "updated",
+      "changes": [
+        {
+          "field": "share",
+          "previous": 1000,
+          "next": 1500
+        },
+        {
+          "field": "amount",
+          "previous": -2000,
+          "next": -3000
+        },
+        {
+          "field": "date",
+          "previous": "2026-10-20",
+          "next": "2026-10-21"
+        },
+        {
+          "field": "payee",
+          "previous": "Market",
+          "next": "Shop"
+        },
+        {
+          "field": "status",
+          "previous": "pending",
+          "next": "posted"
+        }
+      ]
+    },
+    {
+      "actorId": "alex",
+      "operationId": "entry-4",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "removed"
+    },
+    {
+      "actorId": "alex",
+      "operationId": "entry-5",
+      "at": "2026-10-21T12:00:00Z",
+      "reason": "restored"
+    }
+  ],
+  "sort": 0
+}

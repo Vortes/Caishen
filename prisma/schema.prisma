@@ -58,6 +58,19 @@ model PartnerInvite {
   usedBy      String?
   recipient   User?     @relation("InviteRecipient", fields: [usedBy], references: [clerkUserId], onDelete: Restrict)
   createdAt   DateTime  @default(now())
+  // Set on an invitation by email (ADR 0011); a partner code leaves them empty.
+  email       String?
+  senderName  String?
+  washi       String?
+  signature   Json?
+  // Emails sent for this invitation, which keys the next one's idempotency.
+  emails      Int       @default(0)
+  usedAt      DateTime?
+  cancelledAt DateTime?
+  // Cancelled by sending a newer invitation, which its link says.
+  replaced    Boolean   @default(false)
+
+  @@index([createdBy])
 }
 
 model BankConnection {
@@ -68,7 +81,7 @@ model BankConnection {
   encryptedToken         String
   cursor                 String?
   imports                Json
-  accountMappings        Json     @default("{}")
+  accountMappings        Json          @default("{}")
   unavailableAccountIds  String[]      @default([])
   status                 String        @default("connected")
   consentExpiresAt       DateTime?
@@ -208,27 +221,29 @@ model DailyDelivery {
 }
 
 model User {
-  id              String              @id @default(cuid())
-  clerkUserId     String              @unique
-  firstName       String?
-  lastName        String?
-  imageUrl        String?
-  primaryEmail    String?
-  active          Boolean             @default(true)
-  inviteChecks    Int                 @default(0)
-  inviteWindow    DateTime?
-  clerkUpdatedAt  BigInt?
-  deletedAt       DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  memberships     WorkspaceMember[]
-  bankConnections BankConnection[]
-  evidence        ReviewEvidence[]
-  deliveries      DailyDelivery[]
-  invitesCreated  PartnerInvite[]     @relation("InviteCreator")
-  invitesUsed     PartnerInvite[]     @relation("InviteRecipient")
-  webhookEvents   ClerkWebhookEvent[]
-  operationLog    Operation[]
+  id               String              @id @default(cuid())
+  clerkUserId      String              @unique
+  firstName        String?
+  lastName         String?
+  imageUrl         String?
+  primaryEmail     String?
+  active           Boolean             @default(true)
+  inviteChecks     Int                 @default(0)
+  inviteWindow     DateTime?
+  inviteSends      Int                 @default(0)
+  inviteSendWindow DateTime?
+  clerkUpdatedAt   BigInt?
+  deletedAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  memberships      WorkspaceMember[]
+  bankConnections  BankConnection[]
+  evidence         ReviewEvidence[]
+  deliveries       DailyDelivery[]
+  invitesCreated   PartnerInvite[]     @relation("InviteCreator")
+  invitesUsed      PartnerInvite[]     @relation("InviteRecipient")
+  webhookEvents    ClerkWebhookEvent[]
+  operationLog     Operation[]
 }
 
 model ClerkWebhookEvent {
@@ -253,24 +268,25 @@ model ClerkWebhookEvent {
 // (ADR 0006), and the engine validates them.
 
 model Member {
-  workspaceId  String
-  userId       String
-  name         String
-  sort         Int
-  revision     Int
-  deleted      Boolean            @default(false)
-  workspace    Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  settings     BudgetSettings?
-  accounts     Account[]
-  groups       CategoryGroup[]
-  categories   Category[]
-  income       ExpectedIncome[]
-  transactions Transaction[]
-  loans        Loan[]
-  rules        Rule[]
-  bankImports  BankImport[]
-  payees       PayeeMemory[]
-  partnerSides PartnerEntrySide[]
+  workspaceId          String
+  userId               String
+  name                 String
+  sort                 Int
+  revision             Int
+  deleted              Boolean              @default(false)
+  workspace            Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  settings             BudgetSettings?
+  accounts             Account[]
+  groups               CategoryGroup[]
+  categories           Category[]
+  income               ExpectedIncome[]
+  transactions         Transaction[]
+  loans                Loan[]
+  rules                Rule[]
+  bankImports          BankImport[]
+  payees               PayeeMemory[]
+  partnerSides         PartnerEntrySide[]
+  formerPartnerEntries FormerPartnerEntry[]
 
   @@id([workspaceId, userId])
   @@index([workspaceId, revision])
@@ -301,6 +317,9 @@ model Account {
   date              String
   reconciledDate    String?
   reconciledBalance BigInt?
+  // A former partner's closed account: when it closed, and who disconnected.
+  closedAt          String?
+  closedBy          String?
   sort              Int
   revision          Int
   deleted           Boolean @default(false)
@@ -644,6 +663,33 @@ model PartnerEntrySide {
   member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
 
   @@id([workspaceId, userId, entryId])
+  @@index([workspaceId, revision])
+}
+
+// A former partner's ledger entry, frozen in one budget under the closed
+// account it belonged to when the partnership ended.
+model FormerPartnerEntry {
+  workspaceId              String
+  userId                   String
+  accountId                String
+  id                       String
+  payerId                  String
+  sourceTransactionId      String?
+  sourceLineId             String?
+  sourceHasPurposeCategory Boolean?
+  sourceOnSplitPurchase    Boolean?
+  date                     String
+  payee                    String
+  status                   String
+  amount                   BigInt
+  share                    BigInt
+  history                  Json
+  sort                     Int
+  revision                 Int
+  deleted                  Boolean  @default(false)
+  member                   Member   @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, accountId, id])
   @@index([workspaceId, revision])
 }
 

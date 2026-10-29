@@ -115,6 +115,10 @@
   flex-direction: column;
   gap: 10px;
 }
+/* An address someone typed: long ones wrap anywhere, not off the card. */
+.address {
+  overflow-wrap: anywhere;
+}
 .joinRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

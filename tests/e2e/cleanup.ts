@@ -57,6 +57,11 @@ export class RunJournal {
   get identities() {
     return this.record.identities;
   }
+  get userIds() {
+    return this.record.identities.flatMap(({ userId }) =>
+      userId ? [userId] : [],
+    );
+  }
   private get path() {
     return join(this.directory, `${this.runId}.json`);
   }

@@ -747,6 +747,20 @@ export async function forgetOperations(db: Database, workspaceId: string) {
  * Records, in another household, that a member's operations were applied,
  * so retrying one after joining that household never applies it twice.
  */
+/**
+ * Drops the commands and change sets a household's operations keep, leaving
+ * only which operations ran, as when they hold a deleted member's records.
+ */
+export async function forgetOperationRecords(
+  db: Database,
+  workspaceId: string,
+) {
+  await db.operation.updateMany({
+    where: { workspaceId },
+    data: { command: Prisma.DbNull, changeSet: Prisma.DbNull },
+  });
+}
+
 export async function carryOperations(
   db: Database,
   input: { from: string; to: string; actorId: string },
