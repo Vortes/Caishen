@@ -118,7 +118,7 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   await expect(partner).toHaveURL(/\/welcome$/);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();
-  await expect(partner.getByText("Connected with Caishen E2E")).toBeVisible();
+  await expect(partner.getByText(/^Connected with Caishen/)).toBeVisible();
   await partner.getByRole("button", { name: "Open my budget" }).click();
   await expect(
     partner.getByRole("heading", { name: "Plan", exact: true }),

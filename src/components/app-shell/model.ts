@@ -724,7 +724,8 @@ export function toShellData(
       })),
     costToBeMe: view.costToBeMe,
     expectedIncome: view.expectedIncome,
-    partner: partner && { name: partner.name },
+    // Settings names the partner like the shell does: by first name.
+    partner: partner && { name: state.partnerFirstName ?? partner.name },
     disconnectedBy:
       lastClosed && lastClosed.closed.by !== view.budget.userId
         ? { name: lastClosed.name, at: lastClosed.closed.at }
