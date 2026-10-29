@@ -36,7 +36,7 @@ export const INVITE = {
   sentence: {
     y: -80,
     leading: 28,
-    lines: ["invited you to join", "Caishen together!"],
+    lines: ["wants to share", "a budget with you."],
   },
   // A signing rule on each half; the sender's sits under their signature.
   rule: {

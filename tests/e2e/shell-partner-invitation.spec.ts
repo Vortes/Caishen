@@ -85,7 +85,7 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   await expect(partner).toHaveURL(new RegExp(`${path}$`));
   await budgets.claim(email);
   await partner
-    .getByRole("img", { name: "Caishen sent you something" })
+    .getByRole("img", { name: "Caishen sent you a paper plane" })
     .click();
   const pen = partner.locator("rect[class*='signZone']");
   await expect(pen).toBeVisible();

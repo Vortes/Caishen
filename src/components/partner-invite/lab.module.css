@@ -6,6 +6,14 @@
   height: 100dvh;
   overflow: hidden;
 }
+/* Without WebGL, a painted sky: the shader's day blue, deep overhead and
+   lighter low down, or its night. */
+.flat {
+  background: linear-gradient(oklch(0.6 0.16 255), oklch(0.8 0.08 240));
+}
+.flat[data-night] {
+  background: linear-gradient(oklch(0.12 0.02 270), oklch(0.2 0.04 270));
+}
 /* The sky fills the stage behind everything. */
 .sky {
   position: absolute;

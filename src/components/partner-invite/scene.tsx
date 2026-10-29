@@ -9,9 +9,9 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { Button } from "~/components/ui/button";
 import { BannerPlane } from "./banner-plane";
 import { CardFace } from "./card-face";
+import { FlatCard, useWebGL } from "./flat-card";
 import { config } from "./config";
 import {
   CARD,
@@ -35,6 +35,7 @@ import {
   endingTrack,
   useScore,
 } from "./score";
+import { SignActions } from "./sign-actions";
 import { Sky, type SkyTime, type Veil, type Words } from "./sky";
 import type { Sound } from "./sound";
 import { ending, timeline } from "./timeline";
@@ -55,19 +56,7 @@ const PEN_AREA = INVITE.pen.to;
 // What's in view before the stage has a size.
 const WHOLE_SCENE: View = { x: 0, y: 0, ...SCENE };
 
-// The scene renders when what's on the page changes: a step, a stroke of
-// the pen, a pull on the peel, or one of the moments in `stageAt`. All that
-// moves in between is drawn on the frame loop from the `...At(now)`
-// functions below, by the sky, the 3D card, and the banner plane.
-export function Scene({
-  invitation,
-  sky,
-  reducedMotion,
-  sound,
-  onSign,
-  next,
-  onSettled,
-}: {
+type SceneProps = {
   invitation: Invitation;
   sky: SkyTime;
   reducedMotion: boolean;
@@ -81,22 +70,34 @@ export function Scene({
   // The clouds have parted all the way onto the onboarding: the invite is
   // over.
   onSettled?: () => void;
-}) {
+};
+
+// The invitation flies in through the sky where the browser can draw it;
+// without WebGL, it lies flat, ready to sign.
+export function Scene(props: SceneProps) {
+  const webgl = useWebGL();
+  if (webgl === undefined) return <div className={styles.stage} />;
+  return webgl ? <Flight {...props} /> : <FlatCard {...props} />;
+}
+
+// The scene renders when what's on the page changes: a step, a stroke of
+// the pen, a pull on the peel, or one of the moments in `stageAt`. All that
+// moves in between is drawn on the frame loop from the `...At(now)`
+// functions below, by the sky, the 3D card, and the banner plane.
+function Flight({
+  invitation,
+  sky,
+  reducedMotion,
+  sound,
+  onSign,
+  next,
+  onSettled,
+}: SceneProps) {
   const svg = useRef<SVGSVGElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const stageSize = useSize(stage);
   const fit = stageSize ? sceneFit(stageSize.width, stageSize.height) : null;
   const view = fit?.view ?? WHOLE_SCENE;
-  // The card's bottom right corner on the stage, in px from the stage's
-  // top and right, where the signing buttons hang.
-  const cardCorner =
-    stageSize && fit
-      ? {
-          top: (LANDING.y + hh - view.y) * fit.scale,
-          right:
-            stageSize.width - (LANDING.x + CARD.width / 2 - view.x) * fit.scale,
-        }
-      : null;
   const [phase, setPhase] = useState<{ name: Phase; at: number }>(() => ({
     name: "invite",
     at: performance.now(),
@@ -155,12 +156,24 @@ export function Scene({
     setCaughtAfter((performance.now() - phase.at) / 1000);
     go(reducedMotion ? "sign" : "arrive");
   };
-  // Always two lines, so the letters can be big and fat; broken where they
-  // fit the stage, so not until it has a size.
-  const lines =
-    stageSize && stageSize.width < stageSize.height
-      ? [`${sender} sent`, "you something"]
-      : [`${sender} sent you`, "something"];
+  // Always two lines, so the letters can be big and fat.
+  const lines = [`${sender} sent you`, "a paper plane"];
+  // Enter or Space catches it too, unless it's pressing a control.
+  useEffect(() => {
+    if (phase.name !== "invite") return;
+    const press = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest("button, a, input, textarea, select")
+      )
+        return;
+      event.preventDefault();
+      caught();
+    };
+    document.addEventListener("keydown", press);
+    return () => document.removeEventListener("keydown", press);
+  });
 
   // Seconds into this step, since your half came free, and since the
   // clouds started closing.
@@ -435,7 +448,7 @@ export function Scene({
         role="img"
         aria-label={
           phase.name === "invite"
-            ? `${sender} sent you something`
+            ? `${sender} sent you a paper plane`
             : `${invitation.from} ${INVITE.sentence.lines.join(" ")} Partner invite, ${phase.name} step`
         }
       >
@@ -474,32 +487,15 @@ export function Scene({
       )}
       {/* Nothing to undo, clear, or sign until there's ink; the card's own
           "sign here" asks for it first. */}
-      {phase.name === "sign" && strokes.length > 0 && cardCorner && (
-        <div
-          className={styles.signActions}
-          style={
-            {
-              "--card-bottom": `${cardCorner.top}px`,
-              "--card-right": `${cardCorner.right}px`,
-            } as CSSProperties
-          }
-        >
-          <div className={styles.signEdits}>
-            <Button disabled={signing} onClick={pen.undo}>
-              Undo
-            </Button>
-            <Button disabled={signing} onClick={pen.clear}>
-              Clear
-            </Button>
-          </div>
-          <Button
-            variant="primary"
-            disabled={signing}
-            onClick={() => void sign()}
-          >
-            {signing ? "Signing…" : "Sign"}
-          </Button>
-        </div>
+      {phase.name === "sign" && strokes.length > 0 && stageSize && fit && (
+        <SignActions
+          stage={stageSize}
+          fit={fit}
+          signing={signing}
+          onUndo={pen.undo}
+          onClear={pen.clear}
+          onSign={() => void sign()}
+        />
       )}
     </div>
   );
