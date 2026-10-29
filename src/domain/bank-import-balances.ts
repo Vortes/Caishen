@@ -1,4 +1,4 @@
-import type { Budget } from "./engine";
+import type { Budget, Transaction } from "./engine";
 import {
   importEligibilityIssue,
   type ImportEligibility,
@@ -6,6 +6,20 @@ import {
 
 // The matching window for a bank import and activity entered by hand.
 export const MANUAL_MATCH_DAYS = 10;
+
+export function matchesManualImport(
+  transaction: Transaction,
+  imported: { accountId: string | null; date: string; amount: number },
+) {
+  return (
+    !transaction.removed &&
+    !transaction.providerId &&
+    transaction.accountId === imported.accountId &&
+    transaction.amount === imported.amount &&
+    Math.abs(Date.parse(transaction.date) - Date.parse(imported.date)) <=
+      MANUAL_MATCH_DAYS * 86_400_000
+  );
+}
 
 export const reviewImportsBeforeReconciliation =
   "Review imported bank activity before reconciling this account so it is not counted again as an adjustment.";
@@ -48,11 +62,7 @@ export function balanceImports(
         transaction.accountId === item.accountId &&
         ((transaction.providerId !== undefined &&
           providerIds.has(transaction.providerId)) ||
-          (!transaction.removed &&
-            !transaction.providerId &&
-            transaction.amount === item.amount &&
-            Math.abs(Date.parse(transaction.date) - Date.parse(item.date)) <=
-              MANUAL_MATCH_DAYS * 86_400_000)),
+          matchesManualImport(transaction, item)),
     );
     return (
       (account?.kind === "cash" || account?.kind === "credit") &&

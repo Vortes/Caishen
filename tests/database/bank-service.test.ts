@@ -9,6 +9,7 @@ import {
 } from "./fixtures";
 import { createBudgetClient } from "../../src/components/sync/budget-client";
 import { rejectImportChange } from "../../src/domain/bank-import-rejection";
+import { READY_TO_ASSIGN } from "../../src/domain/transfers";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import { toShellData } from "../../src/components/app-shell/model";
 import { PrismaClient } from "../../src/generated/prisma";
@@ -3873,6 +3874,49 @@ const cardPaymentFacts = () => [
   }),
 ];
 
+void test("a card payment across posting months consumes its reserve when cash leaves", async () => {
+  for (const [cashDate, cardDate] of [
+    ["2026-10-31", "2026-11-01"],
+    ["2026-11-01", "2026-10-31"],
+  ] as const) {
+    const facts = cardPaymentFacts();
+    const h = await cardPaymentHarness([
+      {
+        added: [
+          { ...facts[0], date: cashDate },
+          { ...facts[1], date: cardDate },
+        ],
+        next_cursor: "month-boundary",
+      },
+    ]);
+    const category = (await h.state()).view!.budget.categories.find(
+      (item) => item.pairedAccountId === "visa",
+    )!;
+    await h.setBook(
+      execute(await h.book(), alice, {
+        type: "assign.set",
+        id: "fund-card",
+        categoryId: category.id,
+        month: "2026-10",
+        amount: 10_000,
+      }),
+    );
+    await syncBanks(h.db, alice);
+    for (const month of ["2026-10", "2026-11"]) {
+      const view = (await h.api.budget.state({ month })).view!;
+      assert.equal(
+        view.readyToAssign,
+        0,
+        `${cashDate}/${cardDate}: ${month} Ready to Assign`,
+      );
+      assert.equal(
+        view.categories.find((item) => item.id === category.id)!.available,
+        cashDate.startsWith(month) || month === "2026-11" ? 5_000 : 10_000,
+      );
+    }
+  }
+});
+
 void test("bank sync recognizes a card payment's original checking source and links both imports once", async () => {
   const h = await cardPaymentHarness([
     { added: cardPaymentFacts(), next_cursor: "payment" },
@@ -3917,6 +3961,569 @@ void test("bank sync recognizes a card payment's original checking source and li
   });
   const edited = (await h.state()).view!.budget.transactions;
   assert.equal(edited.find((item) => item.id === paid.id)!.date, "2026-10-25");
+});
+
+void test("two distinct card payments of the same amount both link on successive updates", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    { added: facts, next_cursor: "first-payment" },
+    {
+      added: [
+        { ...facts[0], transaction_id: "second-checking", date: "2026-10-27" },
+        { ...facts[1], transaction_id: "second-visa", date: "2026-10-28" },
+      ],
+      next_cursor: "second-payment",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  await syncBanks(h.db, alice);
+  const payments = (await h.state()).view!.budget.transactions.filter(
+    (item) => !item.removed,
+  );
+  assert.equal(payments.length, 4);
+  assert.equal(new Set(payments.map((item) => item.linkedId)).size, 2);
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+});
+
+void test("bank entries attach to an existing manual card payment without creating another pair", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    { added: [facts[0]], next_cursor: "cash-posted" },
+    { added: [facts[1]], next_cursor: "card-posted" },
+  ]);
+  const manual = execute(await h.book(), alice, {
+    type: "transaction.upsert",
+    id: "manual-payment",
+    transactionId: "manual-cash",
+    accountId: "cash",
+    transferAccountId: "visa",
+    date: "2026-10-24",
+    amount: -5_000,
+    payee: "Visa",
+  });
+  // Older manual payments were reviewed but did not attribute history entries.
+  for (const transaction of manual.budgets[alice]!.transactions)
+    for (const entry of transaction.history) delete entry.actorId;
+  await h.setBook(manual);
+  await syncBanks(h.db, alice);
+  let transactions = (await h.state()).view!.budget.transactions;
+  assert.equal(transactions.length, 2);
+  assert.equal(
+    transactions.find((item) => item.id === "manual-cash")!.providerId,
+    "checking-payment",
+  );
+  assert.equal(
+    transactions.find((item) => item.accountId === "visa")!.date,
+    "2026-10-24",
+    "the other bank has not posted yet",
+  );
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+  await syncBanks(h.db, alice);
+  transactions = (await h.state()).view!.budget.transactions;
+  assert.equal(transactions.length, 2);
+  assert.deepEqual(
+    transactions.map((item) => [item.accountId, item.date, item.providerId]),
+    [
+      ["cash", "2026-10-25", "checking-payment"],
+      ["visa", "2026-10-26", "visa-payment"],
+    ],
+  );
+  assert.ok(transactions.every((item) => item.linkedId === "manual-payment"));
+  assert.ok(
+    transactions.every((item) => item.reviewed),
+    "matching bank facts preserves an existing manual payment's reviewed status",
+  );
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+});
+
+void test("explicitly linking payment imports attaches their bank identities to the existing pair", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    {
+      added: [
+        { ...facts[0], name: "ONLINE PAYMENT" },
+        { ...facts[1], date: "2026-10-25", name: "ACH CREDIT" },
+      ],
+      next_cursor: "unrecognized",
+    },
+    {
+      added: [
+        { ...facts[0], transaction_id: "later-cash", date: "2026-10-27" },
+        { ...facts[1], transaction_id: "later-card", date: "2026-10-28" },
+      ],
+      next_cursor: "later",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  await h.api.budget.execute({
+    command: {
+      type: "transaction.upsert",
+      id: "entered-payment",
+      transactionId: "entered-cash",
+      accountId: "cash",
+      transferAccountId: "visa",
+      date: "2026-10-25",
+      amount: -5_000,
+      payee: "Visa",
+    },
+    baseRevision: await h.revision(),
+    clientId: "manual-payment",
+  });
+  for (const item of await bankInbox(h.db, alice)) {
+    const transaction = (await h.state()).view!.budget.transactions.find(
+      (entry) => entry.accountId === item.accountId,
+    )!;
+    await resolveImport(h.db, alice, {
+      connectionId: item.connectionId,
+      logicalId: item.logicalId,
+      existingTransactionId: transaction.id,
+      expectedFingerprint: item.fingerprint,
+      expectedRevision: await h.revision(),
+      ignore: false,
+    });
+  }
+  const transactions = (await h.state()).view!.budget.transactions;
+  assert.equal(transactions.length, 2);
+  assert.equal(
+    transactions.find((item) => item.accountId === "cash")!.providerId,
+    "checking-payment",
+  );
+  assert.equal(
+    transactions.find((item) => item.accountId === "visa")!.providerId,
+    "visa-payment",
+  );
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+  // Earlier explicit links lived in import resolutions without provider tags.
+  const legacy = await h.book();
+  for (const transaction of legacy.budgets[alice]!.transactions)
+    delete transaction.providerId;
+  await h.setBook(legacy);
+  await syncBanks(h.db, alice);
+  const later = (await h.state()).view!.budget.transactions;
+  assert.equal(
+    later.length,
+    4,
+    "a resolved older pair cannot consume a distinct later payment",
+  );
+  assert.equal(
+    later.find((item) => item.id === "entered-cash")!.providerId,
+    undefined,
+  );
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+});
+
+void test("linking an existing tracking transfer preserves its spending or Ready to Assign category", async () => {
+  for (const amount of [-2_000, 2_000]) {
+    const h = await linkedHarness();
+    let book = execute(await h.book(), alice, {
+      type: "account.add",
+      id: "broker",
+      accountId: "broker",
+      name: "Broker",
+      kind: "tracking",
+      openingBalance: 10_000,
+      date: "2026-10-01",
+    });
+    book = execute(book, alice, {
+      type: "transaction.upsert",
+      id: "manual-tracking",
+      transactionId: "tracking-cash",
+      accountId: "cash",
+      transferAccountId: "broker",
+      date: "2026-10-20",
+      amount,
+      payee: "Broker",
+      categoryId: amount < 0 ? "dining" : READY_TO_ASSIGN,
+    });
+    await h.setBook(book);
+    const before = (await h.state()).view!;
+    syncPages([
+      {
+        added: [
+          plaidTransaction({
+            transaction_id: "tracking-bank",
+            amount: -amount / 100,
+          }),
+        ],
+        next_cursor: "tracking",
+      },
+    ]);
+    await syncBanks(h.db, alice);
+    const [item] = await bankInbox(h.db, alice);
+    await resolveImport(h.db, alice, {
+      connectionId: item!.connectionId,
+      logicalId: item!.logicalId,
+      existingTransactionId: "tracking-cash",
+      expectedFingerprint: item!.fingerprint,
+      expectedRevision: await h.revision(),
+      ignore: false,
+    });
+    const after = (await h.state()).view!;
+    assert.equal(after.readyToAssign, before.readyToAssign);
+    assert.equal(
+      after.categories.find((category) => category.id === "dining")!.available,
+      before.categories.find((category) => category.id === "dining")!.available,
+    );
+    assert.equal(
+      after.budget.transactions.find(
+        (transaction) => transaction.id === "tracking-cash",
+      )!.providerId,
+      "tracking-bank",
+    );
+    assert.deepEqual(await bankInbox(h.db, alice), []);
+  }
+});
+
+void test("an awaiting manual payment does not steal the bank entry of a second same-amount payment", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    { added: [facts[0]], next_cursor: "first-cash" },
+    {
+      added: [
+        { ...facts[0], transaction_id: "second-cash", date: "2026-10-27" },
+        { ...facts[1], transaction_id: "second-card", date: "2026-10-28" },
+      ],
+      next_cursor: "ambiguous",
+    },
+  ]);
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: "manual-first",
+      transactionId: "manual-first-cash",
+      accountId: "cash",
+      transferAccountId: "visa",
+      date: "2026-10-24",
+      amount: -5_000,
+      payee: "Visa",
+    }),
+  );
+  await syncBanks(h.db, alice);
+  await syncBanks(h.db, alice);
+  const transactions = (await h.state()).view!.budget.transactions;
+  assert.equal(transactions.length, 2);
+  assert.equal(
+    transactions.find((item) => item.accountId === "visa")!.providerId,
+    undefined,
+  );
+  assert.equal((await bankInbox(h.db, alice)).length, 2);
+});
+
+void test("a saved payment destination recognizes the next bank payee before its counterpart arrives", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    {
+      added: [
+        { ...facts[0], amount: 10, date: "2026-10-12", name: "ONLINE PAYMENT" },
+      ],
+      next_cursor: "first",
+    },
+    {
+      added: [
+        {
+          ...facts[0],
+          transaction_id: "next-cash",
+          amount: 20,
+          date: "2026-10-20",
+          name: "ONLINE PAYMENT",
+        },
+      ],
+      next_cursor: "next",
+    },
+    {
+      added: [
+        {
+          ...facts[1],
+          transaction_id: "next-card",
+          amount: -20,
+          date: "2026-10-21",
+        },
+      ],
+      next_cursor: "counterpart",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  const [item] = await bankInbox(h.db, alice);
+  await resolveImport(h.db, alice, {
+    connectionId: item!.connectionId,
+    logicalId: item!.logicalId,
+    expectedRevision: await h.revision(),
+    expectedFingerprint: item!.fingerprint,
+    ignore: false,
+    command: {
+      type: "transaction.upsert",
+      id: "choose-payment",
+      transactionId: "chosen-cash",
+      accountId: "cash",
+      transferAccountId: "visa",
+      date: item!.date,
+      amount: item!.amount,
+      payee: item!.payee,
+    },
+  });
+  await syncBanks(h.db, alice);
+  let transactions = (await h.state()).view!.budget.transactions.filter(
+    (entry) => !entry.removed,
+  );
+  const next = transactions.find((entry) => entry.providerId === "next-cash");
+  assert.ok(next, "the established bank payee should create a linked payment");
+  assert.equal(next.kind, "card-payment");
+  const counterpart = transactions.find(
+    (entry) => entry.id !== next.id && entry.linkedId === next.linkedId,
+  )!;
+  assert.equal(counterpart.accountId, "visa");
+  assert.equal(counterpart.providerId, undefined);
+  assert.equal(
+    counterpart.cleared,
+    false,
+    "the inferred other entry has not cleared its bank yet",
+  );
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+  await syncBanks(h.db, alice);
+  transactions = (await h.state()).view!.budget.transactions.filter(
+    (entry) => !entry.removed,
+  );
+  assert.equal(transactions.length, 4);
+  assert.equal(
+    transactions.find((entry) => entry.id === counterpart.id)!.providerId,
+    "next-card",
+  );
+  assert.equal(
+    transactions.find((entry) => entry.id === next.id)!.date,
+    "2026-10-20",
+  );
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+});
+
+void test("a card's established payment source wins over an unrelated checking outflow", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    {
+      added: [{ ...facts[1], amount: -10, date: "2026-10-12" }],
+      next_cursor: "first-card",
+    },
+    {
+      added: [{ ...facts[0] }, { ...facts[1], transaction_id: "next-card" }],
+      next_cursor: "next-payment",
+    },
+  ]);
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "account.add",
+      id: "other-checking",
+      accountId: "other-checking",
+      name: "Other Checking",
+      kind: "cash",
+      openingBalance: 10_000,
+      date: "2026-10-01",
+    }),
+  );
+  await syncBanks(h.db, alice);
+  const [item] = await bankInbox(h.db, alice);
+  await resolveImport(h.db, alice, {
+    connectionId: item!.connectionId,
+    logicalId: item!.logicalId,
+    expectedFingerprint: item!.fingerprint,
+    expectedRevision: await h.revision(),
+    ignore: false,
+    command: {
+      type: "transaction.upsert",
+      id: "choose-source",
+      transactionId: "chosen-card",
+      accountId: "visa",
+      transferAccountId: "other-checking",
+      date: item!.date,
+      amount: item!.amount,
+      payee: item!.payee,
+    },
+  });
+  await syncBanks(h.db, alice);
+  const transactions = (await h.state()).view!.budget.transactions;
+  const received = transactions.find(
+    (entry) => entry.providerId === "next-card",
+  )!;
+  const paid = transactions.find(
+    (entry) => entry.id !== received.id && entry.linkedId === received.linkedId,
+  )!;
+  assert.equal(paid.accountId, "other-checking");
+  assert.deepEqual(
+    (await bankInbox(h.db, alice)).map((entry) => entry.accountId),
+    ["cash"],
+  );
+});
+
+void test("a bank payee used for multiple cards waits for an unambiguous imported counterpart", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    {
+      added: [
+        { ...facts[0], amount: 10, date: "2026-10-12", name: "ONLINE PAYMENT" },
+      ],
+      next_cursor: "visa",
+    },
+    {
+      added: [
+        {
+          ...facts[0],
+          transaction_id: "amex-cash",
+          amount: 15,
+          date: "2026-10-15",
+          name: "ONLINE PAYMENT",
+        },
+      ],
+      next_cursor: "amex",
+    },
+    {
+      added: [
+        {
+          ...facts[0],
+          transaction_id: "uncertain-cash",
+          amount: 20,
+          name: "ONLINE PAYMENT",
+        },
+      ],
+      next_cursor: "uncertain",
+    },
+    {
+      added: [{ ...facts[1], transaction_id: "certain-card", amount: -20 }],
+      next_cursor: "certain",
+    },
+  ]);
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "account.add",
+      id: "amex",
+      accountId: "amex",
+      name: "Amex",
+      kind: "credit",
+      openingBalance: -20_000,
+      date: "2026-10-01",
+    }),
+  );
+  {
+    const card = "visa";
+    await syncBanks(h.db, alice);
+    const [item] = await bankInbox(h.db, alice);
+    await resolveImport(h.db, alice, {
+      connectionId: item!.connectionId,
+      logicalId: item!.logicalId,
+      expectedRevision: await h.revision(),
+      expectedFingerprint: item!.fingerprint,
+      ignore: false,
+      command: {
+        type: "transaction.upsert",
+        id: `choose-${card}`,
+        transactionId: `cash-${card}`,
+        accountId: "cash",
+        transferAccountId: card,
+        date: item!.date,
+        amount: item!.amount,
+        payee: item!.payee,
+      },
+    });
+  }
+  await syncBanks(h.db, alice);
+  const second = (await h.state()).view!.budget.transactions.find(
+    (item) => item.providerId === "amex-cash",
+  )!;
+  await h.api.budget.execute({
+    command: {
+      type: "transaction.upsert",
+      id: "correct-to-amex",
+      transactionId: second.id,
+      revision: second.revision + 1,
+      accountId: "cash",
+      transferAccountId: "amex",
+      date: second.date,
+      amount: second.amount,
+      payee: second.payee,
+    },
+    baseRevision: await h.revision(),
+    clientId: "payment-correction",
+  });
+  await syncBanks(h.db, alice);
+  assert.equal(
+    (await h.state()).view!.budget.transactions.filter((item) => !item.removed)
+      .length,
+    4,
+    "the shared bank payee cannot choose a card on its own",
+  );
+  assert.equal((await bankInbox(h.db, alice)).length, 1);
+  await syncBanks(h.db, alice);
+  const transactions = (await h.state()).view!.budget.transactions.filter(
+    (item) => !item.removed,
+  );
+  assert.equal(transactions.length, 6);
+  const paid = transactions.find(
+    (item) => item.providerId === "uncertain-cash",
+  )!;
+  const received = transactions.find(
+    (item) => item.providerId === "certain-card",
+  )!;
+  assert.equal(paid.linkedId, received.linkedId);
+  assert.equal(received.accountId, "visa");
+  assert.deepEqual(await bankInbox(h.db, alice), []);
+});
+
+void test("correcting an expense to a linked payment overrides its old category on later imports", async () => {
+  const facts = cardPaymentFacts();
+  const h = await cardPaymentHarness([
+    {
+      added: [
+        { ...facts[0], amount: 10, date: "2026-10-12", name: "ONLINE PAYMENT" },
+      ],
+      next_cursor: "first",
+    },
+    {
+      added: [
+        {
+          ...facts[0],
+          transaction_id: "corrected-payee",
+          amount: 20,
+          name: "ONLINE PAYMENT",
+        },
+      ],
+      next_cursor: "next",
+    },
+  ]);
+  await h.setBook(
+    execute(await h.book(), alice, {
+      type: "transaction.upsert",
+      id: "old-expense",
+      transactionId: "old-expense",
+      accountId: "cash",
+      date: "2026-10-02",
+      amount: -100,
+      payee: "ONLINE PAYMENT",
+      categoryId: "dining",
+    }),
+  );
+  await syncBanks(h.db, alice);
+  const first = (await h.state()).view!.budget.transactions.find(
+    (item) => item.providerId === "checking-payment",
+  )!;
+  await h.api.budget.execute({
+    command: {
+      type: "transaction.upsert",
+      id: "convert-to-payment",
+      transactionId: first.id,
+      revision: first.revision + 1,
+      accountId: "cash",
+      transferAccountId: "visa",
+      date: first.date,
+      amount: first.amount,
+      payee: first.payee,
+    },
+    baseRevision: await h.revision(),
+    clientId: "payment-conversion",
+  });
+  await syncBanks(h.db, alice);
+  const next = (await h.state()).view!.budget.transactions.find(
+    (item) => item.providerId === "corrected-payee",
+  )!;
+  assert.equal(next.kind, "card-payment");
+  assert.equal(next.categoryId, undefined);
+  assert.deepEqual(await bankInbox(h.db, alice), []);
 });
 
 void test("a card inflow is not linked to an unrelated bill payment of the same amount", async () => {
@@ -4015,6 +4622,45 @@ void test("a saved full reimbursement is remembered on the next bank import with
   assert.equal(transaction.counterpartyShare?.counterpartyName, "Mom");
   assert.equal(transaction.counterpartyShare?.amount, 4_210);
   assert.equal(transaction.reviewed, false);
+});
+
+void test("a known reimbursement name alone does not invent a share on a first bank import", async () => {
+  const h = await linkedHarness();
+  await h.setBook(
+    execute(withCounterpartyAccounts(await h.book()), alice, {
+      type: "transaction.upsert",
+      id: "known-mom",
+      transactionId: "noodles-for-mom",
+      accountId: "cash",
+      date: "2026-10-02",
+      amount: -1_000,
+      payee: "Noodles Plus",
+      recordedAt: "2026-10-02T12:00:00Z",
+      counterpartyShare: {
+        accountId: "counterparty:reimbursements",
+        counterpartyName: "Mom",
+        amount: 1_000,
+      },
+    }),
+  );
+  syncPages([
+    {
+      added: [
+        plaidTransaction({
+          transaction_id: "first-mom-payee",
+          name: "Mom",
+          amount: 20,
+        }),
+      ],
+      next_cursor: "mom",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+  assert.equal((await h.state()).view!.budget.transactions.length, 1);
+  assert.deepEqual(
+    (await bankInbox(h.db, alice)).map((item) => item.payee),
+    ["Mom"],
+  );
 });
 
 void test("an import from a payee the user categorized arrives categorized and counted, still to review", async () => {

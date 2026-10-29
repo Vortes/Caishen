@@ -2,6 +2,12 @@ import { withBankAccountSuccessors } from "./bank-account-rows";
 import { bankAccountRowsSelection } from "./bank-account-rows";
 import { migrateBankAccounts } from "./bank-account-migration";
 import { isCardPaymentOutflow } from "~/lib/card-payment-recognition";
+import { matchesManualImport } from "~/domain/bank-import-balances";
+import {
+  transferCounterparts,
+  transferImportCommand,
+} from "~/domain/transfers";
+import { rememberedPaymentDestinations } from "./bank-payment-memory";
 import { createHash } from "node:crypto";
 import { composeChangeSets } from "~/domain/change-sets";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
@@ -12,6 +18,7 @@ import {
   type Book,
   type Budget,
   type Command,
+  type Transaction,
 } from "~/domain/engine";
 import {
   isRejectedSettlementImport,
@@ -113,28 +120,142 @@ async function settleOnce(db: Database, userId: string) {
   const changeSets: ChangeSet[] = [];
   const commands: Command[] = [];
   const linked = new Map<string, string>();
+  const recorded = new Set(
+    connections.flatMap((read) =>
+      read.status === "ready" && read.connection.clerkUserId === userId
+        ? Object.values(read.state.resolved).flatMap((resolution) =>
+            resolution.transactionId ? [resolution.transactionId] : [],
+          )
+        : [],
+    ),
+  );
+  const manualMatch = (transaction: Transaction, candidate: Candidate) =>
+    !recorded.has(transaction.id) &&
+    matchesManualImport(transaction, candidate);
   const run = (command: Command, links: [Candidate, string][]) => {
     const result = executeWithChanges(book, userId, command, "provider");
     book = result.book;
     changeSets.push(result.changeSet);
     commands.push(command);
-    for (const [candidate, transactionId] of links)
+    for (const [candidate, transactionId] of links) {
       linked.set(candidate.key, transactionId);
+      recorded.add(transactionId);
+    }
   };
 
   const own = candidates.filter((candidate) => candidate.userId === userId);
   const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
+  const destinations = rememberedPaymentDestinations(
+    budgetOf(book, userId),
+    connections.flatMap((read) =>
+      read.status === "ready" && read.connection.clerkUserId === userId
+        ? [read.state]
+        : [],
+    ),
+  );
+  const destinationsOf = (candidate: Candidate) =>
+    destinations(
+      candidate.accountId,
+      candidate.record.current.name,
+      candidate.amount,
+    );
+  for (const candidate of own) {
+    const budget = budgetOf(book, userId);
+    const existing = budget.transactions.filter(
+      (transaction) =>
+        transaction.kind === "card-payment" &&
+        manualMatch(transaction, candidate),
+    );
+    if (existing.length !== 1) continue;
+    const transaction = existing[0]!;
+    const counterpart = transferCounterparts(budget, transaction)[0];
+    if (
+      counterpart &&
+      (counterpart.providerId || recorded.has(counterpart.id)) &&
+      own.some(
+        (other) =>
+          !linked.has(other.key) &&
+          other.accountId === counterpart.accountId &&
+          other.amount === -candidate.amount &&
+          Math.abs(day(other.date) - day(candidate.date)) <=
+            SETTLEMENT_MATCH_DAYS,
+      )
+    )
+      continue;
+    if (
+      own.filter(
+        (other) => !linked.has(other.key) && manualMatch(transaction, other),
+      ).length !== 1
+    )
+      continue;
+    const command = transferImportCommand(budget, transaction, {
+      id: `payment-match:${digest([candidate.key])}`,
+      date: candidate.date,
+      amount: candidate.amount,
+      providerId: candidate.record.current.providerTransactionId,
+    });
+    if (!command) continue;
+    try {
+      run(command, [[candidate, transaction.id]]);
+    } catch (error) {
+      if (!(error instanceof AccountingError)) throw error;
+    }
+  }
   const paymentText = (candidate: Candidate) =>
     /\b(?:payment|autopay|pmt)\b/i.test(candidate.record.current.name);
   const matches = (cash: Candidate, card: Candidate) =>
+    !linked.has(cash.key) &&
+    !linked.has(card.key) &&
     cash.accountKind === "cash" &&
     cash.amount < 0 &&
     card.accountKind === "credit" &&
     card.amount === -cash.amount &&
     Math.abs(day(cash.date) - day(card.date)) <= SETTLEMENT_MATCH_DAYS &&
-    isCardPaymentOutflow(cash.record.current.name) &&
-    paymentText(card);
-  const budgetBeforePayments = budgetOf(book, userId);
+    (destinationsOf(cash).length
+      ? destinationsOf(cash).includes(card.accountId)
+      : destinationsOf(card).includes(cash.accountId) ||
+        isCardPaymentOutflow(cash.record.current.name)) &&
+    (destinationsOf(card).length
+      ? destinationsOf(card).includes(cash.accountId)
+      : destinationsOf(cash).length > 0 || paymentText(card));
+  const recordPayment = (
+    payment: Candidate,
+    accountId: string,
+    counterpart?: Candidate,
+  ) => {
+    const id = `card-payment:${digest(counterpart ? [payment.key, counterpart.key] : [payment.key])}`;
+    const links: [Candidate, string][] = [[payment, `${id}:payment`]];
+    if (counterpart) links.push([counterpart, `${id}:counterpart`]);
+    try {
+      run(
+        {
+          type: "transaction.upsert",
+          id,
+          transactionId: `${id}:payment`,
+          accountId: payment.accountId,
+          transferAccountId: accountId,
+          date: payment.date,
+          amount: payment.amount,
+          payee: payment.text.slice(0, 240),
+          providerId: payment.record.current.providerTransactionId,
+          status: "posted",
+          cleared: true,
+          ...(counterpart
+            ? {
+                transferCounterpart: {
+                  date: counterpart.date,
+                  providerId: counterpart.record.current.providerTransactionId,
+                },
+              }
+            : {}),
+        },
+        links,
+      );
+    } catch (error) {
+      if (!(error instanceof AccountingError)) throw error;
+      // A payment the ledger cannot record stays in the bank inbox.
+    }
+  };
   for (const cash of own) {
     const cards = own.filter((card) => matches(cash, card));
     if (cards.length !== 1) continue;
@@ -143,46 +264,51 @@ async function settleOnce(db: Database, userId: string) {
     // A hand-entered payment must be matched, rather than counted again.
     if (
       [cash, card].some((candidate) =>
-        budgetBeforePayments.transactions.some(
-          (transaction) =>
-            !transaction.removed &&
-            transaction.accountId === candidate.accountId &&
-            transaction.amount === candidate.amount &&
-            Math.abs(day(transaction.date) - day(candidate.date)) <=
-              SETTLEMENT_MATCH_DAYS,
+        budgetOf(book, userId).transactions.some((transaction) =>
+          manualMatch(transaction, candidate),
         ),
       )
     )
       continue;
-    const id = `card-payment:${digest([cash.key, card.key])}`;
-    try {
-      run(
-        {
-          type: "transaction.upsert",
-          id,
-          transactionId: `${id}:cash`,
-          accountId: cash.accountId,
-          transferAccountId: card.accountId,
-          date: cash.date,
-          amount: cash.amount,
-          payee: cash.text.slice(0, 240),
-          providerId: cash.record.current.providerTransactionId,
-          status: "posted",
-          cleared: true,
-          transferCounterpart: {
-            date: card.date,
-            providerId: card.record.current.providerTransactionId,
-          },
-        },
-        [
-          [cash, `${id}:cash`],
-          [card, `${id}:counterpart`],
-        ],
-      );
-    } catch (error) {
-      if (!(error instanceof AccountingError)) throw error;
-      // A payment the ledger cannot record stays in the bank inbox.
-    }
+    recordPayment(cash, card.accountId, card);
+  }
+
+  for (const candidate of own) {
+    if (linked.has(candidate.key)) continue;
+    const accounts = destinationsOf(candidate);
+    if (accounts.length !== 1) continue;
+    const budget = budgetOf(book, userId);
+    const other = budget.accounts.find((account) => account.id === accounts[0]);
+    if (
+      !other ||
+      !(
+        (candidate.accountKind === "cash" &&
+          candidate.amount < 0 &&
+          other.kind === "credit") ||
+        (candidate.accountKind === "credit" &&
+          candidate.amount > 0 &&
+          other.kind === "cash")
+      )
+    )
+      continue;
+    if (
+      budget.transactions.some((transaction) =>
+        manualMatch(transaction, candidate),
+      )
+    )
+      continue;
+    if (
+      own.some(
+        (item) =>
+          !linked.has(item.key) &&
+          item.accountId === other.id &&
+          item.amount === -candidate.amount &&
+          Math.abs(day(item.date) - day(candidate.date)) <=
+            SETTLEMENT_MATCH_DAYS,
+      )
+    )
+      continue;
+    recordPayment(candidate, other.id);
   }
 
   if (!ledger.personal) {

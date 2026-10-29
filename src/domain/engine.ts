@@ -1737,7 +1737,10 @@ function replay(
         continue;
       }
       if (transaction.kind === "card-payment") {
-        if (account.kind === "credit") payments.push(transaction);
+        if (account.kind === "cash") {
+          const card = index.transferCounterpart(transaction);
+          if (card) payments.push({ ...card, amount: -transaction.amount });
+        }
         continue;
       }
       if (transaction.linkedCounterpartyAccountId) {
@@ -3778,7 +3781,12 @@ function applyCommand(
             reviewed:
               source === "user"
                 ? (previous?.reviewed ?? command.reviewed ?? true)
-                : false,
+                : Boolean(
+                    before?.reviewed &&
+                    before.amount === facts.amount &&
+                    before.status === facts.status &&
+                    before.kind === facts.kind,
+                  ),
             history: [
               ...(before?.history ?? []),
               {
@@ -3789,6 +3797,7 @@ function applyCommand(
                 payee: facts.payee,
                 operationId: command.id,
                 reason: before ? "updated" : "created",
+                ...(source === "user" ? { actorId: budget.userId } : {}),
               },
             ],
           };
@@ -3818,7 +3827,7 @@ function applyCommand(
           const counterpartDate =
             command.transferCounterpart?.date ??
             (otherPrevious?.accountId === command.transferAccountId &&
-            otherPrevious.providerId
+            (source === "provider" || otherPrevious.providerId)
               ? otherPrevious.date
               : command.date);
           const other = accountAtDate(
@@ -3893,14 +3902,23 @@ function applyCommand(
               accountId: other.id,
               amount: -command.amount,
               date: counterpartDate,
-              expenseMonth: reusable?.providerId
-                ? reusable.expenseMonth
-                : command.transferCounterpart
-                  ? monthOf(counterpartDate)
-                  : base.expenseMonth,
+              expenseMonth:
+                reusable && (source === "provider" || reusable.providerId)
+                  ? reusable.expenseMonth
+                  : command.transferCounterpart
+                    ? monthOf(counterpartDate)
+                    : base.expenseMonth,
               payee: transferPayee(other, account, -command.amount),
               // Each side clears its own bank.
-              cleared: nextCleared(undefined, command.status, reusable),
+              cleared: nextCleared(
+                command.transferCounterpart
+                  ? true
+                  : source === "provider" && !reusable
+                    ? false
+                    : undefined,
+                command.status,
+                reusable,
+              ),
               providerId:
                 reusable?.providerId ?? command.transferCounterpart?.providerId,
               kind,

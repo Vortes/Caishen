@@ -1,6 +1,7 @@
 import type { View } from "~/components/budget/types";
-import type { CounterpartyShare } from "~/domain/engine";
-import { isFullShare } from "~/domain/counterparty";
+import type { Budget, CounterpartyShare } from "~/domain/engine";
+import { isFullShare, reimbursementPeople } from "~/domain/counterparty";
+import { payeeKey, rememberedCounterpartyShare } from "~/domain/payee-memory";
 import {
   buildTransactionDraftCommand,
   createTransactionDraft,
@@ -20,6 +21,36 @@ export type ShareChoice = {
   basis: ShareBasis;
 };
 export const halfOf = (amount: number) => Math.floor(Math.abs(amount) / 2);
+
+export function manualEntryShare(
+  budget: Budget,
+  input: { payee: string; accountId: string; amount?: number },
+): CounterpartyShare | undefined {
+  const remembered = rememberedCounterpartyShare(budget, input);
+  if (remembered || budget.payeeMemory?.[payeeKey(input.payee)])
+    return remembered;
+  const account = budget.accounts.find((item) => item.id === input.accountId);
+  if (
+    !account ||
+    (account.kind !== "cash" && account.kind !== "credit") ||
+    input.amount === undefined ||
+    input.amount >= 0
+  )
+    return undefined;
+  const people = reimbursementPeople(budget).filter(
+    (name) => payeeKey(name) === payeeKey(input.payee),
+  );
+  const reimbursements = budget.accounts.find(
+    (item) => item.kind === "reimbursements",
+  );
+  return people.length === 1 && reimbursements
+    ? {
+        accountId: reimbursements.id,
+        counterpartyName: people[0]!,
+        amount: Math.abs(input.amount),
+      }
+    : undefined;
+}
 
 // A partner share set to nothing stays on the partner account at $0.00, so
 // the write-off and its history stay visible. Any other empty share is just
