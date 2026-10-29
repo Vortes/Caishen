@@ -347,6 +347,62 @@ void test("SYNC_UPDATES_AVAILABLE records the request and runs the account updat
   assert.ok(paths.includes("/item/get"), paths.join(", "));
 });
 
+void test("SYNC_UPDATES_AVAILABLE updates only the connection it names", async (t) => {
+  const h = await harness();
+  const other = await db.bankConnection.create({
+    data: {
+      id: `connection-${randomUUID()}`,
+      clerkUserId: alice,
+      itemId: `item-${randomUUID()}`,
+      encryptedToken: encryptBankToken("other-access-token", alice),
+      imports: { institutionName: "Amex" },
+      accountMappings: {},
+    },
+  });
+  const tokens = new Set<string>();
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, init?: RequestInit) => {
+      tokens.add(
+        (JSON.parse(init!.body as string) as { access_token: string })
+          .access_token,
+      );
+      const path = new URL(url instanceof Request ? url.url : url).pathname;
+      if (path === "/item/get")
+        return Response.json({
+          item: { consent_expiration_time: null, error: null },
+          status: null,
+        });
+      if (path === "/transactions/sync")
+        return Response.json({
+          added: [],
+          modified: [],
+          removed: [],
+          accounts: [],
+          has_more: false,
+          next_cursor: "cursor-1",
+          transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
+        });
+      return Response.json({ accounts: [], item: {} });
+    },
+  );
+  await h.deliver({
+    webhook_type: "TRANSACTIONS",
+    webhook_code: "SYNC_UPDATES_AVAILABLE",
+    item_id: h.connection.itemId,
+    environment: "sandbox",
+  });
+  await Promise.all(h.scheduled);
+  assert.deepEqual([...tokens], ["private-access-token"]);
+  assert.ok((await h.saved()).lastSyncedAt);
+  assert.equal(
+    (await db.bankConnection.findUniqueOrThrow({ where: { id: other.id } }))
+      .lastSyncedAt,
+    null,
+  );
+});
+
 void test("LOGIN_REPAIRED returns a login-required connection to connected; unknown Items and unhandled codes are acknowledged; unverified deliveries are refused", async (t) => {
   const h = await harness();
   const warnings: unknown[][] = [];

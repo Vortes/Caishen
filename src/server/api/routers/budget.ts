@@ -417,12 +417,18 @@ export const budgetRouter = createTRPCRouter({
       setupBankAccounts(ctx.db, ctx.userId, input, ctx.submittedInput),
     ),
   sync: protectedProcedure.mutation(async ({ ctx }) => {
-    const counts = await syncBanks(ctx.db, ctx.userId);
+    const { imported, updated, outcomes } = await syncBanks(ctx.db, ctx.userId);
     const household = await readHouseholdRevision(ctx.db, ctx.userId);
     if (household) ctx.revision.observe(household.revision);
+    // Every connection had its turn; the member hears about the first that
+    // did not update, and the Banks panel shows the rest.
+    for (const outcome of outcomes)
+      if (outcome.kind === "failed" || outcome.kind === "deferred")
+        throw outcome.error;
     // Each connection's update is its own operation: the browser pulls.
     return {
-      ...counts,
+      imported,
+      updated,
       revision: household?.revision ?? 0,
       changeSet: null,
       rebased: false as const,
