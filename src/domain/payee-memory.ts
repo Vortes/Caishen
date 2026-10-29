@@ -6,7 +6,7 @@ import type {
   Transaction,
 } from "./engine";
 import { READY_TO_ASSIGN } from "./transfers";
-import { isFullShare } from "./counterparty";
+import { isFullShare, reimbursementPeople } from "./counterparty";
 
 // Payee memory, like YNAB's memorized payee category: the user's most recent
 // categorization of each payee prefills that payee's new bank imports and
@@ -64,7 +64,39 @@ export function rememberedCategory(
     : undefined;
 }
 
-/** The remembered share for an owned spending account; absent means zero. */
+/** An exact known reimbursement-person payee defaults to their full outflow. */
+export function reimbursementShareForPayee(
+  budget: Budget,
+  {
+    payee,
+    accountId,
+    amount,
+  }: { payee: string; accountId: string; amount?: number },
+): CounterpartyShare | undefined {
+  const account = budget.accounts.find((item) => item.id === accountId);
+  if (
+    !account ||
+    (account.kind !== "cash" && account.kind !== "credit") ||
+    amount === undefined ||
+    amount >= 0
+  )
+    return undefined;
+  const people = reimbursementPeople(budget).filter(
+    (name) => payeeKey(name) === payeeKey(payee),
+  );
+  const reimbursements = budget.accounts.find(
+    (item) => item.kind === "reimbursements",
+  );
+  return people.length === 1 && reimbursements
+    ? {
+        accountId: reimbursements.id,
+        counterpartyName: people[0]!,
+        amount: Math.abs(amount),
+      }
+    : undefined;
+}
+
+/** The person's default or remembered share for an owned spending account. */
 export function rememberedCounterpartyShare(
   budget: Budget,
   {
@@ -73,6 +105,12 @@ export function rememberedCounterpartyShare(
     amount,
   }: { payee: string; accountId: string; amount?: number },
 ): CounterpartyShare | undefined {
+  const person = reimbursementShareForPayee(budget, {
+    payee,
+    accountId,
+    amount,
+  });
+  if (person) return person;
   const account = budget.accounts.find((item) => item.id === accountId);
   const memory = budget.payeeMemory?.[payeeKey(payee)];
   if (

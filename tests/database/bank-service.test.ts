@@ -18,6 +18,7 @@ import {
   isCounterparty,
   withCounterpartyAccounts,
   type Book,
+  type Command,
 } from "../../src/domain/engine";
 import { bookToRows, diffRows, rowsToBook } from "../../src/domain/rows";
 import {
@@ -4624,7 +4625,7 @@ void test("a saved full reimbursement is remembered on the next bank import with
   assert.equal(transaction.reviewed, false);
 });
 
-void test("a known reimbursement name alone does not invent a share on a first bank import", async () => {
+void test("a bank import already named Mom gets Mom's full reimbursement category", async () => {
   const h = await linkedHarness();
   await h.setBook(
     execute(withCounterpartyAccounts(await h.book()), alice, {
@@ -4651,15 +4652,126 @@ void test("a known reimbursement name alone does not invent a share on a first b
           name: "Mom",
           amount: 20,
         }),
+        plaidTransaction({
+          transaction_id: "moms-cafe",
+          name: "Mom's Cafe",
+          amount: 5,
+        }),
       ],
       next_cursor: "mom",
     },
   ]);
   await syncBanks(h.db, alice);
-  assert.equal((await h.state()).view!.budget.transactions.length, 1);
+  const transactions = (await h.state()).view!.budget.transactions;
+  assert.equal(transactions.length, 2);
+  const mom = transactions.find(
+    (item) => item.providerId === "first-mom-payee",
+  )!;
+  assert.ok(mom);
+  assert.equal(mom.categoryId, undefined);
+  assert.deepEqual(mom.counterpartyShare, {
+    accountId: "counterparty:reimbursements",
+    counterpartyName: "Mom",
+    amount: 2_000,
+  });
   assert.deepEqual(
     (await bankInbox(h.db, alice)).map((item) => item.payee),
-    ["Mom"],
+    ["Mom's Cafe"],
+  );
+});
+
+void test("a bank update fills existing uncategorized Mom outflows and preserves explicit choices", async () => {
+  const h = await linkedHarness();
+  let book = withCounterpartyAccounts(await h.book());
+  const commands: Command[] = [
+    {
+      type: "transaction.upsert",
+      id: "known-mom",
+      transactionId: "known-mom",
+      accountId: "cash",
+      date: "2026-10-02",
+      amount: -1_000,
+      payee: "Noodles",
+      recordedAt: "2026-10-02T12:00:00Z",
+      counterpartyShare: {
+        accountId: "counterparty:reimbursements",
+        counterpartyName: "Mom",
+        amount: 1_000,
+      },
+    },
+    {
+      type: "transaction.upsert",
+      id: "empty-mom",
+      transactionId: "empty-mom",
+      accountId: "cash",
+      date: "2026-10-03",
+      amount: -2_000,
+      payee: "Mom",
+    },
+    {
+      type: "transaction.upsert",
+      id: "chosen-category",
+      transactionId: "chosen-category",
+      accountId: "cash",
+      date: "2026-10-04",
+      amount: -300,
+      payee: "Mom",
+      categoryId: "dining",
+    },
+    {
+      type: "transaction.upsert",
+      id: "chosen-person",
+      transactionId: "chosen-person",
+      accountId: "cash",
+      date: "2026-10-05",
+      amount: -400,
+      payee: "Mom",
+      recordedAt: "2026-10-05T12:00:00Z",
+      counterpartyShare: {
+        accountId: "counterparty:reimbursements",
+        counterpartyName: "Anna",
+        amount: 400,
+      },
+    },
+    {
+      type: "transaction.upsert",
+      id: "incoming-mom",
+      transactionId: "incoming-mom",
+      accountId: "cash",
+      date: "2026-10-06",
+      amount: 600,
+      payee: "Mom",
+    },
+  ];
+  for (const command of commands) book = execute(book, alice, command);
+  await h.setBook(book);
+  const before = (await h.state()).view!;
+  syncPages([{ next_cursor: "empty" }]);
+  await syncBanks(h.db, alice);
+  const after = (await h.state()).view!;
+  assert.deepEqual(
+    after.budget.transactions.find((item) => item.id === "empty-mom")!
+      .counterpartyShare,
+    {
+      accountId: "counterparty:reimbursements",
+      counterpartyName: "Mom",
+      amount: 2_000,
+    },
+  );
+  for (const id of ["chosen-category", "chosen-person", "incoming-mom"])
+    assert.deepEqual(
+      after.budget.transactions.find((item) => item.id === id),
+      before.budget.transactions.find((item) => item.id === id),
+    );
+  assert.equal(
+    after.accounts.find((item) => item.id === "cash")!.balance,
+    before.accounts.find((item) => item.id === "cash")!.balance,
+  );
+  assert.deepEqual(after.budget.assignments, before.budget.assignments);
+  await syncBanks(h.db, alice);
+  assert.deepEqual(
+    (await h.state()).view!.budget.transactions,
+    after.budget.transactions,
   );
 });
 

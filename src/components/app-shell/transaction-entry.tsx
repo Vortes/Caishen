@@ -19,12 +19,15 @@ import {
 import type { Command, CounterpartyShare } from "~/domain/engine";
 import { isFullShare } from "~/domain/counterparty";
 import {
-  manualEntryShare,
   prepareTransactionShares,
   type ShareChoice,
 } from "~/components/transactions/transaction-share";
 import { prepareTransactionCategories } from "~/components/transactions/transaction-category";
-import { rememberedCategory } from "~/domain/payee-memory";
+import {
+  rememberedCategory,
+  rememberedCounterpartyShare,
+  reimbursementShareForPayee,
+} from "~/domain/payee-memory";
 import {
   createImportDraft,
   importRowId,
@@ -396,11 +399,19 @@ export function useTransactionEntryController({
         "lines" in next;
       if (
         !shareChosen &&
-        !current.initial &&
+        (!current.initial ||
+          (current.initial.kind === "purchase" &&
+            !current.initial.categoryId &&
+            !current.initial.counterpartyShare &&
+            !current.initial.lines?.length)) &&
         !draft.lines.length &&
         ["payee", "accountId", "outflow", "inflow"].some((key) => key in next)
       ) {
-        const share = manualEntryShare(view.budget, {
+        const share = (
+          current.initial
+            ? reimbursementShareForPayee
+            : rememberedCounterpartyShare
+        )(view.budget, {
           payee: draft.payee,
           accountId: draft.accountId,
           amount:

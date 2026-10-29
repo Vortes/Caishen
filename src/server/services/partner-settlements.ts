@@ -8,6 +8,7 @@ import {
   transferImportCommand,
 } from "~/domain/transfers";
 import { rememberedPaymentDestinations } from "./bank-payment-memory";
+import { reimbursementShareForPayee } from "~/domain/payee-memory";
 import { createHash } from "node:crypto";
 import { composeChangeSets } from "~/domain/change-sets";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
@@ -361,6 +362,46 @@ async function settleOnce(db: Database, userId: string) {
       } catch {
         // Left waiting in both inboxes, as an unmatched import is.
       }
+    }
+  }
+
+  // Fill only empty purchases whose payee already names a reimbursement person.
+  for (const transaction of budgetOf(book, userId).transactions) {
+    if (
+      transaction.removed ||
+      transaction.kind !== "purchase" ||
+      transaction.status !== "posted" ||
+      transaction.categoryId ||
+      transaction.counterpartyShare ||
+      transaction.lines?.length
+    )
+      continue;
+    const share = reimbursementShareForPayee(
+      budgetOf(book, userId),
+      transaction,
+    );
+    if (!share) continue;
+    try {
+      run(
+        {
+          type: "transaction.upsert",
+          id: `reimbursement-payee:${digest([userId, transaction.id, String(transaction.revision)])}`,
+          transactionId: transaction.id,
+          revision: transaction.revision + 1,
+          accountId: transaction.accountId,
+          date: transaction.date,
+          expenseMonth: transaction.expenseMonth,
+          amount: transaction.amount,
+          payee: transaction.payee,
+          status: transaction.status,
+          cleared: transaction.cleared,
+          providerId: transaction.providerId,
+          counterpartyShare: share,
+        },
+        [],
+      );
+    } catch (error) {
+      if (!(error instanceof AccountingError)) throw error;
     }
   }
 
