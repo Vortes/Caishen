@@ -1,0 +1,94 @@
+"use client";
+
+import { Tooltip } from "radix-ui";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { POPOVER_GAP } from "./tokens";
+
+// Every surface sits this far from its trigger, and stops this far from the
+// window edge.
+export const SURFACE_GAP = POPOVER_GAP;
+export const SURFACE_COLLISION_PADDING = 12;
+
+// Surfaces render through a portal so panels that clip their overflow can't
+// cut them off. The portal targets the themed root rather than <body>, so a
+// data-theme set there still applies to what's portaled.
+const PortalContainer = createContext<HTMLElement | null>(null);
+
+type InputMethod = "keyboard" | "pointer";
+const InputMethodContext = createContext<{ current: InputMethod } | null>(null);
+
+// The one provider at a screen's root: where surfaces portal to, and the
+// input method that decides whether they animate.
+export function SurfaceProvider({
+  container,
+  children,
+}: {
+  container: HTMLElement | null;
+  children: ReactNode;
+}) {
+  const input = useRef<InputMethod>("keyboard");
+  useEffect(() => {
+    const pointer = () => {
+      input.current = "pointer";
+    };
+    const keyboard = () => {
+      input.current = "keyboard";
+    };
+    document.addEventListener("pointerdown", pointer, true);
+    document.addEventListener("pointermove", pointer, true);
+    document.addEventListener("keydown", keyboard, true);
+    return () => {
+      document.removeEventListener("pointerdown", pointer, true);
+      document.removeEventListener("pointermove", pointer, true);
+      document.removeEventListener("keydown", keyboard, true);
+    };
+  }, []);
+  return (
+    <PortalContainer.Provider value={container}>
+      <InputMethodContext.Provider value={input}>
+        <Tooltip.Provider delayDuration={500} skipDelayDuration={300}>
+          {children}
+        </Tooltip.Provider>
+      </InputMethodContext.Provider>
+    </PortalContainer.Provider>
+  );
+}
+
+export function usePortalContainer() {
+  return useContext(PortalContainer);
+}
+
+export type SurfaceMotion = "frequent" | "occasional";
+
+// Frequent surfaces open and close instantly. Occasional ones animate when
+// the pointer opens them; a keyboard opening is always instant.
+export function useSurfaceMotion(
+  open: boolean,
+  frequency: SurfaceMotion = "frequent",
+) {
+  const input = useContext(InputMethodContext);
+  if (!input) throw new Error("Surfaces need a SurfaceProvider.");
+  const [opening, setOpening] = useState(() => ({
+    open,
+    instant: input.current === "keyboard",
+  }));
+  // Capture the opening input, so typing inside a form does not cancel its
+  // entrance or change its exit. A reopening during exit captures it again.
+  if (opening.open !== open) {
+    setOpening({
+      open,
+      instant: open ? input.current === "keyboard" : opening.instant,
+    });
+  }
+  return {
+    "data-motion": frequency,
+    "data-instant": frequency === "frequent" || opening.instant || undefined,
+  };
+}

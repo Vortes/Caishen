@@ -422,16 +422,10 @@
   }
 }
 
-/* The date calendar, on the popover surface. The calendar pads itself. */
-.calendar {
-  z-index: 70;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-primary);
-  font-size: var(--type-body);
-  outline: none;
+/* The calendar pads itself, centred in the popover's width. */
+.calendarPanel {
+  display: flex;
+  justify-content: center;
 }
 
 /* Touch: taller targets, and title-size (16px) text so focusing a field doesn't zoom

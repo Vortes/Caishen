@@ -1,37 +1,16 @@
 "use client";
 
 import { Tooltip as Primitive } from "radix-ui";
-import { createContext, useContext, type ReactNode } from "react";
-import { POPOVER_GAP } from "~/components/ui/tokens";
-import { PopoverMotionProvider } from "./popover-motion";
+import type { ReactNode } from "react";
+import {
+  SURFACE_COLLISION_PADDING,
+  SURFACE_GAP,
+  usePortalContainer,
+} from "./surface";
 import styles from "./tooltip.module.css";
 
-// Tooltips and popovers render through a portal so panels that clip their
-// overflow can't cut them off. The portal targets the themed root rather than
-// <body>, so a data-theme set there still applies to what's portaled.
-const PortalContainer = createContext<HTMLElement | null>(null);
-
-export function TooltipProvider({
-  container,
-  children,
-}: {
-  container: HTMLElement | null;
-  children: ReactNode;
-}) {
-  return (
-    <PortalContainer.Provider value={container}>
-      <PopoverMotionProvider>
-        <Primitive.Provider delayDuration={500} skipDelayDuration={300}>
-          {children}
-        </Primitive.Provider>
-      </PopoverMotionProvider>
-    </PortalContainer.Provider>
-  );
-}
-
-export function usePortalContainer() {
-  return useContext(PortalContainer);
-}
+// Kept for the sites not yet on Popover, Menu or Dialog.
+export { usePortalContainer };
 
 // Wraps one focusable element. The shortcut is shown as written, e.g. "⌘K".
 export function Tooltip({
@@ -43,7 +22,7 @@ export function Tooltip({
   shortcut?: string;
   children: ReactNode;
 }) {
-  const container = useContext(PortalContainer);
+  const container = usePortalContainer();
   return (
     <Primitive.Root>
       <Primitive.Trigger
@@ -64,8 +43,8 @@ export function Tooltip({
       <Primitive.Portal container={container}>
         <Primitive.Content
           className={styles.tooltip}
-          sideOffset={POPOVER_GAP}
-          collisionPadding={8}
+          sideOffset={SURFACE_GAP}
+          collisionPadding={SURFACE_COLLISION_PADDING}
         >
           {label}
           {shortcut && <kbd>{shortcut}</kbd>}

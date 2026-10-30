@@ -135,7 +135,7 @@ const motion = usePopoverMotion(open);
 </Popover.Root>;
 ```
 
-`TooltipProvider` installs the motion provider once for the shell. The hook
+`SurfaceProvider` (`src/components/ui/surface.tsx`) installs the motion provider once for the shell. The hook
 captures the input method when opening, so typing inside a form cannot
 change its entrance or exit. Keep content and its anchor mounted while
 Radix completes the exit animation.
@@ -181,7 +181,7 @@ Tooltips and popovers render through a portal so a panel that clips its
 overflow can't cut them off. The portal targets the themed root instead of
 `<body>`, so the subtree's `data-theme` still applies.
 
-Wrap a screen once in `TooltipProvider`, passing its root element as
+Wrap a screen once in `SurfaceProvider`, passing its root element as
 `container`. A Radix popover gets the same element from
 `usePortalContainer()`:
 
