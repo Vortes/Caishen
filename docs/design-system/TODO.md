@@ -16,8 +16,8 @@ doesn't follow the design system yet. Check items off as they land.
       a `Tabs` variant or take the pill look (`app-shell.tsx`)
 - [ ] Month label button in the header (`app-shell.tsx`)
 - [ ] `Select`: the custom date range's native selects (`reflect/filters.tsx`)
-- [ ] `Popover` surface: the Reflect filters, slice, and move-money popovers
-      style their own (`reflect/reflect.module.css`, `move-money.module.css`)
+- [x] `Popover` surface: `Popover`, `Menu`, `Dialog` and `ConfirmDialog`
+      (`src/components/ui/`, [surfaces.md](surfaces.md))
 - [ ] Text field and combobox: the move-money amount input and its searchable
       destination list, including their invalid state and field error
       (`move-money.tsx`)

@@ -9,11 +9,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { POPOVER_GAP } from "./tokens";
 
 // Every surface sits this far from its trigger, and stops this far from the
-// window edge.
-export const SURFACE_GAP = POPOVER_GAP;
+// window edge. Radix positioning takes pixel numbers, not CSS lengths.
+export const SURFACE_GAP = 6;
 export const SURFACE_COLLISION_PADDING = 12;
 
 // Surfaces render through a portal so panels that clip their overflow can't

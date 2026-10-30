@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { expect, test } from "vitest";
@@ -155,4 +155,62 @@ test("a dialog without auto-focus focuses itself rather than its first control",
   expect(document.activeElement).toBe(
     screen.getByRole("dialog", { name: "Crop your photo" }),
   );
+});
+
+// A confirm a site opens itself, as a Cancel that asks before discarding.
+function Discard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Cancel</button>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Discard this invitation?"
+        description="Your signature won’t be kept."
+        cancel="Keep writing"
+        confirm="Discard"
+        tone="danger"
+        onConfirm={() => setOpen(false)}
+      />
+    </>
+  );
+}
+
+test("a confirm dialog without a trigger returns focus to what opened it", async () => {
+  const user = userEvent.setup();
+  render(
+    <SurfaceProvider container={themedRoot()}>
+      <Discard />
+    </SurfaceProvider>,
+  );
+
+  const opener = screen.getByRole("button", { name: "Cancel" });
+  await user.click(opener);
+  expect(
+    screen.getByRole("alertdialog", { name: "Discard this invitation?" }),
+  ).toBeDefined();
+
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(opener));
+});
+
+test("a dialog returns focus to what opened it", async () => {
+  const user = userEvent.setup();
+  render(
+    <SurfaceProvider container={themedRoot()}>
+      <Opener />
+    </SurfaceProvider>,
+  );
+
+  const opener = screen.getByRole("button", { name: "Open" });
+  await user.click(opener);
+  expect(
+    screen.getByRole("dialog", { name: "Connecting your bank" }),
+  ).toBeDefined();
+
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(opener));
 });

@@ -2,7 +2,7 @@
 
 import { CircleAlertIcon } from "lucide-react";
 import { AlertDialog, Dialog as Primitive } from "radix-ui";
-import type { ReactElement, ReactNode } from "react";
+import { useRef, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "./button";
 import { usePortalContainer, useSurfaceMotion } from "./surface";
@@ -10,6 +10,24 @@ import surface from "./surface.module.css";
 import styles from "./dialog.module.css";
 
 export type DialogSize = "default" | "wide";
+
+// Focus goes back to what had it when the dialog opened, for a dialog the
+// site opens itself rather than through a trigger.
+function useReturnFocus() {
+  const opener = useRef<HTMLElement | null>(null);
+  return {
+    onOpenAutoFocus: () => {
+      opener.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    },
+    onCloseAutoFocus: (event: Event) => {
+      event.preventDefault();
+      opener.current?.focus({ preventScroll: true });
+    },
+  };
+}
 
 type DialogProps = {
   // The accessible name. The content draws its own heading.
@@ -29,7 +47,8 @@ type DialogProps = {
 
 // A free-form dialog on the raised surface, centered over a scrim and above
 // every popover. Dialogs are occasional: the pointer opening one animates
-// it, the keyboard opens it instantly.
+// it, the keyboard opens it instantly. Closing returns focus to what had it
+// when the dialog opened.
 export function Dialog({
   label,
   open,
@@ -41,6 +60,7 @@ export function Dialog({
 }: DialogProps) {
   const container = usePortalContainer();
   const motion = useSurfaceMotion(open, "occasional");
+  const returnFocus = useReturnFocus();
   return (
     <Primitive.Root open={open} onOpenChange={onOpenChange}>
       <Primitive.Portal container={container}>
@@ -57,14 +77,13 @@ export function Dialog({
           className={surface.dialog}
           aria-label={label}
           aria-describedby={undefined}
-          onOpenAutoFocus={
-            autoFocus
-              ? undefined
-              : (event) => {
-                  event.preventDefault();
-                  (event.currentTarget as HTMLElement).focus();
-                }
-          }
+          onOpenAutoFocus={(event) => {
+            returnFocus.onOpenAutoFocus();
+            if (autoFocus) return;
+            event.preventDefault();
+            (event.currentTarget as HTMLElement).focus();
+          }}
+          onCloseAutoFocus={returnFocus.onCloseAutoFocus}
         >
           {children}
         </Primitive.Content>
@@ -90,6 +109,7 @@ type ConfirmDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   // The button that opens it, which takes focus back when it closes.
+  // Without one, focus goes back to what had it when the dialog opened.
   trigger?: ReactElement;
   title: string;
   description: ReactNode;
@@ -121,6 +141,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const container = usePortalContainer();
   const motion = useSurfaceMotion(open, "occasional");
+  const returnFocus = useReturnFocus();
   return (
     <AlertDialog.Root
       open={open}
@@ -131,7 +152,12 @@ export function ConfirmDialog({
       {trigger && <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger>}
       <AlertDialog.Portal container={container}>
         <AlertDialog.Overlay {...motion} className={surface.scrim} />
-        <AlertDialog.Content {...motion} className={surface.dialog}>
+        <AlertDialog.Content
+          {...motion}
+          className={surface.dialog}
+          // A trigger takes focus back on its own.
+          {...(trigger ? {} : returnFocus)}
+        >
           <div className={styles.header}>
             <AlertDialog.Title className={styles.title}>
               {title}

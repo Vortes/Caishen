@@ -9,9 +9,6 @@ import {
 } from "./surface";
 import styles from "./tooltip.module.css";
 
-// Kept for the sites not yet on Popover, Menu or Dialog.
-export { usePortalContainer };
-
 // Wraps one focusable element. The shortcut is shown as written, e.g. "⌘K".
 // Props a wrapping trigger gives it, like a popover's, pass to that element.
 export function Tooltip({
