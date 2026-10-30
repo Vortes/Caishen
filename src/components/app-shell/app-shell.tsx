@@ -1218,16 +1218,6 @@ function HeaderTitle({
 
   return (
     <div className={styles.titleGroup}>
-      {screen.type === "register" && accountName && (
-        <>
-          <span className={styles.crumb}>Accounts</span>
-          <ChevronRightIcon
-            size={12}
-            className={styles.crumbSeparator}
-            aria-hidden
-          />
-        </>
-      )}
       <h1 className={styles.headerTitle}>
         {screen.type === "reflect"
           ? "Reflect"
