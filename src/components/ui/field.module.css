@@ -11,6 +11,14 @@
   color: var(--text-secondary);
   font-size: var(--type-small);
 }
+.label[data-hidden] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 .well {
   display: flex;
@@ -60,6 +68,9 @@
 /* The well draws the focus ring, in place of the shell's own. */
 .input:focus-visible {
   outline: none;
+}
+.well[data-align="end"] .input {
+  text-align: right;
 }
 .input::placeholder {
   color: var(--text-tertiary);

@@ -113,25 +113,6 @@
   gap: 4px;
 }
 
-/* The enter step: one labelled field, like YNAB's. */
-.entry {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.entry label {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-.hint {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
-.hint[data-invalid] {
-  color: var(--danger-text);
-}
 .footer {
   display: flex;
   justify-content: flex-end;
