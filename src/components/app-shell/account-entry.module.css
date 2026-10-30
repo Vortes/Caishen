@@ -21,14 +21,15 @@
   flex-direction: column;
   gap: 6px;
 }
-.form label,
-.form p {
+.field > label,
+.field > p,
+.form > p {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--type-small);
 }
-.form input,
-.form select {
+.field > input,
+.field > select {
   width: 100%;
   height: var(--size-control);
   padding: 0 var(--space-inset);
@@ -60,8 +61,8 @@
     --size-control: var(--size-row-lg);
     --size-control-xs: var(--size-row-lg);
   }
-  .form input,
-  .form select {
+  .field > input,
+  .field > select {
     font-size: var(--type-title);
   }
 }

@@ -289,15 +289,15 @@ test("a loan with no bank balance offers setup and asks for confirmed lender ter
   });
   expect(within(dialog).getByText(/hasn’t provided a balance/)).toBeTruthy();
   await shell.user.type(
-    within(dialog).getByRole("spinbutton", { name: "Current principal owed" }),
+    within(dialog).getByRole("textbox", { name: "Current principal owed" }),
     "8201.13",
   );
   await shell.user.type(
-    within(dialog).getByRole("spinbutton", { name: "APR (%)" }),
+    within(dialog).getByRole("textbox", { name: "APR (%)" }),
     "10.99",
   );
   await shell.user.type(
-    within(dialog).getByRole("spinbutton", {
+    within(dialog).getByRole("textbox", {
       name: "Required monthly payment",
     }),
     "498.48",
@@ -387,7 +387,7 @@ test("a loan balance arriving during setup replaces the missing balance field", 
   );
   expect(
     within(dialog)
-      .getByRole("spinbutton", { name: "Current principal owed" })
+      .getByRole("textbox", { name: "Current principal owed" })
       .getAttribute("value"),
   ).toBe("123.45");
 });
