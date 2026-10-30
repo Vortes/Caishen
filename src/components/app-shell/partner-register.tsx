@@ -859,7 +859,7 @@ function EntryEditor({
   const paid = row.payerId === view.budget.userId;
   // The share is the part of the one who didn't pay.
   const theirShare = paid ? row.partner : row.you;
-  const shareLabel = paid ? `${partnerName}'s share` : "Your share";
+  const shareLabel = paid ? `${partnerName}’s share` : "Your share";
   const shareEditable = row.shareMode.mode !== "read";
   const [text, setText] = useState((theirShare / 100).toFixed(2));
   // Until you pick one, your payee memory fills in the category you gave
