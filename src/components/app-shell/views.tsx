@@ -609,7 +609,7 @@ function PlanCategoryContents({
 
 // Lives in the row's left padding; shows on hover, focus, or once anything
 // in the list is checked. The label is the hit area: the full row height.
-function RowCheckbox({
+export function RowCheckbox({
   label,
   state,
   onChange,

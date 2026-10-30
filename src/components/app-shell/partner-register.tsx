@@ -13,6 +13,8 @@ import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
+import { useRowSelection } from "~/components/ui/use-row-selection";
+import selectionStyles from "~/components/ui/row-selection.module.css";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
@@ -31,11 +33,17 @@ import {
   EditorText,
   FieldError,
 } from "./editor-row";
-import { Empty, moveSelection } from "./views";
+import {
+  CategorizeAction,
+  SelectAll,
+  SelectionBar,
+} from "./transaction-review";
+import { Empty, moveSelection, RowCheckbox } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
 import local from "./partner-register.module.css";
 import editorStyles from "./transaction-entry.module.css";
+import reviewStyles from "./transaction-review.module.css";
 
 type Row = View["partnerLedger"][number];
 
@@ -348,15 +356,50 @@ function PayPopover({ account }: { account: Account }) {
   );
 }
 
+// Whether you can give an entry your own category: your side of what your
+// partner paid, or of what you paid before its import arrives. A matched
+// import of yours carries its own category.
+function categorizable(row: Row, you: string, closed: boolean) {
+  return (
+    !closed &&
+    Boolean(row.entryId) &&
+    (row.payerId !== you || Boolean(row.awaitingImport))
+  );
+}
+
+type EditorField = "category" | "amount";
+
+// The partner ledger, as a register: clicking an entry selects it, and
+// clicking it again opens it at the field clicked. Entries you can
+// categorize can be checked and categorized together.
 export function PartnerRegister({
   account,
   query,
+  selectedId,
+  onSelect,
+  checked,
+  onCheck,
 }: {
   account: Account;
   query: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  checked: string[];
+  onCheck: (ids: string[], value: boolean) => void;
 }) {
-  const { view } = useTransactionEntry();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const entry = useTransactionEntry();
+  const { view } = entry;
+  const you = view.budget.userId;
+  const register = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState<{
+    id: string;
+    field: EditorField;
+  } | null>(null);
+  if (editing && editing.id !== selectedId) setEditing(null);
+  const selectionStyle = useRowSelection(checked);
+  // Shift-click checks, or clears, every entry from the last one clicked to
+  // this one, like the other registers.
+  const anchor = useRef<string | null>(null);
   // A former partner's ledger reads as it stood when it closed.
   const closed = account.kind === "former-partner";
   const ledger = closed
@@ -374,6 +417,28 @@ export function PartnerRegister({
         .toLowerCase()
         .includes(search),
   );
+  const selectable = rows.filter((row) => categorizable(row, you, closed));
+  const selected = selectable.filter((row) => checked.includes(row.id));
+  const order = selectable.map((row) => row.id);
+  const checkTo = (id: string, value: boolean) => {
+    const from = order.indexOf(anchor.current ?? selectedId ?? "");
+    const to = order.indexOf(id);
+    onCheck(
+      from < 0 ? [id] : order.slice(Math.min(from, to), Math.max(from, to) + 1),
+      value,
+    );
+    anchor.current = id;
+  };
+  const closeEditor = (id: string) => {
+    setEditing(null);
+    requestAnimationFrame(() =>
+      register.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-entry-row="${CSS.escape(id)}"]`,
+        )
+        ?.focus(),
+    );
+  };
   if (!ledger.length)
     return closed ? (
       <Empty title="Nothing was shared." icon={UsersIcon}>
@@ -393,24 +458,63 @@ export function PartnerRegister({
     );
   return (
     <div
-      className={`${styles.list} ${styles.register} ${local.register}`}
+      ref={register}
+      className={`${styles.list} ${styles.register} ${local.register} ${reviewStyles.register} ${selectionStyles.list}`}
+      {...selectionStyle.listProps}
       role="group"
       aria-label={`${account.name} ledger`}
-      onKeyDown={moveSelection}
+      data-selecting={selected.length > 0 || undefined}
+      onKeyDown={(event) => {
+        // x toggles the focused entry's checkbox, like the other registers.
+        const id =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement.dataset.id
+            : undefined;
+        if (event.key === "x" && id) {
+          event.preventDefault();
+          anchor.current = id;
+          onCheck([id], !checked.includes(id));
+          return;
+        }
+        // e opens the selected entry at its amount.
+        const row = rows.find((item) => item.id === selectedId);
+        if (
+          event.key === "e" &&
+          row &&
+          document.activeElement instanceof HTMLElement &&
+          document.activeElement.dataset.entryRow === row.id &&
+          row.entryId &&
+          !row.settlementId
+        ) {
+          event.preventDefault();
+          setEditing({ id: row.id, field: "amount" });
+          return;
+        }
+        moveSelection(event);
+      }}
     >
-      <div className={`${styles.txColumns} ${styles.columnHeader}`} aria-hidden>
-        <span data-optional>Date</span>
-        <span>Payee</span>
-        <span>Your category</span>
-        <span className={styles.numeric} data-optional>
+      <div className={`${styles.txColumns} ${styles.columnHeader}`}>
+        <SelectAll selection={{ selectable, selected }} onCheck={onCheck} />
+        <span data-optional aria-hidden>
+          Date
+        </span>
+        <span aria-hidden>Payee</span>
+        <span aria-hidden>Your category</span>
+        <span className={styles.numeric} data-optional aria-hidden>
           Shared
         </span>
-        <span className={styles.numeric}>Amount</span>
-        <span className={styles.numeric}>Balance</span>
-        <span />
+        <span className={styles.numeric} aria-hidden>
+          Amount
+        </span>
+        <span className={styles.numeric} aria-hidden>
+          Balance
+        </span>
+        <span aria-hidden />
       </div>
       {rows.map((row) => {
-        const selected = selectedId === row.id;
+        const isSelected = selectedId === row.id;
+        const checkable = categorizable(row, you, closed);
+        const isChecked = checkable && checked.includes(row.id);
         const settlement = Boolean(row.settlementId);
         const unconfirmed = row.confirmed === false;
         const opens = Boolean(row.entryId ?? row.lineId ?? row.settlementId);
@@ -478,59 +582,156 @@ export function PartnerRegister({
           shared: opens && !settlement ? money(row.shared) : "",
           balance: money(row.balance),
         };
-        if (selected && opens && !settlement)
+        const edits = opens && !settlement;
+        if (edits && editing?.id === row.id)
           return (
             <EntryEditor
               key={row.id}
               row={row}
               cells={cells}
               partnerName={account.name}
-              onClose={() => setSelectedId(null)}
+              categoryEditable={checkable}
+              focus={editing.field}
+              onClose={() => closeEditor(row.id)}
             />
           );
         return (
           <div
             key={row.id}
-            className={styles.rowWrap}
-            data-open={selected || undefined}
+            className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
+            {...selectionStyle.rowProps(row.id)}
+            onMouseDown={(event) => {
+              // Shift would otherwise extend a text selection across rows.
+              if (checkable && event.shiftKey) event.preventDefault();
+            }}
           >
+            {checkable && (
+              <RowCheckbox
+                label={`Select ${row.payee}`}
+                state={isChecked}
+                onChange={() => {
+                  anchor.current = row.id;
+                  onCheck([row.id], !isChecked);
+                }}
+                onShiftClick={() => checkTo(row.id, !isChecked)}
+              />
+            )}
             <button
               type="button"
               data-row
+              data-id={checkable ? row.id : undefined}
+              data-entry-row={row.id}
               className={`${styles.txColumns} ${styles.row}`}
-              aria-current={selected ? "true" : undefined}
-              aria-expanded={opens ? selected : undefined}
+              aria-current={isSelected ? "true" : undefined}
+              aria-expanded={settlement ? isSelected : undefined}
               onClick={(event) => {
+                if (checkable && event.shiftKey) {
+                  checkTo(row.id, !isChecked);
+                  return;
+                }
                 // Finishing a text selection in the row doesn't click it.
                 if (event.detail > 0 && window.getSelection()?.toString())
                   return;
-                setSelectedId(selected ? null : row.id);
+                anchor.current = row.id;
+                // A second pointer click on the one selected entry opens it
+                // at the field clicked: the category when you can change it,
+                // otherwise the amount. Enter and Space click with no
+                // position, and only select.
+                if (
+                  edits &&
+                  isSelected &&
+                  checked.length === 1 &&
+                  checked[0] === row.id &&
+                  event.detail > 0
+                ) {
+                  const column =
+                    event.target instanceof Element
+                      ? event.target.closest<HTMLElement>("[data-column]")
+                          ?.dataset.column
+                      : undefined;
+                  setEditing({
+                    id: row.id,
+                    field:
+                      column === "category" && checkable
+                        ? "category"
+                        : "amount",
+                  });
+                  return;
+                }
+                onSelect(row.id);
               }}
             >
-              <span className={styles.rowName} data-optional>
+              <span className={styles.rowName} data-column="date" data-optional>
                 {cells.date}
               </span>
-              <span className={styles.rowName}>{cells.payee}</span>
-              <span className={styles.truncate}>{cells.category}</span>
+              <span className={styles.rowName} data-column="payee">
+                {cells.payee}
+              </span>
+              <span className={styles.truncate} data-column="category">
+                {cells.category}
+              </span>
               <span
                 className={`${styles.numeric} ${styles.faint}`}
+                data-column="shared"
                 data-optional
               >
                 {cells.shared}
               </span>
-              <span className={styles.numeric}>{money(row.change, true)}</span>
-              <span className={`${styles.numeric} ${styles.muted}`}>
+              <span className={styles.numeric} data-column="amount">
+                {money(row.change, true)}
+              </span>
+              <span
+                className={`${styles.numeric} ${styles.muted}`}
+                data-column="balance"
+              >
                 {cells.balance}
               </span>
               <span />
             </button>
-            {selected && settlement && (
+            {isSelected && settlement && (
               <SettlementDetail row={row} partnerName={account.name} />
             )}
           </div>
         );
       })}
+      <PartnerSelection
+        selected={selected}
+        onCheck={onCheck}
+        disabled={Boolean(entry.session) || editing !== null}
+      />
     </div>
+  );
+}
+
+// The island over the ledger while entries are checked, with the one thing
+// they share: your category.
+function PartnerSelection({
+  selected,
+  onCheck,
+  disabled,
+}: {
+  selected: Row[];
+  onCheck: (ids: string[], value: boolean) => void;
+  disabled: boolean;
+}) {
+  const entry = useTransactionEntry();
+  if (!selected.length) return null;
+  const ids = selected.map((row) => row.id);
+  return (
+    <SelectionBar count={selected.length} onClear={() => onCheck(ids, false)}>
+      <CategorizeAction
+        count={selected.length}
+        disabled={disabled}
+        onCheck={onCheck}
+        categorize={(categoryId) =>
+          entry.categorizePartnerEntries(
+            selected.map((row) => ({ rowId: row.id, entryId: row.entryId! })),
+            categoryId,
+            (rowId) => onCheck([rowId], true),
+          )
+        }
+      />
+    </SelectionBar>
   );
 }
 
@@ -634,16 +835,22 @@ function EntryEditor({
   row,
   cells,
   partnerName,
+  categoryEditable,
+  focus,
   onClose,
 }: {
   row: Row;
   cells: RowCells;
   partnerName: string;
+  categoryEditable: boolean;
+  // The field clicked to open it, which takes focus.
+  focus: EditorField;
   onClose: () => void;
 }) {
   const formId = useId();
   const id = (field: string) => `${formId}-${field}`;
   const input = useRef<HTMLInputElement>(null);
+  const categoryInput = useRef<HTMLInputElement>(null);
   const entry = useTransactionEntry();
   const { view } = entry;
   const paid = row.payerId === view.budget.userId;
@@ -651,10 +858,6 @@ function EntryEditor({
   const theirShare = paid ? row.partner : row.you;
   const shareLabel = paid ? `${partnerName}'s share` : "Your share";
   const shareEditable = row.shareMode.mode !== "read";
-  // Your side of your partner's purchase, or of yours before its import
-  // arrives; a matched import of yours carries its own category.
-  const categoryEditable =
-    Boolean(row.entryId) && (!paid || Boolean(row.awaitingImport));
   const [text, setText] = useState((theirShare / 100).toFixed(2));
   // Until you pick one, your payee memory fills in the category you gave
   // this payee last time.
@@ -675,12 +878,17 @@ function EntryEditor({
       group: category.group,
       amount: category.available,
     }));
-  // A mouse or trackpad goes straight to the amount; touch waits for a tap,
-  // so a keyboard doesn't cover the row before it's read.
+  // The field clicked takes focus, or the other one when it can't change.
+  // Touch waits for a tap, so a keyboard doesn't cover the row before it's
+  // read.
   useEffect(() => {
-    if (window.matchMedia("(pointer: fine)").matches)
-      input.current?.focus({ preventScroll: true });
-  }, []);
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    const target =
+      focus === "category"
+        ? (categoryInput.current ?? input.current)
+        : (input.current ?? categoryInput.current);
+    target?.focus({ preventScroll: true });
+  }, [focus]);
   const saveCategory = () => {
     if (!categoryEditable || !categoryId || categoryId === row.categoryId)
       return null;
@@ -769,6 +977,7 @@ function EntryEditor({
           >
             <ChoiceField
               id={id("category")}
+              inputRef={categoryInput}
               label="Your category"
               value={categoryId}
               options={categoryOptions}

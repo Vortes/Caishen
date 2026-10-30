@@ -23,7 +23,7 @@ function sharedBook() {
     categoryId: "household",
     name: "Household",
   });
-  return execute(withCategory, "partner", {
+  const groceries = execute(withCategory, "partner", {
     type: "partner.record",
     id: "record",
     recordedAt: "2026-10-12T12:00:00Z",
@@ -34,9 +34,24 @@ function sharedBook() {
     amount: 6_000,
     share: 3_000,
   });
+  return execute(groceries, "partner", {
+    type: "partner.record",
+    id: "record-pharmacy",
+    recordedAt: "2026-10-11T12:00:00Z",
+    entryId: "pharmacy",
+    payerId: "partner",
+    date: "2026-10-11",
+    payee: "Pharmacy",
+    amount: 2_000,
+    share: 1_000,
+  });
 }
 
-async function openLedger() {
+const ledger = () => within(screen.getByRole("group", { name: "Anna ledger" }));
+const entryRow = (payee: string) =>
+  ledger().getByRole("button", { name: new RegExp(payee) });
+
+async function showLedger() {
   const shell = await renderShell({
     book: sharedBook(),
     overview: () => readyOverview({ partnerFirstName: "Anna" }),
@@ -46,8 +61,15 @@ async function openLedger() {
       screen.getByRole("navigation", { name: "Budget navigation" }),
     ).findByRole("link", { name: /^Anna/ }),
   );
-  const ledger = within(screen.getByRole("group", { name: "Anna ledger" }));
-  await shell.user.click(ledger.getByRole("button", { name: /Groceries/ }));
+  return shell;
+}
+
+// The first click selects the entry; the second opens it at the field
+// under the pointer.
+async function openLedger() {
+  const shell = await showLedger();
+  await shell.user.click(entryRow("Groceries"));
+  await shell.user.click(within(entryRow("Groceries")).getByText("-$30.00"));
   return shell;
 }
 
@@ -68,12 +90,7 @@ test("an opened shared entry edits its amount and your category, in the row", as
   await shell.user.click(form.getByRole("button", { name: "Save" }));
   await findToast("Your share of Groceries is $20.00. Both budgets updated.");
   expect(screen.queryByRole("form", { name: "Edit shared entry" })).toBeNull();
-  expect(
-    within(screen.getByRole("group", { name: "Anna ledger" })).getByRole(
-      "button",
-      { name: /Groceries.*\$60\.00\s*-\$20\.00/ },
-    ),
-  ).toBeTruthy();
+  expect(within(entryRow("Groceries")).getByText("-$20.00")).toBeTruthy();
 });
 
 test("an amount over the shared total is refused and Cancel closes the row", async () => {
@@ -98,10 +115,53 @@ test("your category for what your partner paid saves with its amount", async () 
   await shell.user.type(amount, "25");
   await shell.user.click(form.getByRole("button", { name: "Save" }));
   await findToast("Your share of Groceries is $25.00. Both budgets updated.");
-  const row = within(
-    screen.getByRole("group", { name: "Anna ledger" }),
-  ).getByRole("button", { name: /Groceries/ });
+  const row = entryRow("Groceries");
   expect(within(row).getByText("Household")).toBeTruthy();
   expect(within(row).queryByText("Needs category")).toBeNull();
-  expect(within(row).getAllByText("-$25.00")).toHaveLength(2);
+  expect(within(row).getByText("-$25.00")).toBeTruthy();
+});
+
+test("clicking an entry selects it, and clicking it again opens the field clicked", async () => {
+  const shell = await showLedger();
+  await shell.user.click(entryRow("Groceries"));
+  expect(screen.queryByRole("form", { name: "Edit shared entry" })).toBeNull();
+  expect(
+    ledger()
+      .getByRole("checkbox", { name: "Select Groceries" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(
+    screen.getByRole("toolbar", { name: "Selected transactions" }),
+  ).toBeTruthy();
+
+  await shell.user.click(
+    within(entryRow("Groceries")).getByText("Needs category"),
+  );
+  const form = within(screen.getByRole("form", { name: "Edit shared entry" }));
+  expect(document.activeElement).toBe(
+    form.getByRole("combobox", { name: "Your category" }),
+  );
+});
+
+test("checked entries are categorized together from the selection island", async () => {
+  const shell = await showLedger();
+  await shell.user.click(
+    ledger().getByRole("checkbox", { name: "Select Groceries" }),
+  );
+  await shell.user.click(
+    ledger().getByRole("checkbox", { name: "Select Pharmacy" }),
+  );
+  const island = within(
+    screen.getByRole("toolbar", { name: "Selected transactions" }),
+  );
+  expect(island.getByText("2 transactions")).toBeTruthy();
+  await shell.user.click(island.getByRole("button", { name: "Categorize" }));
+  await shell.user.click(screen.getByRole("menuitem", { name: "Everyday" }));
+  expect(screen.getByRole("menuitem", { name: "Household" })).toBeTruthy();
+  await shell.user.keyboard("{ArrowRight}{End}{Enter}");
+  await findToast("Categorized 2 transactions");
+  for (const payee of ["Groceries", "Pharmacy"]) {
+    expect(within(entryRow(payee)).getByText("Household")).toBeTruthy();
+    expect(within(entryRow(payee)).queryByText("Needs category")).toBeNull();
+  }
 });

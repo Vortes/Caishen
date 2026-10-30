@@ -1020,6 +1020,10 @@ export function AppShell({
                                 key={account.id}
                                 account={account}
                                 query={deferredQuery}
+                                selectedId={selectedId}
+                                onSelect={selectOnly}
+                                checked={checked}
+                                onCheck={check}
                               />
                             ) : account?.kind === "reimbursements" ? (
                               <ReimbursementsRegister

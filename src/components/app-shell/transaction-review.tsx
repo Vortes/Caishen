@@ -17,6 +17,7 @@ import {
   useId,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { newId } from "~/components/budget/format";
 import { useBudgetSelector } from "~/components/sync/hooks";
@@ -91,7 +92,7 @@ export function SelectAll({
   selection: { selectable, selected },
   onCheck,
 }: {
-  selection: ReturnType<typeof useReviewSelection>;
+  selection: { selectable: { id: string }[]; selected: { id: string }[] };
   onCheck: (ids: string[], value: boolean) => void;
 }) {
   if (!selectable.length) return null;
@@ -151,6 +152,67 @@ export function SelectionIsland({
     enterable.length > TRANSACTION_ACTION_LIMIT ||
     rejectable.length > TRANSACTION_ACTION_LIMIT;
   const busy = Boolean(entry.session);
+  const ids = selected.map((item) => item.id);
+  return (
+    <SelectionBar
+      count={selected.length}
+      onClear={() => onCheck(ids, false)}
+      back={back}
+      hint={overLimit && `Review up to ${TRANSACTION_ACTION_LIMIT} at a time.`}
+    >
+      {approvals.map((action, index) => (
+        <Button
+          key={action.label}
+          variant={index === 0 ? "primary" : "secondary"}
+          size="sm"
+          disabled={busy || action.ids.length > TRANSACTION_ACTION_LIMIT}
+          onClick={() => action.save(action.ids)}
+        >
+          <CircleCheckIcon aria-hidden />
+          {action.label} ({action.ids.length})
+        </Button>
+      ))}
+      {rejectable.length > 0 && (
+        <Button
+          size="sm"
+          disabled={busy || rejectable.length > TRANSACTION_ACTION_LIMIT}
+          onClick={() => review.reject(rejectable)}
+        >
+          <CircleXIcon aria-hidden />
+          Reject
+        </Button>
+      )}
+      <CategorizeAction
+        count={actions.categorize.length}
+        disabled={busy}
+        onCheck={onCheck}
+        categorize={(categoryId) =>
+          entry.categorizeSelection(actions.categorize, categoryId, (rowId) =>
+            onCheck([rowId], true),
+          )
+        }
+      />
+      <ShareSelection selected={selected} disabled={busy} onCheck={onCheck} />
+    </SelectionBar>
+  );
+}
+
+// The island's frame: how many rows are selected, with the way to clear
+// them, then what can be done with them. A register's own island fills in
+// its actions.
+export function SelectionBar({
+  count,
+  onClear,
+  back = null,
+  hint,
+  children,
+}: {
+  count: number;
+  onClear: () => void;
+  back?: WayBack | null;
+  hint?: string | false;
+  children: ReactNode;
+}) {
   return (
     <div className={styles.islandSlot}>
       <div
@@ -170,64 +232,18 @@ export function SelectionIsland({
               variant="subtle"
               size="sm"
               aria-label="Clear selection"
-              onClick={() =>
-                onCheck(
-                  selected.map((item) => item.id),
-                  false,
-                )
-              }
+              onClick={onClear}
             >
               <XIcon aria-hidden />
               <span className={styles.count}>
-                {selected.length}{" "}
-                {selected.length === 1 ? "transaction" : "transactions"}
+                {count} {count === 1 ? "transaction" : "transactions"}
               </span>
             </Button>
           </Tooltip>
-          {overLimit && (
-            <span className={styles.hint}>
-              Review up to {TRANSACTION_ACTION_LIMIT} at a time.
-            </span>
-          )}
+          {hint && <span className={styles.hint}>{hint}</span>}
         </span>
         <span className={styles.divider} aria-hidden />
-        <div className={styles.actions}>
-          {approvals.map((action, index) => (
-            <Button
-              key={action.label}
-              variant={index === 0 ? "primary" : "secondary"}
-              size="sm"
-              disabled={busy || action.ids.length > TRANSACTION_ACTION_LIMIT}
-              onClick={() => action.save(action.ids)}
-            >
-              <CircleCheckIcon aria-hidden />
-              {action.label} ({action.ids.length})
-            </Button>
-          ))}
-          {rejectable.length > 0 && (
-            <Button
-              size="sm"
-              disabled={busy || rejectable.length > TRANSACTION_ACTION_LIMIT}
-              onClick={() => review.reject(rejectable)}
-            >
-              <CircleXIcon aria-hidden />
-              Reject
-            </Button>
-          )}
-          <CategorizeAction
-            selected={selected.filter((row) =>
-              actions.categorize.includes(row.id),
-            )}
-            available={actions.categorize.length > 0}
-            disabled={busy}
-            onCheck={onCheck}
-          />
-          <ShareSelection
-            selected={selected}
-            disabled={busy}
-            onCheck={onCheck}
-          />
-        </div>
+        <div className={styles.actions}>{children}</div>
       </div>
     </div>
   );
@@ -250,19 +266,20 @@ function BackButton({ back }: { back: WayBack }) {
   );
 }
 
-function CategorizeAction({
-  selected,
-  available,
+// Puts every row it's given in one category, picked from the plan's groups.
+// count is how many rows the pick would change.
+export function CategorizeAction({
+  count,
   disabled,
   onCheck,
+  categorize,
 }: {
-  selected: Transaction[];
-  available: boolean;
+  count: number;
   disabled: boolean;
   onCheck: (ids: string[], value: boolean) => void;
+  categorize: (categoryId: string) => { queuedIds: string[]; error?: string };
 }) {
-  const entry = useTransactionEntry();
-  const { view, holdOpen } = entry;
+  const { view, holdOpen } = useTransactionEntry();
   const container = usePortalContainer();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -294,8 +311,8 @@ function CategorizeAction({
   if (
     !open &&
     (disabled ||
-      !available ||
-      selected.length > TRANSACTION_ACTION_LIMIT ||
+      count === 0 ||
+      count > TRANSACTION_ACTION_LIMIT ||
       !categories.length)
   )
     return null;
@@ -375,11 +392,7 @@ function CategorizeAction({
                       disabled={disabled}
                       textValue={category.name}
                       onSelect={(event) => {
-                        const result = entry.categorizeSelection(
-                          selected.map((item) => item.id),
-                          category.id,
-                          (rowId) => onCheck([rowId], true),
-                        );
+                        const result = categorize(category.id);
                         if (result.error) {
                           onCheck(result.queuedIds, false);
                           event.preventDefault();
