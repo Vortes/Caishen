@@ -11,9 +11,19 @@
   }
 }
 
+/* Who paid gives way before the payee's name does: the name keeps its
+   width until it alone is wider than the column. */
+.payeeName {
+  flex-shrink: 0;
+  max-width: 100%;
+}
 .paidBy {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--type-small);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .owed {

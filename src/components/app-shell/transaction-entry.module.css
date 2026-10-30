@@ -58,7 +58,8 @@
 .entryRow > .staticCell {
   flex-direction: row;
   align-items: center;
-  gap: 6px;
+  /* The row's own gap between a cell's parts. */
+  gap: 10px;
   min-height: var(--size-row-lg);
   padding-top: 0;
 }

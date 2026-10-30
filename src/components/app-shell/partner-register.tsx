@@ -544,7 +544,9 @@ export function PartnerRegister({
           ),
           payee: (
             <>
-              <span className={styles.truncate}>{payee(row)}</span>
+              <span className={`${styles.truncate} ${local.payeeName}`}>
+                {payee(row)}
+              </span>
               {paidBy && (
                 <span className={`${local.paidBy} ${styles.faint}`}>
                   {paidBy}
@@ -579,8 +581,12 @@ export function PartnerRegister({
               {name(row.categoryId) ?? "No category"}
             </span>
           ),
-          shared: opens && !settlement ? money(row.shared) : "",
-          balance: money(row.balance),
+          // Each cell carries its own tone, so it reads the same in the row
+          // and in the editor.
+          shared: opens && !settlement && (
+            <span className={styles.faint}>{money(row.shared)}</span>
+          ),
+          balance: <span className={styles.muted}>{money(row.balance)}</span>,
         };
         const edits = opens && !settlement;
         if (edits && editing?.id === row.id)
@@ -671,7 +677,7 @@ export function PartnerRegister({
                 {cells.category}
               </span>
               <span
-                className={`${styles.numeric} ${styles.faint}`}
+                className={styles.numeric}
                 data-column="shared"
                 data-optional
               >
@@ -680,10 +686,7 @@ export function PartnerRegister({
               <span className={styles.numeric} data-column="amount">
                 {money(row.change, true)}
               </span>
-              <span
-                className={`${styles.numeric} ${styles.muted}`}
-                data-column="balance"
-              >
+              <span className={styles.numeric} data-column="balance">
                 {cells.balance}
               </span>
               <span />
