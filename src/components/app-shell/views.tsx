@@ -60,7 +60,7 @@ import { useShellData } from "./shell-data";
 import {
   SelectAll,
   SelectionIsland,
-  type WayBack,
+  type Way,
   useReviewSelection,
 } from "./transaction-review";
 import styles from "./shell.module.css";
@@ -796,7 +796,7 @@ export function RegisterView({
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
   onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
-  back: WayBack | null;
+  back: Way | null;
 }) {
   const { transactions, openingBalances, accounts, month } = useShellData();
   const entry = useTransactionEntry();

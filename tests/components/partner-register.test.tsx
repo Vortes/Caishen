@@ -6,7 +6,12 @@ import {
   execute,
   withCounterpartyAccounts,
 } from "~/domain/engine";
-import { findToast, readyOverview, renderShell } from "./shell-harness";
+import {
+  findToast,
+  readyOverview,
+  renderShell,
+  transactionRow,
+} from "./shell-harness";
 
 function sharedBook() {
   const book = withCounterpartyAccounts(
@@ -179,4 +184,43 @@ test("an open entry keeps what's typed when another entry is clicked", async () 
       { name: "Amount" },
     ),
   ).toHaveProperty("value", "12");
+});
+
+test("an entry you paid opens its transaction from the selection island", async () => {
+  let book = execute(sharedBook(), "owner", {
+    type: "account.add",
+    id: "add-checking",
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+  });
+  book = execute(book, "owner", {
+    type: "transaction.upsert",
+    id: "dinner",
+    transactionId: "dinner",
+    accountId: "checking",
+    date: "2026-10-14",
+    amount: -8_000,
+    payee: "Dinner",
+    categoryId: "household",
+    recordedAt: "2026-10-14T12:00:00Z",
+    counterpartyShare: { accountId: "counterparty:partner", amount: 4_000 },
+  });
+  const shell = await renderShell({
+    book,
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await shell.user.click(
+    await within(
+      screen.getByRole("navigation", { name: "Budget navigation" }),
+    ).findByRole("link", { name: /^Anna/ }),
+  );
+  expect(ledger().queryByText("Shared")).toBeNull();
+  await shell.user.click(entryRow("Dinner"));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Open in Checking" }),
+  );
+  expect(screen.getByRole("heading", { name: "Checking" })).toBeTruthy();
+  expect(transactionRow("Dinner").getAttribute("aria-current")).toBe("true");
 });

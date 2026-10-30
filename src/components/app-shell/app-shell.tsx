@@ -51,7 +51,7 @@ import { SettingsNav, Sidebar } from "./sidebar";
 import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
-import type { WayBack } from "./transaction-review";
+import type { Way } from "./transaction-review";
 import { PartnerRegister } from "./partner-register";
 import {
   ReimbursementFilters,
@@ -584,13 +584,14 @@ export function AppShell({
   const returnTo = useRef<string | null>(null);
   // Only in the register the transaction opened in; browsing anywhere else
   // forgets it.
-  const back: WayBack | null =
+  const back: Way | null =
     cameFrom &&
     screen.type === "register" &&
     screen.accountId === cameFrom.accountId
       ? {
           name: cameFrom.name,
-          onBack: () => {
+          label: `Back to ${cameFrom.name} in the plan`,
+          onGo: () => {
             if (entry.holdForDraft()) return;
             navigateTo(cameFrom.href);
             setRevealed({ type: "category", id: cameFrom.categoryId });
@@ -1020,6 +1021,7 @@ export function AppShell({
                                 key={account.id}
                                 account={account}
                                 query={deferredQuery}
+                                onJump={jump}
                                 selectedId={selectedId}
                                 onSelect={selectOnly}
                                 checked={checked}

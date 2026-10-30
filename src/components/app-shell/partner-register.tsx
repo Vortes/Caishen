@@ -37,6 +37,7 @@ import {
   CategorizeAction,
   SelectAll,
   SelectionBar,
+  type Way,
 } from "./transaction-review";
 import { Empty, moveSelection, RowCheckbox } from "./views";
 import styles from "./shell.module.css";
@@ -379,9 +380,16 @@ export function PartnerRegister({
   onSelect,
   checked,
   onCheck,
+  onJump,
 }: {
   account: Account;
   query: string;
+  // Opens a transaction in its own account's register.
+  onJump: (transaction: {
+    id: string;
+    accountId: string;
+    date: string;
+  }) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
   checked: string[];
@@ -437,6 +445,26 @@ export function PartnerRegister({
         )
         ?.focus(),
     );
+  };
+  // The one selected entry you paid traces back to its transaction, in its
+  // own account's register.
+  const wayToTransaction = (): Way | null => {
+    if (checked.length > 1 || (checked[0] && checked[0] !== selectedId))
+      return null;
+    const row = rows.find((item) => item.id === selectedId);
+    const transaction = view.budget.transactions.find(
+      (item) => item.id === row?.transactionId && !item.removed,
+    );
+    const name = view.accounts.find(
+      (item) => item.id === transaction?.accountId,
+    )?.name;
+    if (!transaction || !name) return null;
+    return {
+      name,
+      label: `Open in ${name}`,
+      forward: true,
+      onGo: () => onJump(transaction),
+    };
   };
   if (!ledger.length)
     return closed ? (
@@ -500,9 +528,6 @@ export function PartnerRegister({
         </span>
         <span aria-hidden>Payee</span>
         <span aria-hidden>Your category</span>
-        <span className={styles.numeric} data-optional aria-hidden>
-          Shared
-        </span>
         <span className={styles.numeric} aria-hidden>
           Amount
         </span>
@@ -583,9 +608,6 @@ export function PartnerRegister({
           ),
           // Each cell carries its own tone, so it reads the same in the row
           // and in the editor.
-          shared: opens && !settlement && (
-            <span className={styles.faint}>{money(row.shared)}</span>
-          ),
           balance: <span className={styles.muted}>{money(row.balance)}</span>,
         };
         const edits = opens && !settlement;
@@ -679,13 +701,6 @@ export function PartnerRegister({
               <span className={styles.truncate} data-column="category">
                 {cells.category}
               </span>
-              <span
-                className={styles.numeric}
-                data-column="shared"
-                data-optional
-              >
-                {cells.shared}
-              </span>
               <span className={styles.numeric} data-column="amount">
                 {money(row.change, true)}
               </span>
@@ -704,27 +719,34 @@ export function PartnerRegister({
         selected={selected}
         onCheck={onCheck}
         disabled={Boolean(entry.session) || editing !== null}
+        way={wayToTransaction()}
       />
     </div>
   );
 }
 
-// The island over the ledger while entries are checked, with the one thing
-// they share: your category.
+// The island over the ledger while entries are selected: the way to the
+// selected entry's transaction, and the one thing checked entries share,
+// your category.
 function PartnerSelection({
   selected,
   onCheck,
   disabled,
+  way,
 }: {
   selected: Row[];
   onCheck: (ids: string[], value: boolean) => void;
   disabled: boolean;
+  way: Way | null;
 }) {
   const entry = useTransactionEntry();
-  if (!selected.length) return null;
   const ids = selected.map((row) => row.id);
   return (
-    <SelectionBar count={selected.length} onClear={() => onCheck(ids, false)}>
+    <SelectionBar
+      count={selected.length}
+      onClear={() => onCheck(ids, false)}
+      way={way}
+    >
       <CategorizeAction
         count={selected.length}
         disabled={disabled}
@@ -828,10 +850,7 @@ function SettlementDetail({
   );
 }
 
-type RowCells = Record<
-  "date" | "payee" | "category" | "shared" | "balance",
-  ReactNode
->;
+type RowCells = Record<"date" | "payee" | "category" | "balance", ReactNode>;
 
 // An entry, opened in place with the register's editor row. Its amount is
 // the share of the one who didn't pay, which either partner can change; the
@@ -995,7 +1014,6 @@ function EntryEditor({
         ) : (
           readOnly("category", cells.category)
         )}
-        {readOnly("shared", cells.shared, true)}
         {shareEditable ? (
           <EditorCell
             column="amount"

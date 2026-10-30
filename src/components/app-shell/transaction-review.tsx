@@ -2,6 +2,7 @@
 
 import {
   ArrowLeftIcon,
+  ArrowUpRightIcon,
   ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
@@ -115,8 +116,15 @@ export function SelectAll({
   );
 }
 
-// The plan category a transaction was opened from, to return to.
-export type WayBack = { name: string; onBack: () => void };
+// Somewhere the island can take you, named on its button: the plan
+// category a transaction was opened from, or the transaction a row came
+// from. label says where it goes in full.
+export type Way = {
+  name: string;
+  label: string;
+  forward?: boolean;
+  onGo: () => void;
+};
 
 // Floats over the bottom of the register while rows are selected, in place
 // of a details panel. Review actions disappear once the selection is approved.
@@ -129,19 +137,12 @@ export function SelectionIsland({
 }: {
   selection: ReturnType<typeof useReviewSelection>;
   onCheck: (ids: string[], value: boolean) => void;
-  back: WayBack | null;
+  back: Way | null;
 }) {
   const review = useTransactionReview();
   const entry = useTransactionEntry();
   // With nothing selected, the island keeps just the way back.
-  if (!selected.length)
-    return back ? (
-      <div className={styles.islandSlot}>
-        <div className={styles.island}>
-          <BackButton back={back} />
-        </div>
-      </div>
-    ) : null;
+  if (!selected.length) return <SelectionBar count={0} way={back} />;
   const { approve: approvable, enter: enterable, reject: rejectable } = actions;
   const approvals = [
     { label: "Approve", ids: approvable, save: review.approve },
@@ -157,7 +158,7 @@ export function SelectionIsland({
     <SelectionBar
       count={selected.length}
       onClear={() => onCheck(ids, false)}
-      back={back}
+      way={back}
       hint={overLimit && `Review up to ${TRANSACTION_ACTION_LIMIT} at a time.`}
     >
       {approvals.map((action, index) => (
@@ -203,16 +204,25 @@ export function SelectionIsland({
 export function SelectionBar({
   count,
   onClear,
-  back = null,
+  way = null,
   hint,
   children,
 }: {
   count: number;
-  onClear: () => void;
-  back?: WayBack | null;
+  onClear?: () => void;
+  way?: Way | null;
   hint?: string | false;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
+  // With nothing selected, the island keeps just its way somewhere else.
+  if (!count)
+    return way ? (
+      <div className={styles.islandSlot}>
+        <div className={styles.island}>
+          <WayButton way={way} />
+        </div>
+      </div>
+    ) : null;
   return (
     <div className={styles.islandSlot}>
       <div
@@ -220,9 +230,9 @@ export function SelectionBar({
         role="toolbar"
         aria-label="Selected transactions"
       >
-        {back && (
+        {way && (
           <>
-            <BackButton back={back} />
+            <WayButton way={way} />
             <span className={styles.divider} aria-hidden />
           </>
         )}
@@ -249,18 +259,18 @@ export function SelectionBar({
   );
 }
 
-function BackButton({ back }: { back: WayBack }) {
-  const label = `Back to ${back.name} in the plan`;
+function WayButton({ way }: { way: Way }) {
+  const Icon = way.forward ? ArrowUpRightIcon : ArrowLeftIcon;
   return (
-    <Tooltip label={label}>
+    <Tooltip label={way.label}>
       <Button
         variant="subtle"
         size="sm"
-        aria-label={label}
-        onClick={back.onBack}
+        aria-label={way.label}
+        onClick={way.onGo}
       >
-        <ArrowLeftIcon aria-hidden />
-        <span className={styles.backName}>{back.name}</span>
+        <Icon aria-hidden />
+        <span className={styles.backName}>{way.name}</span>
       </Button>
     </Tooltip>
   );
