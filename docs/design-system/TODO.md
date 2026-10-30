@@ -16,8 +16,8 @@ doesn't follow the design system yet. Check items off as they land.
       a `Tabs` variant or take the pill look (`app-shell.tsx`)
 - [ ] Month label button in the header (`app-shell.tsx`)
 - [ ] `Select`: the custom date range's native selects (`reflect/filters.tsx`)
-- [ ] `Popover` surface: the Reflect filters, slice, and move-money popovers
-      style their own (`reflect/reflect.module.css`, `move-money.module.css`)
+- [x] `Popover` surface: `Popover`, `Menu`, `Dialog` and `ConfirmDialog`
+      (`src/components/ui/`, [surfaces.md](surfaces.md))
 - [ ] Text field and combobox: the move-money amount input and its searchable
       destination list, including their invalid state and field error
       (`move-money.tsx`)
@@ -43,7 +43,7 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] Add a field-error token: move-money's invalid inputs and error text use
       `--danger-line` and `--danger-text`, which are meant for destructive
       confirms (`move-money.module.css`, `[data-invalid]`, `.error`)
-- [ ] Add an `--overlay` token for the scrims behind the peeking sidebar and
+- [x] Add an `--overlay` token for the scrims behind the peeking sidebar and
       the narrow drawer (`shell.module.css`, `.scrim`, `.peekScrim`)
 - [ ] Budget avatar's raw orange and white (`shell.module.css`, `.avatar`)
 - [ ] Chart series colors come from Dither Kit's RGB palette in TypeScript;
@@ -62,8 +62,8 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] Move the focus ring and the button font reset out of `.root` in
       `shell.module.css` into a global base stylesheet, so a screen outside the
       shell doesn't redeclare them
-- [ ] Add a `Dialog` primitive (confirm dialogs use Radix `AlertDialog`
-      directly today)
+- [x] Add a `Dialog` primitive: `Dialog` and `ConfirmDialog`
+      (`src/components/ui/dialog.tsx`)
 - [ ] The account Sync property's attention tag reads "Reconnect", an action;
       rename it to a state ("Signed out" or similar) and decide whether a
       Reconnect button sits beside it (`inspector.tsx`)

@@ -1,17 +1,15 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { AlertDialog } from "radix-ui";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
-import { usePortalContainer } from "~/components/ui/tooltip";
+import { ConfirmDialog } from "~/components/ui/dialog";
 import { useUser } from "@clerk/nextjs";
 import { ComposeInvitation } from "~/components/partner-invite/compose";
 import { useShellData } from "~/components/app-shell/shell-data";
 import { api } from "~/trpc/react";
 import styles from "~/components/app-shell/shell.module.css";
-import dialog from "~/components/app-shell/banks.module.css";
 import additions from "~/components/entry/settings.module.css";
 import batch from "~/components/entry/entry.module.css";
 
@@ -67,7 +65,6 @@ export function PartnerSettings() {
 // stays and what ends, since nothing undoes it but a new invitation.
 function Disconnect({ name }: { name: string }) {
   const utils = api.useUtils();
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
   const disconnect = api.budget.disconnect.useMutation({
     onSuccess: async () => {
@@ -76,52 +73,22 @@ function Disconnect({ name }: { name: string }) {
     },
   });
   return (
-    <AlertDialog.Root
+    <ConfirmDialog
       open={open}
       onOpenChange={(next) => {
-        if (disconnect.isPending) return;
         disconnect.reset();
         setOpen(next);
       }}
-    >
-      <AlertDialog.Trigger asChild>
-        <Button>Disconnect…</Button>
-      </AlertDialog.Trigger>
-      <AlertDialog.Portal container={container}>
-        <AlertDialog.Overlay className={dialog.overlay} />
-        <AlertDialog.Content className={dialog.dialog}>
-          <div className={dialog.header}>
-            <AlertDialog.Title className={dialog.title}>
-              Disconnect from {name}?
-            </AlertDialog.Title>
-            <AlertDialog.Description className={dialog.description}>
-              You’ll each keep a budget of your own. What you shared stays in
-              both budgets as it stands today, under an account named after the
-              other person, and what one of you owes the other is kept. Nothing
-              new can be shared or settled there. {name} will see that you
-              disconnected, and either of you can invite a partner again.
-            </AlertDialog.Description>
-          </div>
-          {disconnect.error && (
-            <span className={styles.settingError} role="alert">
-              {disconnect.error.message}
-            </span>
-          )}
-          <div className={dialog.footer}>
-            <AlertDialog.Cancel asChild>
-              <Button disabled={disconnect.isPending}>Cancel</Button>
-            </AlertDialog.Cancel>
-            <Button
-              variant="danger"
-              disabled={disconnect.isPending}
-              onClick={() => disconnect.mutate()}
-            >
-              {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
-            </Button>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+      trigger={<Button>Disconnect…</Button>}
+      title={`Disconnect from ${name}?`}
+      description={`You’ll each keep a budget of your own. What you shared stays in both budgets as it stands today, under an account named after the other person, and what one of you owes the other is kept. Nothing new can be shared or settled there. ${name} will see that you disconnected, and either of you can invite a partner again.`}
+      cancel="Cancel"
+      confirm={disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+      tone="danger"
+      onConfirm={() => disconnect.mutate()}
+      pending={disconnect.isPending}
+      error={disconnect.error?.message}
+    />
   );
 }
 

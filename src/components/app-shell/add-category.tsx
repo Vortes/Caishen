@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
-import { Popover } from "radix-ui";
 import {
   createContext,
   useContext,
@@ -9,18 +8,17 @@ import {
   useId,
   useRef,
   useState,
-  type ReactNode,
+  type ReactElement,
 } from "react";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
-import { Tooltip, usePortalContainer } from "~/components/ui/tooltip";
+import { Tooltip } from "~/components/ui/tooltip";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
-// The move-money popover's form surface and fields.
+import { Popover } from "~/components/ui/popover";
+// The move-money popover's form fields.
 import styles from "./move-money.module.css";
 
 // What was just added, for the plan to bring into view.
@@ -85,56 +83,49 @@ function AddPopover({
   onOpenChange: (open: boolean) => void;
   align?: "start" | "center" | "end";
   tooltip?: { label: string; shortcut?: string };
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
-  const motion = usePopoverMotion(open);
   const { holdOpen, reveal } = useAddCategory();
   // Where focus goes once the form closes: what it added, after an add,
   // otherwise back to the button that opened it.
   const added = useRef<Added | null>(null);
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
-  const trigger = <Popover.Trigger asChild>{children}</Popover.Trigger>;
   return (
-    <Popover.Root open={open} onOpenChange={onOpenChange}>
-      {tooltip && !open ? (
-        <Tooltip label={tooltip.label} shortcut={tooltip.shortcut}>
-          {trigger}
-        </Tooltip>
-      ) : (
-        // While the form is open its trigger has no tooltip, which, left open
-        // under the pointer that clicked it, would take the form's Escape.
-        trigger
-      )}
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          side="bottom"
-          align={align}
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={
-            group ? `Add a category to ${group}` : "Add a category group"
-          }
-          onCloseAutoFocus={(event) => {
-            const next = added.current;
-            added.current = null;
-            if (!next) return;
-            event.preventDefault();
-            reveal(next);
-          }}
-        >
-          <NameForm
-            group={group}
-            onAdded={(next) => {
-              added.current = next;
-              onOpenChange(false);
-            }}
-          />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label={group ? `Add a category to ${group}` : "Add a category group"}
+      trigger={
+        tooltip && !open ? (
+          <Tooltip label={tooltip.label} shortcut={tooltip.shortcut}>
+            {children}
+          </Tooltip>
+        ) : (
+          // While the form is open its trigger has no tooltip, which, left
+          // open under the pointer that clicked it, would take the form's
+          // Escape.
+          children
+        )
+      }
+      open={open}
+      onOpenChange={onOpenChange}
+      align={align}
+      size="form"
+      onCloseAutoFocus={(event) => {
+        const next = added.current;
+        added.current = null;
+        if (!next) return;
+        event.preventDefault();
+        reveal(next);
+      }}
+    >
+      <NameForm
+        group={group}
+        onAdded={(next) => {
+          added.current = next;
+          onOpenChange(false);
+        }}
+        onCancel={() => onOpenChange(false)}
+      />
+    </Popover>
   );
 }
 
@@ -150,10 +141,12 @@ function NameForm({
   choice,
   onAdded,
   onSettled,
+  onCancel,
 }: {
   group?: string;
   choice?: { name: string; group: string };
   onAdded: (added: Added, category?: NewCategory) => void;
+  onCancel: () => void;
   // Whether the new category saved, once the server answers.
   onSettled?: (category: NewCategory, saved: boolean) => void;
 }) {
@@ -284,9 +277,9 @@ function NameForm({
         </div>
       )}
       <div className={styles.footer}>
-        <Popover.Close asChild>
-          <Button size="sm">Cancel</Button>
-        </Popover.Close>
+        <Button size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
         <Button variant="primary" size="sm" type="submit">
           {target ? "Add category" : "Add category group"}
         </Button>
@@ -316,56 +309,52 @@ export function NewCategoryPopover({
   onSettled: (category: NewCategory, saved: boolean) => void;
   // Takes focus once the form closes, with what it added, if anything.
   onClosed: (category: NewCategory | null) => void;
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
-  const motion = usePopoverMotion(open);
   const added = useRef<NewCategory | null>(null);
   const { groups } = useShellData();
   const choices = groups.filter((item) => !isSystemGroup(item));
   const start =
     choices.find((item) => item.name === group)?.name ?? choices[0]?.name;
   return (
-    <Popover.Root open={open} onOpenChange={onOpenChange}>
-      <Popover.Anchor asChild>{children}</Popover.Anchor>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          side="bottom"
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label="Add a category"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            onClosed(added.current);
-            added.current = null;
-          }}
-          onKeyDown={(event) => {
-            // Escape closes this, not the editor around the field.
-            if (event.key === "Escape") event.stopPropagation();
-          }}
-        >
-          {start ? (
-            <NameForm
-              choice={{ name, group: start }}
-              onAdded={(_, category) => {
-                if (!category) return;
-                added.current = category;
-                onAdded(category);
-                onOpenChange(false);
-              }}
-              onSettled={onSettled}
-            />
-          ) : (
-            <p className={styles.empty}>
-              Add a category group on the plan first.
-            </p>
-          )}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label="Add a category"
+      size="form"
+      anchor={children}
+      open={open}
+      onOpenChange={onOpenChange}
+      autoFocus
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        onClosed(added.current);
+        added.current = null;
+      }}
+    >
+      <div
+        onKeyDown={(event) => {
+          // Escape closes this, not the editor around the field.
+          if (event.key === "Escape") event.stopPropagation();
+        }}
+      >
+        {start ? (
+          <NameForm
+            choice={{ name, group: start }}
+            onAdded={(_, category) => {
+              if (!category) return;
+              added.current = category;
+              onAdded(category);
+              onOpenChange(false);
+            }}
+            onSettled={onSettled}
+            onCancel={() => onOpenChange(false)}
+          />
+        ) : (
+          <p className={styles.empty}>
+            Add a category group on the plan first.
+          </p>
+        )}
+      </div>
+    </Popover>
   );
 }
 

@@ -7,7 +7,6 @@ import {
   SearchIcon,
   UsersIcon,
 } from "lucide-react";
-import { Popover } from "radix-ui";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
@@ -15,9 +14,7 @@ import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
 import { useRowSelection } from "~/components/ui/use-row-selection";
 import selectionStyles from "~/components/ui/row-selection.module.css";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
@@ -185,13 +182,17 @@ function RequestProgress({
 function RequestPopover({ account }: { account: Account }) {
   const id = useId();
   const { view, saveCommand } = useTransactionEntry();
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   return (
-    <Popover.Root
+    <Popover
+      label={`Request money from ${account.name}`}
+      trigger={
+        <Button size="sm" variant="primary">
+          Request money
+        </Button>
+      }
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
@@ -199,77 +200,63 @@ function RequestPopover({ account }: { account: Account }) {
         setText((account.balance / 100).toFixed(2));
         setError("");
       }}
+      align="end"
+      size="form"
+      arrow
     >
-      <Popover.Trigger asChild>
-        <Button size="sm" variant="primary">
-          Request money
-        </Button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          align="end"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={`Request money from ${account.name}`}
-        >
-          <form
-            className={moveStyles.form}
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              const cents = parseCents(text);
-              if (!cents) return setError("Enter an amount, like 250.00.");
-              const failure = saveCommand(
-                {
-                  type: "partner.request",
-                  id: newId(),
-                  requestId: newId(),
-                  date: today(view.budget.settings.timezone),
-                  amount: cents,
-                },
-                `Asked ${account.name} for ${money(cents)}. It’s on both ledgers.`,
-              );
-              if (failure) return setError(failure);
-              setOpen(false);
+      <form
+        className={moveStyles.form}
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          const cents = parseCents(text);
+          if (!cents) return setError("Enter an amount, like 250.00.");
+          const failure = saveCommand(
+            {
+              type: "partner.request",
+              id: newId(),
+              requestId: newId(),
+              date: today(view.budget.settings.timezone),
+              amount: cents,
+            },
+            `Asked ${account.name} for ${money(cents)}. It’s on both ledgers.`,
+          );
+          if (failure) return setError(failure);
+          setOpen(false);
+        }}
+      >
+        <div className={moveStyles.header}>
+          <strong>Request from {account.name}</strong>
+        </div>
+        <div className={moveStyles.field}>
+          <label htmlFor={id}>Amount</label>
+          <AmountWell
+            id={id}
+            value={text}
+            autoFocus
+            invalid={Boolean(error)}
+            onChange={(value) => {
+              setText(value);
+              if (error) setError("");
             }}
-          >
-            <div className={moveStyles.header}>
-              <strong>Request from {account.name}</strong>
-            </div>
-            <div className={moveStyles.field}>
-              <label htmlFor={id}>Amount</label>
-              <AmountWell
-                id={id}
-                value={text}
-                autoFocus
-                invalid={Boolean(error)}
-                onChange={(value) => {
-                  setText(value);
-                  if (error) setError("");
-                }}
-              />
-              {error && <p className={moveStyles.error}>{error}</p>}
-              <p className={share.formHint}>
-                {account.name} sees it on the ledger with today&rsquo;s date.
-                Settlements count toward it until it&rsquo;s paid. No deadline,
-                no reminders.
-              </p>
-            </div>
-            <div className={moveStyles.footer}>
-              <Button size="sm" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button size="sm" variant="primary" type="submit">
-                Request
-              </Button>
-            </div>
-          </form>
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+          />
+          {error && <p className={moveStyles.error}>{error}</p>}
+          <p className={share.formHint}>
+            {account.name} sees it on the ledger with today&rsquo;s date.
+            Settlements count toward it until it&rsquo;s paid. No deadline, no
+            reminders.
+          </p>
+        </div>
+        <div className={moveStyles.footer}>
+          <Button size="sm" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" type="submit">
+            Request
+          </Button>
+        </div>
+      </form>
+    </Popover>
   );
 }
 
@@ -277,9 +264,7 @@ function RequestPopover({ account }: { account: Account }) {
 // recognized, and copies the amount to send.
 function PayPopover({ account }: { account: Account }) {
   const { view } = useTransactionEntry();
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   const [copied, setCopied] = useState(false);
   const amount = -account.balance;
   const request = view.partnerRequest;
@@ -289,71 +274,60 @@ function PayPopover({ account }: { account: Account }) {
     return () => window.clearTimeout(timer);
   }, [copied]);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
+    <Popover
+      label={`Pay ${account.name}`}
+      trigger={
         <Button size="sm" variant="primary">
           Pay {account.name}
         </Button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          align="end"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={`Pay ${account.name}`}
-        >
-          <div className={moveStyles.form}>
-            <div className={moveStyles.header}>
-              <strong>Pay {account.name}</strong>
-              <span className={moveStyles.balance}>{money(amount)}</span>
-            </div>
-            <div className={local.popoverBody}>
-              <p>
-                Send it from your bank, by Zelle or a transfer, in any amount.
-                When it imports to both budgets, it&rsquo;s matched by amount,
-                date, and direction, and the balance updates for you both.
-              </p>
-              {request &&
-                request.requesterId !== view.budget.userId &&
-                request.left > 0 && (
-                  <p className={styles.faint}>
-                    {account.name} asked for {money(request.amount)} on{" "}
-                    {shortDay(request.date)}. {money(request.left)} is left.
-                  </p>
-                )}
+      }
+      open={open}
+      onOpenChange={setOpen}
+      align="end"
+      size="form"
+      arrow
+    >
+      <div className={moveStyles.form}>
+        <div className={moveStyles.header}>
+          <strong>Pay {account.name}</strong>
+          <span className={moveStyles.balance}>{money(amount)}</span>
+        </div>
+        <div className={local.popoverBody}>
+          <p>
+            Send it from your bank, by Zelle or a transfer, in any amount. When
+            it imports to both budgets, it&rsquo;s matched by amount, date, and
+            direction, and the balance updates for you both.
+          </p>
+          {request &&
+            request.requesterId !== view.budget.userId &&
+            request.left > 0 && (
               <p className={styles.faint}>
-                The {money(amount)} is already held in your {account.name}{" "}
-                envelope, so paying won&rsquo;t touch any other category.
+                {account.name} asked for {money(request.amount)} on{" "}
+                {shortDay(request.date)}. {money(request.left)} is left.
               </p>
-            </div>
-            <div className={moveStyles.footer}>
-              <Button
-                size="sm"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(
-                    (amount / 100).toFixed(2),
-                  );
-                  setCopied(true);
-                }}
-              >
-                {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
-                {copied ? "Copied" : "Copy amount"}
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => setOpen(false)}
-              >
-                Done
-              </Button>
-            </div>
-          </div>
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+            )}
+          <p className={styles.faint}>
+            The {money(amount)} is already held in your {account.name} envelope,
+            so paying won&rsquo;t touch any other category.
+          </p>
+        </div>
+        <div className={moveStyles.footer}>
+          <Button
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard?.writeText((amount / 100).toFixed(2));
+              setCopied(true);
+            }}
+          >
+            {copied ? <CheckIcon aria-hidden /> : <CopyIcon aria-hidden />}
+            {copied ? "Copied" : "Copy amount"}
+          </Button>
+          <Button size="sm" variant="primary" onClick={() => setOpen(false)}>
+            Done
+          </Button>
+        </div>
+      </div>
+    </Popover>
   );
 }
 

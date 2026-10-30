@@ -141,3 +141,5 @@ is the band that sweeps it. Only `Skeleton` uses them; a hand-drawn bone in
 
 Shadows: `--shadow-card` for cards, `--shadow-drawer` for anything that
 floats over content (drawers, popovers), `--shadow-tooltip` for tooltips.
+
+Scrims: `--overlay` dims the page behind a dialog or an open drawer.

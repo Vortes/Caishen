@@ -84,33 +84,11 @@
 .island > .actions:empty {
   display: none;
 }
-.categoryMenu {
-  width: min(240px, calc(100vw - 24px));
-  min-width: 0;
-  max-height: var(--radix-popper-available-height);
-  overflow-y: auto;
-}
-.categoryMenu .categoryGroup {
-  height: auto;
-  min-height: var(--size-row-sm);
-  padding-block: 8px;
-}
-.categoryGroup > span {
-  flex: 1;
-}
-.menuError {
-  padding: var(--space-inset);
-}
 .shareConfirmation {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: var(--space-card);
-}
-.sharePopover {
-  width: min(var(--size-popover), calc(100vw - 24px));
-  max-height: var(--radix-popover-content-available-height);
-  overflow-y: auto;
 }
 .shareConfirmation > strong {
   color: var(--text-primary);
@@ -163,8 +141,7 @@
 }
 @media (pointer: coarse) {
   .island,
-  .categoryMenu,
-  .sharePopover {
+  .sharePanel {
     --size-control-xs: var(--size-row-lg);
     --size-control: var(--size-row-lg);
   }

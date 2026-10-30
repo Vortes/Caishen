@@ -46,7 +46,8 @@ import {
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
-import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
+import { SurfaceProvider } from "~/components/ui/surface";
+import { Tooltip } from "~/components/ui/tooltip";
 import { SettingsNav, Sidebar } from "./sidebar";
 import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
@@ -724,7 +725,7 @@ export function AppShell({
           data-dragging={sidebar.dragging || inspector.dragging || undefined}
           data-peekable={peekable || undefined}
         >
-          <TooltipProvider container={rootElement}>
+          <SurfaceProvider container={rootElement}>
             <a className={styles.skipLink} href="#app-content">
               Skip to content
             </a>
@@ -1152,7 +1153,7 @@ export function AppShell({
             </div>
 
             {overlays}
-          </TooltipProvider>
+          </SurfaceProvider>
         </div>
       </ActionProviders>
     </ShellDataProvider>

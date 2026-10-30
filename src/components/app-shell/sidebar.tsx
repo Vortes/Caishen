@@ -18,7 +18,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { MotionConfig, motion } from "motion/react";
-import { DropdownMenu } from "radix-ui";
 import {
   useState,
   type ComponentProps,
@@ -28,9 +27,7 @@ import {
 import { newId } from "~/components/budget/format";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { IconButton } from "~/components/ui/icon-button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Menu, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { AccountEntry } from "./account-entry";
 import { useAddCategory } from "./add-category";
 import { BanksPopover } from "./banks";
@@ -417,62 +414,42 @@ function ProfileMenu({
 }) {
   const { budgetName, partner } = useShellData();
   const { signOut } = useClerk();
-  const container = usePortalContainer();
-  const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open, "occasional");
   return (
-    <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
-      <DropdownMenu.Trigger asChild>
+    <Menu
+      label={budgetName}
+      motion="occasional"
+      trigger={
         <button type="button" className={styles.switcher}>
           <UserAvatar fallback={budgetName} />
           <span className={styles.switcherName}>{budgetName}</span>
           <ChevronDownIcon size={12} aria-hidden />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal container={container}>
-        <DropdownMenu.Content
-          className={styles.menu}
-          {...motion}
-          align="start"
-          sideOffset={POPOVER_GAP}
-          // The switcher sits nearer the window edge than 12px; padding the
-          // left side would shift the menu off the switcher's left edge.
-          collisionPadding={{ top: 12, right: 12, bottom: 12 }}
-        >
-          <DropdownMenu.Item className={styles.menuItem} asChild>
-            <a
-              href={hrefFor("profile")}
-              onClick={(event) => followLink(event, onNavigate)}
-            >
-              <SettingsIcon size={14} aria-hidden />
-              Settings
-            </a>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className={styles.menuItem} asChild>
-            <a
-              href={hrefFor("partner")}
-              onClick={(event) => followLink(event, onNavigate)}
-            >
-              <UserPlusIcon size={14} aria-hidden />
-              {partner ? "Partner" : "Invite partner"}
-            </a>
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator className={styles.menuSeparator} />
-          <DropdownMenu.Item
-            className={styles.menuItem}
-            onSelect={() =>
-              // The budget this browser kept goes before the session does.
-              void deleteStoredBudgets().finally(
-                () => void signOut({ redirectUrl: "/" }),
-              )
-            }
-          >
-            <LogOutIcon size={14} aria-hidden />
-            Log out
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+      }
+    >
+      <MenuItem
+        icon={<SettingsIcon size={14} aria-hidden />}
+        title="Settings"
+        href={hrefFor("profile")}
+        onNavigate={onNavigate}
+      />
+      <MenuItem
+        icon={<UserPlusIcon size={14} aria-hidden />}
+        title={partner ? "Partner" : "Invite partner"}
+        href={hrefFor("partner")}
+        onNavigate={onNavigate}
+      />
+      <MenuSeparator />
+      <MenuItem
+        icon={<LogOutIcon size={14} aria-hidden />}
+        title="Log out"
+        onSelect={() =>
+          // The budget this browser kept goes before the session does.
+          void deleteStoredBudgets().finally(
+            () => void signOut({ redirectUrl: "/" }),
+          )
+        }
+      />
+    </Menu>
   );
 }
 

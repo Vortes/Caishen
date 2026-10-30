@@ -21,19 +21,13 @@
   background: var(--control-bg);
 }
 
-.popover {
-  composes: content from "../../ui/popover-motion.module.css";
-  z-index: 60;
+/* A filter's popover: header and footer stay while the list scrolls,
+   within the room the popover has. */
+.filterPanel {
   display: flex;
   flex-direction: column;
-  width: var(--size-popover);
-  max-height: min(440px, var(--radix-popover-content-available-height));
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-secondary);
-  font-size: var(--type-body);
+  min-height: 0;
+  max-height: 440px;
 }
 .popoverHeader,
 .popoverFooter {
@@ -348,9 +342,13 @@
 
 /* ---------- Slice popover ---------- */
 
-.slicePopover {
-  width: min(560px, calc(100vw - 24px));
-  max-height: min(420px, var(--radix-popover-content-available-height));
+/* Header and footer stay put while the rows scroll, within the room the
+   popover has. */
+.slicePanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 420px;
 }
 .sliceHeader {
   flex: none;
@@ -436,9 +434,6 @@ button.sliceColumns:hover {
 }
 .sliceColumns[data-static] {
   color: var(--text-tertiary);
-}
-.popoverArrow {
-  fill: var(--surface-raised);
 }
 
 /* ---------- Headline, grouping ---------- */

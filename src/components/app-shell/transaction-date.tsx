@@ -1,7 +1,6 @@
 "use client";
 
 import { CalendarIcon } from "lucide-react";
-import { Popover } from "radix-ui";
 import {
   useImperativeHandle,
   useRef,
@@ -10,8 +9,7 @@ import {
 } from "react";
 import { Calendar, type CalendarHandle } from "~/components/ui/calendar";
 import { IconButton } from "~/components/ui/icon-button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import styles from "./transaction-entry.module.css";
 
 // What the form can ask of the date field once it's on screen.
@@ -105,8 +103,6 @@ export function DateField({
   // Tab out of the calendar moves on to the next field.
   onAdvance: () => void;
 }) {
-  const container = usePortalContainer();
-  const anchorRef = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const calendar = useRef<CalendarHandle>(null);
@@ -140,6 +136,18 @@ export function DateField({
     else trigger.current?.focus({ preventScroll: true });
   };
 
+  // When the calendar mounts after the form asked it to take focus, it takes
+  // it, unless focus has since moved on to another field: then the calendar
+  // gets out of its way.
+  const onShown = () => {
+    const from = pending.current;
+    pending.current = null;
+    if (!from) return;
+    const active = document.activeElement;
+    if (active === from || active === document.body) focusDay();
+    else if (active !== input.current) onOpenChange(false);
+  };
+
   // The calendar sits in a portal, so Tab out of it goes back to the form:
   // forward to the next field, backward to the date text.
   const onContentKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -168,15 +176,15 @@ export function DateField({
   };
 
   return (
-    <Popover.Root
+    <Popover
+      id={calendarId}
+      label={`${label} calendar`}
       open={shown}
       onOpenChange={(next) => {
         if (!next) onOpenChange(false);
       }}
-    >
-      <Popover.Anchor asChild>
+      anchor={
         <div
-          ref={anchorRef}
           className={styles.well}
           data-invalid={invalid ? true : undefined}
           data-date
@@ -258,46 +266,25 @@ export function DateField({
             </IconButton>
           </span>
         </div>
-      </Popover.Anchor>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          id={calendarId}
-          aria-label={`${label} calendar`}
-          className={styles.calendar}
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            const from = pending.current;
-            pending.current = null;
-            if (!from) return;
-            // Focus that moved on to another field in the meantime stays
-            // there, and the calendar gets out of its way.
-            const active = document.activeElement;
-            if (active === from || active === document.body) focusDay();
-            else if (active !== input.current) onOpenChange(false);
-          }}
-          onCloseAutoFocus={(event) => event.preventDefault()}
-          // Escape is handled on the calendar itself, so the editor around
-          // it stays open until the next press.
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          onInteractOutside={(event) => {
-            if (anchorRef.current?.contains(event.target as Node))
-              event.preventDefault();
-          }}
-          onKeyDown={onContentKeyDown}
-        >
-          <Calendar
-            ref={calendar}
-            value={chosen}
-            today={today}
-            min={min}
-            max={max}
-            onSelect={pick}
-          />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      }
+    >
+      {/* Escape is handled here, so the editor around the calendar stays
+          open until the next press. */}
+      <div
+        ref={(panel) => {
+          if (panel) onShown();
+        }}
+        onKeyDown={onContentKeyDown}
+      >
+        <Calendar
+          ref={calendar}
+          value={chosen}
+          today={today}
+          min={min}
+          max={max}
+          onSelect={pick}
+        />
+      </div>
+    </Popover>
   );
 }

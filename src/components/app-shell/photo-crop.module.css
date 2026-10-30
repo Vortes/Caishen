@@ -1,88 +1,5 @@
-/* The photo crop dialog, on the same surface as the shell's popovers. It
-   has no anchor, so it grows from the viewport's center; the overlay shares
-   its timing so the two read as one motion. Leaving is quicker and smaller,
-   since attention has already moved on. */
-
-.overlay {
-  position: fixed;
-  z-index: 80;
-  inset: 0;
-  background: oklch(0 0 0 / 0.4);
-}
-:global([data-theme="light"]) .overlay {
-  background: oklch(0.2 0.01 var(--hue) / 0.2);
-}
-.overlay[data-state="open"] {
-  animation: overlay-in 200ms ease-out;
-}
-.overlay[data-state="closed"] {
-  animation: overlay-out 150ms ease-in forwards;
-}
-
-.dialog {
-  position: fixed;
-  z-index: 81;
-  top: 50%;
-  left: 50%;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: min(400px, calc(100vw - 24px));
-  padding: var(--space-card);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  translate: -50% -50%;
-}
-.dialog[data-state="open"] {
-  animation: dialog-in 200ms var(--ease-panel);
-}
-.dialog[data-state="closed"] {
-  animation: dialog-out 150ms ease-in forwards;
-}
-.dialog:focus-visible {
-  outline: none;
-}
-
-@keyframes overlay-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes overlay-out {
-  to {
-    opacity: 0;
-  }
-}
-@keyframes dialog-in {
-  from {
-    opacity: 0;
-    scale: 0.96;
-  }
-}
-@keyframes dialog-out {
-  to {
-    opacity: 0;
-    scale: 0.98;
-  }
-}
-
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.title {
-  margin: 0;
-  font-size: var(--type-title);
-  font-weight: 600;
-}
-.description {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-}
+/* The photo crop dialog's content; the surface, scrim and header are
+   Dialog's. */
 
 /* Square, so the round crop fills it edge to edge. The rest of the photo
    shows dimmed around the circle. */
@@ -159,11 +76,4 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .overlay[data-state],
-  .dialog[data-state] {
-    animation: none;
-  }
 }

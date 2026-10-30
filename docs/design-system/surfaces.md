@@ -50,144 +50,56 @@ written ("⌘K", "]"). The tooltip wraps exactly one focusable element.
 </Tooltip>
 ```
 
-## Popovers and dropdown menus
+## SurfaceProvider
 
-Use a popover for a small form or contextual detail attached to a trigger;
-use a dropdown menu for a list of actions. These are shell patterns, not
-shared primitives. Follow `account-entry.tsx` and `banks.tsx` in
-`src/components/app-shell/`, or `ProfileMenu` in `sidebar.tsx` for a menu.
-
-Every popover, dropdown menu, and tooltip uses `POPOVER_GAP` (6px) from
-`src/components/ui/tokens.ts` for the space between its button and surface:
+`src/components/ui/surface.tsx`. Every popover, menu, dialog and tooltip
+renders through a portal into the provider's `container`, so a panel that
+clips its overflow can't cut them off, and the root's `data-theme` still
+applies. The provider also tracks the input method that decides motion.
+Wrap a screen's themed root in it once; the app shell, entry pages and the
+empty frame already do.
 
 ```tsx
-import { POPOVER_GAP } from "~/components/ui/tokens";
-
-// Correct: the shared trigger gap, independent of viewport collision padding.
-<Popover.Content side="top" align="start" sideOffset={POPOVER_GAP} collisionPadding={12}>
-  …
-</Popover.Content>
-
-// Incorrect: omitting sideOffset makes the surface touch its button.
-<Popover.Content side="top" align="start">…</Popover.Content>
+<SurfaceProvider container={rootElement}>{screen}</SurfaceProvider>
 ```
 
-Do not simulate the gap with margin, padding, or a positioning transform.
-Radix must include it when calculating placement and available height.
-Use collision padding for viewport clearance; it must not shift a
-left-aligned surface away from a trigger near the left edge.
+[`Popover`](popovers.md), [`Menu`](menus.md) and [`Dialog`](dialogs.md) own
+everything else that makes a surface: the 6px gap
+from the trigger, 12px clearance from the window edge, the z-layer, the
+raised surface tokens, the available-height clamp and the motion. A screen
+passes names and content, never positioning props, classes or Radix parts.
+Something the interface can't express means widening the module in
+`src/components/ui`, never reaching past it.
 
-For actions inside the transaction selection pill, measure the gap from
-the pill's outer border, not its inset buttons. Both bulk-action popovers
-use an anchor spanning that border. Bulk Categorize opens category groups,
-with each group's categories in a submenu beside it. Choosing a category
-applies it immediately to the selected transactions; there is no Apply step.
-Use Radix menu navigation for pointer, touch, arrow keys, and typeahead.
-Escape dismisses the menu without clearing the transaction selection.
-Both menu levels open and close instantly.
+## Motion
 
-The Share confirmation uses `ChoiceField placement="inline"`: focus still
-opens the category list, but it stays in the form's layout above Cancel/Apply
-instead of covering the pill.
-
-## Popover and dropdown menu motion
-
-Use `src/components/ui/popover-motion.module.css` and `usePopoverMotion`
-from `src/components/ui/popover-motion.tsx` for popovers and dropdown menus.
 **Default to instant.** Animation is reserved for occasional secondary
-actions where the entrance helps connect the surface to its trigger.
+actions where the entrance connects the surface to its trigger. Pass
+`motion="occasional"` to a `Popover` or `Menu` only when its surface is in
+the occasional row:
 
-| Frequency                    | Surfaces                                                                                                                                                                                                                                                         | Motion                            |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Frequent work                | Ready to Assign, move money / cover overspending, create category/group, target behavior, reconcile, transaction entry and sharing, bulk categorizing/sharing, record purchases/repayments, request/pay partner, month picker, Reflect filters and chart details | Instant open and close            |
-| Occasional secondary actions | Profile, Banks, bank options, bank status, Add account                                                                                                                                                                                                           | Shared motion for pointer opening |
+| Frequency                    | Surfaces                                                                                                                                                                                                                                                         | `motion`             |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Frequent work                | Ready to Assign, move money / cover overspending, create category/group, target behavior, reconcile, transaction entry and sharing, bulk categorizing/sharing, record purchases/repayments, request/pay partner, month picker, Reflect filters and chart details | `frequent` (default) |
+| Occasional secondary actions | Profile, Banks, bank options, bank status, Add account                                                                                                                                                                                                           | `occasional`         |
 
-The shared stylesheet owns the transitions and reads the four popover motion
-tokens in [scale.md](scale.md#motion); do not duplicate them in feature CSS.
-New surfaces are instant unless their frequency justifies opting in.
-This also applies inside frequent-use forms: destination lists and sharing
-or reconciliation steps change immediately, without height animation or
-cross-fades.
+A new surface is frequent unless its frequency justifies opting in. Inside
+frequent forms, steps such as destination lists and sharing or
+reconciliation change immediately, without height animation or
+cross-fades. Dialogs are always occasional; submenus always instant.
 
-```css
-/* In an app-shell surface module; adjust the relative path as needed. */
-.popover {
-  composes: content from "../ui/popover-motion.module.css";
-}
-```
+What the module does with it, so nothing needs adding at a site:
 
-```tsx
-const [open, setOpen] = useState(false);
-// Frequent work is instant by default.
-const motion = usePopoverMotion(open);
-// For an occasional secondary surface only:
-// const motion = usePopoverMotion(open, "occasional");
-
-<Popover.Root open={open} onOpenChange={setOpen}>
-  {/* Trigger and themed portal */}
-  <Popover.Content
-    {...motion}
-    className={styles.popover}
-    sideOffset={POPOVER_GAP}
-  >
-    …
-  </Popover.Content>
-</Popover.Root>;
-```
-
-`TooltipProvider` installs the motion provider once for the shell. The hook
-captures the input method when opening, so typing inside a form cannot
-change its entrance or exit. Keep content and its anchor mounted while
-Radix completes the exit animation.
-
-Transaction option lists (`transaction-fields.tsx`), the date calendar
-(`transaction-date.tsx`), and bulk Categorize (`transaction-review.tsx`)
-remain unanimated. They belong to the frequent-work rule above.
-
-For the occasional surfaces:
-
-- Enter over **180ms** with **`var(--ease-panel)`**, fading from opacity 0
-  and scaling from **0.97** to 1. Start **4px toward the trigger**: translate
-  down for a surface above its trigger, up for one below it. Finish with no
-  offset and scale 1. Follow the resolved placement if collision handling flips it.
-- Exit over **120ms** with **`ease-in`**, fading to opacity 0 and scaling
-  to **0.97**.
-- Use CSS transitions so closing or reopening mid-motion continues from
-  the current rendered state. `@starting-style` supplies the initial entrance.
-  Radix Presence waits for `animationend`, so a separate exit animation
-  controls only the mounted lifetime and pointer events; it must not set
-  opacity or transform. All visible motion belongs to the transitions.
-- Keep an identity transform and `will-change: transform, opacity` on
-  animated content while mounted, avoiding a render-layer change when
-  closing starts. Instant surfaces do not need this promotion.
-- The shared stylesheet sets `transform-origin` to
-  `var(--radix-popper-transform-origin)`, inherited from Radix's wrapper
-  for both popovers and dropdown menus.
-  Animate the content, never Radix's positioning wrapper.
-- Pointer opening animates. Keyboard opening is instant: spread the hook's
-  `data-instant` attribute onto the content. Preserve the normal
-  keyboard focus behavior; do not wait for an animation to focus a field.
-- Under **`prefers-reduced-motion: reduce`**, disable both enter and exit
-  animation. Tooltip motion remains the shared `Tooltip` component's own
-  behavior; it shares the gap token, not this menu animation.
-- Never scale or translate a popup trigger during press, including while
-  it is still closed. Radix can measure the pressed button before it
-  settles, then snap the surface sideways as its anchor changes. The
-  shared `Button` and `IconButton` exclude `[aria-haspopup]` from press scaling.
-
-## Portals
-
-Tooltips and popovers render through a portal so a panel that clips its
-overflow can't cut them off. The portal targets the themed root instead of
-`<body>`, so the subtree's `data-theme` still applies.
-
-Wrap a screen once in `TooltipProvider`, passing its root element as
-`container`. A Radix popover gets the same element from
-`usePortalContainer()`:
-
-```tsx
-const container = usePortalContainer();
-<Popover.Portal container={container}>…</Popover.Portal>;
-```
-
-A portal into `<body>` renders in dark mode on a light screen.
+- An occasional surface animates only when the pointer opens it. A keyboard
+  opening is instant and focuses at once. The input method is captured as
+  it opens, so typing inside a form can't change its entrance or exit.
+- Popovers and menus enter over `--duration-popover-enter` with
+  `--ease-panel` from `--scale-popover`, `--distance-popover` toward the
+  trigger, following the resolved side; they exit over
+  `--duration-popover-exit` with `ease-in`. Dialogs grow from the center
+  with their scrim over `--duration-dialog-enter` and leave over
+  `--duration-dialog-exit`. The values are in [scale.md](scale.md#motion).
+- `prefers-reduced-motion: reduce` disables all of it.
+- `Button` and `IconButton` don't scale on press while they carry
+  `aria-haspopup`, so the surface can't measure a pressed trigger and jump.
+  A hand-built trigger keeps still on press too.

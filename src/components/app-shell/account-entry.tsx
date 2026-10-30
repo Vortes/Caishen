@@ -2,14 +2,11 @@
 
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon } from "lucide-react";
-import { Popover } from "radix-ui";
 import { useEffect, useId, useRef, useState } from "react";
 import { newId, parseMoney, today } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import type { Command } from "~/domain/engine";
 import { useTransactionEntry } from "./transaction-entry";
 import styles from "./account-entry.module.css";
@@ -19,10 +16,8 @@ type NewAccountKind = Extract<Command, { type: "account.add" }>["kind"];
 
 export function AccountEntry() {
   const entry = useTransactionEntry();
-  const container = usePortalContainer();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open, "occasional");
   const { holdOpen } = entry;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   const [name, setName] = useState("");
@@ -78,115 +73,106 @@ export function AccountEntry() {
     }
   };
   return (
-    <Popover.Root
+    <Popover
+      label="Add account"
+      trigger={
+        <IconButton label="Add account">
+          <PlusIcon aria-hidden />
+        </IconButton>
+      }
       open={open}
       onOpenChange={(next) => {
         if (next && entry.holdForDraft()) return;
         setOpen(next);
       }}
+      side="top"
+      size="form"
+      motion="occasional"
     >
-      <Popover.Trigger asChild>
-        <IconButton label="Add account">
-          <PlusIcon aria-hidden />
-        </IconButton>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          className={styles.popover}
-          {...motion}
-          side="top"
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-        >
-          <form
-            className={styles.form}
-            aria-labelledby={`${id}-title`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              save();
-            }}
+      <form
+        className={styles.form}
+        aria-labelledby={`${id}-title`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          save();
+        }}
+      >
+        <h2 id={`${id}-title`}>Add account</h2>
+        <div className={styles.field}>
+          <label htmlFor={`${id}-name`}>Account name</label>
+          <input
+            id={`${id}-name`}
+            value={name}
+            maxLength={120}
+            required
+            placeholder={
+              kind === "tracking"
+                ? "Fidelity"
+                : kind === "credit"
+                  ? "Visa"
+                  : "Checking"
+            }
+            onChange={(event) => setName(event.target.value)}
+          />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`${id}-kind`}>Account type</label>
+          <select
+            id={`${id}-kind`}
+            value={kind}
+            aria-describedby={`${id}-kind-help`}
+            onChange={(event) => setKind(event.target.value as NewAccountKind)}
           >
-            <h2 id={`${id}-title`}>Add account</h2>
-            <div className={styles.field}>
-              <label htmlFor={`${id}-name`}>Account name</label>
-              <input
-                id={`${id}-name`}
-                value={name}
-                maxLength={120}
-                required
-                placeholder={
-                  kind === "tracking"
-                    ? "Fidelity"
-                    : kind === "credit"
-                      ? "Visa"
-                      : "Checking"
-                }
-                onChange={(event) => setName(event.target.value)}
-              />
-            </div>
-            <div className={styles.field}>
-              <label htmlFor={`${id}-kind`}>Account type</label>
-              <select
-                id={`${id}-kind`}
-                value={kind}
-                aria-describedby={`${id}-kind-help`}
-                onChange={(event) =>
-                  setKind(event.target.value as NewAccountKind)
-                }
-              >
-                <option value="cash">Cash / checking / savings</option>
-                <option value="credit">Credit card</option>
-                <option value="tracking">Tracking / brokerage</option>
-              </select>
-              <p id={`${id}-kind-help`}>
-                {kind === "tracking"
-                  ? "Track an investment or other account outside your budget. Its balance is not available to assign."
-                  : kind === "credit"
-                    ? "Enter the amount owed as a positive number, or an overpaid credit as a negative number."
-                    : "The opening balance becomes available to assign."}
-              </p>
-            </div>
-            <div className={styles.field}>
-              <label htmlFor={`${id}-balance`}>Opening balance ($)</label>
-              <input
-                id={`${id}-balance`}
-                value={balance}
-                inputMode="decimal"
-                placeholder="0.00"
-                required
-                onChange={(event) => setBalance(groupAmountInput(event.target))}
-              />
-            </div>
-            <div className={styles.field}>
-              <label htmlFor={`${id}-date`}>Balance as of</label>
-              <input
-                id={`${id}-date`}
-                type="date"
-                value={date}
-                min={`${entry.view.budget.startMonth}-01`}
-                max={today(entry.view.budget.settings.timezone)}
-                required
-                onChange={(event) => setDate(event.target.value)}
-              />
-            </div>
-            {error && (
-              <p className={styles.error} role="alert">
-                <CircleAlertIcon aria-hidden size={14} />
-                {error}
-              </p>
-            )}
-            <div className={styles.actions}>
-              <Button size="sm" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button size="sm" variant="primary" type="submit">
-                Add account
-              </Button>
-            </div>
-          </form>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+            <option value="cash">Cash / checking / savings</option>
+            <option value="credit">Credit card</option>
+            <option value="tracking">Tracking / brokerage</option>
+          </select>
+          <p id={`${id}-kind-help`}>
+            {kind === "tracking"
+              ? "Track an investment or other account outside your budget. Its balance is not available to assign."
+              : kind === "credit"
+                ? "Enter the amount owed as a positive number, or an overpaid credit as a negative number."
+                : "The opening balance becomes available to assign."}
+          </p>
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`${id}-balance`}>Opening balance ($)</label>
+          <input
+            id={`${id}-balance`}
+            value={balance}
+            inputMode="decimal"
+            placeholder="0.00"
+            required
+            onChange={(event) => setBalance(groupAmountInput(event.target))}
+          />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`${id}-date`}>Balance as of</label>
+          <input
+            id={`${id}-date`}
+            type="date"
+            value={date}
+            min={`${entry.view.budget.startMonth}-01`}
+            max={today(entry.view.budget.settings.timezone)}
+            required
+            onChange={(event) => setDate(event.target.value)}
+          />
+        </div>
+        {error && (
+          <p className={styles.error} role="alert">
+            <CircleAlertIcon aria-hidden size={14} />
+            {error}
+          </p>
+        )}
+        <div className={styles.actions}>
+          <Button size="sm" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" type="submit">
+            Add account
+          </Button>
+        </div>
+      </form>
+    </Popover>
   );
 }

@@ -60,9 +60,9 @@ moves the anchored surface before it closes and again when the press ends.
   <span className={styles.reviewDot} data-on data-inline />
   To review
 </Button>
-<Popover.Close asChild>
-  <Button size="sm">Done</Button>
-</Popover.Close>
+<Button size="sm" onClick={() => setOpen(false)}>
+  Done
+</Button>
 <Button variant="primary" size="sm" type="submit">
   Apply
 </Button>

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { IconButton } from "~/components/ui/icon-button";
-import { TooltipProvider } from "~/components/ui/tooltip";
+import { SurfaceProvider } from "~/components/ui/surface";
 import { useSavedSettings } from "~/components/app-shell/settings";
 import shell from "~/components/app-shell/shell.module.css";
 import styles from "./load-error.module.css";
@@ -18,9 +18,9 @@ export function EmptyAppFrame({ children }: { children: ReactNode }) {
   const settings = useSavedSettings();
   return (
     <div ref={setRoot} className={shell.root} data-theme={settings.theme}>
-      <TooltipProvider container={root}>
+      <SurfaceProvider container={root}>
         <Frame>{children}</Frame>
-      </TooltipProvider>
+      </SurfaceProvider>
     </div>
   );
 }

@@ -2,13 +2,10 @@
 
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, LandmarkIcon, WalletIcon } from "lucide-react";
-import { Popover } from "radix-ui";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import type { Command } from "~/domain/engine";
 import { reviewImportsBeforeReconciliation } from "~/domain/bank-import-balances";
 import { money, type Account } from "./model";
@@ -49,35 +46,27 @@ export function ReconcilePopover({
 }: {
   account: Account;
   reconciling: Reconciling;
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   const { holdOpen } = reconciling;
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>{children}</Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          side="bottom"
-          align="end"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={`Reconcile ${account.name}`}
-        >
-          <ReconcileForm
-            account={account}
-            reconcile={reconciling.reconcile}
-            onDone={() => setOpen(false)}
-          />
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label={`Reconcile ${account.name}`}
+      trigger={children}
+      open={open}
+      onOpenChange={setOpen}
+      align="end"
+      size="form"
+      arrow
+    >
+      <ReconcileForm
+        account={account}
+        reconcile={reconciling.reconcile}
+        onDone={() => setOpen(false)}
+      />
+    </Popover>
   );
 }
 

@@ -2,14 +2,11 @@
 
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, UsersIcon } from "lucide-react";
-import { Popover } from "radix-ui";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState, type ReactElement, type ReactNode } from "react";
 import { Checkbox } from "~/components/ui/checkbox";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import {
   halfOf,
   keepShare,
@@ -94,39 +91,31 @@ export function ShareMenu({
   // The payee whose last categorization prefilled this share.
   remembered?: string;
   onChange: (share: CounterpartyShare | null) => string | null;
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>{children}</Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label="Who this is for"
-        >
-          <ShareChoices
-            key={String(open)}
-            amounts={[amount]}
-            share={share}
-            saved={saved}
-            remembered={remembered}
-            onChange={(next) => {
-              const failure = onChange(next);
-              if (!failure) setOpen(false);
-              return failure;
-            }}
-          />
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label="Who this is for"
+      trigger={children}
+      open={open}
+      onOpenChange={setOpen}
+      size="form"
+      arrow
+    >
+      <ShareChoices
+        key={String(open)}
+        amounts={[amount]}
+        share={share}
+        saved={saved}
+        remembered={remembered}
+        onChange={(next) => {
+          const failure = onChange(next);
+          if (!failure) setOpen(false);
+          return failure;
+        }}
+      />
+    </Popover>
   );
 }
 

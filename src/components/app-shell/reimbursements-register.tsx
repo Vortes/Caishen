@@ -2,14 +2,11 @@
 
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
-import { Popover } from "radix-ui";
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
 import { parseAmount } from "./move-money";
@@ -317,13 +314,10 @@ function RecordRepayment({
   const id = useId();
   const { view, saveCommand } = useTransactionEntry();
   const { accounts } = useShellData();
-  const container = usePortalContainer();
   const cash = accounts.filter((item) => item.kind === "cash");
   const owing = owedBy.filter((item) => item.balance > 0);
   const timezone = view.budget.settings.timezone;
-  const amountInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   const [who, setWho] = useState("");
   const [amount, setAmount] = useState("");
   const [cashAccountId, setCashAccountId] = useState("");
@@ -340,7 +334,14 @@ function RecordRepayment({
     setError(null);
   };
   return (
-    <Popover.Root
+    <Popover
+      label="Record a repayment"
+      trigger={
+        <Button size="sm" disabled={!owing.length}>
+          <PlusIcon aria-hidden />
+          Record repayment
+        </Button>
+      }
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
@@ -352,186 +353,167 @@ function RecordRepayment({
         setCashAccountId(cash.length === 1 ? cash[0]!.id : "");
         setDate(today(timezone));
       }}
+      align="end"
+      size="form"
+      arrow
+      // Who is usually known from the filter, so the amount field takes focus
+      // itself: it's what's left to check.
+      autoFocus={!who}
     >
-      <Popover.Trigger asChild>
-        <Button size="sm" disabled={!owing.length}>
-          <PlusIcon aria-hidden />
-          Record repayment
-        </Button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          align="end"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label="Record a repayment"
-          // Who is usually known from the filter, so the amount is what's
-          // left to check.
-          onOpenAutoFocus={(event) => {
-            if (!who) return;
-            event.preventDefault();
-            amountInput.current?.focus();
-          }}
-        >
-          <form
-            className={moveStyles.form}
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              const cents = parseAmount(amount);
-              if (!who)
-                return setError({
-                  field: "who",
-                  message: "Choose who paid you back.",
-                });
-              if (!(cents > 0))
-                return setError({
-                  field: "amount",
-                  message: "Enter the amount, like 412.00.",
-                });
-              if (cents > outstanding)
-                return setError({
-                  field: "amount",
-                  message: `${who} owes you ${money(outstanding)}. Enter that much or less.`,
-                });
-              if (!cashAccountId)
-                return setError({
-                  field: "cash",
-                  message: "Choose the account the money went into.",
-                });
-              const failure = saveCommand(
-                {
-                  type: "counterparty.receive",
-                  id: newId(),
-                  counterpartyAccountId: account.id,
-                  cashAccountId,
-                  date,
-                  amount: cents,
-                  counterpartyName: who,
-                  recordedAt: new Date().toISOString(),
-                },
-                `Recorded ${money(cents)} from ${who}`,
-              );
-              if (failure) return setError({ message: failure });
-              setOpen(false);
-            }}
-          >
-            <div className={moveStyles.header}>
-              <strong>Record a repayment</strong>
-              {who && (
-                <span className={moveStyles.balance}>
-                  {money(outstanding)} owed
-                </span>
-              )}
-            </div>
-            <div className={moveStyles.field}>
-              <label htmlFor={`${id}-who`}>From</label>
-              <ChoiceField
-                id={`${id}-who`}
-                label="From"
-                value={who}
-                options={owing.map((item) => ({
-                  value: item.who,
-                  label: item.who,
-                  amount: item.balance,
-                }))}
-                placeholder="Choose who paid"
-                invalid={error?.field === "who"}
-                onChange={pick}
-              />
-              {error?.field === "who" && (
-                <p className={moveStyles.error}>{error.message}</p>
-              )}
-            </div>
-            <div className={local.fieldPair}>
-              <div className={moveStyles.field}>
-                <label htmlFor={`${id}-amount`}>Amount</label>
-                <div
-                  className={moveStyles.amountInput}
-                  data-invalid={error?.field === "amount" ? "" : undefined}
-                >
-                  <span aria-hidden>$</span>
-                  <input
-                    ref={amountInput}
-                    id={`${id}-amount`}
-                    inputMode="decimal"
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={amount}
-                    onFocus={(event) => event.currentTarget.select()}
-                    aria-invalid={error?.field === "amount" || undefined}
-                    onChange={(event) => {
-                      setAmount(groupAmountInput(event.target));
-                      if (error?.field === "amount") setError(null);
-                    }}
-                  />
-                </div>
-              </div>
-              <div className={moveStyles.field}>
-                <label htmlFor={`${id}-date`}>Date</label>
-                <div className={moveStyles.amountInput}>
-                  <input
-                    id={`${id}-date`}
-                    type="date"
-                    value={date}
-                    max={today(timezone)}
-                    onChange={(event) => setDate(event.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-            {error?.field === "amount" && (
-              <div className={moveStyles.formError}>
-                <p className={moveStyles.error}>{error.message}</p>
-              </div>
-            )}
-            <div className={moveStyles.field}>
-              <label htmlFor={`${id}-cash`}>Into</label>
-              <ChoiceField
-                id={`${id}-cash`}
-                label="Into"
-                value={cashAccountId}
-                options={cash.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                }))}
-                placeholder="Choose an account"
-                invalid={error?.field === "cash"}
-                onChange={(next) => {
-                  setCashAccountId(next);
-                  if (error?.field === "cash") setError(null);
+      <form
+        className={moveStyles.form}
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          const cents = parseAmount(amount);
+          if (!who)
+            return setError({
+              field: "who",
+              message: "Choose who paid you back.",
+            });
+          if (!(cents > 0))
+            return setError({
+              field: "amount",
+              message: "Enter the amount, like 412.00.",
+            });
+          if (cents > outstanding)
+            return setError({
+              field: "amount",
+              message: `${who} owes you ${money(outstanding)}. Enter that much or less.`,
+            });
+          if (!cashAccountId)
+            return setError({
+              field: "cash",
+              message: "Choose the account the money went into.",
+            });
+          const failure = saveCommand(
+            {
+              type: "counterparty.receive",
+              id: newId(),
+              counterpartyAccountId: account.id,
+              cashAccountId,
+              date,
+              amount: cents,
+              counterpartyName: who,
+              recordedAt: new Date().toISOString(),
+            },
+            `Recorded ${money(cents)} from ${who}`,
+          );
+          if (failure) return setError({ message: failure });
+          setOpen(false);
+        }}
+      >
+        <div className={moveStyles.header}>
+          <strong>Record a repayment</strong>
+          {who && (
+            <span className={moveStyles.balance}>
+              {money(outstanding)} owed
+            </span>
+          )}
+        </div>
+        <div className={moveStyles.field}>
+          <label htmlFor={`${id}-who`}>From</label>
+          <ChoiceField
+            id={`${id}-who`}
+            label="From"
+            value={who}
+            options={owing.map((item) => ({
+              value: item.who,
+              label: item.who,
+              amount: item.balance,
+            }))}
+            placeholder="Choose who paid"
+            invalid={error?.field === "who"}
+            onChange={pick}
+          />
+          {error?.field === "who" && (
+            <p className={moveStyles.error}>{error.message}</p>
+          )}
+        </div>
+        <div className={local.fieldPair}>
+          <div className={moveStyles.field}>
+            <label htmlFor={`${id}-amount`}>Amount</label>
+            <div
+              className={moveStyles.amountInput}
+              data-invalid={error?.field === "amount" ? "" : undefined}
+            >
+              <span aria-hidden>$</span>
+              <input
+                id={`${id}-amount`}
+                autoFocus={Boolean(who)}
+                inputMode="decimal"
+                autoComplete="off"
+                spellCheck={false}
+                value={amount}
+                onFocus={(event) => event.currentTarget.select()}
+                aria-invalid={error?.field === "amount" || undefined}
+                onChange={(event) => {
+                  setAmount(groupAmountInput(event.target));
+                  if (error?.field === "amount") setError(null);
                 }}
               />
-              {error?.field === "cash" && (
-                <p className={moveStyles.error}>{error.message}</p>
-              )}
-              <p className={local.hint}>
-                It lowers what {who || "they"} owe{who ? "s" : ""} and refills
-                your {account.name} envelope. It isn&rsquo;t income, so Ready to
-                Assign doesn&rsquo;t change.
-              </p>
             </div>
-            {error && !error.field && (
-              <div className={moveStyles.formError}>
-                <p className={moveStyles.error} role="alert">
-                  {error.message}
-                </p>
-              </div>
-            )}
-            <div className={moveStyles.footer}>
-              <Button size="sm" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button size="sm" variant="primary" type="submit">
-                Record
-              </Button>
+          </div>
+          <div className={moveStyles.field}>
+            <label htmlFor={`${id}-date`}>Date</label>
+            <div className={moveStyles.amountInput}>
+              <input
+                id={`${id}-date`}
+                type="date"
+                value={date}
+                max={today(timezone)}
+                onChange={(event) => setDate(event.target.value)}
+              />
             </div>
-          </form>
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+          </div>
+        </div>
+        {error?.field === "amount" && (
+          <div className={moveStyles.formError}>
+            <p className={moveStyles.error}>{error.message}</p>
+          </div>
+        )}
+        <div className={moveStyles.field}>
+          <label htmlFor={`${id}-cash`}>Into</label>
+          <ChoiceField
+            id={`${id}-cash`}
+            label="Into"
+            value={cashAccountId}
+            options={cash.map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))}
+            placeholder="Choose an account"
+            invalid={error?.field === "cash"}
+            onChange={(next) => {
+              setCashAccountId(next);
+              if (error?.field === "cash") setError(null);
+            }}
+          />
+          {error?.field === "cash" && (
+            <p className={moveStyles.error}>{error.message}</p>
+          )}
+          <p className={local.hint}>
+            It lowers what {who || "they"} owe{who ? "s" : ""} and refills your{" "}
+            {account.name} envelope. It isn&rsquo;t income, so Ready to Assign
+            doesn&rsquo;t change.
+          </p>
+        </div>
+        {error && !error.field && (
+          <div className={moveStyles.formError}>
+            <p className={moveStyles.error} role="alert">
+              {error.message}
+            </p>
+          </div>
+        )}
+        <div className={moveStyles.footer}>
+          <Button size="sm" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" type="submit">
+            Record
+          </Button>
+        </div>
+      </form>
+    </Popover>
   );
 }

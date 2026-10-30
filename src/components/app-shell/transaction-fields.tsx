@@ -1,16 +1,15 @@
 "use client";
 
 import { CheckIcon, ChevronDownIcon, PlusIcon } from "lucide-react";
-import { Popover } from "radix-ui";
 import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactElement,
   type ReactNode,
   type Ref,
 } from "react";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import { money } from "./model";
 import shell from "./shell.module.css";
 import styles from "./transaction-entry.module.css";
@@ -45,7 +44,6 @@ function OptionList({
   listId,
   label,
   anchor,
-  wide = false,
   placement = "floating",
   children,
 }: {
@@ -53,14 +51,10 @@ function OptionList({
   onClose: () => void;
   listId: string;
   label: string;
-  anchor: ReactNode;
-  // Room for a long name beside its balance.
-  wide?: boolean;
+  anchor: ReactElement;
   placement?: "floating" | "inline";
   children: ReactNode;
 }) {
-  const container = usePortalContainer();
-  const anchorRef = useRef<HTMLDivElement>(null);
   // Inside a bottom-anchored form, the list participates in layout so the
   // form grows upward and keeps its footer and toolbar unobstructed.
   if (placement === "inline")
@@ -80,42 +74,28 @@ function OptionList({
         )}
       </div>
     );
+  // The field closes the list on Escape, so the editor around it stays open.
   return (
-    <Popover.Root
+    <Popover
+      label={label}
+      size="trigger"
+      anchor={anchor}
       open={open}
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
     >
-      <Popover.Anchor asChild>
-        <div ref={anchorRef}>{anchor}</div>
-      </Popover.Anchor>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          id={listId}
-          role="listbox"
-          aria-label={label}
-          className={styles.listPopover}
-          data-wide={wide || undefined}
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          onOpenAutoFocus={(event) => event.preventDefault()}
-          onCloseAutoFocus={(event) => event.preventDefault()}
-          // The field closes the list on Escape, so the editor around it
-          // stays open.
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          onInteractOutside={(event) => {
-            if (anchorRef.current?.contains(event.target as Node))
-              event.preventDefault();
-          }}
-          // Keeps focus in the field while the pointer picks.
-          onMouseDown={(event) => event.preventDefault()}
-        >
-          {children}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      <div
+        id={listId}
+        role="listbox"
+        aria-label={label}
+        className={styles.listOptions}
+        // Keeps focus in the field while the pointer picks.
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        {children}
+      </div>
+    </Popover>
   );
 }
 
@@ -232,7 +212,6 @@ export function ChoiceField({
   onChange,
   onPicked,
   onCreate,
-  wide = true,
   placement = "floating",
   displayValue,
   action,
@@ -243,7 +222,6 @@ export function ChoiceField({
   onChange: (value: string) => void;
   // Adds an option named for the typed text, like YNAB's Create Category.
   onCreate?: { noun: string; create: (name: string) => void };
-  wide?: boolean;
   // Keep choices within a containing popover instead of covering its footer.
   placement?: "floating" | "inline";
   displayValue?: string;
@@ -348,7 +326,6 @@ export function ChoiceField({
       onClose={() => setExpanded(false)}
       listId={listId}
       label={label}
-      wide={wide}
       placement={placement}
       anchor={
         <div
@@ -528,7 +505,6 @@ export function PayeeField({
       onClose={() => setExpanded(false)}
       listId={listId}
       label={`${label} suggestions`}
-      wide
       anchor={
         <div className={styles.well} data-invalid={invalid ? true : undefined}>
           <input

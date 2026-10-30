@@ -18,7 +18,7 @@ import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { TooltipProvider } from "~/components/ui/tooltip";
+import { SurfaceProvider } from "~/components/ui/surface";
 import { Property } from "./cards";
 import { autoAssignOptions } from "./inspector";
 import { MonthLabel } from "./month-picker";
@@ -75,7 +75,7 @@ export function ShellSkeleton({
       style={palette ? paletteVars(palette) : undefined}
       aria-busy
     >
-      <TooltipProvider container={null}>
+      <SurfaceProvider container={null}>
         <p className="sr-only" role="status">
           Opening your budget…
         </p>
@@ -281,7 +281,7 @@ export function ShellSkeleton({
             </div>
           </div>
         </div>
-      </TooltipProvider>
+      </SurfaceProvider>
     </div>
   );
 }
