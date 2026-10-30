@@ -11,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { parseAssignedAmount } from "~/components/budget/assigned-amount";
+import { readAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
@@ -122,16 +122,13 @@ export function AssignedCell({ category }: { category: Category }) {
 
   const commit = (fromKeyboard: boolean) => {
     if (!editor || !ready.current) return;
-    let total: number;
-    try {
-      total = parseAssignedAmount(editor.draft);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Enter a dollar amount.";
-      fail(message);
-      alert(message);
+    const reading = readAmount(editor.draft);
+    if (!reading.ok) {
+      fail(reading.message);
+      alert(reading.message);
       return;
     }
+    const total = reading.cents;
     const { base } = editor;
     // An amount left as it opened changes nothing, even if the total moved
     // since (another tab): only what the user typed is sent.
