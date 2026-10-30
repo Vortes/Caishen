@@ -84,8 +84,11 @@ export function AmountInput({
           // An empty field is the screen's to judge when it submits.
           if (readOnly || !value.trim()) return;
           const reading = readAmount(value);
-          if (reading.ok) onChange(groupThousands(dollars(reading.cents)));
-          else flag(reading.message);
+          if (!reading.ok) flag(reading.message);
+          // A plain amount is already what will be saved; only a
+          // calculation, or digits past the cent, become the result.
+          else if (!plainAmount.test(value))
+            onChange(groupThousands(dollars(reading.cents)));
         }}
       />
       {coarse && focused && !readOnly && (
@@ -177,6 +180,9 @@ function caretAfterSameDigit(text: string, at: number, grouped: string) {
     if (grouped[caret] !== ",") seen++;
   return caret;
 }
+
+// An amount as a person writes one: no operators, at most two decimals.
+const plainAmount = /^\s*-?\$?[\d,]+(?:\.\d{0,2})?\s*$/;
 
 // Cents as the text a person would type: "-1234.50".
 function dollars(cents: number) {

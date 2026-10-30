@@ -60,6 +60,20 @@ test("leaving the field replaces a calculation with its result", async () => {
   expect(amount().value).toBe("3,200.00");
 });
 
+test("leaving a plain amount keeps it as typed, rounded only past the cent", async () => {
+  const user = userEvent.setup();
+  render(<Amount />);
+
+  await user.type(amount(), "1000.5");
+  await user.tab();
+  expect(amount().value).toBe("1,000.5");
+
+  await user.clear(amount());
+  await user.type(amount(), "12.345");
+  await user.tab();
+  expect(amount().value).toBe("12.35");
+});
+
 test("leaving unreadable text keeps it and says what an amount looks like", async () => {
   const user = userEvent.setup();
   render(<Amount />);

@@ -56,6 +56,11 @@
   gap: 4px;
   min-width: 0;
 }
+.stackedLabel {
+  display: none;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
 /* Text the editor doesn't change fills the row's band, centered like the
    row's own text, so it doesn't move when the row opens. */
 .entryRow > .staticCell {
@@ -133,14 +138,10 @@
   .entryRow > .amountError {
     grid-column: 1 / -1;
   }
-  /* Stacked, the fields have no column headers above them: their labels
+  /* Stacked, the fields have no column headers above them: their captions
      show. */
-  .entryRow > .cell label[data-hidden] {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip-path: none;
+  .stackedLabel {
+    display: block;
   }
   .rowFooter {
     padding-inline: var(--space-row-x);

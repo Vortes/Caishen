@@ -52,8 +52,8 @@ export function EditorForm({
 }
 
 // A field in the editor row, under its column. The column header names it
-// on screen; the label stays for screen readers, and shows on a phone where
-// the row stacks. id is the control's when it isn't a ui input, such as a
+// on screen and the field's label names it for screen readers; on a phone,
+// where the row stacks, a caption above it names it on screen. id is the control's when it isn't a ui input, such as a
 // date or a list; it points aria-describedby at `${id}-error` itself.
 export function EditorCell({
   column,
@@ -73,6 +73,11 @@ export function EditorCell({
 }) {
   return (
     <div className={styles.cell} data-column={column}>
+      {/* The field's own label is for screen readers; this one is seen
+          only once the row stacks and the column headers no longer show. */}
+      <span className={styles.stackedLabel} aria-hidden>
+        {label}
+      </span>
       <Field
         id={id}
         label={label}
