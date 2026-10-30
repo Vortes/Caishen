@@ -79,7 +79,7 @@ a table of transactions, is `--size-popover-wide` (560px). A `Dialog` is
 | `--space-card`   | 16px  | A card's padding                   |
 
 `Popover`, `Menu` and `Tooltip` set their own 6px gap from the trigger and
-12px clearance from the window edge; see [surfaces.md](surfaces.md).
+12px clearance from the window edge; see [popovers.md](popovers.md).
 
 ## Radii
 
