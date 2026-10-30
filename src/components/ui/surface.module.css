@@ -24,14 +24,14 @@
 .wide {
   width: min(var(--size-popover-wide), calc(100vw - 24px));
 }
-/* As wide as the trigger or anchor, never narrower than a readable list,
-   and never narrower than content that can't shrink. */
+/* As wide as the trigger or anchor, and never narrower than 20rem: room
+   for a long category name beside its balance, and for the date calendar,
+   which is narrower. A longer name truncates rather than widening the list. */
 .trigger {
   width: min(
-    max(var(--radix-popover-trigger-width), 16rem),
+    max(var(--radix-popover-trigger-width), 20rem),
     calc(100vw - 24px)
   );
-  min-width: min-content;
 }
 
 /* Points at the trigger; the gap grows by its height. */

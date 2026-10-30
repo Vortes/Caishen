@@ -258,8 +258,7 @@
   text-wrap: pretty;
 }
 
-/* The option list under a field, on the same surface as the move-money
-   popover. */
+/* The option list under a field, kept in a form's layout. */
 .inlineChoice {
   display: flex;
   flex-direction: column;
@@ -278,30 +277,15 @@
   border-radius: var(--radius-row);
   font-size: var(--type-body);
 }
-.listPopover {
-  z-index: 70;
-  width: min(
-    max(var(--radix-popover-trigger-width), 16rem),
-    calc(100vw - 24px)
-  );
+/* The list inside its popover: the pinned row stays put and only the
+   options scroll, within the room the popover has, less its 1px border. */
+.listOptions {
   display: flex;
   flex-direction: column;
-  max-height: min(18rem, var(--radix-popover-content-available-height));
-  overflow: hidden;
-  padding: 4px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-secondary);
-  font-size: var(--type-body);
-  color-scheme: dark;
-}
-.listPopover[data-wide] {
-  width: min(
-    max(var(--radix-popover-trigger-width), 20rem),
-    calc(100vw - 24px)
+  max-height: calc(
+    min(18rem, var(--radix-popover-content-available-height)) - 2px
   );
+  padding: 4px;
 }
 .listScroll {
   min-height: 0;
@@ -327,9 +311,6 @@
 }
 .listHeader > .option[data-compact] {
   flex: none;
-}
-:global([data-theme="light"]) .listPopover {
-  color-scheme: light;
 }
 .group {
   padding: 8px 8px 4px;

@@ -344,21 +344,14 @@
 
 /* ---------- Slice popover ---------- */
 
-/* Still on its own surface until #209 moves the chart's popover onto
-   Popover; its width is the shared wide popover's. */
-.slicePopover {
-  composes: content from "../../ui/popover-motion.module.css";
-  z-index: 60;
+/* Header and footer stay put while the rows scroll, within the room the
+   popover has, less its 1px border. */
+.slicePanel {
   display: flex;
   flex-direction: column;
-  width: min(var(--size-popover-wide), calc(100vw - 24px));
-  max-height: min(420px, var(--radix-popover-content-available-height));
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-secondary);
-  font-size: var(--type-body);
+  max-height: calc(
+    min(420px, var(--radix-popover-content-available-height)) - 2px
+  );
 }
 .sliceHeader {
   flex: none;
@@ -444,9 +437,6 @@ button.sliceColumns:hover {
 }
 .sliceColumns[data-static] {
   color: var(--text-tertiary);
-}
-.popoverArrow {
-  fill: var(--surface-raised);
 }
 
 /* ---------- Headline, grouping ---------- */

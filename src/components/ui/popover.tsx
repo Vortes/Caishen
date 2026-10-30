@@ -43,15 +43,18 @@ type TriggerProps = Placement & {
 };
 
 // An element the popover hangs from, such as an input, while the site
-// controls when it opens. Focus never moves for it, and the site handles
+// controls when it opens. Focus stays in the anchor, and the site handles
 // Escape; a click outside both still closes it.
 type AnchorProps = Placement & {
   anchor: ReactElement;
   trigger?: never;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  autoFocus?: never;
-  onCloseAutoFocus?: never;
+  // On for a form or panel opened by something other than a button, like a
+  // field's New row or a chart slice: it takes focus and closes on Escape as
+  // a trigger popover does, and a click on the anchor closes it too.
+  autoFocus?: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
 };
 
 export function Popover(props: TriggerProps | AnchorProps) {
@@ -76,8 +79,10 @@ export function Popover(props: TriggerProps | AnchorProps) {
     onOpenChange?.(next);
   };
   const motionProps = useSurfaceMotion(open, motion);
-  // An anchor without a trigger: the site opens it and keeps focus.
-  const anchored = props.trigger === undefined;
+  // An anchor without a trigger, unless it takes focus: the site opens it
+  // and keeps focus in the anchor.
+  const autoFocus = props.autoFocus ?? props.trigger !== undefined;
+  const anchored = props.trigger === undefined && !autoFocus;
   const prevent = (event: Event) => event.preventDefault();
   const className = [styles.surface, styles.motion, size && styles[size]]
     .filter(Boolean)
@@ -103,9 +108,7 @@ export function Popover(props: TriggerProps | AnchorProps) {
           align={align}
           sideOffset={SURFACE_GAP}
           collisionPadding={collisionPadding(side, align)}
-          onOpenAutoFocus={
-            anchored || props.autoFocus === false ? prevent : undefined
-          }
+          onOpenAutoFocus={autoFocus ? undefined : prevent}
           onCloseAutoFocus={anchored ? prevent : props.onCloseAutoFocus}
           onEscapeKeyDown={(event) => {
             // Escape closes an open list inside the popover before the
@@ -119,7 +122,10 @@ export function Popover(props: TriggerProps | AnchorProps) {
               event.preventDefault();
           }}
           onInteractOutside={(event) => {
-            if (anchorRef.current?.contains(event.target as Node))
+            if (
+              (anchored || props.trigger !== undefined) &&
+              anchorRef.current?.contains(event.target as Node)
+            )
               event.preventDefault();
           }}
         >

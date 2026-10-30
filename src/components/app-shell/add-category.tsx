@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
-import { Popover as RadixPopover } from "radix-ui";
 import {
   createContext,
   useContext,
@@ -10,20 +9,16 @@ import {
   useRef,
   useState,
   type ReactElement,
-  type ReactNode,
 } from "react";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
-import { Tooltip, usePortalContainer } from "~/components/ui/tooltip";
+import { Tooltip } from "~/components/ui/tooltip";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
 import { Popover } from "~/components/ui/popover";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
-// The move-money popover's form fields; the New category form still borrows
-// its surface.
+// The move-money popover's form fields.
 import styles from "./move-money.module.css";
 
 // What was just added, for the plan to bring into view.
@@ -128,6 +123,7 @@ function AddPopover({
           added.current = next;
           onOpenChange(false);
         }}
+        onCancel={() => onOpenChange(false)}
       />
     </Popover>
   );
@@ -145,10 +141,12 @@ function NameForm({
   choice,
   onAdded,
   onSettled,
+  onCancel,
 }: {
   group?: string;
   choice?: { name: string; group: string };
   onAdded: (added: Added, category?: NewCategory) => void;
+  onCancel: () => void;
   // Whether the new category saved, once the server answers.
   onSettled?: (category: NewCategory, saved: boolean) => void;
 }) {
@@ -279,9 +277,9 @@ function NameForm({
         </div>
       )}
       <div className={styles.footer}>
-        <RadixPopover.Close asChild>
-          <Button size="sm">Cancel</Button>
-        </RadixPopover.Close>
+        <Button size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
         <Button variant="primary" size="sm" type="submit">
           {target ? "Add category" : "Add category group"}
         </Button>
@@ -311,56 +309,52 @@ export function NewCategoryPopover({
   onSettled: (category: NewCategory, saved: boolean) => void;
   // Takes focus once the form closes, with what it added, if anything.
   onClosed: (category: NewCategory | null) => void;
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
-  const motion = usePopoverMotion(open);
   const added = useRef<NewCategory | null>(null);
   const { groups } = useShellData();
   const choices = groups.filter((item) => !isSystemGroup(item));
   const start =
     choices.find((item) => item.name === group)?.name ?? choices[0]?.name;
   return (
-    <RadixPopover.Root open={open} onOpenChange={onOpenChange}>
-      <RadixPopover.Anchor asChild>{children}</RadixPopover.Anchor>
-      <RadixPopover.Portal container={container}>
-        <RadixPopover.Content
-          {...motion}
-          className={styles.popover}
-          side="bottom"
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label="Add a category"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            onClosed(added.current);
-            added.current = null;
-          }}
-          onKeyDown={(event) => {
-            // Escape closes this, not the editor around the field.
-            if (event.key === "Escape") event.stopPropagation();
-          }}
-        >
-          {start ? (
-            <NameForm
-              choice={{ name, group: start }}
-              onAdded={(_, category) => {
-                if (!category) return;
-                added.current = category;
-                onAdded(category);
-                onOpenChange(false);
-              }}
-              onSettled={onSettled}
-            />
-          ) : (
-            <p className={styles.empty}>
-              Add a category group on the plan first.
-            </p>
-          )}
-        </RadixPopover.Content>
-      </RadixPopover.Portal>
-    </RadixPopover.Root>
+    <Popover
+      label="Add a category"
+      size="form"
+      anchor={children}
+      open={open}
+      onOpenChange={onOpenChange}
+      autoFocus
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        onClosed(added.current);
+        added.current = null;
+      }}
+    >
+      <div
+        onKeyDown={(event) => {
+          // Escape closes this, not the editor around the field.
+          if (event.key === "Escape") event.stopPropagation();
+        }}
+      >
+        {start ? (
+          <NameForm
+            choice={{ name, group: start }}
+            onAdded={(_, category) => {
+              if (!category) return;
+              added.current = category;
+              onAdded(category);
+              onOpenChange(false);
+            }}
+            onSettled={onSettled}
+            onCancel={() => onOpenChange(false)}
+          />
+        ) : (
+          <p className={styles.empty}>
+            Add a category group on the plan first.
+          </p>
+        )}
+      </div>
+    </Popover>
   );
 }
 

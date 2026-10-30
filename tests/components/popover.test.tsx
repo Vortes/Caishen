@@ -299,3 +299,44 @@ test("a popover draws an arrow toward its trigger only when asked", async () => 
   const plain = screen.getByRole("dialog", { name: "Filters" });
   expect(plain.querySelector(`.${surface.arrow}`)).toBeNull();
 });
+
+// A form hung from a field, opened by something other than a button.
+function NewCategoryForm() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        New category
+      </button>
+      <Popover
+        label="Add a category"
+        anchor={<input aria-label="Category" />}
+        open={open}
+        onOpenChange={setOpen}
+        autoFocus
+      >
+        <input aria-label="Category name" />
+      </Popover>
+    </>
+  );
+}
+
+test("an anchor popover with autoFocus takes focus and closes on Escape", async () => {
+  const user = userEvent.setup();
+  render(
+    <SurfaceProvider container={themedRoot()}>
+      <NewCategoryForm />
+    </SurfaceProvider>,
+  );
+
+  await user.click(screen.getByRole("button", { name: "New category" }));
+
+  expect(screen.getByRole("dialog", { name: "Add a category" })).toBeDefined();
+  expect(document.activeElement).toBe(
+    screen.getByRole("textbox", { name: "Category name" }),
+  );
+
+  await user.keyboard("{Escape}");
+
+  expect(screen.queryByRole("dialog", { name: "Add a category" })).toBeNull();
+});

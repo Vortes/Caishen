@@ -156,7 +156,6 @@ export function ShareSelection({
                       label="Category for your portion"
                       value={categoryId}
                       options={options}
-                      wide={false}
                       placement="inline"
                       placeholder="Choose a category"
                       onChange={setCategoryId}
