@@ -1773,72 +1773,9 @@ button.actionItem:disabled {
 
 /* ---------- Settings ---------- */
 
-/* Linear-style: one centered column of sections, each a heading over a card
-   of rows with the label first and the control at the row's end. */
-.settingsPage {
-  display: flex;
-  flex-direction: column;
-  gap: 40px;
-  width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 40px 24px 64px;
-}
-.settingsSection {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.settingsHeadingRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.settingsHeading {
-  margin: 0;
-  font-size: var(--type-title);
-  font-weight: 600;
-  letter-spacing: inherit;
-}
-.settingsIntro {
-  margin: -4px 0 0;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
-.settingRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.settingText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.settingLabel {
-  font-weight: 500;
-}
-.settingLead {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-.settingActions {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.settingDivider {
-  height: 1px;
-  margin: 14px calc(var(--space-card) * -1);
-  background: var(--border-subtle);
-}
+/* Sections and rows come from ui/settings. These two stay until the field
+   modules replace the hand-built fields (#222): the budget name input, and
+   the error under the partner's email. */
 /* A form field isn't in the system yet; this follows the toolbar search. */
 .settingInput {
   flex: 0 1 240px;
@@ -1872,11 +1809,6 @@ button.actionItem:disabled {
   color: var(--feedback-attention);
   font-size: var(--type-small);
 }
-.settingHint {
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
 .navHeading {
   display: flex;
   align-items: center;
@@ -1891,6 +1823,12 @@ button.actionItem:disabled {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.themeEmpty {
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
 }
 .themeGroupLabel {
   margin: 0 0 8px;

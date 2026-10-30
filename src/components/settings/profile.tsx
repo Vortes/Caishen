@@ -4,7 +4,12 @@ import { useUser } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
+import {
+  SettingRow,
+  SettingsDivider,
+  SettingsPage,
+  SettingsSection,
+} from "~/components/ui/settings";
 import {
   ProfilePreferences,
   type UpdatePreferences,
@@ -38,19 +43,17 @@ export function ProfileSettings({
 }) {
   const { preferences } = useShellData();
   return (
-    <div className={styles.settingsPage}>
-      <section className={styles.settingsSection} aria-label="Profile">
-        <Card>
-          <ProfilePicture />
-          <div className={styles.settingDivider} />
-          <BudgetName onRename={onRename} />
-        </Card>
-      </section>
+    <SettingsPage>
+      <SettingsSection aria-label="Profile">
+        <ProfilePicture />
+        <SettingsDivider />
+        <BudgetName onRename={onRename} />
+      </SettingsSection>
       {preferences && onUpdate && (
         <ProfilePreferences value={preferences} onChange={onUpdate} />
       )}
       <AccountSettings />
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -104,52 +107,41 @@ function ProfilePicture() {
   };
 
   return (
-    <div className={styles.settingRow}>
-      <div className={styles.settingLead}>
-        <UserAvatar fallback={budgetName} size="large" />
-        <div className={styles.settingText}>
-          <span className={styles.settingLabel}>Profile picture</span>
-          <span className={styles.settingHint}>
-            Shown beside your budget’s name in the sidebar.
-          </span>
-          {error && (
-            <span className={styles.settingError} role="alert">
-              {error}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className={styles.settingActions}>
-        {user?.hasImage && (
-          <Button
-            variant="quiet"
-            disabled={removing}
-            onClick={() => void remove()}
-          >
-            {removing ? "Removing…" : "Remove"}
-          </Button>
-        )}
+    <SettingRow
+      lead={<UserAvatar fallback={budgetName} size="large" />}
+      label="Profile picture"
+      description="Shown beside your budget’s name in the sidebar."
+      error={error}
+    >
+      {user?.hasImage && (
         <Button
-          disabled={!user || removing}
-          onClick={() => input.current?.click()}
+          variant="quiet"
+          disabled={removing}
+          onClick={() => void remove()}
         >
-          {user?.hasImage ? "Change photo" : "Upload photo"}
+          {removing ? "Removing…" : "Remove"}
         </Button>
-        <input
-          ref={input}
-          type="file"
-          accept={IMAGE_TYPES.join(",")}
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            // Clears the pick so choosing the same file again still fires.
-            event.target.value = "";
-            if (file) pick(file);
-          }}
-        />
-      </div>
+      )}
+      <Button
+        disabled={!user || removing}
+        onClick={() => input.current?.click()}
+      >
+        {user?.hasImage ? "Change photo" : "Upload photo"}
+      </Button>
+      <input
+        ref={input}
+        type="file"
+        accept={IMAGE_TYPES.join(",")}
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          // Clears the pick so choosing the same file again still fires.
+          event.target.value = "";
+          if (file) pick(file);
+        }}
+      />
       <PhotoCropDialog src={picked} onSave={upload} onCancel={closeCrop} />
-    </div>
+    </SettingRow>
   );
 }
 
@@ -174,31 +166,19 @@ function BudgetName({
   };
 
   return (
-    <div className={styles.settingRow}>
-      <div className={styles.settingText}>
-        <label className={styles.settingLabel} htmlFor="budget-name">
-          Budget name
-        </label>
-        <span className={styles.settingHint}>
-          Shown at the top of the sidebar. Your partner’s budget keeps its own
-          name.
-        </span>
-        {error && (
-          <span
-            id="budget-name-error"
-            className={styles.settingError}
-            role="alert"
-          >
-            {error}
-          </span>
-        )}
-      </div>
+    <SettingRow
+      htmlFor="budget-name"
+      label="Budget name"
+      description="Shown at the top of the sidebar. Your partner’s budget keeps its own name."
+      error={error}
+    >
       <input
         // Starts over from the saved name whenever it changes, including
         // after Undo.
         key={budgetName}
         id="budget-name"
         aria-invalid={Boolean(error)}
+        // The row gives its error the id `${htmlFor}-error`.
         aria-describedby={error ? "budget-name-error" : undefined}
         className={styles.settingInput}
         defaultValue={budgetName}
@@ -218,6 +198,6 @@ function BudgetName({
           }
         }}
       />
-    </div>
+    </SettingRow>
   );
 }

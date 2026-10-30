@@ -1,5 +1,5 @@
-/* Settings additions. Rows, cards, and the page column come from the app
-   shell's settings classes; these are only what the new rows need. */
+/* Settings additions. Rows, cards, and the page column come from
+   ui/settings; these are only what the screens put inside them. */
 
 .frame a {
   color: inherit;
@@ -15,13 +15,16 @@
   display: flex;
   flex-direction: column;
 }
+/* Opens under its row, which draws the line above it. */
 .inlineForm {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
+}
+/* A second sentence in a row's description, on its own line. */
+.descriptionLine {
+  display: block;
+  margin-top: 2px;
 }
 .passwordFields {
   display: grid;

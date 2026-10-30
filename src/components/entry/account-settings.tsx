@@ -6,11 +6,14 @@ import type { EmailAddressResource, UserResource } from "@clerk/nextjs/types";
 import { useId, useState } from "react";
 import { text } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
+import {
+  SettingRow,
+  SettingsDivider,
+  SettingsSection,
+} from "~/components/ui/settings";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { useShellData } from "~/components/app-shell/shell-data";
-import shell from "~/components/app-shell/shell.module.css";
 import batch from "./entry.module.css";
 import styles from "./settings.module.css";
 
@@ -34,16 +37,13 @@ export function AccountSettings() {
 function LoadedAccountSettings({ user }: { user: UserResource }) {
   return (
     <>
-      <section className={shell.settingsSection} aria-label="Account">
-        <h2 className={shell.settingsHeading}>Account</h2>
-        <Card>
-          <EmailRow user={user} />
-          <div className={shell.settingDivider} />
-          <PasswordRow user={user} />
-          <div className={shell.settingDivider} />
-          <ConnectedAccounts user={user} />
-        </Card>
-      </section>
+      <SettingsSection heading="Account">
+        <EmailRow user={user} />
+        <SettingsDivider />
+        <PasswordRow user={user} />
+        <SettingsDivider />
+        <ConnectedAccounts user={user} />
+      </SettingsSection>
       <DeleteAccount user={user} />
     </>
   );
@@ -100,13 +100,11 @@ function EmailRow({ user }: { user: UserResource }) {
     }
   };
   return (
-    <div className={shell.settingRow}>
-      <div className={shell.settingText}>
-        <span className={shell.settingLabel}>Email address</span>
-        <span className={shell.settingHint}>
-          {user.primaryEmailAddress?.emailAddress}
-        </span>
-        {open && (
+    <SettingRow
+      label="Email address"
+      description={user.primaryEmailAddress?.emailAddress}
+      below={
+        open && (
           <form
             className={styles.inlineForm}
             onSubmit={(event) => {
@@ -179,10 +177,11 @@ function EmailRow({ user }: { user: UserResource }) {
               </Button>
             </div>
           </form>
-        )}
-      </div>
+        )
+      }
+    >
       {!open && <Button onClick={() => setOpen(true)}>Change email</Button>}
-    </div>
+    </SettingRow>
   );
 }
 
@@ -199,15 +198,15 @@ function PasswordRow({ user }: { user: UserResource }) {
     }) => user.updatePassword(input),
   );
   return (
-    <div className={shell.settingRow}>
-      <div className={shell.settingText}>
-        <span className={shell.settingLabel}>Password</span>
-        <span className={shell.settingHint}>
-          {user.passwordEnabled
-            ? "A password is set."
-            : "Add a password to sign in without a connected account."}
-        </span>
-        {open && (
+    <SettingRow
+      label="Password"
+      description={
+        user.passwordEnabled
+          ? "A password is set."
+          : "Add a password to sign in without a connected account."
+      }
+      below={
+        open && (
           <form
             className={styles.inlineForm}
             onSubmit={async (event) => {
@@ -292,14 +291,15 @@ function PasswordRow({ user }: { user: UserResource }) {
               </Button>
             </div>
           </form>
-        )}
-      </div>
+        )
+      }
+    >
       {!open && (
         <Button onClick={() => setOpen(true)}>
           {user.passwordEnabled ? "Change password" : "Add password"}
         </Button>
       )}
-    </div>
+    </SettingRow>
   );
 }
 
@@ -322,25 +322,22 @@ function ConnectedAccounts({ user }: { user: UserResource }) {
       (account) => account.verification?.status === "verified",
     ).length <= 1;
   return (
-    <div className={shell.settingRow}>
-      <div className={shell.settingText}>
-        <span className={shell.settingLabel}>Connected accounts</span>
-        <span className={shell.settingHint}>
+    <SettingRow
+      label="Connected accounts"
+      description={
+        <>
           {google
             ? `Google · ${google.emailAddress}`
             : "Sign in with Google instead of a password."}
-        </span>
-        {google && onlyWayIn && (
-          <span className={shell.settingHint}>
-            Add a password before removing your only sign-in method.
-          </span>
-        )}
-        {error && (
-          <p className={batch.error} role="alert">
-            {error}
-          </p>
-        )}
-      </div>
+          {google && onlyWayIn && (
+            <span className={styles.descriptionLine}>
+              Add a password before removing your only sign-in method.
+            </span>
+          )}
+        </>
+      }
+      error={error}
+    >
       <Button
         disabled={busy || Boolean(google && onlyWayIn)}
         onClick={async () => {
@@ -365,7 +362,7 @@ function ConnectedAccounts({ user }: { user: UserResource }) {
       >
         {busy ? "Saving…" : google ? "Remove Google" : "Connect Google"}
       </Button>
-    </div>
+    </SettingRow>
   );
 }
 
@@ -378,102 +375,95 @@ function DeleteAccount({ user }: { user: UserResource }) {
   const remove = useReverification(() => user.delete());
   const email = user.primaryEmailAddress?.emailAddress;
   return (
-    <section className={shell.settingsSection} aria-label="Delete account">
-      <Card>
-        <div className={shell.settingRow}>
-          <div className={shell.settingText}>
-            <span className={shell.settingLabel}>
-              Delete your account and budget
-            </span>
-            <span className={shell.settingHint}>
-              Permanent. There’s no undo and no export after this.
-            </span>
-            {open && (
-              <form
-                className={styles.inlineForm}
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  if (typed.trim().toLowerCase() !== email?.toLowerCase())
-                    return;
-                  setBusy(true);
-                  setError(null);
-                  try {
-                    await remove();
-                    await deleteStoredBudgets({ userId: user.id });
-                    window.sessionStorage.removeItem(
-                      `caishen:onboarding:${user.id}`,
-                    );
-                    window.location.assign("/");
-                  } catch (caught) {
-                    setError(message(caught));
-                    setBusy(false);
-                  }
-                }}
-              >
-                <ul className={styles.consequences}>
-                  <li>
-                    Your personal budget, private transactions, categories, and
-                    history are deleted.
-                  </li>
-                  <li>Bank connections are removed and daily emails stop.</li>
-                  {partner && (
-                    <li>
-                      {partner.name} keeps their budget and the shared records
-                      they need. Existing balances are frozen and shared
-                      categories stop splitting new spending.
-                    </li>
-                  )}
-                </ul>
-                <label className={batch.field}>
-                  Type {email} to confirm
-                  <input
-                    className={batch.input}
-                    value={typed}
-                    autoComplete="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    onChange={(event) => setTyped(event.target.value)}
-                  />
-                </label>
-                {error && (
-                  <p className={batch.error} role="alert">
-                    {error}
-                  </p>
-                )}
-                <div className={batch.actions} data-end>
-                  <Button
-                    disabled={busy}
-                    onClick={() => {
-                      setOpen(false);
-                      setTyped("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="danger"
-                    type="submit"
-                    disabled={
-                      busy ||
-                      typed.trim().toLowerCase() !== email?.toLowerCase()
-                    }
-                  >
-                    {busy ? "Deleting…" : "Delete account permanently"}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </div>
-          {!open && (
-            <Button
-              disabled={!user.deleteSelfEnabled}
-              onClick={() => setOpen(true)}
+    <SettingsSection aria-label="Delete account">
+      <SettingRow
+        label="Delete your account and budget"
+        description="Permanent. There’s no undo and no export after this."
+        below={
+          open && (
+            <form
+              className={styles.inlineForm}
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (typed.trim().toLowerCase() !== email?.toLowerCase()) return;
+                setBusy(true);
+                setError(null);
+                try {
+                  await remove();
+                  await deleteStoredBudgets({ userId: user.id });
+                  window.sessionStorage.removeItem(
+                    `caishen:onboarding:${user.id}`,
+                  );
+                  window.location.assign("/");
+                } catch (caught) {
+                  setError(message(caught));
+                  setBusy(false);
+                }
+              }}
             >
-              Delete account…
-            </Button>
-          )}
-        </div>
-      </Card>
-    </section>
+              <ul className={styles.consequences}>
+                <li>
+                  Your personal budget, private transactions, categories, and
+                  history are deleted.
+                </li>
+                <li>Bank connections are removed and daily emails stop.</li>
+                {partner && (
+                  <li>
+                    {partner.name} keeps their budget and the shared records
+                    they need. Existing balances are frozen and shared
+                    categories stop splitting new spending.
+                  </li>
+                )}
+              </ul>
+              <label className={batch.field}>
+                Type {email} to confirm
+                <input
+                  className={batch.input}
+                  value={typed}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  onChange={(event) => setTyped(event.target.value)}
+                />
+              </label>
+              {error && (
+                <p className={batch.error} role="alert">
+                  {error}
+                </p>
+              )}
+              <div className={batch.actions} data-end>
+                <Button
+                  disabled={busy}
+                  onClick={() => {
+                    setOpen(false);
+                    setTyped("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  type="submit"
+                  disabled={
+                    busy || typed.trim().toLowerCase() !== email?.toLowerCase()
+                  }
+                >
+                  {busy ? "Deleting…" : "Delete account permanently"}
+                </Button>
+              </div>
+            </form>
+          )
+        }
+      >
+        {!open && (
+          <Button
+            disabled={!user.deleteSelfEnabled}
+            onClick={() => setOpen(true)}
+          >
+            Delete account…
+          </Button>
+        )}
+      </SettingRow>
+    </SettingsSection>
   );
 }
