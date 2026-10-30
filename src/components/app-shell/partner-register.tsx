@@ -3,13 +3,12 @@
 import {
   CheckIcon,
   CopyIcon,
-  HistoryIcon,
   LinkIcon,
   SearchIcon,
   UsersIcon,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
@@ -17,18 +16,25 @@ import { Tag } from "~/components/ui/tag";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
-import type { PartnerEntryChange } from "~/domain/partner-ledger";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
-import { AmountWell, halfOf, parseCents } from "./share-field";
+import { AmountWell, parseCents } from "./share-field";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
+import {
+  AmountInput,
+  EditorCell,
+  EditorFooter,
+  EditorForm,
+  FieldError,
+} from "./editor-row";
 import { Empty, moveSelection } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
 import local from "./partner-register.module.css";
+import editorStyles from "./transaction-entry.module.css";
 
 type Row = View["partnerLedger"][number];
 
@@ -413,6 +419,74 @@ export function PartnerRegister({
             : row.payerId === view.budget.userId
               ? "You paid"
               : `${account.name} paid`;
+        const cells: RowCells = {
+          date: (
+            <>
+              <span
+                className={styles.reviewDot}
+                data-on={row.needsCategory || unconfirmed ? "" : undefined}
+              >
+                {(row.needsCategory || unconfirmed) && (
+                  <span className="sr-only">
+                    {unconfirmed ? "Needs confirming" : "Needs a category"}
+                  </span>
+                )}
+              </span>
+              <span className={`${styles.truncate} ${styles.muted}`}>
+                {shortDay(row.date)}
+              </span>
+            </>
+          ),
+          payee: (
+            <>
+              <span className={styles.truncate}>{payee(row)}</span>
+              {paidBy && (
+                <span className={`${local.paidBy} ${styles.faint}`}>
+                  {paidBy}
+                </span>
+              )}
+              {row.awaitingImport && (
+                <LinkIcon
+                  size={12}
+                  className={styles.inlineIcon}
+                  role="img"
+                  aria-label="Waiting for a bank import to match"
+                />
+              )}
+            </>
+          ),
+          category: row.needsCategory ? (
+            <Tag tone="attention">Needs category</Tag>
+          ) : settlement ? (
+            unconfirmed ? (
+              <Tag tone="attention">Confirm</Tag>
+            ) : (
+              <span className={styles.faint}>Settlement</span>
+            )
+          ) : row.awaitingImport && row.payerId === view.budget.userId ? (
+            <span className={styles.faint}>Waiting for your import</span>
+          ) : row.kind === "repayment" ? (
+            <span className={styles.faint}>Repayment</span>
+          ) : row.you === 0 ? (
+            <span className={styles.faint}>Not yours</span>
+          ) : (
+            <span className={styles.muted}>
+              {name(row.categoryId) ?? "No category"}
+            </span>
+          ),
+          shared: opens && !settlement ? money(row.shared) : "",
+          balance: money(row.balance),
+        };
+        if (selected && opens && !settlement)
+          return (
+            <EntryEditor
+              key={row.id}
+              row={row}
+              cells={cells}
+              partnerName={account.name}
+              onClose={() => setSelectedId(null)}
+            />
+          );
         return (
           <div
             key={row.id}
@@ -433,78 +507,24 @@ export function PartnerRegister({
               }}
             >
               <span className={styles.rowName} data-optional>
-                <span
-                  className={styles.reviewDot}
-                  data-on={row.needsCategory || unconfirmed ? "" : undefined}
-                >
-                  {(row.needsCategory || unconfirmed) && (
-                    <span className="sr-only">
-                      {unconfirmed ? "Needs confirming" : "Needs a category"}
-                    </span>
-                  )}
-                </span>
-                <span className={`${styles.truncate} ${styles.muted}`}>
-                  {shortDay(row.date)}
-                </span>
+                {cells.date}
               </span>
-              <span className={styles.rowName}>
-                <span className={styles.truncate}>{payee(row)}</span>
-                {paidBy && (
-                  <span className={`${local.paidBy} ${styles.faint}`}>
-                    {paidBy}
-                  </span>
-                )}
-                {row.awaitingImport && (
-                  <LinkIcon
-                    size={12}
-                    className={styles.inlineIcon}
-                    role="img"
-                    aria-label="Waiting for a bank import to match"
-                  />
-                )}
-              </span>
-              <span className={styles.truncate}>
-                {row.needsCategory ? (
-                  <Tag tone="attention">Needs category</Tag>
-                ) : settlement ? (
-                  unconfirmed ? (
-                    <Tag tone="attention">Confirm</Tag>
-                  ) : (
-                    <span className={styles.faint}>Settlement</span>
-                  )
-                ) : row.awaitingImport && row.payerId === view.budget.userId ? (
-                  <span className={styles.faint}>Waiting for your import</span>
-                ) : row.kind === "repayment" ? (
-                  <span className={styles.faint}>Repayment</span>
-                ) : row.you === 0 ? (
-                  <span className={styles.faint}>Not yours</span>
-                ) : (
-                  <span className={styles.muted}>
-                    {name(row.categoryId) ?? "No category"}
-                  </span>
-                )}
-              </span>
+              <span className={styles.rowName}>{cells.payee}</span>
+              <span className={styles.truncate}>{cells.category}</span>
               <span
                 className={`${styles.numeric} ${styles.faint}`}
                 data-optional
               >
-                {opens && !settlement ? money(row.shared) : ""}
+                {cells.shared}
               </span>
               <span className={styles.numeric}>{money(row.change, true)}</span>
               <span className={`${styles.numeric} ${styles.muted}`}>
-                {money(row.balance)}
+                {cells.balance}
               </span>
               <span />
             </button>
             {selected && settlement && (
               <SettlementDetail row={row} partnerName={account.name} />
-            )}
-            {selected && opens && !settlement && (
-              <EntryDetail
-                key={`${row.id}-${row.partner}-${row.you}`}
-                row={row}
-                partnerName={account.name}
-              />
             )}
           </div>
         );
@@ -600,27 +620,93 @@ function SettlementDetail({
   );
 }
 
-// An entry, opened: who consumed what, your side's category, the share
-// (either partner can change it), and its history.
-function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
-  const id = useId();
+type RowCells = Record<
+  "date" | "payee" | "category" | "shared" | "balance",
+  ReactNode
+>;
+
+// An entry, opened in place with the register's editor row. Its amount is
+// the share of the one who didn't pay, which either partner can change; the
+// category is your side of it, which only you see. The rest is the entry's,
+// and reads as it does in the row.
+function EntryEditor({
+  row,
+  cells,
+  partnerName,
+  onClose,
+}: {
+  row: Row;
+  cells: RowCells;
+  partnerName: string;
+  onClose: () => void;
+}) {
+  const formId = useId();
+  const id = (field: string) => `${formId}-${field}`;
+  const input = useRef<HTMLInputElement>(null);
   const entry = useTransactionEntry();
   const { view } = entry;
   const paid = row.payerId === view.budget.userId;
-  const refund = row.kind === "refund";
   // The share is the part of the one who didn't pay.
   const theirShare = paid ? row.partner : row.you;
   const shareLabel = paid ? `${partnerName}'s share` : "Your share";
+  const shareEditable = row.shareMode.mode !== "read";
+  // Your side of your partner's purchase, or of yours before its import
+  // arrives; a matched import of yours carries its own category.
+  const categoryEditable =
+    Boolean(row.entryId) && (!paid || Boolean(row.awaitingImport));
   const [text, setText] = useState((theirShare / 100).toFixed(2));
-  const [error, setError] = useState("");
-  const apply = (cents: number) => {
+  // Until you pick one, your payee memory fills in the category you gave
+  // this payee last time.
+  const [categoryId, setCategoryId] = useState(
+    row.categoryId ?? row.suggestedCategoryId ?? "",
+  );
+  const [errors, setErrors] = useState<{ amount?: string; form?: string }>({});
+  const categoryOptions: ChoiceOption[] = view.categories
+    .filter(
+      (category) =>
+        !category.pairedAccountId &&
+        !category.pairedLoanId &&
+        !category.counterpartyAccountId,
+    )
+    .map((category) => ({
+      value: category.id,
+      label: category.name,
+      group: category.group,
+      amount: category.available,
+    }));
+  // A mouse or trackpad goes straight to the amount; touch waits for a tap,
+  // so a keyboard doesn't cover the row before it's read.
+  useEffect(() => {
+    if (window.matchMedia("(pointer: fine)").matches)
+      input.current?.focus({ preventScroll: true });
+  }, []);
+  const saveCategory = () => {
+    if (!categoryEditable || !categoryId || categoryId === row.categoryId)
+      return null;
+    const label = categoryOptions.find(
+      (option) => option.value === categoryId,
+    )?.label;
+    return entry.saveCommand(
+      {
+        type: "partner.categorize",
+        id: newId(),
+        entryId: row.entryId!,
+        categoryId,
+      },
+      paid
+        ? `Your import of ${row.payee} will go in ${label}. Only you see that.`
+        : `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
+    );
+  };
+  const saveShare = (cents: number) => {
+    if (cents === theirShare) return null;
     const notice =
       cents === 0
         ? `Wrote off the share of ${row.payee}. Both ledgers show $0.00 now.`
         : `${shareLabel} of ${row.payee} is ${money(cents)}. Both budgets updated.`;
     // Your own imported purchase saves like its Share cell; anything else
     // goes through the shared entry, which changes the payer's transaction.
-    const failure = row.transactionId
+    return row.transactionId
       ? entry.saveShare(
           row.transactionId,
           row.lineId!,
@@ -637,223 +723,122 @@ function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
           },
           notice,
         );
-    if (failure) return setError(failure);
-    setError("");
-    setText((cents / 100).toFixed(2));
   };
-  return (
+  const save = () => {
+    const cents = shareEditable ? parseCents(text) : theirShare;
+    if (cents === null)
+      return setErrors({ amount: "Enter an amount, like 24.50." });
+    if (cents > row.shared)
+      return setErrors({
+        amount: `A share can be at most ${money(row.shared)}.`,
+      });
+    const failure = saveCategory() ?? saveShare(cents);
+    if (failure) return setErrors({ form: failure });
+    onClose();
+  };
+  const readOnly = (column: string, content: ReactNode, numeric = false) => (
     <div
-      className={share.detail}
-      // The register moves its selection with the arrow keys; in here they
-      // belong to the fields.
-      onKeyDown={(event) => event.stopPropagation()}
+      className={`${editorStyles.cell} ${local.readOnlyCell}`}
+      data-column={column}
+      data-numeric={numeric || undefined}
     >
-      <div className={share.detailMain}>
-        <dl className={share.facts}>
-          <div>
-            <dt>{refund ? "Refunded" : "Shared"}</dt>
-            <dd>{money(row.shared)}</dd>
-          </div>
-          <div>
-            <dt>You</dt>
-            <dd>{money(row.you)}</dd>
-          </div>
-          <div>
-            <dt>{partnerName}</dt>
-            <dd>{money(row.partner)}</dd>
-          </div>
-          <div>
-            <dt>
-              {row.change >= 0
-                ? `${partnerName} owes you`
-                : `You owe ${partnerName}`}
-            </dt>
-            <dd>{money(Math.abs(row.change))}</dd>
-          </div>
-        </dl>
-        <Source row={row} partnerName={partnerName} />
-        <div className={share.detailField}>
-          <label htmlFor={`${id}-category`}>Your category</label>
-          {paid && !row.awaitingImport ? (
-            <p className={local.readOnly}>
-              {view.categories.find((item) => item.id === row.categoryId)
-                ?.name ?? "No category"}
-              <span className={styles.faint}> · on your {row.payee} line</span>
-            </p>
-          ) : (
-            <SideCategory row={row} id={`${id}-category`} />
-          )}
-        </div>
-        {row.shareMode.mode === "read" ? (
-          <div className={share.detailField}>
-            <span>{shareLabel}</span>
-            <p className={local.readOnly}>{money(theirShare)}</p>
-            <p className={share.formHint}>{row.shareMode.reason}</p>
-          </div>
-        ) : (
-          <form
-            className={share.detailField}
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              const cents = parseCents(text);
-              if (cents === null)
-                return setError("Enter an amount, like 24.50.");
-              if (cents > row.shared)
-                return setError(`A share can be at most ${money(row.shared)}.`);
-              apply(cents);
-            }}
-          >
-            <label htmlFor={`${id}-share`}>{shareLabel}</label>
-            <div className={share.shareEdit}>
-              <AmountWell
-                id={`${id}-share`}
-                value={text}
-                invalid={Boolean(error)}
-                onChange={(value) => {
-                  setText(value);
-                  if (error) setError("");
-                }}
-              />
-              <Button size="sm" type="submit">
-                Update
-              </Button>
-              <Button
-                size="sm"
-                variant="quiet"
-                onClick={() => apply(halfOf(row.shared))}
-              >
-                Split evenly
-              </Button>
-              {paid && (
-                <Button
-                  size="sm"
-                  variant="quiet"
-                  disabled={theirShare === 0}
-                  onClick={() => apply(0)}
-                >
-                  Write off
-                </Button>
-              )}
-            </div>
-            {error && <p className={moveStyles.error}>{error}</p>}
-            <p className={share.formHint}>
-              Changes apply to both budgets at once and stay in the
-              entry&rsquo;s history.
-            </p>
-          </form>
-        )}
-      </div>
-      {row.history.length > 0 && (
-        <div className={share.history}>
-          <h3>
-            <HistoryIcon size={13} aria-hidden />
-            History
-          </h3>
-          <ol>
-            {row.history.map((change, index) => (
-              <li key={index}>
-                <span className={styles.faint}>
-                  {change.at ? day(view, change.at) : shortDay(row.date)} ·{" "}
-                  {change.actorId === view.budget.userId ? "You" : partnerName}
-                </span>
-                <span>
-                  {describe(change, {
-                    row,
-                    you: view.budget.userId,
-                    partnerName,
-                    shareLabel: paid ? shareLabel : "your share",
-                    account: accountOf(view, row),
-                  })}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
+      {content}
     </div>
   );
-}
-
-// Your side of your partner's purchase. Until you pick one, your payee
-// memory fills in the category you gave this payee last time.
-function SideCategory({ row, id }: { row: Row; id: string }) {
-  const entry = useTransactionEntry();
-  const { view } = entry;
-  const [value, setValue] = useState(
-    row.categoryId ?? row.suggestedCategoryId ?? "",
-  );
-  const [error, setError] = useState("");
-  const options: ChoiceOption[] = view.categories
-    .filter(
-      (category) =>
-        !category.pairedAccountId &&
-        !category.pairedLoanId &&
-        !category.counterpartyAccountId,
-    )
-    .map((category) => ({
-      value: category.id,
-      label: category.name,
-      group: category.group,
-      amount: category.available,
-    }));
-  const save = (categoryId: string) => {
-    const label = options.find((option) => option.value === categoryId)?.label;
-    const failure = entry.saveCommand(
-      {
-        type: "partner.categorize",
-        id: newId(),
-        entryId: row.entryId!,
-        categoryId,
-      },
-      paid
-        ? `Your import of ${row.payee} will go in ${label}. Only you see that.`
-        : `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
-    );
-    setError(failure ?? "");
-  };
-  const prefilled = row.needsCategory && Boolean(value);
-  const paid = row.payerId === view.budget.userId;
+  const hint =
+    row.shareMode.mode === "read"
+      ? row.shareMode.reason
+      : categoryEditable && row.needsCategory && categoryId
+        ? `Filled in from ${row.payee} last time. Only you see your category.`
+        : categoryEditable && paid
+          ? "Your import takes this category when it arrives. Only you see it."
+          : undefined;
+  const editable = shareEditable || categoryEditable;
   return (
-    <>
-      <div className={local.categoryEdit}>
-        <ChoiceField
-          id={id}
-          label="Your category"
-          value={value}
-          options={options}
-          placeholder="Pick a category"
-          invalid={Boolean(error)}
-          onChange={(next) => {
-            setValue(next);
-            save(next);
-          }}
-        />
-        {prefilled && (
-          <Button size="sm" variant="primary" onClick={() => save(value)}>
-            Categorize
-          </Button>
+    <EditorForm
+      id={formId}
+      title="Edit shared entry"
+      onSubmit={editable ? save : onClose}
+      onCancel={onClose}
+    >
+      <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
+        {readOnly("date", cells.date)}
+        {readOnly("payee", cells.payee)}
+        {categoryEditable ? (
+          <EditorCell
+            column="category"
+            label="Your category"
+            htmlFor={id("category")}
+          >
+            <ChoiceField
+              id={id("category")}
+              label="Your category"
+              value={categoryId}
+              options={categoryOptions}
+              placeholder="Category"
+              onChange={setCategoryId}
+              onPicked={() => input.current?.focus({ preventScroll: true })}
+            />
+          </EditorCell>
+        ) : (
+          readOnly("category", cells.category)
         )}
+        {readOnly("shared", cells.shared, true)}
+        {shareEditable ? (
+          <EditorCell
+            column="amount"
+            label="Amount"
+            htmlFor={id("amount")}
+            error={
+              errors.amount && (
+                <FieldError id={id("amount-error")}>{errors.amount}</FieldError>
+              )
+            }
+          >
+            <AmountInput
+              inputRef={input}
+              id={id("amount")}
+              prefix={row.change < 0 ? "-$" : "$"}
+              invalid={Boolean(errors.amount)}
+              describedBy={errors.amount ? id("amount-error") : undefined}
+              value={text}
+              onChange={(value) => {
+                setText(value);
+                if (errors.amount) setErrors({});
+              }}
+            />
+          </EditorCell>
+        ) : (
+          readOnly("amount", money(row.change, true), true)
+        )}
+        {readOnly("balance", cells.balance, true)}
+        <span data-column="status" aria-hidden />
       </div>
-      {error ? (
-        <p className={moveStyles.error}>{error}</p>
-      ) : prefilled ? (
-        <p className={share.formHint}>
-          Filled in from {row.payee} last time. Only you see your category.
-        </p>
-      ) : paid && !row.categoryId && value ? (
-        <p className={share.formHint}>
-          Filled in from {row.payee} last time. Your import takes it when it
-          arrives, and only you see it.
-        </p>
-      ) : (
-        paid && (
-          <p className={share.formHint}>
-            Your import takes this category when it arrives. Only you see it.
-          </p>
-        )
-      )}
-    </>
+      <EditorFooter
+        actions={
+          editable ? (
+            <>
+              <Button size="sm" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" type="submit">
+                Save
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={onClose}>
+              Close
+            </Button>
+          )
+        }
+      >
+        {errors.form ? (
+          <FieldError id={id("error")}>{errors.form}</FieldError>
+        ) : (
+          hint && <span className={share.footerHint}>{hint}</span>
+        )}
+      </EditorFooter>
+    </EditorForm>
   );
 }
 
@@ -865,111 +850,4 @@ function shareOf(view: View, row: Row, cents: number) {
   const line =
     transaction?.lines?.find((item) => item.id === row.lineId) ?? transaction;
   return { ...line!.counterpartyShare!, amount: cents };
-}
-
-function day(view: View, at: string) {
-  return new Date(at).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: view.budget.settings.timezone,
-  });
-}
-
-// The account the viewer paid a shared purchase from, when they did.
-function accountOf(view: View, row: Row) {
-  const transaction = view.budget.transactions.find(
-    (item) => item.id === row.transactionId,
-  );
-  return view.accounts.find((item) => item.id === transaction?.accountId);
-}
-
-// Where an entry's facts come from: the payer's bank import, or a partner
-// who recorded it before the import arrived.
-function Source({ row, partnerName }: { row: Row; partnerName: string }) {
-  const { view } = useTransactionEntry();
-  const you = view.budget.userId;
-  const paid = row.payerId === you;
-  const recorder = row.recordedBy === you ? "You" : partnerName;
-  const account = accountOf(view, row);
-  const transaction = view.budget.transactions.find(
-    (item) => item.id === row.transactionId,
-  );
-  const text = row.awaitingImport
-    ? `${recorder} recorded this. ${paid ? "Your" : `${partnerName}'s`} bank import will match it when it arrives.`
-    : row.recordedBy
-      ? `${recorder} recorded this first. Matched to ${paid ? `your ${account?.name ?? "bank"} import` : `${partnerName}'s bank import`}.`
-      : paid && transaction?.providerId && account
-        ? `From your ${account.name} import`
-        : undefined;
-  if (!text) return null;
-  return (
-    <p className={local.source}>
-      <LinkIcon size={13} aria-hidden />
-      {text}
-    </p>
-  );
-}
-
-// What an entry's amount and share were when it was recorded: its facts
-// now, with every later change undone.
-function recordedFacts(row: Row, you: string, from: number) {
-  const facts: Record<string, string | number> = {
-    amount: row.shared,
-    // The share is the part of the one who didn't pay.
-    share: row.payerId === you ? row.partner : row.you,
-  };
-  for (const change of row.history.slice(from + 1).reverse())
-    for (const { field, previous } of change.changes ?? [])
-      facts[field] = previous;
-  return {
-    amount: Math.abs(Number(facts.amount)),
-    share: Number(facts.share),
-  };
-}
-
-// One change to an entry, in words.
-function describe(
-  change: PartnerEntryChange,
-  context: {
-    row: Row;
-    you: string;
-    partnerName: string;
-    shareLabel: string;
-    account?: { name: string };
-  },
-) {
-  const { row, you, partnerName, shareLabel } = context;
-  if (change.reason === "created") return "Shared";
-  if (change.reason === "removed") return "Removed from the ledger";
-  if (change.reason === "recorded") {
-    const { amount, share } = recordedFacts(
-      row,
-      you,
-      row.history.indexOf(change),
-    );
-    const paid = row.payerId === you;
-    return `Recorded: ${paid ? "You" : partnerName} paid ${money(amount)}, ${paid ? `${partnerName}'s` : "your"} share ${money(share)}`;
-  }
-  const parts = (change.changes ?? []).map(({ field, previous, next }) => {
-    if (field === "share")
-      return Number(next) === 0
-        ? `Changed ${shareLabel} from ${money(Number(previous))} to $0.00 (written off)`
-        : `Changed ${shareLabel} from ${money(Number(previous))} to ${money(Number(next))}`;
-    if (field === "amount")
-      return `Changed the amount from ${money(Math.abs(Number(previous)))} to ${money(Math.abs(Number(next)))}`;
-    if (field === "date")
-      return `Moved it from ${shortDay(String(previous))} to ${shortDay(String(next))}`;
-    if (field === "payee") return `Renamed it from ${previous} to ${next}`;
-    return next === "posted" ? "Posted" : `Marked ${next}`;
-  });
-  if (change.reason === "restored")
-    return ["Shared again", ...parts].join(". ");
-  if (change.reason === "matched")
-    return [
-      row.payerId === you
-        ? `Matched to your ${context.account?.name ?? "bank"} import`
-        : `Matched to ${partnerName}'s bank import`,
-      ...parts,
-    ].join(". ");
-  return parts.join(". ") || "Updated";
 }
