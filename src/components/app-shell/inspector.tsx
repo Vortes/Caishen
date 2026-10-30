@@ -16,11 +16,12 @@ import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { newId } from "~/components/budget/format";
 import { Card } from "~/components/ui/card";
+import { FormError } from "~/components/ui/field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Figure, Property, Title } from "./cards";
 import { useAutoAssign } from "./assign-money";
 import { money, type Category } from "./model";
-import { FieldError, MoveMoneyPopover } from "./move-money";
+import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import { TargetEditor, useTargetEditing } from "./target-editor";
@@ -161,7 +162,6 @@ export const autoAssignOptions: [AutoAssignOption, string][] = [
 // Runs an option over the inspected categories: the whole month, a
 // selection, or one category.
 function AutoAssign({ scope }: { scope: Category[] }) {
-  const { month } = useShellData();
   const [error, setError] = useState<string | null>(null);
   const { scope: categories, plan, run } = useAutoAssign(scope);
   return (
@@ -186,10 +186,7 @@ function AutoAssign({ scope }: { scope: Category[] }) {
       </ul>
       {error && (
         <div className={styles.autoAssignError}>
-          <FieldError
-            id={`${month.key}-inspector-auto-error`}
-            message={error}
-          />
+          <FormError>{error}</FormError>
         </div>
       )}
     </>
@@ -525,9 +522,7 @@ function TargetSnooze({ category }: { category: Category }) {
           }
         />
       </label>
-      {error && (
-        <FieldError id={`${category.id}-snooze-error`} message={error} />
-      )}
+      {error && <FormError>{error}</FormError>}
     </>
   );
 }

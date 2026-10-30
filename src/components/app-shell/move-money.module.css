@@ -39,6 +39,21 @@
   color: var(--status-overspent);
 }
 
+/* The fields of the move-money and assign forms, between the header and
+   the footer. */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* A ui Field in a form whose other fields still pad themselves (add
+   category). */
+.fieldSlot {
+  padding: 10px 12px 0;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -70,7 +85,7 @@
 }
 .amountInput[data-invalid],
 .search[data-invalid] {
-  border-color: var(--danger-line);
+  border-color: var(--field-error-line);
 }
 .amountInput > span {
   color: var(--text-tertiary);
@@ -147,7 +162,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--danger-text);
+  color: var(--field-error);
   font-size: var(--type-small);
 }
 

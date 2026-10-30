@@ -1,10 +1,12 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { ZapIcon } from "lucide-react";
-import { useEffect, useId, useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
+import { readAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field, FormError, FormFooter } from "~/components/ui/field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Popover } from "~/components/ui/popover";
 import {
@@ -16,14 +18,12 @@ import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
 import {
   Destination,
-  FieldError,
-  parseAmount,
   READY_TO_ASSIGN,
+  sameAmount,
   useMoveMoney,
   type Option,
 } from "./move-money";
 import { useShellData } from "./shell-data";
-import moveStyles from "./move-money.module.css";
 import styles from "./assign-money.module.css";
 
 // YNAB's Assign popover on the Ready to Assign card. Manual moves an amount
@@ -92,8 +92,8 @@ function ManualForm({ onDone }: { onDone: () => void }) {
     field: "amount" | "from" | "to" | "form";
     message: string;
   } | null>(null);
-  const amountId = useId();
-  const cents = parseAmount(amount);
+  const reading = readAmount(amount);
+  const cents = reading.ok ? reading.cents : NaN;
 
   const all: Option[] = [
     {
@@ -120,6 +120,10 @@ function ManualForm({ onDone }: { onDone: () => void }) {
   const named = (id: string | null) => all.find((option) => option.id === id);
 
   const submit = () => {
+    if (!reading.ok) {
+      setError({ field: "amount", message: reading.message });
+      return;
+    }
     if (!(cents > 0)) {
       setError({ field: "amount", message: "Enter an amount above zero." });
       return;
@@ -192,70 +196,57 @@ function ManualForm({ onDone }: { onDone: () => void }) {
   };
   return (
     <form
-      className={moveStyles.form}
+      className={styles.form}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
-      <div className={moveStyles.field}>
-        <label htmlFor={amountId}>Amount</label>
-        <div
-          className={moveStyles.amountInput}
-          data-invalid={error?.field === "amount" || undefined}
+      <div className={styles.fields}>
+        <Field
+          label="Amount"
+          error={error?.field === "amount" ? error.message : undefined}
         >
-          <span aria-hidden>$</span>
-          <input
-            id={amountId}
-            inputMode="decimal"
-            autoComplete="off"
+          <AmountInput
             placeholder="0.00"
             value={amount}
-            aria-invalid={error?.field === "amount" || undefined}
-            aria-describedby={
-              error?.field === "amount" ? `${amountId}-error` : undefined
-            }
-            onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => {
-              setAmount(groupAmountInput(event.target));
-              setError(null);
+            onChange={(next) => {
+              if (!sameAmount(amount, next)) setError(null);
+              setAmount(next);
             }}
           />
-        </div>
-        {error?.field === "amount" && (
-          <FieldError id={`${amountId}-error`} message={error.message} />
-        )}
+        </Field>
+        <Destination
+          label="From"
+          options={fromOptions}
+          value={from}
+          short={short}
+          error={error?.field === "from" ? error.message : undefined}
+          onChange={pick(setFrom)}
+        />
+        <Destination
+          label="To"
+          options={toOptions}
+          value={to}
+          short={() => false}
+          error={error?.field === "to" ? error.message : undefined}
+          onChange={pick(setTo)}
+        />
+        {error?.field === "form" && <FormError>{error.message}</FormError>}
       </div>
-      <Destination
-        label="From"
-        options={fromOptions}
-        value={from}
-        short={short}
-        error={error?.field === "from" ? error.message : undefined}
-        onChange={pick(setFrom)}
+      <FormFooter
+        actions={
+          <>
+            <Button size="sm" onClick={onDone}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit">
+              {from === READY_TO_ASSIGN ? "Assign" : "Move"}
+            </Button>
+          </>
+        }
       />
-      <Destination
-        label="To"
-        options={toOptions}
-        value={to}
-        short={() => false}
-        error={error?.field === "to" ? error.message : undefined}
-        onChange={pick(setTo)}
-      />
-      {error?.field === "form" && (
-        <div className={moveStyles.formError}>
-          <FieldError id={`${amountId}-form-error`} message={error.message} />
-        </div>
-      )}
-      <div className={moveStyles.footer}>
-        <Button size="sm" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button variant="primary" size="sm" type="submit">
-          {from === READY_TO_ASSIGN ? "Assign" : "Move"}
-        </Button>
-      </div>
     </form>
   );
 }
@@ -312,7 +303,7 @@ export function useAutoAssign(categories: Category[]) {
 
 // Runs an option over every category this month at once, like YNAB.
 function AutoAssign({ onDone }: { onDone: () => void }) {
-  const { categories, readyToAssign, month } = useShellData();
+  const { categories, readyToAssign } = useShellData();
   const [error, setError] = useState<string | null>(null);
   const { scope, plan, run: runOption } = useAutoAssign(categories);
   const need = optionAmount("underfunded", scope);
@@ -359,7 +350,7 @@ function AutoAssign({ onDone }: { onDone: () => void }) {
       )}
       {error && (
         <div className={styles.error}>
-          <FieldError id={`${month.key}-auto-error`} message={error} />
+          <FormError>{error}</FormError>
         </div>
       )}
     </div>

@@ -77,6 +77,11 @@
   --danger-text: var(--red-300);
   --danger-line: oklch(from var(--red-500) l c h / 0.6);
 
+  /* A field the user has to fix: its error text and its well's border.
+     Not a destructive confirm, so not --danger-*. */
+  --field-error: var(--red-300);
+  --field-error-line: oklch(from var(--red-500) l c h / 0.6);
+
   /* A category's funding state. Credit overspending is amber, not red: it
      takes no cash, it adds card debt the plan hasn't funded yet. */
   --status-funded: var(--green-300);
@@ -147,6 +152,9 @@
 
   --danger-text: var(--red-700);
   --danger-line: oklch(from var(--red-600) l c h / 0.55);
+
+  --field-error: var(--red-700);
+  --field-error-line: oklch(from var(--red-600) l c h / 0.55);
 
   --status-funded: var(--green-600);
   --status-funded-bg: var(--green-100);

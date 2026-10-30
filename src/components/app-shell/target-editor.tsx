@@ -15,13 +15,13 @@ import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field, FormError } from "~/components/ui/field";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
 import type { Category } from "./model";
-import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
 import { DateField } from "./transaction-date";
 import {
@@ -66,7 +66,7 @@ export function useTargetEditing() {
   return value;
 }
 
-type FormError = { field: TargetField | "form"; message: string };
+type EditorError = { field: TargetField | "form"; message: string };
 
 // YNAB's target editor, in place of the target's summary in the inspector.
 // The schedule decides which fields follow; a custom schedule asks what to
@@ -86,7 +86,7 @@ export function TargetEditor({
   const [draft, setDraft] = useState<TargetDraft>(() =>
     createTargetDraft(kind, month.key, existing),
   );
-  const [error, setError] = useState<FormError | null>(null);
+  const [error, setError] = useState<EditorError | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const id = useId();
   const formRef = useRef<HTMLFormElement>(null);
@@ -349,9 +349,7 @@ export function TargetEditor({
         </>
       )}
 
-      {error?.field === "form" && (
-        <FieldError id={fieldId("form-error")} message={error.message} />
-      )}
+      {error?.field === "form" && <FormError>{error.message}</FormError>}
 
       <div className={styles.footer}>
         {existing && (
@@ -368,35 +366,6 @@ export function TargetEditor({
         </Button>
       </div>
     </form>
-  );
-}
-
-function Field({
-  id,
-  label,
-  error,
-  hint,
-  children,
-}: {
-  id: string;
-  label: string;
-  error?: string;
-  // What the field means, below it; the control names it in
-  // aria-describedby as `${id}-hint`.
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={styles.field}>
-      <label htmlFor={id}>{label}</label>
-      {children}
-      {error && <FieldError id={`${id}-error`} message={error} />}
-      {hint && (
-        <p className={styles.hint} id={`${id}-hint`}>
-          {hint}
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -465,46 +434,46 @@ function Repeat({
         Repeat
       </label>
       {draft.repeat && (
-        <div className={styles.inline}>
-          <label htmlFor={id}>Every</label>
-          <div
-            className={`${entry.well} ${styles.every}`}
-            data-invalid={error ? true : undefined}
-          >
-            <input
-              ref={register}
-              id={id}
-              className={entry.input}
-              inputMode="numeric"
-              autoComplete="off"
-              value={draft.repeatEvery}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? `${id}-error` : undefined}
-              onFocus={(event) => event.currentTarget.select()}
-              onChange={(event) =>
-                onChange({ repeatEvery: event.target.value })
-              }
-            />
-          </div>
-          <div className={styles.unit}>
-            <Select
-              label="Repeat unit"
-              value={draft.repeatUnit}
-              onChange={(value) =>
-                onChange({ repeatUnit: value as TargetDraft["repeatUnit"] })
-              }
+        <Field id={id} label="Every" error={error}>
+          <div className={styles.inline}>
+            <div
+              className={`${entry.well} ${styles.every}`}
+              data-invalid={error ? true : undefined}
             >
-              <option value="months">
-                {draft.repeatEvery.trim() === "1" ? "Month" : "Months"}
-              </option>
-              <option value="years">
-                {draft.repeatEvery.trim() === "1" ? "Year" : "Years"}
-              </option>
-            </Select>
+              <input
+                ref={register}
+                id={id}
+                className={entry.input}
+                inputMode="numeric"
+                autoComplete="off"
+                value={draft.repeatEvery}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${id}-error` : undefined}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) =>
+                  onChange({ repeatEvery: event.target.value })
+                }
+              />
+            </div>
+            <div className={styles.unit}>
+              <Select
+                label="Repeat unit"
+                value={draft.repeatUnit}
+                onChange={(value) =>
+                  onChange({ repeatUnit: value as TargetDraft["repeatUnit"] })
+                }
+              >
+                <option value="months">
+                  {draft.repeatEvery.trim() === "1" ? "Month" : "Months"}
+                </option>
+                <option value="years">
+                  {draft.repeatEvery.trim() === "1" ? "Year" : "Years"}
+                </option>
+              </Select>
+            </div>
           </div>
-        </div>
+        </Field>
       )}
-      {error && <FieldError id={`${id}-error`} message={error} />}
     </div>
   );
 }
@@ -542,8 +511,7 @@ function BalanceDue({
         Due by date
       </label>
       {draft.balanceDue && (
-        <div className={styles.field}>
-          <label htmlFor={id}>Due on</label>
+        <Field id={id} label="Due on" error={error}>
           <div className={styles.inline}>
             <div className={styles.grow}>
               <Select
@@ -578,9 +546,8 @@ function BalanceDue({
               </Select>
             </div>
           </div>
-        </div>
+        </Field>
       )}
-      {error && <FieldError id={`${id}-error`} message={error} />}
     </div>
   );
 }
