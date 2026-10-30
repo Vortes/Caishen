@@ -41,7 +41,7 @@ export function SlicePopover({
     <Popover.Portal container={container}>
       <Popover.Content
         {...motion}
-        className={`${styles.popover} ${styles.slicePopover}`}
+        className={styles.slicePopover}
         side="top"
         sideOffset={POPOVER_GAP}
         collisionPadding={12}

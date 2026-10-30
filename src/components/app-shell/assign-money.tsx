@@ -2,14 +2,11 @@
 
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { ZapIcon } from "lucide-react";
-import { Popover } from "radix-ui";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactElement } from "react";
 import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import {
   planAutoAssign,
   optionAmount,
@@ -33,13 +30,11 @@ import styles from "./assign-money.module.css";
 // between Ready to Assign and a category, or between two categories; Auto
 // runs an Auto-Assign option over the whole month. When Ready to Assign is
 // negative, the same form pulls money back from a category to fix it.
-export function AssignMoneyPopover({ children }: { children: ReactNode }) {
-  const container = usePortalContainer();
+export function AssignMoneyPopover({ children }: { children: ReactElement }) {
   const { readyToAssign } = useShellData();
   const [open, setOpen] = useState(
     () => new URLSearchParams(window.location.search).get("assign") === "1",
   );
-  const motion = usePopoverMotion(open);
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.has("assign")) {
@@ -50,50 +45,33 @@ export function AssignMoneyPopover({ children }: { children: ReactNode }) {
   const { holdOpen } = useMoveMoney();
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>{children}</Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          side="bottom"
-          align="center"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={
-            readyToAssign < 0 ? "Fix overassigned money" : "Assign money"
-          }
-          // Escape closes an open category list before the popover.
-          onEscapeKeyDown={(event) => {
-            const focused = document.activeElement;
-            if (
-              focused?.getAttribute("role") === "combobox" &&
-              focused.getAttribute("aria-expanded") === "true"
-            )
-              event.preventDefault();
-          }}
-        >
-          <Tabs defaultValue="manual">
-            <div className={styles.tabs}>
-              <TabsList aria-label="How to assign">
-                <TabsTrigger value="auto">
-                  <ZapIcon size={13} aria-hidden className={styles.tabIcon} />
-                  Auto
-                </TabsTrigger>
-                <TabsTrigger value="manual">Manual</TabsTrigger>
-              </TabsList>
-            </div>
-            <TabsContent value="auto">
-              <AutoAssign onDone={() => setOpen(false)} />
-            </TabsContent>
-            <TabsContent value="manual">
-              <ManualForm onDone={() => setOpen(false)} />
-            </TabsContent>
-          </Tabs>
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label={readyToAssign < 0 ? "Fix overassigned money" : "Assign money"}
+      trigger={children}
+      open={open}
+      onOpenChange={setOpen}
+      align="center"
+      size="form"
+      arrow
+    >
+      <Tabs defaultValue="manual">
+        <div className={styles.tabs}>
+          <TabsList aria-label="How to assign">
+            <TabsTrigger value="auto">
+              <ZapIcon size={13} aria-hidden className={styles.tabIcon} />
+              Auto
+            </TabsTrigger>
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="auto">
+          <AutoAssign onDone={() => setOpen(false)} />
+        </TabsContent>
+        <TabsContent value="manual">
+          <ManualForm onDone={() => setOpen(false)} />
+        </TabsContent>
+      </Tabs>
+    </Popover>
   );
 }
 
@@ -114,8 +92,6 @@ function ManualForm({ onDone }: { onDone: () => void }) {
     field: "amount" | "from" | "to" | "form";
     message: string;
   } | null>(null);
-  const fromOpen = useRef(false);
-  const toOpen = useRef(false);
   const amountId = useId();
   const cents = parseAmount(amount);
 
@@ -257,7 +233,6 @@ function ManualForm({ onDone }: { onDone: () => void }) {
         value={from}
         short={short}
         error={error?.field === "from" ? error.message : undefined}
-        listOpen={fromOpen}
         onChange={pick(setFrom)}
       />
       <Destination
@@ -266,7 +241,6 @@ function ManualForm({ onDone }: { onDone: () => void }) {
         value={to}
         short={() => false}
         error={error?.field === "to" ? error.message : undefined}
-        listOpen={toOpen}
         onChange={pick(setTo)}
       />
       {error?.field === "form" && (
@@ -275,9 +249,9 @@ function ManualForm({ onDone }: { onDone: () => void }) {
         </div>
       )}
       <div className={moveStyles.footer}>
-        <Popover.Close asChild>
-          <Button size="sm">Cancel</Button>
-        </Popover.Close>
+        <Button size="sm" onClick={onDone}>
+          Cancel
+        </Button>
         <Button variant="primary" size="sm" type="submit">
           {from === READY_TO_ASSIGN ? "Assign" : "Move"}
         </Button>

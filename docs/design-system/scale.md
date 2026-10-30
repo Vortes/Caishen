@@ -65,7 +65,8 @@ rows line up across panels.
 | `--size-header`         | 48px   | Panel header                               |
 | `--size-toolbar`        | 52px   | Toolbar under the header                   |
 
-Popovers are `--size-popover` (320px) wide.
+Popovers are `--size-popover` (320px) wide; one holding a table of
+transactions is `--size-popover-wide` (560px).
 
 ## Spacing
 

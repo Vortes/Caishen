@@ -18,6 +18,9 @@
 .form {
   width: min(var(--size-popover), calc(100vw - 24px));
 }
+/* For a table of transactions. 560px, the Reflect slice panel's width: its
+   four fractional columns truncate first, while the activity list's capped
+   account column only gives the extra 40px to the payee. */
 .wide {
   width: min(var(--size-popover-wide), calc(100vw - 24px));
 }
@@ -29,6 +32,11 @@
     calc(100vw - 24px)
   );
   min-width: min-content;
+}
+
+/* Points at the trigger; the gap grows by its height. */
+.arrow {
+  fill: var(--surface-raised);
 }
 
 /* Motion. Frequent surfaces are instant; occasional ones animate when the

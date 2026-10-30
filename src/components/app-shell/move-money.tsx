@@ -2,23 +2,22 @@
 
 import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, CircleAlertIcon, SearchIcon } from "lucide-react";
-import { Popover } from "radix-ui";
 import {
+  cloneElement,
   createContext,
   useContext,
   useEffect,
   useId,
   useRef,
   useState,
-  type ReactNode,
+  type ReactElement,
+  type Ref,
 } from "react";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import { useShellData } from "./shell-data";
 import shell from "./shell.module.css";
 import styles from "./move-money.module.css";
@@ -58,19 +57,22 @@ export function MoveMoneyPopover({
 }: {
   category: Category;
   align?: "start" | "center" | "end";
-  children: ReactNode;
+  children: ReactElement<{ ref?: Ref<HTMLButtonElement> }>;
 }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   const [side, setSide] = useState<"top" | "bottom">("bottom");
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const listOpen = useRef(false);
   const cover = category.available < 0;
   const { holdOpen } = useMoveMoney();
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (
-    <Popover.Root
+    <Popover
+      label={
+        cover
+          ? `Cover ${category.name}'s overspending`
+          : `Move money from ${category.name}`
+      }
+      trigger={cloneElement(children, { ref: triggerRef })}
       open={open}
       onOpenChange={(next) => {
         // The form grows once its list opens, so the side is chosen for its
@@ -85,37 +87,13 @@ export function MoveMoneyPopover({
         }
         setOpen(next);
       }}
+      side={side}
+      align={align}
+      size="form"
+      arrow
     >
-      <Popover.Trigger asChild ref={triggerRef}>
-        {children}
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          side={side}
-          align={align}
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={
-            cover
-              ? `Cover ${category.name}'s overspending`
-              : `Move money from ${category.name}`
-          }
-          // Escape closes an open destination list before the popover.
-          onEscapeKeyDown={(event) => {
-            if (listOpen.current) event.preventDefault();
-          }}
-        >
-          <MoveForm
-            category={category}
-            listOpen={listOpen}
-            onDone={() => setOpen(false)}
-          />
-          <Popover.Arrow className={styles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      <MoveForm category={category} onDone={() => setOpen(false)} />
+    </Popover>
   );
 }
 
@@ -134,11 +112,9 @@ export function parseAmount(text: string) {
 
 function MoveForm({
   category,
-  listOpen,
   onDone,
 }: {
   category: Category;
-  listOpen: { current: boolean };
   onDone: () => void;
 }) {
   const { categories, readyToAssign, month } = useShellData();
@@ -277,7 +253,6 @@ function MoveForm({
       value={other}
       short={short}
       error={error?.field === "other" ? error.message : undefined}
-      listOpen={listOpen}
       onChange={(id) => {
         setOther(id);
         setError(null);
@@ -310,9 +285,9 @@ function MoveForm({
         </div>
       )}
       <div className={styles.footer}>
-        <Popover.Close asChild>
-          <Button size="sm">Cancel</Button>
-        </Popover.Close>
+        <Button size="sm" onClick={onDone}>
+          Cancel
+        </Button>
         <Button variant="primary" size="sm" type="submit">
           {cover ? "Cover" : "Move"}
         </Button>
@@ -338,7 +313,6 @@ export function Destination({
   value,
   short,
   error,
-  listOpen,
   onChange,
 }: {
   label: string;
@@ -346,7 +320,6 @@ export function Destination({
   value: string | null;
   short: (option: Option) => boolean;
   error?: string;
-  listOpen: { current: boolean };
   onChange: (id: string) => void;
 }) {
   const id = useId();
@@ -355,9 +328,6 @@ export function Destination({
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [active, setActive] = useState<string | null>(null);
-  useEffect(() => {
-    listOpen.current = expanded;
-  }, [listOpen, expanded]);
   const show = () => {
     if (expanded) return;
     setQuery("");

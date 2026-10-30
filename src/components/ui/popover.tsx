@@ -22,17 +22,24 @@ type Placement = {
   // Without a size, the content sets the width.
   size?: PopoverSize;
   motion?: SurfaceMotion;
+  // A small arrow pointing at the trigger or anchor, for forms that act on
+  // the one thing they hang from.
+  arrow?: boolean;
   children: ReactNode;
 };
 
-// A button that opens and closes the popover.
+// A button that opens and closes the popover. It hangs from the trigger, or
+// from a separate anchor, such as the border of the bar the trigger sits in.
 type TriggerProps = Placement & {
   trigger: ReactElement;
-  anchor?: never;
+  anchor?: ReactElement;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   // Off when the content places focus itself.
   autoFocus?: boolean;
+  // Called as it closes; preventDefault() keeps focus from returning to the
+  // trigger, for a site that focuses what the popover just made.
+  onCloseAutoFocus?: (event: Event) => void;
 };
 
 // An element the popover hangs from, such as an input, while the site
@@ -44,6 +51,7 @@ type AnchorProps = Placement & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   autoFocus?: never;
+  onCloseAutoFocus?: never;
 };
 
 export function Popover(props: TriggerProps | AnchorProps) {
@@ -56,6 +64,7 @@ export function Popover(props: TriggerProps | AnchorProps) {
     align = "start",
     size,
     motion = "frequent",
+    arrow = false,
     children,
   } = props;
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -67,19 +76,22 @@ export function Popover(props: TriggerProps | AnchorProps) {
     onOpenChange?.(next);
   };
   const motionProps = useSurfaceMotion(open, motion);
-  const anchored = props.anchor !== undefined;
+  // An anchor without a trigger: the site opens it and keeps focus.
+  const anchored = props.trigger === undefined;
   const prevent = (event: Event) => event.preventDefault();
   const className = [styles.surface, styles.motion, size && styles[size]]
     .filter(Boolean)
     .join(" ");
   return (
     <Primitive.Root open={open} onOpenChange={setOpen}>
-      {anchored ? (
+      {props.trigger && (
+        <Primitive.Trigger asChild>{props.trigger}</Primitive.Trigger>
+      )}
+      {/* After the trigger, so it replaces the trigger as the anchor. */}
+      {props.anchor && (
         <Primitive.Anchor asChild ref={anchorRef}>
           {props.anchor}
         </Primitive.Anchor>
-      ) : (
-        <Primitive.Trigger asChild>{props.trigger}</Primitive.Trigger>
       )}
       <Primitive.Portal container={container}>
         <Primitive.Content
@@ -90,20 +102,58 @@ export function Popover(props: TriggerProps | AnchorProps) {
           side={side}
           align={align}
           sideOffset={SURFACE_GAP}
-          collisionPadding={SURFACE_COLLISION_PADDING}
+          collisionPadding={collisionPadding(side, align)}
           onOpenAutoFocus={
             anchored || props.autoFocus === false ? prevent : undefined
           }
-          onCloseAutoFocus={anchored ? prevent : undefined}
-          onEscapeKeyDown={anchored ? prevent : undefined}
+          onCloseAutoFocus={anchored ? prevent : props.onCloseAutoFocus}
+          onEscapeKeyDown={(event) => {
+            // Escape closes an open list inside the popover before the
+            // popover itself.
+            const target = event.target as Element | null;
+            if (
+              anchored ||
+              (target?.getAttribute("role") === "combobox" &&
+                target.getAttribute("aria-expanded") === "true")
+            )
+              event.preventDefault();
+          }}
           onInteractOutside={(event) => {
             if (anchorRef.current?.contains(event.target as Node))
               event.preventDefault();
           }}
         >
           {children}
+          {arrow && (
+            <Primitive.Arrow className={styles.arrow} width={14} height={7} />
+          )}
         </Primitive.Content>
       </Primitive.Portal>
     </Primitive.Root>
   );
+}
+
+// Clear of the window edge on every side but the one the surface aligns to:
+// a trigger near the edge, like Banks in the sidebar, keeps its surface
+// flush with it rather than pushed off it.
+function collisionPadding(
+  side: NonNullable<Placement["side"]>,
+  align: NonNullable<Placement["align"]>,
+) {
+  const padding = {
+    top: SURFACE_COLLISION_PADDING,
+    right: SURFACE_COLLISION_PADDING,
+    bottom: SURFACE_COLLISION_PADDING,
+    left: SURFACE_COLLISION_PADDING,
+  };
+  if (align === "center") return padding;
+  const vertical = side === "top" || side === "bottom";
+  const edge = vertical
+    ? align === "start"
+      ? "left"
+      : "right"
+    : align === "start"
+      ? "top"
+      : "bottom";
+  return { ...padding, [edge]: 0 };
 }

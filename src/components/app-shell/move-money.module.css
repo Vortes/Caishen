@@ -1,20 +1,17 @@
-/* The move-money popover, on the same surface as the Reflect filter menus. */
+/* The move-money form, on the shared popover surface. */
 
+/* Kept only for the two anchor-style sites #209 moves onto Popover: the
+   transaction Category field's and add-category's New category forms. */
 .popover {
   composes: content from "../ui/popover-motion.module.css";
   z-index: 60;
   width: var(--size-popover);
-  /* Not capped to the room on its side: a capped popover always fits, so
-     Radix would never flip it. */
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-menu);
   background: var(--surface-raised);
   box-shadow: var(--shadow-drawer);
   color: var(--text-secondary);
   font-size: var(--type-body);
-}
-.arrow {
-  fill: var(--surface-raised);
 }
 
 .form {

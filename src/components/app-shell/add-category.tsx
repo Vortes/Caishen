@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
-import { Popover } from "radix-ui";
+import { Popover as RadixPopover } from "radix-ui";
 import {
   createContext,
   useContext,
@@ -9,6 +9,7 @@ import {
   useId,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { newId } from "~/components/budget/format";
@@ -18,9 +19,11 @@ import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip, usePortalContainer } from "~/components/ui/tooltip";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
+import { Popover } from "~/components/ui/popover";
 import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
-// The move-money popover's form surface and fields.
+// The move-money popover's form fields; the New category form still borrows
+// its surface.
 import styles from "./move-money.module.css";
 
 // What was just added, for the plan to bring into view.
@@ -85,56 +88,48 @@ function AddPopover({
   onOpenChange: (open: boolean) => void;
   align?: "start" | "center" | "end";
   tooltip?: { label: string; shortcut?: string };
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
-  const motion = usePopoverMotion(open);
   const { holdOpen, reveal } = useAddCategory();
   // Where focus goes once the form closes: what it added, after an add,
   // otherwise back to the button that opened it.
   const added = useRef<Added | null>(null);
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
-  const trigger = <Popover.Trigger asChild>{children}</Popover.Trigger>;
   return (
-    <Popover.Root open={open} onOpenChange={onOpenChange}>
-      {tooltip && !open ? (
-        <Tooltip label={tooltip.label} shortcut={tooltip.shortcut}>
-          {trigger}
-        </Tooltip>
-      ) : (
-        // While the form is open its trigger has no tooltip, which, left open
-        // under the pointer that clicked it, would take the form's Escape.
-        trigger
-      )}
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          side="bottom"
-          align={align}
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={
-            group ? `Add a category to ${group}` : "Add a category group"
-          }
-          onCloseAutoFocus={(event) => {
-            const next = added.current;
-            added.current = null;
-            if (!next) return;
-            event.preventDefault();
-            reveal(next);
-          }}
-        >
-          <NameForm
-            group={group}
-            onAdded={(next) => {
-              added.current = next;
-              onOpenChange(false);
-            }}
-          />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label={group ? `Add a category to ${group}` : "Add a category group"}
+      trigger={
+        tooltip && !open ? (
+          <Tooltip label={tooltip.label} shortcut={tooltip.shortcut}>
+            {children}
+          </Tooltip>
+        ) : (
+          // While the form is open its trigger has no tooltip, which, left
+          // open under the pointer that clicked it, would take the form's
+          // Escape.
+          children
+        )
+      }
+      open={open}
+      onOpenChange={onOpenChange}
+      align={align}
+      size="form"
+      onCloseAutoFocus={(event) => {
+        const next = added.current;
+        added.current = null;
+        if (!next) return;
+        event.preventDefault();
+        reveal(next);
+      }}
+    >
+      <NameForm
+        group={group}
+        onAdded={(next) => {
+          added.current = next;
+          onOpenChange(false);
+        }}
+      />
+    </Popover>
   );
 }
 
@@ -284,9 +279,9 @@ function NameForm({
         </div>
       )}
       <div className={styles.footer}>
-        <Popover.Close asChild>
+        <RadixPopover.Close asChild>
           <Button size="sm">Cancel</Button>
-        </Popover.Close>
+        </RadixPopover.Close>
         <Button variant="primary" size="sm" type="submit">
           {target ? "Add category" : "Add category group"}
         </Button>
@@ -326,10 +321,10 @@ export function NewCategoryPopover({
   const start =
     choices.find((item) => item.name === group)?.name ?? choices[0]?.name;
   return (
-    <Popover.Root open={open} onOpenChange={onOpenChange}>
-      <Popover.Anchor asChild>{children}</Popover.Anchor>
-      <Popover.Portal container={container}>
-        <Popover.Content
+    <RadixPopover.Root open={open} onOpenChange={onOpenChange}>
+      <RadixPopover.Anchor asChild>{children}</RadixPopover.Anchor>
+      <RadixPopover.Portal container={container}>
+        <RadixPopover.Content
           {...motion}
           className={styles.popover}
           side="bottom"
@@ -363,9 +358,9 @@ export function NewCategoryPopover({
               Add a category group on the plan first.
             </p>
           )}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+        </RadixPopover.Content>
+      </RadixPopover.Portal>
+    </RadixPopover.Root>
   );
 }
 

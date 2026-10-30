@@ -1,7 +1,6 @@
 "use client";
 
 import { CircleAlertIcon, UsersIcon } from "lucide-react";
-import { Popover } from "radix-ui";
 import { useEffect, useId, useRef, useState } from "react";
 import { isFullShare } from "~/domain/counterparty";
 import {
@@ -9,15 +8,12 @@ import {
   type ShareChoice,
 } from "~/components/transactions/transaction-share";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import { money, type Transaction } from "./model";
 import { ShareChoices, useShareParties } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField } from "./transaction-fields";
 import styles from "./transaction-review.module.css";
-import moveStyles from "./move-money.module.css";
 
 export function ShareSelection({
   selected,
@@ -31,12 +27,10 @@ export function ShareSelection({
   const entry = useTransactionEntry();
   const { holdOpen } = entry;
   const { partner, reimbursements, who } = useShareParties();
-  const container = usePortalContainer();
   const id = useId();
   const categoryInput = useRef<HTMLInputElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   const [targets, setTargets] = useState<Transaction[]>([]);
   const [choice, setChoice] = useState<ShareChoice | null>(null);
   const [categoryId, setCategoryId] = useState("");
@@ -98,8 +92,16 @@ export function ShareSelection({
   };
   if (!open && (!eligible.length || (!partner && !reimbursements))) return null;
   return (
-    <Popover.Root
-      modal
+    <Popover
+      label="Share selected transactions"
+      trigger={
+        <Button size="sm" disabled={disabled}>
+          <UsersIcon aria-hidden />
+          Share
+        </Button>
+      }
+      // Hangs from the island's outer border, not the button inside it.
+      anchor={<div className={styles.islandAnchor} aria-hidden />}
       open={open}
       onOpenChange={(next) => {
         if (next) {
@@ -110,106 +112,92 @@ export function ShareSelection({
         }
         setOpen(next);
       }}
+      side="top"
+      align="end"
+      size="form"
     >
-      <Popover.Trigger asChild>
-        <Button size="sm" disabled={disabled}>
-          <UsersIcon aria-hidden />
-          Share
-        </Button>
-      </Popover.Trigger>
-      {/* Register after Trigger to replace its default anchor. */}
-      <Popover.Anchor className={styles.islandAnchor} aria-hidden />
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={`${moveStyles.popover} ${styles.sharePopover}`}
-          side="top"
-          align="end"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label="Share selected transactions"
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <ShareChoices
-            amounts={targets.map((row) => Math.abs(row.amount))}
-            onChange={(share, basis) => {
-              setChoice({ share, basis });
-              return null;
-            }}
-            confirmation={
-              choice ? (
-                <form
-                  className={styles.shareConfirmation}
-                  aria-label="Share transactions"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    save();
-                  }}
-                >
-                  <strong>
-                    {choice.share
-                      ? `Share with ${who(choice.share)}`
-                      : "Keep these just yours"}
-                  </strong>
-                  <p className={styles.shareSummary}>
-                    {targets.length}{" "}
-                    {targets.length === 1 ? "transaction" : "transactions"} ·{" "}
-                    {money(total)} shared
-                    {choice.basis === "half" ? " · 50/50 each" : ""}
-                  </p>
-                  {needsCategory && (
-                    <>
-                      <label htmlFor={id}>Category for your portion</label>
-                      <ChoiceField
-                        id={id}
-                        label="Category for your portion"
-                        value={categoryId}
-                        options={options}
-                        wide={false}
-                        placement="inline"
-                        placeholder="Choose a category"
-                        onChange={setCategoryId}
-                        inputRef={categoryInput}
-                      />
-                      <p className={styles.shareSummary}>
-                        Applies to your uncategorized portions.
-                      </p>
-                    </>
-                  )}
-                  {error && (
-                    <p className={styles.error} role="alert">
-                      <CircleAlertIcon size={14} aria-hidden />
-                      {error}
+      {/* Keys typed here stay out of the island and register around it. */}
+      <div
+        className={styles.sharePanel}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <ShareChoices
+          amounts={targets.map((row) => Math.abs(row.amount))}
+          onChange={(share, basis) => {
+            setChoice({ share, basis });
+            return null;
+          }}
+          confirmation={
+            choice ? (
+              <form
+                className={styles.shareConfirmation}
+                aria-label="Share transactions"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  save();
+                }}
+              >
+                <strong>
+                  {choice.share
+                    ? `Share with ${who(choice.share)}`
+                    : "Keep these just yours"}
+                </strong>
+                <p className={styles.shareSummary}>
+                  {targets.length}{" "}
+                  {targets.length === 1 ? "transaction" : "transactions"} ·{" "}
+                  {money(total)} shared
+                  {choice.basis === "half" ? " · 50/50 each" : ""}
+                </p>
+                {needsCategory && (
+                  <>
+                    <label htmlFor={id}>Category for your portion</label>
+                    <ChoiceField
+                      id={id}
+                      label="Category for your portion"
+                      value={categoryId}
+                      options={options}
+                      wide={false}
+                      placement="inline"
+                      placeholder="Choose a category"
+                      onChange={setCategoryId}
+                      inputRef={categoryInput}
+                    />
+                    <p className={styles.shareSummary}>
+                      Applies to your uncategorized portions.
                     </p>
-                  )}
-                  <div className={styles.actions}>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setChoice(null);
-                        setError("");
-                      }}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      size="sm"
-                      ref={confirmButton}
-                      variant="primary"
-                      type="submit"
-                      disabled={
-                        disabled || Boolean(needsCategory && !categoryId)
-                      }
-                    >
-                      {`Share ${targets.length} ${targets.length === 1 ? "transaction" : "transactions"}`}
-                    </Button>
-                  </div>
-                </form>
-              ) : undefined
-            }
-          />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+                  </>
+                )}
+                {error && (
+                  <p className={styles.error} role="alert">
+                    <CircleAlertIcon size={14} aria-hidden />
+                    {error}
+                  </p>
+                )}
+                <div className={styles.actions}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setChoice(null);
+                      setError("");
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    size="sm"
+                    ref={confirmButton}
+                    variant="primary"
+                    type="submit"
+                    disabled={disabled || Boolean(needsCategory && !categoryId)}
+                  >
+                    {`Share ${targets.length} ${targets.length === 1 ? "transaction" : "transactions"}`}
+                  </Button>
+                </div>
+              </form>
+            ) : undefined
+          }
+        />
+      </div>
+    </Popover>
   );
 }

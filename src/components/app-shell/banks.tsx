@@ -14,7 +14,7 @@ import {
   PlusIcon,
   UnlinkIcon,
 } from "lucide-react";
-import { AlertDialog, Dialog, DropdownMenu, Popover } from "radix-ui";
+import { AlertDialog, Dialog, DropdownMenu } from "radix-ui";
 import { createPortal } from "react-dom";
 import {
   createContext,
@@ -45,6 +45,7 @@ import { Tag } from "~/components/ui/tag";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
+import { Popover } from "~/components/ui/popover";
 import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { syncedLabel } from "./model";
@@ -296,16 +297,12 @@ function useBanks() {
 // job; connecting one is rare, so it sits one click deeper.
 export function BanksPopover() {
   const banks = useBanks();
-  const container = usePortalContainer();
-  const id = useId();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open, "occasional");
-  // Opened from the keyboard it appears at once and focuses its first
-  // control; a click animates and leaves focus on the popover itself.
   const attention = banks.connections.some(needsAttention);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
+    <Popover
+      label="Connected banks"
+      trigger={
         <button
           type="button"
           className={styles.trigger}
@@ -335,65 +332,54 @@ export function BanksPopover() {
             />
           )}
         </button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          side="top"
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={{ top: 12, right: 12, bottom: 12, left: 0 }}
-          aria-labelledby={`${id}-title`}
-          onOpenAutoFocus={(event) => {
-            if (motion["data-instant"]) return;
-            event.preventDefault();
-            (event.currentTarget as HTMLElement).focus();
-          }}
-        >
-          <h2 id={`${id}-title`} className={styles.popoverTitle}>
-            Connected banks
-          </h2>
-          {banks.connections.length ? (
-            <ul className={styles.banks}>
-              {banks.connections.map((connection) => (
-                <BankItem
-                  key={connection.id}
-                  connection={connection}
-                  onAction={() => setOpen(false)}
-                />
-              ))}
-            </ul>
-          ) : (
-            <p className={styles.empty}>
-              {banks.available
-                ? "No banks connected yet. Connect one to bring in balances and activity for review. Plaid handles the sign-in; Caishen never sees your password."
-                : "Bank connections aren’t set up on this server yet. Manual accounts and transactions still work."}
-            </p>
-          )}
-          {banks.available && (
-            <>
-              <div className={styles.separator} role="separator" />
-              <button
-                type="button"
-                className={styles.action}
-                disabled={banks.busy}
-                // Plaid's script is large; fetch it while the pointer is on
-                // the way.
-                onPointerEnter={() => void loadPlaid().catch(() => undefined)}
-                onClick={() => {
-                  setOpen(false);
-                  banks.start();
-                }}
-              >
-                <PlusIcon size={14} aria-hidden />
-                Connect a bank
-              </button>
-            </>
-          )}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      }
+      open={open}
+      onOpenChange={setOpen}
+      side="top"
+      size="form"
+      motion="occasional"
+    >
+      <div className={styles.panel}>
+        <h2 className={styles.popoverTitle}>Connected banks</h2>
+        {banks.connections.length ? (
+          <ul className={styles.banks}>
+            {banks.connections.map((connection) => (
+              <BankItem
+                key={connection.id}
+                connection={connection}
+                onAction={() => setOpen(false)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className={styles.empty}>
+            {banks.available
+              ? "No banks connected yet. Connect one to bring in balances and activity for review. Plaid handles the sign-in; Caishen never sees your password."
+              : "Bank connections aren’t set up on this server yet. Manual accounts and transactions still work."}
+          </p>
+        )}
+        {banks.available && (
+          <>
+            <div className={styles.separator} role="separator" />
+            <button
+              type="button"
+              className={styles.action}
+              disabled={banks.busy}
+              // Plaid's script is large; fetch it while the pointer is on
+              // the way.
+              onPointerEnter={() => void loadPlaid().catch(() => undefined)}
+              onClick={() => {
+                setOpen(false);
+                banks.start();
+              }}
+            >
+              <PlusIcon size={14} aria-hidden />
+              Connect a bank
+            </button>
+          </>
+        )}
+      </div>
+    </Popover>
   );
 }
 
@@ -621,9 +607,7 @@ function BankMenuItem({
 // must be reachable there too. The visible signal (the alert icon and the
 // Reconnect button) never depends on opening it.
 export function BankStatus({ connection }: { connection: Connection }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open, "occasional");
   const pinned = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const later = (next: boolean, delay: number) => {
@@ -647,16 +631,13 @@ export function BankStatus({ connection }: { connection: Connection }) {
     },
   };
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(next) => {
-        if (next) return;
-        clearTimeout(timer.current);
-        pinned.current = false;
-        setOpen(false);
-      }}
-    >
-      <Popover.Trigger asChild>
+    <Popover
+      label={
+        alert
+          ? `Why ${bankName(connection)} needs attention`
+          : `When ${bankName(connection)} last updated`
+      }
+      trigger={
         <button
           type="button"
           className={styles.status}
@@ -678,25 +659,26 @@ export function BankStatus({ connection }: { connection: Connection }) {
         >
           <Icon size={13} aria-hidden />
         </button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.tip}
-          side="top"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={8}
-          {...hover}
-          // It only describes; focus stays where the user left it.
-          onOpenAutoFocus={(event) => event.preventDefault()}
-          onCloseAutoFocus={(event) => event.preventDefault()}
-        >
-          {connection.error && <p>{connection.error}</p>}
-          {attention && <p>{attention.detail}</p>}
-          <p className={styles.tipMeta}>{updated}</p>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      }
+      open={open}
+      onOpenChange={(next) => {
+        if (next) return;
+        clearTimeout(timer.current);
+        pinned.current = false;
+        setOpen(false);
+      }}
+      side="top"
+      align="center"
+      motion="occasional"
+      // It only describes; focus stays on whatever opened it.
+      autoFocus={false}
+    >
+      <div className={styles.tip} {...hover}>
+        {connection.error && <p>{connection.error}</p>}
+        {attention && <p>{attention.detail}</p>}
+        <p className={styles.tipMeta}>{updated}</p>
+      </div>
+    </Popover>
   );
 }
 

@@ -1,15 +1,12 @@
 "use client";
 
-import { Popover } from "radix-ui";
 import {
   useState,
   type KeyboardEvent,
-  type ReactNode,
+  type ReactElement,
   type UIEvent,
 } from "react";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
-import { usePortalContainer } from "~/components/ui/tooltip";
+import { Popover } from "~/components/ui/popover";
 import { money, type ActivityEntry, type Category } from "./model";
 import shell from "./shell.module.css";
 import styles from "./activity.module.css";
@@ -50,35 +47,27 @@ export function ActivityPopover({
   category: Category;
   onJump: ActivityJump;
   align?: "start" | "center" | "end";
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>{children}</Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          side="bottom"
-          align={align}
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={`${category.name} activity`}
-        >
-          {/* Its own component, so rows are built only while it's open. */}
-          <ActivityList
-            category={category}
-            onJump={(entry) => {
-              setOpen(false);
-              onJump(entry, category);
-            }}
-          />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label={`${category.name} activity`}
+      trigger={children}
+      open={open}
+      onOpenChange={setOpen}
+      align={align}
+      size="wide"
+    >
+      {/* Its own component, so rows are built only while it's open. */}
+      <ActivityList
+        category={category}
+        onJump={(entry) => {
+          setOpen(false);
+          onJump(entry, category);
+        }}
+      />
+    </Popover>
   );
 }
 
@@ -113,7 +102,7 @@ function ActivityList({
     next.focus();
   };
   return (
-    <>
+    <div className={styles.panel}>
       <div className={styles.header}>{category.name}</div>
       {entries.length === 0 && funded === 0 ? (
         <p className={styles.empty}>No activity this month.</p>
@@ -159,7 +148,7 @@ function ActivityList({
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
