@@ -37,9 +37,13 @@ export function WellInput({
   disabled,
   readOnly,
   inputRef,
+  align = "start",
   onFocus,
   onBlur,
 }: TextInputProps & {
+  // Where the value sits in the well; amounts in a register's columns end
+  // where the column's figures do.
+  align?: "start" | "end";
   onFocus?: (event: FocusEvent<HTMLInputElement>) => void;
   onBlur?: (event: FocusEvent<HTMLInputElement>) => void;
 }) {
@@ -49,6 +53,7 @@ export function WellInput({
       className={styles.well}
       data-invalid={field.invalid ? "" : undefined}
       data-disabled={disabled ? "" : undefined}
+      data-align={align}
     >
       {prefix && (
         <span className={styles.affix} aria-hidden>

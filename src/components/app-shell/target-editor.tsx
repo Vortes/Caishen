@@ -1,6 +1,5 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { ChevronDownIcon } from "lucide-react";
 import {
   createContext,
@@ -13,6 +12,7 @@ import {
 } from "react";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field, FormError } from "~/components/ui/field";
@@ -22,6 +22,7 @@ import {
 } from "~/components/ui/segmented-control";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
 import type { Category } from "./model";
+import { sameAmount } from "./move-money";
 import { useShellData } from "./shell-data";
 import { DateField } from "./transaction-date";
 import {
@@ -170,34 +171,18 @@ export function TargetEditor({
   };
 
   const amountField = !payoff && (
-    <Field
-      id={fieldId("amount")}
-      label={amountLabel(schedule)}
-      error={errorFor("amount")}
-    >
-      <div
-        className={entry.well}
-        data-invalid={error?.field === "amount" || undefined}
-      >
-        <span className={styles.prefix} aria-hidden>
-          $
-        </span>
-        <input
-          ref={register("amount")}
-          id={fieldId("amount")}
-          className={entry.input}
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="0.00"
-          value={draft.amount}
-          aria-invalid={error?.field === "amount" || undefined}
-          aria-describedby={describedBy("amount")}
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) =>
-            change({ amount: groupAmountInput(event.target) })
-          }
-        />
-      </div>
+    <Field label={amountLabel(schedule)} error={errorFor("amount")}>
+      <AmountInput
+        inputRef={register("amount")}
+        placeholder="0.00"
+        value={draft.amount}
+        onChange={(next) =>
+          // Leaving the field rewrites it as its result; its error stays.
+          sameAmount(draft.amount, next)
+            ? setDraft((value) => ({ ...value, amount: next }))
+            : change({ amount: next })
+        }
+      />
     </Field>
   );
 

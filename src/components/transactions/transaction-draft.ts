@@ -1,3 +1,4 @@
+import { readAmount } from "~/components/budget/amount";
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import type { BankImport } from "./import-draft";
@@ -341,17 +342,13 @@ export function buildTransactionDraftCommand({
     fields.outflow = "Enter an outflow or an inflow.";
     fields.inflow = fields.outflow;
   } else if (outflowText) {
-    const parsed = parseAmount(outflowText);
-    if (parsed === undefined || parsed <= 0)
-      fields.outflow =
-        "Enter a positive amount with no more than two decimal places.";
-    else outflow = parsed;
+    const problem = amountProblem(outflowText);
+    if (problem) fields.outflow = problem;
+    else outflow = parseAmount(outflowText)!;
   } else {
-    const parsed = parseAmount(inflowText);
-    if (parsed === undefined || parsed <= 0)
-      fields.inflow =
-        "Enter a positive amount with no more than two decimal places.";
-    else inflow = parsed;
+    const problem = amountProblem(inflowText);
+    if (problem) fields.inflow = problem;
+    else inflow = parseAmount(inflowText)!;
   }
 
   if (other && date < other.date)
@@ -437,9 +434,13 @@ export function buildTransactionDraftCommand({
       )
         fields[lineField(line.lineId, "categoryId")] =
           "Choose a category for your part of it.";
-      if (amount === undefined || (line.outflow.trim() && line.inflow.trim()))
+      if (line.outflow.trim() && line.inflow.trim())
         fields[lineField(line.lineId, "outflow")] =
-          "Enter an amount with no more than two decimal places.";
+          "Enter an outflow or an inflow, not both.";
+      else if (amount === undefined)
+        fields[lineField(line.lineId, "outflow")] = amountProblem(
+          line.outflow.trim() || line.inflow.trim(),
+        )!;
       else if (!amount)
         fields[lineField(line.lineId, "outflow")] = "Enter an amount.";
       else
@@ -548,12 +549,18 @@ function isCalendarDate(value: string) {
   );
 }
 
+// Cents from what a person typed, which may be a calculation. The field
+// says which way the money goes, so a negative amount doesn't read.
 function parseAmount(text: string) {
-  const value = text.replace(/,/g, "");
-  if (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(value)) return undefined;
-  const [whole = "0", fraction = ""] = value.split(".");
-  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
-  return Number.isSafeInteger(cents) ? cents : undefined;
+  const reading = readAmount(text);
+  return reading.ok && reading.cents >= 0 ? reading.cents : undefined;
+}
+
+// Why typed text isn't an amount above zero, or undefined when it is.
+function amountProblem(text: string) {
+  const reading = readAmount(text);
+  if (!reading.ok) return reading.message;
+  if (reading.cents <= 0) return "Enter an amount above zero.";
 }
 
 export function paymentPayees(view: View, draft: TransactionDraft) {
