@@ -1349,9 +1349,11 @@ button.actionItem:disabled {
   border-bottom-color: transparent;
 }
 /* The first transaction clears the rule by the same inset as the pending
-   group and the new-transaction editor. */
+   group and the new-transaction editor, and keeps it when it opens in place,
+   so its fields stay level with the text they replace. */
 .register .columnHeader + .rowWrap,
-.register .columnHeader + .row {
+.register .columnHeader + .row,
+.register .columnHeader + form {
   margin-top: var(--space-inset);
 }
 .register .columnHeader::after,

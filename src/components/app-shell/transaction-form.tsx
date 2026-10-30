@@ -46,6 +46,13 @@ import {
 } from "./transaction-fields";
 import { ShareLabel, ShareMenu, parseCents } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
+import {
+  AmountInput,
+  EditorCell,
+  EditorFooter,
+  EditorForm,
+  FieldError,
+} from "./editor-row";
 import { TransactionCategoryField } from "./transaction-category-field";
 import shell from "./shell.module.css";
 import shareStyles from "./share.module.css";
@@ -244,61 +251,41 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const fieldError = (name: DraftField) =>
     !shownOnce(name) &&
     fields[name] && (
-      <p id={`${id(name)}-error`} className={styles.fieldError}>
-        <CircleAlertIcon size={13} aria-hidden />
-        {fields[name]}
-      </p>
+      <FieldError id={`${id(name)}-error`}>{fields[name]}</FieldError>
     );
-  // A field in the register row, under its column. The column header names
-  // it on screen; the label stays for screen readers, and shows on a phone
-  // where the row stacks.
   const cell = (
     name: DraftField,
     column: string,
     label: string,
     control: ReactNode,
   ) => (
-    <div className={styles.cell} data-column={column}>
-      <label htmlFor={id(name)} className={styles.cellLabel}>
-        {label}
-      </label>
+    <EditorCell
+      column={column}
+      label={label}
+      htmlFor={id(name)}
+      error={fieldError(name)}
+    >
       {control}
-      {fieldError(name)}
-    </div>
+    </EditorCell>
   );
   const amount = (name: "outflow" | "inflow") => (
-    <div
-      className={styles.well}
-      data-invalid={fields[name] ? "" : undefined}
-      data-amount
-    >
-      <span className={styles.prefix} aria-hidden>
-        $
-      </span>
-      <input
-        ref={register(name)}
-        id={id(name)}
-        name={name}
-        className={styles.input}
-        inputMode="decimal"
-        placeholder={name === "outflow" ? "Outflow" : "Inflow"}
-        autoComplete="off"
-        spellCheck={false}
-        aria-invalid={Boolean(fields[name]) || undefined}
-        aria-describedby={described(name)}
-        value={draft[name]}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => {
-          const value = groupAmountInput(event.target);
-          // Outflow and inflow are one amount: typing in one clears the other.
-          entry.change({
-            [name]: value,
-            ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
-            ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
-          });
-        }}
-      />
-    </div>
+    <AmountInput
+      inputRef={register(name)}
+      id={id(name)}
+      name={name}
+      placeholder={name === "outflow" ? "Outflow" : "Inflow"}
+      invalid={Boolean(fields[name])}
+      describedBy={described(name)}
+      value={draft[name]}
+      onChange={(value) =>
+        // Outflow and inflow are one amount: typing in one clears the other.
+        entry.change({
+          [name]: value,
+          ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
+          ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
+        })
+      }
+    />
   );
   // Taking a choice moves on to the next field, which opens its own list.
   // Touch keeps focus where it is, so a keyboard doesn't open over the form.
@@ -616,7 +603,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     </p>
   );
   const actions = (
-    <div className={styles.actions}>
+    <>
       <Button size="sm" onClick={entry.cancel}>
         Cancel
       </Button>
@@ -642,7 +629,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           Save
         </Button>
       )}
-    </div>
+    </>
   );
 
   // What the lines leave of the total: still to split, or split past it.
@@ -670,36 +657,21 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       field: "categoryId" | "counterpartyShare" | "outflow" | "inflow",
     ) => lineField(line.lineId, field);
     const lineAmount = (name: "outflow" | "inflow") => (
-      <div
-        className={styles.well}
-        data-invalid={fields[lineId(name)] ? "" : undefined}
-        data-amount
-      >
-        <span className={styles.prefix} aria-hidden>
-          $
-        </span>
-        <input
-          ref={register(lineId(name))}
-          id={id(lineId(name))}
-          className={styles.input}
-          inputMode="decimal"
-          placeholder={name === "outflow" ? "Outflow" : "Inflow"}
-          autoComplete="off"
-          spellCheck={false}
-          aria-invalid={Boolean(fields[lineId(name)]) || undefined}
-          aria-describedby={described(lineId(name))}
-          value={line[name]}
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) => {
-            const value = groupAmountInput(event.target);
-            changeLine(line.lineId, {
-              [name]: value,
-              ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
-              ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
-            });
-          }}
-        />
-      </div>
+      <AmountInput
+        inputRef={register(lineId(name))}
+        id={id(lineId(name))}
+        placeholder={name === "outflow" ? "Outflow" : "Inflow"}
+        invalid={Boolean(fields[lineId(name)])}
+        describedBy={described(lineId(name))}
+        value={line[name]}
+        onChange={(value) =>
+          changeLine(line.lineId, {
+            [name]: value,
+            ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
+            ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
+          })
+        }
+      />
     );
     return (
       <div
@@ -824,38 +796,23 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
 
   const title = editing ? "Edit transaction" : "New transaction";
   return (
-    <form
+    <EditorForm
       id={formId}
-      className={styles.form}
-      aria-labelledby={`${formId}-title`}
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault();
+      title={title}
+      onSubmit={() => {
         // Enter matches an import to the one purchase it may be; with
         // several, the payer picks one.
         const [only] = matches;
         if (only && matches.length === 1) entry.matchImport(only);
         else if (matches.length)
-          event.currentTarget
-            .querySelector<HTMLElement>("[data-partner-match]")
+          document
+            .getElementById(formId)
+            ?.querySelector<HTMLElement>("[data-partner-match]")
             ?.focus();
         else void entry.submit(false);
       }}
-      onKeyDown={(event) => {
-        // The register moves its selection with the arrow keys; inside the
-        // editor they belong to the fields.
-        if (event.key === "ArrowDown" || event.key === "ArrowUp")
-          event.stopPropagation();
-        if (event.key !== "Escape") return;
-        event.stopPropagation();
-        if (event.defaultPrevented) return;
-        event.preventDefault();
-        entry.cancel();
-      }}
+      onCancel={entry.cancel}
     >
-      <h2 id={`${formId}-title`} className="sr-only">
-        {title}
-      </h2>
       {notice}
       <div
         className={`${shell.txColumns} ${styles.entryRow}`}
@@ -977,15 +934,14 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         </div>
       )}
       {matches.length > 0 && <PartnerMatches matches={matches} />}
-      <div className={styles.rowFooter}>
+      <EditorFooter actions={actions}>
         {remembered && (
           <span className={shareStyles.footerHint}>
             Category and share filled in from {remembered} last time
           </span>
         )}
         {error}
-        {actions}
-      </div>
-    </form>
+      </EditorFooter>
+    </EditorForm>
   );
 }

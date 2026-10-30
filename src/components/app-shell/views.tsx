@@ -1,7 +1,6 @@
 "use client";
 
 import { screenHref } from "~/components/workspace/routes";
-import { counterpartyLines, isFullShare } from "~/domain/counterparty";
 import {
   ArrowRightLeftIcon,
   CheckIcon,
@@ -13,7 +12,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
-  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -53,7 +51,7 @@ import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
 import { RepaymentEditor } from "./repayment-editor";
-import { ShareCell, ShareDetail } from "./share-detail";
+import { ShareCell } from "./share-cell";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
@@ -62,7 +60,7 @@ import { useShellData } from "./shell-data";
 import {
   SelectAll,
   SelectionIsland,
-  type WayBack,
+  type Way,
   useReviewSelection,
 } from "./transaction-review";
 import styles from "./shell.module.css";
@@ -611,7 +609,7 @@ function PlanCategoryContents({
 
 // Lives in the row's left padding; shows on hover, focus, or once anything
 // in the list is checked. The label is the hit area: the full row height.
-function RowCheckbox({
+export function RowCheckbox({
   label,
   state,
   onChange,
@@ -798,7 +796,7 @@ export function RegisterView({
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
   onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
-  back: WayBack | null;
+  back: Way | null;
 }) {
   const { transactions, openingBalances, accounts, month } = useShellData();
   const entry = useTransactionEntry();
@@ -927,14 +925,6 @@ export function RegisterView({
   // the selection moves on.
   const [repaymentId, setRepaymentId] = useState<string | null>(null);
   if (repaymentId && repaymentId !== selectedId) setRepaymentId(null);
-  const fullySharedIds = new Set(
-    entry.view.budget.transactions
-      .filter((transaction) => {
-        const lines = counterpartyLines(transaction);
-        return lines.length > 0 && lines.every(isFullShare);
-      })
-      .map((transaction) => transaction.id),
-  );
   const closeRepayment = () => {
     const id = repaymentId;
     setRepaymentId(null);
@@ -1016,193 +1006,187 @@ export function RegisterView({
       </span>
     );
     return (
-      <Fragment key={item.id}>
-        <div
-          className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
-          {...selectionStyle.rowProps(item.id)}
-          onMouseDown={(event) => {
-            // Shift would otherwise extend a text selection across rows.
-            if (checkable && event.shiftKey) event.preventDefault();
-          }}
-        >
-          {checkable && (
-            <RowCheckbox
-              label={`Select ${item.payee}`}
-              state={isChecked}
-              onChange={() => {
-                anchor.current = item.id;
-                onCheck([item.id], !isChecked);
-              }}
-              onShiftClick={() => checkTo(item.id, !isChecked)}
-            />
-          )}
-          <button
-            type="button"
-            data-row
-            data-id={checkable ? item.id : undefined}
-            data-transaction-row={item.id}
-            data-pending={mark === "pending" || undefined}
-            className={`${styles.txColumns} ${styles.row}`}
-            aria-current={selectedId === item.id ? "true" : undefined}
-            onClick={(event) => {
-              if (checkable && event.shiftKey) {
-                checkTo(item.id, !isChecked);
+      <div
+        key={item.id}
+        className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
+        {...selectionStyle.rowProps(item.id)}
+        onMouseDown={(event) => {
+          // Shift would otherwise extend a text selection across rows.
+          if (checkable && event.shiftKey) event.preventDefault();
+        }}
+      >
+        {checkable && (
+          <RowCheckbox
+            label={`Select ${item.payee}`}
+            state={isChecked}
+            onChange={() => {
+              anchor.current = item.id;
+              onCheck([item.id], !isChecked);
+            }}
+            onShiftClick={() => checkTo(item.id, !isChecked)}
+          />
+        )}
+        <button
+          type="button"
+          data-row
+          data-id={checkable ? item.id : undefined}
+          data-transaction-row={item.id}
+          data-pending={mark === "pending" || undefined}
+          className={`${styles.txColumns} ${styles.row}`}
+          aria-current={selectedId === item.id ? "true" : undefined}
+          onClick={(event) => {
+            if (checkable && event.shiftKey) {
+              checkTo(item.id, !isChecked);
+              return;
+            }
+            // Finishing a text selection in the row doesn't click it.
+            if (event.detail > 0 && window.getSelection()?.toString()) return;
+            anchor.current = item.id;
+            // A pointer click; Enter and Space click with no position.
+            if (selection.actions.edit?.id === item.id && event.detail > 0) {
+              if (selection.actions.edit.kind === "repayment") {
+                setRepaymentId(item.id);
                 return;
               }
-              // Finishing a text selection in the row doesn't click it.
-              if (event.detail > 0 && window.getSelection()?.toString()) return;
-              anchor.current = item.id;
-              // A pointer click; Enter and Space click with no position.
-              if (selection.actions.edit?.id === item.id && event.detail > 0) {
-                if (selection.actions.edit.kind === "repayment") {
-                  setRepaymentId(item.id);
-                  return;
-                }
-                const skip = item.categoryNotNeeded ? "category" : undefined;
-                // The cell clicked, or the column nearest the pointer when the
-                // click lands between cells.
-                const clicked =
-                  event.target instanceof Element
-                    ? event.target.closest<HTMLElement>("[data-column]")
-                        ?.dataset.column
-                    : undefined;
-                const column =
-                  clicked && clicked in registerEditFields && clicked !== skip
-                    ? clicked
-                    : columnAt(event.currentTarget, event.clientX, skip);
-                if (column && item.actions.edit === "transaction") {
-                  entry.start({
-                    transactionId: item.id,
-                    field: registerEditFields[column]!,
-                  });
-                  return;
-                }
+              const skip = item.categoryNotNeeded ? "category" : undefined;
+              // The cell clicked, or the column nearest the pointer when the
+              // click lands between cells.
+              const clicked =
+                event.target instanceof Element
+                  ? event.target.closest<HTMLElement>("[data-column]")?.dataset
+                      .column
+                  : undefined;
+              const column =
+                clicked && clicked in registerEditFields && clicked !== skip
+                  ? clicked
+                  : columnAt(event.currentTarget, event.clientX, skip);
+              if (column && item.actions.edit === "transaction") {
+                entry.start({
+                  transactionId: item.id,
+                  field: registerEditFields[column]!,
+                });
+                return;
               }
-              onSelect(item.id);
-            }}
-          >
-            {accountColumn && (
-              <span
-                className={styles.rowName}
-                data-column="account"
-                data-optional
-              >
-                {reviewDot}
-                <span className={`${styles.truncate} ${styles.faint}`}>
-                  {accountName(item.accountId) ?? "Unlinked bank account"}
-                </span>
-              </span>
-            )}
-            <span className={styles.rowName} data-column="date" data-optional>
-              {!accountColumn && reviewDot}
-              <span className={`${styles.truncate} ${styles.muted}`}>
-                {shortDay(item.date)}
-              </span>
-            </span>
+            }
+            onSelect(item.id);
+          }}
+        >
+          {accountColumn && (
             <span
               className={styles.rowName}
-              data-column="payee"
-              data-jump={Boolean(item.counterpart) || undefined}
+              data-column="account"
+              data-optional
             >
-              <span className={styles.truncate}>{item.payee}</span>
+              {reviewDot}
+              <span className={`${styles.truncate} ${styles.faint}`}>
+                {accountName(item.accountId) ?? "Unlinked bank account"}
+              </span>
             </span>
-            <span className={styles.truncate} data-column="category">
-              {item.needsCategory ? (
-                <Tag tone="attention">{item.categoryLabel}</Tag>
-              ) : (
-                <span className={styles.muted}>{item.categoryLabel}</span>
-              )}
-              {item.forMonth && (
-                <span className={styles.faint}> · {item.forMonth}</span>
-              )}
+          )}
+          <span className={styles.rowName} data-column="date" data-optional>
+            {!accountColumn && reviewDot}
+            <span className={`${styles.truncate} ${styles.muted}`}>
+              {shortDay(item.date)}
             </span>
-            {/* The Share cell's control sits over the row, in ShareCell. */}
-            <span data-column="share" aria-hidden />
-            <span
-              className={styles.numeric}
-              data-column="outflow"
-              data-empty={item.amount < 0 ? undefined : true}
-            >
-              {item.amount < 0 && money(-item.amount)}
-            </span>
-            <span
-              className={styles.numeric}
-              data-column="inflow"
-              data-empty={item.amount > 0 ? undefined : true}
-              data-inflow={item.amount > 0 || undefined}
-            >
-              {item.amount > 0 && money(item.amount)}
-            </span>
-            <span className={styles.statusCell} data-column="status">
-              {/* A toggle shows its mark over the row, below; the row
+          </span>
+          <span
+            className={styles.rowName}
+            data-column="payee"
+            data-jump={Boolean(item.counterpart) || undefined}
+          >
+            <span className={styles.truncate}>{item.payee}</span>
+          </span>
+          <span className={styles.truncate} data-column="category">
+            {item.needsCategory ? (
+              <Tag tone="attention">{item.categoryLabel}</Tag>
+            ) : (
+              <span className={styles.muted}>{item.categoryLabel}</span>
+            )}
+            {item.forMonth && (
+              <span className={styles.faint}> · {item.forMonth}</span>
+            )}
+          </span>
+          {/* The Share cell's control sits over the row, in ShareCell. */}
+          <span data-column="share" aria-hidden />
+          <span
+            className={styles.numeric}
+            data-column="outflow"
+            data-empty={item.amount < 0 ? undefined : true}
+          >
+            {item.amount < 0 && money(-item.amount)}
+          </span>
+          <span
+            className={styles.numeric}
+            data-column="inflow"
+            data-empty={item.amount > 0 ? undefined : true}
+            data-inflow={item.amount > 0 || undefined}
+          >
+            {item.amount > 0 && money(item.amount)}
+          </span>
+          <span className={styles.statusCell} data-column="status">
+            {/* A toggle shows its mark over the row, below; the row
                   still says its status. */}
-              {togglesCleared ? (
-                <span className="sr-only">{statusMark}</span>
-              ) : (
-                statusMark
-              )}
-            </span>
-          </button>
-          <ShareCell row={item} accountColumn={accountColumn} />
-          {togglesCleared && (
-            <div className={`${styles.txColumns} ${styles.clearedActions}`}>
-              <span className={styles.clearedSlot}>
-                <IconButton
-                  size="sm"
-                  label={item.cleared ? "Mark uncleared" : "Mark cleared"}
-                  onClick={() => entry.toggleCleared(item.id)}
-                >
-                  <ClearedMark state={mark} labeled={false} />
-                </IconButton>
-              </span>
-            </div>
-          )}
-          {item.counterpart && (
-            <div className={`${styles.txColumns} ${styles.rowActions}`}>
-              <span className={styles.counterpartAction}>
-                <IconButton
-                  asChild
-                  label={`View in ${item.counterpart.accountName}`}
-                  size="sm"
-                >
-                  <a
-                    href={`${screenHref({ type: "register", accountId: item.counterpart.accountId })}?${new URLSearchParams(
-                      {
-                        transaction: item.counterpart.id,
-                        month: item.counterpart.date.slice(0, 7),
-                      },
-                    ).toString()}`}
-                    onClick={(event) => {
-                      if (
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.altKey
-                      )
-                        return;
-                      event.preventDefault();
-                      onJump(item.counterpart!);
-                    }}
-                  >
-                    <ArrowRightLeftIcon aria-hidden />
-                  </a>
-                </IconButton>
-              </span>
-              <span
-                aria-hidden
-                className={`${styles.numeric} ${styles.actionAmountSizer}`}
+            {togglesCleared ? (
+              <span className="sr-only">{statusMark}</span>
+            ) : (
+              statusMark
+            )}
+          </span>
+        </button>
+        <ShareCell row={item} accountColumn={accountColumn} />
+        {togglesCleared && (
+          <div className={`${styles.txColumns} ${styles.clearedActions}`}>
+            <span className={styles.clearedSlot}>
+              <IconButton
+                size="sm"
+                label={item.cleared ? "Mark uncleared" : "Mark cleared"}
+                onClick={() => entry.toggleCleared(item.id)}
               >
-                {money(Math.abs(item.amount))}
-              </span>
-            </div>
-          )}
-        </div>
-        {selectedId === item.id &&
-          item.source === "budget" &&
-          !fullySharedIds.has(item.id) && (
-            <ShareDetail transactionId={item.id} />
-          )}
-      </Fragment>
+                <ClearedMark state={mark} labeled={false} />
+              </IconButton>
+            </span>
+          </div>
+        )}
+        {item.counterpart && (
+          <div className={`${styles.txColumns} ${styles.rowActions}`}>
+            <span className={styles.counterpartAction}>
+              <IconButton
+                asChild
+                label={`View in ${item.counterpart.accountName}`}
+                size="sm"
+              >
+                <a
+                  href={`${screenHref({ type: "register", accountId: item.counterpart.accountId })}?${new URLSearchParams(
+                    {
+                      transaction: item.counterpart.id,
+                      month: item.counterpart.date.slice(0, 7),
+                    },
+                  ).toString()}`}
+                  onClick={(event) => {
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    )
+                      return;
+                    event.preventDefault();
+                    onJump(item.counterpart!);
+                  }}
+                >
+                  <ArrowRightLeftIcon aria-hidden />
+                </a>
+              </IconButton>
+            </span>
+            <span
+              aria-hidden
+              className={`${styles.numeric} ${styles.actionAmountSizer}`}
+            >
+              {money(Math.abs(item.amount))}
+            </span>
+          </div>
+        )}
+      </div>
     );
   };
   return (

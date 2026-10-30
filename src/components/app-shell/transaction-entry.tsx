@@ -765,6 +765,27 @@ export function useTransactionEntryController({
         };
       }
     },
+    // Your side of each partner ledger entry, saved together like a
+    // selection of transactions. rowId is the entry's row in the ledger.
+    categorizePartnerEntries: (
+      entries: { rowId: string; entryId: string }[],
+      categoryId: string,
+      refused: (rowId: string) => void,
+    ) =>
+      saver.saveSelection(
+        entries.map(({ rowId, entryId }) => ({
+          rowIds: [rowId],
+          command: {
+            type: "partner.categorize",
+            id: newId(),
+            entryId,
+            categoryId,
+          },
+          summary: "Categorized a shared entry",
+        })),
+        "categorize",
+        refused,
+      ),
     saveShare,
     toggleCleared,
     shareSelection: (

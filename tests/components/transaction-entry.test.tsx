@@ -312,7 +312,6 @@ test("writing off a full reimbursement opens the editor to categorize the new pe
   const shell = await renderShell({ book });
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(transactionRow("Noodles Plus"));
-  expect(screen.queryByRole("button", { name: "Write off" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
   await shell.user.click(
     screen.getByRole("button", { name: /Mom's share of Noodles Plus/ }),

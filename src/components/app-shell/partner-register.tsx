@@ -3,32 +3,48 @@
 import {
   CheckIcon,
   CopyIcon,
-  HistoryIcon,
   LinkIcon,
   SearchIcon,
   UsersIcon,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
+import { useRowSelection } from "~/components/ui/use-row-selection";
+import selectionStyles from "~/components/ui/row-selection.module.css";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { usePopoverMotion } from "~/components/ui/popover-motion";
 import { POPOVER_GAP } from "~/components/ui/tokens";
-import type { PartnerEntryChange } from "~/domain/partner-ledger";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
-import { AmountWell, halfOf, parseCents } from "./share-field";
+import { AmountWell, parseCents } from "./share-field";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
-import { Empty, moveSelection } from "./views";
+import {
+  AmountInput,
+  EditorCell,
+  EditorFooter,
+  EditorForm,
+  EditorText,
+  FieldError,
+} from "./editor-row";
+import {
+  CategorizeAction,
+  SelectAll,
+  SelectionBar,
+  type Way,
+} from "./transaction-review";
+import { Empty, moveSelection, RowCheckbox } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
 import local from "./partner-register.module.css";
+import editorStyles from "./transaction-entry.module.css";
+import reviewStyles from "./transaction-review.module.css";
 
 type Row = View["partnerLedger"][number];
 
@@ -341,15 +357,56 @@ function PayPopover({ account }: { account: Account }) {
   );
 }
 
+// Whether you can give an entry your own category: your side of what your
+// partner paid, or of what you paid before its import arrives. A matched
+// import of yours carries its own category.
+function categorizable(row: Row, you: string, closed: boolean) {
+  return (
+    !closed &&
+    Boolean(row.entryId) &&
+    (row.payerId !== you || Boolean(row.awaitingImport))
+  );
+}
+
+type EditorField = "category" | "amount";
+
+// The partner ledger, as a register: clicking an entry selects it, and
+// clicking it again opens it at the field clicked. Entries you can
+// categorize can be checked and categorized together.
 export function PartnerRegister({
   account,
   query,
+  selectedId,
+  onSelect,
+  checked,
+  onCheck,
+  onJump,
 }: {
   account: Account;
   query: string;
+  // Opens a transaction in its own account's register.
+  onJump: (transaction: {
+    id: string;
+    accountId: string;
+    date: string;
+  }) => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  checked: string[];
+  onCheck: (ids: string[], value: boolean) => void;
 }) {
-  const { view } = useTransactionEntry();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const entry = useTransactionEntry();
+  const { view } = entry;
+  const you = view.budget.userId;
+  const register = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState<{
+    id: string;
+    field: EditorField;
+  } | null>(null);
+  const selectionStyle = useRowSelection(checked);
+  // Shift-click checks, or clears, every entry from the last one clicked to
+  // this one, like the other registers.
+  const anchor = useRef<string | null>(null);
   // A former partner's ledger reads as it stood when it closed.
   const closed = account.kind === "former-partner";
   const ledger = closed
@@ -367,6 +424,48 @@ export function PartnerRegister({
         .toLowerCase()
         .includes(search),
   );
+  const selectable = rows.filter((row) => categorizable(row, you, closed));
+  const selected = selectable.filter((row) => checked.includes(row.id));
+  const order = selectable.map((row) => row.id);
+  const checkTo = (id: string, value: boolean) => {
+    const from = order.indexOf(anchor.current ?? selectedId ?? "");
+    const to = order.indexOf(id);
+    onCheck(
+      from < 0 ? [id] : order.slice(Math.min(from, to), Math.max(from, to) + 1),
+      value,
+    );
+    anchor.current = id;
+  };
+  const closeEditor = (id: string) => {
+    setEditing(null);
+    requestAnimationFrame(() =>
+      register.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-entry-row="${CSS.escape(id)}"]`,
+        )
+        ?.focus(),
+    );
+  };
+  // The one selected entry you paid traces back to its transaction, in its
+  // own account's register.
+  const wayToTransaction = (): Way | null => {
+    if (checked.length > 1 || (checked[0] && checked[0] !== selectedId))
+      return null;
+    const row = rows.find((item) => item.id === selectedId);
+    const transaction = view.budget.transactions.find(
+      (item) => item.id === row?.transactionId && !item.removed,
+    );
+    const name = view.accounts.find(
+      (item) => item.id === transaction?.accountId,
+    )?.name;
+    if (!transaction || !name) return null;
+    return {
+      name,
+      label: `Open in ${name}`,
+      forward: true,
+      onGo: () => onJump(transaction),
+    };
+  };
   if (!ledger.length)
     return closed ? (
       <Empty title="Nothing was shared." icon={UsersIcon}>
@@ -386,24 +485,61 @@ export function PartnerRegister({
     );
   return (
     <div
-      className={`${styles.list} ${styles.register} ${local.register}`}
+      ref={register}
+      className={`${styles.list} ${styles.register} ${local.register} ${reviewStyles.register} ${selectionStyles.list}`}
+      {...selectionStyle.listProps}
       role="group"
       aria-label={`${account.name} ledger`}
-      onKeyDown={moveSelection}
+      data-selecting={selected.length > 0 || undefined}
+      onKeyDown={(event) => {
+        // x toggles the focused entry's checkbox, like the other registers.
+        const id =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement.dataset.id
+            : undefined;
+        if (event.key === "x" && id) {
+          event.preventDefault();
+          anchor.current = id;
+          onCheck([id], !checked.includes(id));
+          return;
+        }
+        // e opens the selected entry at its amount.
+        const row = rows.find((item) => item.id === selectedId);
+        if (
+          event.key === "e" &&
+          !editing &&
+          row &&
+          document.activeElement instanceof HTMLElement &&
+          document.activeElement.dataset.entryRow === row.id &&
+          row.entryId &&
+          !row.settlementId
+        ) {
+          event.preventDefault();
+          setEditing({ id: row.id, field: "amount" });
+          return;
+        }
+        moveSelection(event);
+      }}
     >
-      <div className={`${styles.txColumns} ${styles.columnHeader}`} aria-hidden>
-        <span data-optional>Date</span>
-        <span>Payee</span>
-        <span>Your category</span>
-        <span className={styles.numeric} data-optional>
-          Shared
+      <div className={`${styles.txColumns} ${styles.columnHeader}`}>
+        <SelectAll selection={{ selectable, selected }} onCheck={onCheck} />
+        <span data-optional aria-hidden>
+          Date
         </span>
-        <span className={styles.numeric}>Amount</span>
-        <span className={styles.numeric}>Balance</span>
-        <span />
+        <span aria-hidden>Payee</span>
+        <span aria-hidden>Your category</span>
+        <span className={styles.numeric} aria-hidden>
+          Amount
+        </span>
+        <span className={styles.numeric} aria-hidden>
+          Balance
+        </span>
+        <span aria-hidden />
       </div>
       {rows.map((row) => {
-        const selected = selectedId === row.id;
+        const isSelected = selectedId === row.id;
+        const checkable = categorizable(row, you, closed);
+        const isChecked = checkable && checked.includes(row.id);
         const settlement = Boolean(row.settlementId);
         const unconfirmed = row.confirmed === false;
         const opens = Boolean(row.entryId ?? row.lineId ?? row.settlementId);
@@ -413,103 +549,217 @@ export function PartnerRegister({
             : row.payerId === view.budget.userId
               ? "You paid"
               : `${account.name} paid`;
+        const cells: RowCells = {
+          date: (
+            <>
+              <span
+                className={styles.reviewDot}
+                data-on={row.needsCategory || unconfirmed ? "" : undefined}
+              >
+                {(row.needsCategory || unconfirmed) && (
+                  <span className="sr-only">
+                    {unconfirmed ? "Needs confirming" : "Needs a category"}
+                  </span>
+                )}
+              </span>
+              <span className={`${styles.truncate} ${styles.muted}`}>
+                {shortDay(row.date)}
+              </span>
+            </>
+          ),
+          payee: (
+            <>
+              <span className={`${styles.truncate} ${local.payeeName}`}>
+                {payee(row)}
+              </span>
+              {paidBy && (
+                <span className={`${local.paidBy} ${styles.faint}`}>
+                  {paidBy}
+                </span>
+              )}
+              {row.awaitingImport && (
+                <LinkIcon
+                  size={12}
+                  className={styles.inlineIcon}
+                  role="img"
+                  aria-label="Waiting for a bank import to match"
+                />
+              )}
+            </>
+          ),
+          category: row.needsCategory ? (
+            <Tag tone="attention">Needs category</Tag>
+          ) : settlement ? (
+            unconfirmed ? (
+              <Tag tone="attention">Confirm</Tag>
+            ) : (
+              <span className={styles.faint}>Settlement</span>
+            )
+          ) : row.awaitingImport && row.payerId === view.budget.userId ? (
+            <span className={styles.faint}>Waiting for your import</span>
+          ) : row.kind === "repayment" ? (
+            <span className={styles.faint}>Repayment</span>
+          ) : row.you === 0 ? (
+            <span className={styles.faint}>Not yours</span>
+          ) : (
+            <span className={styles.muted}>
+              {name(row.categoryId) ?? "No category"}
+            </span>
+          ),
+          // Each cell carries its own tone, so it reads the same in the row
+          // and in the editor.
+          balance: <span className={styles.muted}>{money(row.balance)}</span>,
+        };
+        const edits = opens && !settlement;
+        if (edits && editing?.id === row.id)
+          return (
+            <EntryEditor
+              key={row.id}
+              row={row}
+              cells={cells}
+              partnerName={account.name}
+              categoryEditable={checkable}
+              focus={editing.field}
+              onClose={() => closeEditor(row.id)}
+            />
+          );
         return (
           <div
             key={row.id}
-            className={styles.rowWrap}
-            data-open={selected || undefined}
+            className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
+            {...selectionStyle.rowProps(row.id)}
+            onMouseDown={(event) => {
+              // Shift would otherwise extend a text selection across rows.
+              if (checkable && event.shiftKey) event.preventDefault();
+            }}
           >
+            {checkable && (
+              <RowCheckbox
+                label={`Select ${row.payee}`}
+                state={isChecked}
+                onChange={() => {
+                  anchor.current = row.id;
+                  onCheck([row.id], !isChecked);
+                }}
+                onShiftClick={() => checkTo(row.id, !isChecked)}
+              />
+            )}
             <button
               type="button"
               data-row
+              data-id={checkable ? row.id : undefined}
+              data-entry-row={row.id}
               className={`${styles.txColumns} ${styles.row}`}
-              aria-current={selected ? "true" : undefined}
-              aria-expanded={opens ? selected : undefined}
+              aria-current={isSelected ? "true" : undefined}
+              aria-expanded={settlement ? isSelected : undefined}
               onClick={(event) => {
+                if (checkable && event.shiftKey) {
+                  checkTo(row.id, !isChecked);
+                  return;
+                }
                 // Finishing a text selection in the row doesn't click it.
                 if (event.detail > 0 && window.getSelection()?.toString())
                   return;
-                setSelectedId(selected ? null : row.id);
+                anchor.current = row.id;
+                // A second pointer click on the one selected entry opens it
+                // at the field clicked: the category when you can change it,
+                // otherwise the amount. Enter and Space click with no
+                // position, and only select.
+                // Like a transaction's editor, an open entry stays open, with
+                // what's typed, until it's saved or canceled.
+                if (
+                  edits &&
+                  !editing &&
+                  isSelected &&
+                  checked.length === 1 &&
+                  checked[0] === row.id &&
+                  event.detail > 0
+                ) {
+                  const column =
+                    event.target instanceof Element
+                      ? event.target.closest<HTMLElement>("[data-column]")
+                          ?.dataset.column
+                      : undefined;
+                  setEditing({
+                    id: row.id,
+                    field:
+                      column === "category" && checkable
+                        ? "category"
+                        : "amount",
+                  });
+                  return;
+                }
+                onSelect(row.id);
               }}
             >
-              <span className={styles.rowName} data-optional>
-                <span
-                  className={styles.reviewDot}
-                  data-on={row.needsCategory || unconfirmed ? "" : undefined}
-                >
-                  {(row.needsCategory || unconfirmed) && (
-                    <span className="sr-only">
-                      {unconfirmed ? "Needs confirming" : "Needs a category"}
-                    </span>
-                  )}
-                </span>
-                <span className={`${styles.truncate} ${styles.muted}`}>
-                  {shortDay(row.date)}
-                </span>
+              <span className={styles.rowName} data-column="date" data-optional>
+                {cells.date}
               </span>
-              <span className={styles.rowName}>
-                <span className={styles.truncate}>{payee(row)}</span>
-                {paidBy && (
-                  <span className={`${local.paidBy} ${styles.faint}`}>
-                    {paidBy}
-                  </span>
-                )}
-                {row.awaitingImport && (
-                  <LinkIcon
-                    size={12}
-                    className={styles.inlineIcon}
-                    role="img"
-                    aria-label="Waiting for a bank import to match"
-                  />
-                )}
+              <span className={styles.rowName} data-column="payee">
+                {cells.payee}
               </span>
-              <span className={styles.truncate}>
-                {row.needsCategory ? (
-                  <Tag tone="attention">Needs category</Tag>
-                ) : settlement ? (
-                  unconfirmed ? (
-                    <Tag tone="attention">Confirm</Tag>
-                  ) : (
-                    <span className={styles.faint}>Settlement</span>
-                  )
-                ) : row.awaitingImport && row.payerId === view.budget.userId ? (
-                  <span className={styles.faint}>Waiting for your import</span>
-                ) : row.kind === "repayment" ? (
-                  <span className={styles.faint}>Repayment</span>
-                ) : row.you === 0 ? (
-                  <span className={styles.faint}>Not yours</span>
-                ) : (
-                  <span className={styles.muted}>
-                    {name(row.categoryId) ?? "No category"}
-                  </span>
-                )}
+              <span className={styles.truncate} data-column="category">
+                {cells.category}
               </span>
-              <span
-                className={`${styles.numeric} ${styles.faint}`}
-                data-optional
-              >
-                {opens && !settlement ? money(row.shared) : ""}
+              <span className={styles.numeric} data-column="amount">
+                {money(row.change, true)}
               </span>
-              <span className={styles.numeric}>{money(row.change, true)}</span>
-              <span className={`${styles.numeric} ${styles.muted}`}>
-                {money(row.balance)}
+              <span className={styles.numeric} data-column="balance">
+                {cells.balance}
               </span>
               <span />
             </button>
-            {selected && settlement && (
+            {isSelected && settlement && (
               <SettlementDetail row={row} partnerName={account.name} />
-            )}
-            {selected && opens && !settlement && (
-              <EntryDetail
-                key={`${row.id}-${row.partner}-${row.you}`}
-                row={row}
-                partnerName={account.name}
-              />
             )}
           </div>
         );
       })}
+      <PartnerSelection
+        selected={selected}
+        onCheck={onCheck}
+        disabled={Boolean(entry.session) || editing !== null}
+        way={wayToTransaction()}
+      />
     </div>
+  );
+}
+
+// The island over the ledger while entries are selected: the way to the
+// selected entry's transaction, and the one thing checked entries share,
+// your category.
+function PartnerSelection({
+  selected,
+  onCheck,
+  disabled,
+  way,
+}: {
+  selected: Row[];
+  onCheck: (ids: string[], value: boolean) => void;
+  disabled: boolean;
+  way: Way | null;
+}) {
+  const entry = useTransactionEntry();
+  const ids = selected.map((row) => row.id);
+  return (
+    <SelectionBar
+      count={selected.length}
+      onClear={() => onCheck(ids, false)}
+      way={way}
+    >
+      <CategorizeAction
+        count={selected.length}
+        disabled={disabled}
+        onCheck={onCheck}
+        categorize={(categoryId) =>
+          entry.categorizePartnerEntries(
+            selected.map((row) => ({ rowId: row.id, entryId: row.entryId! })),
+            categoryId,
+            (rowId) => onCheck([rowId], true),
+          )
+        }
+      />
+    </SelectionBar>
   );
 }
 
@@ -600,27 +850,97 @@ function SettlementDetail({
   );
 }
 
-// An entry, opened: who consumed what, your side's category, the share
-// (either partner can change it), and its history.
-function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
-  const id = useId();
+type RowCells = Record<"date" | "payee" | "category" | "balance", ReactNode>;
+
+// An entry, opened in place with the register's editor row. Its amount is
+// the share of the one who didn't pay, which either partner can change; the
+// category is your side of it, which only you see. The rest is the entry's,
+// and reads as it does in the row.
+function EntryEditor({
+  row,
+  cells,
+  partnerName,
+  categoryEditable,
+  focus,
+  onClose,
+}: {
+  row: Row;
+  cells: RowCells;
+  partnerName: string;
+  categoryEditable: boolean;
+  // The field clicked to open it, which takes focus.
+  focus: EditorField;
+  onClose: () => void;
+}) {
+  const formId = useId();
+  const id = (field: string) => `${formId}-${field}`;
+  const input = useRef<HTMLInputElement>(null);
+  const categoryInput = useRef<HTMLInputElement>(null);
   const entry = useTransactionEntry();
   const { view } = entry;
   const paid = row.payerId === view.budget.userId;
-  const refund = row.kind === "refund";
   // The share is the part of the one who didn't pay.
   const theirShare = paid ? row.partner : row.you;
-  const shareLabel = paid ? `${partnerName}'s share` : "Your share";
+  const shareLabel = paid ? `${partnerName}’s share` : "Your share";
+  const shareEditable = row.shareMode.mode !== "read";
   const [text, setText] = useState((theirShare / 100).toFixed(2));
-  const [error, setError] = useState("");
-  const apply = (cents: number) => {
+  // Until you pick one, your payee memory fills in the category you gave
+  // this payee last time.
+  const [categoryId, setCategoryId] = useState(
+    row.categoryId ?? row.suggestedCategoryId ?? "",
+  );
+  const [errors, setErrors] = useState<{ amount?: string; form?: string }>({});
+  const categoryOptions: ChoiceOption[] = view.categories
+    .filter(
+      (category) =>
+        !category.pairedAccountId &&
+        !category.pairedLoanId &&
+        !category.counterpartyAccountId,
+    )
+    .map((category) => ({
+      value: category.id,
+      label: category.name,
+      group: category.group,
+      amount: category.available,
+    }));
+  // The field clicked takes focus, or the other one when it can't change.
+  // Touch waits for a tap, so a keyboard doesn't cover the row before it's
+  // read.
+  useEffect(() => {
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    const target =
+      focus === "category"
+        ? (categoryInput.current ?? input.current)
+        : (input.current ?? categoryInput.current);
+    target?.focus({ preventScroll: true });
+  }, [focus]);
+  const saveCategory = () => {
+    if (!categoryEditable || !categoryId || categoryId === row.categoryId)
+      return null;
+    const label = categoryOptions.find(
+      (option) => option.value === categoryId,
+    )?.label;
+    return entry.saveCommand(
+      {
+        type: "partner.categorize",
+        id: newId(),
+        entryId: row.entryId!,
+        categoryId,
+      },
+      paid
+        ? `Your import of ${row.payee} will go in ${label}. Only you see that.`
+        : `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
+    );
+  };
+  const saveShare = (cents: number) => {
+    if (cents === theirShare) return null;
     const notice =
       cents === 0
         ? `Wrote off the share of ${row.payee}. Both ledgers show $0.00 now.`
         : `${shareLabel} of ${row.payee} is ${money(cents)}. Both budgets updated.`;
     // Your own imported purchase saves like its Share cell; anything else
     // goes through the shared entry, which changes the payer's transaction.
-    const failure = row.transactionId
+    return row.transactionId
       ? entry.saveShare(
           row.transactionId,
           row.lineId!,
@@ -637,223 +957,118 @@ function EntryDetail({ row, partnerName }: { row: Row; partnerName: string }) {
           },
           notice,
         );
-    if (failure) return setError(failure);
-    setError("");
-    setText((cents / 100).toFixed(2));
   };
+  const save = () => {
+    const cents = shareEditable ? parseCents(text) : theirShare;
+    if (cents === null)
+      return setErrors({ amount: "Enter an amount, like 24.50." });
+    if (cents > row.shared)
+      return setErrors({
+        amount: `A share can be at most ${money(row.shared)}.`,
+      });
+    const failure = saveCategory() ?? saveShare(cents);
+    if (failure) return setErrors({ form: failure });
+    onClose();
+  };
+  const readOnly = (column: string, content: ReactNode, numeric = false) => (
+    <EditorText column={column} numeric={numeric}>
+      {content}
+    </EditorText>
+  );
+  const hint =
+    row.shareMode.mode === "read"
+      ? row.shareMode.reason
+      : categoryEditable && row.needsCategory && categoryId
+        ? `Filled in from ${row.payee} last time. Only you see your category.`
+        : categoryEditable && paid
+          ? "Your import takes this category when it arrives. Only you see it."
+          : undefined;
+  const editable = shareEditable || categoryEditable;
   return (
-    <div
-      className={share.detail}
-      // The register moves its selection with the arrow keys; in here they
-      // belong to the fields.
-      onKeyDown={(event) => event.stopPropagation()}
+    <EditorForm
+      id={formId}
+      title="Edit shared entry"
+      onSubmit={editable ? save : onClose}
+      onCancel={onClose}
     >
-      <div className={share.detailMain}>
-        <dl className={share.facts}>
-          <div>
-            <dt>{refund ? "Refunded" : "Shared"}</dt>
-            <dd>{money(row.shared)}</dd>
-          </div>
-          <div>
-            <dt>You</dt>
-            <dd>{money(row.you)}</dd>
-          </div>
-          <div>
-            <dt>{partnerName}</dt>
-            <dd>{money(row.partner)}</dd>
-          </div>
-          <div>
-            <dt>
-              {row.change >= 0
-                ? `${partnerName} owes you`
-                : `You owe ${partnerName}`}
-            </dt>
-            <dd>{money(Math.abs(row.change))}</dd>
-          </div>
-        </dl>
-        <Source row={row} partnerName={partnerName} />
-        <div className={share.detailField}>
-          <label htmlFor={`${id}-category`}>Your category</label>
-          {paid && !row.awaitingImport ? (
-            <p className={local.readOnly}>
-              {view.categories.find((item) => item.id === row.categoryId)
-                ?.name ?? "No category"}
-              <span className={styles.faint}> · on your {row.payee} line</span>
-            </p>
-          ) : (
-            <SideCategory row={row} id={`${id}-category`} />
-          )}
-        </div>
-        {row.shareMode.mode === "read" ? (
-          <div className={share.detailField}>
-            <span>{shareLabel}</span>
-            <p className={local.readOnly}>{money(theirShare)}</p>
-            <p className={share.formHint}>{row.shareMode.reason}</p>
-          </div>
-        ) : (
-          <form
-            className={share.detailField}
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              const cents = parseCents(text);
-              if (cents === null)
-                return setError("Enter an amount, like 24.50.");
-              if (cents > row.shared)
-                return setError(`A share can be at most ${money(row.shared)}.`);
-              apply(cents);
-            }}
+      <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
+        {readOnly("date", cells.date)}
+        {readOnly("payee", cells.payee)}
+        {categoryEditable ? (
+          <EditorCell
+            column="category"
+            label="Your category"
+            htmlFor={id("category")}
           >
-            <label htmlFor={`${id}-share`}>{shareLabel}</label>
-            <div className={share.shareEdit}>
-              <AmountWell
-                id={`${id}-share`}
-                value={text}
-                invalid={Boolean(error)}
-                onChange={(value) => {
-                  setText(value);
-                  if (error) setError("");
-                }}
-              />
-              <Button size="sm" type="submit">
-                Update
-              </Button>
-              <Button
-                size="sm"
-                variant="quiet"
-                onClick={() => apply(halfOf(row.shared))}
-              >
-                Split evenly
-              </Button>
-              {paid && (
-                <Button
-                  size="sm"
-                  variant="quiet"
-                  disabled={theirShare === 0}
-                  onClick={() => apply(0)}
-                >
-                  Write off
-                </Button>
-              )}
-            </div>
-            {error && <p className={moveStyles.error}>{error}</p>}
-            <p className={share.formHint}>
-              Changes apply to both budgets at once and stay in the
-              entry&rsquo;s history.
-            </p>
-          </form>
+            <ChoiceField
+              id={id("category")}
+              inputRef={categoryInput}
+              label="Your category"
+              value={categoryId}
+              options={categoryOptions}
+              placeholder="Category"
+              onChange={setCategoryId}
+              onPicked={() => input.current?.focus({ preventScroll: true })}
+            />
+          </EditorCell>
+        ) : (
+          readOnly("category", cells.category)
         )}
-      </div>
-      {row.history.length > 0 && (
-        <div className={share.history}>
-          <h3>
-            <HistoryIcon size={13} aria-hidden />
-            History
-          </h3>
-          <ol>
-            {row.history.map((change, index) => (
-              <li key={index}>
-                <span className={styles.faint}>
-                  {change.at ? day(view, change.at) : shortDay(row.date)} ·{" "}
-                  {change.actorId === view.budget.userId ? "You" : partnerName}
-                </span>
-                <span>
-                  {describe(change, {
-                    row,
-                    you: view.budget.userId,
-                    partnerName,
-                    shareLabel: paid ? shareLabel : "your share",
-                    account: accountOf(view, row),
-                  })}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Your side of your partner's purchase. Until you pick one, your payee
-// memory fills in the category you gave this payee last time.
-function SideCategory({ row, id }: { row: Row; id: string }) {
-  const entry = useTransactionEntry();
-  const { view } = entry;
-  const [value, setValue] = useState(
-    row.categoryId ?? row.suggestedCategoryId ?? "",
-  );
-  const [error, setError] = useState("");
-  const options: ChoiceOption[] = view.categories
-    .filter(
-      (category) =>
-        !category.pairedAccountId &&
-        !category.pairedLoanId &&
-        !category.counterpartyAccountId,
-    )
-    .map((category) => ({
-      value: category.id,
-      label: category.name,
-      group: category.group,
-      amount: category.available,
-    }));
-  const save = (categoryId: string) => {
-    const label = options.find((option) => option.value === categoryId)?.label;
-    const failure = entry.saveCommand(
-      {
-        type: "partner.categorize",
-        id: newId(),
-        entryId: row.entryId!,
-        categoryId,
-      },
-      paid
-        ? `Your import of ${row.payee} will go in ${label}. Only you see that.`
-        : `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
-    );
-    setError(failure ?? "");
-  };
-  const prefilled = row.needsCategory && Boolean(value);
-  const paid = row.payerId === view.budget.userId;
-  return (
-    <>
-      <div className={local.categoryEdit}>
-        <ChoiceField
-          id={id}
-          label="Your category"
-          value={value}
-          options={options}
-          placeholder="Pick a category"
-          invalid={Boolean(error)}
-          onChange={(next) => {
-            setValue(next);
-            save(next);
-          }}
-        />
-        {prefilled && (
-          <Button size="sm" variant="primary" onClick={() => save(value)}>
-            Categorize
-          </Button>
+        {shareEditable ? (
+          <EditorCell
+            column="amount"
+            label="Amount"
+            htmlFor={id("amount")}
+            error={
+              errors.amount && (
+                <FieldError id={id("amount-error")}>{errors.amount}</FieldError>
+              )
+            }
+          >
+            <AmountInput
+              inputRef={input}
+              id={id("amount")}
+              prefix={row.change < 0 ? "-$" : "$"}
+              invalid={Boolean(errors.amount)}
+              describedBy={errors.amount ? id("amount-error") : undefined}
+              value={text}
+              onChange={(value) => {
+                setText(value);
+                if (errors.amount) setErrors({});
+              }}
+            />
+          </EditorCell>
+        ) : (
+          readOnly("amount", money(row.change, true), true)
         )}
+        {readOnly("balance", cells.balance, true)}
+        <span data-column="status" aria-hidden />
       </div>
-      {error ? (
-        <p className={moveStyles.error}>{error}</p>
-      ) : prefilled ? (
-        <p className={share.formHint}>
-          Filled in from {row.payee} last time. Only you see your category.
-        </p>
-      ) : paid && !row.categoryId && value ? (
-        <p className={share.formHint}>
-          Filled in from {row.payee} last time. Your import takes it when it
-          arrives, and only you see it.
-        </p>
-      ) : (
-        paid && (
-          <p className={share.formHint}>
-            Your import takes this category when it arrives. Only you see it.
-          </p>
-        )
-      )}
-    </>
+      <EditorFooter
+        actions={
+          editable ? (
+            <>
+              <Button size="sm" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" type="submit">
+                Save
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={onClose}>
+              Close
+            </Button>
+          )
+        }
+      >
+        {errors.form ? (
+          <FieldError id={id("error")}>{errors.form}</FieldError>
+        ) : (
+          hint && <span className={share.footerHint}>{hint}</span>
+        )}
+      </EditorFooter>
+    </EditorForm>
   );
 }
 
@@ -865,111 +1080,4 @@ function shareOf(view: View, row: Row, cents: number) {
   const line =
     transaction?.lines?.find((item) => item.id === row.lineId) ?? transaction;
   return { ...line!.counterpartyShare!, amount: cents };
-}
-
-function day(view: View, at: string) {
-  return new Date(at).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: view.budget.settings.timezone,
-  });
-}
-
-// The account the viewer paid a shared purchase from, when they did.
-function accountOf(view: View, row: Row) {
-  const transaction = view.budget.transactions.find(
-    (item) => item.id === row.transactionId,
-  );
-  return view.accounts.find((item) => item.id === transaction?.accountId);
-}
-
-// Where an entry's facts come from: the payer's bank import, or a partner
-// who recorded it before the import arrived.
-function Source({ row, partnerName }: { row: Row; partnerName: string }) {
-  const { view } = useTransactionEntry();
-  const you = view.budget.userId;
-  const paid = row.payerId === you;
-  const recorder = row.recordedBy === you ? "You" : partnerName;
-  const account = accountOf(view, row);
-  const transaction = view.budget.transactions.find(
-    (item) => item.id === row.transactionId,
-  );
-  const text = row.awaitingImport
-    ? `${recorder} recorded this. ${paid ? "Your" : `${partnerName}'s`} bank import will match it when it arrives.`
-    : row.recordedBy
-      ? `${recorder} recorded this first. Matched to ${paid ? `your ${account?.name ?? "bank"} import` : `${partnerName}'s bank import`}.`
-      : paid && transaction?.providerId && account
-        ? `From your ${account.name} import`
-        : undefined;
-  if (!text) return null;
-  return (
-    <p className={local.source}>
-      <LinkIcon size={13} aria-hidden />
-      {text}
-    </p>
-  );
-}
-
-// What an entry's amount and share were when it was recorded: its facts
-// now, with every later change undone.
-function recordedFacts(row: Row, you: string, from: number) {
-  const facts: Record<string, string | number> = {
-    amount: row.shared,
-    // The share is the part of the one who didn't pay.
-    share: row.payerId === you ? row.partner : row.you,
-  };
-  for (const change of row.history.slice(from + 1).reverse())
-    for (const { field, previous } of change.changes ?? [])
-      facts[field] = previous;
-  return {
-    amount: Math.abs(Number(facts.amount)),
-    share: Number(facts.share),
-  };
-}
-
-// One change to an entry, in words.
-function describe(
-  change: PartnerEntryChange,
-  context: {
-    row: Row;
-    you: string;
-    partnerName: string;
-    shareLabel: string;
-    account?: { name: string };
-  },
-) {
-  const { row, you, partnerName, shareLabel } = context;
-  if (change.reason === "created") return "Shared";
-  if (change.reason === "removed") return "Removed from the ledger";
-  if (change.reason === "recorded") {
-    const { amount, share } = recordedFacts(
-      row,
-      you,
-      row.history.indexOf(change),
-    );
-    const paid = row.payerId === you;
-    return `Recorded: ${paid ? "You" : partnerName} paid ${money(amount)}, ${paid ? `${partnerName}'s` : "your"} share ${money(share)}`;
-  }
-  const parts = (change.changes ?? []).map(({ field, previous, next }) => {
-    if (field === "share")
-      return Number(next) === 0
-        ? `Changed ${shareLabel} from ${money(Number(previous))} to $0.00 (written off)`
-        : `Changed ${shareLabel} from ${money(Number(previous))} to ${money(Number(next))}`;
-    if (field === "amount")
-      return `Changed the amount from ${money(Math.abs(Number(previous)))} to ${money(Math.abs(Number(next)))}`;
-    if (field === "date")
-      return `Moved it from ${shortDay(String(previous))} to ${shortDay(String(next))}`;
-    if (field === "payee") return `Renamed it from ${previous} to ${next}`;
-    return next === "posted" ? "Posted" : `Marked ${next}`;
-  });
-  if (change.reason === "restored")
-    return ["Shared again", ...parts].join(". ");
-  if (change.reason === "matched")
-    return [
-      row.payerId === you
-        ? `Matched to your ${context.account?.name ?? "bank"} import`
-        : `Matched to ${partnerName}'s bank import`,
-      ...parts,
-    ].join(". ");
-  return parts.join(". ") || "Updated";
 }

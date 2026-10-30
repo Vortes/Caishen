@@ -53,6 +53,20 @@
   gap: 4px;
   min-width: 0;
 }
+/* Text the editor doesn't change fills the row's band, centered like the
+   row's own text, so it doesn't move when the row opens. */
+.entryRow > .staticCell {
+  flex-direction: row;
+  align-items: center;
+  /* The row's own gap between a cell's parts. */
+  gap: 10px;
+  min-height: var(--size-row-lg);
+  padding-top: 0;
+}
+.staticCell[data-numeric] {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
 /* The column header names the field on screen. */
 .cellLabel {
   position: absolute;
@@ -96,6 +110,9 @@
   }
   .entryRow > .cell {
     padding-top: 0;
+  }
+  .entryRow > .staticCell {
+    min-height: 0;
   }
   .entryRow .input {
     scroll-margin-block-start: calc(var(--size-row-md) + var(--size-row-lg));

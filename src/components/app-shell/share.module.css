@@ -200,8 +200,8 @@
   font-size: var(--type-small);
 }
 
-/* A shared entry, opened under its row: what's shared, the share itself,
-   and its history. */
+/* A settlement, opened under its row: what it moved and how both budgets
+   recognized it. */
 .detail {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
@@ -244,56 +244,8 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-.detailField {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 420px;
-}
-.detailField > label {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-.shareEdit {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.shareEdit > :first-child {
-  flex: 0 1 140px;
-  min-width: 96px;
-}
-.history {
-  min-width: 0;
-}
-.history h3 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 8px;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  font-weight: 500;
-}
-.history ol {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0;
-  padding: 0 0 0 12px;
-  border-left: 1px solid var(--border-subtle);
-  list-style: none;
-}
-.history li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--type-small);
-  line-height: 1.45;
-}
 @media (pointer: coarse) {
-  .shareForm input,
-  .detail input {
+  .shareForm input {
     font-size: var(--type-title);
   }
 }
