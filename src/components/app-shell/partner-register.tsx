@@ -395,7 +395,6 @@ export function PartnerRegister({
     id: string;
     field: EditorField;
   } | null>(null);
-  if (editing && editing.id !== selectedId) setEditing(null);
   const selectionStyle = useRowSelection(checked);
   // Shift-click checks, or clears, every entry from the last one clicked to
   // this one, like the other registers.
@@ -480,6 +479,7 @@ export function PartnerRegister({
         const row = rows.find((item) => item.id === selectedId);
         if (
           event.key === "e" &&
+          !editing &&
           row &&
           document.activeElement instanceof HTMLElement &&
           document.activeElement.dataset.entryRow === row.id &&
@@ -643,8 +643,11 @@ export function PartnerRegister({
                 // at the field clicked: the category when you can change it,
                 // otherwise the amount. Enter and Space click with no
                 // position, and only select.
+                // Like a transaction's editor, an open entry stays open, with
+                // what's typed, until it's saved or canceled.
                 if (
                   edits &&
+                  !editing &&
                   isSelected &&
                   checked.length === 1 &&
                   checked[0] === row.id &&

@@ -165,3 +165,18 @@ test("checked entries are categorized together from the selection island", async
     expect(within(entryRow(payee)).queryByText("Needs category")).toBeNull();
   }
 });
+
+test("an open entry keeps what's typed when another entry is clicked", async () => {
+  const shell = await openLedger();
+  const form = within(screen.getByRole("form", { name: "Edit shared entry" }));
+  const amount = form.getByRole("textbox", { name: "Amount" });
+  await shell.user.clear(amount);
+  await shell.user.type(amount, "12");
+  await shell.user.click(entryRow("Pharmacy"));
+  expect(
+    within(screen.getByRole("form", { name: "Edit shared entry" })).getByRole(
+      "textbox",
+      { name: "Amount" },
+    ),
+  ).toHaveProperty("value", "12");
+});
