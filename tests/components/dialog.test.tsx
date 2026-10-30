@@ -214,3 +214,26 @@ test("a dialog returns focus to what opened it", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await waitFor(() => expect(document.activeElement).toBe(opener));
 });
+
+// The heading a free-form dialog draws for itself, in the confirm dialog's
+// style.
+import { DialogHeader } from "~/components/ui/dialog";
+
+test("a dialog header shows its title as the dialog's heading and its description", () => {
+  render(
+    <SurfaceProvider container={themedRoot()}>
+      <Dialog label="Crop your photo" open onOpenChange={() => undefined}>
+        <DialogHeader
+          title="Crop your photo"
+          description="Drag to reposition."
+        />
+      </Dialog>
+    </SurfaceProvider>,
+  );
+
+  const dialog = screen.getByRole("dialog", { name: "Crop your photo" });
+  expect(
+    within(dialog).getByRole("heading", { level: 2, name: "Crop your photo" }),
+  ).toBeDefined();
+  expect(within(dialog).getByText("Drag to reposition.")).toBeDefined();
+});

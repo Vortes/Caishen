@@ -102,6 +102,7 @@
 }
 
 .separator {
+  flex: none;
   height: 1px;
   margin: 4px -4px;
   background: var(--border-subtle);

@@ -65,7 +65,8 @@ rows line up across panels.
 | `--size-toolbar`        | 52px   | Toolbar under the header                   |
 
 `Popover size="form"` is `--size-popover` (320px) wide; `size="wide"`, for
-a table of transactions, is `--size-popover-wide` (560px).
+a table of transactions, is `--size-popover-wide` (560px). A `Dialog` is
+`--size-dialog` (400px) wide; `size="wide"` is `--size-dialog-wide` (480px).
 
 ## Spacing
 
@@ -115,5 +116,12 @@ which reads these tokens:
 | `--duration-popover-exit`  | 120ms | Exit with `ease-in`                |
 | `--scale-popover`          | 0.97  | Starting and exiting scale         |
 | `--distance-popover`       | 4px   | Entrance offset toward the trigger |
+
+Dialogs are always occasional. A dialog and its scrim read these:
+
+| Token                     | Value | Use                                                            |
+| ------------------------- | ----- | -------------------------------------------------------------- |
+| `--duration-dialog-enter` | 200ms | Entrance: the dialog with `--ease-panel`, the scrim `ease-out` |
+| `--duration-dialog-exit`  | 150ms | Exit with `ease-in`                                            |
 
 The surface modules own these transitions; feature CSS never repeats them.

@@ -278,13 +278,12 @@
   font-size: var(--type-body);
 }
 /* The list inside its popover: the pinned row stays put and only the
-   options scroll, within the room the popover has, less its 1px border. */
+   options scroll, within the room the popover has. */
 .listOptions {
   display: flex;
   flex-direction: column;
-  max-height: calc(
-    min(18rem, var(--radix-popover-content-available-height)) - 2px
-  );
+  min-height: 0;
+  max-height: 18rem;
   padding: 4px;
 }
 .listScroll {
@@ -401,12 +400,6 @@
   .dateTrigger {
     display: flex;
   }
-}
-
-/* The calendar pads itself, centred in the popover's width. */
-.calendarPanel {
-  display: flex;
-  justify-content: center;
 }
 
 /* Touch: taller targets, and title-size (16px) text so focusing a field doesn't zoom

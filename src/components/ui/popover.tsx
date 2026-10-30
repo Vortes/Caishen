@@ -1,13 +1,16 @@
 "use client";
 
 import { Popover as Primitive } from "radix-ui";
-import { useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useRef, type ReactElement, type ReactNode } from "react";
 import {
   SURFACE_GAP,
   collisionPadding,
+  useOpenState,
   usePortalContainer,
   useSurfaceMotion,
+  type SurfaceAlign,
   type SurfaceMotion,
+  type SurfaceSide,
 } from "./surface";
 import styles from "./surface.module.css";
 
@@ -17,8 +20,8 @@ type Placement = {
   label: string;
   // For a field that names the popover in aria-controls.
   id?: string;
-  side?: "top" | "right" | "bottom" | "left";
-  align?: "start" | "center" | "end";
+  side?: SurfaceSide;
+  align?: SurfaceAlign;
   // Without a size, the content sets the width.
   size?: PopoverSize;
   motion?: SurfaceMotion;
@@ -72,12 +75,7 @@ export function Popover(props: TriggerProps | AnchorProps) {
   } = props;
   const anchorRef = useRef<HTMLDivElement>(null);
   const container = usePortalContainer();
-  const [uncontrolled, setUncontrolled] = useState(false);
-  const open = controlled ?? uncontrolled;
-  const setOpen = (next: boolean) => {
-    if (controlled === undefined) setUncontrolled(next);
-    onOpenChange?.(next);
-  };
+  const [open, setOpen] = useOpenState(controlled, onOpenChange);
   const motionProps = useSurfaceMotion(open, motion);
   // An anchor without a trigger, unless it takes focus: the site opens it
   // and keeps focus in the anchor.

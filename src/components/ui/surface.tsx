@@ -64,6 +64,20 @@ export function usePortalContainer() {
   return useContext(PortalContainer);
 }
 
+// Open state the site controls through `open`, or the surface keeps itself
+// when the site leaves it out. Either way `onOpenChange` hears each change.
+export function useOpenState(
+  controlled: boolean | undefined,
+  onOpenChange?: (open: boolean) => void,
+) {
+  const [uncontrolled, setUncontrolled] = useState(false);
+  const setOpen = (next: boolean) => {
+    if (controlled === undefined) setUncontrolled(next);
+    onOpenChange?.(next);
+  };
+  return [controlled ?? uncontrolled, setOpen] as const;
+}
+
 export type SurfaceMotion = "frequent" | "occasional";
 
 // Frequent surfaces open and close instantly. Occasional ones animate when

@@ -4,7 +4,7 @@ import { ZoomInIcon, ZoomOutIcon } from "lucide-react";
 import { useState } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 import { Button } from "~/components/ui/button";
-import { Dialog } from "~/components/ui/dialog";
+import { Dialog, DialogHeader } from "~/components/ui/dialog";
 import { compressProfileImage } from "./profile-image";
 import styles from "./photo-crop.module.css";
 
@@ -70,12 +70,10 @@ export function PhotoCropDialog({
       // focus ring; Tab moves to the photo, then the slider.
       autoFocus={false}
     >
-      <div className={styles.header}>
-        <h2 className={styles.title}>Crop your photo</h2>
-        <p className={styles.description}>
-          Drag to reposition. Scroll, pinch, or use the slider to zoom.
-        </p>
-      </div>
+      <DialogHeader
+        title="Crop your photo"
+        description="Drag to reposition. Scroll, pinch, or use the slider to zoom."
+      />
       <div className={styles.stage}>
         {src && (
           <Cropper

@@ -22,14 +22,12 @@
 }
 
 /* A filter's popover: header and footer stay while the list scrolls,
-   within the room the popover has, less its 1px border. */
+   within the room the popover has. */
 .filterPanel {
   display: flex;
   flex-direction: column;
-  max-height: min(
-    440px,
-    calc(var(--radix-popover-content-available-height) - 2px)
-  );
+  min-height: 0;
+  max-height: 440px;
 }
 .popoverHeader,
 .popoverFooter {
@@ -345,13 +343,12 @@
 /* ---------- Slice popover ---------- */
 
 /* Header and footer stay put while the rows scroll, within the room the
-   popover has, less its 1px border. */
+   popover has. */
 .slicePanel {
   display: flex;
   flex-direction: column;
-  max-height: calc(
-    min(420px, var(--radix-popover-content-available-height)) - 2px
-  );
+  min-height: 0;
+  max-height: 420px;
 }
 .sliceHeader {
   flex: none;

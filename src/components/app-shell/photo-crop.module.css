@@ -1,20 +1,5 @@
-/* The photo crop dialog's content; the surface and scrim are Dialog's. */
-
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.title {
-  margin: 0;
-  font-size: var(--type-title);
-  font-weight: 600;
-}
-.description {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-}
+/* The photo crop dialog's content; the surface, scrim and header are
+   Dialog's. */
 
 /* Square, so the round crop fills it edge to edge. The rest of the photo
    shows dimmed around the circle. */

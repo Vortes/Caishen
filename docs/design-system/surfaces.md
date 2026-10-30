@@ -75,7 +75,32 @@ Something the interface can't express means widening the module in
 `src/components/ui/popover.tsx`. Use for a small form or contextual detail
 that hangs from something. The surface adds no padding; the content lays
 itself out. Height is clamped to the room on the placed side, and the
-content scrolls past it.
+content scrolls past it as a whole.
+
+Content that pins a header or footer scrolls only its body instead. The
+surface is a flex column, so the content's root takes `display: flex`,
+`flex-direction: column` and `min-height: 0`: it shrinks to the room left,
+and its body scrolls (`min-height: 0`, `overflow-y: auto`). A cap of its
+own is a plain `max-height` on that root, like the activity list's 420px.
+Never read Radix's sizing variables in a screen's CSS.
+
+```css
+/* Correct */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 420px;
+}
+
+/* Incorrect: the surface already clamps to the room it has */
+.panel {
+  max-height: min(
+    420px,
+    calc(var(--radix-popover-content-available-height) - 2px)
+  );
+}
+```
 
 ```tsx
 <Popover
@@ -190,11 +215,15 @@ and sits above every popover (z-index 81). Closing returns focus to what
 had it when the dialog opened.
 
 - `Dialog`: `label` (required; the content draws its own heading), `open`,
-  `onOpenChange`, `size` (`default` 400px, or `wide` 480px with content that
-  pins its own header and footer and scrolls only its body), `continued`
-  (lands on a scrim already up, as after Plaid's window, so it doesn't fade
-  in twice), and `autoFocus` (off focuses the dialog itself, so no control
-  opens wearing a focus ring).
+  `onOpenChange`, `size` (`default`, `--size-dialog`, 400px; or `wide`,
+  `--size-dialog-wide`, 480px, with content that pins its own header and
+  footer and scrolls only its body), `continued` (lands on a scrim already
+  up, as after Plaid's window, so it doesn't fade in twice), and
+  `autoFocus` (off focuses the dialog itself, so no control opens wearing a
+  focus ring).
+- `DialogHeader`: `title` and `description`, the heading a `Dialog` draws
+  for itself in `ConfirmDialog`'s style. Use it rather than restyling a
+  title and description.
 - `DialogScrim`: the scrim alone, for a window drawn by someone else with no
   backdrop of its own, like Plaid's. A `Dialog` with `continued` lands on it.
 
@@ -255,7 +284,8 @@ What the module does with it, so nothing needs adding at a site:
   `--ease-panel` from `--scale-popover`, `--distance-popover` toward the
   trigger, following the resolved side; they exit over
   `--duration-popover-exit` with `ease-in`. Dialogs grow from the center
-  with their scrim. The values are in [scale.md](scale.md#motion).
+  with their scrim over `--duration-dialog-enter` and leave over
+  `--duration-dialog-exit`. The values are in [scale.md](scale.md#motion).
 - `prefers-reduced-motion: reduce` disables all of it.
 - `Button` and `IconButton` don't scale on press while they carry
   `aria-haspopup`, so the surface can't measure a pressed trigger and jump.

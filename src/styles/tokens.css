@@ -228,6 +228,8 @@
   --size-toolbar: 52px;
   --size-popover: 320px;
   --size-popover-wide: 560px;
+  --size-dialog: 400px;
+  --size-dialog-wide: 480px;
 
   --space-gutter: 8px;
   --space-inset: 8px;
@@ -251,6 +253,8 @@
   --duration-popover-exit: 120ms;
   --scale-popover: 0.97;
   --distance-popover: 4px;
+  --duration-dialog-enter: 200ms;
+  --duration-dialog-exit: 150ms;
   --ease-selection: cubic-bezier(0.165, 0.84, 0.44, 1);
   --duration-selection: 160ms;
   /* One pass of a skeleton's shine across the window. */

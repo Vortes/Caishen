@@ -1,8 +1,12 @@
 /* The raised surface every popover and menu shares. Content lays itself out; the
    surface adds no padding. Height is clamped to the room Radix finds on the
-   placed side. */
+   placed side, and content past it scrolls as a whole. The surface is a flex
+   column, so content that pins a header gives its root min-height: 0: the
+   root then shrinks to the room left and scrolls only its own body. */
 .surface {
   z-index: 60;
+  display: flex;
+  flex-direction: column;
   max-height: var(--radix-popper-available-height);
   overflow-y: auto;
   border: 1px solid var(--border-strong);
@@ -31,7 +35,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-card);
-  width: min(400px, calc(100vw - 24px));
+  width: min(var(--size-dialog), calc(100vw - 24px));
   max-height: calc(100dvh - 48px);
   padding: var(--space-card);
   color: var(--text-primary);
@@ -39,7 +43,7 @@
 }
 /* Wide content pins its own header and footer; only its body scrolls. */
 .dialog[data-size="wide"] {
-  width: min(480px, calc(100vw - 24px));
+  width: min(var(--size-dialog-wide), calc(100vw - 24px));
   overflow: hidden;
 }
 /* A dialog that focuses itself shows no ring; its controls still do. The
@@ -52,16 +56,16 @@
    scrim on the same timing, so the two read as one motion. Leaving is
    quicker and smaller, since attention has already moved on. */
 .scrim[data-motion="occasional"][data-state="open"]:not([data-instant]) {
-  animation: scrim-in 200ms ease-out;
+  animation: scrim-in var(--duration-dialog-enter) ease-out;
 }
 .scrim[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
-  animation: scrim-out 150ms ease-in forwards;
+  animation: scrim-out var(--duration-dialog-exit) ease-in forwards;
 }
 .dialog[data-motion="occasional"][data-state="open"]:not([data-instant]) {
-  animation: dialog-in 200ms var(--ease-panel);
+  animation: dialog-in var(--duration-dialog-enter) var(--ease-panel);
 }
 .dialog[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
-  animation: dialog-out 150ms ease-in forwards;
+  animation: dialog-out var(--duration-dialog-exit) ease-in forwards;
 }
 @keyframes scrim-in {
   from {
@@ -97,8 +101,8 @@
   width: min(var(--size-popover-wide), calc(100vw - 24px));
 }
 /* As wide as the trigger or anchor, and never narrower than 20rem: room
-   for a long category name beside its balance, and for the date calendar,
-   which is narrower. A longer name truncates rather than widening the list. */
+   for a long category name beside its balance. A longer name truncates
+   rather than widening the list. */
 .trigger {
   width: min(
     max(var(--radix-popover-trigger-width), 20rem),

@@ -7,7 +7,6 @@ import {
   useContext,
   useId,
   useRef,
-  useState,
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
@@ -15,6 +14,7 @@ import {
 import {
   SURFACE_GAP,
   collisionPadding,
+  useOpenState,
   usePortalContainer,
   useSurfaceMotion,
   type SurfaceAlign,
@@ -66,12 +66,10 @@ export function Menu({
   const id = useId();
   const triggerRef = useRef<HTMLElement>(null);
   const interactedOutside = useRef(false);
-  const [uncontrolled, setUncontrolled] = useState(false);
-  const open = controlled ?? uncontrolled;
+  const [open, setOpenState] = useOpenState(controlled, onOpenChange);
   const setOpen = (next: boolean) => {
     if (next) interactedOutside.current = false;
-    if (controlled === undefined) setUncontrolled(next);
-    onOpenChange?.(next);
+    setOpenState(next);
   };
   const motionProps = useSurfaceMotion(open, motion);
   return (

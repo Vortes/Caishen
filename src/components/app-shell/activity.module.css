@@ -48,14 +48,12 @@
 }
 
 /* The list in its popover: the header stays while the rows scroll, within
-   the room the popover has, less its 1px border. */
+   the room the popover has. */
 .panel {
   display: flex;
   flex-direction: column;
-  max-height: min(
-    420px,
-    calc(var(--radix-popover-content-available-height) - 2px)
-  );
+  min-height: 0;
+  max-height: 420px;
 }
 
 .header {

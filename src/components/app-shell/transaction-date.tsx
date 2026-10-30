@@ -179,7 +179,6 @@ export function DateField({
     <Popover
       id={calendarId}
       label={`${label} calendar`}
-      size="trigger"
       open={shown}
       onOpenChange={(next) => {
         if (!next) onOpenChange(false);
@@ -275,7 +274,6 @@ export function DateField({
         ref={(panel) => {
           if (panel) onShown();
         }}
-        className={styles.calendarPanel}
         onKeyDown={onContentKeyDown}
       >
         <Calendar

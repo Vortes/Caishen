@@ -92,6 +92,23 @@ export function Dialog({
   );
 }
 
+// The heading a dialog draws for itself: a title over a line of description,
+// in the confirm dialog's style.
+export function DialogHeader({
+  title,
+  description,
+}: {
+  title: string;
+  description: ReactNode;
+}) {
+  return (
+    <div className={styles.header}>
+      <h2 className={styles.title}>{title}</h2>
+      <p className={styles.description}>{description}</p>
+    </div>
+  );
+}
+
 // The scrim alone, for a window drawn by someone else that has no backdrop
 // of its own, like Plaid's. A Dialog that follows it with `continued` lands
 // on the same dimming.
