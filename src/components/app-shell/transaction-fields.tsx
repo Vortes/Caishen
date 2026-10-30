@@ -9,7 +9,6 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { Button } from "~/components/ui/button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { POPOVER_GAP } from "~/components/ui/tokens";
 import { money } from "./model";
@@ -39,7 +38,7 @@ type FieldProps = {
 };
 
 // The list under a field. Focus stays in the field, which moves the active
-// option, so only a separate footer action can receive focus.
+// option.
 function OptionList({
   open,
   onClose,
@@ -49,7 +48,6 @@ function OptionList({
   wide = false,
   placement = "floating",
   children,
-  footer,
 }: {
   open: boolean;
   onClose: () => void;
@@ -60,26 +58,9 @@ function OptionList({
   wide?: boolean;
   placement?: "floating" | "inline";
   children: ReactNode;
-  footer?: ReactNode;
 }) {
   const container = usePortalContainer();
   const anchorRef = useRef<HTMLDivElement>(null);
-  const content = footer ? (
-    <>
-      <div
-        id={listId}
-        role="listbox"
-        aria-label={label}
-        className={styles.listOptions}
-      >
-        {children}
-      </div>
-      <hr className={styles.listDivider} />
-      <div className={styles.listFooter}>{footer}</div>
-    </>
-  ) : (
-    children
-  );
   // Inside a bottom-anchored form, the list participates in layout so the
   // form grows upward and keeps its footer and toolbar unobstructed.
   if (placement === "inline")
@@ -88,13 +69,13 @@ function OptionList({
         {anchor}
         {open && (
           <div
-            id={footer ? `${listId}-popover` : listId}
-            role={footer ? "group" : "listbox"}
+            id={listId}
+            role="listbox"
             aria-label={label}
             className={styles.inlineOptions}
             onMouseDown={(event) => event.preventDefault()}
           >
-            {content}
+            {children}
           </div>
         )}
       </div>
@@ -111,12 +92,11 @@ function OptionList({
       </Popover.Anchor>
       <Popover.Portal container={container}>
         <Popover.Content
-          id={footer ? `${listId}-popover` : listId}
-          role={footer ? "dialog" : "listbox"}
+          id={listId}
+          role="listbox"
           aria-label={label}
           className={styles.listPopover}
           data-wide={wide || undefined}
-          data-footer={footer ? "" : undefined}
           align="start"
           sideOffset={POPOVER_GAP}
           collisionPadding={12}
@@ -132,7 +112,7 @@ function OptionList({
           // Keeps focus in the field while the pointer picks.
           onMouseDown={(event) => event.preventDefault()}
         >
-          {content}
+          {children}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -187,14 +167,57 @@ function Option({
   );
 }
 
-// Stands for the Add row in a field's list, never for an option.
+// A row pinned above a field's options: New, or an action beside it. Its
+// icon stays neutral, since neither commits anything yet.
+function Pinned({
+  id,
+  icon,
+  label,
+  active,
+  compact,
+  onActivate,
+  onPick,
+}: {
+  id: string;
+  icon: ReactNode;
+  label: string;
+  active: boolean;
+  // Sized to its label, so the row beside it keeps the room.
+  compact?: boolean;
+  onActivate: () => void;
+  onPick: () => void;
+}) {
+  return (
+    <div
+      id={id}
+      role="option"
+      aria-selected={false}
+      data-active={active || undefined}
+      data-compact={compact ? true : undefined}
+      className={styles.option}
+      data-pinned
+      onMouseMove={onActivate}
+      onClick={onPick}
+    >
+      <span className={styles.check} aria-hidden>
+        {icon}
+      </span>
+      <span className={`${shell.truncate} ${styles.optionLabel}`}>{label}</span>
+    </div>
+  );
+}
+
+// Stand for the New row and the action beside it, never for options.
 const CREATE = "\u0000create";
+const ACTION = "\u0000action";
 
 // Picks one option by typing to filter, like the move-money destination.
 // Arriving in the field opens its list, so typing filters it; Enter or Tab
 // takes the highlighted match, and Escape closes only the list. With
-// onCreate, a name that matches no option exactly can be added: its row
-// leads the list, and Enter takes it once nothing else matches.
+// onCreate, a New row stays pinned above the options, like YNAB's New
+// Category. It carries a typed name that matches no option exactly, and
+// Enter takes it once nothing else matches. An action, like Split, shares
+// that row, so neither costs the options any height.
 export function ChoiceField({
   id,
   label,
@@ -212,7 +235,7 @@ export function ChoiceField({
   wide = true,
   placement = "floating",
   displayValue,
-  footerAction,
+  action,
 }: FieldProps & {
   value: string;
   options: ChoiceOption[];
@@ -224,11 +247,10 @@ export function ChoiceField({
   // Keep choices within a containing popover instead of covering its footer.
   placement?: "floating" | "inline";
   displayValue?: string;
-  footerAction?: { label: string; onClick: () => void };
+  action?: { label: string; icon: ReactNode; onSelect: () => void };
 }) {
   const listId = `${id}-list`;
   const listRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLButtonElement>(null);
   const [expanded, setExpanded] = useState(false);
   // The field's text while the list is open: the chosen name until typing
   // replaces it, which is when it starts filtering.
@@ -240,25 +262,25 @@ export function ChoiceField({
   const visible = options.filter((option) =>
     `${option.group ?? ""} ${option.label}`.toLowerCase().includes(search),
   );
-  const creatable =
-    onCreate &&
-    search &&
-    !options.some((option) => option.label.toLowerCase() === search)
-      ? { value: CREATE, label: query.trim() }
-      : undefined;
-  const pickable = [
-    ...(creatable ? [creatable] : []),
-    ...visible.filter((option) => !option.disabled),
-  ];
+  const named =
+    search && !options.some((option) => option.label.toLowerCase() === search);
+  const creatable = onCreate
+    ? { value: CREATE, label: named ? query.trim() : "" }
+    : undefined;
+  const acting = action ? { value: ACTION, label: action.label } : undefined;
+  const pinned = [creatable, acting].filter((option) => option !== undefined);
+  const pickable = [...pinned, ...visible.filter((option) => !option.disabled)];
   const current =
     pickable.find((option) => option.value === active) ??
     (search ? undefined : pickable.find((option) => option.value === value)) ??
-    pickable.find((option) => option !== creatable) ??
+    pickable.find((option) => !pinned.includes(option)) ??
     creatable;
   const optionId = (option: ChoiceOption) =>
     option === creatable
       ? `${listId}-create`
-      : `${listId}-${visible.indexOf(option)}`;
+      : option === acting
+        ? `${listId}-action`
+        : `${listId}-${visible.indexOf(option)}`;
   const open = expanded && !disabled && !readOnly;
 
   const show = (text?: string) => {
@@ -273,6 +295,12 @@ export function ChoiceField({
       setExpanded(false);
       setQuery("");
       onCreate?.create(option.label);
+      return;
+    }
+    if (option === acting) {
+      setExpanded(false);
+      setQuery("");
+      action?.onSelect();
       return;
     }
     onChange(option.value);
@@ -304,20 +332,10 @@ export function ChoiceField({
       setExpanded(false);
     } else if (
       event.key === "Tab" &&
-      !event.shiftKey &&
-      open &&
-      footerAction &&
-      !selected &&
-      !search
-    ) {
-      event.preventDefault();
-      footerRef.current?.focus();
-    } else if (
-      event.key === "Tab" &&
       open &&
       (search.length > 0 || selected !== undefined) &&
       current &&
-      current !== creatable
+      !pinned.includes(current)
     ) {
       pick(current, false);
     }
@@ -332,35 +350,6 @@ export function ChoiceField({
       label={label}
       wide={wide}
       placement={placement}
-      footer={
-        footerAction && (
-          <Button
-            ref={footerRef}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                document.getElementById(id)?.focus();
-                setExpanded(false);
-              } else if (event.key === "Tab" && event.shiftKey) {
-                event.preventDefault();
-                document.getElementById(id)?.focus();
-              }
-            }}
-            onBlur={(event) => {
-              if (event.relatedTarget !== document.getElementById(id))
-                setExpanded(false);
-            }}
-            onClick={() => {
-              setExpanded(false);
-              setQuery("");
-              footerAction.onClick();
-            }}
-          >
-            {footerAction.label}
-          </Button>
-        )
-      }
       anchor={
         <div
           className={styles.well}
@@ -393,13 +382,7 @@ export function ChoiceField({
             onClick={() => {
               if (!open) show();
             }}
-            onBlur={(event) => {
-              if (
-                !footerRef.current ||
-                event.relatedTarget !== footerRef.current
-              )
-                setExpanded(false);
-            }}
+            onBlur={() => setExpanded(false)}
             onChange={(event) => show(event.target.value)}
             onKeyDown={onKeyDown}
           />
@@ -407,27 +390,39 @@ export function ChoiceField({
         </div>
       }
     >
-      <div ref={listRef} className={styles.listScroll}>
-        {creatable && onCreate && (
-          <div
-            id={optionId(creatable)}
-            role="option"
-            aria-selected={false}
-            data-active={creatable === current || undefined}
-            className={styles.option}
-            data-create
-            onMouseMove={() => setActive(CREATE)}
-            onClick={() => pick(creatable)}
-          >
-            <span className={styles.check} aria-hidden>
-              <PlusIcon size={13} strokeWidth={2.5} />
-            </span>
-            <span className={`${shell.truncate} ${styles.optionLabel}`}>
-              Add {onCreate.noun} “{creatable.label}”
-            </span>
+      {pinned.length > 0 && (
+        <>
+          <div className={styles.listHeader}>
+            {creatable && onCreate && (
+              <Pinned
+                id={optionId(creatable)}
+                icon={<PlusIcon size={13} strokeWidth={2.5} />}
+                label={`New ${onCreate.noun}${creatable.label && ` “${creatable.label}”`}`}
+                active={creatable === current}
+                onActivate={() => setActive(CREATE)}
+                onPick={() => pick(creatable)}
+              />
+            )}
+            {acting && action && (
+              <Pinned
+                id={optionId(acting)}
+                icon={action.icon}
+                label={action.label}
+                active={acting === current}
+                compact={creatable !== undefined}
+                onActivate={() => setActive(ACTION)}
+                onPick={() => pick(acting)}
+              />
+            )}
           </div>
-        )}
-        {visible.length === 0 && (
+          {(visible.length > 0 || !creatable?.label) && (
+            <hr className={styles.listDivider} aria-hidden />
+          )}
+        </>
+      )}
+      <div ref={listRef} className={styles.listScroll}>
+        {/* The New row already offers what was typed. */}
+        {visible.length === 0 && !creatable?.label && (
           <p className={styles.empty}>No matches for “{query.trim()}”</p>
         )}
         {visible.map((option, index) => {

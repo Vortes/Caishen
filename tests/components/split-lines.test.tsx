@@ -51,7 +51,7 @@ test("a Costco receipt splits across Groceries and Household, and the register s
     "Costco",
   );
   await shell.user.click(form.getByRole("combobox", { name: "Category" }));
-  await shell.user.click(screen.getByRole("button", { name: "Split" }));
+  await shell.user.click(screen.getByRole("option", { name: "Split" }));
   await shell.user.type(form.getByLabelText("Outflow", { exact: true }), "200");
 
   await choose(
@@ -114,14 +114,20 @@ const costcoSplit: Command = {
   ],
 };
 
-test("the category footer Split button is reachable with Tab and activates with Enter", async () => {
+test("Split sits beside New category, one arrow above the first category, and Enter takes it", async () => {
   const shell = await renderShell({ seedCommands: categories });
   const form = await newTransaction(shell);
-  await shell.user.click(form.getByRole("combobox", { name: "Category" }));
-  await shell.user.tab();
-  expect(screen.getByRole("button", { name: "Split" })).toBe(
-    document.activeElement,
+  const field = form.getByRole("combobox", { name: "Category" });
+  await shell.user.click(field);
+  await shell.user.keyboard("{ArrowUp}");
+  expect(field.getAttribute("aria-activedescendant")).toBe(
+    screen.getByRole("option", { name: "Split" }).id,
   );
+  await shell.user.keyboard("{ArrowUp}");
+  expect(field.getAttribute("aria-activedescendant")).toBe(
+    screen.getByRole("option", { name: "New category" }).id,
+  );
+  await shell.user.keyboard("{ArrowDown}");
   await shell.user.keyboard("{Enter}");
   expect(form.getByRole("combobox", { name: "Line 1 category" })).toBeTruthy();
   expect(form.getByLabelText("Outflow", { exact: true })).toBe(

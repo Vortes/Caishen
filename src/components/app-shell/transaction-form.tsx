@@ -8,7 +8,7 @@ import {
 import { transferNeedsCategory } from "~/domain/transfers";
 import { cardPaymentCategoryLabel } from "~/components/transactions/transaction-category";
 import { groupAmountInput } from "~/components/budget/amount-input";
-import { CircleAlertIcon, PlusIcon, XIcon } from "lucide-react";
+import { CircleAlertIcon, PlusIcon, SplitIcon, XIcon } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -545,11 +545,12 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           label="Category"
           value={split ? SPLIT : draft.categoryId}
           displayValue={split ? "Split" : undefined}
-          footerAction={
+          action={
             splittable
               ? {
                   label: "Split",
-                  onClick: () => {
+                  icon: <SplitIcon size={13} strokeWidth={2.5} />,
+                  onSelect: () => {
                     chooseCategory(SPLIT);
                     afterCategory(SPLIT);
                   },
