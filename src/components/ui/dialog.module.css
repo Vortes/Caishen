@@ -1,0 +1,35 @@
+/* The confirm dialog's own layout; the surface and scrim are the shared
+   ones in surface.module.css. */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.title {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.error {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+}
+.error > svg {
+  flex: none;
+  transform: translateY(2px);
+}
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-inset);
+}

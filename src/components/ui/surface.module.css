@@ -14,6 +14,78 @@
   outline: none;
 }
 
+/* A dialog: the same raised surface, centered over a scrim and above every
+   popover. It has no anchor, so it grows from the viewport's center. */
+.scrim {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: var(--overlay);
+}
+.dialog {
+  composes: surface;
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-card);
+  width: min(400px, calc(100vw - 24px));
+  max-height: calc(100dvh - 48px);
+  padding: var(--space-card);
+  color: var(--text-primary);
+  translate: -50% -50%;
+}
+/* Wide content pins its own header and footer; only its body scrolls. */
+.dialog[data-size="wide"] {
+  width: min(480px, calc(100vw - 24px));
+  overflow: hidden;
+}
+/* A dialog that focuses itself shows no ring; its controls still do. The
+   attribute outranks the shell's focus ring, whatever order the sheets
+   load in. */
+.dialog[data-state]:focus-visible {
+  outline: none;
+}
+/* The pointer grows a dialog from the viewport's center and fades its
+   scrim on the same timing, so the two read as one motion. Leaving is
+   quicker and smaller, since attention has already moved on. */
+.scrim[data-motion="occasional"][data-state="open"]:not([data-instant]) {
+  animation: scrim-in 200ms ease-out;
+}
+.scrim[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
+  animation: scrim-out 150ms ease-in forwards;
+}
+.dialog[data-motion="occasional"][data-state="open"]:not([data-instant]) {
+  animation: dialog-in 200ms var(--ease-panel);
+}
+.dialog[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
+  animation: dialog-out 150ms ease-in forwards;
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes scrim-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
 /* Widths. Without a size the content sets the width. */
 .form {
   width: min(var(--size-popover), calc(100vw - 24px));
@@ -90,6 +162,10 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .scrim[data-motion="occasional"][data-state]:not([data-instant]),
+  .dialog[data-motion="occasional"][data-state]:not([data-instant]) {
+    animation: none;
+  }
   .motion[data-motion="occasional"][data-state]:not([data-instant]) {
     animation: none;
     transition: none;

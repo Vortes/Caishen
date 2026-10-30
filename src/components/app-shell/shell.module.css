@@ -47,9 +47,6 @@
 .root[data-switching] *::after {
   transition: none !important;
 }
-.root[data-theme="light"] .scrim {
-  background: oklch(0.2 0.01 var(--hue) / 0.2);
-}
 .root :where(button) {
   font: inherit;
   color: inherit;
@@ -1721,7 +1718,7 @@ button.actionItem:disabled {
   bottom: var(--space-gutter);
   left: var(--space-gutter);
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  background: oklch(0 0 0 / 0.4);
+  background: var(--overlay);
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease-in;
@@ -1730,9 +1727,6 @@ button.actionItem:disabled {
   opacity: 1;
   pointer-events: auto;
   transition: opacity 260ms var(--ease-panel);
-}
-.root[data-theme="light"] .peekScrim {
-  background: oklch(0.2 0.01 var(--hue) / 0.14);
 }
 /* While collapsed the left edge opens the peek, so it shows no resize beam. */
 .root[data-peekable] .handle[data-side="left"]::after {
@@ -1774,7 +1768,7 @@ button.actionItem:disabled {
   position: absolute;
   z-index: 15;
   inset: 0;
-  background: oklch(0 0 0 / 0.4);
+  background: var(--overlay);
 }
 
 /* ---------- Settings ---------- */

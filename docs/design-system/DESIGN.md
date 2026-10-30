@@ -62,8 +62,8 @@ the screen needs the missing primitive. Never invent a new primitive inline.
 - **Form fields**: text inputs, selects, amount fields.
 - **Popover and dialog surfaces**: the shell styles its own popover.
   Every popover follows the shared gap and motion rules in [surfaces.md](surfaces.md).
-  For a confirm dialog, use Radix `AlertDialog` with that surface, Cancel
-  as `secondary`, and the confirm as `danger` or `primary`.
+  For a dialog, use `Dialog` or `ConfirmDialog` from
+  `src/components/ui/dialog.tsx`; never Radix directly.
 - **Base styles**: the focus ring (`--focus-ring`, 2px) and the button font
   reset live in the shell's root class, not globally. A screen outside the
   app shell has to repeat them.

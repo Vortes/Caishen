@@ -14,13 +14,12 @@ import {
   PlusIcon,
   UnlinkIcon,
 } from "lucide-react";
-import { AlertDialog, Dialog } from "radix-ui";
-import { createPortal } from "react-dom";
 import {
   createContext,
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent,
@@ -42,7 +41,7 @@ import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
-import { usePortalContainer } from "~/components/ui/tooltip";
+import { ConfirmDialog, Dialog, DialogScrim } from "~/components/ui/dialog";
 import { Popover } from "~/components/ui/popover";
 import { Menu, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { syncedLabel } from "./model";
@@ -646,11 +645,16 @@ export function BankStatus({ connection }: { connection: Connection }) {
 // The one dialog around Plaid's window, centered where Plaid's stood.
 export function BankDialog() {
   const banks = useBanks();
-  const container = usePortalContainer();
   const view = banks.view;
   // Saving can't be walked away from mid-request; everything else can close.
   const locked = useRef(() => false);
   const closable = view?.type !== "progress" || view.phase !== "saving";
+  const close = () => {
+    if (!closable || locked.current()) return;
+    banks.close();
+  };
+  // The setup form names itself from the accounts it shows.
+  const [setupTitle, setSetupTitle] = useState("");
   // Plaid draws no backdrop of its own, so the shell dims behind its window.
   // The dialog that follows it lands on that same scrim instead of fading in
   // a second one.
@@ -659,187 +663,163 @@ export function BankDialog() {
   if (!banks.plaidOpen && !view && continued) setContinued(false);
   if (view?.type === "disconnect")
     return <DisconnectDialog connection={view.connection} />;
+  const title =
+    view?.type === "duplicate"
+      ? !view.review.connections.length
+        ? "Review your bank connection"
+        : view.review.verdict === "all"
+          ? "These accounts are already connected"
+          : "You already connected this bank"
+      : view?.type === "progress"
+        ? "Connecting your bank"
+        : view?.type === "sync-failed"
+          ? "Your bank is connected"
+          : view?.type === "elsewhere"
+            ? `Connect from ${new URL(view.origin).host}`
+            : view?.type === "setup"
+              ? setupTitle
+              : "";
   return (
     <>
-      {banks.plaidOpen &&
-        container &&
-        createPortal(
-          <div className={styles.overlay} data-state="open" aria-hidden />,
-          container,
-        )}
-      <Dialog.Root
+      {banks.plaidOpen && <DialogScrim />}
+      <Dialog
+        label={title}
         open={view !== null}
         onOpenChange={(open) => {
-          if (open || !closable || locked.current()) return;
-          banks.close();
+          if (!open) close();
         }}
+        size={view?.type === "setup" ? "wide" : "default"}
+        continued={continued}
+        autoFocus={false}
       >
-        <Dialog.Portal container={container}>
-          <Dialog.Overlay
-            className={styles.overlay}
-            data-continued={continued || undefined}
-          />
-          <Dialog.Content
-            className={styles.dialog}
-            data-wide={view?.type === "setup" || undefined}
-            aria-describedby={undefined}
-            onOpenAutoFocus={(event) => {
-              event.preventDefault();
-              (event.currentTarget as HTMLElement).focus();
-            }}
-          >
-            {view?.type === "duplicate" && (
-              <>
-                <div className={styles.header}>
-                  <Dialog.Title className={styles.title}>
-                    {!view.review.connections.length
-                      ? "Review your bank connection"
-                      : view.review.verdict === "all"
-                        ? "These accounts are already connected"
-                        : "You already connected this bank"}
-                  </Dialog.Title>
-                  <p className={styles.description}>
-                    {!view.review.connections.length
-                      ? "Your previous connection is no longer active. You can continue connecting this bank."
-                      : view.review.verdict === "all"
-                        ? "Each account you selected is already available through an existing bank connection."
-                        : "Use your existing connection to choose which accounts to share. Connect again only if you use a separate login at this bank."}
-                  </p>
-                </div>
-                {view.review.verdict === "none" &&
-                  view.review.connections.length > 0 && (
-                    <p className={styles.description}>
-                      Your selected accounts look different from the accounts
-                      below. If they belong to a separate login, you can connect
-                      it too.
-                    </p>
-                  )}
-                {view.review.verdict === "unknown" && (
-                  <p className={styles.description}>
-                    We couldn’t compare these accounts. Account names or last
-                    digits are missing, or more than one existing account
-                    matched. Check the accounts below before continuing.
-                  </p>
-                )}
-                {view.review.connections.map((connection, index) => (
-                  <section
-                    key={connection.id}
-                    aria-label={connection.institutionName ?? "Connected bank"}
+        {view?.type === "duplicate" && (
+          <>
+            <div className={styles.header}>
+              <h2 className={styles.title}>{title}</h2>
+              <p className={styles.description}>
+                {!view.review.connections.length
+                  ? "Your previous connection is no longer active. You can continue connecting this bank."
+                  : view.review.verdict === "all"
+                    ? "Each account you selected is already available through an existing bank connection."
+                    : "Use your existing connection to choose which accounts to share. Connect again only if you use a separate login at this bank."}
+              </p>
+            </div>
+            {view.review.verdict === "none" &&
+              view.review.connections.length > 0 && (
+                <p className={styles.description}>
+                  Your selected accounts look different from the accounts below.
+                  If they belong to a separate login, you can connect it too.
+                </p>
+              )}
+            {view.review.verdict === "unknown" && (
+              <p className={styles.description}>
+                We couldn’t compare these accounts. Account names or last digits
+                are missing, or more than one existing account matched. Check
+                the accounts below before continuing.
+              </p>
+            )}
+            {view.review.connections.map((connection, index) => (
+              <section
+                key={connection.id}
+                aria-label={connection.institutionName ?? "Connected bank"}
+              >
+                <h3 className={styles.title}>
+                  {connection.institutionName ?? "Connected bank"}
+                </h3>
+                <ul className={styles.duplicateAccounts}>
+                  {connection.accounts.map((account) => (
+                    <li key={account.accountId}>
+                      <span>{account.name ?? "Account name unavailable"}</span>
+                      <span className={styles.description}>
+                        {account.mask
+                          ? `•••• ${account.mask}`
+                          : "Number unavailable"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {view.review.verdict !== "all" && (
+                  <Button
+                    variant={index === 0 ? "primary" : "secondary"}
+                    onClick={() => banks.start(connection.id)}
                   >
-                    <h3 className={styles.title}>
-                      {connection.institutionName ?? "Connected bank"}
-                    </h3>
-                    <ul className={styles.duplicateAccounts}>
-                      {connection.accounts.map((account) => (
-                        <li key={account.accountId}>
-                          <span>
-                            {account.name ?? "Account name unavailable"}
-                          </span>
-                          <span className={styles.description}>
-                            {account.mask
-                              ? `•••• ${account.mask}`
-                              : "Number unavailable"}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {view.review.verdict !== "all" && (
-                      <Button
-                        variant={index === 0 ? "primary" : "secondary"}
-                        onClick={() => banks.start(connection.id)}
-                      >
-                        Choose shared accounts
-                      </Button>
-                    )}
-                  </section>
-                ))}
-                {view.review.mayDisconnectExisting && (
-                  <p className={styles.description}>
-                    Connecting a second login at this bank can stop updates for
-                    your existing connection.
-                  </p>
+                    Choose shared accounts
+                  </Button>
                 )}
-                {view.error && <ErrorText>{view.error}</ErrorText>}
-                <div className={styles.footer}>
-                  <Dialog.Close asChild>
-                    <Button>Close</Button>
-                  </Dialog.Close>
-                  {view.review.verdict !== "all" && (
-                    <Button onClick={banks.confirmReview}>
-                      Connect anyway
-                    </Button>
-                  )}
-                </div>
-              </>
+              </section>
+            ))}
+            {view.review.mayDisconnectExisting && (
+              <p className={styles.description}>
+                Connecting a second login at this bank can stop updates for your
+                existing connection.
+              </p>
             )}
-            {view?.type === "progress" && (
-              <>
-                <div className={styles.header}>
-                  <Dialog.Title className={styles.title}>
-                    Connecting your bank
-                  </Dialog.Title>
-                  <p className={styles.description} role="status">
-                    {view.phase === "saving"
-                      ? "Saving your connection…"
-                      : "Bringing in your accounts and recent activity. This can take a minute."}
-                  </p>
-                </div>
-                <div className={styles.progress} aria-hidden />
-              </>
-            )}
-            {view?.type === "sync-failed" && (
-              <>
-                <div className={styles.header}>
-                  <Dialog.Title className={styles.title}>
-                    Your bank is connected
-                  </Dialog.Title>
-                  <p className={styles.description}>
-                    Its accounts couldn’t update yet, so there’s nothing to add
-                    to your budget. Try again in a moment.
-                  </p>
-                </div>
-                {view.error && <ErrorText>{view.error}</ErrorText>}
-                <div className={styles.footer}>
-                  <Dialog.Close asChild>
-                    <Button>Later</Button>
-                  </Dialog.Close>
-                  <Button variant="primary" onClick={banks.retrySync}>
-                    Try again
-                  </Button>
-                </div>
-              </>
-            )}
-            {view?.type === "elsewhere" && (
-              <>
-                <div className={styles.header}>
-                  <Dialog.Title className={styles.title}>
-                    Connect from {new URL(view.origin).host}
-                  </Dialog.Title>
-                  <p className={styles.description}>
-                    Your bank sends you back to the address where you started,
-                    so connect from Caishen’s bank address.
-                  </p>
-                </div>
-                <div className={styles.footer}>
-                  <Dialog.Close asChild>
-                    <Button>Cancel</Button>
-                  </Dialog.Close>
-                  <Button variant="primary" asChild>
-                    <a href={view.origin}>Open {new URL(view.origin).host}</a>
-                  </Button>
-                </div>
-              </>
-            )}
-            {view?.type === "setup" && (
-              <SetupForm
-                key={view.connection.id}
-                connection={view.connection}
-                locked={locked}
-              />
-            )}
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+            {view.error && <ErrorText>{view.error}</ErrorText>}
+            <div className={styles.footer}>
+              <Button onClick={close}>Close</Button>
+              {view.review.verdict !== "all" && (
+                <Button onClick={banks.confirmReview}>Connect anyway</Button>
+              )}
+            </div>
+          </>
+        )}
+        {view?.type === "progress" && (
+          <>
+            <div className={styles.header}>
+              <h2 className={styles.title}>{title}</h2>
+              <p className={styles.description} role="status">
+                {view.phase === "saving"
+                  ? "Saving your connection…"
+                  : "Bringing in your accounts and recent activity. This can take a minute."}
+              </p>
+            </div>
+            <div className={styles.progress} aria-hidden />
+          </>
+        )}
+        {view?.type === "sync-failed" && (
+          <>
+            <div className={styles.header}>
+              <h2 className={styles.title}>{title}</h2>
+              <p className={styles.description}>
+                Its accounts couldn’t update yet, so there’s nothing to add to
+                your budget. Try again in a moment.
+              </p>
+            </div>
+            {view.error && <ErrorText>{view.error}</ErrorText>}
+            <div className={styles.footer}>
+              <Button onClick={close}>Later</Button>
+              <Button variant="primary" onClick={banks.retrySync}>
+                Try again
+              </Button>
+            </div>
+          </>
+        )}
+        {view?.type === "elsewhere" && (
+          <>
+            <div className={styles.header}>
+              <h2 className={styles.title}>{title}</h2>
+              <p className={styles.description}>
+                Your bank sends you back to the address where you started, so
+                connect from Caishen’s bank address.
+              </p>
+            </div>
+            <div className={styles.footer}>
+              <Button onClick={close}>Cancel</Button>
+              <Button variant="primary" asChild>
+                <a href={view.origin}>Open {new URL(view.origin).host}</a>
+              </Button>
+            </div>
+          </>
+        )}
+        {view?.type === "setup" && (
+          <SetupForm
+            key={view.connection.id}
+            connection={view.connection}
+            locked={locked}
+            onTitle={setSetupTitle}
+          />
+        )}
+      </Dialog>
     </>
   );
 }
@@ -855,7 +835,6 @@ function ErrorText({ children }: { children: string }) {
 
 function DisconnectDialog({ connection }: { connection: Connection }) {
   const banks = useBanks();
-  const container = usePortalContainer();
   const utils = api.useUtils();
   const disconnect = api.budget.disconnectBank.useMutation();
   const [operationId] = useState(() => crypto.randomUUID());
@@ -892,52 +871,31 @@ function DisconnectDialog({ connection }: { connection: Connection }) {
     }
   };
   return (
-    <AlertDialog.Root
+    <ConfirmDialog
       open
       onOpenChange={(open) => {
-        if (!open && !saving.current) banks.close();
+        if (!open) banks.close();
       }}
-    >
-      <AlertDialog.Portal container={container}>
-        <AlertDialog.Overlay className={styles.overlay} />
-        <AlertDialog.Content className={styles.dialog}>
-          <div className={styles.header}>
-            <AlertDialog.Title className={styles.title}>
-              Disconnect {bankName(connection)}?
-            </AlertDialog.Title>
-            <AlertDialog.Description className={styles.description}>
-              Bank updates will stop. Your accounts, transactions, and activity
-              awaiting review will stay in your budget. To replace this
-              connection, choose Link again afterward. Review outstanding
-              activity and reconcile your cash and credit accounts to today’s
-              bank balances before linking them to the new connection.
-            </AlertDialog.Description>
-          </div>
-          {error && <ErrorText>{error}</ErrorText>}
-          <div className={styles.footer}>
-            <AlertDialog.Cancel asChild>
-              <Button disabled={busy}>Cancel</Button>
-            </AlertDialog.Cancel>
-            <Button
-              variant="danger"
-              disabled={busy}
-              onClick={() => void submit()}
-            >
-              {busy ? "Disconnecting…" : "Disconnect"}
-            </Button>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+      title={`Disconnect ${bankName(connection)}?`}
+      description="Bank updates will stop. Your accounts, transactions, and activity awaiting review will stay in your budget. To replace this connection, choose Link again afterward. Review outstanding activity and reconcile your cash and credit accounts to today’s bank balances before linking them to the new connection."
+      cancel="Cancel"
+      confirm={busy ? "Disconnecting…" : "Disconnect"}
+      tone="danger"
+      onConfirm={() => void submit()}
+      pending={busy}
+      error={error || undefined}
+    />
   );
 }
 
 function SetupForm({
   connection,
   locked,
+  onTitle,
 }: {
   connection: Connection;
   locked: { current: () => boolean };
+  onTitle: (title: string) => void;
 }) {
   const banks = useBanks();
   const id = useId();
@@ -954,6 +912,11 @@ function SetupForm({
     },
   });
   locked.current = form.locked;
+  const title = form.rows.some((row) => row.recovery || row.requiresExisting)
+    ? `Set up ${bankName(connection)} accounts`
+    : `Add ${bankName(connection)} to your budget`;
+  // Before paint, so the dialog never shows under another name.
+  useLayoutEffect(() => onTitle(title), [onTitle, title]);
   const { busy } = form;
   // Unsupported accounts (such as retirement accounts) fold into one
   // line at the end, so the ones the user can add lead.
@@ -979,11 +942,7 @@ function SetupForm({
       }}
     >
       <div className={styles.header}>
-        <Dialog.Title className={styles.title}>
-          {form.rows.some((row) => row.recovery || row.requiresExisting)
-            ? `Set up ${bankName(connection)} accounts`
-            : `Add ${bankName(connection)} to your budget`}
-        </Dialog.Title>
+        <h2 className={styles.title}>{title}</h2>
         <p className={styles.description}>
           Checking and savings go in Cash, credit cards in Credit, and loans in
           Loans. New cash and credit accounts start with your current balance.

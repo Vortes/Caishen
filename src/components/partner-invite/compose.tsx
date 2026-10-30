@@ -1,6 +1,5 @@
 "use client";
 
-import { AlertDialog } from "radix-ui";
 import {
   useEffect,
   useId,
@@ -13,8 +12,7 @@ import {
 } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import dialog from "~/components/app-shell/banks.module.css";
+import { ConfirmDialog } from "~/components/ui/dialog";
 import shell from "~/components/app-shell/shell.module.css";
 import { CardFace } from "./card-face";
 import { WASHI, washiById, type WashiId } from "~/domain/invitation";
@@ -65,7 +63,6 @@ export function ComposeInvitation({
 }) {
   const titleId = useId();
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const container = usePortalContainer();
   const [washi, setWashi] = useState<WashiId>(WASHI[0].id);
   const [step, setStep] = useState<"paper" | "sign">("paper");
   // The turn in progress: from washi up (1) toward printed side up (0), or
@@ -303,31 +300,16 @@ export function ComposeInvitation({
         </div>
       )}
 
-      <AlertDialog.Root open={discarding} onOpenChange={setDiscarding}>
-        <AlertDialog.Portal container={container}>
-          <AlertDialog.Overlay className={dialog.overlay} />
-          <AlertDialog.Content className={dialog.dialog}>
-            <div className={dialog.header}>
-              <AlertDialog.Title className={dialog.title}>
-                Discard this invitation?
-              </AlertDialog.Title>
-              <AlertDialog.Description className={dialog.description}>
-                Your signature and the paper you chose won’t be kept.
-              </AlertDialog.Description>
-            </div>
-            <div className={dialog.footer}>
-              <AlertDialog.Cancel asChild>
-                <Button>Keep writing</Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action asChild>
-                <Button variant="danger" onClick={onCancel}>
-                  Discard
-                </Button>
-              </AlertDialog.Action>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      <ConfirmDialog
+        open={discarding}
+        onOpenChange={setDiscarding}
+        title="Discard this invitation?"
+        description="Your signature and the paper you chose won’t be kept."
+        cancel="Keep writing"
+        confirm="Discard"
+        tone="danger"
+        onConfirm={onCancel}
+      />
     </section>
   );
 }
