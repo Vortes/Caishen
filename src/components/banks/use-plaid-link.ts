@@ -201,7 +201,7 @@ export function usePlaidLink() {
               saved,
               needsSync: saved,
               error: saved
-                ? `Your bank connection is saved, but its activity could not update. ${failureMessage(error, "Try updating again.")}`
+                ? `Your bank connection is saved, but its activity isn’t available yet. ${failureMessage(error, "We’ll retry automatically.")}`
                 : failureMessage(
                     error,
                     "The bank connection could not be saved. Try connecting again.",
@@ -377,7 +377,7 @@ export function usePlaidLink() {
           needsSync: true,
           error: failureMessage(
             error,
-            "Bank activity could not update. Try again.",
+            "Bank activity isn’t available yet. We’ll retry automatically.",
           ),
         }));
     } finally {

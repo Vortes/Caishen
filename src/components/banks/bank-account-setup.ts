@@ -74,8 +74,7 @@ export function accountSetupType(
     !Number.isFinite(account.currentBalance)
   )
     return {
-      reason:
-        "The bank hasn’t provided a current balance. Update and try again.",
+      reason: "The bank hasn’t provided a current balance yet.",
     };
   if (account.type === "depository") return { kind: "cash" };
   if (account.type === "credit" && account.subtype === "credit card") {
@@ -86,16 +85,18 @@ export function accountSetupType(
   };
 }
 
-// Updates the bank once on mount so setup uses current balances, and keeps
-// one operation id per set of choices so retries cannot add accounts twice.
+// Reuses the update from Link, or updates on mount when opening setup later.
+// One operation id per set of choices keeps retries from adding accounts twice.
 export function useBankAccountSetupForm({
   state,
   connection,
+  updated,
   onSaved,
   runOnServer,
 }: {
   state: BankSetupState;
   connection: Connection;
+  updated: boolean;
   onSaved: (added: number) => void;
   runOnServer: ServerRunner;
 }) {
@@ -165,7 +166,7 @@ export function useBankAccountSetupForm({
   >({});
   const [operationId, setOperationId] = useState(() => crypto.randomUUID());
   const [updating, setUpdating] = useState(false);
-  const [refreshed, setRefreshed] = useState(false);
+  const [refreshed, setRefreshed] = useState(updated);
   const [submitting, setSubmitting] = useState(false);
   const updateInFlight = useRef(false);
   const attemptedUpdate = useRef(false);
@@ -206,10 +207,10 @@ export function useBankAccountSetupForm({
   }, []);
 
   useEffect(() => {
-    if (attemptedUpdate.current) return;
+    if (updated || attemptedUpdate.current) return;
     attemptedUpdate.current = true;
     void updateBank();
-  }, [updateBank]);
+  }, [updated, updateBank]);
 
   function change(accountId: string, next: Partial<AccountDraft>) {
     setDrafts((previous) => ({
@@ -256,12 +257,25 @@ export function useBankAccountSetupForm({
       accountSetupType(account).kind &&
       drafts[account.accountId]?.selected,
   );
-  const preparingAccounts = connection.accounts.some(
-    (account) =>
-      !mappings.has(account.accountId) &&
-      accountSetupType(account).kind &&
-      !synchronized(account),
-  );
+  const preparingAccounts = connection.accounts.some((account) => {
+    if (mappings.has(account.accountId)) return false;
+    const awaitingBalance =
+      account.currency === "USD" &&
+      account.currentBalance === null &&
+      (account.type === "depository" ||
+        (account.type === "credit" && account.subtype === "credit card"));
+    return (
+      awaitingBalance ||
+      (Boolean(accountSetupType(account).kind) && !synchronized(account))
+    );
+  });
+
+  useEffect(() => {
+    if (submitting || updating || (ready && refreshed && !preparingAccounts))
+      return;
+    const timer = window.setTimeout(() => void updateBank(), 30_000);
+    return () => window.clearTimeout(timer);
+  }, [preparingAccounts, ready, refreshed, submitting, updating, updateBank]);
 
   const rows = connection.accounts.map((account) => {
     const type = accountSetupType(account);
@@ -440,24 +454,22 @@ export function useBankAccountSetupForm({
   const waiting =
     !ready || !refreshed || updating || preparingAccounts
       ? updating
-        ? "Updating your bank accounts and activity…"
+        ? "Preparing your accounts and recent activity…"
         : !refreshed
-          ? "Update your bank accounts to use their latest balances. Your account names are saved here while you try again."
-          : preparingAccounts && ready
-            ? "Some accounts are still preparing. You can add the ready accounts now, or update again shortly."
-            : "Your bank is still preparing activity. Update again in a moment to finish adding these accounts."
+          ? "Your bank is taking longer than usual. We’ll keep trying automatically. Your account names are saved here."
+          : preparingAccounts && ready && selected.length > 0
+            ? "Some accounts are still preparing. You can add the ready accounts now. The others will appear automatically when they’re ready."
+            : "Your bank is still preparing activity. We’ll keep checking automatically."
       : null;
 
   return {
     rows,
     change,
     submit,
-    updateBank,
     error,
     waiting,
     busy,
     submitting,
-    updating,
     // Closing mid-save would lose track of whether the accounts were added.
     locked: () => saving.current,
     canSubmit: !busy && ready && refreshed && selected.length > 0,
