@@ -1,6 +1,10 @@
 "use client";
 
 import styles from "~/components/app-shell/banks.module.css";
+import { groupThousands } from "~/components/budget/format";
+import { AmountInput } from "~/components/ui/amount-input";
+import { Field } from "~/components/ui/field";
+import { TextInput } from "~/components/ui/text-input";
 
 type LoanDraft = {
   loanBalance: string;
@@ -26,6 +30,8 @@ export function LoanSetupFields({
   errorId: string;
   onChange: (next: Partial<LoanDraft>) => void;
 }) {
+  // The loan's one error shows under the account; each field points to it.
+  const sharedErrorId = fieldError ? errorId : undefined;
   return (
     <div className={styles.loanFields}>
       <p className={styles.fieldHint}>
@@ -33,68 +39,34 @@ export function LoanSetupFields({
           ? "Your bank hasn’t provided a balance. Enter the principal owed from your lender’s latest statement."
           : "Confirm the APR and required payment with your lender."}
       </p>
-      <div className={styles.field}>
-        <label htmlFor={`${id}-principal`}>Current principal owed</label>
-        <input
-          id={`${id}-principal`}
-          type="number"
-          inputMode="decimal"
-          min="0"
-          step="0.01"
-          value={currentBalance ?? draft.loanBalance}
+      <Field label="Current principal owed" sharedErrorId={sharedErrorId}>
+        <AmountInput
+          value={
+            currentBalance === null
+              ? draft.loanBalance
+              : groupThousands(String(currentBalance))
+          }
           readOnly={currentBalance !== null}
           disabled={busy}
-          aria-invalid={Boolean(fieldError) || undefined}
-          data-invalid={Boolean(fieldError) || undefined}
-          aria-describedby={fieldError ? errorId : undefined}
-          onChange={(event) =>
-            onChange({
-              loanBalance: event.target.value,
-            })
-          }
+          onChange={(loanBalance) => onChange({ loanBalance })}
         />
-      </div>
-      <div className={styles.field}>
-        <label htmlFor={`${id}-apr`}>APR (%)</label>
-        <input
-          id={`${id}-apr`}
-          type="number"
-          inputMode="decimal"
-          min="0"
-          max="1000"
-          step="0.01"
+      </Field>
+      <Field label="APR (%)" sharedErrorId={sharedErrorId}>
+        <TextInput
           value={draft.annualRate}
-          disabled={busy}
-          aria-invalid={Boolean(fieldError) || undefined}
-          data-invalid={Boolean(fieldError) || undefined}
-          aria-describedby={fieldError ? errorId : undefined}
-          onChange={(event) =>
-            onChange({
-              annualRate: event.target.value,
-            })
-          }
-        />
-      </div>
-      <div className={styles.field}>
-        <label htmlFor={`${id}-payment`}>Required monthly payment</label>
-        <input
-          id={`${id}-payment`}
-          type="number"
+          suffix="%"
           inputMode="decimal"
-          min="0.01"
-          step="0.01"
+          disabled={busy}
+          onChange={(annualRate) => onChange({ annualRate })}
+        />
+      </Field>
+      <Field label="Required monthly payment" sharedErrorId={sharedErrorId}>
+        <AmountInput
           value={draft.minimumPayment}
           disabled={busy}
-          aria-invalid={Boolean(fieldError) || undefined}
-          data-invalid={Boolean(fieldError) || undefined}
-          aria-describedby={fieldError ? errorId : undefined}
-          onChange={(event) =>
-            onChange({
-              minimumPayment: event.target.value,
-            })
-          }
+          onChange={(minimumPayment) => onChange({ minimumPayment })}
         />
-      </div>
+      </Field>
       <div className={styles.field}>
         <label htmlFor={`${id}-rate-type`}>Interest rate</label>
         <select

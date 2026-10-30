@@ -1,10 +1,12 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { newId, parseMoney, today } from "~/components/budget/format";
+import { readAmount } from "~/components/budget/amount";
+import { newId, today } from "~/components/budget/format";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
 import { Popover } from "~/components/ui/popover";
 import type { Command } from "~/domain/engine";
@@ -23,14 +25,21 @@ export function AccountEntry() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<NewAccountKind>("cash");
   const [balance, setBalance] = useState("");
+  const [balanceError, setBalanceError] = useState<string>();
   const [date, setDate] = useState(today(entry.view.budget.settings.timezone));
   const [error, setError] = useState("");
   const attempt = useRef<Extract<Command, { type: "account.add" }> | null>(
     null,
   );
   const save = () => {
+    const reading = readAmount(balance);
+    if (!reading.ok) {
+      setBalanceError(reading.message);
+      setError("");
+      return;
+    }
     try {
-      const amount = parseMoney(balance);
+      const amount = reading.cents;
       if (!name.trim()) throw new Error("Enter an account name.");
       if (
         !date ||
@@ -135,17 +144,16 @@ export function AccountEntry() {
                 : "The opening balance becomes available to assign."}
           </p>
         </div>
-        <div className={styles.field}>
-          <label htmlFor={`${id}-balance`}>Opening balance ($)</label>
-          <input
-            id={`${id}-balance`}
+        <Field label="Opening balance ($)" error={balanceError}>
+          <AmountInput
             value={balance}
-            inputMode="decimal"
             placeholder="0.00"
-            required
-            onChange={(event) => setBalance(groupAmountInput(event.target))}
+            onChange={(next) => {
+              setBalance(next);
+              setBalanceError(undefined);
+            }}
           />
-        </div>
+        </Field>
         <div className={styles.field}>
           <label htmlFor={`${id}-date`}>Balance as of</label>
           <input

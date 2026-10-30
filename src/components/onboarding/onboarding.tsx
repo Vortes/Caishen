@@ -1,19 +1,20 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { useAuth, useUser, useClerk } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import { LandmarkIcon, PlusIcon } from "lucide-react";
 import {
   currentMonth,
   newId,
-  parseMoney,
   text,
   today,
   formatMoney,
 } from "~/components/budget/format";
+import { readAmount } from "~/components/budget/amount";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Field } from "~/components/ui/field";
 import { api } from "~/trpc/react";
 import type { Command } from "~/domain/engine";
 import {
@@ -340,24 +341,32 @@ function ManualAccount({
   onCancel: () => void;
   timezone: string;
 }) {
+  const [balance, setBalance] = useState("");
+  const [balanceError, setBalanceError] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [operationId] = useState(newId);
   const save = useCallback(
     async (form: HTMLFormElement) => {
       const fields = new FormData(form);
+      const reading = readAmount(balance);
+      if (!reading.ok) {
+        setBalanceError(reading.message);
+        setError(null);
+        return;
+      }
       setBusy(true);
       setError(null);
       try {
         const kind = fields.get("kind") === "credit" ? "credit" : "cash";
-        const balance = parseMoney(text(fields, "balance"));
         await onSave({
           type: "account.add",
           id: operationId,
           accountId: operationId,
           name: text(fields, "name"),
           kind,
-          openingBalance: kind === "credit" ? -Math.abs(balance) : balance,
+          openingBalance:
+            kind === "credit" ? -Math.abs(reading.cents) : reading.cents,
           date: today(timezone),
         });
       } catch (caught) {
@@ -370,7 +379,7 @@ function ManualAccount({
         setBusy(false);
       }
     },
-    [onSave, operationId, timezone],
+    [balance, onSave, operationId, timezone],
   );
   return (
     <form
@@ -398,19 +407,17 @@ function ManualAccount({
             <option value="credit">Credit card</option>
           </select>
         </label>
-        <label className={batch.field}>
-          <span className={batch.fieldLabel}>Balance today</span>
-          <input
-            className={`${batch.input} ${styles.amountInput}`}
+        <Field label="Balance today" error={balanceError}>
+          <AmountInput
             name="balance"
-            inputMode="decimal"
-            onChange={(event) => {
-              event.target.value = groupAmountInput(event.target);
-            }}
+            value={balance}
             placeholder="0.00"
-            required
+            onChange={(next) => {
+              setBalance(next);
+              setBalanceError(undefined);
+            }}
           />
-        </label>
+        </Field>
       </div>
       <p className={batch.fieldHint}>
         For a credit card, enter the amount you owe.
