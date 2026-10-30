@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef, useState } from "react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Field } from "~/components/ui/field";
 
@@ -169,4 +169,63 @@ test("a screen can reach the input to focus it", () => {
   ref.current?.focus();
 
   expect(document.activeElement).toBe(amount());
+});
+
+// A phone or tablet: the page's pointer is a finger.
+function onCoarsePointer() {
+  vi.stubGlobal("matchMedia", (media: string) => ({
+    matches: media === "(pointer: coarse)",
+    media,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+}
+
+test("on a phone the operator keys show while the amount has focus", async () => {
+  onCoarsePointer();
+  const user = userEvent.setup();
+  render(<Amount />);
+  expect(screen.queryByRole("button", { name: "Divide by" })).toBeNull();
+
+  await user.click(amount());
+  expect(screen.getByRole("button", { name: "Divide by" })).toBeTruthy();
+
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  expect(screen.queryByRole("button", { name: "Divide by" })).toBeNull();
+});
+
+test("tapping an operator key keeps the keyboard on the amount", async () => {
+  onCoarsePointer();
+  const user = userEvent.setup();
+  render(<Amount />);
+  await user.click(amount());
+
+  await user.click(screen.getByRole("button", { name: "Plus" }));
+  await user.click(screen.getByRole("button", { name: "Times" }));
+
+  expect(document.activeElement).toBe(amount());
+  expect(screen.getByRole("button", { name: "Divide by" })).toBeTruthy();
+});
+
+test("an operator key goes in at the caret, and leaving gives the result", async () => {
+  onCoarsePointer();
+  const user = userEvent.setup();
+  render(<Amount />);
+  await user.type(amount(), "84.20");
+
+  await user.click(screen.getByRole("button", { name: "Divide by" }));
+  await user.keyboard("3");
+  expect(amount().value).toBe("84.20÷3");
+
+  await user.click(screen.getByRole("button", { name: "Next" }));
+  expect(amount().value).toBe("28.07");
+});
+
+test("with a mouse there are no operator keys; you type them", async () => {
+  const user = userEvent.setup();
+  render(<Amount />);
+
+  await user.click(amount());
+
+  expect(screen.queryByRole("button", { name: "Divide by" })).toBeNull();
 });
