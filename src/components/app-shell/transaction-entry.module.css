@@ -249,9 +249,13 @@
   min-width: 0;
   gap: 6px;
 }
+/* The list's surfaces pin a row above the options, and only the options
+   scroll. */
 .inlineOptions {
+  display: flex;
+  flex-direction: column;
   max-height: 18rem;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 4px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-row);
@@ -263,8 +267,10 @@
     max(var(--radix-popover-trigger-width), 16rem),
     calc(100vw - 24px)
   );
+  display: flex;
+  flex-direction: column;
   max-height: min(18rem, var(--radix-popover-content-available-height));
-  overflow-y: auto;
+  overflow: hidden;
   padding: 4px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-menu);
@@ -280,12 +286,7 @@
     calc(100vw - 24px)
   );
 }
-.listPopover[data-footer] {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.listOptions {
+.listScroll {
   min-height: 0;
   overflow-y: auto;
 }
@@ -296,10 +297,19 @@
   border: 0;
   border-top: 1px solid var(--border-subtle);
 }
-.listFooter {
+/* New and an action share one row, so a short list squeezes the
+   options, not it. */
+.listHeader {
   display: flex;
   flex: none;
-  padding: var(--space-inset);
+  gap: 4px;
+}
+.listHeader > .option {
+  flex: 1;
+  min-width: 0;
+}
+.listHeader > .option[data-compact] {
+  flex: none;
 }
 :global([data-theme="light"]) .listPopover {
   color-scheme: light;
@@ -327,12 +337,12 @@
 .optionLabel {
   flex: 1;
 }
-/* Adding isn't a commit yet, so its plus stays neutral instead of taking
-   the check's accent. */
-.option[data-create] .check {
+/* Pinned rows don't commit anything yet, so their icons stay neutral
+   instead of taking the check's accent. */
+.option[data-pinned] .check {
   color: var(--text-tertiary);
 }
-.option[data-create][data-active] .check {
+.option[data-pinned][data-active] .check {
   color: var(--text-secondary);
 }
 .option[data-active] {
