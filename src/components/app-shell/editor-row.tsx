@@ -89,6 +89,28 @@ export function EditorCell({
   );
 }
 
+// A field the editor shows but doesn't change, as it reads in the row: its
+// text stays exactly where the row's was.
+export function EditorText({
+  column,
+  numeric = false,
+  children,
+}: {
+  column: string;
+  numeric?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`${styles.cell} ${styles.staticCell}`}
+      data-column={column}
+      data-numeric={numeric || undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
 // An amount's well: right-aligned, with its sign in front.
 export function AmountInput({
   id,

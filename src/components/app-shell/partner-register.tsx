@@ -28,6 +28,7 @@ import {
   EditorCell,
   EditorFooter,
   EditorForm,
+  EditorText,
   FieldError,
 } from "./editor-row";
 import { Empty, moveSelection } from "./views";
@@ -737,13 +738,9 @@ function EntryEditor({
     onClose();
   };
   const readOnly = (column: string, content: ReactNode, numeric = false) => (
-    <div
-      className={`${editorStyles.cell} ${local.readOnlyCell}`}
-      data-column={column}
-      data-numeric={numeric || undefined}
-    >
+    <EditorText column={column} numeric={numeric}>
       {content}
-    </div>
+    </EditorText>
   );
   const hint =
     row.shareMode.mode === "read"

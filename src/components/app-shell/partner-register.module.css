@@ -30,19 +30,6 @@
   color: var(--status-credit);
 }
 
-/* A field the entry editor shows but doesn't change, set in the row's band
-   like the wells beside it. */
-.readOnlyCell {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--size-control);
-}
-.readOnlyCell[data-numeric] {
-  justify-content: flex-end;
-  font-variant-numeric: tabular-nums;
-}
-
 /* A settlement's source: how both budgets recognized it. */
 .source {
   display: flex;
