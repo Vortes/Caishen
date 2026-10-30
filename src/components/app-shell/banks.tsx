@@ -14,7 +14,7 @@ import {
   PlusIcon,
   UnlinkIcon,
 } from "lucide-react";
-import { AlertDialog, Dialog, DropdownMenu } from "radix-ui";
+import { AlertDialog, Dialog } from "radix-ui";
 import { createPortal } from "react-dom";
 import {
   createContext,
@@ -23,9 +23,7 @@ import {
   useId,
   useRef,
   useState,
-  type ComponentProps,
   type PointerEvent,
-  type ReactNode,
 } from "react";
 import {
   accountSetupType,
@@ -46,12 +44,10 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { usePortalContainer } from "~/components/ui/tooltip";
 import { Popover } from "~/components/ui/popover";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Menu, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { syncedLabel } from "./model";
 import { api } from "~/trpc/react";
 import styles from "./banks.module.css";
-import shell from "./shell.module.css";
 
 type Connection = State["connections"][number];
 type BankAccount = Connection["accounts"][number];
@@ -391,9 +387,6 @@ export function BankItem({
   onAction: () => void;
 }) {
   const banks = useBanks();
-  const container = usePortalContainer();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuMotion = usePopoverMotion(menuOpen, "occasional");
   const mappings = bankAccountMappings(connection.accountMappings);
   const budget = banks.state.view?.budget;
   // A partial bank response changes access, not membership in the budget.
@@ -472,71 +465,65 @@ export function BankItem({
           </Button>
         )}
         {!connection.disconnectedAt && (
-          <DropdownMenu.Root
-            modal={false}
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-          >
-            <DropdownMenu.Trigger asChild>
+          <Menu
+            label={`${institution} options`}
+            motion="occasional"
+            align="end"
+            trigger={
               <IconButton size="sm" label={`${institution} options`}>
                 <EllipsisIcon aria-hidden />
               </IconButton>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal container={container}>
-              <DropdownMenu.Content
-                {...menuMotion}
-                className={`${shell.menu} ${styles.bankMenu}`}
-                align="end"
-                sideOffset={POPOVER_GAP}
-                collisionPadding={12}
-              >
-                {outside > 0 && (
-                  <BankMenuItem
-                    icon={<PlusIcon size={14} aria-hidden />}
-                    title={`${addable ? "Add" : "Review"} ${outside} ${outside === 1 ? "account" : "accounts"}`}
-                    detail={
-                      addable
-                        ? "Bring them into your budget"
-                        : "See why they can’t be added yet"
-                    }
-                    disabled={banks.busy}
-                    onSelect={() => {
-                      onAction();
-                      banks.setUp(connection.id);
-                    }}
-                  />
-                )}
-                {!connection.error && (
-                  <BankMenuItem
-                    icon={<ListChecksIcon size={14} aria-hidden />}
-                    title="Choose shared accounts"
-                    detail={
-                      notShared
-                        ? `Restore updates for ${notShared} not shared`
-                        : `Change what ${institution} shares`
-                    }
-                    disabled={!banks.available || banks.busy}
-                    onPointerEnter={preload}
-                    onSelect={() => {
-                      onAction();
-                      banks.start(connection.id);
-                    }}
-                  />
-                )}
-                <DropdownMenu.Separator className={shell.menuSeparator} />
-                <BankMenuItem
-                  icon={<UnlinkIcon size={14} aria-hidden />}
-                  title="Disconnect…"
-                  detail="Your accounts and history stay"
-                  disabled={banks.busy}
-                  onSelect={() => {
-                    onAction();
-                    banks.disconnect(connection.id);
-                  }}
-                />
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+            }
+            // Choosing shared accounts opens Plaid; fetch it as the menu
+            // offers that.
+            onOpenChange={(open) => {
+              if (open && !connection.error) preload();
+            }}
+          >
+            {outside > 0 && (
+              <MenuItem
+                icon={<PlusIcon size={14} aria-hidden />}
+                title={`${addable ? "Add" : "Review"} ${outside} ${outside === 1 ? "account" : "accounts"}`}
+                detail={
+                  addable
+                    ? "Bring them into your budget"
+                    : "See why they can’t be added yet"
+                }
+                disabled={banks.busy}
+                onSelect={() => {
+                  onAction();
+                  banks.setUp(connection.id);
+                }}
+              />
+            )}
+            {!connection.error && (
+              <MenuItem
+                icon={<ListChecksIcon size={14} aria-hidden />}
+                title="Choose shared accounts"
+                detail={
+                  notShared
+                    ? `Restore updates for ${notShared} not shared`
+                    : `Change what ${institution} shares`
+                }
+                disabled={!banks.available || banks.busy}
+                onSelect={() => {
+                  onAction();
+                  banks.start(connection.id);
+                }}
+              />
+            )}
+            <MenuSeparator />
+            <MenuItem
+              icon={<UnlinkIcon size={14} aria-hidden />}
+              title="Disconnect…"
+              detail="Your accounts and history stay"
+              disabled={banks.busy}
+              onSelect={() => {
+                onAction();
+                banks.disconnect(connection.id);
+              }}
+            />
+          </Menu>
         )}
       </div>
       {inBudget.length > 0 && (
@@ -573,32 +560,6 @@ export function BankItem({
         </p>
       )}
     </li>
-  );
-}
-
-// A menu row that says why you'd pick it, so the popover itself can stay
-// balances only.
-function BankMenuItem({
-  icon,
-  title,
-  detail,
-  ...props
-}: Omit<ComponentProps<typeof DropdownMenu.Item>, "className" | "title"> & {
-  icon: ReactNode;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <DropdownMenu.Item
-      className={`${shell.menuItem} ${styles.bankMenuItem}`}
-      {...props}
-    >
-      {icon}
-      <span className={styles.bankMenuText}>
-        <span className={styles.bankMenuTitle}>{title}</span>
-        <span className={styles.bankMenuDetail}>{detail}</span>
-      </span>
-    </DropdownMenu.Item>
   );
 }
 

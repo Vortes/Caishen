@@ -1,9 +1,9 @@
-/* The raised surface every popover shares. Content lays itself out; the
+/* The raised surface every popover and menu shares. Content lays itself out; the
    surface adds no padding. Height is clamped to the room Radix finds on the
    placed side. */
 .surface {
   z-index: 60;
-  max-height: var(--radix-popover-content-available-height);
+  max-height: var(--radix-popper-available-height);
   overflow-y: auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-menu);

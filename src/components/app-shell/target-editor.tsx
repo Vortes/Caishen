@@ -1,8 +1,7 @@
 "use client";
 
 import { groupAmountInput } from "~/components/budget/amount-input";
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import { DropdownMenu } from "radix-ui";
+import { ChevronDownIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -20,10 +19,7 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
-import { Tag } from "~/components/ui/tag";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
 import type { Category } from "./model";
 import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
@@ -606,73 +602,51 @@ function BehaviorField({
   amount: number;
   onChange: (behavior: Behavior) => void;
 }) {
-  const container = usePortalContainer();
   const id = useId();
   const chosen = behaviorCopy(value, schedule, amount);
-  const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   return (
     <div className={styles.field}>
       <span className={styles.label} id={`${id}-label`}>
         {label}
       </span>
-      <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
-        <DropdownMenu.Trigger
-          className={`${entry.well} ${styles.trigger}`}
-          aria-labelledby={`${id}-label ${id}-value`}
-        >
-          <span id={`${id}-value`} className={styles.triggerValue}>
-            {chosen.title}
-          </span>
-          <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal container={container}>
-          <DropdownMenu.Content
-            {...motion}
-            className={styles.menu}
-            align="start"
-            sideOffset={POPOVER_GAP}
-            collisionPadding={12}
-            aria-label={label}
-            // Escape closes only the menu; the editor around it stays open.
-            onEscapeKeyDown={(event) => event.stopPropagation()}
+      {/* Escape closes only the menu; the editor around it stays open. */}
+      <Menu
+        label={label}
+        trigger={
+          <button
+            type="button"
+            className={`${entry.well} ${styles.trigger}`}
+            aria-labelledby={`${id}-label ${id}-value`}
           >
-            <DropdownMenu.RadioGroup
-              value={value}
-              onValueChange={(next) => onChange(next as Behavior)}
-            >
-              {behaviors.map((behavior) => {
-                const copy = behaviorCopy(behavior, schedule, amount);
-                return (
-                  <DropdownMenu.RadioItem
-                    key={behavior}
-                    value={behavior}
-                    className={styles.option}
-                  >
-                    <span className={styles.optionCheck}>
-                      <DropdownMenu.ItemIndicator>
-                        <CheckIcon size={13} strokeWidth={2.5} aria-hidden />
-                      </DropdownMenu.ItemIndicator>
-                    </span>
-                    <span className={styles.optionText}>
-                      <span className={styles.optionTitle}>
-                        {copy.title}
-                        {copy.common && behaviors.length > 1 && (
-                          <Tag>Most common</Tag>
-                        )}
-                      </span>
-                      <span className={styles.optionUse}>
-                        Use for: {copy.use}
-                      </span>
-                      <span className={styles.optionDetail}>{copy.detail}</span>
-                    </span>
-                  </DropdownMenu.RadioItem>
-                );
-              })}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+            <span id={`${id}-value`} className={styles.triggerValue}>
+              {chosen.title}
+            </span>
+            <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
+          </button>
+        }
+      >
+        <MenuRadioGroup
+          value={value}
+          onValueChange={(next) => onChange(next as Behavior)}
+        >
+          {behaviors.map((behavior) => {
+            const copy = behaviorCopy(behavior, schedule, amount);
+            return (
+              <MenuRadioItem
+                key={behavior}
+                value={behavior}
+                title={copy.title}
+                tag={
+                  copy.common && behaviors.length > 1
+                    ? "Most common"
+                    : undefined
+                }
+                detail={[`Use for: ${copy.use}`, copy.detail]}
+              />
+            );
+          })}
+        </MenuRadioGroup>
+      </Menu>
     </div>
   );
 }

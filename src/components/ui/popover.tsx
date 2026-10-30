@@ -3,8 +3,8 @@
 import { Popover as Primitive } from "radix-ui";
 import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import {
-  SURFACE_COLLISION_PADDING,
   SURFACE_GAP,
+  collisionPadding,
   usePortalContainer,
   useSurfaceMotion,
   type SurfaceMotion,
@@ -137,29 +137,4 @@ export function Popover(props: TriggerProps | AnchorProps) {
       </Primitive.Portal>
     </Primitive.Root>
   );
-}
-
-// Clear of the window edge on every side but the one the surface aligns to:
-// a trigger near the edge, like Banks in the sidebar, keeps its surface
-// flush with it rather than pushed off it.
-function collisionPadding(
-  side: NonNullable<Placement["side"]>,
-  align: NonNullable<Placement["align"]>,
-) {
-  const padding = {
-    top: SURFACE_COLLISION_PADDING,
-    right: SURFACE_COLLISION_PADDING,
-    bottom: SURFACE_COLLISION_PADDING,
-    left: SURFACE_COLLISION_PADDING,
-  };
-  if (align === "center") return padding;
-  const vertical = side === "top" || side === "bottom";
-  const edge = vertical
-    ? align === "start"
-      ? "left"
-      : "right"
-    : align === "start"
-      ? "top"
-      : "bottom";
-  return { ...padding, [edge]: 0 };
 }

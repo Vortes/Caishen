@@ -1,0 +1,127 @@
+/* A list of actions on the shared surface: as wide as the button that opens
+   it, and never narrower than room for a title and its detail line. A menu
+   hung from a frame keeps that width rather than taking the frame's. */
+.menu {
+  width: min(
+    max(var(--radix-dropdown-menu-trigger-width), 248px),
+    calc(100vw - 24px)
+  );
+  padding: 4px;
+}
+.menu[data-anchored] {
+  width: min(248px, calc(100vw - 24px));
+}
+
+/* The highlight follows the pointer and arrow keys instantly. */
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--size-row-sm);
+  padding: 0 8px;
+  border-radius: var(--radius-row);
+  outline: none;
+  cursor: default;
+  user-select: none;
+}
+.item > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.item[data-highlighted] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.item[data-disabled] {
+  opacity: 0.45;
+}
+/* The highlight is the focus indicator. */
+.menu .item:focus-visible {
+  outline: none;
+}
+.text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* An item that says what it's for: the title over a smaller line. */
+.detailed {
+  align-items: flex-start;
+  padding-block: 8px;
+}
+.detailed + .detailed {
+  margin-top: 2px;
+}
+.detailed > svg {
+  margin-top: 2px;
+}
+.detailed .title {
+  color: var(--text-primary);
+}
+.lead {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.detail {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+
+/* A choice: the check sits in its own column, the title carries weight. */
+.radio {
+  gap: 6px;
+  padding: 8px 10px 9px 4px;
+  cursor: pointer;
+}
+.radio .text {
+  gap: 2px;
+}
+.radio .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/* The tag keeps its one line; the title wraps beside it. */
+.tag {
+  flex: none;
+  white-space: nowrap;
+}
+.check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  color: var(--accent-solid);
+}
+
+.separator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--border-subtle);
+}
+
+.error {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: var(--space-inset);
+  color: var(--danger-text);
+}
+.error > svg {
+  flex: none;
+  transform: translateY(2px);
+}
+
+@media (pointer: coarse) {
+  .item {
+    min-height: var(--size-row-lg);
+  }
+}

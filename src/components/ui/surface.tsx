@@ -92,3 +92,28 @@ export function useSurfaceMotion(
     "data-instant": frequency === "frequent" || opening.instant || undefined,
   };
 }
+
+export type SurfaceSide = "top" | "right" | "bottom" | "left";
+export type SurfaceAlign = "start" | "center" | "end";
+
+// Clear of the window edge on every side but the one the surface aligns to:
+// a trigger near the edge, like Banks in the sidebar, keeps its surface
+// flush with it rather than pushed off it.
+export function collisionPadding(side: SurfaceSide, align: SurfaceAlign) {
+  const padding = {
+    top: SURFACE_COLLISION_PADDING,
+    right: SURFACE_COLLISION_PADDING,
+    bottom: SURFACE_COLLISION_PADDING,
+    left: SURFACE_COLLISION_PADDING,
+  };
+  if (align === "center") return padding;
+  const vertical = side === "top" || side === "bottom";
+  const edge = vertical
+    ? align === "start"
+      ? "left"
+      : "right"
+    : align === "start"
+      ? "top"
+      : "bottom";
+  return { ...padding, [edge]: 0 };
+}
