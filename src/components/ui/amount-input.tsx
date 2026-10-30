@@ -1,9 +1,13 @@
 "use client";
 
-import { useLayoutEffect, useRef, type Ref } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
+import { createPortal } from "react-dom";
 import { readAmount } from "~/components/budget/amount";
 import { groupThousands } from "~/components/budget/format";
+import { useMediaQuery } from "~/components/shared/use-media-query";
 import { useFieldControl } from "./field";
+import styles from "./field.module.css";
+import { usePortalContainer } from "./surface";
 import { WellInput, type TextInputProps } from "./text-input";
 
 // Money in a Field: "$" in front, thousands grouped as you type, the whole
@@ -26,6 +30,8 @@ export function AmountInput({
   // Once it has said the text can't be read, it rechecks as you type and
   // clears the message as soon as the text reads.
   const unreadable = useRef(false);
+  const coarse = useMediaQuery("(pointer: coarse)");
+  const [focused, setFocused] = useState(false);
   const flag = (message: string | null) => {
     unreadable.current = message !== null;
     report(message);
@@ -36,41 +42,116 @@ export function AmountInput({
     caret.current = null;
   }, [value]);
 
-  const type = (text: string) => {
+  // Typing and the operator keys both come through here: `at` is where the
+  // caret sits in the text as typed.
+  const type = (text: string, at = input.current?.selectionStart) => {
     const grouped = groupThousands(text);
-    caret.current = caretAfterSameDigit(
-      text,
-      input.current?.selectionStart ?? text.length,
-      grouped,
-    );
+    caret.current = caretAfterSameDigit(text, at ?? text.length, grouped);
     if (unreadable.current && (!grouped.trim() || readAmount(grouped).ok))
       flag(null);
     onChange(grouped);
   };
 
   return (
-    <WellInput
-      inputRef={(element) => {
-        input.current = element;
-        assign(inputRef, element);
-      }}
-      value={value}
-      name={name}
-      placeholder={placeholder}
-      disabled={disabled}
-      readOnly={readOnly}
-      prefix="$"
-      inputMode="decimal"
-      onChange={type}
-      onFocus={(event) => event.currentTarget.select()}
-      onBlur={() => {
-        // An empty field is the screen's to judge when it submits.
-        if (readOnly || !value.trim()) return;
-        const reading = readAmount(value);
-        if (reading.ok) onChange(groupThousands(dollars(reading.cents)));
-        else flag(reading.message);
-      }}
-    />
+    <>
+      <WellInput
+        inputRef={(element) => {
+          input.current = element;
+          assign(inputRef, element);
+        }}
+        value={value}
+        name={name}
+        placeholder={placeholder}
+        disabled={disabled}
+        readOnly={readOnly}
+        prefix="$"
+        inputMode="decimal"
+        onChange={type}
+        onFocus={(event) => {
+          setFocused(true);
+          event.currentTarget.select();
+        }}
+        onBlur={() => {
+          setFocused(false);
+          // An empty field is the screen's to judge when it submits.
+          if (readOnly || !value.trim()) return;
+          const reading = readAmount(value);
+          if (reading.ok) onChange(groupThousands(dollars(reading.cents)));
+          else flag(reading.message);
+        }}
+      />
+      {coarse && focused && !readOnly && (
+        <OperatorRow
+          onKey={(key) => {
+            const start = input.current?.selectionStart ?? value.length;
+            const end = input.current?.selectionEnd ?? start;
+            type(
+              value.slice(0, start) + key + value.slice(end),
+              start + key.length,
+            );
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+const operators = [
+  { key: "+", name: "Plus" },
+  { key: "−", name: "Minus" },
+  { key: "×", name: "Times" },
+  { key: "÷", name: "Divide by" },
+  { key: "^", name: "To the power of" },
+  { key: "(", name: "Open parenthesis" },
+  { key: ")", name: "Close parenthesis" },
+];
+
+// Keys a decimal keypad doesn't have, over the on-screen keyboard. The
+// keyboard shrinks the visual viewport, not the layout viewport fixed
+// elements sit in, so the row follows the visual viewport's bottom edge.
+function OperatorRow({ onKey }: { onKey: (key: string) => void }) {
+  const container = usePortalContainer();
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const follow = () => {
+      const style = row.current?.style;
+      if (!style) return;
+      const layout = document.documentElement;
+      const below = layout.clientHeight - viewport.offsetTop - viewport.height;
+      const right = layout.clientWidth - viewport.offsetLeft - viewport.width;
+      style.bottom = `${Math.max(0, below)}px`;
+      style.left = `${viewport.offsetLeft}px`;
+      style.right = `${Math.max(0, right)}px`;
+    };
+    follow();
+    viewport.addEventListener("resize", follow);
+    viewport.addEventListener("scroll", follow);
+    return () => {
+      viewport.removeEventListener("resize", follow);
+      viewport.removeEventListener("scroll", follow);
+    };
+  }, []);
+  return createPortal(
+    <div ref={row} className={styles.operators}>
+      {operators.map(({ key, name }) => (
+        <button
+          key={key}
+          type="button"
+          tabIndex={-1}
+          className={styles.operator}
+          aria-label={name}
+          // The input keeps focus, so the keyboard stays up.
+          onPointerDown={(event) => event.preventDefault()}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onKey(key)}
+        >
+          {key}
+        </button>
+      ))}
+    </div>,
+    container ?? document.body,
   );
 }
 

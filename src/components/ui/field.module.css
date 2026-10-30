@@ -127,3 +127,40 @@
     transition: none;
   }
 }
+
+/* AmountInput's operator row: keys a decimal keypad lacks, over the
+   on-screen keyboard while an amount has focus on a touch screen.
+   AmountInput moves it to the visual viewport's bottom edge; without
+   visualViewport it sits at the window's bottom. Above every surface, and
+   clickable under a modal dialog that turns pointer events off outside it. */
+.operators {
+  position: fixed;
+  z-index: 90;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  pointer-events: auto;
+}
+.operator {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--type-title);
+  font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.operator:active {
+  background: var(--control-bg-active);
+}
