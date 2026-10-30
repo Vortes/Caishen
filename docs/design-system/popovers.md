@@ -49,14 +49,14 @@ wrong. If the interface can't express what a site needs, widen the module in
 is, not how big it is. Nothing else exists, and `className` and `style` are
 not props.
 
-```md
+```text
 What is inside?
-├── A list that filters as the user types in a field → size="trigger"
-│ (the field's width, never under 20rem; long rows truncate)
-├── A table of transactions → size="wide" (--size-popover-wide, 560px)
-├── A form → size="form" (--size-popover, 320px). The default choice.
-└── A grid with a natural width of its own (month picker, date calendar)
-→ no size; the content sets the width
+ ├── A list that filters as the user types in a field → size="trigger"
+ │     (the field's width, never under 20rem; long rows truncate)
+ ├── A table of transactions → size="wide" (--size-popover-wide, 560px)
+ ├── A form → size="form" (--size-popover, 320px). The default choice.
+ └── A grid with a natural width of its own (month picker, date calendar)
+       → no size; the content sets the width
 ```
 
 Omit `size` only for content that has a fixed natural width. A form without
@@ -65,18 +65,18 @@ width.
 
 ### Mode: `trigger` or `anchor`
 
-```md
+```text
 What opens it?
-├── A button
-│ ├── It should hang from the button → trigger={button}
-│ └── It should hang from a frame around the button (the selection
-│ island) → trigger={button} anchor={frame}
-└── Something else the site controls (an input, a field's "New" row,
-a chart slice) → anchor={element} open onOpenChange
-├── Focus must stay in the input while the user types → no autoFocus
-│ (the site handles Escape)
-└── It is a form or panel the user moves into → autoFocus
-(takes focus, closes on Escape, a click on the anchor closes it)
+ ├── A button
+ │    ├── It should hang from the button → trigger={button}
+ │    └── It should hang from a frame around the button (the selection
+ │        island) → trigger={button} anchor={frame}
+ └── Something else the site controls (an input, a field's "New" row,
+     a chart slice) → anchor={element} open onOpenChange
+      ├── Focus must stay in the input while the user types → no autoFocus
+      │     (the site handles Escape)
+      └── It is a form or panel the user moves into → autoFocus
+            (takes focus, closes on Escape, a click on the anchor closes it)
 ```
 
 ```tsx
@@ -142,8 +142,8 @@ flex column, so the content's root takes `display: flex`,
 
 ### Layout and stacking
 
-- The surface adds no padding. The content lays itself out with
-  `--space-*` tokens.
+- The surface adds no padding. The content sets its own inset: 12px for a
+  form, 4px for a list of rows ([spacing.md](spacing.md)).
 - It clears the window edge by 12px on every side except the edge it aligns
   to, so a trigger at the edge (Banks in the sidebar) keeps its surface
   flush with that edge. `align="center"` clears all four.

@@ -2,8 +2,8 @@
 
 Source: the "Scale" block in `src/styles/tokens.css`. Never write a raw
 `px` value for a font size, a control height, or a corner radius; use the
-token. Raw pixels are fine for one-off geometry such as icon offsets and
-hairline insets.
+token. Padding and gaps follow [spacing.md](spacing.md). Raw pixels are
+fine for one-off geometry such as icon offsets and hairline insets.
 
 ## Type
 
@@ -70,16 +70,7 @@ a table of transactions, is `--size-popover-wide` (560px). A `Dialog` is
 
 ## Spacing
 
-| Token            | Value | Use                                |
-| ---------------- | ----- | ---------------------------------- |
-| `--space-gutter` | 8px   | Between the window edge and panels |
-| `--space-inset`  | 8px   | A panel's inner padding            |
-| `--space-stack`  | 10px  | Between stacked cards              |
-| `--space-row-x`  | 14px  | A row's horizontal padding         |
-| `--space-card`   | 16px  | A card's padding                   |
-
-`Popover`, `Menu` and `Tooltip` set their own 6px gap from the trigger and
-12px clearance from the window edge; see [popovers.md](popovers.md).
+Spacing has its own rules by role: see [spacing.md](spacing.md).
 
 ## Radii
 

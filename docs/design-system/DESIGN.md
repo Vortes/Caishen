@@ -35,20 +35,21 @@ you use.
 
 ## Topics
 
-| File                       | Covers                                                      |
-| -------------------------- | ----------------------------------------------------------- |
-| [tokens.md](tokens.md)     | Colors, surfaces, text, borders, money states, feedback     |
-| [scale.md](scale.md)       | Type sizes, control and row heights, spacing, radii, motion |
-| [buttons.md](buttons.md)   | `Button`, `IconButton`                                      |
-| [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`            |
-| [rows.md](rows.md)         | Shared row-selection outline, grouping, states, motion      |
-| [labels.md](labels.md)     | `Tag`, the review dot                                       |
-| [surfaces.md](surfaces.md) | `Card`, `Tooltip`, `SurfaceProvider`, surface motion        |
-| [popovers.md](popovers.md) | `Popover`: sizes, trigger or anchor, height                 |
-| [menus.md](menus.md)       | `Menu`, `MenuItem`, `MenuRadioGroup`, `MenuSub`             |
-| [dialogs.md](dialogs.md)   | `Dialog`, `DialogHeader`, `DialogScrim`, `ConfirmDialog`    |
-| [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                      |
-| [loading.md](loading.md)   | `Skeleton`, and which loading state to use                  |
+| File                       | Covers                                                     |
+| -------------------------- | ---------------------------------------------------------- |
+| [tokens.md](tokens.md)     | Colors, surfaces, text, borders, money states, feedback    |
+| [scale.md](scale.md)       | Type sizes, control and row heights, radii, motion         |
+| [spacing.md](spacing.md)   | Layout tokens; padding and gaps inside a component by role |
+| [buttons.md](buttons.md)   | `Button`, `IconButton`                                     |
+| [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`           |
+| [rows.md](rows.md)         | Shared row-selection outline, grouping, states, motion     |
+| [labels.md](labels.md)     | `Tag`, the review dot                                      |
+| [surfaces.md](surfaces.md) | `Card`, `Tooltip`, `SurfaceProvider`, surface motion       |
+| [popovers.md](popovers.md) | `Popover`: sizes, trigger or anchor, height                |
+| [menus.md](menus.md)       | `Menu`, `MenuItem`, `MenuRadioGroup`, `MenuSub`            |
+| [dialogs.md](dialogs.md)   | `Dialog`, `DialogHeader`, `DialogScrim`, `ConfirmDialog`   |
+| [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                     |
+| [loading.md](loading.md)   | `Skeleton`, and which loading state to use                 |
 
 ## Not in the system yet
 
