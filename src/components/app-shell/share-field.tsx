@@ -1,9 +1,18 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, UsersIcon } from "lucide-react";
-import { useId, useState, type ReactElement, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { readAmount } from "~/components/budget/amount";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field } from "~/components/ui/field";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
@@ -15,6 +24,7 @@ import {
 import type { CounterpartyShare } from "~/domain/engine";
 import { reimbursementPeople } from "~/domain/counterparty";
 import { money } from "./model";
+import { sameAmount } from "./move-money";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import moveStyles from "./move-money.module.css";
@@ -300,11 +310,18 @@ export function ShareChoices({
   );
 }
 
-export function parseCents(text: string): number | null {
-  const cleaned = text.replace(/[$,\s]/g, "");
-  if (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(cleaned)) return null;
-  const [whole = "0", fraction = ""] = cleaned.split(".");
-  return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+// A share typed in a field, in cents, or why it can't be one.
+function readShare(text: string, most: number) {
+  const reading = readAmount(text);
+  if (!reading.ok) return reading;
+  if (reading.cents < 0)
+    return { ok: false as const, message: "Enter an amount, like 24.50." };
+  if (reading.cents > most)
+    return {
+      ok: false as const,
+      message: `A share can be at most ${money(most)}.`,
+    };
+  return reading;
 }
 
 function CustomShare({
@@ -318,9 +335,10 @@ function CustomShare({
   initial: number;
   onApply: (value: number) => void;
 }) {
-  const id = useId();
   const [text, setText] = useState((initial / 100).toFixed(2));
   const [error, setError] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => input.current?.focus(), []);
   return (
     <form
       className={styles.shareForm}
@@ -328,30 +346,26 @@ function CustomShare({
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        const value = parseCents(text);
-        if (value === null) return setError("Enter an amount, like 24.50.");
-        if (value > amount)
-          return setError(`A share can be at most ${money(amount)}.`);
-        onApply(value);
+        const share = readShare(text, amount);
+        if (!share.ok) return setError(share.message);
+        onApply(share.cents);
       }}
     >
-      <label htmlFor={id}>{label}</label>
-      <div className={styles.shareFormRow}>
-        <AmountWell
-          id={id}
-          value={text}
-          invalid={Boolean(error)}
-          autoFocus
-          onChange={(value) => {
-            setText(value);
-            if (error) setError("");
-          }}
-        />
-        <Button size="sm" variant="primary" type="submit">
-          Apply
-        </Button>
-      </div>
-      {error && <p className={moveStyles.error}>{error}</p>}
+      <Field label={label} error={error || undefined}>
+        <div className={styles.shareFormRow}>
+          <AmountInput
+            inputRef={input}
+            value={text}
+            onChange={(value) => {
+              if (!sameAmount(text, value)) setError("");
+              setText(value);
+            }}
+          />
+          <Button size="sm" variant="primary" type="submit">
+            Apply
+          </Button>
+        </div>
+      </Field>
     </form>
   );
 }
@@ -371,13 +385,15 @@ function OtherShare({
   const multiple = amounts.length > 1;
   const [full, setFull] = useState(multiple && !initial);
   const nameId = useId();
-  const amountId = useId();
   const listId = useId();
   const [name, setName] = useState(initial?.counterpartyName ?? "");
   const [text, setText] = useState(
     ((initial?.amount ?? amount) / 100).toFixed(2),
   );
-  const [error, setError] = useState("");
+  const [error, setError] = useState<{
+    field: "name" | "amount";
+    message: string;
+  } | null>(null);
   return (
     <form
       className={styles.shareForm}
@@ -385,12 +401,14 @@ function OtherShare({
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        const value = full ? amount : parseCents(text);
-        if (!name.trim()) return setError("Name who owes it.");
-        if (value === null) return setError("Enter an amount, like 24.50.");
-        if (value > amount)
-          return setError(`A share can be at most ${money(amount)}.`);
-        onApply(name.trim(), value, full ? "full" : "fixed");
+        if (!name.trim())
+          return setError({ field: "name", message: "Name who owes it." });
+        const share = full
+          ? { ok: true as const, cents: amount }
+          : readShare(text, amount);
+        if (!share.ok)
+          return setError({ field: "amount", message: share.message });
+        onApply(name.trim(), share.cents, full ? "full" : "fixed");
       }}
     >
       <div className={styles.shareFormRow}>
@@ -407,7 +425,7 @@ function OtherShare({
               placeholder="Name or company"
               onChange={(event) => {
                 setName(event.target.value);
-                if (error) setError("");
+                setError(null);
               }}
             />
             <datalist id={listId}>
@@ -419,18 +437,18 @@ function OtherShare({
         </div>
         {!full && (
           <div className={styles.shareFormField} data-narrow>
-            <label htmlFor={amountId}>
-              {multiple ? "Amount each" : "Amount"}
-            </label>
-            <AmountWell
-              id={amountId}
-              value={text}
-              invalid={Boolean(error)}
-              onChange={(value) => {
-                setText(value);
-                if (error) setError("");
-              }}
-            />
+            <Field
+              label={multiple ? "Amount each" : "Amount"}
+              error={error?.field === "amount" ? error.message : undefined}
+            >
+              <AmountInput
+                value={text}
+                onChange={(value) => {
+                  if (!sameAmount(text, value)) setError(null);
+                  setText(value);
+                }}
+              />
+            </Field>
           </div>
         )}
       </div>
@@ -440,13 +458,15 @@ function OtherShare({
             checked={full}
             onCheckedChange={(value) => {
               setFull(value === true);
-              setError("");
+              setError(null);
             }}
           />
           Full amount of each transaction
         </label>
       )}
-      {error && <p className={moveStyles.error}>{error}</p>}
+      {error?.field === "name" && (
+        <p className={moveStyles.error}>{error.message}</p>
+      )}
       <p className={styles.formHint}>
         Tracked in your Reimbursements account. Only you see it.
       </p>
@@ -456,39 +476,5 @@ function OtherShare({
         </Button>
       </div>
     </form>
-  );
-}
-
-export function AmountWell({
-  id,
-  value,
-  invalid,
-  autoFocus,
-  onChange,
-}: {
-  id: string;
-  value: string;
-  invalid?: boolean;
-  autoFocus?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div
-      className={moveStyles.amountInput}
-      data-invalid={invalid ? "" : undefined}
-    >
-      <span aria-hidden>$</span>
-      <input
-        id={id}
-        inputMode="decimal"
-        autoComplete="off"
-        spellCheck={false}
-        autoFocus={autoFocus}
-        value={value}
-        aria-invalid={invalid ? true : undefined}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => onChange(groupAmountInput(event.target))}
-      />
-    </div>
   );
 }

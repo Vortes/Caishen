@@ -1,17 +1,17 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, LandmarkIcon, WalletIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
+import { readAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import type { Command } from "~/domain/engine";
 import { reviewImportsBeforeReconciliation } from "~/domain/bank-import-balances";
 import { money, type Account } from "./model";
-import { parseAmount } from "./move-money";
 import { useShellData } from "./shell-data";
-import moveStyles from "./move-money.module.css";
 import styles from "./reconcile.module.css";
 import { PopoverSteps } from "./popover-steps";
 
@@ -100,8 +100,9 @@ function ReconcileForm({
       !item.reconciled,
   ).length;
   const locks = `${unlocked} cleared ${unlocked === 1 ? "transaction" : "transactions"}`;
-  const bank = text.trim() ? parseAmount(text) : NaN;
-  const valid = Number.isFinite(bank);
+  const reading = readAmount(text);
+  const bank = reading.ok ? reading.cents : NaN;
+  const valid = reading.ok;
   const difference = valid ? bank - account.cleared : 0;
 
   const go = (next: Step) => {
@@ -149,7 +150,7 @@ function ReconcileForm({
         }}
       >
         {step === "enter" ? (
-          <EnterBalance text={text} onChange={setText} valid={valid} />
+          <EnterBalance text={text} onChange={setText} />
         ) : (
           <Comparison
             account={account}
@@ -176,45 +177,24 @@ function ReconcileForm({
 function EnterBalance({
   text,
   onChange,
-  valid,
 }: {
   text: string;
   onChange: (text: string) => void;
-  valid: boolean;
 }) {
-  const inputId = useId();
-  const hintId = useId();
-  const invalid = Boolean(text.trim()) && !valid;
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => input.current?.focus(), []);
   return (
-    <div className={styles.entry}>
-      <label htmlFor={inputId}>Current balance at your bank</label>
-      <span
-        className={moveStyles.amountInput}
-        data-invalid={invalid || undefined}
-      >
-        <span aria-hidden>$</span>
-        <input
-          id={inputId}
-          autoFocus
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="0.00"
-          aria-describedby={hintId}
-          aria-invalid={invalid || undefined}
-          value={text}
-          onChange={(event) => onChange(groupAmountInput(event.target))}
-        />
-      </span>
-      <p
-        id={hintId}
-        className={styles.hint}
-        data-invalid={invalid || undefined}
-      >
-        {invalid
-          ? "Enter an amount like 1234.56, with a minus sign if it’s negative."
-          : "Banks often call it the current balance. It leaves out pending transactions."}
-      </p>
-    </div>
+    <Field
+      label="Current balance at your bank"
+      hint="Banks often call it the current balance. It leaves out pending transactions."
+    >
+      <AmountInput
+        inputRef={input}
+        placeholder="0.00"
+        value={text}
+        onChange={onChange}
+      />
+    </Field>
   );
 }
 

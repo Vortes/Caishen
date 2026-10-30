@@ -1,4 +1,5 @@
-import { moveMonth, parseMoney } from "~/components/budget/format";
+import { readAmount } from "~/components/budget/amount";
+import { moveMonth } from "~/components/budget/format";
 import type { Target } from "~/domain/engine";
 
 // The target editor's form state, and how it becomes the engine's Target.
@@ -221,14 +222,11 @@ export function behaviorCopy(
   };
 }
 
-// "$1,234.50", "1234.5", and "12" all read as dollars. Returns cents, or
-// null for text that isn't an amount.
+// "$1,234.50", "1234.5", "12" and "600+150" all read as dollars; empty
+// reads as zero. Returns cents, or null for text that isn't an amount.
 export function draftAmount(text: string) {
-  try {
-    return parseMoney(text.trim() || "0");
-  } catch {
-    return null;
-  }
+  const reading = readAmount(text.trim() || "0");
+  return reading.ok ? reading.cents : null;
 }
 
 // What a target asks for and when, as the inspector's summary shows it.
@@ -331,12 +329,9 @@ export function buildTarget(
   });
   const schedule = draft.schedule;
   const payoff = schedule === "card-payoff" || schedule === "loan-payoff";
-  const amount = payoff ? 0 : draftAmount(draft.amount);
-  if (amount === null)
-    return fail(
-      "amount",
-      "Enter a dollar amount with no more than two decimal places.",
-    );
+  const reading = readAmount(draft.amount.trim() || "0");
+  if (!payoff && !reading.ok) return fail("amount", reading.message);
+  const amount = payoff || !reading.ok ? 0 : reading.cents;
   if (!payoff && amount <= 0)
     return fail("amount", "Enter an amount above zero.");
   const behavior = activeBehavior(draft);

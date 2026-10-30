@@ -18,7 +18,14 @@ export function AmountInput({
   disabled,
   readOnly,
   inputRef,
-}: Omit<TextInputProps, "prefix" | "suffix" | "inputMode">) {
+  align,
+  negative = false,
+}: Omit<TextInputProps, "prefix" | "suffix" | "inputMode"> & {
+  // Right-aligned, under a register's amount column.
+  align?: "start" | "end";
+  // The amount takes money out, as a ledger's negative figures do: "-$".
+  negative?: boolean;
+}) {
   const { report } = useFieldControl();
   const input = useRef<HTMLInputElement>(null);
   // Where the caret goes once the grouped text renders.
@@ -59,7 +66,8 @@ export function AmountInput({
       placeholder={placeholder}
       disabled={disabled}
       readOnly={readOnly}
-      prefix="$"
+      prefix={negative ? "-$" : "$"}
+      align={align}
       inputMode="decimal"
       onChange={type}
       onFocus={(event) => event.currentTarget.select()}

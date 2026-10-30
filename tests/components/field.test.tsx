@@ -132,3 +132,25 @@ test("the footer holds the form's note and its actions", () => {
   expect(within(form).getByText("Moves happen right away.")).toBeTruthy();
   expect(within(form).getByRole("button", { name: "Move" })).toBeTruthy();
 });
+
+test("one error shown for two fields marks both invalid and describes both", () => {
+  render(
+    <>
+      <Field label="Outflow" sharedErrorId="amount-error">
+        <TextInput value="" onChange={() => undefined} />
+      </Field>
+      <Field label="Inflow" sharedErrorId="amount-error">
+        <TextInput value="" onChange={() => undefined} />
+      </Field>
+      <p id="amount-error">Enter an outflow or an inflow.</p>
+    </>,
+  );
+
+  for (const name of ["Outflow", "Inflow"]) {
+    const input = screen.getByRole("textbox", {
+      name,
+      description: "Enter an outflow or an inflow.",
+    });
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+  }
+});

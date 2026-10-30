@@ -1,15 +1,17 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { readAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
-import { parseAmount } from "./move-money";
+import { sameAmount } from "./move-money";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
@@ -327,6 +329,15 @@ function RecordRepayment({
     message: string;
   } | null>(null);
   const outstanding = owing.find((item) => item.who === who)?.balance ?? 0;
+  // Who is usually known from the filter, so the amount field takes focus
+  // as the form opens: it's what's left to check.
+  const amountInput = useRef<HTMLInputElement>(null);
+  const focusAmount = useRef(false);
+  useEffect(() => {
+    if (!open || !focusAmount.current) return;
+    focusAmount.current = false;
+    amountInput.current?.focus();
+  }, [open]);
   const pick = (next: string) => {
     setWho(next);
     const balance = owing.find((item) => item.who === next)?.balance;
@@ -346,18 +357,17 @@ function RecordRepayment({
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) return;
-        pick(
+        const known =
           owing.find((item) => item.who === filter)?.who ??
-            (owing.length === 1 ? owing[0]!.who : ""),
-        );
+          (owing.length === 1 ? owing[0]!.who : "");
+        pick(known);
+        focusAmount.current = Boolean(known);
         setCashAccountId(cash.length === 1 ? cash[0]!.id : "");
         setDate(today(timezone));
       }}
       align="end"
       size="form"
       arrow
-      // Who is usually known from the filter, so the amount field takes focus
-      // itself: it's what's left to check.
       autoFocus={!who}
     >
       <form
@@ -365,12 +375,15 @@ function RecordRepayment({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          const cents = parseAmount(amount);
+          const reading = readAmount(amount);
           if (!who)
             return setError({
               field: "who",
               message: "Choose who paid you back.",
             });
+          if (amount.trim() && !reading.ok)
+            return setError({ field: "amount", message: reading.message });
+          const cents = reading.ok ? reading.cents : 0;
           if (!(cents > 0))
             return setError({
               field: "amount",
@@ -431,28 +444,21 @@ function RecordRepayment({
           )}
         </div>
         <div className={local.fieldPair}>
-          <div className={moveStyles.field}>
-            <label htmlFor={`${id}-amount`}>Amount</label>
-            <div
-              className={moveStyles.amountInput}
-              data-invalid={error?.field === "amount" ? "" : undefined}
+          <div className={moveStyles.fieldSlot}>
+            <Field
+              label="Amount"
+              error={error?.field === "amount" ? error.message : undefined}
             >
-              <span aria-hidden>$</span>
-              <input
-                id={`${id}-amount`}
-                autoFocus={Boolean(who)}
-                inputMode="decimal"
-                autoComplete="off"
-                spellCheck={false}
+              <AmountInput
+                inputRef={amountInput}
                 value={amount}
-                onFocus={(event) => event.currentTarget.select()}
-                aria-invalid={error?.field === "amount" || undefined}
-                onChange={(event) => {
-                  setAmount(groupAmountInput(event.target));
-                  if (error?.field === "amount") setError(null);
+                onChange={(next) => {
+                  if (error?.field === "amount" && !sameAmount(amount, next))
+                    setError(null);
+                  setAmount(next);
                 }}
               />
-            </div>
+            </Field>
           </div>
           <div className={moveStyles.field}>
             <label htmlFor={`${id}-date`}>Date</label>
@@ -467,11 +473,6 @@ function RecordRepayment({
             </div>
           </div>
         </div>
-        {error?.field === "amount" && (
-          <div className={moveStyles.formError}>
-            <p className={moveStyles.error}>{error.message}</p>
-          </div>
-        )}
         <div className={moveStyles.field}>
           <label htmlFor={`${id}-cash`}>Into</label>
           <ChoiceField

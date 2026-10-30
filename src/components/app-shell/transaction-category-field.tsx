@@ -1,15 +1,22 @@
 "use client";
 
 import { useState, type ComponentProps } from "react";
+import { readAmount } from "~/components/budget/amount";
 import type { DraftShare } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
-import { parseCents, useShareParties } from "./share-field";
+import { useShareParties } from "./share-field";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import moveStyles from "./move-money.module.css";
 import styles from "./share.module.css";
 
 const NEW_PERSON = "\u0000person:new";
+
+// A draft share's amount in cents, or null while it doesn't read.
+function shareCents(text: string) {
+  const reading = readAmount(text);
+  return reading.ok ? reading.cents : null;
+}
 
 export function TransactionCategoryField({
   amount,
@@ -27,7 +34,7 @@ export function TransactionCategoryField({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const full = share && parseCents(share.amount) === Math.abs(amount);
+  const full = share && shareCents(share.amount) === Math.abs(amount);
   const parties = [
     ...(partner ? [{ accountId: partner.id, name: partner.name }] : []),
     ...(reimbursements
@@ -47,7 +54,7 @@ export function TransactionCategoryField({
         (party) =>
           party.accountId === share.accountId &&
           party.name ===
-            who({ ...share, amount: parseCents(share.amount) ?? 0 }),
+            who({ ...share, amount: shareCents(share.amount) ?? 0 }),
       )
     : undefined;
   const options: ChoiceOption[] = [

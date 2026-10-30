@@ -27,8 +27,10 @@ const FieldContext = createContext<FieldContextValue | null>(null);
 export function Field({
   id: givenId,
   label,
+  labelHidden = false,
   hint,
   error,
+  sharedErrorId,
   children,
 }: {
   // Only for a control that isn't a ui input yet, such as a combobox or a
@@ -36,8 +38,15 @@ export function Field({
   // `${id}-error` and `${id}-hint` itself.
   id?: string;
   label: string;
+  // Read by screen readers but not shown, where something else on screen
+  // names the field, such as a register's column header.
+  labelHidden?: boolean;
   hint?: string;
   error?: string;
+  // The id of one error shown for this field and the ones beside it, such
+  // as a register row's outflow and inflow: the field reads as invalid and
+  // is described by it.
+  sharedErrorId?: string;
   children: ReactNode;
 }) {
   const generated = useId();
@@ -47,13 +56,18 @@ export function Field({
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
   const describedBy =
-    [shown && errorId, hint && hintId].filter(Boolean).join(" ") || undefined;
+    [shown ? errorId : sharedErrorId, hint && hintId]
+      .filter(Boolean)
+      .join(" ") || undefined;
+  const invalid = Boolean(shown) || sharedErrorId !== undefined;
   return (
-    <FieldContext.Provider
-      value={{ id, describedBy, invalid: !!shown, report }}
-    >
+    <FieldContext.Provider value={{ id, describedBy, invalid, report }}>
       <div className={styles.field}>
-        <label htmlFor={id} className={styles.label}>
+        <label
+          htmlFor={id}
+          className={styles.label}
+          data-hidden={labelHidden ? "" : undefined}
+        >
           {label}
         </label>
         {children}
