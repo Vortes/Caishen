@@ -232,7 +232,15 @@ export function ReimbursementsRegister({
         <span />
       </div>
       {rows.map((entry) => (
-        <div key={entry.id} className={styles.rowWrap}>
+        <div
+          key={entry.id}
+          className={styles.rowWrap}
+          onMouseDown={(event) => {
+            // A double-click would select a word, and the click handler
+            // would take it for a text selection and not open the entry.
+            if (event.detail > 1) event.preventDefault();
+          }}
+        >
           <button
             type="button"
             data-row
