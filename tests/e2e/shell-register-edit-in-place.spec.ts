@@ -1,4 +1,5 @@
 import type { Locator } from "@playwright/test";
+import { connectPartner } from "./partner-household";
 import { expect, shellPath, test } from "./shell-fixture";
 import { openRegister, transactionRow } from "./shell-controls";
 
@@ -6,18 +7,35 @@ import { openRegister, transactionRow } from "./shell-controls";
 // amount, which ends where its column does) and its vertical center.
 type Spots = Record<string, { x: number; y: number }>;
 
-const columns = ["date", "payee", "category", "outflow"];
-const amounts = new Set(["outflow"]);
-
-// The text in a register row's cells, read off the visible text itself:
-// a cell also carries text for screen readers, clipped to a pixel.
-const rowSpots = (row: Locator) =>
+// Every value in a row, resting or open in its editor. A cell with an input
+// is read at the input's content box, inside its border and padding; any
+// other cell at its visible text. Text for screen readers sits in an element
+// clipped to a pixel, though its own box stays full size, so it's skipped by
+// its element.
+const spotsIn = (row: Locator, columns: string[], amounts: string[]) =>
   row.evaluate(
     (element, { columns, amounts }) => {
       const spots: Record<string, { x: number; y: number }> = {};
+      const px = (value: string) => parseFloat(value);
       for (const column of columns) {
         const cell = element.querySelector(`[data-column="${column}"]`);
         if (!cell) continue;
+        const end = amounts.includes(column);
+        const input = cell.querySelector("input");
+        if (input) {
+          const box = input.getBoundingClientRect();
+          const style = getComputedStyle(input);
+          const top = box.top + px(style.borderTopWidth) + px(style.paddingTop);
+          const bottom =
+            box.bottom - px(style.borderBottomWidth) - px(style.paddingBottom);
+          spots[column] = {
+            x: end
+              ? box.right - px(style.borderRightWidth) - px(style.paddingRight)
+              : box.left + px(style.borderLeftWidth) + px(style.paddingLeft),
+            y: (top + bottom) / 2,
+          };
+          continue;
+        }
         const text = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
         let [left, right, top, bottom] = [
           Infinity,
@@ -27,6 +45,8 @@ const rowSpots = (row: Locator) =>
         ];
         for (let node = text.nextNode(); node; node = text.nextNode()) {
           if (!node.textContent?.trim()) continue;
+          const holder = node.parentElement!.getBoundingClientRect();
+          if (holder.width < 2 || holder.height < 2) continue;
           const range = document.createRange();
           range.selectNodeContents(node);
           const box = range.getBoundingClientRect();
@@ -37,46 +57,16 @@ const rowSpots = (row: Locator) =>
           bottom = Math.max(bottom, box.bottom);
         }
         if (left === Infinity) continue;
-        spots[column] = {
-          x: amounts.includes(column) ? right : left,
-          y: (top + bottom) / 2,
-        };
+        spots[column] = { x: end ? right : left, y: (top + bottom) / 2 };
       }
       return spots;
     },
-    { columns, amounts: [...amounts] },
-  );
-
-// The text in the editor's wells: each input's content box, inside its
-// border and padding.
-const editorSpots = (form: Locator) =>
-  form.evaluate(
-    (element, { columns, amounts }) => {
-      const spots: Record<string, { x: number; y: number }> = {};
-      for (const column of columns) {
-        const input = element.querySelector(`[data-column="${column}"] input`);
-        if (!input) continue;
-        const box = input.getBoundingClientRect();
-        const style = getComputedStyle(input);
-        const px = (value: string) => parseFloat(value);
-        const top = box.top + px(style.borderTopWidth) + px(style.paddingTop);
-        const bottom =
-          box.bottom - px(style.borderBottomWidth) - px(style.paddingBottom);
-        spots[column] = {
-          x: amounts.includes(column)
-            ? box.right - px(style.borderRightWidth) - px(style.paddingRight)
-            : box.left + px(style.borderLeftWidth) + px(style.paddingLeft),
-          y: (top + bottom) / 2,
-        };
-      }
-      return spots;
-    },
-    { columns, amounts: [...amounts] },
+    { columns, amounts },
   );
 
 // Rounding of text boxes leaves under half a pixel; anything more is a
 // shift a person sees.
-const expectSameSpots = (after: Spots, before: Spots) => {
+const expectSameSpots = (after: Spots, before: Spots, columns: string[]) => {
   for (const column of columns) {
     expect(after[column], column).toBeDefined();
     expect(
@@ -94,6 +84,8 @@ test("selecting a register row and opening it to edit moves none of its text", a
   page,
   budgets,
 }) => {
+  const columns = ["date", "payee", "category", "outflow"];
+  const amounts = ["outflow"];
   const budget = await budgets.create({
     purchase: { payee: "Corner market", amount: 3_742 },
   });
@@ -102,11 +94,10 @@ test("selecting a register row and opening it to edit moves none of its text", a
   await openRegister(page, budget.account);
 
   const row = transactionRow(page, "Corner market");
-  const resting = await rowSpots(row);
+  const resting = await spotsIn(row, columns, amounts);
   expect(Object.keys(resting)).toEqual(columns);
   await row.click();
-  const selected = await rowSpots(row);
-  expectSameSpots(selected, resting);
+  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
 
   await page.keyboard.press("e");
   const form = page.getByRole("form", {
@@ -114,9 +105,70 @@ test("selecting a register row and opening it to edit moves none of its text", a
     exact: true,
   });
   await expect(form).toBeVisible();
-  expectSameSpots(await editorSpots(form), selected);
+  expectSameSpots(await spotsIn(form, columns, amounts), resting, columns);
 
   await form.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(form).toHaveCount(0);
-  expectSameSpots(await rowSpots(row), selected);
+  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
+});
+
+test("selecting a partner row and opening it to edit moves none of its text", async ({
+  page,
+  budgets,
+  browser,
+  baseURL,
+}) => {
+  const columns = ["date", "payee", "category", "amount", "balance"];
+  const amounts = ["amount", "balance"];
+  const budget = await budgets.create();
+  await page.goto(shellPath);
+  await budgets.signIn(page, budget);
+  await connectPartner({
+    page,
+    browser,
+    baseURL,
+    budgets,
+    partnerName: "Alex Partner",
+  });
+
+  await page.goto(shellPath);
+  await page
+    .getByRole("navigation", { name: "Budget navigation" })
+    .getByRole("link", { name: /^Alex/ })
+    .click();
+  await page.getByRole("button", { name: "Record purchase" }).click();
+  const record = page.getByRole("dialog", {
+    name: "Record a shared purchase",
+  });
+  await record.getByLabel("Payee", { exact: true }).fill("Corner market");
+  await record.getByLabel("Total paid", { exact: true }).fill("60");
+  // A category, so the row and its editor show the same text there.
+  const category = record.getByRole("combobox", { name: /^Your category/ });
+  await category.click();
+  await category.fill(budget.category);
+  await category.press("Enter");
+  await record.getByRole("button", { name: "Record", exact: true }).click();
+  await expect(record).toHaveCount(0);
+
+  const row = page
+    .locator("[data-entry-row]")
+    .filter({ hasText: "Corner market" });
+  await expect(row).toBeVisible();
+  const resting = await spotsIn(row, columns, amounts);
+  expect(Object.keys(resting)).toEqual(columns);
+  await row.click();
+  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
+
+  // A selected entry opens at its amount.
+  await row.locator('[data-column="amount"]').click();
+  const form = page.getByRole("form", {
+    name: "Edit shared entry",
+    exact: true,
+  });
+  await expect(form).toBeVisible();
+  expectSameSpots(await spotsIn(form, columns, amounts), resting, columns);
+
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(form).toHaveCount(0);
+  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
 });

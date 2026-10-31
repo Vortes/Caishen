@@ -1,38 +1,9 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import type { Locator, Page } from "@playwright/test";
+import { rm } from "node:fs/promises";
 import { outboxPath } from "./environment";
+import { invitationLink, stroke } from "./partner-household";
 import { expect, test, shellPath } from "./shell-fixture";
-
-// The link in the newest email to `to` that the test server sent.
-async function invitationLink(to: string) {
-  let link: string | undefined;
-  await expect(async () => {
-    for (const file of (await readdir(outboxPath)).sort().reverse()) {
-      const email = JSON.parse(
-        await readFile(join(outboxPath, file), "utf8"),
-      ) as { to: string[]; text: string };
-      if (!email.to.includes(to)) continue;
-      link = /https?:\/\/\S+\/invite\/[A-Za-z0-9_-]+/.exec(email.text)?.[0];
-      if (link) return;
-    }
-    throw new Error(`No invitation email to ${to} yet.`);
-  }).toPass({ timeout: 15_000 });
-  return new URL(link!).pathname;
-}
-
-// A short stroke across an element, as a finger or mouse would draw it.
-async function stroke(page: Page, target: Locator, to = { x: 0.8, y: 0.6 }) {
-  const box = (await target.boundingBox())!;
-  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * to.x, box.y + box.height * to.y, {
-    steps: 12,
-  });
-  await page.mouse.up();
-}
 
 test("an invitation sent from Settings becomes a shared budget for someone new", async ({
   page,
