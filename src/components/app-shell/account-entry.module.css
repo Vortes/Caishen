@@ -1,4 +1,4 @@
-/* The date control takes the theme's native colours. */
+/* Inputs draw their autofill in the theme's scheme. */
 .form {
   color-scheme: dark;
   display: flex;

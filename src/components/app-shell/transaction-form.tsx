@@ -32,6 +32,7 @@ import {
 } from "~/components/transactions/transaction-draft";
 import type { CounterpartyShare } from "~/domain/engine";
 import { AmountInput } from "~/components/ui/amount-input";
+import { DateField, type DateFieldHandle } from "~/components/ui/date-field";
 import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
@@ -39,7 +40,6 @@ import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
 import { PartnerMatches } from "./partner-match";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
-import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import {
   ChoiceField,
@@ -292,8 +292,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const dateControl = (
     <DateField
       handle={dateField}
-      id={id("date")}
-      label="Date"
+      name="date"
       value={draft.date}
       min={minDate}
       // Activity is recorded once it happened, so no later day can be picked.
@@ -301,8 +300,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       today={todayKey}
       open={session.calendarOpen}
       inputRef={register("date")}
-      invalid={Boolean(fields.date)}
-      describedBy={described("date")}
       onOpenChange={entry.setCalendarOpen}
       onChange={(date) => entry.change({ date })}
       onPicked={() => advance("payee")}

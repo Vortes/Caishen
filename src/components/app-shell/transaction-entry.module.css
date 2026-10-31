@@ -1,5 +1,5 @@
-/* The transaction editor, in a register row. Amounts are ui fields; the
-   date and the lists draw the same filled well here. */
+/* The transaction editor, in a register row. Amounts and the date are ui
+   fields; the lists draw the same filled well here. */
 
 /* The row rises into a card where it stood, so opening it moves no text:
    the card starts at the row's top and its fields fill the row's band. */
@@ -41,6 +41,11 @@
 .entryRow .well {
   margin-left: -8px;
   padding-left: 7px;
+}
+/* The date is a ui field with the well's own padding: its cell reaches
+   past the column by that padding and the border instead. */
+.entryRow > .cell[data-column="date"] {
+  margin-left: -11px;
 }
 .entryRow
   > .cell:not(.staticCell):is(
@@ -117,6 +122,9 @@
     margin-inline: 0;
     padding-inline: 10px;
   }
+  .entryRow > .cell[data-column="date"] {
+    margin-left: 0;
+  }
   .entryRow
     > .cell:not(.staticCell):is(
       [data-column="outflow"],
@@ -170,15 +178,6 @@
 .well:has(.input:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: -1px;
-}
-/* With its calendar open, the date is the field being filled in, though
-   focus sits on a day inside the calendar. */
-.well[data-date]:has(.input[aria-expanded="true"]) {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -1px;
-}
-.well[data-date]:not([data-invalid]):has(.input[aria-expanded="true"]) {
-  border-color: var(--focus-ring);
 }
 .well[data-invalid] {
   border-color: var(--field-error-line);
@@ -370,28 +369,6 @@
   padding: 12px 8px;
   color: var(--text-tertiary);
   text-align: center;
-}
-
-/* The date shows a calendar icon; on touch it's a button inside the
-   well's right edge. */
-.dateIcon {
-  flex: none;
-  color: var(--text-tertiary);
-  pointer-events: none;
-}
-.dateTrigger {
-  display: none;
-}
-@media (pointer: coarse) {
-  .well[data-date] {
-    padding-right: 2px;
-  }
-  .dateIcon {
-    display: none;
-  }
-  .dateTrigger {
-    display: flex;
-  }
 }
 
 /* Touch: taller targets, and title-size (16px) text so focusing a field doesn't zoom

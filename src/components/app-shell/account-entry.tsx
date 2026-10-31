@@ -6,6 +6,7 @@ import { readAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { DateField } from "~/components/ui/date-field";
 import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
 import { Popover } from "~/components/ui/popover";
@@ -157,18 +158,15 @@ export function AccountEntry() {
             }}
           />
         </Field>
-        <div className={styles.field}>
-          <label htmlFor={`${id}-date`}>Balance as of</label>
-          <input
-            id={`${id}-date`}
-            type="date"
+        <Field label="Balance as of">
+          <DateField
             value={date}
             min={`${entry.view.budget.startMonth}-01`}
             max={today(entry.view.budget.settings.timezone)}
-            required
-            onChange={(event) => setDate(event.target.value)}
+            today={today(entry.view.budget.settings.timezone)}
+            onChange={setDate}
           />
-        </div>
+        </Field>
         {error && (
           <p className={styles.error} role="alert">
             <CircleAlertIcon aria-hidden size={14} />
