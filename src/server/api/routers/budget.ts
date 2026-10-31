@@ -197,6 +197,11 @@ export const budgetRouter = createTRPCRouter({
           services,
           connections,
           imports: bankInboxItems(banks, ledger.budget, ledger.state),
+          partnerFirstName: await partnerFirstName(
+            ctx.db,
+            household.workspaceId,
+            ctx.userId,
+          ),
         };
       } catch (error) {
         domainError(error);

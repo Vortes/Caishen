@@ -150,6 +150,9 @@ void test("joining a partner gives each budget a partner account and its envelop
     overview.status === "ready" && overview.partnerFirstName,
     "Anna",
   );
+  // Onboarding reads the budget's state, and names the partner the same way.
+  const state = await alan.api.budget.state({ month });
+  assert.equal(state.status === "ready" && state.partnerFirstName, "Anna");
 });
 
 void test("a budget made before counterparty accounts gets them once, the first time it loads", async () => {

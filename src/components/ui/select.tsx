@@ -103,6 +103,7 @@ export function Select({
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
+            aria-labelledby={field.labelledBy}
             aria-invalid={field.invalid ? true : undefined}
             // As on a menu's trigger, the arrow keys open the list too.
             onKeyDown={(event) => {

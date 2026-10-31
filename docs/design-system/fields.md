@@ -25,12 +25,13 @@ What does the person enter?
 
 ## Field
 
-Every ui input sits in a `Field`; `TextInput`, `AmountInput`, `Select`,
-`SearchList`, `SearchSuggestions`, `DateField` and `FieldButton` throw
-without one. The field gives its input an id, `aria-describedby` and
-`aria-invalid`, so a screen never writes them for a ui input. A
-`SegmentedControl` in a `Field` takes its label and description too
-([choices.md](choices.md#segmentedcontrol)).
+Every ui input sits in a `Field`, or in a `SettingRow`, which wires its
+control the same way ([settings.md](settings.md)); `TextInput`,
+`AmountInput`, `Select`, `SearchList`, `SearchSuggestions`, `DateField` and
+`FieldButton` throw without one. The field gives its input an id,
+`aria-describedby` and `aria-invalid`, so a screen never writes them for a
+ui input. A `SegmentedControl` in a `Field` takes its label and description
+too ([choices.md](choices.md#segmentedcontrol)).
 
 - `label`: required. `labelHidden` keeps it for screen readers only, where
   something on screen already names the field, such as a register's column

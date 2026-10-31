@@ -1,5 +1,5 @@
-/* Settings additions. Rows, cards, and the page column come from the app
-   shell's settings classes; these are only what the new rows need. */
+/* Settings additions. Rows, cards, and the page column come from
+   ui/settings; these are only what the screens put inside them. */
 
 .frame a {
   color: inherit;
@@ -15,18 +15,29 @@
   display: flex;
   flex-direction: column;
 }
+/* Opens under its row, which draws the line above it. */
 .inlineForm {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
+}
+/* A second sentence in a row's description, on its own line. */
+.descriptionLine {
+  display: block;
+  margin-top: 2px;
 }
 .passwordFields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
+}
+/* A code is short: a narrow well, its digits spaced apart. The hint under
+   it keeps the form's width. */
+.codeField :has(> input) {
+  max-width: 160px;
+}
+.codeField input {
+  letter-spacing: 0.2em;
 }
 .checkRow {
   display: flex;
@@ -36,8 +47,9 @@
   font-size: var(--type-small);
   cursor: pointer;
 }
-/* A setting's select, beside its label and hint. */
-.settingControl {
+/* A field's well at its row's end. The well fills its container, and a row
+   leaves its controls their own size. */
+.rowWell {
   flex: none;
   width: 12rem;
   max-width: 50%;
@@ -115,15 +127,14 @@
 .address {
   overflow-wrap: anywhere;
 }
+/* The email's well and the button beside it; alone, the well takes the row. */
 .joinRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   gap: var(--space-inset);
 }
-/* Alone in the row while the invitation is written, the field takes the
-   button's column too. */
-.joinRow > :only-child {
-  grid-column: 1 / -1;
+.joinRow > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Timezone and the daily email */

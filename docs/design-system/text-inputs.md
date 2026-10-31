@@ -18,8 +18,9 @@ exists. `WellInput`, also exported from `text-input.tsx`, is
   count takes `inputMode="numeric"`.
 - `autoComplete`: `"off"` by default, which also keeps 1Password out, so
   it never fills money or a name into a well. Give the token only where
-  the browser should fill the field: `"name"`, `"email"`,
-  `"one-time-code"`, `"current-password"`, `"new-password"`.
+  the browser should fill the field: `"name"`, `"email"`, `"username"`,
+  `"one-time-code"`, `"current-password"`, `"new-password"`. Nothing else
+  exists.
 - `required` and `minLength` are the browser's checks, for a form that
   relies on them (account settings, onboarding's account name). A screen
   that checks the value itself shows its message in the field's `error`.

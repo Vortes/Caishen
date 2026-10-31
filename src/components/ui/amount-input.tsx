@@ -27,7 +27,17 @@ export function AmountInput({
   inputRef,
   align,
   negative = false,
-}: Omit<TextInputProps, "prefix" | "suffix" | "inputMode" | "maxLength"> & {
+}: Omit<
+  TextInputProps,
+  | "prefix"
+  | "suffix"
+  | "inputMode"
+  | "type"
+  | "autoComplete"
+  | "required"
+  | "minLength"
+  | "maxLength"
+> & {
   // Right-aligned, under a register's amount column.
   align?: "start" | "end";
   // The amount takes money out, as a ledger's negative figures do: "-$".

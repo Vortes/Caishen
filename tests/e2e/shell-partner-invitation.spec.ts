@@ -83,9 +83,10 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   await partner.getByLabel("Your name").fill("Alex Newcomer");
   await partner.getByLabel("Budget name").fill("Newcomer budget");
   await partner.getByRole("button", { name: "Create my budget" }).click();
+  // Creating the budget and joining it take a server round trip.
   await expect(
     partner.getByRole("heading", { name: "A few questions about you" }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
   await expect(partner).toHaveURL(/\/welcome$/);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();

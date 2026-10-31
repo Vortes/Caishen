@@ -8,16 +8,23 @@ export type TextInputProps = {
   value: string;
   onChange: (value: string) => void;
   name?: string;
-  // Never "number": it rejects "1,000" and shows spinners.
-  type?: "text" | "email" | "password";
   placeholder?: string;
-  // What the browser may fill in: "name", "email", "one-time-code",
-  // "current-password". Off, the default, also keeps 1Password out.
-  autoComplete?: string;
   required?: boolean;
   minLength?: number;
   maxLength?: number;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+  // "password" hides what's typed. Never a number: see fields.md.
+  type?: "text" | "email" | "password";
+  // For what the browser and password managers should offer. Off, the
+  // default, also keeps 1Password out.
+  autoComplete?:
+    | "off"
+    | "name"
+    | "email"
+    | "username"
+    | "current-password"
+    | "new-password"
+    | "one-time-code";
   // Short text in the well, before or after the value: "$", "%", "years".
   prefix?: string;
   suffix?: string;
@@ -38,13 +45,13 @@ export function WellInput({
   value,
   onChange,
   name,
-  type = "text",
   placeholder,
-  autoComplete = "off",
   required,
   minLength,
   maxLength,
   inputMode,
+  type = "text",
+  autoComplete = "off",
   prefix,
   suffix,
   disabled,
@@ -91,6 +98,7 @@ export function WellInput({
         autoComplete={autoComplete}
         data-1p-ignore={autoComplete === "off" ? "" : undefined}
         spellCheck={false}
+        aria-labelledby={field.labelledBy}
         aria-invalid={field.invalid ? true : undefined}
         aria-describedby={field.describedBy}
         onChange={(event) => onChange(event.target.value)}

@@ -5,13 +5,16 @@ import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import type { EmailAddressResource, UserResource } from "@clerk/nextjs/types";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
-import { Field } from "~/components/ui/field";
+import { Field, FormError } from "~/components/ui/field";
+import {
+  SettingRow,
+  SettingsDivider,
+  SettingsSection,
+} from "~/components/ui/settings";
 import { TextInput } from "~/components/ui/text-input";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { useShellData } from "~/components/app-shell/shell-data";
-import shell from "~/components/app-shell/shell.module.css";
 import batch from "./entry.module.css";
 import styles from "./settings.module.css";
 
@@ -35,16 +38,13 @@ export function AccountSettings() {
 function LoadedAccountSettings({ user }: { user: UserResource }) {
   return (
     <>
-      <section className={shell.settingsSection} aria-label="Account">
-        <h2 className={shell.settingsHeading}>Account</h2>
-        <Card>
-          <EmailRow user={user} />
-          <div className={shell.settingDivider} />
-          <PasswordRow user={user} />
-          <div className={shell.settingDivider} />
-          <ConnectedAccounts user={user} />
-        </Card>
-      </section>
+      <SettingsSection heading="Account">
+        <EmailRow user={user} />
+        <SettingsDivider />
+        <PasswordRow user={user} />
+        <SettingsDivider />
+        <ConnectedAccounts user={user} />
+      </SettingsSection>
       <DeleteAccount user={user} />
     </>
   );
@@ -54,6 +54,9 @@ function EmailRow({ user }: { user: UserResource }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [code, setCode] = useState("");
+  // What to fix in the address or the code before anything is sent.
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [address, setAddress] = useState<EmailAddressResource | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,44 +103,60 @@ function EmailRow({ user }: { user: UserResource }) {
     }
   };
   return (
-    <div className={shell.settingRow}>
-      <div className={shell.settingText}>
-        <span className={shell.settingLabel}>Email address</span>
-        <span className={shell.settingHint}>
-          {user.primaryEmailAddress?.emailAddress}
-        </span>
-        {open && (
+    <SettingRow
+      label="Email address"
+      description={user.primaryEmailAddress?.emailAddress}
+      below={
+        open && (
           <form
             className={styles.inlineForm}
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
-              void (address ? verify() : send());
+              if (address) {
+                const problem = code.trim() ? null : "Enter the code.";
+                setCodeError(problem);
+                if (!problem) void verify();
+              } else {
+                const problem = draft.trim()
+                  ? null
+                  : "Enter your new email address.";
+                setDraftError(problem);
+                if (!problem) void send();
+              }
             }}
           >
-            <Field label="New email address">
+            <Field label="New email address" error={draftError ?? undefined}>
               <TextInput
                 type="email"
                 autoComplete="email"
-                required
                 value={draft}
                 disabled={Boolean(address)}
-                onChange={setDraft}
+                onChange={(value) => {
+                  setDraft(value);
+                  if (draftError && value.trim()) setDraftError(null);
+                }}
               />
             </Field>
             {address && (
               <>
-                <p className={batch.fieldHint}>
-                  Enter the code sent to {address.emailAddress}.
-                </p>
-                <Field label="Verification code">
-                  <TextInput
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    required
-                    value={code}
-                    onChange={setCode}
-                  />
-                </Field>
+                <div className={styles.codeField}>
+                  <Field
+                    label="Verification code"
+                    hint={`Sent to ${address.emailAddress}.`}
+                    error={codeError ?? undefined}
+                  >
+                    <TextInput
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={code}
+                      onChange={(value) => {
+                        setCode(value);
+                        if (codeError && value.trim()) setCodeError(null);
+                      }}
+                    />
+                  </Field>
+                </div>
                 <Button
                   size="sm"
                   variant="quiet"
@@ -148,11 +167,7 @@ function EmailRow({ user }: { user: UserResource }) {
                 </Button>
               </>
             )}
-            {error && (
-              <p className={batch.error} role="alert">
-                {error}
-              </p>
-            )}
+            {error && <FormError>{error}</FormError>}
             <div className={batch.actions} data-end>
               <Button
                 disabled={busy}
@@ -160,6 +175,8 @@ function EmailRow({ user }: { user: UserResource }) {
                   setOpen(false);
                   setAddress(null);
                   setError(null);
+                  setDraftError(null);
+                  setCodeError(null);
                 }}
               >
                 Cancel
@@ -173,10 +190,11 @@ function EmailRow({ user }: { user: UserResource }) {
               </Button>
             </div>
           </form>
-        )}
-      </div>
+        )
+      }
+    >
       {!open && <Button onClick={() => setOpen(true)}>Change email</Button>}
-    </div>
+    </SettingRow>
   );
 }
 
@@ -187,11 +205,19 @@ function PasswordRow({ user }: { user: UserResource }) {
   const [signOutOthers, setSignOutOthers] = useState(true);
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
+  const [currentError, setCurrentError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const close = () => {
     setOpen(false);
     setCurrent("");
     setPassword("");
+    setCurrentError(null);
+    setPasswordError(null);
   };
+  const checkCurrent = (value: string) =>
+    value ? null : "Enter your current password.";
+  const checkPassword = (value: string) =>
+    value.length >= 8 ? null : "Use at least 8 characters.";
   const update = useReverification(
     (input: {
       currentPassword?: string;
@@ -200,27 +226,33 @@ function PasswordRow({ user }: { user: UserResource }) {
     }) => user.updatePassword(input),
   );
   return (
-    <div className={shell.settingRow}>
-      <div className={shell.settingText}>
-        <span className={shell.settingLabel}>Password</span>
-        <span className={shell.settingHint}>
-          {user.passwordEnabled
-            ? "A password is set."
-            : "Add a password to sign in without a connected account."}
-        </span>
-        {open && (
+    <SettingRow
+      label="Password"
+      description={
+        user.passwordEnabled
+          ? "A password is set."
+          : "Add a password to sign in without a connected account."
+      }
+      below={
+        open && (
           <form
             className={styles.inlineForm}
+            noValidate
             onSubmit={async (event) => {
               event.preventDefault();
+              const currentProblem = user.passwordEnabled
+                ? checkCurrent(current)
+                : null;
+              const passwordProblem = checkPassword(password);
+              setCurrentError(currentProblem);
+              setPasswordError(passwordProblem);
+              if (currentProblem || passwordProblem) return;
               setBusy(true);
               setError(null);
               try {
                 await update({
-                  ...(user.passwordEnabled
-                    ? { currentPassword: current.trim() }
-                    : {}),
-                  newPassword: password.trim(),
+                  ...(user.passwordEnabled ? { currentPassword: current } : {}),
+                  newPassword: password,
                   signOutOfOtherSessions: signOutOthers,
                 });
                 await user.reload();
@@ -242,26 +274,31 @@ function PasswordRow({ user }: { user: UserResource }) {
             />
             <div className={styles.passwordFields}>
               {user.passwordEnabled && (
-                <Field label="Current password">
+                <Field
+                  label="Current password"
+                  error={currentError ?? undefined}
+                >
                   <TextInput
-                    name="current"
                     type="password"
                     autoComplete="current-password"
-                    required
                     value={current}
-                    onChange={setCurrent}
+                    onChange={(value) => {
+                      setCurrent(value);
+                      // Once wrong, it's checked as they fix it.
+                      if (currentError) setCurrentError(checkCurrent(value));
+                    }}
                   />
                 </Field>
               )}
-              <Field label="New password">
+              <Field label="New password" error={passwordError ?? undefined}>
                 <TextInput
-                  name="password"
                   type="password"
                   autoComplete="new-password"
-                  minLength={8}
-                  required
                   value={password}
-                  onChange={setPassword}
+                  onChange={(value) => {
+                    setPassword(value);
+                    if (passwordError) setPasswordError(checkPassword(value));
+                  }}
                 />
               </Field>
             </div>
@@ -274,11 +311,7 @@ function PasswordRow({ user }: { user: UserResource }) {
               />
               Sign out on your other devices
             </label>
-            {error && (
-              <p className={batch.error} role="alert">
-                {error}
-              </p>
-            )}
+            {error && <FormError>{error}</FormError>}
             <div className={batch.actions} data-end>
               <Button disabled={busy} onClick={close}>
                 Cancel
@@ -292,14 +325,15 @@ function PasswordRow({ user }: { user: UserResource }) {
               </Button>
             </div>
           </form>
-        )}
-      </div>
+        )
+      }
+    >
       {!open && (
         <Button onClick={() => setOpen(true)}>
           {user.passwordEnabled ? "Change password" : "Add password"}
         </Button>
       )}
-    </div>
+    </SettingRow>
   );
 }
 
@@ -322,25 +356,22 @@ function ConnectedAccounts({ user }: { user: UserResource }) {
       (account) => account.verification?.status === "verified",
     ).length <= 1;
   return (
-    <div className={shell.settingRow}>
-      <div className={shell.settingText}>
-        <span className={shell.settingLabel}>Connected accounts</span>
-        <span className={shell.settingHint}>
+    <SettingRow
+      label="Connected accounts"
+      description={
+        <>
           {google
             ? `Google · ${google.emailAddress}`
             : "Sign in with Google instead of a password."}
-        </span>
-        {google && onlyWayIn && (
-          <span className={shell.settingHint}>
-            Add a password before removing your only sign-in method.
-          </span>
-        )}
-        {error && (
-          <p className={batch.error} role="alert">
-            {error}
-          </p>
-        )}
-      </div>
+          {google && onlyWayIn && (
+            <span className={styles.descriptionLine}>
+              Add a password before removing your only sign-in method.
+            </span>
+          )}
+        </>
+      }
+      error={error}
+    >
       <Button
         disabled={busy || Boolean(google && onlyWayIn)}
         onClick={async () => {
@@ -365,7 +396,7 @@ function ConnectedAccounts({ user }: { user: UserResource }) {
       >
         {busy ? "Saving…" : google ? "Remove Google" : "Connect Google"}
       </Button>
-    </div>
+    </SettingRow>
   );
 }
 
@@ -378,94 +409,83 @@ function DeleteAccount({ user }: { user: UserResource }) {
   const remove = useReverification(() => user.delete());
   const email = user.primaryEmailAddress?.emailAddress;
   return (
-    <section className={shell.settingsSection} aria-label="Delete account">
-      <Card>
-        <div className={shell.settingRow}>
-          <div className={shell.settingText}>
-            <span className={shell.settingLabel}>
-              Delete your account and budget
-            </span>
-            <span className={shell.settingHint}>
-              Permanent. There’s no undo and no export after this.
-            </span>
-            {open && (
-              <form
-                className={styles.inlineForm}
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  if (typed.trim().toLowerCase() !== email?.toLowerCase())
-                    return;
-                  setBusy(true);
-                  setError(null);
-                  try {
-                    await remove();
-                    await deleteStoredBudgets({ userId: user.id });
-                    window.sessionStorage.removeItem(
-                      `caishen:onboarding:${user.id}`,
-                    );
-                    window.location.assign("/");
-                  } catch (caught) {
-                    setError(message(caught));
-                    setBusy(false);
-                  }
-                }}
-              >
-                <ul className={styles.consequences}>
-                  <li>
-                    Your personal budget, private transactions, categories, and
-                    history are deleted.
-                  </li>
-                  <li>Bank connections are removed and daily emails stop.</li>
-                  {partner && (
-                    <li>
-                      {partner.name} keeps their budget and the shared records
-                      they need. Existing balances are frozen and shared
-                      categories stop splitting new spending.
-                    </li>
-                  )}
-                </ul>
-                <Field label={`Type ${email ?? ""} to confirm`}>
-                  <TextInput value={typed} onChange={setTyped} />
-                </Field>
-                {error && (
-                  <p className={batch.error} role="alert">
-                    {error}
-                  </p>
-                )}
-                <div className={batch.actions} data-end>
-                  <Button
-                    disabled={busy}
-                    onClick={() => {
-                      setOpen(false);
-                      setTyped("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="danger"
-                    type="submit"
-                    disabled={
-                      busy ||
-                      typed.trim().toLowerCase() !== email?.toLowerCase()
-                    }
-                  >
-                    {busy ? "Deleting…" : "Delete account permanently"}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </div>
-          {!open && (
-            <Button
-              disabled={!user.deleteSelfEnabled}
-              onClick={() => setOpen(true)}
+    <SettingsSection aria-label="Delete account">
+      <SettingRow
+        label="Delete your account and budget"
+        description="Permanent. There’s no undo and no export after this."
+        below={
+          open && (
+            <form
+              className={styles.inlineForm}
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (typed.trim().toLowerCase() !== email?.toLowerCase()) return;
+                setBusy(true);
+                setError(null);
+                try {
+                  await remove();
+                  await deleteStoredBudgets({ userId: user.id });
+                  window.sessionStorage.removeItem(
+                    `caishen:onboarding:${user.id}`,
+                  );
+                  window.location.assign("/");
+                } catch (caught) {
+                  setError(message(caught));
+                  setBusy(false);
+                }
+              }}
             >
-              Delete account…
-            </Button>
-          )}
-        </div>
-      </Card>
-    </section>
+              <ul className={styles.consequences}>
+                <li>
+                  Your personal budget, private transactions, categories, and
+                  history are deleted.
+                </li>
+                <li>Bank connections are removed and daily emails stop.</li>
+                {partner && (
+                  <li>
+                    {partner.name} keeps their budget and the shared records
+                    they need. Existing balances are frozen and shared
+                    categories stop splitting new spending.
+                  </li>
+                )}
+              </ul>
+              <Field label={`Type ${email ?? "your email"} to confirm`}>
+                <TextInput value={typed} onChange={setTyped} />
+              </Field>
+              {error && <FormError>{error}</FormError>}
+              <div className={batch.actions} data-end>
+                <Button
+                  disabled={busy}
+                  onClick={() => {
+                    setOpen(false);
+                    setTyped("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  type="submit"
+                  disabled={
+                    busy || typed.trim().toLowerCase() !== email?.toLowerCase()
+                  }
+                >
+                  {busy ? "Deleting…" : "Delete account permanently"}
+                </Button>
+              </div>
+            </form>
+          )
+        }
+      >
+        {!open && (
+          <Button
+            disabled={!user.deleteSelfEnabled}
+            onClick={() => setOpen(true)}
+          >
+            Delete account…
+          </Button>
+        )}
+      </SettingRow>
+    </SettingsSection>
   );
 }

@@ -155,23 +155,30 @@ test("one error shown for two fields marks both invalid and describes both", () 
   }
 });
 
-test("a password is masked as it's typed", async () => {
+test("a password input hides what's typed and tells password managers what it holds", async () => {
   const user = userEvent.setup();
-  function Password() {
+  function NewPassword() {
     const [value, setValue] = useState("");
     return (
       <Field label="New password">
-        <TextInput type="password" value={value} onChange={setValue} />
+        <TextInput
+          type="password"
+          autoComplete="new-password"
+          value={value}
+          onChange={setValue}
+        />
       </Field>
     );
   }
-  render(<Password />);
+  render(<NewPassword />);
 
-  const input = screen.getByLabelText("New password");
+  const input = screen.getByLabelText<HTMLInputElement>("New password");
   await user.type(input, "hunter22");
 
-  expect(input.getAttribute("type")).toBe("password");
-  expect(screen.queryByRole("textbox", { name: "New password" })).toBeNull();
+  expect(input.value).toBe("hunter22");
+  expect(input.type).toBe("password");
+  expect(input.autocomplete).toBe("new-password");
+  expect(screen.queryByRole("textbox")).toBeNull();
 });
 
 test("the browser may fill a field that asks for it, and no other", () => {

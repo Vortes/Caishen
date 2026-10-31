@@ -50,15 +50,11 @@
 
 /* ---------- Shared form pieces ---------- */
 
+/* A small caption over a figure, such as onboarding's Ready to Assign. */
 .fieldLabel {
   color: var(--text-secondary);
   font-size: var(--type-small);
   font-weight: 500;
-}
-.fieldHint {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
 }
 .error {
   display: flex;

@@ -30,7 +30,7 @@ export function SegmentedControl({
       className={styles.root}
       orientation="horizontal"
       data-fill={fill || undefined}
-      aria-labelledby={field?.labelId}
+      aria-labelledby={field?.labelledBy ?? field?.labelId}
       aria-describedby={field?.describedBy}
       {...props}
     />

@@ -35,7 +35,7 @@ export function FieldButton(props: Omit<WellButtonProps, "valueId">) {
     <WellButton
       {...props}
       valueId={valueId}
-      aria-labelledby={`${field.labelId} ${valueId}`}
+      aria-labelledby={`${field.labelledBy ?? field.labelId} ${valueId}`}
     />
   );
 }
