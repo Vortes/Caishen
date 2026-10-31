@@ -22,14 +22,14 @@
 }
 /* Reads as the name; a dotted underline on hover says it can be edited.
    Its padding hangs past the text, so the text keeps its place and the
-   focus ring has room. */
+   shell's inset focus ring has room around it. */
 .name {
   display: flex;
   align-items: center;
   min-width: 0;
   max-width: calc(100% + 12px);
-  margin: -2px -6px;
-  padding: 2px 6px;
+  margin: -4px -6px;
+  padding: 4px 6px;
   border: 0;
   border-radius: var(--radius-row);
   background: none;
@@ -55,9 +55,6 @@
 .name[data-state="open"] {
   color: var(--text-primary);
   text-decoration-color: var(--text-tertiary);
-}
-.name:focus-visible {
-  outline-offset: 0;
 }
 /* Over a row, only the underline shows; the row draws the text. */
 .overlay .name {

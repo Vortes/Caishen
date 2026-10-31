@@ -25,8 +25,10 @@ had it when the dialog opened.
 ## ConfirmDialog
 
 `src/components/ui/dialog.tsx`. Use for a question with two answers before
-an action that can't be undone. Cancel takes focus on open and Escape
-answers Cancel; a click outside does nothing.
+an action that can't be undone: disconnecting a partner or a bank, deleting
+an account. An action the toast's Undo restores, such as deleting a
+category, asks nothing first; the undo is the safety net. Cancel takes
+focus on open and Escape answers Cancel; a click outside does nothing.
 
 ```tsx
 <ConfirmDialog

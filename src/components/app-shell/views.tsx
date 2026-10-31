@@ -51,6 +51,7 @@ import {
   CategoryNameCell,
   EditNamePopover,
   editableCategory,
+  editableGroup,
 } from "./category-edit";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
@@ -156,7 +157,7 @@ export function PlanView({
         }))
         .filter((group) => group.categories.length)
     : shell.groups;
-  const { add } = useAddCategory();
+  const { send } = useAddCategory();
   const reorder = useReorderDrag({
     ids: groups.map((group) => group.id),
     enabled: groups.length > 1,
@@ -168,7 +169,7 @@ export function PlanView({
       const names = shell.groups.map((group) =>
         showing.has(group.id) ? order[next++]! : group.id,
       );
-      const blocked = add(
+      const blocked = send(
         { type: "group.reorder", id: newId(), names },
         // A group's id is its name.
         `Moved ${id}`,
@@ -329,7 +330,7 @@ export function PlanView({
           const open =
             ids.length > 0 && !closed.includes(group.id) && !reorder.drag;
           const count = ids.filter((id) => checked.includes(id)).length;
-          const editable = group.categories.every(editableCategory);
+          const editable = editableGroup(group);
           return (
             <motion.div
               key={group.id}
@@ -487,7 +488,7 @@ function PlanCategoryList({
   group: { id: string; categories: Category[] };
   selectionStyle: ReturnType<typeof useRowSelection>;
 }) {
-  const { add } = useAddCategory();
+  const { send } = useAddCategory();
   const byId = new Map(
     group.categories.map((category) => [category.id, category]),
   );
@@ -495,7 +496,7 @@ function PlanCategoryList({
     ids: group.categories.map((category) => category.id),
     enabled: group.categories.length > 1,
     onDrop: (categoryIds, id, done) => {
-      const blocked = add(
+      const blocked = send(
         { type: "category.reorder", id: newId(), group: group.id, categoryIds },
         `Moved ${byId.get(id)?.name ?? "category"}`,
         done,

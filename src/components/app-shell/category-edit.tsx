@@ -20,8 +20,9 @@ import { Destination } from "./move-money";
 import { PopoverSteps } from "./popover-steps";
 import { useShellData } from "./shell-data";
 import shell from "./shell.module.css";
-import styles from "./move-money.module.css";
-import editStyles from "./category-edit.module.css";
+// The move-money form's layout, which this form shares.
+import move from "./move-money.module.css";
+import styles from "./category-edit.module.css";
 
 // The engine's limit for names.
 const MAX_LENGTH = 120;
@@ -34,6 +35,12 @@ export type Editing =
 // keeps the groups that hold only those.
 export const editableCategory = (category: Category) =>
   !category.pays && !category.pairs;
+// A group is renamed or deleted with its categories, so one that holds any
+// of Caishen's can't be. That covers the groups Caishen keeps (isSystemGroup
+// in add-category.tsx), which still take no new categories, and a mixed one,
+// which still takes them.
+export const editableGroup = (group: { categories: Category[] }) =>
+  group.categories.every(editableCategory);
 
 // Over a plan row: the category's name, which opens its popover.
 export function CategoryNameCell({
@@ -54,7 +61,7 @@ export function CategoryNameCell({
   return (
     // The overlay covers the row, so a drag measures from the row's top.
     <div
-      className={`${shell.columns} ${editStyles.overlay}`}
+      className={`${shell.columns} ${styles.overlay}`}
       onPointerDown={onPointerDown}
     >
       <span className={shell.rowName}>
@@ -67,7 +74,7 @@ export function CategoryNameCell({
           >
             <button
               type="button"
-              className={editStyles.name}
+              className={styles.name}
               aria-label={`Edit ${category.name}`}
             >
               <span className={shell.truncate}>{category.name}</span>
@@ -131,7 +138,7 @@ function EditForm({
   onDeleted: (ids: string[]) => void;
 }) {
   const { groups, categories } = useShellData();
-  const { add } = useAddCategory();
+  const { send: run } = useAddCategory();
   const group = editing.type === "group";
   const current =
     editing.type === "category" ? editing.category.name : editing.name;
@@ -159,7 +166,7 @@ function EditForm({
   }, [step]);
 
   const send = (command: Command, summary: string) => {
-    const blocked = add(command, summary);
+    const blocked = run(command, summary);
     if (blocked) {
       setError({ field: "form", message: blocked });
       return false;
@@ -170,14 +177,19 @@ function EditForm({
 
   const rename = () => {
     const trimmed = name.trim();
-    if (!trimmed)
-      return setError({
+    if (!trimmed) {
+      setError({
         field: "name",
         message: group
           ? "Enter a name for the group."
           : "Enter a name for the category.",
       });
-    if (trimmed === current) return onDone();
+      return;
+    }
+    if (trimmed === current) {
+      onDone();
+      return;
+    }
     const same = (other: string) =>
       other.toLowerCase() === trimmed.toLowerCase();
     if (editing.type === "category") {
@@ -185,11 +197,13 @@ function EditForm({
       const taken = groups
         .find((item) => item.name === category.group)
         ?.categories.find((item) => item !== category && same(item.name));
-      if (taken)
-        return setError({
+      if (taken) {
+        setError({
           field: "name",
           message: `${category.group} already has ${taken.name}.`,
         });
+        return;
+      }
       send(
         {
           type: "category.rename",
@@ -203,11 +217,13 @@ function EditForm({
       const taken = groups.find(
         (item) => item.name !== editing.name && same(item.name),
       );
-      if (taken)
-        return setError({
+      if (taken) {
+        setError({
           field: "name",
           message: `You already have a group called ${taken.name}.`,
         });
+        return;
+      }
       send(
         {
           type: "group.rename",
@@ -269,21 +285,23 @@ function EditForm({
           ref={moveRef}
           tabIndex={-1}
           aria-label={`Delete ${current}`}
-          className={styles.form}
+          className={move.form}
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (!moveTo)
-              return setError({
+            if (!moveTo) {
+              setError({
                 field: "move",
                 message: "Choose a category to move them to.",
               });
+              return;
+            }
             remove(moveTo);
           }}
         >
-          <div className={styles.fields}>
-            <p className={editStyles.note}>
+          <div className={move.fields}>
+            <p className={styles.note}>
               {group
                 ? `Categories in ${current} have transactions or assigned money. Choose a category to take them over.`
                 : `${current} has transactions or assigned money. Choose a category to take them over.`}
@@ -327,7 +345,7 @@ function EditForm({
   return (
     <PopoverSteps step={step}>
       <form
-        className={styles.form}
+        className={move.form}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -336,7 +354,7 @@ function EditForm({
           rename();
         }}
       >
-        <div className={styles.fields}>
+        <div className={move.fields}>
           <Field
             label={group ? "Group name" : "Category name"}
             error={error?.field === "name" ? error.message : undefined}
@@ -354,6 +372,18 @@ function EditForm({
           {footerError}
         </div>
         <FormFooter
+          leading={
+            <Button
+              size="sm"
+              onClick={() => {
+                setError(null);
+                if (used) setStep("move");
+                else remove();
+              }}
+            >
+              Delete
+            </Button>
+          }
           actions={
             <>
               <Button size="sm" onClick={onDone}>
@@ -364,18 +394,7 @@ function EditForm({
               </Button>
             </>
           }
-        >
-          <Button
-            size="sm"
-            onClick={() => {
-              setError(null);
-              if (used) setStep("move");
-              else remove();
-            }}
-          >
-            Delete
-          </Button>
-        </FormFooter>
+        />
       </form>
     </PopoverSteps>
   );

@@ -108,6 +108,12 @@
   padding: 8px 12px;
   border-top: 1px solid var(--border-subtle);
 }
+.leading {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
 .note {
   flex: 1;
   min-width: 0;

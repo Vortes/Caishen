@@ -27,8 +27,10 @@ Sizes: `md`, `sm`. Nothing else exists.
   surface; when several rows need the same fix, none is the main action and
   each is `quiet`.
 - `danger` is only the confirm button inside a destructive dialog, such as
-  Delete category. The button that opens that dialog is `secondary`, so a
-  red button always means "this happens now".
+  Disconnect from a partner. The button that opens that dialog is
+  `secondary`, so a red button always means "this happens now". An action
+  that undo restores (Delete category, Delete group) isn't one: it commits
+  from a `secondary` button in its popover, and its toast carries Undo.
 
 ```
 Is the button the surface's main action?

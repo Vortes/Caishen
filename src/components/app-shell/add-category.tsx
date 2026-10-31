@@ -27,10 +27,10 @@ export type Added =
   { type: "group"; name: string } | { type: "category"; id: string };
 
 export type AddCategory = {
-  // Sends the new group's or category's command with a summary for its
-  // confirmation. Returns why it can't be sent right now, or null once it's
-  // on its way, then settles with whether it saved.
-  add: (
+  // Sends a plan command (add, move, rename or delete a group or category)
+  // with a summary for its confirmation. Returns why it can't be sent right
+  // now, or null once it's on its way, then settles with whether it saved.
+  send: (
     command: Command,
     summary: string,
     settled?: (saved: boolean) => void,
@@ -152,7 +152,7 @@ function NameForm({
   onSettled?: (category: NewCategory, saved: boolean) => void;
 }) {
   const { groups } = useShellData();
-  const { add } = useAddCategory();
+  const { send } = useAddCategory();
   const [name, setName] = useState(choice?.name ?? "");
   const [chosen, setChosen] = useState(choice?.group ?? "");
   const [error, setError] = useState<{
@@ -202,7 +202,7 @@ function NameForm({
       summary = `Added the ${trimmed} group`;
       added = { type: "group", name: trimmed };
     }
-    const blocked = add(
+    const blocked = send(
       command,
       summary,
       category && onSettled && ((saved) => onSettled(category, saved)),
