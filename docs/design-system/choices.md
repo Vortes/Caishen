@@ -49,22 +49,22 @@ includes. Settings never wait for a Save button: a switch that only applies
 after Save tells the user something happened when it didn't.
 
 `checked` is `true` or `false`; `onCheckedChange` receives the new value.
-Name it like a Checkbox: wrap it in a `<label>` with its text, or pass
-`aria-label`. In a settings list the text goes first and the switch sits at
-the row's end.
+On a settings screen, put it in a `SettingRow`, which names and describes it
+and keeps clicks on its text from flipping it ([settings.md](settings.md)).
+Elsewhere, name it like a Checkbox: wrap it in a `<label>` with its text, or
+pass `aria-label`.
 
 ```tsx
-// Correct
-<label className={styles.check}>
-  <span className={styles.checkText}>
-    <span className={styles.checkLabel}>{section.label}</span>
-    <span className={styles.checkHint}>{section.hint}</span>
-  </span>
+// Correct (entry/profile-preferences.tsx)
+<SettingRow
+  label="Send the daily review"
+  description="Your budget and bank updates keep working when this is off."
+>
   <Switch
-    checked={sections.includes(section.id)}
-    onCheckedChange={(on) => onToggle(section.id, on)}
+    checked={value.emailEnabled}
+    onCheckedChange={(emailEnabled) => change({ emailEnabled })}
   />
-</label>
+</SettingRow>
 
 // Incorrect: checkboxes for a setting, held until Save
 <Checkbox checked={draft.includes(id)} onCheckedChange={setDraft} />

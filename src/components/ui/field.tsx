@@ -10,10 +10,13 @@ import {
 } from "react";
 import styles from "./field.module.css";
 
-type FieldContextValue = {
+export type FieldContextValue = {
   id: string;
   // The label's text, for a control that names a list it opens (Select).
   label: string;
+  // The id of plain text that names the control, where no <label> points at
+  // it: a SettingRow's label, which a click must not pass to the control.
+  labelledBy?: string;
   describedBy?: string;
   invalid: boolean;
   // An input's own message about what was typed, such as an amount it
@@ -21,7 +24,10 @@ type FieldContextValue = {
   report: (message: string | null) => void;
 };
 
-const FieldContext = createContext<FieldContextValue | null>(null);
+// For the ui modules that name and describe a control as Field does
+// (SettingRow), and for Switch, which works outside one too. Screens use
+// Field.
+export const FieldContext = createContext<FieldContextValue | null>(null);
 
 // A label over its input, with an optional hint and an error under it. The
 // ui inputs inside take their id, description and invalid state from it.

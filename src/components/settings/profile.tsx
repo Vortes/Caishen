@@ -4,6 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
+import { TextInput } from "~/components/ui/text-input";
 import {
   SettingRow,
   SettingsDivider,
@@ -18,7 +19,7 @@ import { AccountSettings } from "~/components/entry/account-settings";
 import { PhotoCropDialog } from "~/components/app-shell/photo-crop-dialog";
 import { useShellData } from "~/components/app-shell/shell-data";
 import { UserAvatar } from "~/components/app-shell/user-avatar";
-import styles from "~/components/app-shell/shell.module.css";
+import additions from "~/components/entry/settings.module.css";
 
 // Clerk accepts these formats for a profile image.
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
@@ -152,52 +153,66 @@ function BudgetName({
   onRename: (name: string) => string | null;
 }) {
   const { budgetName } = useShellData();
-  const [error, setError] = useState<string | null>(null);
+  // Starts over from the saved name whenever it changes, including after
+  // Undo.
+  return (
+    <BudgetNameField key={budgetName} saved={budgetName} onRename={onRename} />
+  );
+}
 
-  const commit = (field: HTMLInputElement) => {
-    const name = field.value.trim();
-    if (!name || name === budgetName) {
-      field.value = budgetName;
+function BudgetNameField({
+  saved,
+  onRename,
+}: {
+  saved: string;
+  onRename: (name: string) => string | null;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState(saved);
+  const [error, setError] = useState<string | null>(null);
+  // Set by Escape, so the blur that follows saves nothing.
+  const reverting = useRef(false);
+
+  const commit = () => {
+    if (reverting.current) {
+      reverting.current = false;
       return;
     }
-    const blocked = onRename(name);
-    setError(blocked);
-    if (blocked) field.value = budgetName;
+    const name = draft.trim();
+    if (!name || name === saved) {
+      setDraft(saved);
+      setError(null);
+      return;
+    }
+    // A name the budget refuses stays in the field to fix.
+    setError(onRename(name));
   };
 
   return (
     <SettingRow
-      htmlFor="budget-name"
       label="Budget name"
       description="Shown at the top of the sidebar. Your partner’s budget keeps its own name."
-      error={error}
+      fieldError={error}
     >
-      <input
-        // Starts over from the saved name whenever it changes, including
-        // after Undo.
-        key={budgetName}
-        id="budget-name"
-        aria-invalid={Boolean(error)}
-        // The row gives its error the id `${htmlFor}-error`.
-        aria-describedby={error ? "budget-name-error" : undefined}
-        className={styles.settingInput}
-        defaultValue={budgetName}
-        maxLength={120}
-        autoComplete="off"
-        spellCheck={false}
-        onBlur={(event) => commit(event.currentTarget)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            event.currentTarget.blur();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            event.currentTarget.value = budgetName;
-            event.currentTarget.blur();
-          }
+      <form
+        className={additions.rowWell}
+        onSubmit={(event) => {
+          event.preventDefault();
+          input.current?.blur();
         }}
-      />
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          reverting.current = true;
+          setDraft(saved);
+          setError(null);
+          input.current?.blur();
+        }}
+      >
+        <TextInput inputRef={input} value={draft} onChange={setDraft} />
+      </form>
     </SettingRow>
   );
 }

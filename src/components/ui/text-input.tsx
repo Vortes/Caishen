@@ -72,6 +72,7 @@ export function WellInput({
         readOnly={readOnly}
         autoComplete="off"
         spellCheck={false}
+        aria-labelledby={field.labelledBy}
         aria-invalid={field.invalid ? true : undefined}
         aria-describedby={field.describedBy}
         onChange={(event) => onChange(event.target.value)}

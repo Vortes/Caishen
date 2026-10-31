@@ -44,8 +44,9 @@
   font-size: var(--type-small);
   cursor: pointer;
 }
-/* A setting's select, beside its label and hint. */
-.settingControl {
+/* A field's well at its row's end. The well fills its container, and a row
+   leaves its controls their own size. */
+.rowWell {
   flex: none;
   width: 12rem;
   max-width: 50%;

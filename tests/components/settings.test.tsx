@@ -7,7 +7,10 @@ import {
   SettingsPage,
   SettingsSection,
 } from "~/components/ui/settings";
+import { Select } from "~/components/ui/select";
+import { SurfaceProvider } from "~/components/ui/surface";
 import { Switch } from "~/components/ui/switch";
+import { TextInput } from "~/components/ui/text-input";
 
 test("a section is named by its heading, or by its label when it has none", () => {
   render(
@@ -103,4 +106,83 @@ test("a row shows what opens under it", () => {
   );
   const form = screen.getByRole("form", { name: "Add a password" });
   expect(form.textContent).toBe("Add password");
+});
+
+test("a row's label names its text input, and its description describes it", () => {
+  render(
+    <SettingsSection aria-label="Profile">
+      <SettingRow
+        label="Budget name"
+        description="Shown at the top of the sidebar."
+      >
+        <TextInput value="Home" onChange={() => undefined} />
+      </SettingRow>
+    </SettingsSection>,
+  );
+  const input = screen.getByRole("textbox", {
+    name: "Budget name",
+    description: "Shown at the top of the sidebar.",
+  });
+  expect((input as HTMLInputElement).value).toBe("Home");
+});
+
+const hours = [
+  { value: "7", label: "7 a.m." },
+  { value: "8", label: "8 a.m." },
+];
+
+function SendAt({ onChange = () => undefined }: { onChange?: () => void }) {
+  return (
+    <SurfaceProvider container={document.body}>
+      <SettingsSection heading="Daily review email">
+        <SettingRow label="Send at" description="New York time.">
+          <Select value="7" onChange={onChange} options={hours} />
+        </SettingRow>
+      </SettingsSection>
+    </SurfaceProvider>
+  );
+}
+
+test("a row's label names its select, and its description describes it", () => {
+  render(<SendAt />);
+  const select = screen.getByRole("combobox", {
+    name: "Send at",
+    description: "New York time.",
+  });
+  expect(select.textContent).toBe("7 a.m.");
+});
+
+test("clicking a row's label or description leaves its select closed", async () => {
+  const user = userEvent.setup();
+  render(<SendAt />);
+  const select = screen.getByRole("combobox", { name: "Send at" });
+  // Each click is checked on its own: a click elsewhere closes an open list.
+  await user.click(screen.getByText("Send at"));
+  expect(select.getAttribute("aria-expanded")).toBe("false");
+  await user.click(screen.getByText("New York time."));
+  expect(select.getAttribute("aria-expanded")).toBe("false");
+  await user.click(select);
+  expect(screen.getByRole("listbox", { name: "Send at" })).toBeTruthy();
+});
+
+test("a field error in a row describes its input and marks it invalid, without announcing it", () => {
+  render(
+    <SettingsSection aria-label="Profile">
+      <SettingRow
+        label="Budget name"
+        description="Shown at the top of the sidebar."
+        fieldError="Use 120 characters or fewer."
+      >
+        <TextInput value="Home" onChange={() => undefined} />
+      </SettingRow>
+    </SettingsSection>,
+  );
+  const input = screen.getByRole("textbox", {
+    name: "Budget name",
+    description:
+      "Shown at the top of the sidebar. Use 120 characters or fewer.",
+  });
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("status")).toBeNull();
 });

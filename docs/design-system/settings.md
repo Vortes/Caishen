@@ -54,33 +54,47 @@ children, at the row's end. Several controls sit side by side 6px apart.
 A row with no children is a statement, like "Connected with Sam".
 
 - `lead`: drawn before the label. Only the profile picture's avatar.
-- `error`: an action that failed (photo upload, resend, connecting Google).
-  It shows under the description and is announced (`role="alert"`). An error
-  about what someone typed belongs to its field, not the row.
+- `error`: an action that failed (photo upload, disconnecting Google). It
+  shows under the description and is announced (`role="alert"`).
+- `fieldError`: what's wrong with what was typed into the row's
+  `TextInput`, like a budget name the budget refuses. It looks like a
+  `Field`'s error, describes the control, marks it invalid, and is never
+  announced ([fields.md](fields.md)). A failed save of a form under the row
+  is that form's `FormError`, not either prop.
 - `below`: what opens under the row, like the "Change email" and "Add
   password" forms, or the partner invitation and its composer. It spans the
   card's full width under a thin line. Never put it in `description`, where
   its width would depend on the help text.
 
-Only the control acts. Clicking the label or description does nothing,
-so a row is never a `<label>`, because a click on help text that flips a
-setting is a surprise.
+Only the control acts. Clicking the label or description does nothing:
+the label is plain text, never a `<label>`, because a click on help text
+that flips a switch or opens a list is a surprise. The row names the
+control with `aria-labelledby` instead.
 
-How the control gets its name:
+The row does for its control what a `Field` does: it gives `TextInput`,
+`Select` and `Switch` their id, name, description and invalid state. Never
+wrap a control in a `Field` inside a row; the name would be said twice.
 
 ```text
 What is the control?
- ├── Switch → nothing to add. The row names it with its label
- │   (aria-labelledby) and describes it with its description.
- ├── A native <select> or <input> → pass htmlFor with the control's id.
- │   Temporary: goes away in #223's second phase, when Select and
- │   TextInput read the row the way Switch does.
+ ├── TextInput, Select or Switch → nothing to add. The row's label names
+ │   it, and its description and fieldError describe it.
  └── Button or SegmentedControl → the label is plain text and the
      control keeps its own name (its text, or aria-label).
 ```
 
+A row leaves its controls their own size, and a well fills its container,
+so put a `TextInput` or `Select` in a div the screen sizes (`.rowWell` in
+`entry/settings.module.css`, 12rem). A form under the row (`below`) uses
+`Field`s as any form does.
+
 ```tsx
-// Correct: the row names the switch
+// Correct: the row names the select and the switch
+<SettingRow label="Send at" description="New York time, your budget’s timezone.">
+  <div className={styles.rowWell}>
+    <Select value={hour} onChange={…} options={hours} />
+  </div>
+</SettingRow>
 <SettingRow
   label="Send the daily review"
   description="Your budget and bank updates keep working when this is off."
@@ -88,12 +102,12 @@ What is the control?
   <Switch checked={value.emailEnabled} onCheckedChange={…} />
 </SettingRow>
 
-// Incorrect: the name is said twice, and the whole row becomes a click target
-<label>
-  <SettingRow label="Send the daily review">
-    <Switch aria-label="Send the daily review" … />
-  </SettingRow>
-</label>
+// Incorrect: the name is said twice, and a click on the label opens the list
+<SettingRow label="Send at">
+  <Field label="Send at" labelHidden>
+    <Select … />
+  </Field>
+</SettingRow>
 ```
 
 ## SettingsDivider

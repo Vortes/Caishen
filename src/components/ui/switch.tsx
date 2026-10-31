@@ -2,7 +2,7 @@
 
 import { Switch as Primitive } from "radix-ui";
 import { use, type ComponentProps } from "react";
-import { SettingRowContext } from "./settings";
+import { FieldContext } from "./field";
 import styles from "./switch.module.css";
 
 // Turns a setting on or off, and the change takes effect at once. For picking
@@ -15,13 +15,15 @@ export function Switch(
     "className" | "style" | "asChild"
   >,
 ) {
-  const row = use(SettingRowContext);
+  const field = use(FieldContext);
   const named = Boolean(props["aria-label"] ?? props["aria-labelledby"]);
   return (
     <Primitive.Root
       className={styles.switch}
-      aria-labelledby={named ? undefined : row?.labelId}
-      aria-describedby={row?.describedBy}
+      id={field?.id}
+      aria-labelledby={named ? undefined : field?.labelledBy}
+      aria-describedby={field?.describedBy}
+      aria-invalid={field?.invalid ? true : undefined}
       {...props}
     >
       <Primitive.Thumb className={styles.thumb} />

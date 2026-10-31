@@ -104,6 +104,7 @@ export function Select({
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
+            aria-labelledby={field.labelledBy}
             aria-invalid={field.invalid ? true : undefined}
             aria-describedby={field.describedBy}
             data-invalid={field.invalid ? "" : undefined}

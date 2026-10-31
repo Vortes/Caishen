@@ -1,7 +1,10 @@
 "use client";
 
-import { createContext, useId, type ReactNode } from "react";
+import { CircleAlertIcon } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
 import { Card } from "./card";
+import { FieldContext } from "./field";
+import fieldStyles from "./field.module.css";
 import styles from "./settings.module.css";
 
 // One centered column of sections, each a heading over a card of rows.
@@ -60,21 +63,16 @@ export function SettingsSection({
   );
 }
 
-// What a row tells the control inside it: the ids of the text that names
-// and describes it. Switch reads it when it has no aria-label of its own.
-export const SettingRowContext = createContext<{
-  labelId: string;
-  describedBy: string | undefined;
-} | null>(null);
-
-// A label and description first, the control at the row's end. Only the
-// control acts; clicking the text does nothing.
+// A label and description first, the control at the row's end. The row
+// names and describes the ui control inside it (TextInput, Select, Switch)
+// the way a Field does, but its label is plain text: only the control acts,
+// and clicking the text does nothing.
 export function SettingRow({
   label,
   description,
   lead,
   error,
-  htmlFor,
+  fieldError,
   below,
   children,
 }: {
@@ -85,37 +83,41 @@ export function SettingRow({
   // An action that failed, like a photo upload. An error about what someone
   // typed belongs to its field.
   error?: string | null;
-  // Names a native control by id, and gives the row's error the id
-  // `${htmlFor}-error`. Goes away in #223's second phase.
-  htmlFor?: string;
+  // What's wrong with what was typed into the row's TextInput, as a Field's
+  // error: it describes the control and marks it invalid, and is read when
+  // someone reaches the control rather than announced.
+  fieldError?: string | null;
   // Spans the card under a thin line, like a form that opens.
   below?: ReactNode;
   // The control, or several side by side.
   children?: ReactNode;
 }) {
-  const generated = useId();
-  const id = htmlFor ?? generated;
+  const id = useId();
+  const [reported, report] = useState<string | null>(null);
   const labelId = `${id}-label`;
   const descriptionId = `${id}-description`;
   const errorId = `${id}-error`;
+  const fieldErrorId = `${id}-field-error`;
+  // The screen's field error wins over the control's own message.
+  const shown = fieldError ?? reported;
   const describedBy =
-    [description && descriptionId, error && errorId]
+    [description && descriptionId, shown && fieldErrorId, error && errorId]
       .filter(Boolean)
       .join(" ") || undefined;
   const text = (
     <div className={styles.text}>
-      {htmlFor ? (
-        <label id={labelId} className={styles.label} htmlFor={htmlFor}>
-          {label}
-        </label>
-      ) : (
-        <span id={labelId} className={styles.label}>
-          {label}
-        </span>
-      )}
+      <span id={labelId} className={styles.label}>
+        {label}
+      </span>
       {description && (
         <span id={descriptionId} className={styles.description}>
           {description}
+        </span>
+      )}
+      {shown && (
+        <span id={fieldErrorId} className={fieldStyles.error}>
+          <CircleAlertIcon size={13} aria-hidden />
+          {shown}
         </span>
       )}
       {error && (
@@ -136,9 +138,18 @@ export function SettingRow({
         ) : (
           text
         )}
-        <SettingRowContext value={{ labelId, describedBy }}>
+        <FieldContext
+          value={{
+            id,
+            label: typeof label === "string" ? label : "",
+            labelledBy: labelId,
+            describedBy,
+            invalid: Boolean(shown),
+            report,
+          }}
+        >
           {children}
-        </SettingRowContext>
+        </FieldContext>
       </div>
       {below && <div className={styles.below}>{below}</div>}
     </div>

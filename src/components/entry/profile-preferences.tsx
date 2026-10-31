@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
-import { Field } from "~/components/ui/field";
 import { Select } from "~/components/ui/select";
 import {
   SettingRow,
@@ -39,14 +38,12 @@ export function ProfilePreferences({
           label="Timezone"
           description="Decides when a new month starts and when your daily email arrives."
         >
-          <div className={styles.settingControl}>
-            <Field label="Timezone" labelHidden>
-              <Select
-                value={value.timezone}
-                onChange={(timezone) => change({ timezone })}
-                options={timezoneOptions(value.timezone)}
-              />
-            </Field>
+          <div className={styles.rowWell}>
+            <Select
+              value={value.timezone}
+              onChange={(timezone) => change({ timezone })}
+              options={timezoneOptions(value.timezone)}
+            />
           </div>
         </SettingRow>
       </SettingsSection>
@@ -90,18 +87,16 @@ export function ProfilePreferences({
           label="Send at"
           description={`${value.timezone.split("/").at(-1)?.replaceAll("_", " ")} time, your budget’s timezone.`}
         >
-          <div className={styles.settingControl}>
-            <Field label="Send at" labelHidden>
-              <Select
-                value={String(value.emailHour)}
-                disabled={!value.emailEnabled}
-                onChange={(hour) => change({ emailHour: Number(hour) })}
-                options={Array.from({ length: 24 }, (_, hour) => ({
-                  value: String(hour),
-                  label: hourLabel(hour),
-                }))}
-              />
-            </Field>
+          <div className={styles.rowWell}>
+            <Select
+              value={String(value.emailHour)}
+              disabled={!value.emailEnabled}
+              onChange={(hour) => change({ emailHour: Number(hour) })}
+              options={Array.from({ length: 24 }, (_, hour) => ({
+                value: String(hour),
+                label: hourLabel(hour),
+              }))}
+            />
           </div>
         </SettingRow>
         <div className={styles.nextEmail}>
