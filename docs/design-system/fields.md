@@ -17,9 +17,12 @@ What does the person enter?
 
 ## Field
 
-Every ui input sits in a `Field`; `TextInput`, `AmountInput` and `Select`
-throw without one. The field gives its input an id, `aria-describedby` and
-`aria-invalid`, so a screen never writes them for a ui input.
+Every ui input sits in a `Field`, or in a `SettingRow`, which wires its
+control the same way ([settings.md](settings.md)); `TextInput`,
+`AmountInput` and `Select` throw without one. The field gives its input an
+id, `aria-describedby` and `aria-invalid`, so a screen never writes them
+for a ui input. Its `<label>` points at the input, so a click on the label
+focuses it.
 
 - `label`: required. `labelHidden` keeps it for screen readers only, where
   something on screen already names the field, such as a register's column
@@ -87,10 +90,19 @@ form edge to edge, so it goes outside the block that pads the fields.
 
 One line of text in the well. `value` and `onChange(value)` (always
 controlled; `name` still sends it with a form), `placeholder`, `inputMode`,
-`disabled`, `readOnly`, `inputRef`, `prefix`, `suffix`. Nothing else
-exists. No `type`, so never `type="number"`: it rejects `1,000` and shows
-spinners. `WellInput`, also exported from `text-input.tsx`, is
-`AmountInput`'s base; a screen never imports it.
+`type`, `autoComplete`, `disabled`, `readOnly`, `inputRef`, `prefix`,
+`suffix`. Nothing else exists.
+
+- `type`: `"text"` (the default), `"email"` or `"password"`, which hides
+  what's typed. Never a number: `type="number"` rejects `1,000` and shows
+  spinners, so the type doesn't allow it.
+- `autoComplete`: off by default, since autofill is noise in a payee or a
+  memo. Set it only for what the browser or a password manager should
+  fill: `"email"`, `"username"`, `"current-password"`, `"new-password"`,
+  `"one-time-code"` (`entry/account-settings.tsx`).
+
+`WellInput`, also exported from `text-input.tsx`, is `AmountInput`'s base;
+a screen never imports it.
 
 `prefix` and `suffix` are short text in the well: `"%"`, `"years"`. They
 are strings only, never an icon or a button, so every well keeps one look.

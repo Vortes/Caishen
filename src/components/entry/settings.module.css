@@ -31,9 +31,12 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
 }
-.codeInput {
+/* A code is short: a narrow well, its digits spaced apart. The hint under
+   it keeps the form's width. */
+.codeField :has(> input) {
   max-width: 160px;
-  font-variant-numeric: tabular-nums;
+}
+.codeField input {
   letter-spacing: 0.2em;
 }
 .checkRow {
@@ -124,10 +127,14 @@
 .address {
   overflow-wrap: anywhere;
 }
+/* The email's well and the button beside it; alone, the well takes the row. */
 .joinRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   gap: var(--space-inset);
+}
+.joinRow > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Timezone and the daily email */

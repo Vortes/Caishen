@@ -154,3 +154,29 @@ test("one error shown for two fields marks both invalid and describes both", () 
     expect(input.getAttribute("aria-invalid")).toBe("true");
   }
 });
+
+test("a password input hides what's typed and tells password managers what it holds", async () => {
+  const user = userEvent.setup();
+  function NewPassword() {
+    const [value, setValue] = useState("");
+    return (
+      <Field label="New password">
+        <TextInput
+          type="password"
+          autoComplete="new-password"
+          value={value}
+          onChange={setValue}
+        />
+      </Field>
+    );
+  }
+  render(<NewPassword />);
+
+  const input = screen.getByLabelText<HTMLInputElement>("New password");
+  await user.type(input, "hunter22");
+
+  expect(input.value).toBe("hunter22");
+  expect(input.type).toBe("password");
+  expect(input.autocomplete).toBe("new-password");
+  expect(screen.queryByRole("textbox")).toBeNull();
+});

@@ -1771,44 +1771,8 @@ button.actionItem:disabled {
   background: var(--overlay);
 }
 
-/* ---------- Settings ---------- */
+/* ---------- Settings navigation and the theme grid ---------- */
 
-/* Sections and rows come from ui/settings. These two stay until the field
-   modules replace the hand-built fields (#222): the budget name input, and
-   the error under the partner's email. */
-/* A form field isn't in the system yet; this follows the toolbar search. */
-.settingInput {
-  flex: 0 1 240px;
-  min-width: 0;
-  height: var(--size-control);
-  padding: 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  outline: none;
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  transition: border-color 150ms;
-}
-.settingInput:hover {
-  border-color: var(--border-strong);
-}
-.settingInput[aria-invalid="true"] {
-  border-color: var(--feedback-attention);
-}
-.root .settingInput:focus-visible {
-  outline: none;
-  border-color: var(--focus-ring);
-}
-@media (pointer: coarse) {
-  .settingInput {
-    font-size: 16px;
-  }
-}
-.settingError {
-  color: var(--feedback-attention);
-  font-size: var(--type-small);
-}
 .navHeading {
   display: flex;
   align-items: center;

@@ -46,11 +46,9 @@ doesn't follow the design system yet. Check items off as they land.
     `role="alert"` (`partner-record.tsx`, `reimbursements-register.tsx`)
     become `FormError`
 - [ ] Text inputs still drawn by hand that `TextInput` can take now:
-      `entry.module.css` `.input` (`settings/partner.tsx`,
-      `entry/account-settings.tsx`, `entry/guided-onboarding.tsx`,
+      `entry.module.css` `.input` (`entry/guided-onboarding.tsx`,
       `entry/onboarding-categories.tsx`), `account-entry.module.css`
-      `.field > input`, `banks.module.css` `.field input`, and
-      `shell.module.css` `.settingInput` (`settings/profile.tsx`)
+      `.field > input`, and `banks.module.css` `.field input`
 - [x] Toast: the undo toast after a move (`src/components/ui/toast.tsx`,
       [toasts.md](toasts.md))
 - [x] Skeleton: the app shell's loading screen

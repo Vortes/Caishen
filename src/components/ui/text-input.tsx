@@ -10,6 +10,16 @@ export type TextInputProps = {
   name?: string;
   placeholder?: string;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+  // "password" hides what's typed. Never a number: see fields.md.
+  type?: "text" | "email" | "password";
+  // For what the browser and password managers should offer; off otherwise.
+  autoComplete?:
+    | "off"
+    | "email"
+    | "username"
+    | "current-password"
+    | "new-password"
+    | "one-time-code";
   // Short text in the well, before or after the value: "$", "%", "years".
   prefix?: string;
   suffix?: string;
@@ -32,6 +42,8 @@ export function WellInput({
   name,
   placeholder,
   inputMode,
+  type = "text",
+  autoComplete = "off",
   prefix,
   suffix,
   disabled,
@@ -63,6 +75,7 @@ export function WellInput({
       <input
         ref={inputRef}
         id={field.id}
+        type={type}
         name={name}
         className={styles.input}
         value={value}
@@ -70,7 +83,7 @@ export function WellInput({
         inputMode={inputMode}
         disabled={disabled}
         readOnly={readOnly}
-        autoComplete="off"
+        autoComplete={autoComplete}
         spellCheck={false}
         aria-labelledby={field.labelledBy}
         aria-invalid={field.invalid ? true : undefined}

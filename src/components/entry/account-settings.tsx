@@ -3,15 +3,16 @@
 import { useReverification, useUser } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import type { EmailAddressResource, UserResource } from "@clerk/nextjs/types";
-import { useId, useState } from "react";
-import { text } from "~/components/budget/format";
+import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field, FormError } from "~/components/ui/field";
 import {
   SettingRow,
   SettingsDivider,
   SettingsSection,
 } from "~/components/ui/settings";
+import { TextInput } from "~/components/ui/text-input";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { useShellData } from "~/components/app-shell/shell-data";
 import batch from "./entry.module.css";
@@ -50,10 +51,12 @@ function LoadedAccountSettings({ user }: { user: UserResource }) {
 }
 
 function EmailRow({ user }: { user: UserResource }) {
-  const id = useId();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [code, setCode] = useState("");
+  // What to fix in the address or the code before anything is sent.
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [address, setAddress] = useState<EmailAddressResource | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,41 +110,53 @@ function EmailRow({ user }: { user: UserResource }) {
         open && (
           <form
             className={styles.inlineForm}
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
-              void (address ? verify() : send());
+              if (address) {
+                const problem = code.trim() ? null : "Enter the code.";
+                setCodeError(problem);
+                if (!problem) void verify();
+              } else {
+                const problem = draft.trim()
+                  ? null
+                  : "Enter your new email address.";
+                setDraftError(problem);
+                if (!problem) void send();
+              }
             }}
           >
-            <label className={batch.field} htmlFor={`${id}-email`}>
-              New email address
-              <input
-                id={`${id}-email`}
-                className={batch.input}
+            <Field label="New email address" error={draftError ?? undefined}>
+              <TextInput
                 type="email"
                 autoComplete="email"
-                required
                 value={draft}
                 disabled={Boolean(address)}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(value) => {
+                  setDraft(value);
+                  if (draftError && value.trim()) setDraftError(null);
+                }}
               />
-            </label>
+            </Field>
             {address && (
               <>
-                <p className={batch.fieldHint}>
-                  Enter the code sent to {address.emailAddress}.
-                </p>
-                <label className={batch.field} htmlFor={`${id}-code`}>
-                  Verification code
-                  <input
-                    id={`${id}-code`}
-                    className={`${batch.input} ${styles.codeInput}`}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    required
-                    value={code}
-                    onChange={(event) => setCode(event.target.value)}
-                  />
-                </label>
+                <div className={styles.codeField}>
+                  <Field
+                    label="Verification code"
+                    hint={`Sent to ${address.emailAddress}.`}
+                    error={codeError ?? undefined}
+                  >
+                    <TextInput
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={code}
+                      onChange={(value) => {
+                        setCode(value);
+                        if (codeError && value.trim()) setCodeError(null);
+                      }}
+                    />
+                  </Field>
+                </div>
                 <Button
                   size="sm"
                   variant="quiet"
@@ -152,11 +167,7 @@ function EmailRow({ user }: { user: UserResource }) {
                 </Button>
               </>
             )}
-            {error && (
-              <p className={batch.error} role="alert">
-                {error}
-              </p>
-            )}
+            {error && <FormError>{error}</FormError>}
             <div className={batch.actions} data-end>
               <Button
                 disabled={busy}
@@ -164,6 +175,8 @@ function EmailRow({ user }: { user: UserResource }) {
                   setOpen(false);
                   setAddress(null);
                   setError(null);
+                  setDraftError(null);
+                  setCodeError(null);
                 }}
               >
                 Cancel
@@ -190,6 +203,21 @@ function PasswordRow({ user }: { user: UserResource }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signOutOthers, setSignOutOthers] = useState(true);
+  const [current, setCurrent] = useState("");
+  const [password, setPassword] = useState("");
+  const [currentError, setCurrentError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const close = () => {
+    setOpen(false);
+    setCurrent("");
+    setPassword("");
+    setCurrentError(null);
+    setPasswordError(null);
+  };
+  const checkCurrent = (value: string) =>
+    value ? null : "Enter your current password.";
+  const checkPassword = (value: string) =>
+    value.length >= 8 ? null : "Use at least 8 characters.";
   const update = useReverification(
     (input: {
       currentPassword?: string;
@@ -209,21 +237,26 @@ function PasswordRow({ user }: { user: UserResource }) {
         open && (
           <form
             className={styles.inlineForm}
+            noValidate
             onSubmit={async (event) => {
               event.preventDefault();
-              const fields = new FormData(event.currentTarget);
+              const currentProblem = user.passwordEnabled
+                ? checkCurrent(current)
+                : null;
+              const passwordProblem = checkPassword(password);
+              setCurrentError(currentProblem);
+              setPasswordError(passwordProblem);
+              if (currentProblem || passwordProblem) return;
               setBusy(true);
               setError(null);
               try {
                 await update({
-                  ...(user.passwordEnabled
-                    ? { currentPassword: text(fields, "current") }
-                    : {}),
-                  newPassword: text(fields, "password"),
+                  ...(user.passwordEnabled ? { currentPassword: current } : {}),
+                  newPassword: password,
                   signOutOfOtherSessions: signOutOthers,
                 });
                 await user.reload();
-                setOpen(false);
+                close();
               } catch (caught) {
                 setError(message(caught));
               } finally {
@@ -241,28 +274,33 @@ function PasswordRow({ user }: { user: UserResource }) {
             />
             <div className={styles.passwordFields}>
               {user.passwordEnabled && (
-                <label className={batch.field}>
-                  Current password
-                  <input
-                    className={batch.input}
-                    name="current"
+                <Field
+                  label="Current password"
+                  error={currentError ?? undefined}
+                >
+                  <TextInput
                     type="password"
                     autoComplete="current-password"
-                    required
+                    value={current}
+                    onChange={(value) => {
+                      setCurrent(value);
+                      // Once wrong, it's checked as they fix it.
+                      if (currentError) setCurrentError(checkCurrent(value));
+                    }}
                   />
-                </label>
+                </Field>
               )}
-              <label className={batch.field}>
-                New password
-                <input
-                  className={batch.input}
-                  name="password"
+              <Field label="New password" error={passwordError ?? undefined}>
+                <TextInput
                   type="password"
                   autoComplete="new-password"
-                  minLength={8}
-                  required
+                  value={password}
+                  onChange={(value) => {
+                    setPassword(value);
+                    if (passwordError) setPasswordError(checkPassword(value));
+                  }}
                 />
-              </label>
+              </Field>
             </div>
             <label className={styles.checkRow}>
               <Checkbox
@@ -273,13 +311,9 @@ function PasswordRow({ user }: { user: UserResource }) {
               />
               Sign out on your other devices
             </label>
-            {error && (
-              <p className={batch.error} role="alert">
-                {error}
-              </p>
-            )}
+            {error && <FormError>{error}</FormError>}
             <div className={batch.actions} data-end>
-              <Button disabled={busy} onClick={() => setOpen(false)}>
+              <Button disabled={busy} onClick={close}>
                 Cancel
               </Button>
               <Button variant="primary" type="submit" disabled={busy}>
@@ -415,22 +449,10 @@ function DeleteAccount({ user }: { user: UserResource }) {
                   </li>
                 )}
               </ul>
-              <label className={batch.field}>
-                Type {email} to confirm
-                <input
-                  className={batch.input}
-                  value={typed}
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  onChange={(event) => setTyped(event.target.value)}
-                />
-              </label>
-              {error && (
-                <p className={batch.error} role="alert">
-                  {error}
-                </p>
-              )}
+              <Field label={`Type ${email ?? "your email"} to confirm`}>
+                <TextInput value={typed} onChange={setTyped} />
+              </Field>
+              {error && <FormError>{error}</FormError>}
               <div className={batch.actions} data-end>
                 <Button
                   disabled={busy}
