@@ -11,7 +11,7 @@ import {
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Checkbox } from "~/components/ui/checkbox";
-import { Field } from "~/components/ui/field";
+import { Field, FormError } from "~/components/ui/field";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
@@ -294,9 +294,9 @@ export function ShareChoices({
             />
           )}
           {error && (
-            <p className={`${moveStyles.error} ${styles.popoverHint}`}>
-              {error}
-            </p>
+            <div className={styles.popoverHint}>
+              <FormError>{error}</FormError>
+            </div>
           )}
           {remembered && (
             <p className={styles.popoverHint}>

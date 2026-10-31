@@ -1,7 +1,7 @@
 "use client";
 
 import { PlusIcon } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
@@ -38,7 +38,6 @@ const focusPayee = (input: HTMLInputElement | null) => {
 // It counts at once in both budgets; the payer's bank import matches it
 // when it arrives.
 export function RecordPurchase({ account }: { account: Account }) {
-  const id = useId();
   const { view, saveCommand } = useTransactionEntry();
   const you = view.budget.userId;
   const partnerId = view.members.find(
@@ -157,19 +156,15 @@ export function RecordPurchase({ account }: { account: Account }) {
         <div className={moveStyles.header}>
           <strong>Record a shared purchase</strong>
         </div>
-        <div className={moveStyles.field}>
-          <span id={`${id}-paid`}>Who paid</span>
-          <SegmentedControl
-            fill
-            aria-labelledby={`${id}-paid`}
-            value={paidBy}
-            onValueChange={setPaidBy}
-          >
-            <SegmentedControlItem value={partnerId}>
-              {account.name}
-            </SegmentedControlItem>
-            <SegmentedControlItem value={you}>You</SegmentedControlItem>
-          </SegmentedControl>
+        <div className={moveStyles.fieldSlot}>
+          <FormField label="Who paid">
+            <SegmentedControl fill value={paidBy} onValueChange={setPaidBy}>
+              <SegmentedControlItem value={partnerId}>
+                {account.name}
+              </SegmentedControlItem>
+              <SegmentedControlItem value={you}>You</SegmentedControlItem>
+            </SegmentedControl>
+          </FormField>
         </div>
         <div className={moveStyles.fieldSlot}>
           <FormField label="Payee" error={fieldMessage("payee")}>

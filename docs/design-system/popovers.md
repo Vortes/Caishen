@@ -1,7 +1,6 @@
 # Popovers
 
-Read [surfaces.md](surfaces.md) first: it covers `SurfaceProvider` and the
-motion rule.
+Read [surfaces.md](surfaces.md) first, for `SurfaceProvider` and motion.
 
 ## Popover
 
@@ -80,15 +79,15 @@ What opens it?
 ```
 
 ```tsx
-// Correct: a list under an input (transaction-fields.tsx)
+// Correct: a list under an input (search-list.tsx)
 <Popover
-  label={label}
+  label={control.label}
   size="trigger"
-  anchor={anchor}
   open={open}
   onOpenChange={(next) => {
-    if (!next) onClose();
+    if (!next) setExpanded(false);
   }}
+  anchor={<div className={field.well} data-well="">…</div>}
 >
   <div role="listbox" id={listId} aria-label={label}>…</div>
 </Popover>
@@ -110,9 +109,8 @@ What opens it?
 | `onCloseAutoFocus` | focus returns to opener | `event.preventDefault()` when the site focuses what the popover just made, like a new category |
 | `id`               | none                    | A field names the popover in `aria-controls`                                                   |
 
-Never pass `side` or `align` to dodge the window edge; the module already
-flips and shifts the surface. They express where the trigger is, not where
-there is room.
+Never pass `side` or `align` to dodge the window edge; the module flips and
+shifts the surface. They say where the trigger is, not where there is room.
 
 ### Height
 

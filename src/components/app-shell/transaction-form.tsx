@@ -227,9 +227,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const amountErrorId = `${formId}-amount-error`;
   const shownOnce = (field: DraftField) =>
     Boolean(amountError) && (field === "outflow" || field === "inflow");
-  // For the controls that aren't ui inputs; their Field shows the error.
-  const described = (field: DraftField) =>
-    fields[field] && !shownOnce(field) ? `${id(field)}-error` : undefined;
   const cell = (
     name: DraftField,
     column: string,

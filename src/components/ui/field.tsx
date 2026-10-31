@@ -38,9 +38,9 @@ export function Field({
   sharedErrorId,
   children,
 }: {
-  // Only for a control that isn't a ui input yet, such as a combobox or a
-  // date field: it takes this id and points aria-describedby at
-  // `${id}-error` and `${id}-hint` itself.
+  // A known id in place of a generated one. Its error is `${id}-error`, so
+  // a field beside it can name that error as its sharedErrorId (a target's
+  // due month and year).
   id?: string;
   label: string;
   // Read by screen readers but not shown, where something else on screen
@@ -101,6 +101,12 @@ export function useFieldControl() {
   const field = useContext(FieldContext);
   if (!field) throw new Error("A field's input needs a Field around it.");
   return field;
+}
+
+// For a control that also stands alone (SegmentedControl): the Field around
+// it, if there is one.
+export function useOptionalFieldControl() {
+  return useContext(FieldContext);
 }
 
 // Why the form couldn't be sent, above its footer. The one error that is
