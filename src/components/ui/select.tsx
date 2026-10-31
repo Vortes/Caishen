@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import { useId, useState, type KeyboardEvent, type Ref } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useFieldControl } from "./field";
 import styles from "./field.module.css";
 import { Popover } from "./popover";
@@ -10,8 +10,8 @@ export type SelectOption = { value: string; label: string };
 
 // One choice from a short list, in the field's well. It opens a list on the
 // Popover module as wide as the well; the current choice carries a check and
-// takes focus. The arrow keys move, Enter or a click picks, Escape closes,
-// and focus returns to the well. Inside a Field, which names and describes
+// takes focus. The arrow keys, Home, End and typing move, Enter or a click
+// picks, Escape closes, and focus returns to the well. Inside a Field, which names and describes
 // it; a name sends the value with the form.
 export function Select({
   value,
@@ -41,19 +41,47 @@ export function Select({
     setOpen(false);
     if (next !== value) onChange(next);
   };
-  // Focus follows the arrow keys from option to option.
-  const move = (event: KeyboardEvent<HTMLDivElement>) => {
+  // What's been typed to find an option; it clears after a pause.
+  const search = useRef({ text: "", at: 0 });
+  // The arrow keys, Home and End move focus from option to option; typing
+  // moves it to the next option that starts with what's typed. Enter, or
+  // Space when nothing is being typed, picks the focused option.
+  const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     const rows = [
       ...event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'),
     ];
     const at = rows.indexOf(document.activeElement as HTMLElement);
-    const to =
-      event.key === "ArrowDown"
-        ? Math.min(at + 1, rows.length - 1)
-        : event.key === "ArrowUp"
-          ? Math.max(at - 1, 0)
-          : null;
-    if (to === null) return;
+    const typing = Date.now() - search.current.at < 500;
+    if (!typing) search.current.text = "";
+    if (event.key === "Enter" || (event.key === " " && !typing)) {
+      event.preventDefault();
+      if (at >= 0) pick(options[at]!.value);
+      return;
+    }
+    let to: number | undefined;
+    if (event.key === "ArrowDown") to = Math.min(at + 1, rows.length - 1);
+    else if (event.key === "ArrowUp") to = Math.max(at - 1, 0);
+    else if (event.key === "Home") to = 0;
+    else if (event.key === "End") to = rows.length - 1;
+    else if (
+      event.key.length === 1 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    ) {
+      const text = search.current.text + event.key.toLowerCase();
+      search.current = { text, at: Date.now() };
+      // A first letter looks past the focused option, so pressing it again
+      // steps through the options that start with it.
+      const from = text.length === 1 ? at + 1 : Math.max(at, 0);
+      const found = [...options.keys()]
+        .map((offset) => (from + offset) % options.length)
+        .find((index) => options[index]!.label.toLowerCase().startsWith(text));
+      if (found === undefined) return;
+      to = found;
+    }
+    if (to === undefined) return;
+    if (event.key.length !== 1) search.current.text = "";
     event.preventDefault();
     rows[to]?.focus();
   };
@@ -101,7 +129,7 @@ export function Select({
           id={listId}
           aria-label={field.label}
           className={styles.list}
-          onKeyDown={move}
+          onKeyDown={keys}
         >
           {options.map((option, index) => {
             const selected = option.value === value;
@@ -117,11 +145,6 @@ export function Select({
                 onClick={() => pick(option.value)}
                 // The highlight follows the pointer as it does the arrow keys.
                 onPointerMove={(event) => event.currentTarget.focus()}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  pick(option.value);
-                }}
               >
                 <span className={styles.check}>
                   {selected && (

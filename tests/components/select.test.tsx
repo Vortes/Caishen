@@ -57,6 +57,24 @@ test("the arrow keys move through the list from the current choice, and Enter pi
   ).toBe("Tracking / brokerage");
 });
 
+test("typing jumps to the option that starts with it, and Home and End reach the ends", async () => {
+  const user = userEvent.setup();
+  render(<AccountType />);
+
+  await user.click(screen.getByRole("combobox", { name: "Account type" }));
+  await user.keyboard("tr");
+  expect(document.activeElement?.textContent).toBe("Tracking / brokerage");
+  await user.keyboard("{Home}");
+  expect(document.activeElement?.textContent).toBe("Cash / checking / savings");
+  await user.keyboard("{End}");
+  expect(document.activeElement?.textContent).toBe("Tracking / brokerage");
+  await user.keyboard("{Home}c");
+  expect(document.activeElement?.textContent).toBe("Credit card");
+  await user.keyboard("{Enter}");
+
+  expect(screen.getByRole("status").textContent).toBe("credit");
+});
+
 test("a click on an option picks it", async () => {
   const user = userEvent.setup();
   render(<AccountType />);
