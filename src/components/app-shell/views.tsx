@@ -38,6 +38,7 @@ import {
 import { motion, MotionConfig } from "motion/react";
 import { newId } from "~/components/budget/format";
 import {
+  AddGroupButton,
   AddToGroupButton,
   FirstGroupButton,
   isSystemGroup,
@@ -95,6 +96,8 @@ export function PlanView({
   onCheck,
   reveal,
   onJump,
+  addingGroup,
+  onAddingGroupChange,
 }: {
   view: PlanViewId | null;
   onSelect: (id: string) => void;
@@ -103,6 +106,9 @@ export function PlanView({
   onCheck: (ids: string[], value: boolean) => void;
   // A group or category to bring into view and focus, like one just added.
   reveal: Added | null;
+  // The Category header's add-group form, which the shell opens with N too.
+  addingGroup: boolean;
+  onAddingGroupChange: (open: boolean) => void;
 }) {
   const shell = useShellData();
   const selectionStyle = useRowSelection(checked);
@@ -480,6 +486,12 @@ export function PlanView({
               />
               <span aria-hidden>Category</span>
             </button>
+            <span className={styles.headerAdd}>
+              <AddGroupButton
+                open={addingGroup}
+                onOpenChange={onAddingGroupChange}
+              />
+            </span>
           </span>
           <span className={styles.numeric} data-optional aria-hidden>
             Assigned

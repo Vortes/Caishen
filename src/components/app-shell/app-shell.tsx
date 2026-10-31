@@ -22,7 +22,6 @@ import { AccountSummary, SearchField } from "./account";
 import type { Reconciling } from "./reconcile";
 import {
   AddCategoryProvider,
-  AddGroupButton,
   type AddCategory,
   type Added,
 } from "./add-category";
@@ -956,13 +955,6 @@ export function AppShell({
                         </AddTransactionTooltip>
                       )}
                       <div className={styles.toolbarActions}>
-                        {screen.type === "plan" && (
-                          <AddGroupButton
-                            open={addingGroup}
-                            onOpenChange={setAddingGroup}
-                            compact={phone}
-                          />
-                        )}
                         {screen.type === "register" && (
                           <SearchField
                             value={query}
@@ -1012,6 +1004,8 @@ export function AppShell({
                             onCheck={check}
                             reveal={revealed}
                             onJump={jump}
+                            addingGroup={addingGroup}
+                            onAddingGroupChange={setAddingGroup}
                           />
                         )}
                         {screen.type === "register" && (
