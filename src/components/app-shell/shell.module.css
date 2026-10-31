@@ -652,11 +652,6 @@
 .rtaCard {
   display: contents;
 }
-.rtaCardLabel {
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  font-weight: 500;
-}
 /* The same figure step as the other inspector cards (.figure): one card's
    headline, not the page's. */
 .rtaCard strong {
@@ -818,33 +813,93 @@
   overflow-y: auto;
   scrollbar-width: none;
 }
-/* The last card runs to the bottom of the panel, like Linear's. */
-.inspectorInner > :last-child {
+/* The last card runs to the bottom of the panel, like Linear's, unless
+   it's folded to its title. */
+.inspectorInner > :last-child:not(:has(> [data-open="false"])) {
   flex: 1;
 }
-.cardTitle {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 2px 2px 6px;
+/* Every card's title, and the titled parts inside a card (Cost to Be
+   Me), share one size: the body's, a step heavier. */
+.cardTitle,
+.cardSectionTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  font-weight: 500;
 }
-.cardTitle p {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
-.cardTitleRow {
+/* The title folds its card, its caret turning like the sidebar's
+   sections. */
+.cardToggle {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-height: var(--size-control-xs);
+  padding: 0 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
-.cardTitleRow h2 {
-  flex: 1;
-  margin: 0;
-  font-size: var(--type-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+.cardToggle .sectionCaret {
+  margin-left: -4px;
+  color: var(--text-tertiary);
+  transition:
+    transform 200ms var(--ease-panel),
+    color 150ms;
+}
+.cardToggle:hover .sectionCaret {
+  color: var(--text-secondary);
+}
+.cardToggle[aria-expanded="false"] .sectionCaret {
+  transform: rotate(-90deg);
+}
+/* Folding animates the card's height through a 0fr/1fr grid track, as the
+   sidebar's sections do. The content bleeds past the track so hover and
+   focus outlines aren't clipped. */
+.cardBody {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 220ms var(--ease-panel),
+    opacity 220ms var(--ease-panel);
+}
+.cardBody[data-open="false"] {
+  grid-template-rows: 0fr;
+  margin-top: -2px;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms var(--ease-panel),
+    opacity 120ms ease-out;
+}
+.cardBody > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: -2px -8px;
+  padding: 6px 8px 2px;
+  overflow: hidden;
+  transition:
+    margin 220ms var(--ease-panel),
+    padding 220ms var(--ease-panel);
+}
+/* Folded, the space under the title folds away too, and the card's gap
+   is taken back, so the title sits evenly in the card. */
+.cardBody[data-open="false"] > div {
+  margin: 0 -8px;
+  padding: 0 8px;
+  transition:
+    margin 180ms var(--ease-panel),
+    padding 180ms var(--ease-panel);
+}
+.cardSubtitle {
+  padding: 0 2px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
 }
 .titleIcon {
   flex: none;
@@ -2000,4 +2055,44 @@ button.actionItem:disabled {
 }
 .snoozeRow[data-disabled] .snoozeLabel {
   color: var(--text-secondary);
+}
+
+/* A titled part of a card, under a divider: Cost to Be Me in the month's
+   summary. */
+/* The divider and the title keep the 14px between the properties' lines. */
+.cardSection {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cardSectionTitle {
+  padding: 0 2px 6px;
+}
+/* A property's value that turns into its field to edit it, outlined on
+   hover like the Activity amount. */
+.propertyButton {
+  height: var(--size-control-xs);
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: box-shadow 150ms;
+}
+.propertyButton[data-empty] {
+  color: var(--text-tertiary);
+}
+.propertyButton:hover {
+  box-shadow: inset 0 0 0 1px var(--control-border-active);
+  color: var(--text-primary);
+}
+/* The field that replaces it, with its "$" where the value's was. */
+.inlineAmount {
+  flex: 1;
+  min-width: 0;
+  margin-left: -11px;
 }

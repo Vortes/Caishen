@@ -37,8 +37,10 @@ test("People holds the Reimbursements account in the sidebar and leads the plan 
 });
 
 const readyToAssign = () =>
-  screen.getByText("Ready to Assign").parentElement!.querySelector("strong")!
-    .textContent;
+  screen
+    .getByText("Ready to Assign")
+    .closest("section")!
+    .querySelector("strong")!.textContent;
 
 async function setFloat(
   user: Awaited<ReturnType<typeof renderShell>>["user"],

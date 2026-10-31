@@ -14,12 +14,10 @@ import {
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
-import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
 import { Skeleton } from "~/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { SurfaceProvider } from "~/components/ui/surface";
-import { Property } from "./cards";
+import { Property, SkeletonSection } from "./cards";
 import { autoAssignOptions } from "./inspector";
 import { MonthLabel } from "./month-picker";
 import { findPalette, paletteVars } from "./palettes";
@@ -228,53 +226,54 @@ export function ShellSkeleton({
                     className={styles.inspectorInner}
                     style={{ width: inspector.width }}
                   >
-                    <Card>
+                    <SkeletonSection title="Ready to Assign">
                       <div className={styles.rtaCard}>
-                        <span className={styles.rtaCardLabel}>
-                          <Skeleton width={104} />
-                        </span>
                         <Skeleton shape="figure" width={112} />
                         <div className={styles.rtaAction}>
                           <Skeleton shape="button" />
                         </div>
                       </div>
-                    </Card>
-                    <Card>
-                      {["Assigned", "Activity", "Available"].map((label) => (
-                        <Property key={label} label={label}>
-                          <Skeleton width={72} />
-                        </Property>
-                      ))}
-                    </Card>
-                    <Card>
-                      {/* The tabs every budget has, with Auto-Assign's
-                          options; only their amounts are data. */}
-                      <Tabs defaultValue="auto-assign">
-                        <TabsList aria-label="Month details">
-                          <TabsTrigger value="auto-assign">
-                            Auto-Assign
-                          </TabsTrigger>
-                          <TabsTrigger value="cost-to-be-me">
-                            Cost to Be Me
-                          </TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="auto-assign">
-                          <ul className={styles.actionList}>
-                            {autoAssignOptions.map(([option, label]) => (
-                              <li key={option}>
-                                <span className={styles.actionItem}>
-                                  <ZapIcon size={13} aria-hidden />
-                                  <span>{label}</span>
-                                  <span className={styles.numeric}>
-                                    <Skeleton width={52} />
-                                  </span>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </TabsContent>
-                      </Tabs>
-                    </Card>
+                    </SkeletonSection>
+                    {/* The summary's title holds its height until the month
+                        is known. */}
+                    <SkeletonSection
+                      title={hydrated ? `${month.split(" ")[0]}'s summary` : ""}
+                    >
+                      {["Last month", "Assigned", "Activity", "Available"].map(
+                        (label) => (
+                          <Property key={label} label={label}>
+                            <Skeleton width={72} />
+                          </Property>
+                        ),
+                      )}
+                      <div className={styles.cardSection}>
+                        <h3 className={styles.cardSectionTitle}>
+                          Cost to Be Me
+                        </h3>
+                        {["Targets", "Income"].map((label) => (
+                          <Property key={label} label={label}>
+                            <Skeleton width={72} />
+                          </Property>
+                        ))}
+                      </div>
+                    </SkeletonSection>
+                    {/* Auto-Assign's options every budget has; only their
+                        amounts are data. */}
+                    <SkeletonSection title="Auto-Assign">
+                      <ul className={styles.actionList}>
+                        {autoAssignOptions.map(([option, label]) => (
+                          <li key={option}>
+                            <span className={styles.actionItem}>
+                              <ZapIcon size={13} aria-hidden />
+                              <span>{label}</span>
+                              <span className={styles.numeric}>
+                                <Skeleton width={52} />
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </SkeletonSection>
                   </div>
                 </aside>
               </div>
