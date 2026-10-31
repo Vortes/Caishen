@@ -107,6 +107,20 @@ export function PlanView({
   const shell = useShellData();
   const selectionStyle = useRowSelection(checked);
   const [closed, setClosed] = useState<string[]>([]);
+  // A category just dropped into a folded group, which opens to show it.
+  const [landed, setLanded] = useState<{ id: string; group: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!landed) return;
+    const row = document.querySelector(
+      `[data-row][data-id="${CSS.escape(landed.id)}"]`,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+    // Long enough for the highlight to play out.
+    const timer = setTimeout(() => setLanded(null), 1000);
+    return () => clearTimeout(timer);
+  }, [landed]);
   const toggle = (id: string) =>
     setClosed((values) =>
       values.includes(id)
@@ -170,6 +184,142 @@ export function PlanView({
     },
   });
   const byId = new Map(groups.map((group) => [group.id, group]));
+  // Categories drag across the whole plan, so they're one list: each group's
+  // header, then its categories.
+  const headers = new Map(groups.map((group) => [headerKey(group.id), group]));
+  const categoryById = new Map(
+    groups.flatMap((group) =>
+      group.categories.map((category) => [category.id, category] as const),
+    ),
+  );
+  const groupOf = new Map(
+    groups.flatMap((group) =>
+      group.categories.map((category) => [category.id, group] as const),
+    ),
+  );
+  const entries = groups.flatMap((group) => [
+    headerKey(group.id),
+    ...group.categories.map((category) => category.id),
+  ]);
+  // Shut, or empty, so a drop lands on its header rather than opening it.
+  const isFolded = (group: (typeof groups)[number], id: string) =>
+    group.categories.length === 0 ||
+    (closed.includes(group.id) &&
+      group.categories.some((category) => category.id !== id));
+  const moving = useReorderDrag({
+    ids: entries,
+    enabled: categoryById.size > 0,
+    places: (id, list, by) => {
+      const source = groupOf.get(id);
+      const own = list?.querySelector<HTMLElement>(categorySlot(id));
+      if (!source || !own?.parentElement) return [];
+      // Card, loan, and partner categories stay in their group; nothing
+      // else goes into one of those groups.
+      const pinned = isSystemGroup(source);
+      const listGap = parseFloat(getComputedStyle(own.parentElement).marginTop);
+      // The dragged row stays where it was, as a placeholder, so the plan
+      // keeps its shape: each place is measured as it stands.
+      const settled = (element: HTMLElement) => offsetIn(element, list);
+      const headerOf = (group: { id: string }) =>
+        list.querySelector<HTMLElement>(
+          `[data-reorder-header="${CSS.escape(group.id)}"]`,
+        );
+      const rest = entries.filter((entry) => entry !== id);
+      return entries.map((_, index) => {
+        const before = rest[index - 1];
+        if (before === undefined) return null;
+        const group = headers.get(before) ?? groupOf.get(before);
+        if (!group || (pinned ? group !== source : isSystemGroup(group)))
+          return null;
+        if (isFolded(group, id)) {
+          // A folded group takes the drop on its header, at the group's end,
+          // and stays folded. Keys skip it, so the row stays in view.
+          const after = rest[index];
+          const last = after === undefined || headers.has(after);
+          const empty = group.categories.length === 0;
+          if (by === "keys" || !last || (headers.has(before) && !empty))
+            return null;
+          const header = headerOf(group);
+          return header && settled(header);
+        }
+        if (headers.has(before)) {
+          // The first place in an open group.
+          const header = headerOf(group);
+          return header && settled(header) + header.offsetHeight + listGap;
+        }
+        const row = list.querySelector<HTMLElement>(categorySlot(before));
+        return row && settled(row) + row.offsetHeight;
+      });
+    },
+    onDrop: (order, id, done) => {
+      const at = order.indexOf(id);
+      let from = at;
+      while (from > 0 && !headers.has(order[from]!)) from--;
+      let to = at;
+      while (to < order.length && !headers.has(order[to]!)) to++;
+      const target = headers.get(order[from]!);
+      const category = categoryById.get(id);
+      if (!target || !category) return done();
+      if (isFolded(target, id)) {
+        setClosed((values) => values.filter((value) => value !== target.id));
+        setLanded({ id, group: target.id });
+      }
+      const categoryIds = order.slice(from + 1, to);
+      const blocked =
+        category.group === target.id
+          ? add(
+              {
+                type: "category.reorder",
+                id: newId(),
+                group: target.id,
+                categoryIds,
+              },
+              `Moved ${category.name}`,
+              done,
+            )
+          : add(
+              {
+                type: "category.move",
+                id: newId(),
+                categoryId: id,
+                group: target.id,
+                categoryIds,
+              },
+              `Moved ${category.name} to ${target.name}`,
+              done,
+            );
+      if (blocked) done();
+    },
+  });
+  // Each group's categories as the drag has them.
+  const shown = new Map<string, string[]>();
+  let showing: string[] = [];
+  for (const entry of moving.order) {
+    const group = headers.get(entry);
+    if (group) shown.set(group.id, (showing = []));
+    else showing.push(entry);
+  }
+  // While a category is dragged, its group keeps it as a placeholder, and a
+  // gap opens where it would land, unless that's where it already is.
+  const draggingId = moving.drag?.id;
+  const moved =
+    draggingId !== undefined &&
+    moving.order.indexOf(draggingId) !== entries.indexOf(draggingId);
+  const rowsOf = (group: (typeof groups)[number]): PlanRow[] => {
+    const rows: PlanRow[] = (shown.get(group.id) ?? []).map((id) => ({
+      id,
+      kind: id === draggingId ? "gap" : "row",
+    }));
+    if (draggingId === undefined || groupOf.get(draggingId) !== group)
+      return rows;
+    const original = group.categories.map((category) => category.id);
+    const previous = original[original.indexOf(draggingId) - 1];
+    const at = previous
+      ? rows.findIndex((row) => row.id === previous && row.kind === "row") + 1
+      : 0;
+    rows.splice(at, 0, { id: draggingId, kind: "placeholder" });
+    return moved ? rows : rows.filter((row) => row.kind !== "gap");
+  };
   if (!shell.groups.length) {
     return (
       <Empty title="Give every dollar a job." action={<FirstGroupButton />}>
@@ -203,6 +353,14 @@ export function PlanView({
     );
   };
   const dragged = reorder.drag && byId.get(reorder.drag.id);
+  const draggedCategory = moving.drag && categoryById.get(moving.drag.id);
+  const intoFolded =
+    draggedCategory &&
+    groups.find(
+      (group) =>
+        shown.get(group.id)?.includes(draggedCategory.id) &&
+        isFolded(group, draggedCategory.id),
+    );
   // The column header's controls cover every group showing.
   const everyId = groups.flatMap((group) =>
     group.categories.map((item) => item.id),
@@ -214,7 +372,10 @@ export function PlanView({
   return (
     <MotionConfig reducedMotion="user">
       <div
-        ref={reorder.listRef}
+        ref={(node) => {
+          reorder.listRef.current = node;
+          moving.listRef.current = node;
+        }}
         className={`${styles.list} ${styles.planList} ${selectionStyles.list}`}
         {...selectionStyle.listProps}
         style={
@@ -233,7 +394,7 @@ export function PlanView({
         role="group"
         aria-label="Categories"
         data-selecting={checked.length > 0 || undefined}
-        data-dragging={reorder.drag ? true : undefined}
+        data-dragging={reorder.drag || moving.drag ? true : undefined}
         data-settling={reorder.settling || undefined}
         onKeyDown={(event) => {
           const focused =
@@ -258,8 +419,26 @@ export function PlanView({
             );
             return;
           }
-          // x toggles the focused row's checkbox, like Linear.
+          // Alt+Up and Alt+Down move the focused category, into the next
+          // group from either end of its own.
           const id = focused?.dataset.id;
+          if (
+            event.altKey &&
+            id &&
+            (event.key === "ArrowUp" || event.key === "ArrowDown")
+          ) {
+            event.preventDefault();
+            moving.nudge(id, event.key === "ArrowUp" ? -1 : 1);
+            requestAnimationFrame(() =>
+              moving.listRef.current
+                ?.querySelector<HTMLElement>(
+                  `[data-row][data-id="${CSS.escape(id)}"]`,
+                )
+                ?.focus(),
+            );
+            return;
+          }
+          // x toggles the focused row's checkbox, like Linear.
           if (event.key === "x" && id) {
             event.preventDefault();
             onCheck([id], !checked.includes(id));
@@ -316,16 +495,23 @@ export function PlanView({
           const group = byId.get(groupId);
           if (!group) return null;
           const ids = group.categories.map((item) => item.id);
+          const order = rowsOf(group);
           // A group with no categories stays folded; its header's + adds one.
-          // Every group folds while one is dragged.
+          // A dragged category doesn't open a folded group, only a drop
+          // does. Every group folds while one is dragged.
           const open =
-            ids.length > 0 && !closed.includes(group.id) && !reorder.drag;
+            order.length > 0 &&
+            !closed.includes(group.id) &&
+            !(draggingId && isFolded(group, draggingId)) &&
+            !reorder.drag;
           const count = ids.filter((id) => checked.includes(id)).length;
           return (
             <motion.div
               key={group.id}
               data-reorder-slot
-              layout={reorder.animating ? "position" : false}
+              layout={
+                reorder.animating || moving.animating ? "position" : false
+              }
               transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
             >
               {reorder.drag?.id === group.id ? (
@@ -333,6 +519,8 @@ export function PlanView({
               ) : (
                 <div
                   className={styles.rowWrap}
+                  data-reorder-header={group.id}
+                  data-drop-target={intoFolded === group || undefined}
                   onPointerDown={(event) => reorder.start(event, group.id)}
                 >
                   {ids.length > 0 && (
@@ -390,7 +578,10 @@ export function PlanView({
               )}
               {open && (
                 <PlanCategoryList
-                  group={group}
+                  rows={order}
+                  landed={landed?.group === group.id ? landed.id : null}
+                  categories={categoryById}
+                  drag={moving}
                   checked={checked}
                   selectionStyle={selectionStyle}
                   onCheck={onCheck}
@@ -401,6 +592,39 @@ export function PlanView({
             </motion.div>
           );
         })}
+        {draggedCategory && (
+          <motion.div
+            className={styles.categoryGap}
+            style={{ y: moving.gap }}
+            data-header={intoFolded ? true : undefined}
+            data-idle={moved ? undefined : true}
+            aria-hidden
+          />
+        )}
+        {draggedCategory && (
+          <motion.div
+            className={styles.categoryGhost}
+            style={{ y: moving.y }}
+            initial={{ scale: 1 }}
+            // Over a folded group it gives way to the ringed header it's
+            // going into.
+            // Sent back, it settles into its placeholder and dissolves.
+            animate={
+              intoFolded || moving.returning
+                ? { scale: moving.returning ? 1 : 0.98, opacity: 0 }
+                : { scale: 1.01, opacity: 1 }
+            }
+            transition={{
+              duration: moving.returning ? 0.18 : 0.15,
+              ease: EASE,
+            }}
+            aria-hidden
+          >
+            <div className={`${styles.columns} ${styles.row}`}>
+              <PlanCategoryContents category={draggedCategory} />
+            </div>
+          </motion.div>
+        )}
         {dragged && (
           <motion.div
             className={styles.groupGhost}
@@ -430,8 +654,13 @@ export function PlanView({
   );
 }
 
+type PlanRow = { id: string; kind: "row" | "placeholder" | "gap" };
+
 function PlanCategoryList({
-  group,
+  rows,
+  categories,
+  drag,
+  landed,
   checked,
   selectionStyle,
   onCheck,
@@ -441,67 +670,58 @@ function PlanCategoryList({
   Parameters<typeof PlanView>[0],
   "checked" | "onCheck" | "onSelect" | "onJump"
 > & {
-  group: { id: string; categories: Category[] };
+  rows: PlanRow[];
+  categories: Map<string, Category>;
+  // The plan's category drag, which can bring in a category from another
+  // group.
+  drag: ReturnType<typeof useReorderDrag>;
   selectionStyle: ReturnType<typeof useRowSelection>;
+  // The category just dropped in while the group was folded.
+  landed: string | null;
 }) {
-  const { add } = useAddCategory();
-  const byId = new Map(
-    group.categories.map((category) => [category.id, category]),
-  );
-  const reorder = useReorderDrag({
-    ids: group.categories.map((category) => category.id),
-    enabled: group.categories.length > 1,
-    onDrop: (categoryIds, id, done) => {
-      const blocked = add(
-        { type: "category.reorder", id: newId(), group: group.id, categoryIds },
-        `Moved ${byId.get(id)?.name ?? "category"}`,
-        done,
-      );
-      if (blocked) done();
-    },
-  });
-  const dragged = reorder.drag && byId.get(reorder.drag.id);
   return (
     <div
-      ref={reorder.listRef}
       className={styles.categoryList}
-      data-dragging={reorder.drag ? true : undefined}
-      onKeyDown={(event) => {
-        const focused = document.activeElement;
-        const id =
-          focused instanceof HTMLElement ? focused.dataset.id : undefined;
-        if (
-          !event.altKey ||
-          !id ||
-          (event.key !== "ArrowUp" && event.key !== "ArrowDown")
-        )
-          return;
-        event.preventDefault();
-        event.stopPropagation();
-        reorder.nudge(id, event.key === "ArrowUp" ? -1 : 1);
-        requestAnimationFrame(() =>
-          reorder.listRef.current
-            ?.querySelector<HTMLElement>(
-              `[data-row][data-id="${CSS.escape(id)}"]`,
-            )
-            ?.focus(),
-        );
-      }}
+      data-opened={landed ? true : undefined}
     >
-      {reorder.order.map((id) => {
-        const category = byId.get(id);
+      {rows.map(({ id, kind }) => {
+        const category = categories.get(id);
         if (!category) return null;
         const isChecked = checked.includes(id);
+        if (kind === "placeholder")
+          return (
+            <motion.div
+              key={`placeholder:${id}`}
+              data-reorder-slot
+              data-reorder-category={id}
+              className={styles.rowWrap}
+              layout={drag.animating ? "position" : false}
+              transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
+            >
+              <div
+                className={`${styles.columns} ${styles.row} ${styles.categoryPlaceholder}`}
+                data-returning={drag.returning || undefined}
+                aria-hidden
+              >
+                <PlanCategoryContents category={category} />
+              </div>
+            </motion.div>
+          );
+        // The gap keeps the category's key, so the row it becomes on a drop
+        // is already in place.
         return (
           <motion.div
             key={id}
             data-reorder-slot
+            data-reorder-category={kind === "row" ? id : undefined}
+            data-landed={landed === id || undefined}
             className={`${styles.rowWrap} ${selectionStyles.row}`}
             {...selectionStyle.rowProps(id)}
-            layout={reorder.animating ? "position" : false}
+            layout={drag.animating ? "position" : false}
             transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
           >
-            {reorder.drag?.id === id ? (
+            {kind === "gap" ? (
+              // Holds the place; the plan draws the gap over it.
               <div className={styles.categoryDropSlot} aria-hidden />
             ) : (
               <>
@@ -521,9 +741,9 @@ function PlanCategoryList({
                       : undefined
                   }
                   aria-keyshortcuts={
-                    reorder.enabled ? "Alt+ArrowUp Alt+ArrowDown" : undefined
+                    drag.enabled ? "Alt+ArrowUp Alt+ArrowDown" : undefined
                   }
-                  onPointerDown={(event) => reorder.start(event, id)}
+                  onPointerDown={(event) => drag.start(event, id)}
                   onClick={() => onSelect(id)}
                 >
                   <PlanCategoryContents category={category} placeholder />
@@ -548,22 +768,24 @@ function PlanCategoryList({
           </motion.div>
         );
       })}
-      {dragged && (
-        <motion.div
-          className={styles.categoryGhost}
-          style={{ y: reorder.y }}
-          initial={{ scale: 1 }}
-          animate={{ scale: 1.01 }}
-          transition={{ duration: 0.15, ease: EASE }}
-          aria-hidden
-        >
-          <div className={`${styles.columns} ${styles.row}`}>
-            <PlanCategoryContents category={dragged} />
-          </div>
-        </motion.div>
-      )}
     </div>
   );
+}
+
+const headerKey = (groupId: string) => `group:${groupId}`;
+const categorySlot = (id: string) =>
+  `[data-reorder-category="${CSS.escape(id)}"]`;
+
+// The element's top within the list, before any transform moves it.
+function offsetIn(element: HTMLElement, list: HTMLElement) {
+  let top = 0;
+  for (
+    let node: HTMLElement | null = element;
+    node && node !== list;
+    node = node.offsetParent as HTMLElement | null
+  )
+    top += node.offsetTop;
+  return top;
 }
 
 function PlanCategoryContents({

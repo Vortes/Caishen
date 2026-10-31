@@ -3,6 +3,7 @@
 import { animate, useMotionValue, useReducedMotion } from "motion/react";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -10,8 +11,8 @@ import {
 
 // Dragging a row to reorder its list, like YNAB's plan: the grabbed row
 // follows the pointer and a gap opens where it will land. On release it
-// settles into the gap. The plan drags groups or categories within a group;
-// the sidebar drags accounts within their section.
+// settles into the gap. The plan drags groups, or categories within and
+// between groups; the sidebar drags accounts within their section.
 
 // How far a press travels before it's a drag rather than a click.
 const THRESHOLD = 4;
@@ -29,26 +30,54 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
   ids,
   enabled,
   onDrop,
+  places,
 }: {
   ids: string[];
   enabled: boolean;
+  // Where the dragged row's top would sit at each index of the new order,
+  // or null where it can't go, read as the drag starts. Without it the
+  // places are evenly spaced, measured as the list changes under the drag.
+  // Keys move the row by keyboard, which can skip places a pointer can use.
+  places?: (
+    id: string,
+    list: List,
+    by: "pointer" | "keys",
+  ) => (number | null)[];
   // Saves the new order; calls done once it's saved or refused.
   onDrop: (order: string[], id: string, done: () => void) => void;
 }) {
   const listRef = useRef<List>(null);
   const y = useMotionValue(0);
+  // The top of the gap the row will land in, for lists that draw it over
+  // their rows: it slides between places with the rows around it.
+  const gap = useMotionValue(0);
+  // Where the gap goes next. It starts sliding once the rows have moved
+  // under it, so the two leave together.
+  const gapTarget = useRef<number | null>(null);
   const reduced = useReducedMotion();
   const [drag, setDrag] = useState<Drag | null>(null);
   // Pressed on a row: positions animate from here, so the fold that starts
   // a plan drag has its first frame measured.
   const [armed, setArmed] = useState(false);
   const [settling, setSettling] = useState(false);
+  // Cancelled with Escape, the dragged row on its way back.
+  const [returning, setReturning] = useState(false);
   // A dropped order, shown until the saved one arrives.
   const [held, setHeld] = useState<string[] | null>(null);
   const key = ids.join("\n");
   useEffect(() => setHeld(null), [key]);
   const cleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => cleanup.current?.(), []);
+
+  useLayoutEffect(() => {
+    const target = gapTarget.current;
+    gapTarget.current = null;
+    if (target === null) return;
+    void animate(gap, target, {
+      duration: reduced ? 0 : SETTLE_MS / 1000,
+      ease: EASE,
+    });
+  }, [drag, gap, reduced]);
 
   const save = (order: string[], id: string) => {
     if (order.every((value, index) => value === ids[index])) return;
@@ -68,29 +97,19 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
     const grab = startY - event.currentTarget.getBoundingClientRect().top;
     let pointerY = startY;
     let order: string[] | null = null;
+    let measured: (number | null)[] | null = null;
     let frame = 0;
     setArmed(true);
 
-    // Every row is the same height while dragging, so the slots are evenly
-    // spaced from the first.
-    const slots = () => {
-      const wraps = list.querySelectorAll<HTMLElement>(
-        ":scope > [data-reorder-slot]",
-      );
-      const first = wraps[0]?.offsetTop ?? 0;
-      const pitch = wraps[1] ? wraps[1].offsetTop - first : 1;
-      return { first, pitch };
-    };
+    const tops = () => measured ?? evenPlaces(list, ids.length);
     const top = () => pointerY - list.getBoundingClientRect().top - grab;
     const update = () => {
       if (!order) return;
       y.set(top());
-      const { first, pitch } = slots();
-      const index = Math.min(
-        ids.length - 1,
-        Math.max(0, Math.round((top() - first) / pitch)),
-      );
-      if (order.indexOf(id) === index) return;
+      const places = tops();
+      const index = nearest(places, top());
+      if (index < 0 || order.indexOf(id) === index) return;
+      gapTarget.current = places[index]!;
       const rest = order.filter((value) => value !== id);
       rest.splice(index, 0, id);
       order = rest;
@@ -117,6 +136,8 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
       if (!order) {
         if (Math.abs(pointerY - startY) < THRESHOLD) return;
         order = ids;
+        measured = places?.(id, list, "pointer") ?? null;
+        gap.set(tops()[ids.indexOf(id)] ?? 0);
         window.getSelection()?.removeAllRanges();
         document.body.style.userSelect = "none";
         y.set(top());
@@ -140,12 +161,15 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
       window.addEventListener("click", swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener("click", swallow, true));
       const final = keep ? order : ids;
-      if (!keep) setDrag({ id, order: ids });
-      const { first, pitch } = slots();
-      void animate(y, first + final.indexOf(id) * pitch, {
-        duration: reduced ? 0 : 0.18,
-        ease: EASE,
-      }).then(() => {
+      if (!keep) {
+        setDrag({ id, order: ids });
+        setReturning(true);
+      }
+      const target = tops()[final.indexOf(id)] ?? y.get();
+      const land = { duration: reduced ? 0 : 0.18, ease: EASE };
+      void animate(gap, target, land);
+      void animate(y, target, land).then(() => {
+        setReturning(false);
         save(final, id);
         setDrag(null);
         setSettling(true);
@@ -184,11 +208,16 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
     cleanup.current = stop;
   };
 
-  // Alt+Up and Alt+Down move a row one place, without motion.
+  // Alt+Up and Alt+Down move a row to the next place it can go, without
+  // motion.
   const nudge = (id: string, by: -1 | 1) => {
     const from = ids.indexOf(id);
-    const to = from + by;
-    if (!enabled || from < 0 || to < 0 || to >= ids.length) return;
+    if (!enabled || from < 0) return;
+    const list = listRef.current;
+    const open = list && places?.(id, list, "keys");
+    let to = from + by;
+    while (open && to >= 0 && to < ids.length && open[to] == null) to += by;
+    if (to < 0 || to >= ids.length) return;
     const order = ids.filter((value) => value !== id);
     order.splice(to, 0, id);
     save(order, id);
@@ -198,7 +227,9 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
     listRef,
     enabled,
     y,
+    gap,
     drag,
+    returning,
     settling,
     // Positions animate only around a drag.
     animating: armed || drag !== null || settling,
@@ -206,6 +237,29 @@ export function useReorderDrag<List extends HTMLElement = HTMLDivElement>({
     start,
     nudge,
   };
+}
+
+// Every row is the same height while dragging, so the places are evenly
+// spaced from the first.
+function evenPlaces(list: HTMLElement, count: number) {
+  const wraps = list.querySelectorAll<HTMLElement>(
+    ":scope > [data-reorder-slot]",
+  );
+  const first = wraps[0]?.offsetTop ?? 0;
+  const pitch = wraps[1] ? wraps[1].offsetTop - first : 1;
+  return Array.from({ length: count }, (_, index) => first + index * pitch);
+}
+
+// The index of the place closest to top, or -1 when there's none.
+function nearest(places: (number | null)[], top: number) {
+  let best = -1;
+  for (const [index, place] of places.entries())
+    if (
+      place != null &&
+      (best < 0 || Math.abs(place - top) < Math.abs(places[best]! - top))
+    )
+      best = index;
+  return best;
 }
 
 function scrollParent(element: HTMLElement) {

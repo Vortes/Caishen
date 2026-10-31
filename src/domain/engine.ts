@@ -363,6 +363,16 @@ export const commandSchema = z.discriminatedUnion("type", [
     group: z.string().max(120),
     categoryIds: z.array(identifier).max(500),
   }),
+  // Moves a category into another group, then orders that group's
+  // categories like category.reorder. The group it leaves keeps its place in
+  // the plan, even with nothing left in it.
+  z.object({
+    type: z.literal("category.move"),
+    id: identifier,
+    categoryId: identifier,
+    group: z.string().max(120),
+    categoryIds: z.array(identifier).max(500),
+  }),
   z.object({
     type: z.literal("category.add"),
     id: identifier,
@@ -1216,6 +1226,23 @@ function ensureNoCounterpartyEntries(budget: Budget): void {
     )
   )
     fail(directEntryAccountMessage);
+}
+
+// Category groups in plan order: the named ones first, then those known only
+// through their categories, in category order. People, which holds the
+// paired envelopes, leads until it's been named.
+export function planGroups(budget: Budget): string[] {
+  const groups = [
+    ...new Set([
+      ...(budget.groups ?? []),
+      ...budget.categories.map((category) => category.group),
+    ]),
+  ];
+  const people = budget.categories.find(
+    (category) => category.counterpartyAccountId,
+  )?.group;
+  if (!people || budget.groups?.includes(people)) return groups;
+  return [people, ...groups.filter((name) => name !== people)];
 }
 
 // The items in the order the ids name them. They trade places among
@@ -3052,6 +3079,7 @@ function executeAccountingState<T extends AccountingState>(
     "group.add",
     "group.reorder",
     "category.reorder",
+    "category.move",
     "category.add",
     "category.import",
     "settings.update",
@@ -3713,6 +3741,41 @@ function applyCommand(
         ...named,
         ...current.filter((name) => !named.includes(name)),
       ];
+      break;
+    }
+    case "category.move": {
+      const category = getCategory(budget, command.categoryId);
+      const paired = (item: Category) =>
+        Boolean(
+          item.pairedAccountId ??
+          item.pairedLoanId ??
+          item.counterpartyAccountId,
+        );
+      if (category.group !== command.group) {
+        if (paired(category))
+          fail("Payment and partner categories stay in their group");
+        const members = budget.categories.filter(
+          (item) => item.group === command.group,
+        );
+        if (members.length > 0 && members.every(paired))
+          fail("That group can't hold your own categories");
+        const groups = planGroups(budget);
+        if (!groups.includes(command.group))
+          fail("Category group doesn't exist");
+        // Groups known only through their categories would shift, or vanish,
+        // as one leaves; naming every group keeps them where they are.
+        changes.groups(budget);
+        budget.groups = groups;
+        changes.category(budget, category).group = command.group;
+      }
+      const ids = command.categoryIds.filter((id) =>
+        budget.categories.some(
+          (item) => item.id === id && item.group === command.group,
+        ),
+      );
+      budget.categories = reorder(budget.categories, ids, (item) =>
+        changes.category(budget, item),
+      );
       break;
     }
     case "category.reorder": {
