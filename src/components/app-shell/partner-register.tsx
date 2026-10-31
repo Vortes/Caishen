@@ -597,6 +597,9 @@ export function PartnerRegister({
             onMouseDown={(event) => {
               // Shift would otherwise extend a text selection across rows.
               if (checkable && event.shiftKey) event.preventDefault();
+              // A double-click would select a word, and the click handler
+              // would take it for a text selection and not open the entry.
+              if (event.detail > 1) event.preventDefault();
             }}
           >
             {checkable && (

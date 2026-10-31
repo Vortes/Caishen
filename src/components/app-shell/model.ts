@@ -28,6 +28,7 @@ import {
   isCleared,
   isCounterparty,
   isPending,
+  planGroups,
   type Target,
 } from "~/domain/engine";
 
@@ -469,30 +470,15 @@ export function toShellData(
     };
   });
 
-  // The budget's ordered groups lead; the rest follow in the order their
-  // categories were added.
-  const groups: CategoryGroup[] = (view.budget.groups ?? []).map((name) => ({
+  const groups: CategoryGroup[] = planGroups(view.budget).map((name) => ({
     id: name,
     name,
     categories: [],
   }));
-  for (const category of categories) {
-    const group = groups.find((entry) => entry.name === category.group);
-    if (group) group.categories.push(category);
-    else
-      groups.push({
-        id: category.group,
-        name: category.group,
-        categories: [category],
-      });
-  }
-  // People, which holds the paired envelopes, leads the plan until it's
-  // been moved.
-  const people = groups.find((group) =>
-    group.categories.some((category) => category.pairs),
-  );
-  if (people && !view.budget.groups?.includes(people.name))
-    groups.unshift(...groups.splice(groups.indexOf(people), 1));
+  for (const category of categories)
+    groups
+      .find((group) => group.name === category.group)
+      ?.categories.push(category);
 
   const active = view.budget.transactions.filter((item) => !item.removed);
   const imported = balanceImports(view.budget, state.imports, todayKey);

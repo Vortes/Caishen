@@ -1246,12 +1246,19 @@ button.actionItem:disabled {
   color: var(--text-tertiary);
   font-weight: 400;
 }
+/* The column header's + adds a category group. */
+.headerAdd {
+  display: flex;
+  flex: none;
+  margin-left: -4px;
+}
 /* The column header's caret folds or opens every group. */
 .columnHeader .groupToggle:hover {
   color: var(--text-secondary);
 }
-/* Dragging a group to reorder the plan. The dragged header follows the
-   pointer above the list; a recessed gap shows where it will land. */
+/* Dragging a group to reorder the plan, or a category within or between
+   groups. The dragged row follows the pointer above the list; a recessed gap
+   shows where it will land. */
 .planList {
   position: relative;
 }
@@ -1262,21 +1269,61 @@ button.actionItem:disabled {
   padding-left: 20px;
 }
 .planList[data-dragging],
-.planList[data-dragging] *,
-.categoryList[data-dragging],
-.categoryList[data-dragging] * {
+.planList[data-dragging] * {
   cursor: grabbing;
 }
-.planList[data-dragging] [data-reorder-slot],
-.categoryList[data-dragging] > [data-reorder-slot] {
+.planList[data-dragging] [data-reorder-slot] {
   pointer-events: none;
 }
 .dropSlot,
-.categoryDropSlot {
+.categoryDropSlot,
+.categoryGap {
   height: var(--size-row-lg);
+}
+.dropSlot,
+.categoryGap {
   border-radius: 6px;
   background: var(--surface-app);
   box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+/* Over a folded group, the gap becomes a ring around its header: the
+   category goes in without the group opening. */
+.categoryGap[data-header] {
+  background: transparent;
+}
+/* Where the dragged category is now, there's no gap to show: its
+   placeholder marks the place. */
+.categoryGap[data-idle] {
+  opacity: 0;
+}
+.categoryGap {
+  transition:
+    background-color 150ms var(--ease-panel),
+    opacity 150ms var(--ease-panel);
+}
+/* The dragged category's row stays in its group, dimmed, until it's dropped
+   somewhere else; sent back with Escape, it brightens as the ghost settles
+   into it. */
+.categoryPlaceholder {
+  opacity: 0.35;
+  transition: opacity 180ms var(--ease-panel);
+}
+.categoryPlaceholder[data-returning] {
+  opacity: 1;
+}
+.rowWrap[data-drop-target] .groupRow {
+  color: var(--text-primary);
+}
+/* A category's gap is drawn over the list, so it slides from place to place,
+   and from group to group, with the rows that make room for it. */
+.categoryGap {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 16px;
+  left: 16px;
+  pointer-events: none;
+  will-change: transform;
 }
 .dropSlot {
   margin-top: 4px;
@@ -1291,10 +1338,6 @@ button.actionItem:disabled {
   left: 16px;
   pointer-events: none;
   will-change: transform;
-}
-.categoryGhost {
-  right: 0;
-  left: 0;
 }
 .categoryGhost .row {
   background: var(--surface-raised);
@@ -1314,13 +1357,33 @@ button.actionItem:disabled {
 .planList[data-settling] .rowWrap:has(> .row) {
   animation: rowsIn 200ms 60ms var(--ease-panel) both;
 }
+/* A folded group a category was dropped into opens the same way, and the
+   category it took lights up briefly to show where it went. */
+.categoryList[data-opened] > .rowWrap {
+  animation: rowsIn 200ms 60ms var(--ease-panel) both;
+}
+.rowWrap[data-landed] > .row {
+  animation: landed 900ms var(--ease-selection) both;
+}
 @keyframes rowsIn {
   from {
     opacity: 0;
   }
 }
+@keyframes landed {
+  0%,
+  30% {
+    background: color-mix(in oklch, var(--accent-solid) 16%, transparent);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .planList[data-settling] .rowWrap:has(> .row) {
+  .categoryGap,
+  .categoryPlaceholder {
+    transition: none;
+  }
+  .planList[data-settling] .rowWrap:has(> .row),
+  .categoryList[data-opened] > .rowWrap,
+  .rowWrap[data-landed] > .row {
     animation: none;
   }
 }

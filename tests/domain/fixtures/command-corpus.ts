@@ -430,6 +430,18 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
   jordan({ type: "category.delete", categoryId: "vet", moveTo: "household" });
   jordan({ type: "group.delete", group: "Animals" });
   jordan({
+    type: "category.add",
+    categoryId: "garden",
+    name: "Garden",
+    group: "Home",
+  });
+  jordan({
+    type: "category.move",
+    categoryId: "household",
+    group: "Home",
+    categoryIds: ["household", "garden"],
+  });
+  jordan({
     type: "loan.add",
     loanId: "bike",
     categoryId: "bike-loan",
