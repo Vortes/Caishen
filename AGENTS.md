@@ -16,3 +16,4 @@ Read the relevant guides before doing that work:
 - Changing how budgeting works: [Budgeting](docs/agents/budgeting.md).
 - Building or changing UI, or running E2E tests: [UI review and E2E approval](docs/agents/ui-review.md).
 - Writing or changing tests: [Testing](docs/agents/testing.md).
+- Grilling the user before a spec: [Grilling](docs/agents/grilling.md).
