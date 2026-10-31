@@ -357,6 +357,20 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: identifier,
     names: z.array(z.string().max(120)).max(500),
   }),
+  // Groups are known by name, so the categories in it take the new one.
+  z.object({
+    type: z.literal("group.rename"),
+    id: identifier,
+    group: z.string().max(120),
+    name: z.string().trim().min(1).max(120),
+  }),
+  // Deletes a group and its categories, as category.delete does each one.
+  z.object({
+    type: z.literal("group.delete"),
+    id: identifier,
+    group: z.string().max(120),
+    moveTo: identifier.optional(),
+  }),
   z.object({
     type: z.literal("category.reorder"),
     id: identifier,
@@ -369,6 +383,20 @@ export const commandSchema = z.discriminatedUnion("type", [
     categoryId: identifier,
     name: z.string().min(1).max(120),
     group: z.string().max(120).default("Everyday"),
+  }),
+  z.object({
+    type: z.literal("category.rename"),
+    id: identifier,
+    categoryId: identifier,
+    name: z.string().trim().min(1).max(120),
+  }),
+  // Deletes a category the user made. One with transactions or assigned
+  // money names the category that takes them over.
+  z.object({
+    type: z.literal("category.delete"),
+    id: identifier,
+    categoryId: identifier,
+    moveTo: identifier.optional(),
   }),
   z.object({
     type: z.literal("category.import"),
@@ -1095,6 +1123,131 @@ export const ownBudget = (book: AccountingState, userId: string): Budget =>
 const getAccount = (budget: Budget, id: string): Account =>
   budget.accounts.find((account) => account.id === id) ??
   fail("Account access denied");
+// A category the user made, which they may rename or delete. Caishen names
+// and keeps the ones it pairs with a card, a loan, or a counterparty.
+function editableCategory(budget: Budget, id: string): Category {
+  const category = getCategory(budget, id);
+  if (!spendingCategory(category))
+    fail("Caishen names this category after its account");
+  return category;
+}
+// Every category group in the budget, including ones with no categories.
+function groupNames(budget: Budget): string[] {
+  return [
+    ...new Set([
+      ...(budget.groups ?? []),
+      ...budget.categories.map((category) => category.group),
+    ]),
+  ];
+}
+// A group's categories, when the user may rename or delete the group.
+function editableGroup(budget: Budget, group: string): Category[] {
+  if (!groupNames(budget).includes(group)) fail("Category group not found");
+  const categories = budget.categories.filter(
+    (category) => category.group === group,
+  );
+  if (!categories.every(spendingCategory))
+    fail("Caishen keeps this group for its accounts");
+  return categories;
+}
+// The categories something the budget recorded still names: deleting one
+// then needs a category to take that history over.
+export function categoriesWithHistory(
+  budget: Pick<Budget, "transactions" | "assignments" | "partnerSides">,
+): Set<string> {
+  const used = new Set<string>();
+  const add = (id: string | undefined) => {
+    if (id !== undefined) used.add(id);
+  };
+  for (const transaction of budget.transactions) {
+    add(transaction.categoryId);
+    for (const line of transaction.lines ?? []) add(line.categoryId);
+  }
+  for (const assignment of budget.assignments)
+    if (assignment.amount) add(assignment.categoryId);
+  for (const side of Object.values(budget.partnerSides ?? {}))
+    add(side.categoryId);
+  return used;
+}
+// Removes categories with their targets. Their history must have somewhere
+// to go, like YNAB: a category with any asks for one that takes it over.
+function deleteCategories(
+  changes: Changes,
+  budget: Budget,
+  categories: Category[],
+  moveTo?: string,
+): void {
+  const ids = new Set(categories.map((category) => category.id));
+  const history = categoriesWithHistory(budget);
+  const used = categories.find((category) => history.has(category.id));
+  if (used && !moveTo)
+    fail(
+      `Choose a category for ${used.name}'s transactions and assigned money`,
+    );
+  if (moveTo) moveCategoryHistory(changes, budget, ids, moveTo);
+  // A row's sort is its position, so everything after the first removal
+  // moves up.
+  const from = <T>(items: T[], removed: (item: T) => boolean) => {
+    const index = items.findIndex(removed);
+    return index < 0 ? [] : items.slice(index);
+  };
+  for (const category of from(budget.categories, (item) => ids.has(item.id)))
+    changes.category(budget, category);
+  budget.categories = budget.categories.filter((item) => !ids.has(item.id));
+  for (const assignment of from(budget.assignments, (item) =>
+    ids.has(item.categoryId),
+  ))
+    changes.assignment(budget, assignment.categoryId, assignment.month);
+  budget.assignments = budget.assignments.filter(
+    (assignment) => !ids.has(assignment.categoryId),
+  );
+  for (const [key, memory] of Object.entries(budget.payeeMemory ?? {}))
+    if (memory.categoryId && ids.has(memory.categoryId))
+      delete changes.payeeMemory(budget, key)[key];
+}
+// Every transaction, split line, month's assigned money, payee memory, and
+// partner side that names the categories now names `moveTo`.
+function moveCategoryHistory(
+  changes: Changes,
+  budget: Budget,
+  ids: Set<string>,
+  moveTo: string,
+): void {
+  if (ids.has(moveTo) || !spendingCategory(getCategory(budget, moveTo)))
+    fail("Move them to another category");
+  const moved = (id: string | undefined) =>
+    id !== undefined && ids.has(id) ? moveTo : id;
+  for (const transaction of budget.transactions) {
+    if (
+      moved(transaction.categoryId) === transaction.categoryId &&
+      !transaction.lines?.some((line) => ids.has(line.categoryId ?? ""))
+    )
+      continue;
+    changes.transaction(budget, transaction);
+    transaction.categoryId = moved(transaction.categoryId);
+    for (const line of transaction.lines ?? [])
+      line.categoryId = moved(line.categoryId);
+  }
+  for (const assignment of [...budget.assignments]) {
+    if (!ids.has(assignment.categoryId) || !assignment.amount) continue;
+    const existing = changes.assignment(budget, moveTo, assignment.month);
+    if (existing) existing.amount = safe(existing.amount + assignment.amount);
+    else
+      changes.addAssignment(budget, {
+        ...assignment,
+        categoryId: moveTo,
+      });
+  }
+  for (const [key, memory] of Object.entries(budget.payeeMemory ?? {}))
+    if (memory.categoryId && ids.has(memory.categoryId))
+      changes.payeeMemory(budget, key)[key] = { ...memory, categoryId: moveTo };
+  for (const [entryId, side] of Object.entries(budget.partnerSides ?? {}))
+    if (side.categoryId && ids.has(side.categoryId))
+      changes.partnerSide(budget, entryId)[entryId] = {
+        ...side,
+        categoryId: moveTo,
+      };
+}
 const getCategory = (budget: Budget, id: string): Category =>
   budget.categories.find((category) => category.id === id) ??
   fail("Category access denied");
@@ -3051,8 +3204,12 @@ function executeAccountingState<T extends AccountingState>(
     "account.reorder",
     "group.add",
     "group.reorder",
+    "group.rename",
+    "group.delete",
     "category.reorder",
     "category.add",
+    "category.rename",
+    "category.delete",
     "category.import",
     "settings.update",
     "income.expect",
@@ -3715,6 +3872,35 @@ function applyCommand(
       ];
       break;
     }
+    case "group.rename": {
+      const categories = editableGroup(budget, command.group);
+      if (
+        groupNames(budget).some(
+          (name) =>
+            name !== command.group &&
+            name.toLowerCase() === command.name.toLowerCase(),
+        )
+      )
+        fail("Category group already exists");
+      changes.groups(budget);
+      budget.groups = budget.groups?.map((name) =>
+        name === command.group ? command.name : name,
+      );
+      for (const category of categories)
+        changes.category(budget, category).group = command.name;
+      break;
+    }
+    case "group.delete": {
+      deleteCategories(
+        changes,
+        budget,
+        editableGroup(budget, command.group),
+        command.moveTo,
+      );
+      changes.groups(budget);
+      budget.groups = budget.groups?.filter((name) => name !== command.group);
+      break;
+    }
     case "category.reorder": {
       const ids = command.categoryIds.filter((id) =>
         budget.categories.some(
@@ -3736,6 +3922,27 @@ function applyCommand(
         name: command.name,
         group: command.group,
       });
+      break;
+    }
+    case "category.rename": {
+      const category = editableCategory(budget, command.categoryId);
+      const taken = budget.categories.find(
+        (item) =>
+          item !== category &&
+          item.group === category.group &&
+          item.name.toLowerCase() === command.name.toLowerCase(),
+      );
+      if (taken) fail(`${category.group} already has ${taken.name}`);
+      changes.category(budget, category).name = command.name;
+      break;
+    }
+    case "category.delete": {
+      deleteCategories(
+        changes,
+        budget,
+        [editableCategory(budget, command.categoryId)],
+        command.moveTo,
+      );
       break;
     }
     case "category.import": {

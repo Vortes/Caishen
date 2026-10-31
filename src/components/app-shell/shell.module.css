@@ -1221,6 +1221,10 @@ button.actionItem:disabled {
   font: inherit;
   cursor: pointer;
 }
+/* The caret alone folds a group whose name renames it. */
+.groupToggle.caretOnly {
+  padding-right: 0;
+}
 .groupAdd {
   display: flex;
   flex: none;
