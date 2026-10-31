@@ -35,24 +35,27 @@ you use.
 
 ## Topics
 
-| File                       | Covers                                                         |
-| -------------------------- | -------------------------------------------------------------- |
-| [tokens.md](tokens.md)     | Colors, surfaces, text, borders, money states, feedback        |
-| [scale.md](scale.md)       | Type sizes, control and row heights, radii, motion             |
-| [spacing.md](spacing.md)   | Layout tokens; padding and gaps inside a component by role     |
-| [buttons.md](buttons.md)   | `Button`, `IconButton`                                         |
-| [fields.md](fields.md)     | `Field`, `TextInput`, `FieldButton`, `FormError`, `FormFooter` |
-| [amounts.md](amounts.md)   | `AmountInput`, `readAmount`, the operator row                  |
-| [selects.md](selects.md)   | `Select`                                                       |
-| [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`; which to use |
-| [rows.md](rows.md)         | Shared row-selection outline, grouping, states, motion         |
-| [labels.md](labels.md)     | `Tag`, the review dot                                          |
-| [surfaces.md](surfaces.md) | `Card`, `Tooltip`, `SurfaceProvider`, surface motion           |
-| [popovers.md](popovers.md) | `Popover`: sizes, trigger or anchor, height                    |
-| [menus.md](menus.md)       | `Menu`, `MenuItem`, `MenuRadioGroup`, `MenuSub`                |
-| [dialogs.md](dialogs.md)   | `Dialog`, `DialogHeader`, `DialogScrim`, `ConfirmDialog`       |
-| [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                         |
-| [loading.md](loading.md)   | `Skeleton`, and which loading state to use                     |
+| File                               | Covers                                                         |
+| ---------------------------------- | -------------------------------------------------------------- |
+| [tokens.md](tokens.md)             | Colors, surfaces, text, borders, money states, feedback        |
+| [scale.md](scale.md)               | Type sizes, control and row heights, radii, motion             |
+| [spacing.md](spacing.md)           | Layout tokens; padding and gaps inside a component by role     |
+| [buttons.md](buttons.md)           | `Button`, `IconButton`                                         |
+| [fields.md](fields.md)             | `Field`, `FieldButton`, `FormError`, `FormFooter`; which input |
+| [text-inputs.md](text-inputs.md)   | `TextInput`                                                    |
+| [amounts.md](amounts.md)           | `AmountInput`, `readAmount`, the operator row                  |
+| [selects.md](selects.md)           | `Select`                                                       |
+| [search-lists.md](search-lists.md) | `SearchList`, `SearchSuggestions`; which to use                |
+| [dates.md](dates.md)               | `DateField`                                                    |
+| [choices.md](choices.md)           | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`; which to use |
+| [rows.md](rows.md)                 | Shared row-selection outline, grouping, states, motion         |
+| [labels.md](labels.md)             | `Tag`, the review dot                                          |
+| [surfaces.md](surfaces.md)         | `Card`, `Tooltip`, `SurfaceProvider`, surface motion           |
+| [popovers.md](popovers.md)         | `Popover`: sizes, trigger or anchor, height                    |
+| [menus.md](menus.md)               | `Menu`, `MenuItem`, `MenuRadioGroup`, `MenuSub`                |
+| [dialogs.md](dialogs.md)           | `Dialog`, `DialogHeader`, `DialogScrim`, `ConfirmDialog`       |
+| [toasts.md](toasts.md)             | `Toast`, `ToastRegion`                                         |
+| [loading.md](loading.md)           | `Skeleton`, and which loading state to use                     |
 
 ## Not in the system yet
 
@@ -66,10 +69,6 @@ the screen needs the missing primitive. Never invent a new primitive inline.
   selection styling must follow [rows.md](rows.md).
 - **Navigation**: sidebar items and section headings, breadcrumbs, the
   Spending Breakdown / Trends report tabs.
-- **Comboboxes and date inputs**: a list searched by typing (category,
-  payee, the move-money destination) and a date field still draw their own
-  well. Put one in a `Field` with an `id` ([fields.md](fields.md#field));
-  every other field is a `TextInput`, `AmountInput` or `Select`.
 - **Base styles**: the focus ring (`--focus-ring`, 2px) and the button font
   reset live in the shell's root class, not globally. A screen outside the
   app shell has to repeat them.

@@ -3,8 +3,9 @@
 `src/components/ui/select.tsx`, built on the [`Popover`](popovers.md)
 module at `size="trigger"`. Use for one value from a fixed list in a form:
 an account type, a month, a weekday. A list the person searches by typing
-(a category, the move-money destination) is a combobox, which isn't in the
-system yet. A list of actions is a [`Menu`](menus.md).
+(a category, the move-money destination) is a
+[`SearchList`](search-lists.md). A list of actions is a
+[`Menu`](menus.md).
 
 `value`, `onChange(value)`, `options` (`{ value, label }[]`), `name` (a
 hidden input sends the value with the form), `placeholder` (shown while the

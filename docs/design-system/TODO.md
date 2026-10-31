@@ -10,7 +10,7 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] `NavItem`: sidebar items, section headings, budget switcher, Settings
       (`sidebar.tsx`)
 - [ ] Menu row: date presets (`reflect/filters.tsx`), auto-assign items
-      (`inspector.tsx`), the move-money destination options (`move-money.tsx`)
+      (`inspector.tsx`)
 - [ ] Breadcrumbs (`reflect/reflect-view.tsx`)
 - [ ] Header tabs: Spending Breakdown / Trends, and decide whether they become
       a `Tabs` variant or take the pill look (`app-shell.tsx`)
@@ -22,31 +22,14 @@ doesn't follow the design system yet. Check items off as they land.
 - [x] Text field: `Field`, `TextInput`, `AmountInput`, `FormError`,
       `FormFooter` (`src/components/ui/`, [fields.md](fields.md),
       [amounts.md](amounts.md))
-- [ ] Combobox and date input: a shared search box and date field. Until
-      then these controls draw their own well; delete each rule once its
-      controls move:
-  - `transaction-entry.module.css` `.well`, `.input`, `.chevron`: the
-    register editor's category and account comboboxes (`ChoiceField` in
-    `transaction-fields.tsx`)
-  - `move-money.module.css` `.search`: the move-money destination
-    (`move-money.tsx`) and the new category or group name
-    (`add-category.tsx`)
-  - `move-money.module.css` `.amountInput`: the "Who owes it" input
-    (`transaction-category-field.tsx`), the "Half" button
-    (`partner-record.tsx`), and the reimbursement date
-    (`reimbursements-register.tsx`)
-  - `move-money.module.css` `.field`, `.error`: the hand-built field around
-    those controls and `ChoiceField` (`partner-record.tsx`,
-    `reimbursements-register.tsx`), and error text under them
-    (`transaction-category-field.tsx`, `partner-register.tsx`). The form
-    errors drawn with `.error` and `role="alert"` (`partner-record.tsx`,
-    `reimbursements-register.tsx`) become `FormError`
-- [ ] Text inputs still drawn by hand that `TextInput` can take now:
-      `entry.module.css` `.input` (`settings/partner.tsx`,
-      `entry/account-settings.tsx`, `entry/guided-onboarding.tsx`,
-      `entry/onboarding-categories.tsx`), `account-entry.module.css`
-      `.field > input`, `banks.module.css` `.field input`, and
-      `shell.module.css` `.settingInput` (`settings/profile.tsx`)
+- [x] Combobox and date input: `SearchList`, `SearchSuggestions` and
+      `DateField` (`src/components/ui/`, [search-lists.md](search-lists.md),
+      [dates.md](dates.md)); the well-shaped buttons are `FieldButton`
+      ([fields.md](fields.md#fieldbutton)). The register's, move money's
+      and the partner forms' own wells, lists and hand-built fields are
+      deleted
+- [x] Text inputs still drawn by hand that `TextInput` can take now
+      ([text-inputs.md](text-inputs.md))
 - [x] Toast: the undo toast after a move (`src/components/ui/toast.tsx`,
       [toasts.md](toasts.md))
 - [x] Skeleton: the app shell's loading screen
@@ -78,9 +61,8 @@ doesn't follow the design system yet. Check items off as they land.
       (`reflect/reflect.module.css`, `.sliceLabel[data-dim]`)
 - [ ] `--surface-group` used for things that aren't group or date headers:
       the settings zone hint (`entry/settings.module.css`, `.zoneHint`), the
-      disabled amount well (`transaction-entry.module.css`,
-      `.well[data-disabled]`), and the reconcile icon
-      (`reconcile.module.css`, `.icon`)
+      disabled well (`ui/field.module.css`, `.well[data-disabled]`), and the
+      reconcile icon (`reconcile.module.css`, `.icon`)
 
 ## Gaps found by testing the docs with a fresh agent
 

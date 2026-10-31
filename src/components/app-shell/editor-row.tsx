@@ -53,8 +53,8 @@ export function EditorForm({
 
 // A field in the editor row, under its column. The column header names it
 // on screen and the field's label names it for screen readers; on a phone,
-// where the row stacks, a caption above it names it on screen. id is the control's when it isn't a ui input, such as a
-// list; it points aria-describedby at `${id}-error` itself.
+// where the row stacks, a caption above it names it on screen. id is the
+// field's; see Field.
 export function EditorCell({
   column,
   label,

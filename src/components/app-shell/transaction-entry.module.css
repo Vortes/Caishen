@@ -1,5 +1,4 @@
-/* The transaction editor, in a register row. Amounts and the date are ui
-   fields; the lists draw the same filled well here. */
+/* The transaction editor, in a register row. Its fields are ui fields. */
 
 /* The row rises into a card where it stood, so opening it moves no text:
    the card starts at the row's top and its fields fill the row's band. */
@@ -38,14 +37,10 @@
    padding, so what's typed starts where the row's text did. Amounts are
    right-aligned, so their cells grow to the right, as far as wells can and
    still sit 8px apart. */
-.entryRow .well,
-.entryRow [data-well]:not([data-align="end"]) {
-  margin-left: -8px;
-  padding-left: 7px;
-}
-/* A ui well is as wide as its cell; with the reach it grows by 8px. */
 .entryRow [data-well]:not([data-align="end"]) {
   width: calc(100% + 8px);
+  margin-left: -8px;
+  padding-left: 7px;
 }
 .entryRow
   > .cell:not(.staticCell):is(
@@ -118,13 +113,10 @@
   .entryRow input {
     scroll-margin-block-start: calc(var(--size-row-md) + var(--size-row-lg));
   }
-  .entryRow .well,
-  .entryRow [data-well]:not([data-align="end"]) {
-    margin-inline: 0;
-    padding-inline: 10px;
-  }
   .entryRow [data-well]:not([data-align="end"]) {
     width: 100%;
+    margin-inline: 0;
+    padding-inline: 10px;
   }
   .entryRow
     > .cell:not(.staticCell):is(
@@ -157,65 +149,6 @@
   }
 }
 
-/* A filled well, like the shell's controls, with a ring on focus. */
-.well {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: var(--size-control);
-  padding: 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  background: var(--control-bg);
-  color: var(--text-primary);
-  transition: border-color 150ms;
-}
-.well:focus-within {
-  border-color: var(--focus-ring);
-}
-/* Keyboard focus adds the shell's 2px ring, laid over the border so it
-   reads as one ring. */
-.well:has(.input:focus-visible) {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -1px;
-}
-.well[data-invalid] {
-  border-color: var(--field-error-line);
-}
-.input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-}
-/* The well draws the focus ring, in place of the shell's own. */
-.well .input:focus-visible {
-  outline: none;
-}
-.input::placeholder {
-  color: var(--text-tertiary);
-}
-.input:disabled {
-  cursor: not-allowed;
-}
-.input[role="combobox"]:not(:disabled) {
-  cursor: pointer;
-}
-.input[role="combobox"][aria-expanded="true"] {
-  cursor: text;
-}
-.chevron {
-  flex: none;
-  color: var(--text-tertiary);
-  pointer-events: none;
-}
 .amountError,
 .formError {
   display: flex;
@@ -246,77 +179,13 @@
   text-wrap: pretty;
 }
 
-/* The list inside its popover; only the options scroll, within the room
-   the popover has. */
-.listOptions {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  max-height: 18rem;
-  padding: 4px;
-}
-.listScroll {
-  min-height: 0;
-  overflow-y: auto;
-}
-.group {
-  padding: 8px 8px 4px;
-  color: var(--text-tertiary);
-  font-size: var(--type-caption);
-  font-weight: 500;
-}
-.option {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: var(--size-row-sm);
-  padding: 0 8px 0 4px;
-  border-radius: var(--radius-row);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.optionLabel {
-  flex: 1;
-}
-.option[data-active] {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-.option[aria-selected="true"] {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-.check {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 16px;
-  color: var(--accent-solid);
-}
-
-/* Touch: taller targets, and title-size (16px) text so focusing a field doesn't zoom
-   the page. */
+/* Touch: the well fills the row's band on its own. */
 @media (pointer: coarse) {
-  .well {
-    height: 44px;
-  }
-  /* The well fills the row's band on its own. */
   .entryRow > .cell {
     padding-top: 0;
   }
-  .input {
-    font-size: var(--type-title);
-  }
-  .option {
-    min-height: 44px;
-  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .well {
-    transition: none;
-  }
-}
 .loanDetails {
   display: flex;
   flex-wrap: wrap;

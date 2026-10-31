@@ -54,67 +54,6 @@
   padding: 10px 12px 0;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px 0;
-}
-.field label {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-
-/* Inputs are filled wells, like the shell's controls, with a ring on focus. */
-.amountInput {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: var(--size-control);
-  padding: 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  background: var(--control-bg);
-  color: var(--text-primary);
-  transition: border-color 150ms;
-}
-.amountInput:focus-within {
-  border-color: var(--focus-ring);
-}
-.amountInput[data-invalid] {
-  border-color: var(--field-error-line);
-}
-.amountInput > span {
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-.amountInput input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-}
-.amountInput input:focus-visible {
-  outline: none;
-}
-.amountInput input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.error {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--field-error);
-  font-size: var(--type-small);
-}
-
 .option {
   display: flex;
   align-items: center;
@@ -189,11 +128,5 @@
 @media (pointer: coarse) {
   .option {
     min-height: 44px;
-  }
-  .amountInput {
-    height: 44px;
-  }
-  .amountInput input {
-    font-size: 16px;
   }
 }

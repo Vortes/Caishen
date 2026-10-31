@@ -1,10 +1,12 @@
 # Fields
 
-`src/components/ui/field.tsx` (`Field`, `FormError`, `FormFooter`),
-`text-input.tsx` and `field-button.tsx`, over one stylesheet,
-`field.module.css`, which
-[`AmountInput`](amounts.md) and [`Select`](selects.md) share. Every field has one look: a label, a filled well, and a
-hint or error under it. There is no variant, no size and no `className`.
+`src/components/ui/field.tsx` (`Field`, `FormError`, `FormFooter`) and
+`field-button.tsx`, over one stylesheet, `field.module.css`, which
+[`TextInput`](text-inputs.md), [`AmountInput`](amounts.md),
+[`Select`](selects.md), [`SearchList`](search-lists.md) and
+[`DateField`](dates.md) share. Every field has one look: a label, a filled
+well, and a hint or error under it. There is no variant, no size and no
+`className`.
 
 ```text
 What does the person enter?
@@ -12,17 +14,23 @@ What does the person enter?
  ├── One option from a fixed list → Select (selects.md)
  ├── A value picked in a menu or popover the screen builds (a share, a
  │     target's behavior) → FieldButton
- ├── One item from a list they search by typing (a category, a payee)
- │     → a combobox: not in the system yet (TODO.md)
- ├── A date → not in the system yet (TODO.md)
+ ├── One option from a list they search by typing (a category, an
+ │     account) → SearchList (search-lists.md)
+ ├── Free text with earlier entries offered (a payee) → SearchSuggestions
+ │     (search-lists.md)
+ ├── A date → DateField (dates.md)
  └── Any other line of text: a name, an APR, a count → TextInput
+       (text-inputs.md)
 ```
 
 ## Field
 
-Every ui input sits in a `Field`; `TextInput`, `AmountInput`, `Select` and
-`FieldButton` throw without one. The field gives its input an id, `aria-describedby` and
-`aria-invalid`, so a screen never writes them for a ui input.
+Every ui input sits in a `Field`; `TextInput`, `AmountInput`, `Select`,
+`SearchList`, `SearchSuggestions`, `DateField` and `FieldButton` throw
+without one. The field gives its input an id, `aria-describedby` and
+`aria-invalid`, so a screen never writes them for a ui input. A
+`SegmentedControl` in a `Field` takes its label and description too
+([choices.md](choices.md#segmentedcontrol)).
 
 - `label`: required. `labelHidden` keeps it for screen readers only, where
   something on screen already names the field, such as a register's column
@@ -36,9 +44,11 @@ Every ui input sits in a `Field`; `TextInput`, `AmountInput`, `Select` and
   register row's outflow and inflow or the three loan terms. Each field
   reads as invalid and is described by that id; the screen renders the
   message itself.
-- `id`: only for a control that isn't a ui input yet (a combobox, a date).
-  That control takes the id and points `aria-describedby` at `${id}-error`
-  itself, as the move-money destination does.
+- `id`: a known id in place of a generated one; the input takes it. The
+  error's id is then `${id}-error`, so a field beside it can name that
+  error as its `sharedErrorId`, as the target's due month and year do
+  (`BalanceDue` in `target-editor.tsx`). `EditorCell` and the target
+  editor pass one. Leave it out everywhere else.
 
 ```tsx
 // Correct (account-entry.tsx)
@@ -84,60 +94,6 @@ form edge to edge, so it goes outside the block that pads the fields.
     </>
   }
 />
-```
-
-## TextInput
-
-One line of text in the well. `value` and `onChange(value)` (always
-controlled; `name` still sends it with a form), `type`, `placeholder`,
-`autoComplete`, `required`, `minLength`, `maxLength`, `inputMode`,
-`disabled`, `readOnly`, `inputRef`, `prefix`, `suffix`. Nothing else
-exists. `WellInput`, also exported from `text-input.tsx`, is
-`AmountInput`'s base; a screen never imports it.
-
-- `type`: `"text"` (the default), `"email"` or `"password"`. Never
-  `"number"`, and it can't be: it rejects `1,000` and shows spinners. A
-  count takes `inputMode="numeric"`.
-- `autoComplete`: `"off"` by default, which also keeps 1Password out, so
-  it never fills money or a name into a well. Give the token only where
-  the browser should fill the field: `"name"`, `"email"`,
-  `"one-time-code"`, `"current-password"`, `"new-password"`.
-- `required` and `minLength` are the browser's checks, for a form that
-  relies on them (account settings, onboarding's account name). A screen
-  that checks the value itself shows its message in the field's `error`.
-
-`prefix` and `suffix` are short text in the well: `"%"`, `"years"`. They
-are strings only, never an icon or a button, so every well keeps one look.
-They are hidden from screen readers, so the label must name the field
-without them, and it doesn't repeat them: "APR", not "APR (%)".
-
-```tsx
-// Correct (loan-setup-fields.tsx)
-<Field label="APR" sharedErrorId={sharedErrorId}>
-  <TextInput value={draft.annualRate} suffix="%" inputMode="decimal" onChange={setRate} />
-</Field>
-
-// Correct (account-settings.tsx): the browser fills it, and checks it
-// before the form is sent
-<Field label="New password">
-  <TextInput
-    name="password"
-    type="password"
-    autoComplete="new-password"
-    minLength={8}
-    required
-    value={password}
-    onChange={setPassword}
-  />
-</Field>
-
-// Incorrect: money in a TextInput. No grouping, no arithmetic, no
-// select on focus
-<TextInput prefix="$" inputMode="decimal" value={amount} onChange={setAmount} />
-
-// Incorrect: a raw input to get a password type or autofill, with its own
-// well rules
-<input className={styles.input} type="password" autoComplete="new-password" />
 ```
 
 ## FieldButton
