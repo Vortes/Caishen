@@ -34,7 +34,9 @@ without one. The field gives its input an id, `aria-describedby` and
 
 - `label`: required. `labelHidden` keeps it for screen readers only, where
   something on screen already names the field, such as a register's column
-  header (`EditorCell` in `editor-row.tsx`).
+  header (`EditorCell` in `editor-row.tsx`). A click on the label focuses a
+  plain text field and does nothing else: only the well opens a list, a
+  calendar or a menu.
 - `hint`: a line under the well that stays.
 - `error`: what to fix, under the well, with the field-error color
   (`--field-error`, `--field-error-line`; see [tokens.md](tokens.md)). It
@@ -42,8 +44,10 @@ without one. The field gives its input an id, `aria-describedby` and
   errors at once would talk over each other. Only `FormError` announces.
 - `sharedErrorId`: one error shown once for several fields, such as a
   register row's outflow and inflow or the three loan terms. Each field
-  reads as invalid and is described by that id; the screen renders the
-  message itself.
+  reads as invalid and is described by that id. Draw the message with
+  `FieldError` (`id`, a string child) under the row, so a narrow field's
+  error isn't squeezed into its column, as "Who owes it" and Amount do in
+  `share-field.tsx`.
 - `id`: a known id in place of a generated one; the input takes it. The
   error's id is then `${id}-error`, so a field beside it can name that
   error as its `sharedErrorId`, as the target's due month and year do
