@@ -76,7 +76,7 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
     "href",
     new RegExp(`${path}\\?sign-in$`),
   );
-  await partner.getByLabel("Password").fill(`Caishen!${randomUUID()}`);
+  await partner.getByLabel("Password", { exact: true }).fill(`Caishen!${randomUUID()}`);
   await partner.getByRole("button", { name: "Continue", exact: true }).click();
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");
