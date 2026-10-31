@@ -28,11 +28,6 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
 }
-.codeInput {
-  max-width: 160px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.2em;
-}
 .checkRow {
   display: flex;
   align-items: center;

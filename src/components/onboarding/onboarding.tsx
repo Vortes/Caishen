@@ -16,6 +16,7 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Field } from "~/components/ui/field";
 import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 import { api } from "~/trpc/react";
 import type { Command } from "~/domain/engine";
 import {
@@ -342,6 +343,7 @@ function ManualAccount({
   onCancel: () => void;
   timezone: string;
 }) {
+  const [name, setName] = useState("");
   const [kind, setKind] = useState("cash");
   const [balance, setBalance] = useState("");
   const [balanceError, setBalanceError] = useState<string>();
@@ -392,16 +394,15 @@ function ManualAccount({
       }}
     >
       <div className={styles.manualFields}>
-        <label className={batch.field}>
-          <span className={batch.fieldLabel}>Account name</span>
-          <input
-            className={batch.input}
+        <Field label="Account name">
+          <TextInput
             name="name"
-            autoComplete="off"
             required
             maxLength={80}
+            value={name}
+            onChange={setName}
           />
-        </label>
+        </Field>
         <Field label="Type">
           <Select
             name="kind"

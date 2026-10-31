@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeftIcon, CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
@@ -64,7 +64,6 @@ export function GuidedOnboarding({
   initialDraft?: CategoryDraft;
   onDraftChange?: (draft: CategoryDraft) => void;
 }) {
-  const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const [stage, setStage] = useState(initialStage);
   const [yourName, setYourName] = useState(initialName);
@@ -199,20 +198,14 @@ export function GuidedOnboarding({
               >
                 <Card>
                   <div className={styles.fields}>
-                    <div className={batch.field}>
-                      <label className={batch.fieldLabel} htmlFor={`${id}-you`}>
-                        Your name
-                      </label>
-                      <input
-                        id={`${id}-you`}
-                        className={batch.input}
+                    <Field label="Your name">
+                      <TextInput
                         value={yourName}
                         maxLength={80}
-                        aria-required
                         autoComplete="name"
-                        onChange={(event) => setYourName(event.target.value)}
+                        onChange={setYourName}
                       />
-                    </div>
+                    </Field>
                     <Field label="Budget name">
                       <TextInput
                         value={name}
