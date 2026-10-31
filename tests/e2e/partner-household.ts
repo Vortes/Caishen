@@ -78,7 +78,7 @@ export async function connectPartner({
   const partner = await context.newPage();
   await setupClerkTestingToken({ page: partner });
   await partner.goto(path);
-  await partner.getByLabel("Password").fill(`Caishen!${randomUUID()}`);
+  await partner.getByLabel("Password", { exact: true }).fill(`Caishen!${randomUUID()}`);
   await partner.getByRole("button", { name: "Continue", exact: true }).click();
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");

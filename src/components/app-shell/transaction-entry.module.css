@@ -233,6 +233,12 @@
   justify-self: center;
   padding-top: calc((var(--size-row-md) - var(--size-control)) / 2);
 }
+/* The entry row's cleared mark sits where the row's own does: centered in
+   the row's band, held at the top like the cells beside it. */
+.entryRow:not(.lineRow) > .removeLine {
+  align-self: start;
+  padding-top: calc((var(--size-row-lg) - var(--size-control-xs)) / 2);
+}
 /* Add line under the categories, and what the lines leave of the total
    under the amounts. */
 .splitFooter {

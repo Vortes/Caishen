@@ -1,91 +1,138 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { connectPartner } from "./partner-household";
 import { expect, shellPath, test } from "./shell-fixture";
 import { openRegister, transactionRow } from "./shell-controls";
 
-// Where each value's text sits: its left edge (its right edge for an
-// amount, which ends where its column does) and its vertical center.
-type Spots = Record<string, { x: number; y: number }>;
+// What's compared in a column: where its ink starts at the top, and its
+// left edge (text), its right edge (an amount, read off its last digits:
+// the row draws "$37.42", the editor a "$" of its own in the well), or no
+// edge (the date, "Oct 14" in the row and "10/14/2026" in the editor).
+type Edge = "left" | "right" | "top";
+type Columns = Record<string, Edge>;
+type Ink = Record<string, { top: number; x: number | null }>;
 
-// Every value in a row, resting or open in its editor. A cell with an input
-// is read at the input's content box, inside its border and padding; any
-// other cell at its visible text. Text for screen readers sits in an element
-// clipped to a pixel, though its own box stays full size, so it's skipped by
-// its element.
-const spotsIn = (row: Locator, columns: string[], amounts: string[]) =>
-  row.evaluate(
-    (element, { columns, amounts }) => {
-      const spots: Record<string, { x: number; y: number }> = {};
-      const px = (value: string) => parseFloat(value);
-      for (const column of columns) {
-        const cell = element.querySelector(`[data-column="${column}"]`);
-        if (!cell) continue;
-        const end = amounts.includes(column);
-        const input = cell.querySelector("input");
-        if (input) {
-          const box = input.getBoundingClientRect();
-          const style = getComputedStyle(input);
-          const top = box.top + px(style.borderTopWidth) + px(style.paddingTop);
-          const bottom =
-            box.bottom - px(style.borderBottomWidth) - px(style.paddingBottom);
-          spots[column] = {
-            x: end
-              ? box.right - px(style.borderRightWidth) - px(style.paddingRight)
-              : box.left + px(style.borderLeftWidth) + px(style.paddingLeft),
-            y: (top + bottom) / 2,
-          };
-          continue;
-        }
-        const text = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
-        let [left, right, top, bottom] = [
-          Infinity,
-          -Infinity,
-          Infinity,
-          -Infinity,
-        ];
-        for (let node = text.nextNode(); node; node = text.nextNode()) {
-          if (!node.textContent?.trim()) continue;
-          const holder = node.parentElement!.getBoundingClientRect();
-          if (holder.width < 2 || holder.height < 2) continue;
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          const box = range.getBoundingClientRect();
-          if (box.width < 2 || box.height < 2) continue;
-          left = Math.min(left, box.left);
-          right = Math.max(right, box.right);
-          top = Math.min(top, box.top);
-          bottom = Math.max(bottom, box.bottom);
-        }
-        if (left === Infinity) continue;
-        spots[column] = { x: end ? right : left, y: (top + bottom) / 2 };
+// The columns' spans across the row, in CSS pixels from the row's left. A
+// column the row leaves empty for a control beside it (the cleared mark)
+// takes its span from the column header.
+const columnSpans = (row: Locator, columns: Columns) =>
+  row.evaluate((element, names) => {
+    const left = element.getBoundingClientRect().left;
+    const spans: Record<string, [number, number]> = {};
+    for (const name of names) {
+      const box = [
+        element.querySelector(`[data-column="${name}"]`),
+        ...document.querySelectorAll(`[data-column="${name}"]`),
+      ]
+        .map((cell) => cell?.getBoundingClientRect())
+        .find((box) => box && box.width >= 4);
+      if (box) spans[name] = [box.left - left, box.right - left];
+    }
+    return spans;
+  }, Object.keys(columns));
+
+// The glyphs as painted: the row's band captured, then read on a canvas,
+// so a pixel the browser rounds differently in an input shows here even
+// when the layout boxes agree. Light pixels are ink on the dark theme;
+// borders, fills and the "$" in a well stay below the threshold.
+async function inkIn(
+  page: Page,
+  clip: { x: number; y: number; width: number; height: number },
+  spans: Record<string, [number, number]>,
+  columns: Columns,
+): Promise<Ink> {
+  await page.mouse.move(0, 0);
+  const png = (await page.screenshot({ clip })).toString("base64");
+  return page.evaluate(
+    async ({ png, spans, columns, width }) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${png}`;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      const { data } = context.getImageData(0, 0, image.width, image.height);
+      const scale = image.width / width;
+      const lit = (x: number, y: number) => {
+        const i = (y * image.width + x) * 4;
+        return (
+          0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]! > 150
+        );
+      };
+      const ink: Record<string, { top: number; x: number | null }> = {};
+      for (const [name, edge] of Object.entries(columns)) {
+        const [from, to] = spans[name]!;
+        // Wells reach 8px past their column; an amount's digits end within
+        // the last 24px of it.
+        const start = Math.max(
+          0,
+          Math.floor((edge === "right" ? to - 24 : from - 12) * scale),
+        );
+        const end = Math.min(image.width, Math.ceil((to + 12) * scale));
+        let [top, left, right] = [Infinity, Infinity, -Infinity];
+        for (let x = start; x < end; x++)
+          for (let y = 0; y < image.height; y++)
+            if (lit(x, y)) {
+              top = Math.min(top, y);
+              left = Math.min(left, x);
+              right = Math.max(right, x);
+            }
+        ink[name] = {
+          top: top / scale,
+          x:
+            edge === "left"
+              ? left / scale
+              : edge === "right"
+                ? right / scale
+                : null,
+        };
       }
-      return spots;
+      return ink;
     },
-    { columns, amounts },
+    { png, spans, columns, width: clip.width },
   );
+}
 
-// Rounding of text boxes leaves under half a pixel; anything more is a
-// shift a person sees.
-const expectSameSpots = (after: Spots, before: Spots, columns: string[]) => {
-  for (const column of columns) {
-    expect(after[column], column).toBeDefined();
-    expect(
-      Math.abs(after[column]!.x - before[column]!.x),
-      `${column} x`,
-    ).toBeLessThanOrEqual(0.5);
-    expect(
-      Math.abs(after[column]!.y - before[column]!.y),
-      `${column} y`,
-    ).toBeLessThanOrEqual(0.5);
+// The same glyphs on the same pixels: a shift of even one device pixel
+// fails.
+const expectStill = (after: Ink, before: Ink, columns: Columns) => {
+  for (const name of Object.keys(columns)) {
+    expect(Number.isFinite(before[name]!.top), `${name} has ink`).toBe(true);
+    expect(after[name]!.top, `${name} top`).toBe(before[name]!.top);
+    expect(after[name]!.x, `${name} edge`).toBe(before[name]!.x);
   }
 };
+
+// Captures a row's band, resting, selected, open in its editor, and closed
+// again, and expects every column's glyphs to stay put through all four.
+async function expectRowStill(
+  page: Page,
+  row: Locator,
+  open: () => Promise<Locator>,
+  columns: Columns,
+) {
+  const box = (await row.boundingBox())!;
+  const clip = { x: box.x, y: box.y, width: box.width, height: box.height };
+  const spans = await columnSpans(row, columns);
+  const resting = await inkIn(page, clip, spans, columns);
+
+  await row.click();
+  expectStill(await inkIn(page, clip, spans, columns), resting, columns);
+
+  const form = await open();
+  await expect(form).toBeVisible();
+  expectStill(await inkIn(page, clip, spans, columns), resting, columns);
+
+  await form.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(form).toHaveCount(0);
+  expectStill(await inkIn(page, clip, spans, columns), resting, columns);
+}
 
 test("selecting a register row and opening it to edit moves none of its text", async ({
   page,
   budgets,
 }) => {
-  const columns = ["date", "payee", "category", "outflow"];
-  const amounts = ["outflow"];
   const budget = await budgets.create({
     purchase: { payee: "Corner market", amount: 3_742 },
   });
@@ -93,23 +140,21 @@ test("selecting a register row and opening it to edit moves none of its text", a
   await budgets.signIn(page, budget);
   await openRegister(page, budget.account);
 
-  const row = transactionRow(page, "Corner market");
-  const resting = await spotsIn(row, columns, amounts);
-  expect(Object.keys(resting)).toEqual(columns);
-  await row.click();
-  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
-
-  await page.keyboard.press("e");
-  const form = page.getByRole("form", {
-    name: "Edit transaction",
-    exact: true,
-  });
-  await expect(form).toBeVisible();
-  expectSameSpots(await spotsIn(form, columns, amounts), resting, columns);
-
-  await form.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(form).toHaveCount(0);
-  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
+  await expectRowStill(
+    page,
+    transactionRow(page, "Corner market"),
+    async () => {
+      await page.keyboard.press("e");
+      return page.getByRole("form", { name: "Edit transaction", exact: true });
+    },
+    {
+      date: "top",
+      payee: "left",
+      category: "left",
+      outflow: "right",
+      status: "left",
+    },
+  );
 });
 
 test("selecting a partner row and opening it to edit moves none of its text", async ({
@@ -118,8 +163,6 @@ test("selecting a partner row and opening it to edit moves none of its text", as
   browser,
   baseURL,
 }) => {
-  const columns = ["date", "payee", "category", "amount", "balance"];
-  const amounts = ["amount", "balance"];
   const budget = await budgets.create();
   await page.goto(shellPath);
   await budgets.signIn(page, budget);
@@ -137,9 +180,7 @@ test("selecting a partner row and opening it to edit moves none of its text", as
     .getByRole("link", { name: /^Alex/ })
     .click();
   await page.getByRole("button", { name: "Record purchase" }).click();
-  const record = page.getByRole("dialog", {
-    name: "Record a shared purchase",
-  });
+  const record = page.getByRole("dialog", { name: "Record a shared purchase" });
   await record.getByLabel("Payee", { exact: true }).fill("Corner market");
   await record.getByLabel("Total paid", { exact: true }).fill("60");
   // A category, so the row and its editor show the same text there.
@@ -154,21 +195,20 @@ test("selecting a partner row and opening it to edit moves none of its text", as
     .locator("[data-entry-row]")
     .filter({ hasText: "Corner market" });
   await expect(row).toBeVisible();
-  const resting = await spotsIn(row, columns, amounts);
-  expect(Object.keys(resting)).toEqual(columns);
-  await row.click();
-  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
-
-  // A selected entry opens at its amount.
-  await row.locator('[data-column="amount"]').click();
-  const form = page.getByRole("form", {
-    name: "Edit shared entry",
-    exact: true,
-  });
-  await expect(form).toBeVisible();
-  expectSameSpots(await spotsIn(form, columns, amounts), resting, columns);
-
-  await form.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(form).toHaveCount(0);
-  expectSameSpots(await spotsIn(row, columns, amounts), resting, columns);
+  await expectRowStill(
+    page,
+    row,
+    async () => {
+      // A selected entry opens at the field clicked.
+      await row.locator('[data-column="amount"]').click();
+      return page.getByRole("form", { name: "Edit shared entry", exact: true });
+    },
+    {
+      date: "top",
+      payee: "left",
+      category: "left",
+      amount: "right",
+      balance: "right",
+    },
+  );
 });
