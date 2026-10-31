@@ -141,17 +141,21 @@ export function FormError({ children }: { children: string }) {
   );
 }
 
-// Under a form's fields, set apart by a divider: what to know, then the
+// Under a form's fields, set apart by a divider: an action that stands apart
+// from committing the form (Delete) at the start, what to know, then the
 // actions at the end.
 export function FormFooter({
+  leading,
   actions,
   children,
 }: {
+  leading?: ReactNode;
   actions: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div className={styles.footer}>
+      {leading && <div className={styles.leading}>{leading}</div>}
       {children && <div className={styles.note}>{children}</div>}
       <div className={styles.actions}>{actions}</div>
     </div>

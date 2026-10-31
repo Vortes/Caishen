@@ -490,13 +490,13 @@ function AccountList({
   loans: boolean;
   onNavigate: (href: string) => void;
 }) {
-  const { add } = useAddCategory();
+  const { send } = useAddCategory();
   const byId = new Map(items.map((item) => [item.id, item]));
   const drag = useReorderDrag<HTMLUListElement>({
     ids: items.map((item) => item.id),
     enabled: items.length > 1,
     onDrop: (order, id, done) => {
-      const blocked = add(
+      const blocked = send(
         loans
           ? { type: "loan.reorder", id: newId(), loanIds: order }
           : { type: "account.reorder", id: newId(), accountIds: order },

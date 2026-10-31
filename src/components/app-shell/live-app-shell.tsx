@@ -462,7 +462,7 @@ function LiveWorkspace({
     move: (command, summary) => run(command, summary),
     holdOpen,
   };
-  const categoryAdder: CategoryAdder = { add: run, holdOpen };
+  const categoryAdder: CategoryAdder = { send: run, holdOpen };
   const targetEditing: TargetEditing = { save: moveMoney.move, holdOpen };
   const assignMoney: AssignMoney = {
     assign: run,

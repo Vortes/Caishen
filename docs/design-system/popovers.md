@@ -9,7 +9,8 @@ or a detail panel that hangs from the thing it acts on.
 
 - A list of actions, links or one choice from a few: use a [`Menu`](menus.md).
 - A task that takes over the screen, or a question before an action that
-  can't be undone: use a [`Dialog` or `ConfirmDialog`](dialogs.md).
+  can't be undone: use a [`Dialog` or `ConfirmDialog`](dialogs.md). An
+  action the toast's Undo restores commits from the popover itself.
 - A short name or shortcut on hover: use a `Tooltip`.
 
 Never build a popover from Radix or a positioned `div`. The module owns the

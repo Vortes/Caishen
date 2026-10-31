@@ -401,6 +401,34 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
   });
   jordan({ type: "category.add", categoryId: "household", name: "Household" });
   jordan({ type: "group.reorder", names: ["Everyday"] });
+  jordan({ type: "category.rename", categoryId: "household", name: "Home" });
+  jordan({ type: "group.add", name: "Pets" });
+  jordan({ type: "group.rename", group: "Pets", name: "Animals" });
+  jordan({
+    type: "category.add",
+    categoryId: "vet",
+    name: "Vet",
+    group: "Animals",
+  });
+  jordan({
+    type: "category.add",
+    categoryId: "toys",
+    name: "Toys",
+    group: "Animals",
+  });
+  jordan({ type: "assign", categoryId: "vet", month: start, amount: 2_000 });
+  jordan({
+    type: "transaction.upsert",
+    transactionId: "jordan-vet",
+    accountId: "checking",
+    date: "2026-01-09",
+    amount: -1_500,
+    payee: "Clinic",
+    categoryId: "vet",
+  });
+  jordan({ type: "category.delete", categoryId: "toys" });
+  jordan({ type: "category.delete", categoryId: "vet", moveTo: "household" });
+  jordan({ type: "group.delete", group: "Animals" });
   jordan({
     type: "category.add",
     categoryId: "garden",

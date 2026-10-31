@@ -24,6 +24,7 @@ import {
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import { balanceImports } from "~/domain/bank-import-balances";
 import {
+  categoriesWithHistory,
   isCleared,
   isCounterparty,
   isPending,
@@ -78,6 +79,8 @@ export type Category = {
   // aside minus what the account says is owed to you.
   pairs?: { accountId: string; name: string; balance: number };
   autoAssign: AutoAssignCategory;
+  // Has transactions or assigned money, which deleting it moves elsewhere.
+  used: boolean;
 };
 
 export type ActivityEntry = {
@@ -388,6 +391,7 @@ export function toShellData(
       })
       .sort((a, b) => b.date.localeCompare(a.date));
 
+  const used = categoriesWithHistory(view.budget);
   const categories = view.categories.map((item): Category => {
     const card = item.pairedAccountId
       ? view.accounts.find((account) => account.id === item.pairedAccountId)
@@ -462,6 +466,7 @@ export function toShellData(
         balance: pair.balance,
       },
       autoAssign: item,
+      used: used.has(item.id),
     };
   });
 

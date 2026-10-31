@@ -48,6 +48,12 @@ import {
 import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
 import { ActivityCell, activityColumn, type ActivityJump } from "./activity";
 import { AssignedCell } from "./assigned";
+import {
+  CategoryNameCell,
+  EditNamePopover,
+  editableCategory,
+  editableGroup,
+} from "./category-edit";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
@@ -65,6 +71,7 @@ import {
   useReviewSelection,
 } from "./transaction-review";
 import styles from "./shell.module.css";
+import editStyles from "./category-edit.module.css";
 import reviewStyles from "./transaction-review.module.css";
 
 // Arrow keys move the selection through the rows of a list, like Linear's j/k.
@@ -113,6 +120,8 @@ export function PlanView({
   const shell = useShellData();
   const selectionStyle = useRowSelection(checked);
   const [closed, setClosed] = useState<string[]>([]);
+  // The group whose rename popover is open.
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
   // A category just dropped into a folded group, which opens to show it.
   const [landed, setLanded] = useState<{ id: string; group: string } | null>(
     null,
@@ -168,7 +177,7 @@ export function PlanView({
         }))
         .filter((group) => group.categories.length)
     : shell.groups;
-  const { add } = useAddCategory();
+  const { send } = useAddCategory();
   const reorder = useReorderDrag({
     ids: groups.map((group) => group.id),
     enabled: groups.length > 1,
@@ -180,7 +189,7 @@ export function PlanView({
       const names = shell.groups.map((group) =>
         showing.has(group.id) ? order[next++]! : group.id,
       );
-      const blocked = add(
+      const blocked = send(
         { type: "group.reorder", id: newId(), names },
         // A group's id is its name.
         `Moved ${id}`,
@@ -273,7 +282,7 @@ export function PlanView({
       const categoryIds = order.slice(from + 1, to);
       const blocked =
         category.group === target.id
-          ? add(
+          ? send(
               {
                 type: "category.reorder",
                 id: newId(),
@@ -283,7 +292,7 @@ export function PlanView({
               `Moved ${category.name}`,
               done,
             )
-          : add(
+          : send(
               {
                 type: "category.move",
                 id: newId(),
@@ -521,6 +530,7 @@ export function PlanView({
           const expanded =
             ids.length > 0 ? open : !closed.includes(group.id) && !reorder.drag;
           const count = ids.filter((id) => checked.includes(id)).length;
+          const editable = editableGroup(group);
           return (
             <motion.div
               key={group.id}
@@ -538,6 +548,11 @@ export function PlanView({
                   data-reorder-header={group.id}
                   data-drop-target={intoFolded === group || undefined}
                   onPointerDown={(event) => reorder.start(event, group.id)}
+                  onContextMenu={(event) => {
+                    if (!editable) return;
+                    event.preventDefault();
+                    setEditingGroup(group.id);
+                  }}
                 >
                   {ids.length > 0 && (
                     <RowCheckbox
@@ -553,7 +568,8 @@ export function PlanView({
                     />
                   )}
                   {/* The whole header toggles the group for the pointer; the
-                    name is the button, so the + beside it can be one too. */}
+                    caret is the button, so the name and the + beside it can
+                    be ones too. */}
                   <div
                     className={`${styles.columns} ${styles.groupRow}`}
                     onClick={(event) => {
@@ -564,7 +580,8 @@ export function PlanView({
                     <span className={styles.groupName}>
                       <button
                         type="button"
-                        className={styles.groupToggle}
+                        className={`${styles.groupToggle} ${styles.caretOnly}`}
+                        aria-label={group.name}
                         aria-expanded={expanded}
                         aria-keyshortcuts={
                           reorder.enabled
@@ -580,8 +597,35 @@ export function PlanView({
                           className={styles.groupCaret}
                           aria-hidden
                         />
-                        <span className={styles.truncate}>{group.name}</span>
                       </button>
+                      {editable ? (
+                        <EditNamePopover
+                          editing={{
+                            type: "group",
+                            name: group.name,
+                            categories: shell.categories.filter(
+                              (item) => item.group === group.name,
+                            ),
+                          }}
+                          open={editingGroup === group.id}
+                          onOpenChange={(open) =>
+                            setEditingGroup(open ? group.id : null)
+                          }
+                          onDeleted={(ids) => onCheck(ids, false)}
+                        >
+                          <button
+                            type="button"
+                            className={editStyles.name}
+                            aria-label={`Edit ${group.name}`}
+                          >
+                            <span className={styles.truncate}>
+                              {group.name}
+                            </span>
+                          </button>
+                        </EditNamePopover>
+                      ) : (
+                        <span className={styles.truncate}>{group.name}</span>
+                      )}
                       {!isSystemGroup(group) && (
                         <span className={styles.groupAdd} data-no-drag>
                           <AddToGroupButton group={group.name} />
@@ -695,6 +739,8 @@ function PlanCategoryList({
   // The category just dropped in while the group was folded.
   landed: string | null;
 }) {
+  // The category whose rename popover is open.
+  const [editing, setEditing] = useState<string | null>(null);
   return (
     <div
       className={styles.categoryList}
@@ -733,6 +779,13 @@ function PlanCategoryList({
             data-landed={landed === id || undefined}
             className={`${styles.rowWrap} ${selectionStyles.row}`}
             {...selectionStyle.rowProps(id)}
+            // A right-click anywhere on the row opens the rename popover,
+            // in place of the browser's menu.
+            onContextMenu={(event) => {
+              if (!editableCategory(category)) return;
+              event.preventDefault();
+              setEditing(id);
+            }}
             layout={drag.animating ? "position" : false}
             transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
           >
@@ -764,6 +817,13 @@ function PlanCategoryList({
                 >
                   <PlanCategoryContents category={category} placeholder />
                 </button>
+                <CategoryNameCell
+                  category={category}
+                  open={editing === id}
+                  onOpenChange={(open) => setEditing(open ? id : null)}
+                  onPointerDown={(event) => drag.start(event, id)}
+                  onDeleted={(ids) => onCheck(ids, false)}
+                />
                 <AssignedCell category={category} />
                 <ActivityCell category={category} onJump={onJump} />
                 <MoveMoneyPopover category={category} align="end">

@@ -81,8 +81,11 @@ last field, never inside a `Field`; an error about one field is that
 field's `error`.
 
 `FormFooter` sits under the fields behind a divider: `actions` (buttons,
-end-aligned, 6px apart) and an optional note as `children`. It spans the
-form edge to edge, so it goes outside the block that pads the fields.
+end-aligned, 6px apart), an optional note as `children`, and `leading` for
+an action that stands apart from committing the form, start-aligned: the
+Delete in Edit category. `children` is text only; a button there is
+`leading`. It spans the form edge to edge, so it goes outside the block
+that pads the fields.
 
 ```tsx
 // Correct (move-money.tsx)
