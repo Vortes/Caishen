@@ -156,8 +156,11 @@
   flex-direction: column;
   gap: 6px;
 }
+/* min-width lets the amount's well narrow to its basis, leaving the room
+   to "Who owes it". */
 .shareFormField[data-narrow] {
   flex: 0 0 104px;
+  min-width: 0;
 }
 .shareFormActions {
   display: flex;

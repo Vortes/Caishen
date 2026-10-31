@@ -319,10 +319,6 @@
   color: var(--text-secondary);
   cursor: pointer;
 }
-/* Lines up with the text typed in the field above. */
-.option[data-suggestion] {
-  padding-left: 6px;
-}
 .optionLabel {
   flex: 1;
 }

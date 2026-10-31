@@ -3,7 +3,6 @@
 import { CheckIcon, UsersIcon } from "lucide-react";
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type ReactElement,
@@ -16,6 +15,7 @@ import { Field } from "~/components/ui/field";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
+import { SearchSuggestions } from "~/components/ui/search-list";
 import {
   halfOf,
   keepShare,
@@ -383,8 +383,8 @@ function OtherShare({
   const amount = Math.min(...amounts);
   const multiple = amounts.length > 1;
   const [full, setFull] = useState(multiple && !initial);
-  const nameId = useId();
-  const listId = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => nameInput.current?.focus(), []);
   const [name, setName] = useState(initial?.counterpartyName ?? "");
   const [text, setText] = useState(
     ((initial?.amount ?? amount) / 100).toFixed(2),
@@ -412,27 +412,21 @@ function OtherShare({
     >
       <div className={styles.shareFormRow}>
         <div className={styles.shareFormField}>
-          <label htmlFor={nameId}>Who owes it</label>
-          <div className={moveStyles.amountInput}>
-            <input
-              id={nameId}
-              list={listId}
+          <Field
+            label="Who owes it"
+            error={error?.field === "name" ? error.message : undefined}
+          >
+            <SearchSuggestions
+              inputRef={nameInput}
               value={name}
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
+              suggestions={people}
               placeholder="Name or company"
-              onChange={(event) => {
-                setName(event.target.value);
+              onChange={(value) => {
+                setName(value);
                 setError(null);
               }}
             />
-            <datalist id={listId}>
-              {people.map((person) => (
-                <option key={person} value={person} />
-              ))}
-            </datalist>
-          </div>
+          </Field>
         </div>
         {!full && (
           <div className={styles.shareFormField} data-narrow>
@@ -462,9 +456,6 @@ function OtherShare({
           />
           Full amount of each transaction
         </label>
-      )}
-      {error?.field === "name" && (
-        <p className={moveStyles.error}>{error.message}</p>
       )}
       <p className={styles.formHint}>
         Tracked in your Reimbursements account. Only you see it.

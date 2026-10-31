@@ -4,7 +4,7 @@ import { useState, type ComponentProps } from "react";
 import { expect, test } from "vitest";
 import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
-import { SearchList } from "~/components/ui/search-list";
+import { SearchList, SearchSuggestions } from "~/components/ui/search-list";
 import { SurfaceProvider } from "~/components/ui/surface";
 
 const categories = [
@@ -255,4 +255,77 @@ test("a click picks and moves on, and the closed field shows the label alone", a
   expect(field.getAttribute("aria-expanded")).toBe("false");
   expect((field as HTMLInputElement).value).toBe("Rent");
   expect(field.parentElement!.textContent).not.toContain("$");
+});
+
+// Suggestions mode: free text, with earlier names offered under it.
+
+function Payee({ onSubmit }: { onSubmit?: (payee: string) => void }) {
+  const [value, setValue] = useState("");
+  return (
+    <SurfaceProvider container={document.body}>
+      <form
+        aria-label="Purchase"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit?.(value);
+        }}
+      >
+        <Field label="Payee">
+          <SearchSuggestions
+            value={value}
+            onChange={setValue}
+            suggestions={["Trader Joe’s", "Target", "Corner Deli"]}
+          />
+        </Field>
+      </form>
+      <output aria-label="Typed">{value}</output>
+    </SurfaceProvider>
+  );
+}
+
+test("any text typed reaches onChange, matching a suggestion or not", async () => {
+  const user = userEvent.setup();
+  render(<Payee />);
+
+  await user.type(screen.getByRole("combobox", { name: "Payee" }), "Tar");
+  expect(screen.getByRole("status", { name: "Typed" }).textContent).toBe("Tar");
+  await user.keyboard("dis");
+  expect(screen.getByRole("status", { name: "Typed" }).textContent).toBe(
+    "Tardis",
+  );
+});
+
+test("a suggestion is taken with the arrow keys and Enter, or with a click", async () => {
+  const user = userEvent.setup();
+  const submitted: string[] = [];
+  render(<Payee onSubmit={(payee) => submitted.push(payee)} />);
+  const field = screen.getByRole("combobox", { name: "Payee" });
+  const typed = screen.getByRole("status", { name: "Typed" });
+
+  await user.click(field);
+  expect(
+    screen.getAllByRole("option").map((option) => option.textContent),
+  ).toEqual(["Trader Joe’s", "Target", "Corner Deli"]);
+  await user.keyboard("ta{ArrowDown}{ArrowDown}{Enter}");
+  expect(typed.textContent).toBe("Target");
+  expect(field.getAttribute("aria-expanded")).toBe("false");
+  expect(submitted).toEqual([]);
+
+  await user.clear(field);
+  await user.keyboard("deli");
+  await user.click(screen.getByRole("option", { name: "Corner Deli" }));
+  expect(typed.textContent).toBe("Corner Deli");
+  expect(field.getAttribute("aria-expanded")).toBe("false");
+});
+
+test("Enter on typed text sends the surrounding form, even with suggestions showing", async () => {
+  const user = userEvent.setup();
+  const submitted: string[] = [];
+  render(<Payee onSubmit={(payee) => submitted.push(payee)} />);
+
+  await user.type(screen.getByRole("combobox", { name: "Payee" }), "Tar");
+  expect(screen.getByRole("option", { name: "Target" })).toBeDefined();
+  await user.keyboard("{Enter}");
+
+  expect(submitted).toEqual(["Tar"]);
 });

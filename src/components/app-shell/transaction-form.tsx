@@ -5,6 +5,7 @@ import {
   directEntryAccounts,
   accountKindLabels,
 } from "~/domain/register-entry";
+import { earlierPayees } from "~/domain/payee-memory";
 import { transferNeedsCategory } from "~/domain/transfers";
 import { cardPaymentCategoryLabel } from "~/components/transactions/transaction-category";
 import { CircleAlertIcon, PlusIcon, SplitIcon, XIcon } from "lucide-react";
@@ -37,14 +38,17 @@ import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
 import { FieldButton } from "~/components/ui/field-button";
 import { IconButton } from "~/components/ui/icon-button";
-import { SearchList, type SearchListOption } from "~/components/ui/search-list";
+import {
+  SearchList,
+  SearchSuggestions,
+  type SearchListOption,
+} from "~/components/ui/search-list";
 import { TextInput } from "~/components/ui/text-input";
 import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
 import { PartnerMatches } from "./partner-match";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
-import { PayeeField } from "./transaction-fields";
 import { ShareLabel, ShareMenu } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
@@ -211,21 +215,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       group: added.group,
     });
   }
-  const payees = useMemo(
-    () => [
-      ...new Set(
-        view.budget.transactions
-          .filter(
-            (item) =>
-              !item.removed &&
-              ["purchase", "refund", "income"].includes(item.kind),
-          )
-          .sort((a, b) => b.date.localeCompare(a.date))
-          .map((item) => item.payee),
-      ),
-    ],
-    [view.budget.transactions],
-  );
+  const payees = useMemo(() => earlierPayees(view.budget), [view.budget]);
   const startDate = `${view.budget.startMonth}-01`;
   const minDate =
     account && account.date > startDate ? account.date : startDate;
@@ -306,13 +296,16 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     />
   );
   const payeeControl = (
-    <PayeeField
-      id={id("payee")}
-      label="Payee"
+    <SearchSuggestions
       value={destination?.label ?? draft.payee}
-      payees={payees}
-      destinations={destinations}
-      selectedDestination={destination?.value}
+      suggestions={payees}
+      destinations={destinations.map((item) => ({
+        value: item.value,
+        label: item.label,
+        group: "Payments and Transfers",
+      }))}
+      destination={destination?.value}
+      maxLength={240}
       onDestination={(value) => {
         const selected = destinations.find((item) => item.value === value);
         if (!selected) return;
@@ -336,8 +329,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       }}
       placeholder="Payee"
       inputRef={register("payee")}
-      invalid={Boolean(fields.payee)}
-      describedBy={described("payee")}
       onChange={(payee) =>
         entry.change({
           payee,

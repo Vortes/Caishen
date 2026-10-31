@@ -67,6 +67,11 @@
   cursor: pointer;
   user-select: none;
 }
+/* A suggestion has no check column, so it lines up with the text typed in
+   the well above. */
+.option[data-suggestion] {
+  padding-left: 6px;
+}
 .option[data-active] {
   background: var(--surface-hover);
   color: var(--text-primary);
