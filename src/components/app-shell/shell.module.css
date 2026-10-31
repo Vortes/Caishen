@@ -1242,6 +1242,12 @@ button.actionItem:disabled {
   color: var(--text-tertiary);
   font-weight: 400;
 }
+/* The column header's + adds a category group. */
+.headerAdd {
+  display: flex;
+  flex: none;
+  margin-left: -4px;
+}
 /* The column header's caret folds or opens every group. */
 .columnHeader .groupToggle:hover {
   color: var(--text-secondary);

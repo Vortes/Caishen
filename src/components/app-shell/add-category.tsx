@@ -344,29 +344,20 @@ export function NewCategoryPopover({
   );
 }
 
-// The plan toolbar's Add category group, opened by the shell (N) as well as
+// The + beside the plan's Category header, opened by the shell (N) as well as
 // by its button.
 export function AddGroupButton({
   open,
   onOpenChange,
-  compact,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  // A phone's toolbar has room for a word, not three.
-  compact: boolean;
 }) {
   return (
-    <AddPopover
-      open={open}
-      onOpenChange={onOpenChange}
-      align="end"
-      tooltip={{ label: "Add a category group", shortcut: "N" }}
-    >
-      <Button size="sm" aria-label={compact ? "Add category group" : undefined}>
+    <AddPopover open={open} onOpenChange={onOpenChange} align="start">
+      <IconButton size="sm" label="Add category group" shortcut="N">
         <PlusIcon aria-hidden />
-        {compact ? "Group" : "Add category group"}
-      </Button>
+      </IconButton>
     </AddPopover>
   );
 }
