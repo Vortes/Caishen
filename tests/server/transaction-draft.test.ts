@@ -126,14 +126,14 @@ void test("cash income enters Ready to Assign while a categorized inflow refunds
   assert.equal(setup.view().readyToAssign, 91_001);
 });
 
-void test("invalid dual, signed, zero, imprecise, and unsafe amounts never change the ledger", () => {
+void test("invalid dual, signed, zero, unreadable, and unsafe amounts never change the ledger", () => {
   const setup = fixture();
   const before = structuredClone(setup.book);
   for (const changes of [
     { inflow: "5.00" },
     { outflow: "-5.00" },
     { outflow: "0.00" },
-    { outflow: "1.001" },
+    { outflow: "1.00+" },
     { outflow: "90071992547409.92" },
   ]) {
     assert.throws(

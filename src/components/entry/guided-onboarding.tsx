@@ -4,8 +4,10 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ArrowLeftIcon, CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Field } from "~/components/ui/field";
+import { Select } from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
-import { TimezoneOptions } from "~/components/settings/timezone-options";
+import { timezoneOptions } from "~/components/settings/timezone-options";
 import { EntryPage } from "./entry-page";
 import { Brand } from "./brand";
 import {
@@ -226,22 +228,13 @@ export function GuidedOnboarding({
                         onChange={(event) => setName(event.target.value)}
                       />
                     </div>
-                    <div className={batch.field}>
-                      <label
-                        className={batch.fieldLabel}
-                        htmlFor={`${id}-zone`}
-                      >
-                        Timezone
-                      </label>
-                      <select
-                        id={`${id}-zone`}
-                        className={batch.select}
+                    <Field label="Timezone">
+                      <Select
                         value={timezone}
-                        onChange={(event) => setTimezone(event.target.value)}
-                      >
-                        <TimezoneOptions include={timezone} />
-                      </select>
-                    </div>
+                        onChange={setTimezone}
+                        options={timezoneOptions(timezone)}
+                      />
+                    </Field>
                     <label className={styles.switchRow}>
                       <span className={styles.switchLabel}>
                         Daily review email

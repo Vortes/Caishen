@@ -9,8 +9,10 @@ import {
 import { useState, type ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
 import { Popover } from "~/components/ui/popover";
+import { Select } from "~/components/ui/select";
 import { useShellData } from "../shell-data";
 import {
   filterableCategories,
@@ -320,7 +322,10 @@ function DatesFilter({
   const resolved = resolveRange(range, current, start);
   const [from, setFrom] = useState(resolved.from);
   const [to, setTo] = useState(resolved.to);
-  const months = monthsBetween(start, current);
+  const monthOptions = monthsBetween(start, current).map((month) => ({
+    value: month,
+    label: monthOption(month),
+  }));
   const choose = (next: DateRange) => {
     onChange(next);
     setOpen(false);
@@ -369,38 +374,26 @@ function DatesFilter({
             <CheckIcon size={14} strokeWidth={2.5} aria-hidden />
           )}
         </span>
-        <label>
-          <span>From</span>
-          <select
+        <Field label="From">
+          <Select
             value={from}
-            onChange={(event) => {
-              setFrom(event.target.value);
-              if (event.target.value > to) setTo(event.target.value);
+            onChange={(next) => {
+              setFrom(next);
+              if (next > to) setTo(next);
             }}
-          >
-            {months.map((month) => (
-              <option key={month} value={month}>
-                {monthOption(month)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>To</span>
-          <select
+            options={monthOptions}
+          />
+        </Field>
+        <Field label="To">
+          <Select
             value={to}
-            onChange={(event) => {
-              setTo(event.target.value);
-              if (event.target.value < from) setFrom(event.target.value);
+            onChange={(next) => {
+              setTo(next);
+              if (next < from) setFrom(next);
             }}
-          >
-            {months.map((month) => (
-              <option key={month} value={month}>
-                {monthOption(month)}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={monthOptions}
+          />
+        </Field>
         <div className={styles.customSubmit}>
           <Button variant="primary" size="sm" type="submit">
             Apply

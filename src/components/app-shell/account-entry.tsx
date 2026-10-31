@@ -1,18 +1,27 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { newId, parseMoney, today } from "~/components/budget/format";
+import { readAmount } from "~/components/budget/amount";
+import { newId, today } from "~/components/budget/format";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
 import { Popover } from "~/components/ui/popover";
+import { Select } from "~/components/ui/select";
 import type { Command } from "~/domain/engine";
 import { useTransactionEntry } from "./transaction-entry";
 import styles from "./account-entry.module.css";
 
 // The kinds a person adds; counterparty accounts are the system's.
 type NewAccountKind = Extract<Command, { type: "account.add" }>["kind"];
+
+const kinds: { value: NewAccountKind; label: string }[] = [
+  { value: "cash", label: "Cash / checking / savings" },
+  { value: "credit", label: "Credit card" },
+  { value: "tracking", label: "Tracking / brokerage" },
+];
 
 export function AccountEntry() {
   const entry = useTransactionEntry();
@@ -23,14 +32,21 @@ export function AccountEntry() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<NewAccountKind>("cash");
   const [balance, setBalance] = useState("");
+  const [balanceError, setBalanceError] = useState<string>();
   const [date, setDate] = useState(today(entry.view.budget.settings.timezone));
   const [error, setError] = useState("");
   const attempt = useRef<Extract<Command, { type: "account.add" }> | null>(
     null,
   );
   const save = () => {
+    const reading = readAmount(balance);
+    if (!reading.ok) {
+      setBalanceError(reading.message);
+      setError("");
+      return;
+    }
     try {
-      const amount = parseMoney(balance);
+      const amount = reading.cents;
       if (!name.trim()) throw new Error("Enter an account name.");
       if (
         !date ||
@@ -115,37 +131,32 @@ export function AccountEntry() {
             onChange={(event) => setName(event.target.value)}
           />
         </div>
-        <div className={styles.field}>
-          <label htmlFor={`${id}-kind`}>Account type</label>
-          <select
-            id={`${id}-kind`}
-            value={kind}
-            aria-describedby={`${id}-kind-help`}
-            onChange={(event) => setKind(event.target.value as NewAccountKind)}
-          >
-            <option value="cash">Cash / checking / savings</option>
-            <option value="credit">Credit card</option>
-            <option value="tracking">Tracking / brokerage</option>
-          </select>
-          <p id={`${id}-kind-help`}>
-            {kind === "tracking"
+        <Field
+          label="Account type"
+          hint={
+            kind === "tracking"
               ? "Track an investment or other account outside your budget. Its balance is not available to assign."
               : kind === "credit"
                 ? "Enter the amount owed as a positive number, or an overpaid credit as a negative number."
-                : "The opening balance becomes available to assign."}
-          </p>
-        </div>
-        <div className={styles.field}>
-          <label htmlFor={`${id}-balance`}>Opening balance ($)</label>
-          <input
-            id={`${id}-balance`}
-            value={balance}
-            inputMode="decimal"
-            placeholder="0.00"
-            required
-            onChange={(event) => setBalance(groupAmountInput(event.target))}
+                : "The opening balance becomes available to assign."
+          }
+        >
+          <Select
+            value={kind}
+            onChange={(next) => setKind(next as NewAccountKind)}
+            options={kinds}
           />
-        </div>
+        </Field>
+        <Field label="Opening balance" error={balanceError}>
+          <AmountInput
+            value={balance}
+            placeholder="0.00"
+            onChange={(next) => {
+              setBalance(next);
+              setBalanceError(undefined);
+            }}
+          />
+        </Field>
         <div className={styles.field}>
           <label htmlFor={`${id}-date`}>Balance as of</label>
           <input

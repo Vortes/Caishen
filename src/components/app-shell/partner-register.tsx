@@ -10,7 +10,10 @@ import {
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
+import { readAmount, sameAmount } from "~/components/budget/amount";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field, FormError } from "~/components/ui/field";
 import { Tag } from "~/components/ui/tag";
 import { useRowSelection } from "~/components/ui/use-row-selection";
 import selectionStyles from "~/components/ui/row-selection.module.css";
@@ -18,18 +21,10 @@ import { Popover } from "~/components/ui/popover";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
-import { AmountWell, parseCents } from "./share-field";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
-import {
-  AmountInput,
-  EditorCell,
-  EditorFooter,
-  EditorForm,
-  EditorText,
-  FieldError,
-} from "./editor-row";
+import { EditorCell, EditorFooter, EditorForm, EditorText } from "./editor-row";
 import {
   CategorizeAction,
   SelectAll,
@@ -180,7 +175,6 @@ function RequestProgress({
 // Asking the partner to pay: an amount, dated today. Settlements from them
 // count toward it until it's paid.
 function RequestPopover({ account }: { account: Account }) {
-  const id = useId();
   const { view, saveCommand } = useTransactionEntry();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -209,8 +203,10 @@ function RequestPopover({ account }: { account: Account }) {
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          const cents = parseCents(text);
-          if (!cents) return setError("Enter an amount, like 250.00.");
+          const reading = readAmount(text);
+          if (!reading.ok) return setError(reading.message);
+          const cents = reading.cents;
+          if (cents <= 0) return setError("Enter an amount, like 250.00.");
           const failure = saveCommand(
             {
               type: "partner.request",
@@ -228,24 +224,20 @@ function RequestPopover({ account }: { account: Account }) {
         <div className={moveStyles.header}>
           <strong>Request from {account.name}</strong>
         </div>
-        <div className={moveStyles.field}>
-          <label htmlFor={id}>Amount</label>
-          <AmountWell
-            id={id}
-            value={text}
-            autoFocus
-            invalid={Boolean(error)}
-            onChange={(value) => {
-              setText(value);
-              if (error) setError("");
-            }}
-          />
-          {error && <p className={moveStyles.error}>{error}</p>}
-          <p className={share.formHint}>
-            {account.name} sees it on the ledger with today&rsquo;s date.
-            Settlements count toward it until it&rsquo;s paid. No deadline, no
-            reminders.
-          </p>
+        <div className={moveStyles.fieldSlot}>
+          <Field
+            label="Amount"
+            error={error || undefined}
+            hint={`${account.name} sees it on the ledger with today’s date. Settlements count toward it until it’s paid. No deadline, no reminders.`}
+          >
+            <AmountInput
+              value={text}
+              onChange={(value) => {
+                if (!sameAmount(text, value)) setError("");
+                setText(value);
+              }}
+            />
+          </Field>
         </div>
         <div className={moveStyles.footer}>
           <Button size="sm" onClick={() => setOpen(false)}>
@@ -933,9 +925,12 @@ function EntryEditor({
         );
   };
   const save = () => {
-    const cents = shareEditable ? parseCents(text) : theirShare;
-    if (cents === null)
-      return setErrors({ amount: "Enter an amount, like 24.50." });
+    const reading = shareEditable
+      ? readAmount(text)
+      : { ok: true as const, cents: theirShare };
+    if (!reading.ok) return setErrors({ amount: reading.message });
+    const cents = reading.cents;
+    if (cents < 0) return setErrors({ amount: "Enter an amount, like 24.50." });
     if (cents > row.shared)
       return setErrors({
         amount: `A share can be at most ${money(row.shared)}.`,
@@ -972,7 +967,7 @@ function EntryEditor({
           <EditorCell
             column="category"
             label="Your category"
-            htmlFor={id("category")}
+            id={id("category")}
           >
             <ChoiceField
               id={id("category")}
@@ -989,26 +984,15 @@ function EntryEditor({
           readOnly("category", cells.category)
         )}
         {shareEditable ? (
-          <EditorCell
-            column="amount"
-            label="Amount"
-            htmlFor={id("amount")}
-            error={
-              errors.amount && (
-                <FieldError id={id("amount-error")}>{errors.amount}</FieldError>
-              )
-            }
-          >
+          <EditorCell column="amount" label="Amount" error={errors.amount}>
             <AmountInput
               inputRef={input}
-              id={id("amount")}
-              prefix={row.change < 0 ? "-$" : "$"}
-              invalid={Boolean(errors.amount)}
-              describedBy={errors.amount ? id("amount-error") : undefined}
+              negative={row.change < 0}
+              align="end"
               value={text}
               onChange={(value) => {
+                if (errors.amount && !sameAmount(text, value)) setErrors({});
                 setText(value);
-                if (errors.amount) setErrors({});
               }}
             />
           </EditorCell>
@@ -1037,7 +1021,7 @@ function EntryEditor({
         }
       >
         {errors.form ? (
-          <FieldError id={id("error")}>{errors.form}</FieldError>
+          <FormError>{errors.form}</FormError>
         ) : (
           hint && <span className={share.footerHint}>{hint}</span>
         )}

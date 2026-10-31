@@ -1,8 +1,7 @@
 "use client";
 
-import { CircleAlertIcon } from "lucide-react";
-import type { ReactNode, Ref } from "react";
-import { groupAmountInput } from "~/components/budget/amount-input";
+import type { ReactNode } from "react";
+import { Field } from "~/components/ui/field";
 import styles from "./transaction-entry.module.css";
 
 // The pieces of a register's editor row: a card that rises where the row
@@ -52,39 +51,42 @@ export function EditorForm({
   );
 }
 
-export function FieldError({ id, children }: { id: string; children: string }) {
-  return (
-    <p id={id} className={styles.fieldError}>
-      <CircleAlertIcon size={13} aria-hidden />
-      {children}
-    </p>
-  );
-}
-
 // A field in the editor row, under its column. The column header names it
-// on screen; the label stays for screen readers, and shows on a phone where
-// the row stacks.
+// on screen and the field's label names it for screen readers; on a phone,
+// where the row stacks, a caption above it names it on screen. id is the control's when it isn't a ui input, such as a
+// date or a list; it points aria-describedby at `${id}-error` itself.
 export function EditorCell({
   column,
   label,
-  htmlFor,
+  id,
   error,
+  sharedErrorId,
   children,
 }: {
   column: string;
   label: string;
-  htmlFor: string;
-  // Shown under the field; FieldError, or nothing.
-  error?: ReactNode;
+  id?: string;
+  error?: string;
+  // One message for this cell and the one beside it; see Field.
+  sharedErrorId?: string;
   children: ReactNode;
 }) {
   return (
     <div className={styles.cell} data-column={column}>
-      <label htmlFor={htmlFor} className={styles.cellLabel}>
+      {/* The field's own label is for screen readers; this one is seen
+          only once the row stacks and the column headers no longer show. */}
+      <span className={styles.stackedLabel} aria-hidden>
         {label}
-      </label>
-      {children}
-      {error}
+      </span>
+      <Field
+        id={id}
+        label={label}
+        labelHidden
+        error={error}
+        sharedErrorId={sharedErrorId}
+      >
+        {children}
+      </Field>
     </div>
   );
 }
@@ -107,56 +109,6 @@ export function EditorText({
       data-numeric={numeric || undefined}
     >
       {children}
-    </div>
-  );
-}
-
-// An amount's well: right-aligned, with its sign in front.
-export function AmountInput({
-  id,
-  name,
-  value,
-  placeholder,
-  prefix = "$",
-  invalid,
-  describedBy,
-  inputRef,
-  onChange,
-}: {
-  id: string;
-  name?: string;
-  value: string;
-  placeholder?: string;
-  prefix?: string;
-  invalid: boolean;
-  describedBy?: string;
-  inputRef?: Ref<HTMLInputElement>;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div
-      className={styles.well}
-      data-invalid={invalid ? "" : undefined}
-      data-amount
-    >
-      <span className={styles.prefix} aria-hidden>
-        {prefix}
-      </span>
-      <input
-        ref={inputRef}
-        id={id}
-        name={name}
-        className={styles.input}
-        inputMode="decimal"
-        placeholder={placeholder}
-        autoComplete="off"
-        spellCheck={false}
-        aria-invalid={invalid || undefined}
-        aria-describedby={describedBy}
-        value={value}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => onChange(groupAmountInput(event.target))}
-      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-/* The date and type controls take the theme's native colours. */
+/* The date control takes the theme's native colours. */
 .form {
   color-scheme: dark;
   display: flex;
@@ -21,14 +21,13 @@
   flex-direction: column;
   gap: 6px;
 }
-.form label,
-.form p {
+.field > label,
+.form > p {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--type-small);
 }
-.form input,
-.form select {
+.field > input {
   width: 100%;
   height: var(--size-control);
   padding: 0 var(--space-inset);
@@ -60,8 +59,7 @@
     --size-control: var(--size-row-lg);
     --size-control-xs: var(--size-row-lg);
   }
-  .form input,
-  .form select {
+  .field > input {
     font-size: var(--type-title);
   }
 }

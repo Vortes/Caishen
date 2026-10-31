@@ -55,10 +55,8 @@ test("creating a weekly refill target sends it and shows its summary", async () 
     within(form).getByRole("textbox", { name: "I need" }),
     "20",
   );
-  await shell.user.selectOptions(
-    within(form).getByRole("combobox", { name: "Every" }),
-    "Monday",
-  );
+  await shell.user.click(within(form).getByRole("combobox", { name: "Every" }));
+  await shell.user.click(screen.getByRole("option", { name: "Monday" }));
   await shell.user.click(
     within(form).getByRole("button", { name: /Next month I want to/ }),
   );
@@ -102,10 +100,10 @@ test("a missing amount is named at the field and nothing is sent", async () => {
   await shell.user.click(
     within(form).getByRole("button", { name: "Save target" }),
   );
-  const amount = within(form).getByRole("textbox", { name: "I need" });
-  expect(within(form).getByRole("alert").textContent).toBe(
-    "Enter an amount above zero.",
-  );
+  const amount = within(form).getByRole("textbox", {
+    name: "I need",
+    description: "Enter an amount above zero.",
+  });
   expect(amount.getAttribute("aria-invalid")).toBe("true");
   expect(document.activeElement).toBe(amount);
   expect(shell.execute).not.toHaveBeenCalled();
@@ -162,14 +160,14 @@ test("a custom balance goal can be due by a month", async () => {
   await shell.user.click(
     within(form).getByRole("checkbox", { name: "Due by date" }),
   );
-  await shell.user.selectOptions(
+  await shell.user.click(
     within(form).getByRole("combobox", { name: "Due on" }),
-    "March",
   );
-  await shell.user.selectOptions(
+  await shell.user.click(screen.getByRole("option", { name: "March" }));
+  await shell.user.click(
     within(form).getByRole("combobox", { name: "Due year" }),
-    "2027",
   );
+  await shell.user.click(screen.getByRole("option", { name: "2027" }));
   await shell.user.click(
     within(form).getByRole("button", { name: "Save target" }),
   );
@@ -204,9 +202,13 @@ test("a card's payment category is paid monthly or off by a date", async () => {
   await shell.user.click(
     within(form).getByRole("button", { name: "Save target" }),
   );
-  expect(within(form).getByRole("alert").textContent).toBe(
-    "Choose a date in October 2026 or later.",
-  );
+  expect(
+    within(form).getByRole("combobox", {
+      name: "Pay off by",
+      description:
+        "Choose a date in October 2026 or later. Sets aside enough each month to pay the card’s balance in full by this date.",
+    }),
+  ).toBeTruthy();
   await shell.user.clear(date);
   await shell.user.type(date, "04/30/2027");
   await shell.user.click(

@@ -1,9 +1,12 @@
 "use client";
 
 import { PlusIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field as FormField } from "~/components/ui/field";
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -12,7 +15,7 @@ import { Popover } from "~/components/ui/popover";
 import { rememberedSpendingCategory } from "~/domain/partner-ledger";
 import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
-import { AmountWell, halfOf, parseCents } from "./share-field";
+import { halfOf } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import local from "./partner-register.module.css";
@@ -47,7 +50,13 @@ export function RecordPurchase({ account }: { account: Account }) {
   const [error, setError] = useState<{ field?: Field; message: string } | null>(
     null,
   );
-  const amount = parseCents(amountText) ?? 0;
+  const reading = readAmount(amountText);
+  const amount = reading.ok ? Math.max(0, reading.cents) : 0;
+  // Clicking the even split makes the share editable, ready to type.
+  const shareInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!even) shareInput.current?.focus();
+  }, [even]);
   const youPaid = paidBy === you;
   const shareLabel = youPaid ? `${account.name}'s share` : "Your share";
   const options: ChoiceOption[] = view.categories
@@ -68,6 +77,8 @@ export function RecordPurchase({ account }: { account: Account }) {
     error?.field === field && (
       <p className={moveStyles.error}>{error.message}</p>
     );
+  const fieldMessage = (field: Field) =>
+    error?.field === field ? error.message : undefined;
   if (!partnerId) return null;
   return (
     <Popover
@@ -103,9 +114,18 @@ export function RecordPurchase({ account }: { account: Account }) {
           event.preventDefault();
           const name = payee.trim();
           if (!name) return fail("Add who was paid.", "payee");
+          if (amountText.trim() && !reading.ok)
+            return fail(reading.message, "amount");
           if (!amount) return fail("Enter the amount, like 54.00.", "amount");
-          const share = even ? halfOf(amount) : parseCents(shareText);
-          if (!share || share > amount)
+          const shareReading = readAmount(shareText);
+          if (!even && shareText.trim() && !shareReading.ok)
+            return fail(shareReading.message, "share");
+          const share = even
+            ? halfOf(amount)
+            : shareReading.ok
+              ? shareReading.cents
+              : 0;
+          if (share <= 0 || share > amount)
             return fail(
               `Enter a share above $0.00 and at most ${money(amount)}.`,
               "share",
@@ -178,54 +198,62 @@ export function RecordPurchase({ account }: { account: Account }) {
           {fieldError("payee")}
         </div>
         <div className={local.fieldPair}>
-          <div className={moveStyles.field}>
-            <label htmlFor={`${id}-amount`}>Total paid</label>
-            <AmountWell
-              id={`${id}-amount`}
-              value={amountText}
-              invalid={error?.field === "amount"}
-              onChange={(value) => {
-                setAmountText(value);
-                if (error?.field === "amount") setError(null);
-              }}
-            />
-          </div>
-          <div className={moveStyles.field}>
-            <label htmlFor={`${id}-share`}>{shareLabel}</label>
-            {even ? (
-              <button
-                type="button"
-                id={`${id}-share`}
-                className={`${moveStyles.amountInput} ${local.evenButton}`}
-                onClick={() => {
-                  setEven(false);
-                  setShareText((halfOf(amount) / 100).toFixed(2));
-                }}
-              >
-                <span>Half</span>
-                <span className={local.evenAmount}>
-                  {money(halfOf(amount))}
-                </span>
-              </button>
-            ) : (
-              <AmountWell
-                id={`${id}-share`}
-                value={shareText}
-                autoFocus
-                invalid={error?.field === "share"}
+          <div className={moveStyles.fieldSlot}>
+            <FormField label="Total paid" error={fieldMessage("amount")}>
+              <AmountInput
+                value={amountText}
                 onChange={(value) => {
-                  setShareText(value);
-                  if (error?.field === "share") setError(null);
+                  if (
+                    error?.field === "amount" &&
+                    !sameAmount(amountText, value)
+                  )
+                    setError(null);
+                  setAmountText(value);
                 }}
               />
-            )}
+            </FormField>
+          </div>
+          <div className={moveStyles.fieldSlot}>
+            <FormField
+              id={`${id}-share`}
+              label={shareLabel}
+              error={fieldMessage("share")}
+            >
+              {even ? (
+                <button
+                  type="button"
+                  id={`${id}-share`}
+                  className={`${moveStyles.amountInput} ${local.evenButton}`}
+                  aria-describedby={
+                    fieldMessage("share") ? `${id}-share-error` : undefined
+                  }
+                  onClick={() => {
+                    setEven(false);
+                    setShareText((halfOf(amount) / 100).toFixed(2));
+                  }}
+                >
+                  <span>Half</span>
+                  <span className={local.evenAmount}>
+                    {money(halfOf(amount))}
+                  </span>
+                </button>
+              ) : (
+                <AmountInput
+                  inputRef={shareInput}
+                  value={shareText}
+                  onChange={(value) => {
+                    if (
+                      error?.field === "share" &&
+                      !sameAmount(shareText, value)
+                    )
+                      setError(null);
+                    setShareText(value);
+                  }}
+                />
+              )}
+            </FormField>
           </div>
         </div>
-        {(error?.field === "amount" || error?.field === "share") && (
-          <div className={moveStyles.formError}>
-            <p className={moveStyles.error}>{error.message}</p>
-          </div>
-        )}
         <div className={moveStyles.field}>
           <label htmlFor={`${id}-category`}>
             Your category{youPaid ? "" : " for your share"}

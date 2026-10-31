@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readAmount } from "~/components/budget/amount";
 import type { State } from "~/components/budget/types";
 import type { ExecuteResult } from "~/components/sync/transport";
 import { api } from "~/trpc/react";
@@ -38,6 +39,47 @@ type AccountDraft = {
   minimumPayment: string;
   variable: boolean;
 };
+
+type LoanTerms = {
+  principal: number;
+  annualRateBps: number;
+  minimumPayment: number;
+};
+
+// A new loan's terms in cents and basis points, or why they can't be read.
+// The principal and payment are typed amounts; a balance from the bank is
+// taken as given.
+function loanTerms(
+  currentBalance: number | null,
+  draft: AccountDraft,
+): LoanTerms | { error: string } {
+  let principal = NaN;
+  if (currentBalance === null) {
+    const typed = readAmount(draft.loanBalance);
+    if (typed.ok) principal = typed.cents;
+  } else if (twoPlaces.test(String(currentBalance)))
+    principal = Math.round(currentBalance * 100);
+  if (!Number.isSafeInteger(principal) || principal < 0)
+    return {
+      error:
+        "Enter the current principal owed from your lender’s latest statement.",
+    };
+  if (!twoPlaces.test(draft.annualRate) || Number(draft.annualRate) > 1000)
+    return {
+      error:
+        "Enter the loan’s confirmed APR, including 0 for an interest-free loan.",
+    };
+  const payment = readAmount(draft.minimumPayment);
+  if (!payment.ok || payment.cents <= 0)
+    return { error: "Enter the required monthly payment from your lender." };
+  return {
+    principal,
+    annualRateBps: Math.round(Number(draft.annualRate) * 100),
+    minimumPayment: payment.cents,
+  };
+}
+// A bank balance or an APR: digits with up to two decimal places.
+const twoPlaces = /^\d+(?:\.\d{1,2})?$/;
 
 export function bankAccountMappings(value: unknown) {
   const mappings = new Map<string, AccountMapping>();
@@ -311,6 +353,8 @@ export function useBankAccountSetupForm({
   const submit = async () => {
     if (saving.current || busy || !ready || !refreshed) return;
     const errors: Record<string, string> = {};
+    // A new loan's terms as checked here are the ones sent.
+    const loans = new Map<string, LoanTerms>();
     for (const account of selected) {
       const draft = drafts[account.accountId]!;
       if (recoveryAccounts(account).length && !draft.existingAccountId)
@@ -340,28 +384,9 @@ export function useBankAccountSetupForm({
           errors[account.accountId] =
             "Choose an import date after this account’s opening balance date.";
       } else if (account.type === "loan") {
-        const money = /^\d+(?:\.\d{1,2})?$/;
-        const principal =
-          account.currentBalance?.toString() ?? draft.loanBalance;
-        if (
-          !money.test(principal) ||
-          !Number.isSafeInteger(Math.round(Number(principal) * 100))
-        )
-          errors[account.accountId] =
-            "Enter the current principal owed from your lender’s latest statement.";
-        else if (
-          !money.test(draft.annualRate) ||
-          Number(draft.annualRate) > 1000
-        )
-          errors[account.accountId] =
-            "Enter the loan’s confirmed APR, including 0 for an interest-free loan.";
-        else if (
-          !money.test(draft.minimumPayment) ||
-          Number(draft.minimumPayment) <= 0 ||
-          !Number.isSafeInteger(Math.round(Number(draft.minimumPayment) * 100))
-        )
-          errors[account.accountId] =
-            "Enter the required monthly payment from your lender.";
+        const terms = loanTerms(account.currentBalance, draft);
+        if ("error" in terms) errors[account.accountId] = terms.error;
+        else loans.set(account.accountId, terms);
       }
     }
     if (Object.keys(errors).length) {
@@ -392,13 +417,7 @@ export function useBankAccountSetupForm({
             : account.type === "loan"
               ? {
                   loan: {
-                    principal: Math.round(
-                      Number(account.currentBalance ?? draft.loanBalance) * 100,
-                    ),
-                    annualRateBps: Math.round(Number(draft.annualRate) * 100),
-                    minimumPayment: Math.round(
-                      Number(draft.minimumPayment) * 100,
-                    ),
+                    ...loans.get(account.accountId)!,
                     variable: draft.variable,
                   },
                 }

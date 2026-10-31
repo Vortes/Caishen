@@ -101,10 +101,10 @@ void test("a missing, zero, or malformed amount names the amount field", () => {
   };
   assert.deepEqual(build("spending", { amount: "" }), aboveZero);
   assert.deepEqual(build("spending", { amount: "0" }), aboveZero);
-  assert.deepEqual(build("spending", { amount: "12.345" }), {
+  assert.deepEqual(build("spending", { amount: "12+" }), {
     ok: false,
     field: "amount",
-    message: "Enter a dollar amount with no more than two decimal places.",
+    message: "Enter an amount, such as 84.20 or 600+150.",
   });
 });
 

@@ -42,7 +42,9 @@ import { Tag } from "~/components/ui/tag";
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { ConfirmDialog, Dialog, DialogScrim } from "~/components/ui/dialog";
+import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
+import { Select } from "~/components/ui/select";
 import { Menu, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { syncedLabel } from "./model";
 import { api } from "~/trpc/react";
@@ -1057,40 +1059,42 @@ function SetupForm({
                         </div>
                       )}
                       {existingAccounts.length > 0 && (
-                        <div className={styles.field}>
-                          <label htmlFor={`${fieldId}-as`}>
-                            {requiresExisting || recovery
-                              ? "Link to"
-                              : "Add as"}
-                          </label>
-                          <select
-                            id={`${fieldId}-as`}
+                        <Field
+                          label={
+                            requiresExisting || recovery ? "Link to" : "Add as"
+                          }
+                        >
+                          <Select
                             value={draft.existingAccountId}
                             disabled={busy}
-                            onChange={(event) =>
+                            onChange={(next) =>
                               form.change(account.accountId, {
-                                existingAccountId: event.target.value,
+                                existingAccountId: next,
                               })
                             }
-                          >
-                            <option value="" disabled={requiresExisting}>
-                              {requiresExisting
-                                ? "Choose an existing account"
-                                : account.type === "loan"
-                                  ? "New loan"
-                                  : "New account"}
-                            </option>
-                            {existingAccounts.map((existing) => (
-                              <option key={existing.id} value={existing.id}>
-                                {existing.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                            placeholder="Choose an existing account"
+                            options={[
+                              ...(requiresExisting
+                                ? []
+                                : [
+                                    {
+                                      value: "",
+                                      label:
+                                        account.type === "loan"
+                                          ? "New loan"
+                                          : "New account",
+                                    },
+                                  ]),
+                              ...existingAccounts.map((existing) => ({
+                                value: existing.id,
+                                label: existing.name,
+                              })),
+                            ]}
+                          />
+                        </Field>
                       )}
                       {account.type === "loan" && !draft.existingAccountId && (
                         <LoanSetupFields
-                          id={fieldId}
                           currentBalance={account.currentBalance}
                           draft={draft}
                           busy={busy}

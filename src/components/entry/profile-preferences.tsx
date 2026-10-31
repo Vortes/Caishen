@@ -1,14 +1,15 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { Card } from "~/components/ui/card";
+import { Field } from "~/components/ui/field";
+import { Select } from "~/components/ui/select";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
-import { TimezoneOptions } from "~/components/settings/timezone-options";
+import { timezoneOptions } from "~/components/settings/timezone-options";
 import type { Budget } from "~/domain/engine";
 import shell from "~/components/app-shell/shell.module.css";
-import batch from "./entry.module.css";
 import styles from "./settings.module.css";
 
 export type Preferences = Budget["settings"];
@@ -24,7 +25,6 @@ export function ProfilePreferences({
   value: Preferences;
   onChange: UpdatePreferences;
 }) {
-  const id = useId();
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
   const change = (update: Partial<Preferences>) => setError(onChange(update));
@@ -34,22 +34,21 @@ export function ProfilePreferences({
         <Card>
           <div className={shell.settingRow}>
             <div className={shell.settingText}>
-              <label className={shell.settingLabel} htmlFor={`${id}-timezone`}>
-                Timezone
-              </label>
+              <span className={shell.settingLabel}>Timezone</span>
               <span className={shell.settingHint}>
                 Decides when a new month starts and when your daily email
                 arrives.
               </span>
             </div>
-            <select
-              id={`${id}-timezone`}
-              className={`${batch.select} ${styles.settingSelect}`}
-              value={value.timezone}
-              onChange={(event) => change({ timezone: event.target.value })}
-            >
-              <TimezoneOptions include={value.timezone} />
-            </select>
+            <div className={styles.settingControl}>
+              <Field label="Timezone" labelHidden>
+                <Select
+                  value={value.timezone}
+                  onChange={(timezone) => change({ timezone })}
+                  options={timezoneOptions(value.timezone)}
+                />
+              </Field>
+            </div>
           </div>
         </Card>
       </section>
@@ -79,29 +78,25 @@ export function ProfilePreferences({
           <div className={shell.settingDivider} />
           <div className={shell.settingRow}>
             <div className={shell.settingText}>
-              <label className={shell.settingLabel} htmlFor={`${id}-hour`}>
-                Send at
-              </label>
+              <span className={shell.settingLabel}>Send at</span>
               <span className={shell.settingHint}>
                 {value.timezone.split("/").at(-1)?.replaceAll("_", " ")} time,
                 your budget’s timezone.
               </span>
             </div>
-            <select
-              id={`${id}-hour`}
-              className={`${batch.select} ${styles.settingSelect}`}
-              value={value.emailHour}
-              disabled={!value.emailEnabled}
-              onChange={(event) =>
-                change({ emailHour: Number(event.target.value) })
-              }
-            >
-              {Array.from({ length: 24 }, (_, hour) => (
-                <option key={hour} value={hour}>
-                  {hourLabel(hour)}
-                </option>
-              ))}
-            </select>
+            <div className={styles.settingControl}>
+              <Field label="Send at" labelHidden>
+                <Select
+                  value={String(value.emailHour)}
+                  disabled={!value.emailEnabled}
+                  onChange={(hour) => change({ emailHour: Number(hour) })}
+                  options={Array.from({ length: 24 }, (_, hour) => ({
+                    value: String(hour),
+                    label: hourLabel(hour),
+                  }))}
+                />
+              </Field>
+            </div>
           </div>
           <div className={styles.nextEmail}>
             <span role="status">

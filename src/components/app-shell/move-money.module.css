@@ -39,6 +39,21 @@
   color: var(--status-overspent);
 }
 
+/* The fields of the move-money and assign forms, between the header and
+   the footer. */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* A ui Field in a form whose other fields still pad themselves (add
+   category). */
+.fieldSlot {
+  padding: 10px 12px 0;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -70,7 +85,7 @@
 }
 .amountInput[data-invalid],
 .search[data-invalid] {
-  border-color: var(--danger-line);
+  border-color: var(--field-error-line);
 }
 .amountInput > span {
   color: var(--text-tertiary);
@@ -106,38 +121,6 @@
 .search:not([data-expanded]) input {
   cursor: pointer;
 }
-/* A native select in the same well, with the fields' chevron in place of
-   the platform's arrow. */
-.select {
-  position: relative;
-  display: flex;
-}
-.select select {
-  flex: 1;
-  min-width: 0;
-  height: var(--size-control);
-  padding: 0 28px 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  appearance: none;
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color 150ms;
-}
-.select select:focus-visible {
-  border-color: var(--focus-ring);
-  outline: none;
-}
-.select svg {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  color: var(--text-tertiary);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
 .searchIcon {
   flex: none;
   color: var(--text-tertiary);
@@ -147,7 +130,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--danger-text);
+  color: var(--field-error);
   font-size: var(--type-small);
 }
 
@@ -285,11 +268,7 @@
     height: 44px;
   }
   .amountInput input,
-  .search input,
-  .select select {
+  .search input {
     font-size: 16px;
-  }
-  .select select {
-    height: 44px;
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -13,11 +13,12 @@ import {
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { Button } from "~/components/ui/button";
+import { Field, FormError } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip } from "~/components/ui/tooltip";
-import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
 import { Popover } from "~/components/ui/popover";
+import { Select } from "~/components/ui/select";
 // The move-money popover's form fields.
 import styles from "./move-money.module.css";
 
@@ -223,57 +224,56 @@ function NameForm({
         submit();
       }}
     >
-      <div className={styles.field}>
-        <label htmlFor={id}>{target ? "Category name" : "Group name"}</label>
-        <div
-          className={styles.search}
-          data-expanded
-          data-invalid={error?.field === "name" || undefined}
+      <div className={styles.fieldSlot}>
+        <Field
+          id={id}
+          label={target ? "Category name" : "Group name"}
+          error={error?.field === "name" ? error.message : undefined}
         >
-          <input
-            ref={inputRef}
-            id={id}
-            autoComplete="off"
-            maxLength={MAX_LENGTH}
-            placeholder={target ? "Groceries" : "Bills"}
-            value={name}
-            aria-invalid={error?.field === "name" || undefined}
-            aria-describedby={error ? `${id}-error` : undefined}
-            onChange={(event) => {
-              setName(event.target.value);
-              setError(null);
-            }}
-          />
-        </div>
-        {error?.field === "name" && (
-          <FieldError id={`${id}-error`} message={error.message} />
-        )}
-      </div>
-      {choice && (
-        <div className={styles.field}>
-          <label htmlFor={`${id}-group`}>Category group</label>
-          <div className={styles.select}>
-            <select
-              id={`${id}-group`}
-              value={chosen}
+          <div
+            className={styles.search}
+            data-expanded
+            data-invalid={error?.field === "name" || undefined}
+          >
+            <input
+              ref={inputRef}
+              id={id}
+              autoComplete="off"
+              maxLength={MAX_LENGTH}
+              placeholder={target ? "Groceries" : "Bills"}
+              value={name}
+              aria-invalid={error?.field === "name" || undefined}
+              aria-describedby={
+                error?.field === "name" ? `${id}-error` : undefined
+              }
               onChange={(event) => {
-                setChosen(event.target.value);
+                setName(event.target.value);
                 setError(null);
               }}
-            >
-              {choices.map((item) => (
-                <option key={item.name} value={item.name}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon size={12} aria-hidden />
+            />
           </div>
+        </Field>
+      </div>
+      {choice && (
+        <div className={styles.fieldSlot}>
+          <Field label="Category group">
+            <Select
+              value={chosen}
+              onChange={(next) => {
+                setChosen(next);
+                setError(null);
+              }}
+              options={choices.map((item) => ({
+                value: item.name,
+                label: item.name,
+              }))}
+            />
+          </Field>
         </div>
       )}
       {error?.field === "form" && (
         <div className={styles.formError}>
-          <FieldError id={`${id}-error`} message={error.message} />
+          <FormError>{error.message}</FormError>
         </div>
       )}
       <div className={styles.footer}>

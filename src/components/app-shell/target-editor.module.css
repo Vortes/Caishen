@@ -21,18 +21,6 @@
   font-size: var(--type-small);
 }
 
-.prefix {
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* A native select fills its well, with the chevron drawn over its end. */
-.select {
-  appearance: none;
-  padding-right: 22px;
-  margin-right: -22px;
-  cursor: pointer;
-}
 .chevron {
   flex: none;
   color: var(--text-tertiary);

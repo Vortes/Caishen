@@ -98,6 +98,8 @@ What does the color communicate?
  │    --accent-solid mixed into --surface-panel; see rows.md
  ├── A destructive confirm → --danger-text and --danger-line, through
  │    Button variant="danger"
+ ├── A field the user has to fix → --field-error for its error text and
+ │    --field-error-line for its well's border, through Field
  └── Checked boxes, the focus ring → --accent-solid, --focus-ring
 ```
 

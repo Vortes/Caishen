@@ -1,0 +1,266 @@
+/* One look for every field: a label, a filled well with a ring on focus,
+   and a hint or error under it. Shared by Field, TextInput and AmountInput. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.label {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.label[data-hidden] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.well {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--size-control);
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  transition: border-color 150ms;
+}
+.well:focus-within {
+  border-color: var(--focus-ring);
+}
+/* Keyboard focus adds the shell's 2px ring, laid over the border so it
+   reads as one ring. */
+.well:has(.input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.well[data-invalid] {
+  border-color: var(--field-error-line);
+}
+.well[data-disabled] {
+  color: var(--text-secondary);
+  background: var(--surface-group);
+}
+.affix {
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+/* The well draws the focus ring, in place of the shell's own; the well in
+   the selector outranks the shell's `.root :focus-visible`. */
+.well .input:focus-visible {
+  outline: none;
+}
+.well[data-align="end"] .input {
+  text-align: right;
+}
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+.input:disabled {
+  cursor: not-allowed;
+}
+
+.hint {
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.error {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--field-error);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.error > svg {
+  flex: none;
+  transform: translateY(2px);
+}
+
+/* Spans the form edge to edge under its fields; the note takes the room
+   the actions don't. */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.note {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Touch: a taller well, and 16px text so focusing it doesn't zoom the
+   page. */
+@media (pointer: coarse) {
+  .well {
+    height: 44px;
+  }
+  .input {
+    font-size: var(--type-title);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .well {
+    transition: none;
+  }
+}
+
+/* AmountInput's operator row: keys a decimal keypad lacks, over the
+   on-screen keyboard while an amount has focus on a touch screen.
+   AmountInput moves it to the visual viewport's bottom edge; without
+   visualViewport it sits at the window's bottom. Above every surface, and
+   clickable under a modal dialog that turns pointer events off outside it. */
+.operators {
+  position: fixed;
+  z-index: 90;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-group);
+  pointer-events: auto;
+}
+.operator {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-row);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--type-title);
+  font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.operator:active {
+  background: var(--control-bg-active);
+}
+
+/* ---- Select ----
+   The trigger is the well, as a button: the choice or the placeholder, then
+   a chevron. Its list lies on the Popover surface, rows as in a menu's
+   choose-one list: a check column, then the label. */
+
+.select {
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+/* Keyboard focus draws the well's ring, laid over the border. Two classes
+   outrank the shell's own ring. */
+.well.select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.select:disabled {
+  cursor: not-allowed;
+}
+.select > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.value[data-placeholder] {
+  color: var(--text-tertiary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+/* The highlight follows the pointer and arrow keys instantly; it is the
+   focus indicator. */
+.option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--size-row-sm);
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-row);
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+}
+.option:focus {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.list .option:focus-visible {
+  outline: none;
+}
+.option[aria-selected="true"] {
+  color: var(--text-primary);
+}
+.check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--accent-solid);
+}
+.optionLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Touch: the well's 16px text, and rows as tall as a menu's. */
+@media (pointer: coarse) {
+  .select {
+    font-size: var(--type-title);
+  }
+  .option {
+    min-height: var(--size-row-lg);
+  }
+}

@@ -129,23 +129,6 @@
   color: var(--text-tertiary);
   font-size: var(--type-small);
 }
-.custom label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-.custom select {
-  height: var(--size-control);
-  padding: 0 6px;
-  border: 1px solid var(--control-border);
-  border-radius: 6px;
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--type-body);
-}
 
 /* ---------- Report body ---------- */
 
@@ -589,8 +572,7 @@ button.sliceColumns:hover {
   margin: 0;
 }
 
-/* Touch: rows and controls in the popovers reach a 44px target, and the
-   month pickers use 16px text so iOS doesn't zoom when they're focused. */
+/* Touch: rows and controls in the popovers reach a 44px target. */
 @media (pointer: coarse) {
   .check,
   .preset {
@@ -598,10 +580,6 @@ button.sliceColumns:hover {
   }
   .textAction {
     min-height: 44px;
-  }
-  .custom select {
-    height: 44px;
-    font-size: 16px;
   }
 }
 

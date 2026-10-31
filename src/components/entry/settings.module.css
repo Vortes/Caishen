@@ -41,9 +41,10 @@
   font-size: var(--type-small);
   cursor: pointer;
 }
-.settingSelect {
+/* A setting's select, beside its label and hint. */
+.settingControl {
   flex: none;
-  width: auto;
+  width: 12rem;
   max-width: 50%;
 }
 .rowIcon {

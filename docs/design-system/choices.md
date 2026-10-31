@@ -6,7 +6,10 @@ What is the user choosing?
  ├── Which items to include or act on → Checkbox
  ├── Which of 2–4 views of the same content → SegmentedControl
  ├── Which of 2+ sections of different content → Tabs
- └── One of 5+ options → a select (not in the system yet; see DESIGN.md)
+ ├── One of 5+ options, or a value a form asks for (account type, rate)
+ │     → Select (selects.md)
+ └── One item from a list long enough to search → a combobox (not in the
+       system yet; see TODO.md)
 ```
 
 None of these take variants or sizes.
@@ -104,7 +107,12 @@ schedule in the inspector, so every option stays visible as the panel
 narrows. Everywhere else it takes its natural width.
 
 ```tsx
-<SegmentedControl fill aria-label="Schedule" value={schedule} onValueChange={set}>
+<SegmentedControl
+  fill
+  aria-label="Schedule"
+  value={schedule}
+  onValueChange={set}
+>
   <SegmentedControlItem value="weekly">Weekly</SegmentedControlItem>
   <SegmentedControlItem value="monthly">Monthly</SegmentedControlItem>
 </SegmentedControl>
@@ -144,3 +152,10 @@ In the inspector, tabs sit inside a `Card`:
 
 The Spending Breakdown / Trends switcher in the page header is not this
 component; header tabs aren't in the system yet.
+
+## Select
+
+One value from a fixed list in a form: an account type, a month, a
+weekday. Its interface, keyboard and phone behavior are in
+[selects.md](selects.md). A list searched by typing is a combobox (not in
+the system yet); a list of actions is a [`Menu`](menus.md).

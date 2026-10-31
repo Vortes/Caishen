@@ -7,7 +7,6 @@ import {
 } from "~/domain/register-entry";
 import { transferNeedsCategory } from "~/domain/transfers";
 import { cardPaymentCategoryLabel } from "~/components/transactions/transaction-category";
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon, PlusIcon, SplitIcon, XIcon } from "lucide-react";
 import {
   useEffect,
@@ -17,6 +16,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import {
   READY_TO_ASSIGN,
@@ -31,7 +31,9 @@ import {
   type DraftShare,
 } from "~/components/transactions/transaction-draft";
 import type { CounterpartyShare } from "~/domain/engine";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
 import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
@@ -44,15 +46,9 @@ import {
   PayeeField,
   type ChoiceOption,
 } from "./transaction-fields";
-import { ShareLabel, ShareMenu, parseCents } from "./share-field";
+import { ShareLabel, ShareMenu } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
-import {
-  AmountInput,
-  EditorCell,
-  EditorFooter,
-  EditorForm,
-  FieldError,
-} from "./editor-row";
+import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
 import { TransactionCategoryField } from "./transaction-category-field";
 import shell from "./shell.module.css";
 import shareStyles from "./share.module.css";
@@ -242,17 +238,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const amountErrorId = `${formId}-amount-error`;
   const shownOnce = (field: DraftField) =>
     Boolean(amountError) && (field === "outflow" || field === "inflow");
+  // For the controls that aren't ui inputs; their Field shows the error.
   const described = (field: DraftField) =>
-    shownOnce(field)
-      ? amountErrorId
-      : fields[field]
-        ? `${id(field)}-error`
-        : undefined;
-  const fieldError = (name: DraftField) =>
-    !shownOnce(name) &&
-    fields[name] && (
-      <FieldError id={`${id(name)}-error`}>{fields[name]}</FieldError>
-    );
+    fields[field] && !shownOnce(field) ? `${id(field)}-error` : undefined;
   const cell = (
     name: DraftField,
     column: string,
@@ -262,29 +250,36 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     <EditorCell
       column={column}
       label={label}
-      htmlFor={id(name)}
-      error={fieldError(name)}
+      id={id(name)}
+      error={shownOnce(name) ? undefined : fields[name]}
+      sharedErrorId={shownOnce(name) ? amountErrorId : undefined}
     >
       {control}
     </EditorCell>
   );
+  // Outflow and inflow are one amount: typing in one clears the other.
+  // Leaving one rewrites it as its result, which clears nothing.
+  const amountChange = (
+    before: { outflow: string; inflow: string },
+    name: "outflow" | "inflow",
+    value: string,
+  ) => {
+    const other = name === "outflow" ? "inflow" : "outflow";
+    return {
+      [name]: value,
+      ...(value.trim() && !sameAmount(before[name], value)
+        ? { [other]: "" }
+        : {}),
+    };
+  };
   const amount = (name: "outflow" | "inflow") => (
     <AmountInput
       inputRef={register(name)}
-      id={id(name)}
       name={name}
       placeholder={name === "outflow" ? "Outflow" : "Inflow"}
-      invalid={Boolean(fields[name])}
-      describedBy={described(name)}
+      align="end"
       value={draft[name]}
-      onChange={(value) =>
-        // Outflow and inflow are one amount: typing in one clears the other.
-        entry.change({
-          [name]: value,
-          ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
-          ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
-        })
-      }
+      onChange={(value) => entry.change(amountChange(draft, name, value))}
     />
   );
   // Taking a choice moves on to the next field, which opens its own list.
@@ -659,17 +654,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     const lineAmount = (name: "outflow" | "inflow") => (
       <AmountInput
         inputRef={register(lineId(name))}
-        id={id(lineId(name))}
         placeholder={name === "outflow" ? "Outflow" : "Inflow"}
-        invalid={Boolean(fields[lineId(name)])}
-        describedBy={described(lineId(name))}
+        align="end"
         value={line[name]}
         onChange={(value) =>
-          changeLine(line.lineId, {
-            [name]: value,
-            ...(name === "outflow" && value.trim() ? { inflow: "" } : {}),
-            ...(name === "inflow" && value.trim() ? { outflow: "" } : {}),
-          })
+          changeLine(line.lineId, amountChange(line, name, value))
         }
       />
     );
@@ -753,15 +742,18 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     saved: CounterpartyShare | undefined,
     onChange: (share: DraftShare | null) => void,
   ) => {
+    const reading = value && readAmount(value.amount);
     const share = value && {
       ...value,
-      amount: parseCents(value.amount) ?? 0,
+      amount: reading?.ok ? reading.cents : 0,
     };
     return (
-      <div className={styles.cell} data-column="share">
-        <label htmlFor={id(name)} className={styles.cellLabel}>
-          {label}
-        </label>
+      <EditorCell
+        column="share"
+        label={label}
+        id={id(name)}
+        error={fields[name]}
+      >
         <ShareMenu
           amount={Math.abs(lineAmount)}
           share={share}
@@ -789,8 +781,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             )}
           </button>
         </ShareMenu>
-        {fieldError(name)}
-      </div>
+      </EditorCell>
     );
   };
 
@@ -891,7 +882,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
               {fields.remaining && (
                 <p
                   id={`${formId}-remaining-error`}
-                  className={styles.fieldError}
+                  className={styles.formError}
                 >
                   <CircleAlertIcon size={13} aria-hidden />
                   {fields.remaining}
@@ -903,30 +894,14 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       )}
       {loan && (
         <div className={styles.loanDetails}>
-          <div>
-            <label htmlFor={id("interest")}>Lender-confirmed interest</label>
-            <div
-              className={styles.well}
-              data-invalid={Boolean(fields.interest) || undefined}
-            >
-              <span aria-hidden>$</span>
-              <input
-                ref={register("interest")}
-                id={id("interest")}
-                className={styles.input}
-                inputMode="decimal"
-                value={draft.interest}
-                placeholder="0.00"
-                onFocus={(event) => event.currentTarget.select()}
-                aria-invalid={Boolean(fields.interest) || undefined}
-                aria-describedby={described("interest")}
-                onChange={(event) =>
-                  entry.change({ interest: groupAmountInput(event.target) })
-                }
-              />
-            </div>
-            {fieldError("interest")}
-          </div>
+          <Field label="Lender-confirmed interest" error={fields.interest}>
+            <AmountInput
+              inputRef={register("interest")}
+              value={draft.interest}
+              placeholder="0.00"
+              onChange={(interest) => entry.change({ interest })}
+            />
+          </Field>
           <p>
             The outflow includes principal and interest. Only principal reduces
             the loan balance.
