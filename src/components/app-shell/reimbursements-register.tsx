@@ -7,6 +7,7 @@ import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { DateField } from "~/components/ui/date-field";
 import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
@@ -459,17 +460,16 @@ function RecordRepayment({
               />
             </Field>
           </div>
-          <div className={moveStyles.field}>
-            <label htmlFor={`${id}-date`}>Date</label>
-            <div className={moveStyles.amountInput}>
-              <input
-                id={`${id}-date`}
-                type="date"
+          <div className={moveStyles.fieldSlot}>
+            <Field label="Date">
+              <DateField
                 value={date}
+                // A repayment is recorded once it arrived.
                 max={today(timezone)}
-                onChange={(event) => setDate(event.target.value)}
+                today={today(timezone)}
+                onChange={setDate}
               />
-            </div>
+            </Field>
           </div>
         </div>
         <div className={moveStyles.field}>

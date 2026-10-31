@@ -123,6 +123,44 @@
   margin-left: auto;
 }
 
+/* ---- DateField ----
+   The well with a calendar icon at its end; on touch the icon is a button
+   inside the well's right edge. With its calendar open, the date is the
+   field being filled in, though focus sits on a day inside the calendar. */
+
+.date[data-open] {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.date[data-open]:not([data-invalid]) {
+  border-color: var(--focus-ring);
+}
+.date .input:not(:disabled, :read-only) {
+  cursor: pointer;
+}
+.date[data-open] .input {
+  cursor: text;
+}
+.dateIcon {
+  flex: none;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.dateTrigger {
+  display: none;
+}
+@media (pointer: coarse) {
+  .date {
+    padding-right: 2px;
+  }
+  .dateIcon {
+    display: none;
+  }
+  .dateTrigger {
+    display: flex;
+  }
+}
+
 /* Touch: a taller well, and 16px text so focusing it doesn't zoom the
    page. */
 @media (pointer: coarse) {
