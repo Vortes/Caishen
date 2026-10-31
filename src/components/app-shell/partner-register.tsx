@@ -18,12 +18,12 @@ import { Tag } from "~/components/ui/tag";
 import { useRowSelection } from "~/components/ui/use-row-selection";
 import selectionStyles from "~/components/ui/row-selection.module.css";
 import { Popover } from "~/components/ui/popover";
+import { SearchList, type SearchListOption } from "~/components/ui/search-list";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
-import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import { EditorCell, EditorFooter, EditorForm, EditorText } from "./editor-row";
 import {
   CategorizeAction,
@@ -810,7 +810,7 @@ function SettlementDetail({
             Reject match
           </Button>
         </div>
-        {error && <p className={moveStyles.error}>{error}</p>}
+        {error && <FormError>{error}</FormError>}
       </div>
     </div>
   );
@@ -839,7 +839,6 @@ function EntryEditor({
   onClose: () => void;
 }) {
   const formId = useId();
-  const id = (field: string) => `${formId}-${field}`;
   const input = useRef<HTMLInputElement>(null);
   const categoryInput = useRef<HTMLInputElement>(null);
   const entry = useTransactionEntry();
@@ -856,7 +855,7 @@ function EntryEditor({
     row.categoryId ?? row.suggestedCategoryId ?? "",
   );
   const [errors, setErrors] = useState<{ amount?: string; form?: string }>({});
-  const categoryOptions: ChoiceOption[] = view.categories
+  const categoryOptions: SearchListOption[] = view.categories
     .filter(
       (category) =>
         !category.pairedAccountId &&
@@ -964,15 +963,9 @@ function EntryEditor({
         {readOnly("date", cells.date)}
         {readOnly("payee", cells.payee)}
         {categoryEditable ? (
-          <EditorCell
-            column="category"
-            label="Your category"
-            id={id("category")}
-          >
-            <ChoiceField
-              id={id("category")}
+          <EditorCell column="category" label="Your category">
+            <SearchList
               inputRef={categoryInput}
-              label="Your category"
               value={categoryId}
               options={categoryOptions}
               placeholder="Category"

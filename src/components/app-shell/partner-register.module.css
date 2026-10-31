@@ -112,11 +112,6 @@
 .fieldPair > :last-child {
   padding-left: 4px;
 }
-/* The shell's choice field draws its own well. */
-.choiceWell {
-  display: flex;
-  flex-direction: column;
-}
 
 /* A waiting import's possible recorded purchases, in its editor. */
 .matches {

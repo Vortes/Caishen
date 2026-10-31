@@ -1,16 +1,20 @@
 "use client";
 
-import { useId, useState, type ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { readAmount } from "~/components/budget/amount";
 import type { DraftShare } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
+import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import { SearchList, type SearchListOption } from "~/components/ui/search-list";
+import { TextInput } from "~/components/ui/text-input";
 import { useShareParties } from "./share-field";
-import moveStyles from "./move-money.module.css";
 import styles from "./share.module.css";
 
 const NEW_PERSON = "\u0000person:new";
+
+// The name box takes focus as the form opens.
+const focusName = (input: HTMLInputElement | null) => input?.focus();
 
 // A draft share's amount in cents, or null while it doesn't read.
 function shareCents(text: string) {
@@ -30,7 +34,6 @@ export function TransactionCategoryField({
   peopleEnabled: boolean;
   onChange: (categoryId: string, share?: DraftShare | null) => void;
 }) {
-  const personId = useId();
   const { partner, reimbursements, people, who } = useShareParties();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -122,24 +125,21 @@ export function TransactionCategoryField({
           setAdding(false);
         }}
       >
-        <label htmlFor={personId}>Who owes it</label>
-        <div className={moveStyles.amountInput}>
-          <input
-            id={personId}
-            autoFocus
+        <Field
+          label="Who owes it"
+          hint="The full amount goes to Reimbursements."
+          error={error || undefined}
+        >
+          <TextInput
+            inputRef={focusName}
             maxLength={240}
             value={name}
-            onChange={(event) => {
-              setName(event.target.value);
+            onChange={(next) => {
+              setName(next);
               setError("");
             }}
-            aria-invalid={Boolean(error)}
           />
-        </div>
-        <p className={styles.popoverHint}>
-          The full amount goes to Reimbursements.
-        </p>
-        {error && <p className={moveStyles.error}>{error}</p>}
+        </Field>
         <div className={styles.shareFormRow}>
           <Button size="sm" onClick={() => setAdding(false)}>
             Cancel
