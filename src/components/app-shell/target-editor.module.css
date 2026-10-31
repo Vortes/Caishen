@@ -15,16 +15,9 @@
   gap: 6px;
 }
 .field > label:not(.check),
-.inline > label,
-.label {
+.inline > label {
   color: var(--text-secondary);
   font-size: var(--type-small);
-}
-
-.chevron {
-  flex: none;
-  color: var(--text-tertiary);
-  pointer-events: none;
 }
 
 .check {
@@ -60,30 +53,6 @@
   color: var(--text-tertiary);
   font-size: var(--type-small);
   text-wrap: pretty;
-}
-
-/* The behavior menu's trigger is a field: the chosen behavior, in a well. */
-.trigger {
-  width: 100%;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.trigger:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -1px;
-  border-color: var(--focus-ring);
-}
-.trigger[data-state="open"] {
-  border-color: var(--focus-ring);
-}
-.triggerValue {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Delete sits apart from Cancel and Save, at the other end of the row. */

@@ -14,6 +14,9 @@ export type FieldContextValue = {
   id: string;
   // The label's text, for a control that names a list it opens (Select).
   label: string;
+  // The <label>'s id, for a control named by its label and its value
+  // (FieldButton). Field always sets it.
+  labelId?: string;
   // The id of plain text that names the control, where no <label> points at
   // it: a SettingRow's label, which a click must not pass to the control.
   labelledBy?: string;
@@ -41,9 +44,9 @@ export function Field({
   sharedErrorId,
   children,
 }: {
-  // Only for a control that isn't a ui input yet, such as a combobox or a
-  // date field: it takes this id and points aria-describedby at
-  // `${id}-error` and `${id}-hint` itself.
+  // A known id in place of a generated one. Its error is `${id}-error`, so
+  // a field beside it can name that error as its sharedErrorId (a target's
+  // due month and year).
   id?: string;
   label: string;
   // Read by screen readers but not shown, where something else on screen
@@ -63,18 +66,25 @@ export function Field({
   const shown = error ?? reported;
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
+  const labelId = `${id}-label`;
   const describedBy =
     [shown ? errorId : sharedErrorId, hint && hintId]
       .filter(Boolean)
       .join(" ") || undefined;
   const invalid = Boolean(shown) || sharedErrorId !== undefined;
   return (
-    <FieldContext.Provider value={{ id, label, describedBy, invalid, report }}>
+    <FieldContext.Provider
+      value={{ id, label, labelId, describedBy, invalid, report }}
+    >
       <div className={styles.field}>
         <label
+          id={labelId}
           htmlFor={id}
           className={styles.label}
           data-hidden={labelHidden ? "" : undefined}
+          // It names the control and does nothing else: a click on it never
+          // focuses the well or opens a list. Only the well itself does.
+          onClick={(event) => event.preventDefault()}
         >
           {label}
         </label>
@@ -100,6 +110,24 @@ export function useFieldControl() {
   const field = useContext(FieldContext);
   if (!field) throw new Error("A field's input needs a Field around it.");
   return field;
+}
+
+// For a control that also stands alone (SegmentedControl): the Field around
+// it, if there is one.
+export function useOptionalFieldControl() {
+  return useContext(FieldContext);
+}
+
+// One error under a row of fields that each point at it with sharedErrorId,
+// so a narrow field's message isn't squeezed into its own column. Read when
+// someone reaches a field; never announced.
+export function FieldError({ id, children }: { id: string; children: string }) {
+  return (
+    <p id={id} className={styles.error}>
+      <CircleAlertIcon size={13} aria-hidden />
+      {children}
+    </p>
+  );
 }
 
 // Why the form couldn't be sent, above its footer. The one error that is

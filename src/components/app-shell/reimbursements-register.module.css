@@ -37,9 +37,3 @@
 .fieldPair > :last-child {
   padding-left: 4px;
 }
-.hint {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  line-height: 1.45;
-}

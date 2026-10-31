@@ -3,7 +3,7 @@
 `src/components/ui/amount-input.tsx` for every field a person types money
 into, and `readAmount` in `src/components/budget/amount.ts` to read it. It
 sits in a [`Field`](fields.md#field) like every other input. Any other line
-of text is a [`TextInput`](fields.md#textinput).
+of text is a [`TextInput`](text-inputs.md#textinput).
 
 ## AmountInput
 

@@ -1,32 +1,43 @@
 # Fields
 
 `src/components/ui/field.tsx` (`Field`, `FormError`, `FormFooter`) and
-`text-input.tsx`, over one stylesheet, `field.module.css`, which
-[`AmountInput`](amounts.md) and [`Select`](selects.md) share. Every field has one look: a label, a filled well, and a
-hint or error under it. There is no variant, no size and no `className`.
+`field-button.tsx`, over one stylesheet, `field.module.css`, which
+[`TextInput`](text-inputs.md), [`AmountInput`](amounts.md),
+[`Select`](selects.md), [`SearchList`](search-lists.md) and
+[`DateField`](dates.md) share. Every field has one look: a label, a filled
+well, and a hint or error under it. There is no variant, no size and no
+`className`.
 
 ```text
 What does the person enter?
  ├── Money → AmountInput (amounts.md)
  ├── One option from a fixed list → Select (selects.md)
- ├── One item from a list they search by typing (a category, a payee)
- │     → a combobox: not in the system yet (TODO.md)
- ├── A date → not in the system yet (TODO.md)
+ ├── A value picked in a menu or popover the screen builds (a share, a
+ │     target's behavior) → FieldButton
+ ├── One option from a list they search by typing (a category, an
+ │     account) → SearchList (search-lists.md)
+ ├── Free text with earlier entries offered (a payee) → SearchSuggestions
+ │     (search-lists.md)
+ ├── A date → DateField (dates.md)
  └── Any other line of text: a name, an APR, a count → TextInput
+       (text-inputs.md)
 ```
 
 ## Field
 
 Every ui input sits in a `Field`, or in a `SettingRow`, which wires its
 control the same way ([settings.md](settings.md)); `TextInput`,
-`AmountInput` and `Select` throw without one. The field gives its input an
-id, `aria-describedby` and `aria-invalid`, so a screen never writes them
-for a ui input. Its `<label>` points at the input, so a click on the label
-focuses it.
+`AmountInput`, `Select`, `SearchList`, `SearchSuggestions`, `DateField` and
+`FieldButton` throw without one. The field gives its input an id,
+`aria-describedby` and `aria-invalid`, so a screen never writes them for a
+ui input. A `SegmentedControl` in a `Field` takes its label and description
+too ([choices.md](choices.md#segmentedcontrol)).
 
 - `label`: required. `labelHidden` keeps it for screen readers only, where
   something on screen already names the field, such as a register's column
-  header (`EditorCell` in `editor-row.tsx`).
+  header (`EditorCell` in `editor-row.tsx`). A click on the label does
+  nothing: it never focuses the well or opens a list, a calendar or a
+  menu. Only the well itself does.
 - `hint`: a line under the well that stays.
 - `error`: what to fix, under the well, with the field-error color
   (`--field-error`, `--field-error-line`; see [tokens.md](tokens.md)). It
@@ -34,11 +45,15 @@ focuses it.
   errors at once would talk over each other. Only `FormError` announces.
 - `sharedErrorId`: one error shown once for several fields, such as a
   register row's outflow and inflow or the three loan terms. Each field
-  reads as invalid and is described by that id; the screen renders the
-  message itself.
-- `id`: only for a control that isn't a ui input yet (a combobox, a date).
-  That control takes the id and points `aria-describedby` at `${id}-error`
-  itself, as the move-money destination does.
+  reads as invalid and is described by that id. Draw the message with
+  `FieldError` (`id`, a string child) under the row, so a narrow field's
+  error isn't squeezed into its column, as "Who owes it" and Amount do in
+  `share-field.tsx`.
+- `id`: a known id in place of a generated one; the input takes it. The
+  error's id is then `${id}-error`, so a field beside it can name that
+  error as its `sharedErrorId`, as the target's due month and year do
+  (`BalanceDue` in `target-editor.tsx`). `EditorCell` and the target
+  editor pass one. Leave it out everywhere else.
 
 ```tsx
 // Correct (account-entry.tsx)
@@ -86,39 +101,35 @@ form edge to edge, so it goes outside the block that pads the fields.
 />
 ```
 
-## TextInput
+## FieldButton
 
-One line of text in the well. `value` and `onChange(value)` (always
-controlled; `name` still sends it with a form), `placeholder`, `inputMode`,
-`type`, `autoComplete`, `disabled`, `readOnly`, `inputRef`, `prefix`,
-`suffix`. Nothing else exists.
+A button drawn as the well, for a value the person picks in a `Menu` or
+`Popover` the screen owns: the register's Share box, a target's "I want
+to". `children` is the value shown; `placeholder` shows faint while there
+are none; `suffix` ends the value with short faint text ("Half", then
+"$12.50"); `chevron` marks a field that opens a list. `disabled`, `onClick`
+and the other button attributes pass through, and it takes a `ref`, so a
+`Menu` or `Popover` can make it its `trigger`. With the menu or popover
+open, its border takes the focus color. `Select` draws its trigger the
+same way.
 
-- `type`: `"text"` (the default), `"email"` or `"password"`, which hides
-  what's typed. Never a number: `type="number"` rejects `1,000` and shows
-  spinners, so the type doesn't allow it.
-- `autoComplete`: off by default, since autofill is noise in a payee or a
-  memo. Set it only for what the browser or a password manager should
-  fill: `"email"`, `"username"`, `"current-password"`, `"new-password"`,
-  `"one-time-code"` (`entry/account-settings.tsx`).
-
-`WellInput`, also exported from `text-input.tsx`, is `AmountInput`'s base;
-a screen never imports it.
-
-`prefix` and `suffix` are short text in the well: `"%"`, `"years"`. They
-are strings only, never an icon or a button, so every well keeps one look.
-They are hidden from screen readers, so the label must name the field
-without them, and it doesn't repeat them: "APR", not "APR (%)".
+It is named by the field's label and the value it shows ("I want to, Set
+aside $0.00"), so a screen reader hears what's chosen.
 
 ```tsx
-// Correct (loan-setup-fields.tsx)
-<Field label="APR" sharedErrorId={sharedErrorId}>
-  <TextInput value={draft.annualRate} suffix="%" inputMode="decimal" onChange={setRate} />
+// Correct (target-editor.tsx)
+<Field label={label}>
+  <Menu label={label} trigger={<FieldButton chevron>{chosen.title}</FieldButton>}>
+    …
+  </Menu>
 </Field>
 
-// Incorrect: money in a TextInput. No grouping, no arithmetic, no
-// select on focus
-<TextInput prefix="$" inputMode="decimal" value={amount} onChange={setAmount} />
+// Incorrect: a button borrowing a screen's well class
+<button className={`${entry.well} ${styles.trigger}`}>{chosen.title}</button>
 ```
+
+A value from a fixed list that needs nothing but its label is a `Select`,
+not a `FieldButton` with a hand-built menu.
 
 ## Layout
 

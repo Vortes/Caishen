@@ -112,25 +112,6 @@
 .fieldPair > :last-child {
   padding-left: 4px;
 }
-/* The share starts as an even split; clicking it makes it editable. */
-.evenButton {
-  width: 100%;
-  min-width: 0;
-  justify-content: space-between;
-  font: inherit;
-  cursor: pointer;
-}
-.evenButton > :first-child {
-  color: var(--text-primary);
-}
-.evenAmount {
-  font-variant-numeric: tabular-nums;
-}
-/* The shell's choice field draws its own well. */
-.choiceWell {
-  display: flex;
-  flex-direction: column;
-}
 
 /* A waiting import's possible recorded purchases, in its editor. */
 .matches {

@@ -8,8 +8,8 @@ What is the user choosing?
  ├── Which of 2+ sections of different content → Tabs
  ├── One of 5+ options, or a value a form asks for (account type, rate)
  │     → Select (selects.md)
- └── One item from a list long enough to search → a combobox (not in the
-       system yet; see TODO.md)
+ └── One item from a list long enough to search → SearchList
+       (search-lists.md)
 ```
 
 None of these take variants or sizes.
@@ -78,8 +78,11 @@ when every option shows the same content arranged differently: group the
 report by Categories or Groups. When each option shows different content,
 use `Tabs`.
 
-Always controlled with `value` and `onValueChange`, and always named with
-`aria-label`, because there is no visible label.
+Always controlled with `value` and `onValueChange`. Standing alone it has
+no visible label, so name it with `aria-label`. As a question in a form
+("Who paid" in `partner-record.tsx`), put it in a
+[`Field`](fields.md#field): the field's label names it and its hint or
+error describes it, so it takes no `aria-label`.
 
 ```tsx
 // Correct
@@ -101,22 +104,10 @@ Always controlled with `value` and `onValueChange`, and always named with
 ```
 
 `fill` spans the control across its container, its segments sharing the
-width. Use it
-only where the choice leads a form in a narrow panel, like a target's
-schedule in the inspector, so every option stays visible as the panel
-narrows. Everywhere else it takes its natural width.
-
-```tsx
-<SegmentedControl
-  fill
-  aria-label="Schedule"
-  value={schedule}
-  onValueChange={set}
->
-  <SegmentedControlItem value="weekly">Weekly</SegmentedControlItem>
-  <SegmentedControlItem value="monthly">Monthly</SegmentedControlItem>
-</SegmentedControl>
-```
+width. Use it only where the choice leads a form in a narrow panel (a
+target's Schedule in `target-editor.tsx`, "Who paid" in
+`partner-record.tsx`), so every option stays visible as the panel narrows.
+Everywhere else it takes its natural width.
 
 ## Tabs
 
@@ -152,10 +143,3 @@ In the inspector, tabs sit inside a `Card`:
 
 The Spending Breakdown / Trends switcher in the page header is not this
 component; header tabs aren't in the system yet.
-
-## Select
-
-One value from a fixed list in a form: an account type, a month, a
-weekday. Its interface, keyboard and phone behavior are in
-[selects.md](selects.md). A list searched by typing is a combobox (not in
-the system yet); a list of actions is a [`Menu`](menus.md).

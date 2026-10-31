@@ -1,8 +1,9 @@
 "use client";
 
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { CheckIcon } from "lucide-react";
 import { useId, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useFieldControl } from "./field";
+import { WellButton } from "./field-button";
 import styles from "./field.module.css";
 import { Popover } from "./popover";
 
@@ -93,21 +94,17 @@ export function Select({
         open={open}
         onOpenChange={setOpen}
         trigger={
-          <button
+          <WellButton
             ref={inputRef}
-            type="button"
             role="combobox"
-            id={field.id}
-            className={`${styles.well} ${styles.select}`}
             disabled={disabled}
-            data-disabled={disabled ? "" : undefined}
+            placeholder={placeholder}
+            chevron
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             aria-labelledby={field.labelledBy}
             aria-invalid={field.invalid ? true : undefined}
-            aria-describedby={field.describedBy}
-            data-invalid={field.invalid ? "" : undefined}
             // As on a menu's trigger, the arrow keys open the list too.
             onKeyDown={(event) => {
               if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -115,14 +112,8 @@ export function Select({
               setOpen(true);
             }}
           >
-            <span
-              className={styles.value}
-              data-placeholder={chosen ? undefined : ""}
-            >
-              {chosen?.label ?? placeholder}
-            </span>
-            <ChevronDownIcon size={14} aria-hidden />
-          </button>
+            {chosen?.label}
+          </WellButton>
         }
       >
         <div

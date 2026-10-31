@@ -1050,6 +1050,10 @@ button.actionItem:disabled {
   /* Wide enough for the editor's wells to reach past their columns and
      still sit 8px apart. */
   column-gap: 16px;
+  /* A whole-pixel line, so a row's text and its editor's inputs land on the
+     same pixel: Chrome rounds an input's line to whole pixels and paints a
+     row's where it falls, and at 1.4 (19.6px) they part by one. */
+  line-height: 20px;
 }
 /* The register's columns, shared by its headers, rows, and entry row so a
    new transaction's fields sit under the columns they fill. The last column

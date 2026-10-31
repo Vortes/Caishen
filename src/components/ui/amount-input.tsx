@@ -29,7 +29,14 @@ export function AmountInput({
   negative = false,
 }: Omit<
   TextInputProps,
-  "prefix" | "suffix" | "inputMode" | "type" | "autoComplete"
+  | "prefix"
+  | "suffix"
+  | "inputMode"
+  | "type"
+  | "autoComplete"
+  | "required"
+  | "minLength"
+  | "maxLength"
 > & {
   // Right-aligned, under a register's amount column.
   align?: "start" | "end";

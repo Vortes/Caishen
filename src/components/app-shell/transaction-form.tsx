@@ -5,6 +5,7 @@ import {
   directEntryAccounts,
   accountKindLabels,
 } from "~/domain/register-entry";
+import { earlierPayees } from "~/domain/payee-memory";
 import { transferNeedsCategory } from "~/domain/transfers";
 import { cardPaymentCategoryLabel } from "~/components/transactions/transaction-category";
 import { CircleAlertIcon, PlusIcon, SplitIcon, XIcon } from "lucide-react";
@@ -32,20 +33,22 @@ import {
 } from "~/components/transactions/transaction-draft";
 import type { CounterpartyShare } from "~/domain/engine";
 import { AmountInput } from "~/components/ui/amount-input";
+import { DateField, type DateFieldHandle } from "~/components/ui/date-field";
 import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
+import { FieldButton } from "~/components/ui/field-button";
 import { IconButton } from "~/components/ui/icon-button";
+import {
+  SearchList,
+  SearchSuggestions,
+  type SearchListOption,
+} from "~/components/ui/search-list";
+import { TextInput } from "~/components/ui/text-input";
 import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
 import { PartnerMatches } from "./partner-match";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
-import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
-import {
-  ChoiceField,
-  PayeeField,
-  type ChoiceOption,
-} from "./transaction-fields";
 import { ShareLabel, ShareMenu } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
@@ -160,7 +163,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     !session.initial && !session.shareChosen && draft.counterpartyShare
       ? draft.payee.trim()
       : undefined;
-  const accountOptions = useMemo<ChoiceOption[]>(
+  const accountOptions = useMemo<SearchListOption[]>(
     () =>
       directEntryAccounts(view.accounts).map((item) => ({
         value: item.id,
@@ -169,7 +172,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       })),
     [view.accounts],
   );
-  const spendingOptions: ChoiceOption[] = view.categories
+  const spendingOptions: SearchListOption[] = view.categories
     .filter(
       (category) =>
         !category.pairedAccountId &&
@@ -182,7 +185,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       group: category.group,
       amount: category.available,
     }));
-  const categoryOptions: ChoiceOption[] = [
+  const categoryOptions: SearchListOption[] = [
     {
       value: READY_TO_ASSIGN,
       label: "Ready to Assign",
@@ -212,21 +215,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       group: added.group,
     });
   }
-  const payees = useMemo(
-    () => [
-      ...new Set(
-        view.budget.transactions
-          .filter(
-            (item) =>
-              !item.removed &&
-              ["purchase", "refund", "income"].includes(item.kind),
-          )
-          .sort((a, b) => b.date.localeCompare(a.date))
-          .map((item) => item.payee),
-      ),
-    ],
-    [view.budget.transactions],
-  );
+  const payees = useMemo(() => earlierPayees(view.budget), [view.budget]);
   const startDate = `${view.budget.startMonth}-01`;
   const minDate =
     account && account.date > startDate ? account.date : startDate;
@@ -238,9 +227,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const amountErrorId = `${formId}-amount-error`;
   const shownOnce = (field: DraftField) =>
     Boolean(amountError) && (field === "outflow" || field === "inflow");
-  // For the controls that aren't ui inputs; their Field shows the error.
-  const described = (field: DraftField) =>
-    fields[field] && !shownOnce(field) ? `${id(field)}-error` : undefined;
   const cell = (
     name: DraftField,
     column: string,
@@ -292,8 +278,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const dateControl = (
     <DateField
       handle={dateField}
-      id={id("date")}
-      label="Date"
+      name="date"
       value={draft.date}
       min={minDate}
       // Activity is recorded once it happened, so no later day can be picked.
@@ -301,8 +286,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       today={todayKey}
       open={session.calendarOpen}
       inputRef={register("date")}
-      invalid={Boolean(fields.date)}
-      describedBy={described("date")}
       onOpenChange={entry.setCalendarOpen}
       onChange={(date) => entry.change({ date })}
       onPicked={() => advance("payee")}
@@ -310,13 +293,16 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     />
   );
   const payeeControl = (
-    <PayeeField
-      id={id("payee")}
-      label="Payee"
+    <SearchSuggestions
       value={destination?.label ?? draft.payee}
-      payees={payees}
-      destinations={destinations}
-      selectedDestination={destination?.value}
+      suggestions={payees}
+      destinations={destinations.map((item) => ({
+        value: item.value,
+        label: item.label,
+        group: "Payments and Transfers",
+      }))}
+      destination={destination?.value}
+      maxLength={240}
       onDestination={(value) => {
         const selected = destinations.find((item) => item.value === value);
         if (!selected) return;
@@ -340,8 +326,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       }}
       placeholder="Payee"
       inputRef={register("payee")}
-      invalid={Boolean(fields.payee)}
-      describedBy={described("payee")}
       onChange={(payee) =>
         entry.change({
           payee,
@@ -478,23 +462,19 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           : "outflow",
     );
   const categoryControl = categoryNotNeeded ? (
-    <div className={styles.well} data-disabled>
-      <input
-        id={id("categoryId")}
-        className={styles.input}
-        aria-label="Category"
-        value={
-          draftEntry?.shape.kind === "card-payment"
-            ? cardPaymentCategoryLabel(
-                view.budget,
-                draft.accountId,
-                draft.transferAccountId,
-              )
-            : "Category not needed"
-        }
-        disabled
-      />
-    </div>
+    <TextInput
+      value={
+        draftEntry?.shape.kind === "card-payment"
+          ? cardPaymentCategoryLabel(
+              view.budget,
+              draft.accountId,
+              draft.transferAccountId,
+            )
+          : "Category not needed"
+      }
+      onChange={() => undefined}
+      disabled
+    />
   ) : (
     <NewCategoryPopover
       open={creating !== null}
@@ -520,11 +500,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     >
       <div>
         <TransactionCategoryField
-          id={id("categoryId")}
           amount={draftAmount(draft) ?? 0}
           share={draft.counterpartyShare}
           peopleEnabled={shareable && !split}
-          label="Category"
           value={split ? SPLIT : draft.categoryId}
           displayValue={split ? "Split" : undefined}
           action={
@@ -542,8 +520,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           options={categoryOptions}
           placeholder="Category"
           inputRef={register("categoryId")}
-          invalid={Boolean(fields.categoryId)}
-          describedBy={described("categoryId")}
           onChange={chooseCategory}
           onPicked={afterCategory}
           // A loan's payment takes a category that already exists.
@@ -555,15 +531,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     </NewCategoryPopover>
   );
   const accountControl = (
-    <ChoiceField
-      id={id("accountId")}
-      label="Account"
+    <SearchList
       value={draft.accountId}
       options={accountOptions}
       placeholder="Account"
       inputRef={register("accountId")}
-      invalid={Boolean(fields.accountId)}
-      describedBy={described("accountId")}
       disabled={editing}
       onChange={(accountId) =>
         entry.change({
@@ -674,7 +646,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           "category",
           `Line ${number} category`,
           <TransactionCategoryField
-            id={id(lineId("categoryId"))}
             amount={
               line.outflow.trim() || line.inflow.trim()
                 ? (draftAmount(line) ?? 0)
@@ -682,13 +653,10 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             }
             share={line.counterpartyShare}
             peopleEnabled={shareable}
-            label={`Line ${number} category`}
             value={line.categoryId}
             options={spendingOptions}
             placeholder="Category"
             inputRef={register(lineId("categoryId"))}
-            invalid={Boolean(fields[lineId("categoryId")])}
-            describedBy={described(lineId("categoryId"))}
             onChange={(categoryId, share) =>
               chooseLineCategory(line, categoryId, share)
             }
@@ -705,7 +673,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           draftAmount(line) ?? 0,
           session.initial?.lines?.find((item) => item.id === line.lineId)
             ?.counterpartyShare,
-          (counterpartyShare) => changeLine(line.lineId, { counterpartyShare }),
+          (counterpartyShare, outflow) =>
+            changeLine(line.lineId, {
+              counterpartyShare,
+              ...(outflow && { outflow }),
+            }),
         )}
         {cell(
           lineId("outflow"),
@@ -740,7 +712,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     value: DraftShare | null | undefined,
     lineAmount: number,
     saved: CounterpartyShare | undefined,
-    onChange: (share: DraftShare | null) => void,
+    // A share chosen before the line has an amount also becomes its
+    // outflow, with the amount as text.
+    onChange: (share: DraftShare | null, outflow?: string) => void,
   ) => {
     const reading = value && readAmount(value.amount);
     const share = value && {
@@ -760,26 +734,17 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           saved={saved}
           remembered={name === "counterpartyShare" ? remembered : undefined}
           onChange={(next) => {
+            const amount = next ? (next.amount / 100).toFixed(2) : "";
             onChange(
-              next && { ...next, amount: (next.amount / 100).toFixed(2) },
+              next && { ...next, amount },
+              lineAmount === 0 && next?.amount ? amount : undefined,
             );
             return null;
           }}
         >
-          <button
-            ref={register(name)}
-            id={id(name)}
-            type="button"
-            className={`${styles.well} ${shareStyles.shareWell}`}
-            data-invalid={fields[name] ? "" : undefined}
-            aria-describedby={described(name)}
-          >
-            {share?.amount ? (
-              <ShareLabel share={share} />
-            ) : (
-              <span className={shell.faint}>Just mine</span>
-            )}
-          </button>
+          <FieldButton ref={register(name)} placeholder="Just mine">
+            {share?.amount ? <ShareLabel share={share} /> : undefined}
+          </FieldButton>
         </ShareMenu>
       </EditorCell>
     );
@@ -827,7 +792,8 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
                 (session.initial.lines?.length === 1
                   ? session.initial.lines[0]!.counterpartyShare
                   : undefined)),
-            (counterpartyShare) => entry.change({ counterpartyShare }),
+            (counterpartyShare, outflow) =>
+              entry.change({ counterpartyShare, ...(outflow && { outflow }) }),
           )
         )}
         {cell("outflow", "outflow", "Outflow", amount("outflow"))}

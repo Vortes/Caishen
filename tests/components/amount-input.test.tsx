@@ -141,7 +141,7 @@ test("focusing the field selects the amount, so typing replaces it", async () =>
   const user = userEvent.setup();
   render(<Amount initial="1,250.00" />);
 
-  await user.click(screen.getByText("Amount"));
+  await user.tab();
   expect(amount().selectionStart).toBe(0);
   expect(amount().selectionEnd).toBe(8);
 

@@ -14,13 +14,13 @@ function Memo({ hint, error }: { hint?: string; error?: string }) {
   );
 }
 
-test("the label names the input, and clicking it focuses the input", async () => {
+test("the label names the input, and clicking it leaves the input alone", async () => {
   const user = userEvent.setup();
   render(<Memo />);
 
   await user.click(screen.getByText("Memo"));
 
-  expect(document.activeElement).toBe(
+  expect(document.activeElement).not.toBe(
     screen.getByRole("textbox", { name: "Memo" }),
   );
 });
@@ -179,4 +179,56 @@ test("a password input hides what's typed and tells password managers what it ho
   expect(input.type).toBe("password");
   expect(input.autocomplete).toBe("new-password");
   expect(screen.queryByRole("textbox")).toBeNull();
+});
+
+test("the browser may fill a field that asks for it, and no other", () => {
+  render(
+    <>
+      <Field label="Your name">
+        <TextInput autoComplete="name" value="" onChange={() => undefined} />
+      </Field>
+      <Field label="Category">
+        <TextInput value="" onChange={() => undefined} />
+      </Field>
+    </>,
+  );
+
+  const name = screen.getByRole("textbox", { name: "Your name" });
+  const category = screen.getByRole("textbox", { name: "Category" });
+  expect(name.getAttribute("autocomplete")).toBe("name");
+  expect(name.hasAttribute("data-1p-ignore")).toBe(false);
+  expect(category.getAttribute("autocomplete")).toBe("off");
+  expect(category.hasAttribute("data-1p-ignore")).toBe(true);
+});
+
+test("a required field left empty keeps its form from being sent", async () => {
+  const user = userEvent.setup();
+  let sent = 0;
+  function Account() {
+    const [value, setValue] = useState("");
+    return (
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          sent += 1;
+        }}
+      >
+        <Field label="Account name">
+          <TextInput required value={value} onChange={setValue} />
+        </Field>
+        <button type="submit">Add</button>
+      </form>
+    );
+  }
+  render(<Account />);
+
+  await user.click(screen.getByRole("button", { name: "Add" }));
+  expect(sent).toBe(0);
+
+  await user.type(
+    screen.getByRole("textbox", { name: "Account name" }),
+    "Checking",
+  );
+  await user.click(screen.getByRole("button", { name: "Add" }));
+  expect(sent).toBe(1);
 });

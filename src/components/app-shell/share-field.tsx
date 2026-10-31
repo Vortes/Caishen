@@ -12,10 +12,11 @@ import {
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Checkbox } from "~/components/ui/checkbox";
-import { Field } from "~/components/ui/field";
+import { Field, FieldError, FormError } from "~/components/ui/field";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
+import { SearchSuggestions } from "~/components/ui/search-list";
 import {
   halfOf,
   keepShare,
@@ -294,9 +295,9 @@ export function ShareChoices({
             />
           )}
           {error && (
-            <p className={`${moveStyles.error} ${styles.popoverHint}`}>
-              {error}
-            </p>
+            <div className={styles.popoverHint}>
+              <FormError>{error}</FormError>
+            </div>
           )}
           {remembered && (
             <p className={styles.popoverHint}>
@@ -309,13 +310,14 @@ export function ShareChoices({
   );
 }
 
-// A share typed in a field, in cents, or why it can't be one.
+// A share typed in a field, in cents, or why it can't be one. A line with
+// no amount yet takes the share as its amount, so nothing caps it.
 function readShare(text: string, most: number) {
   const reading = readAmount(text);
   if (!reading.ok) return reading;
   if (reading.cents < 0)
     return { ok: false as const, message: "Enter an amount, like 24.50." };
-  if (reading.cents > most)
+  if (most > 0 && reading.cents > most)
     return {
       ok: false as const,
       message: `A share can be at most ${money(most)}.`,
@@ -383,8 +385,8 @@ function OtherShare({
   const amount = Math.min(...amounts);
   const multiple = amounts.length > 1;
   const [full, setFull] = useState(multiple && !initial);
-  const nameId = useId();
-  const listId = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => nameInput.current?.focus(), []);
   const [name, setName] = useState(initial?.counterpartyName ?? "");
   const [text, setText] = useState(
     ((initial?.amount ?? amount) / 100).toFixed(2),
@@ -393,6 +395,8 @@ function OtherShare({
     field: "name" | "amount";
     message: string;
   } | null>(null);
+  // The two fields share a row, so their error sits once under it.
+  const errorId = useId();
   return (
     <form
       className={styles.shareForm}
@@ -410,35 +414,29 @@ function OtherShare({
         onApply(name.trim(), share.cents, full ? "full" : "fixed");
       }}
     >
-      <div className={styles.shareFormRow}>
+      <div className={styles.shareFormRow} data-fields>
         <div className={styles.shareFormField}>
-          <label htmlFor={nameId}>Who owes it</label>
-          <div className={moveStyles.amountInput}>
-            <input
-              id={nameId}
-              list={listId}
+          <Field
+            label="Who owes it"
+            sharedErrorId={error?.field === "name" ? errorId : undefined}
+          >
+            <SearchSuggestions
+              inputRef={nameInput}
               value={name}
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
+              suggestions={people}
               placeholder="Name or company"
-              onChange={(event) => {
-                setName(event.target.value);
+              onChange={(value) => {
+                setName(value);
                 setError(null);
               }}
             />
-            <datalist id={listId}>
-              {people.map((person) => (
-                <option key={person} value={person} />
-              ))}
-            </datalist>
-          </div>
+          </Field>
         </div>
         {!full && (
           <div className={styles.shareFormField} data-narrow>
             <Field
               label={multiple ? "Amount each" : "Amount"}
-              error={error?.field === "amount" ? error.message : undefined}
+              sharedErrorId={error?.field === "amount" ? errorId : undefined}
             >
               <AmountInput
                 value={text}
@@ -451,6 +449,7 @@ function OtherShare({
           </div>
         )}
       </div>
+      {error && <FieldError id={errorId}>{error.message}</FieldError>}
       {multiple && (
         <label className={styles.fullShare}>
           <Checkbox
@@ -462,9 +461,6 @@ function OtherShare({
           />
           Full amount of each transaction
         </label>
-      )}
-      {error?.field === "name" && (
-        <p className={moveStyles.error}>{error.message}</p>
       )}
       <p className={styles.formHint}>
         Tracked in your Reimbursements account. Only you see it.

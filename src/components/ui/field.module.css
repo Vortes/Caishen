@@ -1,5 +1,6 @@
 /* One look for every field: a label, a filled well with a ring on focus,
-   and a hint or error under it. Shared by Field, TextInput and AmountInput. */
+   and a hint or error under it. Shared by Field, TextInput, AmountInput,
+   FieldButton and Select. */
 
 .field {
   display: flex;
@@ -123,6 +124,44 @@
   margin-left: auto;
 }
 
+/* ---- DateField ----
+   The well with a calendar icon at its end; on touch the icon is a button
+   inside the well's right edge. With its calendar open, the date is the
+   field being filled in, though focus sits on a day inside the calendar. */
+
+.date[data-open] {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.date[data-open]:not([data-invalid]) {
+  border-color: var(--focus-ring);
+}
+.date .input:not(:disabled, :read-only) {
+  cursor: pointer;
+}
+.date[data-open] .input {
+  cursor: text;
+}
+.dateIcon {
+  flex: none;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.dateTrigger {
+  display: none;
+}
+@media (pointer: coarse) {
+  .date {
+    padding-right: 2px;
+  }
+  .dateIcon {
+    display: none;
+  }
+  .dateTrigger {
+    display: flex;
+  }
+}
+
 /* Touch: a taller well, and 16px text so focusing it doesn't zoom the
    page. */
 @media (pointer: coarse) {
@@ -177,40 +216,70 @@
   background: var(--control-bg-active);
 }
 
-/* ---- Select ----
-   The trigger is the well, as a button: the choice or the placeholder, then
-   a chevron. Its list lies on the Popover surface, rows as in a menu's
-   choose-one list: a check column, then the label. */
+/* ---- The well as a button ----
+   FieldButton and Select's trigger: the value, or a faint placeholder, then
+   an optional chevron. */
 
-.select {
+.button {
   width: 100%;
   font: inherit;
+  font-variant-numeric: tabular-nums;
   text-align: start;
   cursor: pointer;
 }
+/* Two classes outrank the shell's button reset, which inherits the color
+   around it. */
+.well.button {
+  color: var(--text-primary);
+}
+.well.button[data-disabled] {
+  color: var(--text-secondary);
+}
 /* Keyboard focus draws the well's ring, laid over the border. Two classes
    outrank the shell's own ring. */
-.well.select:focus-visible {
+.well.button:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -1px;
 }
-.select:disabled {
+/* With its menu or list open, it is the field being filled in, though focus
+   sits inside the menu. */
+.well.button[data-state="open"]:not([data-invalid]) {
+  border-color: var(--focus-ring);
+}
+.button:disabled {
   cursor: not-allowed;
 }
-.select > svg {
+.button > svg {
   flex: none;
   color: var(--text-tertiary);
 }
+/* A row of its own, so a value built of parts (an icon, a name, an amount)
+   lays out as it would in the well; the suffix ends it. */
 .value {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .value[data-placeholder] {
   color: var(--text-tertiary);
 }
+.value > .affix {
+  margin-inline-start: auto;
+}
+.valueText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Select ----
+   The trigger is the well as a button. Its list lies on the Popover
+   surface, rows as in a menu's choose-one list: a check column, then the
+   label. */
 
 .list {
   display: flex;
@@ -257,7 +326,7 @@
 
 /* Touch: the well's 16px text, and rows as tall as a menu's. */
 @media (pointer: coarse) {
-  .select {
+  .button {
     font-size: var(--type-title);
   }
   .option {

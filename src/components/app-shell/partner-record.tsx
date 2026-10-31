@@ -1,23 +1,29 @@
 "use client";
 
 import { PlusIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
-import { Field as FormField } from "~/components/ui/field";
+import { Field as FormField, FormError } from "~/components/ui/field";
+import { FieldButton } from "~/components/ui/field-button";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { Popover } from "~/components/ui/popover";
+import {
+  SearchList,
+  SearchSuggestions,
+  type SearchListOption,
+} from "~/components/ui/search-list";
 import { rememberedSpendingCategory } from "~/domain/partner-ledger";
+import { earlierPayees } from "~/domain/payee-memory";
 import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
 import { halfOf } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
-import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import local from "./partner-register.module.css";
 
 type Field = "payee" | "amount" | "share";
@@ -32,7 +38,6 @@ const focusPayee = (input: HTMLInputElement | null) => {
 // It counts at once in both budgets; the payer's bank import matches it
 // when it arrives.
 export function RecordPurchase({ account }: { account: Account }) {
-  const id = useId();
   const { view, saveCommand } = useTransactionEntry();
   const you = view.budget.userId;
   const partnerId = view.members.find(
@@ -50,6 +55,7 @@ export function RecordPurchase({ account }: { account: Account }) {
   const [error, setError] = useState<{ field?: Field; message: string } | null>(
     null,
   );
+  const payees = useMemo(() => earlierPayees(view.budget), [view.budget]);
   const reading = readAmount(amountText);
   const amount = reading.ok ? Math.max(0, reading.cents) : 0;
   // Clicking the even split makes the share editable, ready to type.
@@ -59,7 +65,7 @@ export function RecordPurchase({ account }: { account: Account }) {
   }, [even]);
   const youPaid = paidBy === you;
   const shareLabel = youPaid ? `${account.name}'s share` : "Your share";
-  const options: ChoiceOption[] = view.categories
+  const options: SearchListOption[] = view.categories
     .filter(
       (category) =>
         !category.pairedAccountId &&
@@ -73,10 +79,6 @@ export function RecordPurchase({ account }: { account: Account }) {
       amount: category.available,
     }));
   const fail = (message: string, field?: Field) => setError({ field, message });
-  const fieldError = (field: Field) =>
-    error?.field === field && (
-      <p className={moveStyles.error}>{error.message}</p>
-    );
   const fieldMessage = (field: Field) =>
     error?.field === field ? error.message : undefined;
   if (!partnerId) return null;
@@ -154,48 +156,33 @@ export function RecordPurchase({ account }: { account: Account }) {
         <div className={moveStyles.header}>
           <strong>Record a shared purchase</strong>
         </div>
-        <div className={moveStyles.field}>
-          <span id={`${id}-paid`}>Who paid</span>
-          <SegmentedControl
-            fill
-            aria-labelledby={`${id}-paid`}
-            value={paidBy}
-            onValueChange={setPaidBy}
-          >
-            <SegmentedControlItem value={partnerId}>
-              {account.name}
-            </SegmentedControlItem>
-            <SegmentedControlItem value={you}>You</SegmentedControlItem>
-          </SegmentedControl>
+        <div className={moveStyles.fieldSlot}>
+          <FormField label="Who paid">
+            <SegmentedControl fill value={paidBy} onValueChange={setPaidBy}>
+              <SegmentedControlItem value={partnerId}>
+                {account.name}
+              </SegmentedControlItem>
+              <SegmentedControlItem value={you}>You</SegmentedControlItem>
+            </SegmentedControl>
+          </FormField>
         </div>
-        <div className={moveStyles.field}>
-          <label htmlFor={`${id}-payee`}>Payee</label>
-          <div
-            className={moveStyles.amountInput}
-            data-invalid={error?.field === "payee" ? "" : undefined}
-          >
-            <input
-              ref={focusPayee}
-              id={`${id}-payee`}
+        <div className={moveStyles.fieldSlot}>
+          <FormField label="Payee" error={fieldMessage("payee")}>
+            <SearchSuggestions
+              inputRef={focusPayee}
               value={payee}
-              autoComplete="off"
-              spellCheck={false}
+              suggestions={payees}
               placeholder="Bi-Rite Market"
-              aria-invalid={error?.field === "payee" || undefined}
-              onChange={(event) => {
-                setPayee(event.target.value);
+              onChange={(next) => {
+                setPayee(next);
                 if (error?.field === "payee") setError(null);
                 if (categoryChosen) return;
                 setCategoryId(
-                  rememberedSpendingCategory(
-                    view.budget,
-                    event.target.value.trim(),
-                  ) ?? "",
+                  rememberedSpendingCategory(view.budget, next.trim()) ?? "",
                 );
               }}
             />
-          </div>
-          {fieldError("payee")}
+          </FormField>
         </div>
         <div className={local.fieldPair}>
           <div className={moveStyles.fieldSlot}>
@@ -214,29 +201,17 @@ export function RecordPurchase({ account }: { account: Account }) {
             </FormField>
           </div>
           <div className={moveStyles.fieldSlot}>
-            <FormField
-              id={`${id}-share`}
-              label={shareLabel}
-              error={fieldMessage("share")}
-            >
+            <FormField label={shareLabel} error={fieldMessage("share")}>
               {even ? (
-                <button
-                  type="button"
-                  id={`${id}-share`}
-                  className={`${moveStyles.amountInput} ${local.evenButton}`}
-                  aria-describedby={
-                    fieldMessage("share") ? `${id}-share-error` : undefined
-                  }
+                <FieldButton
+                  suffix={money(halfOf(amount))}
                   onClick={() => {
                     setEven(false);
                     setShareText((halfOf(amount) / 100).toFixed(2));
                   }}
                 >
-                  <span>Half</span>
-                  <span className={local.evenAmount}>
-                    {money(halfOf(amount))}
-                  </span>
-                </button>
+                  Half
+                </FieldButton>
               ) : (
                 <AmountInput
                   inputRef={shareInput}
@@ -254,14 +229,9 @@ export function RecordPurchase({ account }: { account: Account }) {
             </FormField>
           </div>
         </div>
-        <div className={moveStyles.field}>
-          <label htmlFor={`${id}-category`}>
-            Your category{youPaid ? "" : " for your share"}
-          </label>
-          <div className={local.choiceWell}>
-            <ChoiceField
-              id={`${id}-category`}
-              label="Your category"
+        <div className={moveStyles.fieldSlot}>
+          <FormField label={`Your category${youPaid ? "" : " for your share"}`}>
+            <SearchList
               value={categoryId}
               options={options}
               placeholder="Pick later"
@@ -270,13 +240,11 @@ export function RecordPurchase({ account }: { account: Account }) {
                 setCategoryChosen(true);
               }}
             />
-          </div>
+          </FormField>
         </div>
         {error && !error.field && (
           <div className={moveStyles.formError}>
-            <p className={moveStyles.error} role="alert">
-              {error.message}
-            </p>
+            <FormError>{error.message}</FormError>
           </div>
         )}
         <div className={moveStyles.footer}>

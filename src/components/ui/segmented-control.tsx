@@ -2,6 +2,7 @@
 
 import { RadioGroup as Primitive } from "radix-ui";
 import type { ComponentProps } from "react";
+import { useOptionalFieldControl } from "./field";
 import styles from "./segmented-control.module.css";
 
 type Clean<T> = Omit<T, "className" | "style" | "asChild">;
@@ -13,6 +14,8 @@ type Clean<T> = Omit<T, "className" | "style" | "asChild">;
 //   <SegmentedControlItem value="categories">Categories</SegmentedControlItem>
 //   <SegmentedControlItem value="groups">Groups</SegmentedControlItem>
 // </SegmentedControl>
+//
+// In a Field, the field's label names it and its hint or error describes it.
 export function SegmentedControl({
   fill = false,
   ...props
@@ -21,11 +24,14 @@ export function SegmentedControl({
   // leads a form in a narrow panel. Otherwise it takes its natural width.
   fill?: boolean;
 }) {
+  const field = useOptionalFieldControl();
   return (
     <Primitive.Root
       className={styles.root}
       orientation="horizontal"
       data-fill={fill || undefined}
+      aria-labelledby={field?.labelledBy ?? field?.labelId}
+      aria-describedby={field?.describedBy}
       {...props}
     />
   );

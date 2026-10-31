@@ -1,6 +1,5 @@
 "use client";
 
-import { ChevronDownIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -15,16 +14,18 @@ import type { Command } from "~/domain/engine";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { DateField } from "~/components/ui/date-field";
 import { Field, FormError } from "~/components/ui/field";
+import { FieldButton } from "~/components/ui/field-button";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
 import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 import type { Category } from "./model";
 import { useShellData } from "./shell-data";
-import { DateField } from "./transaction-date";
 import {
   activeBehavior,
   amountLabel,
@@ -43,8 +44,6 @@ import {
   type TargetDraft,
   type TargetField,
 } from "./target-draft";
-// The transaction editor's field wells, so every field in the shell matches.
-import entry from "./transaction-entry.module.css";
 import styles from "./target-editor.module.css";
 
 export type TargetEditing = {
@@ -88,7 +87,6 @@ export function TargetEditor({
     createTargetDraft(kind, month.key, existing),
   );
   const [error, setError] = useState<EditorError | null>(null);
-  const [calendarOpen, setCalendarOpen] = useState(false);
   const id = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const fieldRefs = useRef<Partial<Record<TargetField, HTMLElement | null>>>(
@@ -121,8 +119,6 @@ export function TargetEditor({
   const fieldId = (field: string) => `${id}-${field}`;
   const errorFor = (field: TargetField) =>
     error?.field === field ? error.message : undefined;
-  const describedBy = (field: TargetField) =>
-    error?.field === field ? fieldId(`${field}-error`) : undefined;
 
   const send = (command: Command, summary: string) => {
     const blocked = save(command, summary);
@@ -159,17 +155,6 @@ export function TargetEditor({
       `Deleted the ${category.name} target`,
     );
 
-  // Leaving the date's calendar with Tab moves on to the next field.
-  const advanceFrom = (element: HTMLElement | null | undefined) => {
-    const stops = [
-      ...(formRef.current?.querySelectorAll<HTMLElement>(
-        "input, button:not([tabindex='-1'])",
-      ) ?? []),
-    ].filter((stop) => !stop.hasAttribute("disabled"));
-    const index = element ? stops.indexOf(element) : -1;
-    stops[index + 1]?.focus();
-  };
-
   const amountField = !payoff && (
     <Field label={amountLabel(schedule)} error={errorFor("amount")}>
       <AmountInput
@@ -204,29 +189,16 @@ export function TargetEditor({
       : "Works out the monthly payment that clears the loan by this date, at its current rate.";
   const dueDateField = datedSchedule && !balance && (
     <Field
-      id={fieldId("dueDate")}
       label={payoff ? "Pay off by" : custom ? "Due on" : "By"}
       error={errorFor("dueDate")}
       hint={payoffHint}
     >
       <DateField
-        id={fieldId("dueDate")}
-        label={payoff ? "Pay off by" : "Due date"}
         value={draft.dueDate}
         min={`${earliest}-01`}
         today={today}
-        open={calendarOpen}
-        invalid={error?.field === "dueDate"}
-        describedBy={
-          [describedBy("dueDate"), payoffHint && fieldId("dueDate-hint")]
-            .filter(Boolean)
-            .join(" ") || undefined
-        }
         inputRef={register("dueDate")}
-        onOpenChange={setCalendarOpen}
         onChange={(dueDate) => change({ dueDate })}
-        onPicked={() => undefined}
-        onAdvance={() => advanceFrom(fieldRefs.current.dueDate)}
       />
     </Field>
   );
@@ -315,7 +287,6 @@ export function TargetEditor({
             />
           ) : (
             <Repeat
-              id={fieldId("repeatEvery")}
               draft={draft}
               error={errorFor("repeatEvery")}
               register={register("repeatEvery")}
@@ -353,13 +324,11 @@ export function TargetEditor({
 // Custom targets can come due again: every so many months or years after
 // the due date.
 function Repeat({
-  id,
   draft,
   error,
   register,
   onChange,
 }: {
-  id: string;
   draft: TargetDraft;
   error?: string;
   register: (element: HTMLElement | null) => void;
@@ -375,25 +344,14 @@ function Repeat({
         Repeat
       </label>
       {draft.repeat && (
-        <Field id={id} label="Every" error={error}>
+        <Field label="Every" error={error}>
           <div className={styles.inline}>
-            <div
-              className={`${entry.well} ${styles.every}`}
-              data-invalid={error ? true : undefined}
-            >
-              <input
-                ref={register}
-                id={id}
-                className={entry.input}
+            <div className={styles.every}>
+              <TextInput
+                inputRef={register}
                 inputMode="numeric"
-                autoComplete="off"
                 value={draft.repeatEvery}
-                aria-invalid={error ? true : undefined}
-                aria-describedby={error ? `${id}-error` : undefined}
-                onFocus={(event) => event.currentTarget.select()}
-                onChange={(event) =>
-                  onChange({ repeatEvery: event.target.value })
-                }
+                onChange={(repeatEvery) => onChange({ repeatEvery })}
               />
             </div>
             <div className={styles.unit}>
@@ -515,28 +473,13 @@ function BehaviorField({
   amount: number;
   onChange: (behavior: Behavior) => void;
 }) {
-  const id = useId();
   const chosen = behaviorCopy(value, schedule, amount);
   return (
-    <div className={styles.field}>
-      <span className={styles.label} id={`${id}-label`}>
-        {label}
-      </span>
+    <Field label={label}>
       {/* Escape closes only the menu; the editor around it stays open. */}
       <Menu
         label={label}
-        trigger={
-          <button
-            type="button"
-            className={`${entry.well} ${styles.trigger}`}
-            aria-labelledby={`${id}-label ${id}-value`}
-          >
-            <span id={`${id}-value`} className={styles.triggerValue}>
-              {chosen.title}
-            </span>
-            <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
-          </button>
-        }
+        trigger={<FieldButton chevron>{chosen.title}</FieldButton>}
       >
         <MenuRadioGroup
           value={value}
@@ -560,6 +503,6 @@ function BehaviorField({
           })}
         </MenuRadioGroup>
       </Menu>
-    </div>
+    </Field>
   );
 }

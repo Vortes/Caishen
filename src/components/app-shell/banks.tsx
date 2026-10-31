@@ -37,14 +37,17 @@ import { LoanSetupFields } from "~/components/banks/loan-setup-fields";
 import { loadPlaid } from "~/components/banks/plaid-link-sdk";
 import { usePlaidLink } from "~/components/banks/use-plaid-link";
 import type { State } from "~/components/budget/types";
+import { today } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { Tag } from "~/components/ui/tag";
 import { Checkbox } from "~/components/ui/checkbox";
+import { DateField } from "~/components/ui/date-field";
 import { IconButton } from "~/components/ui/icon-button";
 import { ConfirmDialog, Dialog, DialogScrim } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 import { Menu, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { syncedLabel } from "./model";
 import { api } from "~/trpc/react";
@@ -920,6 +923,7 @@ function SetupForm({
   // Before paint, so the dialog never shows under another name.
   useLayoutEffect(() => onTitle(title), [onTitle, title]);
   const { busy } = form;
+  const todayKey = today(banks.state.view?.budget.settings.timezone);
   // Unsupported accounts (such as retirement accounts) fold into one
   // line at the end, so the ones the user can add lead.
   const unsupported = form.rows.filter(
@@ -1016,47 +1020,37 @@ function SetupForm({
                       {recovery ? (
                         <p className={styles.note}>Link to existing account</p>
                       ) : draft.existingAccountId ? (
-                        <div className={styles.field}>
-                          <label htmlFor={`${fieldId}-start`}>
-                            Import from
-                          </label>
-                          <input
-                            id={`${fieldId}-start`}
-                            type="date"
+                        <Field
+                          label="Import from"
+                          sharedErrorId={
+                            fieldError ? `${fieldId}-hint` : undefined
+                          }
+                        >
+                          <DateField
                             value={draft.startDate}
+                            today={todayKey}
                             disabled={busy}
-                            data-invalid={Boolean(fieldError) || undefined}
-                            aria-invalid={Boolean(fieldError) || undefined}
-                            aria-describedby={`${fieldId}-hint`}
-                            onChange={(event) =>
-                              form.change(account.accountId, {
-                                startDate: event.target.value,
-                              })
+                            onChange={(startDate) =>
+                              form.change(account.accountId, { startDate })
                             }
                           />
-                        </div>
+                        </Field>
                       ) : (
-                        <div className={styles.field}>
-                          <label htmlFor={`${fieldId}-name`}>Name</label>
-                          <input
-                            id={`${fieldId}-name`}
+                        <Field
+                          label="Name"
+                          sharedErrorId={
+                            fieldError ? `${fieldId}-hint` : undefined
+                          }
+                        >
+                          <TextInput
                             value={draft.name}
                             maxLength={120}
-                            autoComplete="off"
-                            spellCheck={false}
                             disabled={busy}
-                            data-invalid={Boolean(fieldError) || undefined}
-                            aria-invalid={Boolean(fieldError) || undefined}
-                            aria-describedby={
-                              fieldError ? `${fieldId}-hint` : undefined
-                            }
-                            onChange={(event) =>
-                              form.change(account.accountId, {
-                                name: event.target.value,
-                              })
+                            onChange={(name) =>
+                              form.change(account.accountId, { name })
                             }
                           />
-                        </div>
+                        </Field>
                       )}
                       {existingAccounts.length > 0 && (
                         <Field

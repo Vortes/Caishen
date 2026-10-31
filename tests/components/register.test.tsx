@@ -797,7 +797,6 @@ test("F3: the new transaction account picker excludes Partner and Reimbursements
   await shell.user.click(
     screen.getByRole("button", { name: "Add transaction" }),
   );
-  await shell.user.keyboard("{Escape}");
   const form = within(screen.getByRole("form", { name: "New transaction" }));
   await shell.user.click(form.getByRole("combobox", { name: "Account" }));
   expect(screen.getByRole("option", { name: /Checking/ })).toBeTruthy();

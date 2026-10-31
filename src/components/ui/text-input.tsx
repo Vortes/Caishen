@@ -9,12 +9,17 @@ export type TextInputProps = {
   onChange: (value: string) => void;
   name?: string;
   placeholder?: string;
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   // "password" hides what's typed. Never a number: see fields.md.
   type?: "text" | "email" | "password";
-  // For what the browser and password managers should offer; off otherwise.
+  // For what the browser and password managers should offer. Off, the
+  // default, also keeps 1Password out.
   autoComplete?:
     | "off"
+    | "name"
     | "email"
     | "username"
     | "current-password"
@@ -41,6 +46,9 @@ export function WellInput({
   onChange,
   name,
   placeholder,
+  required,
+  minLength,
+  maxLength,
   inputMode,
   type = "text",
   autoComplete = "off",
@@ -63,6 +71,7 @@ export function WellInput({
   return (
     <div
       className={styles.well}
+      data-well=""
       data-invalid={field.invalid ? "" : undefined}
       data-disabled={disabled ? "" : undefined}
       data-align={align}
@@ -75,15 +84,19 @@ export function WellInput({
       <input
         ref={inputRef}
         id={field.id}
-        type={type}
         name={name}
+        type={type}
         className={styles.input}
         value={value}
         placeholder={placeholder}
+        required={required}
+        minLength={minLength}
+        maxLength={maxLength}
         inputMode={inputMode}
         disabled={disabled}
         readOnly={readOnly}
         autoComplete={autoComplete}
+        data-1p-ignore={autoComplete === "off" ? "" : undefined}
         spellCheck={false}
         aria-labelledby={field.labelledBy}
         aria-invalid={field.invalid ? true : undefined}
