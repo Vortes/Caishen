@@ -50,8 +50,8 @@
 
 /* ---------- Shared form pieces ---------- */
 
-/* A form field isn't in the system yet; these follow the shell's settings
-   input (.settingInput) so every screen in the batch matches. */
+/* The fields TextInput can't take yet: passwords, and the ones the browser
+   fills in (a name, an email, a one-time code). They follow its well. */
 .field {
   display: flex;
   flex-direction: column;

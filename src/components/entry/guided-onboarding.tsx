@@ -7,6 +7,7 @@ import { Card } from "~/components/ui/card";
 import { Field } from "~/components/ui/field";
 import { Select } from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
+import { TextInput } from "~/components/ui/text-input";
 import { timezoneOptions } from "~/components/settings/timezone-options";
 import { EntryPage } from "./entry-page";
 import { Brand } from "./brand";
@@ -212,22 +213,13 @@ export function GuidedOnboarding({
                         onChange={(event) => setYourName(event.target.value)}
                       />
                     </div>
-                    <div className={batch.field}>
-                      <label
-                        className={batch.fieldLabel}
-                        htmlFor={`${id}-name`}
-                      >
-                        Budget name
-                      </label>
-                      <input
-                        id={`${id}-name`}
-                        className={batch.input}
+                    <Field label="Budget name">
+                      <TextInput
                         value={name}
                         maxLength={80}
-                        autoComplete="off"
-                        onChange={(event) => setName(event.target.value)}
+                        onChange={setName}
                       />
-                    </div>
+                    </Field>
                     <Field label="Timezone">
                       <Select
                         value={timezone}

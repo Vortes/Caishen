@@ -86,9 +86,9 @@ form edge to edge, so it goes outside the block that pads the fields.
 ## TextInput
 
 One line of text in the well. `value` and `onChange(value)` (always
-controlled; `name` still sends it with a form), `placeholder`, `inputMode`,
-`disabled`, `readOnly`, `inputRef`, `prefix`, `suffix`. Nothing else
-exists. No `type`, so never `type="number"`: it rejects `1,000` and shows
+controlled; `name` still sends it with a form), `placeholder`, `maxLength`,
+`inputMode`, `disabled`, `readOnly`, `inputRef`, `prefix`, `suffix`.
+Nothing else exists. No `type`, so never `type="number"`: it rejects `1,000` and shows
 spinners. `WellInput`, also exported from `text-input.tsx`, is
 `AmountInput`'s base; a screen never imports it.
 

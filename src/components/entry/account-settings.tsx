@@ -8,6 +8,8 @@ import { text } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field } from "~/components/ui/field";
+import { TextInput } from "~/components/ui/text-input";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { useShellData } from "~/components/app-shell/shell-data";
 import shell from "~/components/app-shell/shell.module.css";
@@ -424,17 +426,9 @@ function DeleteAccount({ user }: { user: UserResource }) {
                     </li>
                   )}
                 </ul>
-                <label className={batch.field}>
-                  Type {email} to confirm
-                  <input
-                    className={batch.input}
-                    value={typed}
-                    autoComplete="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    onChange={(event) => setTyped(event.target.value)}
-                  />
-                </label>
+                <Field label={`Type ${email ?? ""} to confirm`}>
+                  <TextInput value={typed} onChange={setTyped} />
+                </Field>
                 {error && (
                   <p className={batch.error} role="alert">
                     {error}

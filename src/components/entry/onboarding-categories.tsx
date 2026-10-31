@@ -5,6 +5,8 @@ import { motion, useReducedMotion } from "motion/react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field } from "~/components/ui/field";
+import { TextInput } from "~/components/ui/text-input";
 import { z } from "zod";
 import batch from "./entry.module.css";
 import styles from "./onboarding.module.css";
@@ -294,7 +296,6 @@ export function CategoryReview({
   flow: CategoryDraft;
   update: Update;
 }) {
-  const id = useId();
   const [draft, setDraft] = useState("");
   const [closed, setClosed] = useState<string[]>([]);
   const groups = categoriesFor(flow.answers);
@@ -396,18 +397,14 @@ export function CategoryReview({
           addCustom();
         }}
       >
-        <label className="sr-only" htmlFor={`${id}-custom`}>
-          Category name
-        </label>
-        <input
-          id={`${id}-custom`}
-          className={batch.input}
-          value={draft}
-          placeholder="Add your own, like Climbing gym"
-          maxLength={80}
-          autoComplete="off"
-          onChange={(event) => setDraft(event.target.value)}
-        />
+        <Field label="Category name" labelHidden>
+          <TextInput
+            value={draft}
+            placeholder="Add your own, like Climbing gym"
+            maxLength={80}
+            onChange={setDraft}
+          />
+        </Field>
         <Button type="submit" disabled={!draft.trim()}>
           <PlusIcon aria-hidden />
           Add
