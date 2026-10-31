@@ -41,6 +41,20 @@ changing dimensions or column alignment. Use inset shadows and layered
 pseudo-elements, not a border that changes layout. Keep decoration
 `pointer-events: none` so row controls remain clickable.
 
+### Nothing moves
+
+Selecting, hovering, focusing, or opening a row to edit it moves no text,
+not by a pixel: the date, payee and category keep their left edge, an
+amount its right edge, every value its vertical center.
+
+- Draw state with fills, inset shadows and outlines, never a border or
+  padding that takes space.
+- An editor's wells reach past their column by border and padding (8px);
+  amounts reach right. Cells set their own `align-self`, since equal rules
+  from two stylesheets win by load order (`transaction-entry.module.css`).
+- `tests/e2e/shell-register-edit-in-place.spec.ts` fails on any shift over
+  half a pixel; run it after changing rows, wells or the register.
+
 ### Contiguous selection
 
 Adjacent selected sibling rows form one outlined group, not separate pills:

@@ -25,8 +25,11 @@
   align-items: start;
 }
 /* Centers each well in the row's band, and keeps it there when an error
-   opens under one. */
+   opens under one. The cell holds the top itself: the shared row columns
+   center their cells, and which of two equal rules wins depends on the
+   order the stylesheets load, which moved the wells 3px before. */
 .entryRow > .cell {
+  align-self: start;
   padding-top: calc((var(--size-row-lg) - var(--size-control)) / 2);
 }
 /* Focusing an editor in a scrolled register must clear its sticky header. */
@@ -49,6 +52,9 @@
     [data-column="amount"]
   ) {
   margin-right: -8px;
+}
+.entryRow [data-well][data-align="end"] {
+  padding-right: 7px;
 }
 .cell {
   display: flex;
@@ -125,6 +131,9 @@
       [data-column="amount"]
     ) {
     margin-right: 0;
+  }
+  .entryRow [data-well][data-align="end"] {
+    padding-right: 10px;
   }
   .entryRow > [data-column="date"],
   .entryRow > [data-column="payee"],

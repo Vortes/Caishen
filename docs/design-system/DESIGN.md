@@ -32,6 +32,9 @@ you use.
 7. **Row selection uses the grouped outline in [rows.md](rows.md).** Apply
    it to every selectable table or list, not just transactions. Selection
    is distinct from hover, keyboard focus, and the current detail row.
+8. **State changes move nothing.** Selecting, hovering, focusing, or
+   opening a row to edit keeps every value's text exactly where it was. See
+   "Nothing moves" in [rows.md](rows.md); a register spec measures it.
 
 ## Topics
 
