@@ -305,7 +305,7 @@ export type ShellSource = {
   imports: State["imports"];
   // The partner's first name from their profile, which names the partner
   // account; a member's own name is their budget's.
-  partnerFirstName?: string;
+  partnerFirstName?: string | null;
 };
 
 export function toShellData(
