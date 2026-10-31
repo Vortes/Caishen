@@ -69,6 +69,11 @@ test("leaving a plain amount keeps it as typed, rounded only past the cent", asy
   expect(amount().value).toBe("1,000.5");
 
   await user.clear(amount());
+  await user.type(amount(), ".5");
+  await user.tab();
+  expect(amount().value).toBe(".5");
+
+  await user.clear(amount());
   await user.type(amount(), "12.345");
   await user.tab();
   expect(amount().value).toBe("12.35");

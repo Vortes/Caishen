@@ -175,7 +175,7 @@ function assign<T>(ref: Ref<T> | undefined, value: T | null) {
 }
 
 // An amount as a person writes one: no operators, at most two decimals.
-const plainAmount = /^\s*-?\$?[\d,]+(?:\.\d{0,2})?\s*$/;
+const plainAmount = /^\s*-?\$?(?:[\d,]+(?:\.\d{0,2})?|\.\d{1,2})\s*$/;
 
 // Cents as the text a person would type: "-1234.50".
 function dollars(cents: number) {

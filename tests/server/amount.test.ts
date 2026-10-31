@@ -24,6 +24,14 @@ void test("amounts accept whole dollars, cents, separators and sums", () => {
   ]);
 });
 
+void test("amounts may start at the decimal point", () => {
+  accepts([
+    [".01", 1],
+    ["$.5", 50],
+    ["12.99+.01", 1_300],
+  ]);
+});
+
 function rejects(inputs: readonly string[], message: string) {
   for (const input of inputs)
     assert.deepEqual(readAmount(input), { ok: false, message }, input);

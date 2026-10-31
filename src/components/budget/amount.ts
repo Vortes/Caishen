@@ -19,7 +19,7 @@ export function readAmount(text: string): AmountReading {
   };
 
   const number = (): Ratio => {
-    const match = /^\d+(?:\.\d+)?/.exec(source.slice(at));
+    const match = /^(?:\d+(?:\.\d+)?|\.\d+)/.exec(source.slice(at));
     if (!match) return fail();
     at += match[0].length;
     const [whole, fraction = ""] = match[0].split(".");
