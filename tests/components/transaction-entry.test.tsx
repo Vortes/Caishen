@@ -143,7 +143,7 @@ test("a person picked before the amount keeps the full share as the amount chang
     "20.00",
   );
   expect(
-    within(form).getByRole("button", { name: "Share" }).textContent,
+    within(form).getByRole("button", { name: /^Share / }).textContent,
   ).toContain("$20.00");
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "New transaction" })).toBeNull();

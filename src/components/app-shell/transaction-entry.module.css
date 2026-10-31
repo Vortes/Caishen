@@ -38,9 +38,15 @@
    padding, so what's typed starts where the row's text did. Amounts are
    right-aligned, so their cells grow to the right, as far as wells can and
    still sit 8px apart. */
-.entryRow .well {
+.entryRow .well,
+.entryRow [data-well]:not([data-align="end"]) {
   margin-left: -8px;
   padding-left: 7px;
+}
+/* A ui button well is as wide as its cell; with the reach it grows by
+   8px. */
+.entryRow [data-well]:not([data-align="end"]) {
+  width: calc(100% + 8px);
 }
 .entryRow
   > .cell:not(.staticCell):is(
@@ -113,9 +119,13 @@
   .entryRow input {
     scroll-margin-block-start: calc(var(--size-row-md) + var(--size-row-lg));
   }
-  .entryRow .well {
+  .entryRow .well,
+  .entryRow [data-well]:not([data-align="end"]) {
     margin-inline: 0;
     padding-inline: 10px;
+  }
+  .entryRow [data-well]:not([data-align="end"]) {
+    width: 100%;
   }
   .entryRow
     > .cell:not(.staticCell):is(

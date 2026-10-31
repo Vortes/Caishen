@@ -7,6 +7,7 @@ import { newId, today } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Field as FormField } from "~/components/ui/field";
+import { FieldButton } from "~/components/ui/field-button";
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -214,29 +215,17 @@ export function RecordPurchase({ account }: { account: Account }) {
             </FormField>
           </div>
           <div className={moveStyles.fieldSlot}>
-            <FormField
-              id={`${id}-share`}
-              label={shareLabel}
-              error={fieldMessage("share")}
-            >
+            <FormField label={shareLabel} error={fieldMessage("share")}>
               {even ? (
-                <button
-                  type="button"
-                  id={`${id}-share`}
-                  className={`${moveStyles.amountInput} ${local.evenButton}`}
-                  aria-describedby={
-                    fieldMessage("share") ? `${id}-share-error` : undefined
-                  }
+                <FieldButton
+                  suffix={money(halfOf(amount))}
                   onClick={() => {
                     setEven(false);
                     setShareText((halfOf(amount) / 100).toFixed(2));
                   }}
                 >
-                  <span>Half</span>
-                  <span className={local.evenAmount}>
-                    {money(halfOf(amount))}
-                  </span>
-                </button>
+                  Half
+                </FieldButton>
               ) : (
                 <AmountInput
                   inputRef={shareInput}

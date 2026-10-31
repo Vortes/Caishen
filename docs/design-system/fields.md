@@ -1,7 +1,8 @@
 # Fields
 
-`src/components/ui/field.tsx` (`Field`, `FormError`, `FormFooter`) and
-`text-input.tsx`, over one stylesheet, `field.module.css`, which
+`src/components/ui/field.tsx` (`Field`, `FormError`, `FormFooter`),
+`text-input.tsx` and `field-button.tsx`, over one stylesheet,
+`field.module.css`, which
 [`AmountInput`](amounts.md) and [`Select`](selects.md) share. Every field has one look: a label, a filled well, and a
 hint or error under it. There is no variant, no size and no `className`.
 
@@ -9,6 +10,8 @@ hint or error under it. There is no variant, no size and no `className`.
 What does the person enter?
  ├── Money → AmountInput (amounts.md)
  ├── One option from a fixed list → Select (selects.md)
+ ├── A value picked in a menu or popover the screen builds (a share, a
+ │     target's behavior) → FieldButton
  ├── One item from a list they search by typing (a category, a payee)
  │     → a combobox: not in the system yet (TODO.md)
  ├── A date → not in the system yet (TODO.md)
@@ -17,8 +20,8 @@ What does the person enter?
 
 ## Field
 
-Every ui input sits in a `Field`; `TextInput`, `AmountInput` and `Select`
-throw without one. The field gives its input an id, `aria-describedby` and
+Every ui input sits in a `Field`; `TextInput`, `AmountInput`, `Select` and
+`FieldButton` throw without one. The field gives its input an id, `aria-describedby` and
 `aria-invalid`, so a screen never writes them for a ui input.
 
 - `label`: required. `labelHidden` keeps it for screen readers only, where
@@ -107,6 +110,36 @@ without them, and it doesn't repeat them: "APR", not "APR (%)".
 // select on focus
 <TextInput prefix="$" inputMode="decimal" value={amount} onChange={setAmount} />
 ```
+
+## FieldButton
+
+A button drawn as the well, for a value the person picks in a `Menu` or
+`Popover` the screen owns: the register's Share box, a target's "I want
+to". `children` is the value shown; `placeholder` shows faint while there
+are none; `suffix` ends the value with short faint text ("Half", then
+"$12.50"); `chevron` marks a field that opens a list. `disabled`, `onClick`
+and the other button attributes pass through, and it takes a `ref`, so a
+`Menu` or `Popover` can make it its `trigger`. With the menu or popover
+open, its border takes the focus color. `Select` draws its trigger the
+same way.
+
+It is named by the field's label and the value it shows ("I want to, Set
+aside $0.00"), so a screen reader hears what's chosen.
+
+```tsx
+// Correct (target-editor.tsx)
+<Field label={label}>
+  <Menu label={label} trigger={<FieldButton chevron>{chosen.title}</FieldButton>}>
+    …
+  </Menu>
+</Field>
+
+// Incorrect: a button borrowing a screen's well class
+<button className={`${entry.well} ${styles.trigger}`}>{chosen.title}</button>
+```
+
+A value from a fixed list that needs nothing but its label is a `Select`,
+not a `FieldButton` with a hand-built menu.
 
 ## Layout
 

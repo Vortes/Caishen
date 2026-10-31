@@ -34,7 +34,9 @@ import type { CounterpartyShare } from "~/domain/engine";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
+import { FieldButton } from "~/components/ui/field-button";
 import { IconButton } from "~/components/ui/icon-button";
+import { TextInput } from "~/components/ui/text-input";
 import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
 import { PartnerMatches } from "./partner-match";
@@ -478,23 +480,19 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           : "outflow",
     );
   const categoryControl = categoryNotNeeded ? (
-    <div className={styles.well} data-disabled>
-      <input
-        id={id("categoryId")}
-        className={styles.input}
-        aria-label="Category"
-        value={
-          draftEntry?.shape.kind === "card-payment"
-            ? cardPaymentCategoryLabel(
-                view.budget,
-                draft.accountId,
-                draft.transferAccountId,
-              )
-            : "Category not needed"
-        }
-        disabled
-      />
-    </div>
+    <TextInput
+      value={
+        draftEntry?.shape.kind === "card-payment"
+          ? cardPaymentCategoryLabel(
+              view.budget,
+              draft.accountId,
+              draft.transferAccountId,
+            )
+          : "Category not needed"
+      }
+      onChange={() => undefined}
+      disabled
+    />
   ) : (
     <NewCategoryPopover
       open={creating !== null}
@@ -766,20 +764,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             return null;
           }}
         >
-          <button
-            ref={register(name)}
-            id={id(name)}
-            type="button"
-            className={`${styles.well} ${shareStyles.shareWell}`}
-            data-invalid={fields[name] ? "" : undefined}
-            aria-describedby={described(name)}
-          >
-            {share?.amount ? (
-              <ShareLabel share={share} />
-            ) : (
-              <span className={shell.faint}>Just mine</span>
-            )}
-          </button>
+          <FieldButton ref={register(name)} placeholder="Just mine">
+            {share?.amount ? <ShareLabel share={share} /> : undefined}
+          </FieldButton>
         </ShareMenu>
       </EditorCell>
     );

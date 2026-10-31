@@ -41,7 +41,7 @@ you use.
 | [scale.md](scale.md)       | Type sizes, control and row heights, radii, motion             |
 | [spacing.md](spacing.md)   | Layout tokens; padding and gaps inside a component by role     |
 | [buttons.md](buttons.md)   | `Button`, `IconButton`                                         |
-| [fields.md](fields.md)     | `Field`, `TextInput`, `FormError`, `FormFooter`                |
+| [fields.md](fields.md)     | `Field`, `TextInput`, `FieldButton`, `FormError`, `FormFooter` |
 | [amounts.md](amounts.md)   | `AmountInput`, `readAmount`, the operator row                  |
 | [selects.md](selects.md)   | `Select`                                                       |
 | [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`; which to use |
