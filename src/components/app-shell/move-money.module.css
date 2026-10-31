@@ -66,8 +66,7 @@
 }
 
 /* Inputs are filled wells, like the shell's controls, with a ring on focus. */
-.amountInput,
-.search {
+.amountInput {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -79,20 +78,17 @@
   color: var(--text-primary);
   transition: border-color 150ms;
 }
-.amountInput:focus-within,
-.search:focus-within {
+.amountInput:focus-within {
   border-color: var(--focus-ring);
 }
-.amountInput[data-invalid],
-.search[data-invalid] {
+.amountInput[data-invalid] {
   border-color: var(--field-error-line);
 }
 .amountInput > span {
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
-.amountInput input,
-.search input {
+.amountInput input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -104,12 +100,10 @@
   font: inherit;
   font-variant-numeric: tabular-nums;
 }
-.amountInput input:focus-visible,
-.search input:focus-visible {
+.amountInput input:focus-visible {
   outline: none;
 }
-.amountInput input::placeholder,
-.search input::placeholder {
+.amountInput input::placeholder {
   color: var(--text-tertiary);
 }
 
@@ -196,12 +190,10 @@
   .option {
     min-height: 44px;
   }
-  .amountInput,
-  .search {
+  .amountInput {
     height: 44px;
   }
-  .amountInput input,
-  .search input {
+  .amountInput input {
     font-size: 16px;
   }
 }

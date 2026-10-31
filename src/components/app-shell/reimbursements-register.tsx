@@ -1,21 +1,21 @@
 "use client";
 
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { DateField } from "~/components/ui/date-field";
-import { Field } from "~/components/ui/field";
+import { Field, FormError } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
+import { SearchList } from "~/components/ui/search-list";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
-import { ChoiceField } from "./transaction-fields";
 import { Empty, moveSelection } from "./views";
 import styles from "./shell.module.css";
 import local from "./reimbursements-register.module.css";
@@ -313,7 +313,6 @@ function RecordRepayment({
   // The register's person filter, who the repayment is most likely from.
   filter: string | null;
 }) {
-  const id = useId();
   const { view, saveCommand } = useTransactionEntry();
   const { accounts } = useShellData();
   const cash = accounts.filter((item) => item.kind === "cash");
@@ -424,24 +423,22 @@ function RecordRepayment({
             </span>
           )}
         </div>
-        <div className={moveStyles.field}>
-          <label htmlFor={`${id}-who`}>From</label>
-          <ChoiceField
-            id={`${id}-who`}
+        <div className={moveStyles.fieldSlot}>
+          <Field
             label="From"
-            value={who}
-            options={owing.map((item) => ({
-              value: item.who,
-              label: item.who,
-              amount: item.balance,
-            }))}
-            placeholder="Choose who paid"
-            invalid={error?.field === "who"}
-            onChange={pick}
-          />
-          {error?.field === "who" && (
-            <p className={moveStyles.error}>{error.message}</p>
-          )}
+            error={error?.field === "who" ? error.message : undefined}
+          >
+            <SearchList
+              value={who}
+              options={owing.map((item) => ({
+                value: item.who,
+                label: item.who,
+                amount: item.balance,
+              }))}
+              placeholder="Choose who paid"
+              onChange={pick}
+            />
+          </Field>
         </div>
         <div className={local.fieldPair}>
           <div className={moveStyles.fieldSlot}>
@@ -472,37 +469,29 @@ function RecordRepayment({
             </Field>
           </div>
         </div>
-        <div className={moveStyles.field}>
-          <label htmlFor={`${id}-cash`}>Into</label>
-          <ChoiceField
-            id={`${id}-cash`}
+        <div className={moveStyles.fieldSlot}>
+          <Field
             label="Into"
-            value={cashAccountId}
-            options={cash.map((item) => ({
-              value: item.id,
-              label: item.name,
-            }))}
-            placeholder="Choose an account"
-            invalid={error?.field === "cash"}
-            onChange={(next) => {
-              setCashAccountId(next);
-              if (error?.field === "cash") setError(null);
-            }}
-          />
-          {error?.field === "cash" && (
-            <p className={moveStyles.error}>{error.message}</p>
-          )}
-          <p className={local.hint}>
-            It lowers what {who || "they"} owe{who ? "s" : ""} and refills your{" "}
-            {account.name} envelope. It isn&rsquo;t income, so Ready to Assign
-            doesn&rsquo;t change.
-          </p>
+            error={error?.field === "cash" ? error.message : undefined}
+            hint={`It lowers what ${who || "they"} owe${who ? "s" : ""} and refills your ${account.name} envelope. It isn’t income, so Ready to Assign doesn’t change.`}
+          >
+            <SearchList
+              value={cashAccountId}
+              options={cash.map((item) => ({
+                value: item.id,
+                label: item.name,
+              }))}
+              placeholder="Choose an account"
+              onChange={(next) => {
+                setCashAccountId(next);
+                if (error?.field === "cash") setError(null);
+              }}
+            />
+          </Field>
         </div>
         {error && !error.field && (
           <div className={moveStyles.formError}>
-            <p className={moveStyles.error} role="alert">
-              {error.message}
-            </p>
+            <FormError>{error.message}</FormError>
           </div>
         )}
         <div className={moveStyles.footer}>

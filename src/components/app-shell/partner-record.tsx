@@ -6,21 +6,24 @@ import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
-import { Field as FormField } from "~/components/ui/field";
+import { Field as FormField, FormError } from "~/components/ui/field";
 import { FieldButton } from "~/components/ui/field-button";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { Popover } from "~/components/ui/popover";
-import { SearchSuggestions } from "~/components/ui/search-list";
+import {
+  SearchList,
+  SearchSuggestions,
+  type SearchListOption,
+} from "~/components/ui/search-list";
 import { rememberedSpendingCategory } from "~/domain/partner-ledger";
 import { earlierPayees } from "~/domain/payee-memory";
 import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
 import { halfOf } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
-import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import local from "./partner-register.module.css";
 
 type Field = "payee" | "amount" | "share";
@@ -63,7 +66,7 @@ export function RecordPurchase({ account }: { account: Account }) {
   }, [even]);
   const youPaid = paidBy === you;
   const shareLabel = youPaid ? `${account.name}'s share` : "Your share";
-  const options: ChoiceOption[] = view.categories
+  const options: SearchListOption[] = view.categories
     .filter(
       (category) =>
         !category.pairedAccountId &&
@@ -231,14 +234,9 @@ export function RecordPurchase({ account }: { account: Account }) {
             </FormField>
           </div>
         </div>
-        <div className={moveStyles.field}>
-          <label htmlFor={`${id}-category`}>
-            Your category{youPaid ? "" : " for your share"}
-          </label>
-          <div className={local.choiceWell}>
-            <ChoiceField
-              id={`${id}-category`}
-              label="Your category"
+        <div className={moveStyles.fieldSlot}>
+          <FormField label={`Your category${youPaid ? "" : " for your share"}`}>
+            <SearchList
               value={categoryId}
               options={options}
               placeholder="Pick later"
@@ -247,13 +245,11 @@ export function RecordPurchase({ account }: { account: Account }) {
                 setCategoryChosen(true);
               }}
             />
-          </div>
+          </FormField>
         </div>
         {error && !error.field && (
           <div className={moveStyles.formError}>
-            <p className={moveStyles.error} role="alert">
-              {error.message}
-            </p>
+            <FormError>{error.message}</FormError>
           </div>
         )}
         <div className={moveStyles.footer}>

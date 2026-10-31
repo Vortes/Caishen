@@ -183,10 +183,6 @@
 .well[data-invalid] {
   border-color: var(--field-error-line);
 }
-.well[data-disabled] {
-  color: var(--text-secondary);
-  background: var(--surface-group);
-}
 .input {
   flex: 1;
   min-width: 0;
@@ -250,27 +246,8 @@
   text-wrap: pretty;
 }
 
-/* The option list under a field, kept in a form's layout. */
-.inlineChoice {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 6px;
-}
-/* The list's surfaces pin a row above the options, and only the options
-   scroll. */
-.inlineOptions {
-  display: flex;
-  flex-direction: column;
-  max-height: 18rem;
-  overflow: hidden;
-  padding: 4px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-row);
-  font-size: var(--type-body);
-}
-/* The list inside its popover: the pinned row stays put and only the
-   options scroll, within the room the popover has. */
+/* The list inside its popover; only the options scroll, within the room
+   the popover has. */
 .listOptions {
   display: flex;
   flex-direction: column;
@@ -281,27 +258,6 @@
 .listScroll {
   min-height: 0;
   overflow-y: auto;
-}
-.listDivider {
-  flex: none;
-  width: 100%;
-  margin: 4px 0;
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-}
-/* New and an action share one row, so a short list squeezes the
-   options, not it. */
-.listHeader {
-  display: flex;
-  flex: none;
-  gap: 4px;
-}
-.listHeader > .option {
-  flex: 1;
-  min-width: 0;
-}
-.listHeader > .option[data-compact] {
-  flex: none;
 }
 .group {
   padding: 8px 8px 4px;
@@ -322,14 +278,6 @@
 .optionLabel {
   flex: 1;
 }
-/* Pinned rows don't commit anything yet, so their icons stay neutral
-   instead of taking the check's accent. */
-.option[data-pinned] .check {
-  color: var(--text-tertiary);
-}
-.option[data-pinned][data-active] .check {
-  color: var(--text-secondary);
-}
 .option[data-active] {
   background: var(--surface-hover);
   color: var(--text-primary);
@@ -338,34 +286,12 @@
   color: var(--text-primary);
   font-weight: 500;
 }
-.option[aria-disabled] {
-  cursor: default;
-  opacity: 0.45;
-}
 .check {
   display: grid;
   flex: none;
   place-items: center;
   width: 16px;
   color: var(--accent-solid);
-}
-.optionAmount {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-}
-.optionAmount[data-tone="positive"] {
-  color: var(--money-positive);
-}
-.optionAmount[data-tone="negative"] {
-  color: var(--money-negative);
-}
-.optionAmount[data-tone="zero"] {
-  color: var(--text-tertiary);
-}
-.empty {
-  padding: 12px 8px;
-  color: var(--text-tertiary);
-  text-align: center;
 }
 
 /* Touch: taller targets, and title-size (16px) text so focusing a field doesn't zoom

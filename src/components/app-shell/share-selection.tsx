@@ -1,18 +1,19 @@
 "use client";
 
-import { CircleAlertIcon, UsersIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { UsersIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { isFullShare } from "~/domain/counterparty";
 import {
   shareForAmount,
   type ShareChoice,
 } from "~/components/transactions/transaction-share";
 import { Button } from "~/components/ui/button";
+import { Field, FormError } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
+import { SearchList } from "~/components/ui/search-list";
 import { money, type Transaction } from "./model";
 import { ShareChoices, useShareParties } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
-import { ChoiceField } from "./transaction-fields";
 import styles from "./transaction-review.module.css";
 
 export function ShareSelection({
@@ -27,7 +28,6 @@ export function ShareSelection({
   const entry = useTransactionEntry();
   const { holdOpen } = entry;
   const { partner, reimbursements, who } = useShareParties();
-  const id = useId();
   const categoryInput = useRef<HTMLInputElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -149,29 +149,20 @@ export function ShareSelection({
                   {choice.basis === "half" ? " · 50/50 each" : ""}
                 </p>
                 {needsCategory && (
-                  <>
-                    <label htmlFor={id}>Category for your portion</label>
-                    <ChoiceField
-                      id={id}
-                      label="Category for your portion"
+                  <Field
+                    label="Category for your portion"
+                    hint="Applies to your uncategorized portions."
+                  >
+                    <SearchList
                       value={categoryId}
                       options={options}
-                      placement="inline"
                       placeholder="Choose a category"
                       onChange={setCategoryId}
                       inputRef={categoryInput}
                     />
-                    <p className={styles.shareSummary}>
-                      Applies to your uncategorized portions.
-                    </p>
-                  </>
+                  </Field>
                 )}
-                {error && (
-                  <p className={styles.error} role="alert">
-                    <CircleAlertIcon size={14} aria-hidden />
-                    {error}
-                  </p>
-                )}
+                {error && <FormError>{error}</FormError>}
                 <div className={styles.actions}>
                   <Button
                     size="sm"

@@ -94,10 +94,6 @@
   color: var(--text-primary);
   font-weight: 500;
 }
-.shareConfirmation > label {
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-}
 .shareConfirmation > .actions {
   justify-content: flex-end;
 }
@@ -107,17 +103,6 @@
   font-size: var(--type-small);
   font-variant-numeric: tabular-nums;
   line-height: 1.45;
-}
-.error {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin: 0;
-  color: var(--danger-text);
-}
-.error > svg {
-  flex: none;
-  transform: translateY(2px);
 }
 /* A narrow register gives the hint its own line instead of squeezing the
    count. */
