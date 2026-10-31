@@ -5,7 +5,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  useId,
   useRef,
   useState,
   type ReactElement,
@@ -19,6 +18,7 @@ import { Tooltip } from "~/components/ui/tooltip";
 import { useShellData } from "./shell-data";
 import { Popover } from "~/components/ui/popover";
 import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 // The move-money popover's form fields.
 import styles from "./move-money.module.css";
 
@@ -159,7 +159,6 @@ function NameForm({
     field: "name" | "form";
     message: string;
   } | null>(null);
-  const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const target = choice ? chosen : group;
   const choices = groups.filter((item) => !isSystemGroup(item));
@@ -226,32 +225,19 @@ function NameForm({
     >
       <div className={styles.fieldSlot}>
         <Field
-          id={id}
           label={target ? "Category name" : "Group name"}
           error={error?.field === "name" ? error.message : undefined}
         >
-          <div
-            className={styles.search}
-            data-expanded
-            data-invalid={error?.field === "name" || undefined}
-          >
-            <input
-              ref={inputRef}
-              id={id}
-              autoComplete="off"
-              maxLength={MAX_LENGTH}
-              placeholder={target ? "Groceries" : "Bills"}
-              value={name}
-              aria-invalid={error?.field === "name" || undefined}
-              aria-describedby={
-                error?.field === "name" ? `${id}-error` : undefined
-              }
-              onChange={(event) => {
-                setName(event.target.value);
-                setError(null);
-              }}
-            />
-          </div>
+          <TextInput
+            inputRef={inputRef}
+            maxLength={MAX_LENGTH}
+            placeholder={target ? "Groceries" : "Bills"}
+            value={name}
+            onChange={(next) => {
+              setName(next);
+              setError(null);
+            }}
+          />
         </Field>
       </div>
       {choice && (

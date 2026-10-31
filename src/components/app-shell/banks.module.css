@@ -361,7 +361,7 @@
   gap: 6px var(--space-inset);
   padding: 2px 0 10px 26px;
 }
-.fields > .field:only-child {
+.fields > :only-child {
   grid-column: 1 / -1;
 }
 .loanFields {

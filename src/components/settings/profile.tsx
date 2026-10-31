@@ -13,6 +13,8 @@ import { AccountSettings } from "~/components/entry/account-settings";
 import { PhotoCropDialog } from "~/components/app-shell/photo-crop-dialog";
 import { useShellData } from "~/components/app-shell/shell-data";
 import { UserAvatar } from "~/components/app-shell/user-avatar";
+import { Field } from "~/components/ui/field";
+import { TextInput } from "~/components/ui/text-input";
 import styles from "~/components/app-shell/shell.module.css";
 
 // Clerk accepts these formats for a profile image.
@@ -160,64 +162,59 @@ function BudgetName({
   onRename: (name: string) => string | null;
 }) {
   const { budgetName } = useShellData();
+  const [name, setName] = useState(budgetName);
   const [error, setError] = useState<string | null>(null);
+  // Starts over from the saved name whenever it changes, including after
+  // Undo.
+  const [saved, setSaved] = useState(budgetName);
+  if (saved !== budgetName) {
+    setSaved(budgetName);
+    setName(budgetName);
+  }
 
-  const commit = (field: HTMLInputElement) => {
-    const name = field.value.trim();
-    if (!name || name === budgetName) {
-      field.value = budgetName;
-      return;
+  // Escape leaves the field without saving what was typed.
+  const reverting = useRef(false);
+
+  const commit = () => {
+    const trimmed = name.trim();
+    if (reverting.current) reverting.current = false;
+    else if (trimmed && trimmed !== budgetName) {
+      const blocked = onRename(trimmed);
+      setError(blocked);
+      if (!blocked) return;
     }
-    const blocked = onRename(name);
-    setError(blocked);
-    if (blocked) field.value = budgetName;
+    setName(budgetName);
   };
 
   return (
     <div className={styles.settingRow}>
       <div className={styles.settingText}>
-        <label className={styles.settingLabel} htmlFor="budget-name">
-          Budget name
-        </label>
+        <span className={styles.settingLabel}>Budget name</span>
         <span className={styles.settingHint}>
           Shown at the top of the sidebar. Your partner’s budget keeps its own
           name.
         </span>
-        {error && (
-          <span
-            id="budget-name-error"
-            className={styles.settingError}
-            role="alert"
-          >
-            {error}
-          </span>
-        )}
       </div>
-      <input
-        // Starts over from the saved name whenever it changes, including
-        // after Undo.
-        key={budgetName}
-        id="budget-name"
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? "budget-name-error" : undefined}
-        className={styles.settingInput}
-        defaultValue={budgetName}
-        maxLength={120}
-        autoComplete="off"
-        spellCheck={false}
-        onBlur={(event) => commit(event.currentTarget)}
+      <div
+        className={styles.settingField}
+        onBlur={commit}
         onKeyDown={(event) => {
+          if (!(event.target instanceof HTMLInputElement)) return;
           if (event.key === "Enter") {
             event.preventDefault();
-            event.currentTarget.blur();
+            event.target.blur();
           } else if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            event.currentTarget.value = budgetName;
-            event.currentTarget.blur();
+            reverting.current = true;
+            event.target.blur();
           }
         }}
-      />
+      >
+        <Field label="Budget name" labelHidden error={error ?? undefined}>
+          <TextInput value={name} maxLength={120} onChange={setName} />
+        </Field>
+      </div>
     </div>
   );
 }

@@ -1,17 +1,18 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { ConfirmDialog } from "~/components/ui/dialog";
+import { Field } from "~/components/ui/field";
+import { TextInput } from "~/components/ui/text-input";
 import { useUser } from "@clerk/nextjs";
 import { ComposeInvitation } from "~/components/partner-invite/compose";
 import { useShellData } from "~/components/app-shell/shell-data";
 import { api } from "~/trpc/react";
 import styles from "~/components/app-shell/shell.module.css";
 import additions from "~/components/entry/settings.module.css";
-import batch from "~/components/entry/entry.module.css";
 
 export function PartnerSettings() {
   const { partner, disconnectedBy } = useShellData();
@@ -198,7 +199,6 @@ function InviteByEmail({
   initialEmail: string;
   onSent: (sent: { email: string; expiresAt: Date }) => void;
 }) {
-  const id = useId();
   const { user } = useUser();
   const send = api.budget.sendInvitation.useMutation();
   const [email, setEmail] = useState(initialEmail);
@@ -220,28 +220,6 @@ function InviteByEmail({
     return null;
   };
 
-  const field = (
-    <input
-      ref={input}
-      id={`${id}-email`}
-      className={batch.input}
-      // Alone in the row while writing, it takes the button's column too.
-      style={writing ? { gridColumn: "1 / -1" } : undefined}
-      type="email"
-      autoComplete="off"
-      spellCheck={false}
-      data-1p-ignore
-      value={email}
-      aria-invalid={error ? true : undefined}
-      aria-describedby={error ? `${id}-error` : undefined}
-      onChange={(event) => {
-        setEmail(event.target.value);
-        // Once wrong, it's checked as they fix it.
-        if (error) setError(check(event.target.value));
-      }}
-    />
-  );
-
   return (
     <>
       <div className={styles.settingText}>
@@ -256,12 +234,18 @@ function InviteByEmail({
             if (!problem) setWriting(true);
           }}
         >
-          <div className={batch.field}>
-            <label className={batch.fieldLabel} htmlFor={`${id}-email`}>
-              Partner’s email
-            </label>
+          <Field label="Partner’s email" error={error ?? undefined}>
             <div className={additions.joinRow}>
-              {field}
+              <TextInput
+                inputRef={input}
+                inputMode="email"
+                value={email}
+                onChange={(next) => {
+                  setEmail(next);
+                  // Once wrong, it's checked as they fix it.
+                  if (error) setError(check(next));
+                }}
+              />
               {/* While the invitation is being written, its Send is the
                   card's one primary action. */}
               {!writing && (
@@ -270,12 +254,7 @@ function InviteByEmail({
                 </Button>
               )}
             </div>
-            {error && (
-              <span id={`${id}-error`} className={styles.settingError}>
-                {error}
-              </span>
-            )}
-          </div>
+          </Field>
         </form>
       </div>
       {writing && from && (

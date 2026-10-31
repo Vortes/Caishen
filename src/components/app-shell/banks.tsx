@@ -45,6 +45,7 @@ import { ConfirmDialog, Dialog, DialogScrim } from "~/components/ui/dialog";
 import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 import { Menu, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { syncedLabel } from "./model";
 import { api } from "~/trpc/react";
@@ -1036,27 +1037,21 @@ function SetupForm({
                           />
                         </div>
                       ) : (
-                        <div className={styles.field}>
-                          <label htmlFor={`${fieldId}-name`}>Name</label>
-                          <input
-                            id={`${fieldId}-name`}
+                        <Field
+                          label="Name"
+                          sharedErrorId={
+                            fieldError ? `${fieldId}-hint` : undefined
+                          }
+                        >
+                          <TextInput
                             value={draft.name}
                             maxLength={120}
-                            autoComplete="off"
-                            spellCheck={false}
                             disabled={busy}
-                            data-invalid={Boolean(fieldError) || undefined}
-                            aria-invalid={Boolean(fieldError) || undefined}
-                            aria-describedby={
-                              fieldError ? `${fieldId}-hint` : undefined
-                            }
-                            onChange={(event) =>
-                              form.change(account.accountId, {
-                                name: event.target.value,
-                              })
+                            onChange={(name) =>
+                              form.change(account.accountId, { name })
                             }
                           />
-                        </div>
+                        </Field>
                       )}
                       {existingAccounts.length > 0 && (
                         <Field

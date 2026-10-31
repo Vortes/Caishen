@@ -125,6 +125,11 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-inset);
 }
+/* Alone in the row while the invitation is written, the field takes the
+   button's column too. */
+.joinRow > :only-child {
+  grid-column: 1 / -1;
+}
 
 /* Timezone and the daily email */
 .zoneHint {

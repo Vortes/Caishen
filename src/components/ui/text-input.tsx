@@ -9,6 +9,7 @@ export type TextInputProps = {
   onChange: (value: string) => void;
   name?: string;
   placeholder?: string;
+  maxLength?: number;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   // Short text in the well, before or after the value: "$", "%", "years".
   prefix?: string;
@@ -31,6 +32,7 @@ export function WellInput({
   onChange,
   name,
   placeholder,
+  maxLength,
   inputMode,
   prefix,
   suffix,
@@ -67,6 +69,7 @@ export function WellInput({
         className={styles.input}
         value={value}
         placeholder={placeholder}
+        maxLength={maxLength}
         inputMode={inputMode}
         disabled={disabled}
         readOnly={readOnly}

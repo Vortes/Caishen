@@ -10,6 +10,7 @@ import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
 import { Popover } from "~/components/ui/popover";
 import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 import type { Command } from "~/domain/engine";
 import { useTransactionEntry } from "./transaction-entry";
 import styles from "./account-entry.module.css";
@@ -114,13 +115,10 @@ export function AccountEntry() {
         }}
       >
         <h2 id={`${id}-title`}>Add account</h2>
-        <div className={styles.field}>
-          <label htmlFor={`${id}-name`}>Account name</label>
-          <input
-            id={`${id}-name`}
+        <Field label="Account name">
+          <TextInput
             value={name}
             maxLength={120}
-            required
             placeholder={
               kind === "tracking"
                 ? "Fidelity"
@@ -128,9 +126,9 @@ export function AccountEntry() {
                   ? "Visa"
                   : "Checking"
             }
-            onChange={(event) => setName(event.target.value)}
+            onChange={setName}
           />
-        </div>
+        </Field>
         <Field
           label="Account type"
           hint={
