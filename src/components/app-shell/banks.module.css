@@ -380,8 +380,7 @@
   color: var(--text-tertiary);
   font-size: var(--type-small);
 }
-.field input,
-.field select {
+.field input {
   width: 100%;
   height: var(--size-control);
   padding: 0 var(--space-inset);
@@ -392,11 +391,7 @@
   font: inherit;
   font-variant-numeric: tabular-nums;
 }
-.field select {
-  max-width: 170px;
-}
-.field input:disabled,
-.field select:disabled {
+.field input:disabled {
   color: var(--text-secondary);
 }
 .field input[data-invalid] {
@@ -480,8 +475,7 @@
   .status::after {
     inset: -12px;
   }
-  .field input,
-  .field select {
+  .field input {
     height: var(--size-row-lg);
     font-size: var(--type-title);
   }

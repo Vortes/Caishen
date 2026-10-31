@@ -696,9 +696,9 @@ test("adding a brokerage account sends tracking type and its entered opening bal
     form.getByLabelText("Account name"),
     "Fidelity brokerage",
   );
-  await shell.user.selectOptions(
-    form.getByLabelText("Account type"),
-    "tracking",
+  await shell.user.click(form.getByRole("combobox", { name: "Account type" }));
+  await shell.user.click(
+    screen.getByRole("option", { name: "Tracking / brokerage" }),
   );
   await shell.user.type(form.getByLabelText("Opening balance"), "25000");
   await shell.user.click(form.getByRole("button", { name: "Add account" }));

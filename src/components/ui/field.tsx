@@ -12,6 +12,8 @@ import styles from "./field.module.css";
 
 type FieldContextValue = {
   id: string;
+  // The label's text, for a control that names a list it opens (Select).
+  label: string;
   describedBy?: string;
   invalid: boolean;
   // An input's own message about what was typed, such as an amount it
@@ -61,7 +63,7 @@ export function Field({
       .join(" ") || undefined;
   const invalid = Boolean(shown) || sharedErrorId !== undefined;
   return (
-    <FieldContext.Provider value={{ id, describedBy, invalid, report }}>
+    <FieldContext.Provider value={{ id, label, describedBy, invalid, report }}>
       <div className={styles.field}>
         <label
           htmlFor={id}

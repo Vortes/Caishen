@@ -15,6 +15,7 @@ import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Field } from "~/components/ui/field";
+import { Select } from "~/components/ui/select";
 import { api } from "~/trpc/react";
 import type { Command } from "~/domain/engine";
 import {
@@ -341,6 +342,7 @@ function ManualAccount({
   onCancel: () => void;
   timezone: string;
 }) {
+  const [kind, setKind] = useState("cash");
   const [balance, setBalance] = useState("");
   const [balanceError, setBalanceError] = useState<string>();
   const [error, setError] = useState<string | null>(null);
@@ -400,13 +402,17 @@ function ManualAccount({
             maxLength={80}
           />
         </label>
-        <label className={batch.field}>
-          <span className={batch.fieldLabel}>Type</span>
-          <select className={batch.select} name="kind">
-            <option value="cash">Checking or savings</option>
-            <option value="credit">Credit card</option>
-          </select>
-        </label>
+        <Field label="Type">
+          <Select
+            name="kind"
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: "cash", label: "Checking or savings" },
+              { value: "credit", label: "Credit card" },
+            ]}
+          />
+        </Field>
         <Field label="Balance today" error={balanceError}>
           <AmountInput
             name="balance"

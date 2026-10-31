@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -18,6 +18,7 @@ import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip } from "~/components/ui/tooltip";
 import { useShellData } from "./shell-data";
 import { Popover } from "~/components/ui/popover";
+import { Select } from "~/components/ui/select";
 // The move-money popover's form fields.
 import styles from "./move-money.module.css";
 
@@ -254,25 +255,20 @@ function NameForm({
         </Field>
       </div>
       {choice && (
-        <div className={styles.field}>
-          <label htmlFor={`${id}-group`}>Category group</label>
-          <div className={styles.select}>
-            <select
-              id={`${id}-group`}
+        <div className={styles.fieldSlot}>
+          <Field label="Category group">
+            <Select
               value={chosen}
-              onChange={(event) => {
-                setChosen(event.target.value);
+              onChange={(next) => {
+                setChosen(next);
                 setError(null);
               }}
-            >
-              {choices.map((item) => (
-                <option key={item.name} value={item.name}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon size={12} aria-hidden />
-          </div>
+              options={choices.map((item) => ({
+                value: item.name,
+                label: item.name,
+              }))}
+            />
+          </Field>
         </div>
       )}
       {error?.field === "form" && (

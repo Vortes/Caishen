@@ -231,10 +231,10 @@ test("a fresh bank connection can recover the existing account after Item permis
   );
   const dialog = await screen.findByRole("dialog", { name: /Discover/ });
   const existing = within(dialog).getByRole("combobox", { name: "Link to" });
-  expect(
-    within(existing).getByRole("option", { name: "Checking" }),
-  ).toBeTruthy();
-  expect(existing).toHaveProperty("value", "checking");
+  await shell.user.click(existing);
+  expect(screen.getByRole("option", { name: "Checking" })).toBeTruthy();
+  await shell.user.keyboard("{Escape}");
+  expect(existing.textContent).toBe("Checking");
   expect(within(dialog).queryByLabelText("Import from")).toBeNull();
   const add = within(dialog).getByRole("button", { name: "Add accounts" });
   await waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));

@@ -8,7 +8,6 @@ import {
   useId,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
@@ -21,6 +20,7 @@ import {
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
+import { Select } from "~/components/ui/select";
 import type { Category } from "./model";
 import { sameAmount } from "./move-money";
 import { useShellData } from "./shell-data";
@@ -163,7 +163,7 @@ export function TargetEditor({
   const advanceFrom = (element: HTMLElement | null | undefined) => {
     const stops = [
       ...(formRef.current?.querySelectorAll<HTMLElement>(
-        "input, select, button:not([tabindex='-1'])",
+        "input, button:not([tabindex='-1'])",
       ) ?? []),
     ].filter((stop) => !stop.hasAttribute("disabled"));
     const index = element ? stops.indexOf(element) : -1;
@@ -272,35 +272,31 @@ export function TargetEditor({
       {schedule === "weekly" && (
         <Field id={fieldId("weekday")} label="Every">
           <Select
-            id={fieldId("weekday")}
             value={String(draft.weekday)}
             onChange={(value) => change({ weekday: Number(value) })}
-          >
-            {weekdays.map((day, index) => (
-              <option key={day} value={index}>
-                {day}
-              </option>
-            ))}
-          </Select>
+            options={weekdays.map((day, index) => ({
+              value: String(index),
+              label: day,
+            }))}
+          />
         </Field>
       )}
 
       {schedule === "monthly" && (
         <Field id={fieldId("monthDay")} label="By">
           <Select
-            id={fieldId("monthDay")}
             value={String(draft.monthDay)}
             onChange={(value) =>
               change({ monthDay: value === "last" ? "last" : Number(value) })
             }
-          >
-            <option value="last">Last day of the month</option>
-            {Array.from({ length: 31 }, (_, index) => (
-              <option key={index} value={index + 1}>
-                The {ordinal(index + 1)}
-              </option>
-            ))}
-          </Select>
+            options={[
+              { value: "last", label: "Last day of the month" },
+              ...Array.from({ length: 31 }, (_, index) => ({
+                value: String(index + 1),
+                label: `The ${ordinal(index + 1)}`,
+              })),
+            ]}
+          />
         </Field>
       )}
 
@@ -354,46 +350,6 @@ export function TargetEditor({
   );
 }
 
-// A native select in the shell's field well. A select primitive isn't in
-// the design system yet.
-function Select({
-  id,
-  value,
-  label,
-  invalid,
-  describedBy,
-  selectRef,
-  onChange,
-  children,
-}: {
-  id?: string;
-  value: string;
-  label?: string;
-  invalid?: boolean;
-  describedBy?: string;
-  selectRef?: (element: HTMLElement | null) => void;
-  onChange: (value: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className={entry.well} data-invalid={invalid ? true : undefined}>
-      <select
-        ref={selectRef}
-        id={id}
-        className={`${entry.input} ${styles.select}`}
-        value={value}
-        aria-label={label}
-        aria-invalid={invalid ? true : undefined}
-        aria-describedby={describedBy}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {children}
-      </select>
-      <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
-    </div>
-  );
-}
-
 // Custom targets can come due again: every so many months or years after
 // the due date.
 function Repeat({
@@ -441,20 +397,28 @@ function Repeat({
               />
             </div>
             <div className={styles.unit}>
-              <Select
-                label="Repeat unit"
-                value={draft.repeatUnit}
-                onChange={(value) =>
-                  onChange({ repeatUnit: value as TargetDraft["repeatUnit"] })
-                }
-              >
-                <option value="months">
-                  {draft.repeatEvery.trim() === "1" ? "Month" : "Months"}
-                </option>
-                <option value="years">
-                  {draft.repeatEvery.trim() === "1" ? "Year" : "Years"}
-                </option>
-              </Select>
+              <Field label="Repeat unit" labelHidden>
+                <Select
+                  value={draft.repeatUnit}
+                  onChange={(value) =>
+                    onChange({
+                      repeatUnit: value as TargetDraft["repeatUnit"],
+                    })
+                  }
+                  options={[
+                    {
+                      value: "months",
+                      label:
+                        draft.repeatEvery.trim() === "1" ? "Month" : "Months",
+                    },
+                    {
+                      value: "years",
+                      label:
+                        draft.repeatEvery.trim() === "1" ? "Year" : "Years",
+                    },
+                  ]}
+                />
+              </Field>
             </div>
           </div>
         </Field>
@@ -500,35 +464,32 @@ function BalanceDue({
           <div className={styles.inline}>
             <div className={styles.grow}>
               <Select
-                id={id}
-                selectRef={register}
+                inputRef={register}
                 value={monthIndex!}
-                invalid={Boolean(error)}
-                describedBy={error ? `${id}-error` : undefined}
                 onChange={(value) => onChange({ dueMonth: `${year}-${value}` })}
-              >
-                {months.map((name, index) => (
-                  <option key={name} value={String(index + 1).padStart(2, "0")}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
+                options={months.map((name, index) => ({
+                  value: String(index + 1).padStart(2, "0"),
+                  label: name,
+                }))}
+              />
             </div>
             <div className={styles.year}>
-              <Select
+              <Field
                 label="Due year"
-                value={year!}
-                invalid={Boolean(error)}
-                onChange={(value) =>
-                  onChange({ dueMonth: `${value}-${monthIndex}` })
-                }
+                labelHidden
+                sharedErrorId={error ? `${id}-error` : undefined}
               >
-                {years.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </Select>
+                <Select
+                  value={year!}
+                  onChange={(value) =>
+                    onChange({ dueMonth: `${value}-${monthIndex}` })
+                  }
+                  options={years.map((value) => ({
+                    value: String(value),
+                    label: String(value),
+                  }))}
+                />
+              </Field>
             </div>
           </div>
         </Field>

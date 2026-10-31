@@ -55,10 +55,8 @@ test("creating a weekly refill target sends it and shows its summary", async () 
     within(form).getByRole("textbox", { name: "I need" }),
     "20",
   );
-  await shell.user.selectOptions(
-    within(form).getByRole("combobox", { name: "Every" }),
-    "Monday",
-  );
+  await shell.user.click(within(form).getByRole("combobox", { name: "Every" }));
+  await shell.user.click(screen.getByRole("option", { name: "Monday" }));
   await shell.user.click(
     within(form).getByRole("button", { name: /Next month I want to/ }),
   );
@@ -162,14 +160,14 @@ test("a custom balance goal can be due by a month", async () => {
   await shell.user.click(
     within(form).getByRole("checkbox", { name: "Due by date" }),
   );
-  await shell.user.selectOptions(
+  await shell.user.click(
     within(form).getByRole("combobox", { name: "Due on" }),
-    "March",
   );
-  await shell.user.selectOptions(
+  await shell.user.click(screen.getByRole("option", { name: "March" }));
+  await shell.user.click(
     within(form).getByRole("combobox", { name: "Due year" }),
-    "2027",
   );
+  await shell.user.click(screen.getByRole("option", { name: "2027" }));
   await shell.user.click(
     within(form).getByRole("button", { name: "Save target" }),
   );

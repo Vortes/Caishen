@@ -4,7 +4,13 @@ import styles from "~/components/app-shell/banks.module.css";
 import { groupThousands } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Field } from "~/components/ui/field";
+import { Select } from "~/components/ui/select";
 import { TextInput } from "~/components/ui/text-input";
+
+const rateTypes = [
+  { value: "fixed", label: "Fixed rate" },
+  { value: "variable", label: "Variable rate" },
+];
 
 type LoanDraft = {
   loanBalance: string;
@@ -14,7 +20,6 @@ type LoanDraft = {
 };
 
 export function LoanSetupFields({
-  id,
   currentBalance,
   draft,
   busy,
@@ -22,7 +27,6 @@ export function LoanSetupFields({
   errorId,
   onChange,
 }: {
-  id: string;
   currentBalance: number | null;
   draft: LoanDraft;
   busy: boolean;
@@ -67,22 +71,14 @@ export function LoanSetupFields({
           onChange={(minimumPayment) => onChange({ minimumPayment })}
         />
       </Field>
-      <div className={styles.field}>
-        <label htmlFor={`${id}-rate-type`}>Interest rate</label>
-        <select
-          id={`${id}-rate-type`}
+      <Field label="Interest rate">
+        <Select
           value={draft.variable ? "variable" : "fixed"}
           disabled={busy}
-          onChange={(event) =>
-            onChange({
-              variable: event.target.value === "variable",
-            })
-          }
-        >
-          <option value="fixed">Fixed rate</option>
-          <option value="variable">Variable rate</option>
-        </select>
-      </div>
+          onChange={(next) => onChange({ variable: next === "variable" })}
+          options={rateTypes}
+        />
+      </Field>
       <p className={styles.fieldHint}>
         Creates a loan payment category. Payoff forecasts are estimates;
         payments use your lender’s confirmed principal and interest.

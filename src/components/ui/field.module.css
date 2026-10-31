@@ -175,3 +175,91 @@
 .operator:active {
   background: var(--control-bg-active);
 }
+
+/* ---- Select ----
+   The trigger is the well, as a button: the choice or the placeholder, then
+   a chevron. Its list lies on the Popover surface, rows as in a menu's
+   choose-one list: a check column, then the label. */
+
+.select {
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+/* Keyboard focus draws the well's ring, laid over the border. Two classes
+   outrank the shell's own ring. */
+.well.select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.select:disabled {
+  cursor: not-allowed;
+}
+.select > svg {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.value[data-placeholder] {
+  color: var(--text-tertiary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+/* The highlight follows the pointer and arrow keys instantly; it is the
+   focus indicator. */
+.option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--size-row-sm);
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-row);
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+}
+.option:focus {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.list .option:focus-visible {
+  outline: none;
+}
+.option[aria-selected="true"] {
+  color: var(--text-primary);
+}
+.check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--accent-solid);
+}
+.optionLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Touch: the well's 16px text, and rows as tall as a menu's. */
+@media (pointer: coarse) {
+  .select {
+    font-size: var(--type-title);
+  }
+  .option {
+    min-height: var(--size-row-lg);
+  }
+}

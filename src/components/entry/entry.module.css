@@ -68,8 +68,7 @@
   font-size: var(--type-small);
   text-wrap: pretty;
 }
-.input,
-.select {
+.input {
   width: 100%;
   min-width: 0;
   height: var(--size-control);
@@ -82,27 +81,18 @@
   font: inherit;
   transition: border-color 150ms;
 }
-/* The native select insets its text by 4px; trim the padding so the value
-   lines up with the inputs above it. */
-.select {
-  padding: 0 6px;
-}
-.input:hover,
-.select:hover {
+.input:hover {
   border-color: var(--border-strong);
 }
 .input[aria-invalid="true"] {
   border-color: var(--feedback-attention);
 }
 .page .input:focus-visible,
-.page .select:focus-visible,
-.input:focus-visible,
-.select:focus-visible {
+.input:focus-visible {
   outline: none;
   border-color: var(--focus-ring);
 }
-.input:disabled,
-.select:disabled {
+.input:disabled {
   color: var(--text-tertiary);
   cursor: not-allowed;
 }
@@ -110,8 +100,7 @@
   color: var(--text-tertiary);
 }
 @media (pointer: coarse) {
-  .input,
-  .select {
+  .input {
     font-size: 16px;
   }
 }
