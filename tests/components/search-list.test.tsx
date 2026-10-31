@@ -72,6 +72,22 @@ test("arriving opens the list with the chosen name selected, so typing replaces 
   );
 });
 
+test("focus a click lands elsewhere, on the label or a button that opens the form, leaves the list closed", async () => {
+  const user = userEvent.setup();
+  render(<Category initial="rent" />);
+  const field = screen.getByRole("combobox", { name: "Category" });
+
+  await user.click(screen.getByText("Category", { selector: "label" }));
+  expect(field.getAttribute("aria-expanded")).toBe("false");
+
+  await user.click(document.body);
+  field.focus();
+  expect(field.getAttribute("aria-expanded")).toBe("false");
+
+  await user.click(field);
+  expect(field.getAttribute("aria-expanded")).toBe("true");
+});
+
 test("typing filters the options by their label and their group", async () => {
   const user = userEvent.setup();
   render(<Category />);

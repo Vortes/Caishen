@@ -76,6 +76,17 @@ export function Field({
           htmlFor={id}
           className={styles.label}
           data-hidden={labelHidden ? "" : undefined}
+          // A click on it focuses a plain text field, but never reaches a
+          // control that opens something (a list, a calendar, a menu):
+          // only the well itself does that.
+          onClick={(event) => {
+            const control = document.getElementById(id);
+            if (
+              !(control instanceof HTMLInputElement) ||
+              control.getAttribute("role") === "combobox"
+            )
+              event.preventDefault();
+          }}
         >
           {label}
         </label>
@@ -107,6 +118,18 @@ export function useFieldControl() {
 // it, if there is one.
 export function useOptionalFieldControl() {
   return useContext(FieldContext);
+}
+
+// One error under a row of fields that each point at it with sharedErrorId,
+// so a narrow field's message isn't squeezed into its own column. Read when
+// someone reaches a field; never announced.
+export function FieldError({ id, children }: { id: string; children: string }) {
+  return (
+    <p id={id} className={styles.error}>
+      <CircleAlertIcon size={13} aria-hidden />
+      {children}
+    </p>
+  );
 }
 
 // Why the form couldn't be sent, above its footer. The one error that is

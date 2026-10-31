@@ -673,7 +673,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           draftAmount(line) ?? 0,
           session.initial?.lines?.find((item) => item.id === line.lineId)
             ?.counterpartyShare,
-          (counterpartyShare) => changeLine(line.lineId, { counterpartyShare }),
+          (counterpartyShare, outflow) =>
+            changeLine(line.lineId, {
+              counterpartyShare,
+              ...(outflow && { outflow }),
+            }),
         )}
         {cell(
           lineId("outflow"),
@@ -708,7 +712,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     value: DraftShare | null | undefined,
     lineAmount: number,
     saved: CounterpartyShare | undefined,
-    onChange: (share: DraftShare | null) => void,
+    // A share chosen before the line has an amount also becomes its
+    // outflow, with the amount as text.
+    onChange: (share: DraftShare | null, outflow?: string) => void,
   ) => {
     const reading = value && readAmount(value.amount);
     const share = value && {
@@ -728,8 +734,10 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           saved={saved}
           remembered={name === "counterpartyShare" ? remembered : undefined}
           onChange={(next) => {
+            const amount = next ? (next.amount / 100).toFixed(2) : "";
             onChange(
-              next && { ...next, amount: (next.amount / 100).toFixed(2) },
+              next && { ...next, amount },
+              lineAmount === 0 && next?.amount ? amount : undefined,
             );
             return null;
           }}
@@ -784,7 +792,8 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
                 (session.initial.lines?.length === 1
                   ? session.initial.lines[0]!.counterpartyShare
                   : undefined)),
-            (counterpartyShare) => entry.change({ counterpartyShare }),
+            (counterpartyShare, outflow) =>
+              entry.change({ counterpartyShare, ...(outflow && { outflow }) }),
           )
         )}
         {cell("outflow", "outflow", "Outflow", amount("outflow"))}

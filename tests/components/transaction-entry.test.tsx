@@ -152,6 +152,35 @@ test("a person picked before the amount keeps the full share as the amount chang
   expect(screen.getAllByText("$20.00").length).toBeGreaterThan(0);
 });
 
+test("a share typed before the amount fills the outflow with it", async () => {
+  const shell = await renderShell({
+    book: withCounterpartyAccounts(budgetFixture()),
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Add transaction" }),
+  );
+  await shell.user.keyboard("{Escape}");
+  const form = screen.getByRole("form", { name: "New transaction" });
+  await shell.user.click(within(form).getByRole("button", { name: /^Share / }));
+  await shell.user.click(
+    screen.getByRole("button", { name: /Someone else owes/ }),
+  );
+  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await shell.user.clear(screen.getByLabelText("Amount", { exact: true }));
+  await shell.user.type(
+    screen.getByLabelText("Amount", { exact: true }),
+    "120",
+  );
+  await shell.user.click(screen.getByRole("button", { name: "Apply" }));
+  expect(
+    within(form).getByLabelText("Outflow", { exact: true }),
+  ).toHaveProperty("value", "120.00");
+  expect(
+    within(form).getByRole("button", { name: /^Share / }).textContent,
+  ).toContain("Mom");
+});
+
 test("a full share saves from the register and reducing it asks for a personal category", async () => {
   const book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
     type: "transaction.upsert",

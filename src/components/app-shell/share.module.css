@@ -147,6 +147,11 @@
   align-items: flex-end;
   gap: 8px;
 }
+/* Two fields side by side line up by their labels, so a message an amount
+   gives about itself grows its column downward only. */
+.shareFormRow[data-fields] {
+  align-items: flex-start;
+}
 .shareFormRow > :first-child {
   flex: 1;
   min-width: 0;

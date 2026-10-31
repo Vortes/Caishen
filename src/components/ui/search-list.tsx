@@ -187,7 +187,7 @@ export function SearchList({
             value={open ? query : (chosen?.label ?? displayValue ?? "")}
             onChange={(event) => show(event.target.value)}
             onFocus={(event) => {
-              if (!open) show();
+              if (!open && arrivedByKeyboard()) show();
               event.currentTarget.select();
             }}
             onClick={() => {
@@ -277,6 +277,16 @@ export function SearchList({
     </Popover>
   );
 }
+
+// Whether the keyboard, not a pointer, was used last. Arriving by Tab opens
+// the list; focus a click put there (on the label, or on a button that
+// opened the form) leaves it closed until the well itself is clicked.
+let pointerLast = false;
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", () => (pointerLast = true), true);
+  document.addEventListener("keydown", () => (pointerLast = false), true);
+}
+const arrivedByKeyboard = () => !pointerLast;
 
 function tone(cents: number) {
   return cents < 0 ? "negative" : cents > 0 ? "positive" : "zero";
@@ -489,7 +499,7 @@ export function SearchSuggestions({
               setExpanded(true);
             }}
             onFocus={(event) => {
-              show();
+              if (arrivedByKeyboard()) show();
               event.currentTarget.select();
             }}
             onClick={() => {
