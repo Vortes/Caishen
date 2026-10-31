@@ -326,16 +326,13 @@ function Row({
       data-active={active || undefined}
       data-pinned={pinned ? true : undefined}
       data-compact={compact ? true : undefined}
-      data-suggestion={icon === undefined || undefined}
       className={styles.option}
       onMouseMove={disabled ? undefined : onActivate}
       onClick={disabled ? undefined : onPick}
     >
-      {icon !== undefined && (
-        <span className={styles.icon} aria-hidden>
-          {icon}
-        </span>
-      )}
+      <span className={styles.icon} aria-hidden>
+        {icon}
+      </span>
       <span className={styles.label}>{label}</span>
       {amount !== undefined && (
         <span className={styles.amount} data-tone={tone(amount)}>
@@ -528,11 +525,11 @@ export function SearchSuggestions({
               key={option.value}
               id={optionId(index)}
               icon={
-                index < shown.length
-                  ? option.value === destination && (
-                      <CheckIcon size={13} strokeWidth={2.5} />
-                    )
-                  : undefined
+                (index < shown.length
+                  ? option.value === destination
+                  : option.label === value) && (
+                  <CheckIcon size={13} strokeWidth={2.5} />
+                )
               }
               label={option.label}
               selected={
