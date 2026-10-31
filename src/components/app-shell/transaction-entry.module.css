@@ -38,14 +38,14 @@
    padding, so what's typed starts where the row's text did. Amounts are
    right-aligned, so their cells grow to the right, as far as wells can and
    still sit 8px apart. */
-.entryRow .well {
+.entryRow .well,
+.entryRow [data-well]:not([data-align="end"]) {
   margin-left: -8px;
   padding-left: 7px;
 }
-/* The date is a ui field with the well's own padding: its cell reaches
-   past the column by that padding and the border instead. */
-.entryRow > .cell[data-column="date"] {
-  margin-left: -11px;
+/* A ui well is as wide as its cell; with the reach it grows by 8px. */
+.entryRow [data-well]:not([data-align="end"]) {
+  width: calc(100% + 8px);
 }
 .entryRow
   > .cell:not(.staticCell):is(
@@ -54,15 +54,6 @@
     [data-column="amount"]
   ) {
   margin-right: -8px;
-}
-/* A ui well (a search list) can't take that margin, so its cell grows to
-   the left instead. */
-.entryRow
-  > .cell:not(.staticCell, :has(.well)):is(
-    [data-column="category"],
-    [data-column="account"]
-  ) {
-  margin-left: -8px;
 }
 .cell {
   display: flex;
@@ -127,12 +118,13 @@
   .entryRow input {
     scroll-margin-block-start: calc(var(--size-row-md) + var(--size-row-lg));
   }
-  .entryRow .well {
+  .entryRow .well,
+  .entryRow [data-well]:not([data-align="end"]) {
     margin-inline: 0;
     padding-inline: 10px;
   }
-  .entryRow > .cell[data-column="date"] {
-    margin-left: 0;
+  .entryRow [data-well]:not([data-align="end"]) {
+    width: 100%;
   }
   .entryRow
     > .cell:not(.staticCell):is(
@@ -141,13 +133,6 @@
       [data-column="amount"]
     ) {
     margin-right: 0;
-  }
-  .entryRow
-    > .cell:not(.staticCell, :has(.well)):is(
-      [data-column="category"],
-      [data-column="account"]
-    ) {
-    margin-left: 0;
   }
   .entryRow > [data-column="date"],
   .entryRow > [data-column="payee"],

@@ -28,15 +28,13 @@ doesn't follow the design system yet. Check items off as they land.
   - `transaction-entry.module.css` `.well`, `.input`, `.chevron`: the
     register editor's date (`transaction-date.tsx`); the payee, category and
     account comboboxes (`ChoiceField`, `PayeeField` in
-    `transaction-fields.tsx`); the read-only card-payment category and the
-    share well (`transaction-form.tsx`); the target's Every count and its
-    behavior menu trigger (`target-editor.tsx`)
+    `transaction-fields.tsx`)
   - `move-money.module.css` `.search`: the move-money destination
     (`move-money.tsx`) and the new category or group name
     (`add-category.tsx`)
   - `move-money.module.css` `.amountInput`: the "Who owes it" inputs
-    (`share-field.tsx`, `transaction-category-field.tsx`), the payee and the
-    "Half" button (`partner-record.tsx`), and the reimbursement date
+    (`share-field.tsx`, `transaction-category-field.tsx`), the payee
+    (`partner-record.tsx`), and the reimbursement date
     (`reimbursements-register.tsx`)
   - `move-money.module.css` `.field`, `.error`: the hand-built field around
     those controls and `ChoiceField` (`partner-record.tsx`,

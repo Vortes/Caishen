@@ -208,6 +208,7 @@ export function DateField({
       anchor={
         <div
           className={`${styles.well} ${styles.date}`}
+          data-well=""
           data-invalid={field.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
           data-open={shown ? "" : undefined}

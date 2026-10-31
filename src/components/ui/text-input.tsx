@@ -53,6 +53,7 @@ export function WellInput({
   return (
     <div
       className={styles.well}
+      data-well=""
       data-invalid={field.invalid ? "" : undefined}
       data-disabled={disabled ? "" : undefined}
       data-align={align}

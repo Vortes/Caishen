@@ -14,6 +14,9 @@ type FieldContextValue = {
   id: string;
   // The label's text, for a control that names a list it opens (Select).
   label: string;
+  // The label's id, for a control named by its label and its value
+  // (FieldButton).
+  labelId: string;
   describedBy?: string;
   invalid: boolean;
   // An input's own message about what was typed, such as an amount it
@@ -57,15 +60,19 @@ export function Field({
   const shown = error ?? reported;
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
+  const labelId = `${id}-label`;
   const describedBy =
     [shown ? errorId : sharedErrorId, hint && hintId]
       .filter(Boolean)
       .join(" ") || undefined;
   const invalid = Boolean(shown) || sharedErrorId !== undefined;
   return (
-    <FieldContext.Provider value={{ id, label, describedBy, invalid, report }}>
+    <FieldContext.Provider
+      value={{ id, label, labelId, describedBy, invalid, report }}
+    >
       <div className={styles.field}>
         <label
+          id={labelId}
           htmlFor={id}
           className={styles.label}
           data-hidden={labelHidden ? "" : undefined}

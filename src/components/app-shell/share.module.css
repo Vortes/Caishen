@@ -182,19 +182,6 @@
   line-height: 1.45;
 }
 
-/* The editor's Share cell: a well that opens the same menu. */
-.shareWell {
-  width: calc(100% + 8px);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.shareWell[data-state="open"] {
-  border-color: var(--focus-ring);
-}
-.shareWell[data-static] {
-  cursor: default;
-}
 .footerHint {
   color: var(--text-tertiary);
   font-size: var(--type-small);

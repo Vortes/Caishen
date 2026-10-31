@@ -1,6 +1,5 @@
 "use client";
 
-import { ChevronDownIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -17,12 +16,14 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { DateField } from "~/components/ui/date-field";
 import { Field, FormError } from "~/components/ui/field";
+import { FieldButton } from "~/components/ui/field-button";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
 import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 import type { Category } from "./model";
 import { useShellData } from "./shell-data";
 import {
@@ -43,8 +44,6 @@ import {
   type TargetDraft,
   type TargetField,
 } from "./target-draft";
-// The transaction editor's field wells, so every field in the shell matches.
-import entry from "./transaction-entry.module.css";
 import styles from "./target-editor.module.css";
 
 export type TargetEditing = {
@@ -288,7 +287,6 @@ export function TargetEditor({
             />
           ) : (
             <Repeat
-              id={fieldId("repeatEvery")}
               draft={draft}
               error={errorFor("repeatEvery")}
               register={register("repeatEvery")}
@@ -326,13 +324,11 @@ export function TargetEditor({
 // Custom targets can come due again: every so many months or years after
 // the due date.
 function Repeat({
-  id,
   draft,
   error,
   register,
   onChange,
 }: {
-  id: string;
   draft: TargetDraft;
   error?: string;
   register: (element: HTMLElement | null) => void;
@@ -348,25 +344,14 @@ function Repeat({
         Repeat
       </label>
       {draft.repeat && (
-        <Field id={id} label="Every" error={error}>
+        <Field label="Every" error={error}>
           <div className={styles.inline}>
-            <div
-              className={`${entry.well} ${styles.every}`}
-              data-invalid={error ? true : undefined}
-            >
-              <input
-                ref={register}
-                id={id}
-                className={entry.input}
+            <div className={styles.every}>
+              <TextInput
+                inputRef={register}
                 inputMode="numeric"
-                autoComplete="off"
                 value={draft.repeatEvery}
-                aria-invalid={error ? true : undefined}
-                aria-describedby={error ? `${id}-error` : undefined}
-                onFocus={(event) => event.currentTarget.select()}
-                onChange={(event) =>
-                  onChange({ repeatEvery: event.target.value })
-                }
+                onChange={(repeatEvery) => onChange({ repeatEvery })}
               />
             </div>
             <div className={styles.unit}>
@@ -488,28 +473,13 @@ function BehaviorField({
   amount: number;
   onChange: (behavior: Behavior) => void;
 }) {
-  const id = useId();
   const chosen = behaviorCopy(value, schedule, amount);
   return (
-    <div className={styles.field}>
-      <span className={styles.label} id={`${id}-label`}>
-        {label}
-      </span>
+    <Field label={label}>
       {/* Escape closes only the menu; the editor around it stays open. */}
       <Menu
         label={label}
-        trigger={
-          <button
-            type="button"
-            className={`${entry.well} ${styles.trigger}`}
-            aria-labelledby={`${id}-label ${id}-value`}
-          >
-            <span id={`${id}-value`} className={styles.triggerValue}>
-              {chosen.title}
-            </span>
-            <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
-          </button>
-        }
+        trigger={<FieldButton chevron>{chosen.title}</FieldButton>}
       >
         <MenuRadioGroup
           value={value}
@@ -533,6 +503,6 @@ function BehaviorField({
           })}
         </MenuRadioGroup>
       </Menu>
-    </div>
+    </Field>
   );
 }

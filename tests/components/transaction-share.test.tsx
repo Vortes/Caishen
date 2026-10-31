@@ -664,7 +664,7 @@ test.each([
     expect(form.getByRole("combobox", { name: "Category" })).toBe(
       document.activeElement,
     );
-    expect(form.getByRole("button", { name: "Share" }).textContent).toContain(
+    expect(form.getByRole("button", { name: /^Share / }).textContent).toContain(
       "$12.50",
     );
     expect(shell.resolveImport).not.toHaveBeenCalled();

@@ -14,7 +14,8 @@ custom content in a row; none of the 11 selects need them.
 
 It sits in a [`Field`](fields.md#field), which names it, describes it and
 marks it invalid; the list takes the field's label as its name. It looks
-like the field's well with a chevron, and its list rows are a `Menu`'s
+like the field's well with a chevron (the same button as
+[`FieldButton`](fields.md#fieldbutton)), and its list rows are a `Menu`'s
 choose-one rows: the current choice carries a check.
 
 - Opening: a click, or ArrowDown or ArrowUp on the well. Focus goes to the
