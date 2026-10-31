@@ -78,7 +78,9 @@ export async function connectPartner({
   const partner = await context.newPage();
   await setupClerkTestingToken({ page: partner });
   await partner.goto(path);
-  await partner.getByLabel("Password", { exact: true }).fill(`Caishen!${randomUUID()}`);
+  await partner
+    .getByLabel("Password", { exact: true })
+    .fill(`Caishen!${randomUUID()}`);
   await partner.getByRole("button", { name: "Continue", exact: true }).click();
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");
@@ -94,12 +96,20 @@ export async function connectPartner({
   const half = partner.locator("rect[class*='draggable']");
   await expect(half).toBeVisible();
   await stroke(partner, half, { x: -1.5, y: -1.5 });
-  await expect(
-    partner.getByRole("heading", { name: /Let’s set up your budget\.$/ }),
-  ).toBeVisible({ timeout: 30_000 });
+  const setup = partner.getByRole("heading", {
+    name: /Let’s set up your budget\.$/,
+  });
+  await expect(setup).toBeVisible({ timeout: 30_000 });
+  // Reopened, the setup is settled, so what's typed stays typed.
+  await partner.reload();
+  await expect(setup).toBeVisible();
   await partner.getByLabel("Your name").fill(partnerName);
   await partner.getByLabel("Budget name").fill(`${partnerName} budget`);
   await partner.getByRole("button", { name: "Create my budget" }).click();
+  // Creating the budget takes a moment.
+  await expect(
+    partner.getByRole("heading", { name: "A few questions about you" }),
+  ).toBeVisible({ timeout: 30_000 });
   await expect(partner).toHaveURL(/\/welcome$/);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();
