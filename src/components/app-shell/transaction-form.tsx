@@ -35,17 +35,14 @@ import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
+import { SearchList, type SearchListOption } from "~/components/ui/search-list";
 import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
 import { PartnerMatches } from "./partner-match";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { DateField, type DateFieldHandle } from "./transaction-date";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
-import {
-  ChoiceField,
-  PayeeField,
-  type ChoiceOption,
-} from "./transaction-fields";
+import { PayeeField } from "./transaction-fields";
 import { ShareLabel, ShareMenu } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
@@ -160,7 +157,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     !session.initial && !session.shareChosen && draft.counterpartyShare
       ? draft.payee.trim()
       : undefined;
-  const accountOptions = useMemo<ChoiceOption[]>(
+  const accountOptions = useMemo<SearchListOption[]>(
     () =>
       directEntryAccounts(view.accounts).map((item) => ({
         value: item.id,
@@ -169,7 +166,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       })),
     [view.accounts],
   );
-  const spendingOptions: ChoiceOption[] = view.categories
+  const spendingOptions: SearchListOption[] = view.categories
     .filter(
       (category) =>
         !category.pairedAccountId &&
@@ -182,7 +179,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       group: category.group,
       amount: category.available,
     }));
-  const categoryOptions: ChoiceOption[] = [
+  const categoryOptions: SearchListOption[] = [
     {
       value: READY_TO_ASSIGN,
       label: "Ready to Assign",
@@ -520,11 +517,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     >
       <div>
         <TransactionCategoryField
-          id={id("categoryId")}
           amount={draftAmount(draft) ?? 0}
           share={draft.counterpartyShare}
           peopleEnabled={shareable && !split}
-          label="Category"
           value={split ? SPLIT : draft.categoryId}
           displayValue={split ? "Split" : undefined}
           action={
@@ -542,8 +537,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           options={categoryOptions}
           placeholder="Category"
           inputRef={register("categoryId")}
-          invalid={Boolean(fields.categoryId)}
-          describedBy={described("categoryId")}
           onChange={chooseCategory}
           onPicked={afterCategory}
           // A loan's payment takes a category that already exists.
@@ -555,15 +548,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     </NewCategoryPopover>
   );
   const accountControl = (
-    <ChoiceField
-      id={id("accountId")}
-      label="Account"
+    <SearchList
       value={draft.accountId}
       options={accountOptions}
       placeholder="Account"
       inputRef={register("accountId")}
-      invalid={Boolean(fields.accountId)}
-      describedBy={described("accountId")}
       disabled={editing}
       onChange={(accountId) =>
         entry.change({
@@ -674,7 +663,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           "category",
           `Line ${number} category`,
           <TransactionCategoryField
-            id={id(lineId("categoryId"))}
             amount={
               line.outflow.trim() || line.inflow.trim()
                 ? (draftAmount(line) ?? 0)
@@ -682,13 +670,10 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             }
             share={line.counterpartyShare}
             peopleEnabled={shareable}
-            label={`Line ${number} category`}
             value={line.categoryId}
             options={spendingOptions}
             placeholder="Category"
             inputRef={register(lineId("categoryId"))}
-            invalid={Boolean(fields[lineId("categoryId")])}
-            describedBy={described(lineId("categoryId"))}
             onChange={(categoryId, share) =>
               chooseLineCategory(line, categoryId, share)
             }

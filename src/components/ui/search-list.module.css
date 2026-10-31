@@ -1,0 +1,128 @@
+/* The search list: the field's well as a combobox, and the list that floats
+   under it on the Popover surface. The well itself is field.module.css's. */
+
+.input:not(:disabled) {
+  cursor: pointer;
+}
+.input[aria-expanded="true"] {
+  cursor: text;
+}
+.chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+/* New and the action stay pinned above the options, and only the options
+   scroll, within the room the popover has. */
+.list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 18rem;
+  padding: 4px;
+}
+.scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+/* New and an action share one row, so a short list squeezes the options,
+   not it. */
+.pinned {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+.pinned > .option {
+  flex: 1;
+  min-width: 0;
+}
+.pinned > .option[data-compact] {
+  flex: none;
+}
+.divider {
+  flex: none;
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.group {
+  padding: 8px 8px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-caption);
+  font-weight: 500;
+}
+
+/* The highlight follows the arrow keys and the pointer instantly; focus
+   stays in the field, so it is the focus indicator. */
+.option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--size-row-sm);
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-row);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.option[data-active] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.option[aria-selected="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.option[aria-disabled] {
+  cursor: default;
+  opacity: 0.45;
+}
+.icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--accent-solid);
+}
+/* Pinned rows commit nothing yet, so their icons stay neutral instead of
+   taking the check's accent. */
+.option[data-pinned] .icon {
+  color: var(--text-tertiary);
+}
+.option[data-pinned][data-active] .icon {
+  color: var(--text-secondary);
+}
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.amount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.amount[data-tone="positive"] {
+  color: var(--money-positive);
+}
+.amount[data-tone="negative"] {
+  color: var(--money-negative);
+}
+.amount[data-tone="zero"] {
+  color: var(--text-tertiary);
+}
+.empty {
+  padding: 12px 8px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Touch: rows as tall as a Select's. The well's 16px text is the field's. */
+@media (pointer: coarse) {
+  .option {
+    min-height: var(--size-row-lg);
+  }
+}

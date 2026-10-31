@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, type ComponentProps } from "react";
+import { useId, useState, type ComponentProps } from "react";
 import { readAmount } from "~/components/budget/amount";
 import type { DraftShare } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
+import { SearchList, type SearchListOption } from "~/components/ui/search-list";
 import { useShareParties } from "./share-field";
-import { ChoiceField, type ChoiceOption } from "./transaction-fields";
 import moveStyles from "./move-money.module.css";
 import styles from "./share.module.css";
 
@@ -24,12 +24,13 @@ export function TransactionCategoryField({
   peopleEnabled,
   onChange,
   ...field
-}: Omit<ComponentProps<typeof ChoiceField>, "onChange"> & {
+}: Omit<ComponentProps<typeof SearchList>, "onChange"> & {
   amount: number;
   share?: DraftShare | null;
   peopleEnabled: boolean;
   onChange: (categoryId: string, share?: DraftShare | null) => void;
 }) {
+  const personId = useId();
   const { partner, reimbursements, people, who } = useShareParties();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -57,7 +58,7 @@ export function TransactionCategoryField({
             who({ ...share, amount: shareCents(share.amount) ?? 0 }),
       )
     : undefined;
-  const options: ChoiceOption[] = [
+  const options: SearchListOption[] = [
     ...field.options,
     ...(peopleEnabled
       ? parties.map((party) => ({
@@ -85,7 +86,7 @@ export function TransactionCategoryField({
       autoFocus
       anchor={
         <div>
-          <ChoiceField
+          <SearchList
             {...field}
             value={selected?.value ?? field.value}
             displayValue={selected?.name ?? field.displayValue}
@@ -121,10 +122,10 @@ export function TransactionCategoryField({
           setAdding(false);
         }}
       >
-        <label htmlFor={`${field.id}-person`}>Who owes it</label>
+        <label htmlFor={personId}>Who owes it</label>
         <div className={moveStyles.amountInput}>
           <input
-            id={`${field.id}-person`}
+            id={personId}
             autoFocus
             maxLength={240}
             value={name}

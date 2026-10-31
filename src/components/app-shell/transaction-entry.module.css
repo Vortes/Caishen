@@ -50,6 +50,15 @@
   ) {
   margin-right: -8px;
 }
+/* A ui well (a search list) can't take that margin, so its cell grows to
+   the left instead. */
+.entryRow
+  > .cell:not(.staticCell, :has(.well)):is(
+    [data-column="category"],
+    [data-column="account"]
+  ) {
+  margin-left: -8px;
+}
 .cell {
   display: flex;
   flex-direction: column;
@@ -124,6 +133,13 @@
       [data-column="amount"]
     ) {
     margin-right: 0;
+  }
+  .entryRow
+    > .cell:not(.staticCell, :has(.well)):is(
+      [data-column="category"],
+      [data-column="account"]
+    ) {
+    margin-left: 0;
   }
   .entryRow > [data-column="date"],
   .entryRow > [data-column="payee"],

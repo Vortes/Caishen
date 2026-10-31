@@ -232,7 +232,6 @@ function NameForm({
         >
           <div
             className={styles.search}
-            data-expanded
             data-invalid={error?.field === "name" || undefined}
           >
             <input
