@@ -16,11 +16,12 @@ doesn't follow the design system yet. Check items off as they land.
       a `Tabs` variant or take the pill look (`app-shell.tsx`)
 - [ ] Month label button in the header (`app-shell.tsx`)
 - [x] `Select`: every native select, including the custom date range's
-      (`src/components/ui/select.tsx`, [choices.md](choices.md#select))
+      (`src/components/ui/select.tsx`, [selects.md](selects.md))
 - [x] `Popover` surface: `Popover`, `Menu`, `Dialog` and `ConfirmDialog`
       (`src/components/ui/`, [surfaces.md](surfaces.md))
 - [x] Text field: `Field`, `TextInput`, `AmountInput`, `FormError`,
-      `FormFooter` (`src/components/ui/`, [fields.md](fields.md))
+      `FormFooter` (`src/components/ui/`, [fields.md](fields.md),
+      [amounts.md](amounts.md))
 - [ ] Combobox and date input: a shared search box and date field. Until
       then these controls draw their own well; delete each rule once its
       controls move:
