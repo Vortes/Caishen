@@ -50,10 +50,11 @@
   ) {
   margin-right: -8px;
 }
-/* A ui well (a search list) can't take that margin, so its cell grows to
+/* A ui well (a search list or its suggestions) can't take that margin, so its cell grows to
    the left instead. */
 .entryRow
   > .cell:not(.staticCell, :has(.well)):is(
+    [data-column="payee"],
     [data-column="category"],
     [data-column="account"]
   ) {
@@ -136,6 +137,7 @@
   }
   .entryRow
     > .cell:not(.staticCell, :has(.well)):is(
+      [data-column="payee"],
       [data-column="category"],
       [data-column="account"]
     ) {
@@ -334,10 +336,6 @@
   border-radius: var(--radius-row);
   color: var(--text-secondary);
   cursor: pointer;
-}
-/* Lines up with the text typed in the field above. */
-.option[data-suggestion] {
-  padding-left: 6px;
 }
 .optionLabel {
   flex: 1;

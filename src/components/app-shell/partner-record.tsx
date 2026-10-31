@@ -1,7 +1,7 @@
 "use client";
 
 import { PlusIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
@@ -12,7 +12,9 @@ import {
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
 import { Popover } from "~/components/ui/popover";
+import { SearchSuggestions } from "~/components/ui/search-list";
 import { rememberedSpendingCategory } from "~/domain/partner-ledger";
+import { earlierPayees } from "~/domain/payee-memory";
 import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
 import { halfOf } from "./share-field";
@@ -50,6 +52,7 @@ export function RecordPurchase({ account }: { account: Account }) {
   const [error, setError] = useState<{ field?: Field; message: string } | null>(
     null,
   );
+  const payees = useMemo(() => earlierPayees(view.budget), [view.budget]);
   const reading = readAmount(amountText);
   const amount = reading.ok ? Math.max(0, reading.cents) : 0;
   // Clicking the even split makes the share editable, ready to type.
@@ -73,10 +76,6 @@ export function RecordPurchase({ account }: { account: Account }) {
       amount: category.available,
     }));
   const fail = (message: string, field?: Field) => setError({ field, message });
-  const fieldError = (field: Field) =>
-    error?.field === field && (
-      <p className={moveStyles.error}>{error.message}</p>
-    );
   const fieldMessage = (field: Field) =>
     error?.field === field ? error.message : undefined;
   if (!partnerId) return null;
@@ -168,34 +167,23 @@ export function RecordPurchase({ account }: { account: Account }) {
             <SegmentedControlItem value={you}>You</SegmentedControlItem>
           </SegmentedControl>
         </div>
-        <div className={moveStyles.field}>
-          <label htmlFor={`${id}-payee`}>Payee</label>
-          <div
-            className={moveStyles.amountInput}
-            data-invalid={error?.field === "payee" ? "" : undefined}
-          >
-            <input
-              ref={focusPayee}
-              id={`${id}-payee`}
+        <div className={moveStyles.fieldSlot}>
+          <FormField label="Payee" error={fieldMessage("payee")}>
+            <SearchSuggestions
+              inputRef={focusPayee}
               value={payee}
-              autoComplete="off"
-              spellCheck={false}
+              suggestions={payees}
               placeholder="Bi-Rite Market"
-              aria-invalid={error?.field === "payee" || undefined}
-              onChange={(event) => {
-                setPayee(event.target.value);
+              onChange={(next) => {
+                setPayee(next);
                 if (error?.field === "payee") setError(null);
                 if (categoryChosen) return;
                 setCategoryId(
-                  rememberedSpendingCategory(
-                    view.budget,
-                    event.target.value.trim(),
-                  ) ?? "",
+                  rememberedSpendingCategory(view.budget, next.trim()) ?? "",
                 );
               }}
             />
-          </div>
-          {fieldError("payee")}
+          </FormField>
         </div>
         <div className={local.fieldPair}>
           <div className={moveStyles.fieldSlot}>

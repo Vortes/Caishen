@@ -26,25 +26,24 @@ doesn't follow the design system yet. Check items off as they land.
       then these controls draw their own well; delete each rule once its
       controls move:
   - `transaction-entry.module.css` `.well`, `.input`, `.chevron`: the
-    register editor's date (`transaction-date.tsx`); the payee, category and
-    account comboboxes (`ChoiceField`, `PayeeField` in
-    `transaction-fields.tsx`); the read-only card-payment category and the
-    share well (`transaction-form.tsx`); the target's Every count and its
-    behavior menu trigger (`target-editor.tsx`)
+    register editor's date (`transaction-date.tsx`); the category and
+    account comboboxes (`ChoiceField` in `transaction-fields.tsx`); the
+    read-only card-payment category and the share well
+    (`transaction-form.tsx`); the target's Every count and its behavior
+    menu trigger (`target-editor.tsx`)
   - `move-money.module.css` `.search`: the move-money destination
     (`move-money.tsx`) and the new category or group name
     (`add-category.tsx`)
-  - `move-money.module.css` `.amountInput`: the "Who owes it" inputs
-    (`share-field.tsx`, `transaction-category-field.tsx`), the payee and the
-    "Half" button (`partner-record.tsx`), and the reimbursement date
+  - `move-money.module.css` `.amountInput`: the "Who owes it" input
+    (`transaction-category-field.tsx`), the "Half" button
+    (`partner-record.tsx`), and the reimbursement date
     (`reimbursements-register.tsx`)
   - `move-money.module.css` `.field`, `.error`: the hand-built field around
     those controls and `ChoiceField` (`partner-record.tsx`,
     `reimbursements-register.tsx`), and error text under them
-    (`share-field.tsx`, `transaction-category-field.tsx`,
-    `partner-register.tsx`). The form errors drawn with `.error` and
-    `role="alert"` (`partner-record.tsx`, `reimbursements-register.tsx`)
-    become `FormError`
+    (`transaction-category-field.tsx`, `partner-register.tsx`). The form
+    errors drawn with `.error` and `role="alert"` (`partner-record.tsx`,
+    `reimbursements-register.tsx`) become `FormError`
 - [ ] Text inputs still drawn by hand that `TextInput` can take now:
       `entry.module.css` `.input` (`settings/partner.tsx`,
       `entry/account-settings.tsx`, `entry/guided-onboarding.tsx`,

@@ -5,6 +5,7 @@ import {
   createBook,
   execute,
   withCounterpartyAccounts,
+  type Command,
 } from "~/domain/engine";
 import {
   findToast,
@@ -223,4 +224,58 @@ test("an entry you paid opens its transaction from the selection island", async 
   );
   expect(screen.getByRole("heading", { name: "Checking" })).toBeTruthy();
   expect(transactionRow("Dinner").getAttribute("aria-current")).toBe("true");
+});
+
+test("a partner's purchase suggests your earlier payees, and a picked one brings its category", async () => {
+  const book = [
+    {
+      type: "account.add",
+      id: "add-checking",
+      accountId: "checking",
+      name: "Checking",
+      kind: "cash",
+      date: "2026-10-01",
+      openingBalance: 100_000,
+    },
+    {
+      type: "transaction.upsert",
+      id: "seed-trader-joes",
+      transactionId: "trader-joes",
+      accountId: "checking",
+      categoryId: "household",
+      date: "2026-10-03",
+      payee: "Trader Joe’s",
+      amount: -4_210,
+      status: "posted",
+    },
+  ] satisfies Command[];
+  const shell = await renderShell({
+    book: book.reduce(
+      (budget, command) => execute(budget, "owner", command),
+      sharedBook(),
+    ),
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await shell.user.click(
+    await within(
+      screen.getByRole("navigation", { name: "Budget navigation" }),
+    ).findByRole("link", { name: /^Anna/ }),
+  );
+  await shell.user.click(
+    screen.getByRole("button", { name: "Record purchase" }),
+  );
+  const form = within(
+    screen.getByRole("dialog", { name: "Record a shared purchase" }),
+  );
+
+  await shell.user.type(form.getByLabelText("Payee", { exact: true }), "tra");
+  await shell.user.click(screen.getByRole("option", { name: "Trader Joe’s" }));
+
+  expect(form.getByLabelText("Payee", { exact: true })).toHaveProperty(
+    "value",
+    "Trader Joe’s",
+  );
+  expect(
+    form.getByRole("combobox", { name: "Your category for your share" }),
+  ).toHaveProperty("value", "Household");
 });

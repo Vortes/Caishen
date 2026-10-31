@@ -284,6 +284,8 @@ function tone(cents: number) {
 // Stand for the New row and the action beside it, never for options.
 const CREATE = "\u0000create";
 const ACTION = "\u0000action";
+// Keeps a suggestion's key apart from a destination's value.
+const SUGGESTION = "\u0000suggestion:";
 
 function Row({
   id,
@@ -299,7 +301,9 @@ function Row({
   onPick,
 }: {
   id: string;
-  icon: ReactNode;
+  // Absent for a suggestion, whose label lines up with the typed text
+  // instead of a check column.
+  icon?: ReactNode;
   label: string;
   selected?: boolean;
   disabled?: boolean;
@@ -321,13 +325,16 @@ function Row({
       data-active={active || undefined}
       data-pinned={pinned ? true : undefined}
       data-compact={compact ? true : undefined}
+      data-suggestion={icon === undefined || undefined}
       className={styles.option}
       onMouseMove={disabled ? undefined : onActivate}
       onClick={disabled ? undefined : onPick}
     >
-      <span className={styles.icon} aria-hidden>
-        {icon}
-      </span>
+      {icon !== undefined && (
+        <span className={styles.icon} aria-hidden>
+          {icon}
+        </span>
+      )}
       <span className={styles.label}>{label}</span>
       {amount !== undefined && (
         <span className={styles.amount} data-tone={tone(amount)}>
@@ -335,5 +342,209 @@ function Row({
         </span>
       )}
     </div>
+  );
+}
+
+// Free text, with earlier names suggested under the well, such as a
+// payee. Whatever is typed reaches onChange. Arriving opens the
+// suggestions, most recent first, and typing filters them; destinations,
+// such as a register's transfers, come first under their own group. A
+// suggestion is taken only with the arrow keys or a click, so Enter on
+// typed text still sends the form. Escape closes only the list. Inside a
+// Field, which names and describes it.
+export function SearchSuggestions({
+  value,
+  onChange,
+  suggestions,
+  destinations = [],
+  destination,
+  onDestination,
+  placeholder,
+  disabled,
+  readOnly,
+  maxLength,
+  inputRef,
+  onPicked,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  // Most recent first; up to eight that match what's typed show.
+  suggestions: readonly string[];
+  // Options that aren't free text, each with its group, listed before the
+  // suggestions. destination is the chosen one's value.
+  destinations?: readonly SearchListOption[];
+  destination?: string;
+  onDestination?: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  readOnly?: boolean;
+  maxLength?: number;
+  inputRef?: Ref<HTMLInputElement>;
+  // Moves on to the next field after a suggestion or destination is taken.
+  onPicked?: (value: string) => void;
+}) {
+  const control = useFieldControl();
+  const listId = useId();
+  const listRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  // What's typed since arriving: arriving shows every suggestion.
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(-1);
+  const search = query.trim().toLowerCase();
+  const shown = destinations.filter((option) =>
+    option.label.toLowerCase().includes(search),
+  );
+  const options: SearchListOption[] = [
+    ...shown,
+    ...suggestions
+      .filter((suggestion) => suggestion.toLowerCase().includes(search))
+      .slice(0, 8)
+      .map((suggestion) => ({
+        value: `${SUGGESTION}${suggestion}`,
+        label: suggestion,
+        // Headed only beside destinations, by the field's own name.
+        group: shown.length > 0 ? control.label : undefined,
+      })),
+  ];
+  const open = expanded && options.length > 0 && !disabled && !readOnly;
+  const current = options[active];
+  const optionId = (index: number) => `${listId}-${index}`;
+
+  const show = () => {
+    setQuery("");
+    setActive(-1);
+    setExpanded(true);
+  };
+  const pick = (index: number) => {
+    const option = options[index];
+    if (!option) return;
+    if (index < shown.length) onDestination?.(option.value);
+    else onChange(option.label);
+    setExpanded(false);
+    setActive(-1);
+    onPicked?.(option.value);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (options.length === 0) return;
+      event.preventDefault();
+      setExpanded(true);
+      const next = open
+        ? Math.min(
+            options.length - 1,
+            Math.max(0, active + (event.key === "ArrowDown" ? 1 : -1)),
+          )
+        : 0;
+      setActive(next);
+      listRef.current
+        ?.querySelector(`[id="${optionId(next)}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+    } else if (event.key === "Enter" && open && current) {
+      // Only a suggestion the arrows moved to; otherwise the form sends.
+      event.preventDefault();
+      pick(active);
+    } else if (event.key === "Escape" && open) {
+      event.preventDefault();
+      event.stopPropagation();
+      setExpanded(false);
+    }
+  };
+  return (
+    <Popover
+      label={`${control.label} suggestions`}
+      size="trigger"
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setExpanded(false);
+      }}
+      anchor={
+        <div
+          className={field.well}
+          data-invalid={control.invalid ? "" : undefined}
+          data-disabled={disabled ? "" : undefined}
+        >
+          <input
+            ref={inputRef}
+            id={control.id}
+            role="combobox"
+            className={`${field.input} ${styles.input}`}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={maxLength}
+            aria-autocomplete="list"
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            aria-activedescendant={
+              open && current ? optionId(active) : undefined
+            }
+            aria-invalid={control.invalid ? true : undefined}
+            aria-describedby={control.describedBy}
+            disabled={disabled}
+            readOnly={readOnly}
+            placeholder={placeholder}
+            value={value}
+            onChange={(event) => {
+              onChange(event.target.value);
+              setQuery(event.target.value);
+              setActive(-1);
+              setExpanded(true);
+            }}
+            onFocus={(event) => {
+              show();
+              event.currentTarget.select();
+            }}
+            onClick={() => {
+              if (!expanded) show();
+            }}
+            onBlur={() => setExpanded(false)}
+            onKeyDown={onKeyDown}
+          />
+          <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
+        </div>
+      }
+    >
+      <div
+        id={listId}
+        role="listbox"
+        aria-label={`${control.label} suggestions`}
+        className={styles.list}
+        // Keeps focus in the field while the pointer picks.
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        <div ref={listRef} className={styles.scroll}>
+          {options.map((option, index) => [
+            option.group && option.group !== options[index - 1]?.group && (
+              <p
+                key={`group-${option.group}`}
+                className={styles.group}
+                aria-hidden
+              >
+                {option.group}
+              </p>
+            ),
+            <Row
+              key={option.value}
+              id={optionId(index)}
+              icon={
+                index < shown.length
+                  ? option.value === destination && (
+                      <CheckIcon size={13} strokeWidth={2.5} />
+                    )
+                  : undefined
+              }
+              label={option.label}
+              selected={
+                index < shown.length
+                  ? option.value === destination
+                  : option.label === value
+              }
+              active={index === active}
+              onActivate={() => setActive(index)}
+              onPick={() => pick(index)}
+            />,
+          ])}
+        </div>
+      </div>
+    </Popover>
   );
 }
