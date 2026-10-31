@@ -146,6 +146,9 @@ function ProfilePicture() {
   );
 }
 
+// The longest name the budget keeps.
+const MAX_NAME = 120;
+
 // Saves on Enter or when the field loses focus; Escape puts the name back.
 function BudgetName({
   onRename,
@@ -185,6 +188,10 @@ function BudgetNameField({
       return;
     }
     // A name the budget refuses stays in the field to fix.
+    if (name.length > MAX_NAME) {
+      setError(`Use ${MAX_NAME} characters or fewer.`);
+      return;
+    }
     setError(onRename(name));
   };
 
