@@ -504,6 +504,10 @@ export function PlanView({
             !closed.includes(group.id) &&
             !(draggingId && isFolded(group, draggingId)) &&
             !reorder.drag;
+          // An empty group has nothing to show, but its caret still turns
+          // when it's toggled.
+          const expanded =
+            ids.length > 0 ? open : !closed.includes(group.id) && !reorder.drag;
           const count = ids.filter((id) => checked.includes(id)).length;
           return (
             <motion.div
@@ -549,7 +553,7 @@ export function PlanView({
                       <button
                         type="button"
                         className={styles.groupToggle}
-                        aria-expanded={open}
+                        aria-expanded={expanded}
                         aria-keyshortcuts={
                           reorder.enabled
                             ? "Alt+ArrowUp Alt+ArrowDown"
