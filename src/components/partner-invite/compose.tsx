@@ -13,7 +13,6 @@ import {
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { Button } from "~/components/ui/button";
 import { ConfirmDialog } from "~/components/ui/dialog";
-import shell from "~/components/app-shell/shell.module.css";
 import { CardFace } from "./card-face";
 import { WASHI, washiById, type WashiId } from "~/domain/invitation";
 import { config, palette } from "./config";
@@ -149,13 +148,13 @@ export function ComposeInvitation({
       className={styles.composer}
       aria-labelledby={titleId}
     >
-      <div className={shell.settingText}>
-        <h3 id={titleId} className={`${shell.settingLabel} ${styles.title}`}>
+      <div className={styles.heading}>
+        <h3 id={titleId} className={styles.title}>
           The card your partner receives
         </h3>
         {/* Both steps' hints hold the space of the longer one, so the card
             doesn't jump as it turns over. */}
-        <span className={`${shell.settingHint} ${styles.hints}`}>
+        <span className={styles.hints}>
           <span data-shown={step === "paper" || undefined}>
             Your partner will see this card as a folded paper plane, personalize
             it!
@@ -270,7 +269,7 @@ export function ComposeInvitation({
       </div>
 
       {error && (
-        <span className={shell.settingError} role="alert">
+        <span className={styles.error} role="alert">
           {error}
         </span>
       )}

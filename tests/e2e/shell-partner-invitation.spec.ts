@@ -76,7 +76,7 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
     "href",
     new RegExp(`${path}\\?sign-in$`),
   );
-  await partner.getByLabel("Password").fill(`Caishen!${randomUUID()}`);
+  await partner.getByLabel("Password", { exact: true }).fill(`Caishen!${randomUUID()}`);
   await partner.getByRole("button", { name: "Continue", exact: true }).click();
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");
@@ -112,9 +112,10 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   await partner.getByLabel("Your name").fill("Alex Newcomer");
   await partner.getByLabel("Budget name").fill("Newcomer budget");
   await partner.getByRole("button", { name: "Create my budget" }).click();
+  // Creating the budget and joining it take a server round trip.
   await expect(
     partner.getByRole("heading", { name: "A few questions about you" }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
   await expect(partner).toHaveURL(/\/welcome$/);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();

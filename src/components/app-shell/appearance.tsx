@@ -3,11 +3,15 @@
 import { CheckIcon, HeartIcon } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
+import {
+  SettingRow,
+  SettingsPage,
+  SettingsSection,
+} from "~/components/ui/settings";
 import { SearchField } from "./account";
 import {
   DEFAULT_PALETTE,
@@ -53,28 +57,22 @@ export function AppearanceSettings({
   onReset: () => void;
 }) {
   return (
-    <div className={styles.settingsPage}>
-      <section className={styles.settingsSection}>
-        <h2 className={styles.settingsHeading}>Mode</h2>
-        <Card>
-          <div className={styles.settingRow}>
-            <div className={styles.settingText}>
-              <span className={styles.settingLabel}>Interface mode</span>
-              <span className={styles.settingHint}>
-                Themes recolor dark mode. Light mode uses Caishen’s own colors.
-              </span>
-            </div>
-            <SegmentedControl
-              aria-label="Interface mode"
-              value={settings.theme}
-              onValueChange={(theme) => onChange({ theme: theme as Theme })}
-            >
-              <SegmentedControlItem value="dark">Dark</SegmentedControlItem>
-              <SegmentedControlItem value="light">Light</SegmentedControlItem>
-            </SegmentedControl>
-          </div>
-        </Card>
-      </section>
+    <SettingsPage>
+      <SettingsSection heading="Mode">
+        <SettingRow
+          label="Interface mode"
+          description="Themes recolor dark mode. Light mode uses Caishen’s own colors."
+        >
+          <SegmentedControl
+            aria-label="Interface mode"
+            value={settings.theme}
+            onValueChange={(theme) => onChange({ theme: theme as Theme })}
+          >
+            <SegmentedControlItem value="dark">Dark</SegmentedControlItem>
+            <SegmentedControlItem value="light">Light</SegmentedControlItem>
+          </SegmentedControl>
+        </SettingRow>
+      </SettingsSection>
 
       <ThemePicker
         value={settings.palette}
@@ -82,22 +80,15 @@ export function AppearanceSettings({
         onChange={(palette) => onChange({ palette, theme: "dark" })}
       />
 
-      <section className={styles.settingsSection}>
-        <h2 className={styles.settingsHeading}>Layout</h2>
-        <Card>
-          <div className={styles.settingRow}>
-            <div className={styles.settingText}>
-              <span className={styles.settingLabel}>Reset appearance</span>
-              <span className={styles.settingHint}>
-                Restores the mode, theme, panel widths, and plan view. Saved
-                themes stay.
-              </span>
-            </div>
-            <Button onClick={onReset}>Reset</Button>
-          </div>
-        </Card>
-      </section>
-    </div>
+      <SettingsSection heading="Layout">
+        <SettingRow
+          label="Reset appearance"
+          description="Restores the mode, theme, panel widths, and plan view. Saved themes stay."
+        >
+          <Button onClick={onReset}>Reset</Button>
+        </SettingRow>
+      </SettingsSection>
+    </SettingsPage>
   );
 }
 
@@ -206,25 +197,21 @@ function ThemePicker({
   };
 
   return (
-    <section className={styles.settingsSection}>
-      <div className={styles.settingsHeadingRow}>
-        <h2 className={styles.settingsHeading} id="theme-heading">
-          Theme
-        </h2>
+    <SettingsSection
+      heading="Theme"
+      action={
         <SearchField
           value={query}
           onChange={setQuery}
           placeholder={`Filter ${all.length} themes`}
         />
-      </div>
-      <p className={styles.settingsIntro}>
-        Monkeytype’s dark palettes. Funded and underfunded keep their green and
-        amber; overspent follows the theme’s red. Heart a theme to keep it at
-        the top.
-      </p>
+      }
+      intro="Monkeytype’s dark palettes. Funded and underfunded keep their green and amber; overspent follows the theme’s red. Heart a theme to keep it at the top."
+      card={false}
+    >
       <div
         role="radiogroup"
-        aria-labelledby="theme-heading"
+        aria-label="Theme"
         className={styles.themeGroups}
         onKeyDown={onKeyDown}
       >
@@ -247,10 +234,10 @@ function ThemePicker({
           </div>
         )}
         {shown.length === 0 && (
-          <p className={styles.settingsIntro}>No theme matches “{query}”.</p>
+          <p className={styles.themeEmpty}>No theme matches “{query}”.</p>
         )}
       </div>
-    </section>
+    </SettingsSection>
   );
 }
 

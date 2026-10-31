@@ -51,6 +51,7 @@ you use.
 | [popovers.md](popovers.md) | `Popover`: sizes, trigger or anchor, height                    |
 | [menus.md](menus.md)       | `Menu`, `MenuItem`, `MenuRadioGroup`, `MenuSub`                |
 | [dialogs.md](dialogs.md)   | `Dialog`, `DialogHeader`, `DialogScrim`, `ConfirmDialog`       |
+| [settings.md](settings.md) | `SettingsPage`, `SettingsSection`, `SettingRow`, divider       |
 | [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                         |
 | [loading.md](loading.md)   | `Skeleton`, and which loading state to use                     |
 

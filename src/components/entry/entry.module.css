@@ -50,8 +50,7 @@
 
 /* ---------- Shared form pieces ---------- */
 
-/* A form field isn't in the system yet; these follow the shell's settings
-   input (.settingInput) so every screen in the batch matches. */
+/* Hand-built fields for the screens not yet on ui/field. */
 .field {
   display: flex;
   flex-direction: column;
