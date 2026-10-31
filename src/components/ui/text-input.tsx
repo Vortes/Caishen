@@ -8,7 +8,14 @@ export type TextInputProps = {
   value: string;
   onChange: (value: string) => void;
   name?: string;
+  // Never "number": it rejects "1,000" and shows spinners.
+  type?: "text" | "email" | "password";
   placeholder?: string;
+  // What the browser may fill in: "name", "email", "one-time-code",
+  // "current-password". Off, the default, also keeps 1Password out.
+  autoComplete?: string;
+  required?: boolean;
+  minLength?: number;
   maxLength?: number;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   // Short text in the well, before or after the value: "$", "%", "years".
@@ -31,7 +38,11 @@ export function WellInput({
   value,
   onChange,
   name,
+  type = "text",
   placeholder,
+  autoComplete = "off",
+  required,
+  minLength,
   maxLength,
   inputMode,
   prefix,
@@ -67,14 +78,18 @@ export function WellInput({
         ref={inputRef}
         id={field.id}
         name={name}
+        type={type}
         className={styles.input}
         value={value}
         placeholder={placeholder}
+        required={required}
+        minLength={minLength}
         maxLength={maxLength}
         inputMode={inputMode}
         disabled={disabled}
         readOnly={readOnly}
-        autoComplete="off"
+        autoComplete={autoComplete}
+        data-1p-ignore={autoComplete === "off" ? "" : undefined}
         spellCheck={false}
         aria-invalid={field.invalid ? true : undefined}
         aria-describedby={field.describedBy}

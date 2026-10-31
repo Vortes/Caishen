@@ -16,27 +16,10 @@
   font-size: var(--type-title);
   font-weight: 600;
 }
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.field > label,
 .form > p {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--type-small);
-}
-.field > input {
-  width: 100%;
-  height: var(--size-control);
-  padding: 0 var(--space-inset);
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  font-variant-numeric: tabular-nums;
 }
 .form .error {
   display: flex;
@@ -58,8 +41,5 @@
   .form {
     --size-control: var(--size-row-lg);
     --size-control-xs: var(--size-row-lg);
-  }
-  .field > input {
-    font-size: var(--type-title);
   }
 }

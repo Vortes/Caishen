@@ -50,14 +50,6 @@
 
 /* ---------- Shared form pieces ---------- */
 
-/* The fields TextInput can't take yet: passwords, and the ones the browser
-   fills in (a name, an email, a one-time code). They follow its well. */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
 .fieldLabel {
   color: var(--text-secondary);
   font-size: var(--type-small);
@@ -67,42 +59,6 @@
   color: var(--text-tertiary);
   font-size: var(--type-small);
   text-wrap: pretty;
-}
-.input {
-  width: 100%;
-  min-width: 0;
-  height: var(--size-control);
-  padding: 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  outline: none;
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  transition: border-color 150ms;
-}
-.input:hover {
-  border-color: var(--border-strong);
-}
-.input[aria-invalid="true"] {
-  border-color: var(--feedback-attention);
-}
-.page .input:focus-visible,
-.input:focus-visible {
-  outline: none;
-  border-color: var(--focus-ring);
-}
-.input:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-}
-.input::placeholder {
-  color: var(--text-tertiary);
-}
-@media (pointer: coarse) {
-  .input {
-    font-size: 16px;
-  }
 }
 .error {
   display: flex;

@@ -3,8 +3,7 @@
 import { useReverification, useUser } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import type { EmailAddressResource, UserResource } from "@clerk/nextjs/types";
-import { useId, useState } from "react";
-import { text } from "~/components/budget/format";
+import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -52,7 +51,6 @@ function LoadedAccountSettings({ user }: { user: UserResource }) {
 }
 
 function EmailRow({ user }: { user: UserResource }) {
-  const id = useId();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [code, setCode] = useState("");
@@ -116,36 +114,30 @@ function EmailRow({ user }: { user: UserResource }) {
               void (address ? verify() : send());
             }}
           >
-            <label className={batch.field} htmlFor={`${id}-email`}>
-              New email address
-              <input
-                id={`${id}-email`}
-                className={batch.input}
+            <Field label="New email address">
+              <TextInput
                 type="email"
                 autoComplete="email"
                 required
                 value={draft}
                 disabled={Boolean(address)}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={setDraft}
               />
-            </label>
+            </Field>
             {address && (
               <>
                 <p className={batch.fieldHint}>
                   Enter the code sent to {address.emailAddress}.
                 </p>
-                <label className={batch.field} htmlFor={`${id}-code`}>
-                  Verification code
-                  <input
-                    id={`${id}-code`}
-                    className={`${batch.input} ${styles.codeInput}`}
+                <Field label="Verification code">
+                  <TextInput
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     required
                     value={code}
-                    onChange={(event) => setCode(event.target.value)}
+                    onChange={setCode}
                   />
-                </label>
+                </Field>
                 <Button
                   size="sm"
                   variant="quiet"
@@ -193,6 +185,13 @@ function PasswordRow({ user }: { user: UserResource }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signOutOthers, setSignOutOthers] = useState(true);
+  const [current, setCurrent] = useState("");
+  const [password, setPassword] = useState("");
+  const close = () => {
+    setOpen(false);
+    setCurrent("");
+    setPassword("");
+  };
   const update = useReverification(
     (input: {
       currentPassword?: string;
@@ -214,19 +213,18 @@ function PasswordRow({ user }: { user: UserResource }) {
             className={styles.inlineForm}
             onSubmit={async (event) => {
               event.preventDefault();
-              const fields = new FormData(event.currentTarget);
               setBusy(true);
               setError(null);
               try {
                 await update({
                   ...(user.passwordEnabled
-                    ? { currentPassword: text(fields, "current") }
+                    ? { currentPassword: current.trim() }
                     : {}),
-                  newPassword: text(fields, "password"),
+                  newPassword: password.trim(),
                   signOutOfOtherSessions: signOutOthers,
                 });
                 await user.reload();
-                setOpen(false);
+                close();
               } catch (caught) {
                 setError(message(caught));
               } finally {
@@ -244,28 +242,28 @@ function PasswordRow({ user }: { user: UserResource }) {
             />
             <div className={styles.passwordFields}>
               {user.passwordEnabled && (
-                <label className={batch.field}>
-                  Current password
-                  <input
-                    className={batch.input}
+                <Field label="Current password">
+                  <TextInput
                     name="current"
                     type="password"
                     autoComplete="current-password"
                     required
+                    value={current}
+                    onChange={setCurrent}
                   />
-                </label>
+                </Field>
               )}
-              <label className={batch.field}>
-                New password
-                <input
-                  className={batch.input}
+              <Field label="New password">
+                <TextInput
                   name="password"
                   type="password"
                   autoComplete="new-password"
                   minLength={8}
                   required
+                  value={password}
+                  onChange={setPassword}
                 />
-              </label>
+              </Field>
             </div>
             <label className={styles.checkRow}>
               <Checkbox
@@ -282,7 +280,7 @@ function PasswordRow({ user }: { user: UserResource }) {
               </p>
             )}
             <div className={batch.actions} data-end>
-              <Button disabled={busy} onClick={() => setOpen(false)}>
+              <Button disabled={busy} onClick={close}>
                 Cancel
               </Button>
               <Button variant="primary" type="submit" disabled={busy}>

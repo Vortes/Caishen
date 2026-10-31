@@ -370,33 +370,6 @@
   grid-template-columns: 1fr 1fr;
   gap: var(--space-inset);
 }
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.field label {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-.field input {
-  width: 100%;
-  height: var(--size-control);
-  padding: 0 var(--space-inset);
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-}
-.field input:disabled {
-  color: var(--text-secondary);
-}
-.field input[data-invalid] {
-  border-color: var(--feedback-attention);
-}
 .fieldHint {
   grid-column: 1 / -1;
   margin: 0;
@@ -474,10 +447,6 @@
 @media (pointer: coarse) {
   .status::after {
     inset: -12px;
-  }
-  .field input {
-    height: var(--size-row-lg);
-    font-size: var(--type-title);
   }
 }
 @media (prefers-reduced-motion: reduce) {
