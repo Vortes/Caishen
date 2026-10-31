@@ -343,8 +343,7 @@
 }
 .sliceHeader strong {
   color: var(--text-primary);
-  font-size: var(--type-title);
-  font-weight: 600;
+  font-weight: 500;
 }
 .sliceHeader > span:last-child {
   flex: none;
@@ -369,6 +368,10 @@
   min-height: 0;
   overflow-y: auto;
   padding: 4px;
+}
+/* Rows hidden below fade out, so a cut-off row reads as more to scroll. */
+.sliceRows[data-more] {
+  mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent);
 }
 .sliceColumns {
   display: grid;

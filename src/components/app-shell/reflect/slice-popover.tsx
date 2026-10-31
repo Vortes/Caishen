@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { SpendingEntry } from "~/domain/spending";
 import { money, shortDay } from "../model";
 import { useShellData } from "../shell-data";
@@ -31,6 +32,14 @@ export function SlicePanel({
       ? (accounts.find((account) => account.id === entry.accountId)?.name ??
         "Account")
       : `Paid by ${partner?.name ?? "your partner"}`;
+  const [more, setMore] = useState(false);
+  // The bottom fades while rows are hidden below it.
+  const measure = (element: HTMLElement | null) => {
+    if (!element) return;
+    setMore(
+      element.scrollHeight - element.scrollTop - element.clientHeight > 1,
+    );
+  };
   return (
     <div className={styles.slicePanel}>
       <div className={styles.sliceHeader}>
@@ -47,7 +56,12 @@ export function SlicePanel({
         </span>
       </div>
       <div className={styles.sliceTable} role="group" aria-label="Transactions">
-        <div className={styles.sliceRows}>
+        <div
+          ref={measure}
+          className={styles.sliceRows}
+          data-more={more || undefined}
+          onScroll={(event) => measure(event.currentTarget)}
+        >
           <div className={styles.sliceColumns} data-header aria-hidden>
             <span>Account</span>
             <span>Date</span>
