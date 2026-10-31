@@ -52,9 +52,8 @@ amount its right edge, every value its vertical center.
 - An editor's wells reach past their column by border and padding (8px);
   amounts reach right. Cells set their own `align-self`, since equal rules
   from two stylesheets win by load order (`transaction-entry.module.css`).
-- `tests/e2e/shell-register-edit-in-place.spec.ts` checks a register row
-  and a partner row, and fails on any shift over half a pixel; run it after
-  changing rows, wells or either register.
+- `tests/e2e/shell-register-edit-in-place.spec.ts` fails on any shift over
+  half a pixel in a register or partner row; run it after touching rows.
 
 ### Contiguous selection
 
