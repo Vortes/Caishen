@@ -15,12 +15,41 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] Header tabs: Spending Breakdown / Trends, and decide whether they become
       a `Tabs` variant or take the pill look (`app-shell.tsx`)
 - [ ] Month label button in the header (`app-shell.tsx`)
-- [ ] `Select`: the custom date range's native selects (`reflect/filters.tsx`)
+- [x] `Select`: every native select, including the custom date range's
+      (`src/components/ui/select.tsx`, [choices.md](choices.md#select))
 - [x] `Popover` surface: `Popover`, `Menu`, `Dialog` and `ConfirmDialog`
       (`src/components/ui/`, [surfaces.md](surfaces.md))
-- [ ] Text field and combobox: the move-money amount input and its searchable
-      destination list, including their invalid state and field error
-      (`move-money.tsx`)
+- [x] Text field: `Field`, `TextInput`, `AmountInput`, `FormError`,
+      `FormFooter` (`src/components/ui/`, [fields.md](fields.md))
+- [ ] Combobox and date input: a shared search box and date field. Until
+      then these controls draw their own well; delete each rule once its
+      controls move:
+  - `transaction-entry.module.css` `.well`, `.input`, `.chevron`: the
+    register editor's date (`transaction-date.tsx`); the payee, category and
+    account comboboxes (`ChoiceField`, `PayeeField` in
+    `transaction-fields.tsx`); the read-only card-payment category and the
+    share well (`transaction-form.tsx`); the target's Every count and its
+    behavior menu trigger (`target-editor.tsx`)
+  - `move-money.module.css` `.search`: the move-money destination
+    (`move-money.tsx`) and the new category or group name
+    (`add-category.tsx`)
+  - `move-money.module.css` `.amountInput`: the "Who owes it" inputs
+    (`share-field.tsx`, `transaction-category-field.tsx`), the payee and the
+    "Half" button (`partner-record.tsx`), and the reimbursement date
+    (`reimbursements-register.tsx`)
+  - `move-money.module.css` `.field`, `.error`: the hand-built field around
+    those controls and `ChoiceField` (`partner-record.tsx`,
+    `reimbursements-register.tsx`), and error text under them
+    (`share-field.tsx`, `transaction-category-field.tsx`,
+    `partner-register.tsx`). The form errors drawn with `.error` and
+    `role="alert"` (`partner-record.tsx`, `reimbursements-register.tsx`)
+    become `FormError`
+- [ ] Text inputs still drawn by hand that `TextInput` can take now:
+      `entry.module.css` `.input` (`settings/partner.tsx`,
+      `entry/account-settings.tsx`, `entry/guided-onboarding.tsx`,
+      `entry/onboarding-categories.tsx`), `account-entry.module.css`
+      `.field > input`, `banks.module.css` `.field input`, and
+      `shell.module.css` `.settingInput` (`settings/profile.tsx`)
 - [x] Toast: the undo toast after a move (`src/components/ui/toast.tsx`,
       [toasts.md](toasts.md))
 - [x] Skeleton: the app shell's loading screen
@@ -40,9 +69,8 @@ doesn't follow the design system yet. Check items off as they land.
 
 ## Tokens
 
-- [ ] Add a field-error token: move-money's invalid inputs and error text use
-      `--danger-line` and `--danger-text`, which are meant for destructive
-      confirms (`move-money.module.css`, `[data-invalid]`, `.error`)
+- [x] Add a field-error token: `--field-error` and `--field-error-line`,
+      through `Field` ([tokens.md](tokens.md))
 - [x] Add an `--overlay` token for the scrims behind the peeking sidebar and
       the narrow drawer (`shell.module.css`, `.scrim`, `.peekScrim`)
 - [ ] Budget avatar's raw orange and white (`shell.module.css`, `.avatar`)

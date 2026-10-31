@@ -16,7 +16,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { readAmount } from "~/components/budget/amount";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import {
   READY_TO_ASSIGN,
@@ -47,7 +47,6 @@ import {
   type ChoiceOption,
 } from "./transaction-fields";
 import { ShareLabel, ShareMenu } from "./share-field";
-import { sameAmount } from "./move-money";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
 import { TransactionCategoryField } from "./transaction-category-field";

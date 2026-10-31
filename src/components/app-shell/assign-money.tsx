@@ -2,7 +2,7 @@
 
 import { ZapIcon } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
-import { readAmount } from "~/components/budget/amount";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
@@ -19,7 +19,6 @@ import { money, type Category } from "./model";
 import {
   Destination,
   READY_TO_ASSIGN,
-  sameAmount,
   useMoveMoney,
   type Option,
 } from "./move-money";

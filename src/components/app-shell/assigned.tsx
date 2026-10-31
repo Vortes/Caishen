@@ -1,6 +1,5 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon } from "lucide-react";
 import {
   createContext,
@@ -12,7 +11,11 @@ import {
   useState,
 } from "react";
 import { readAmount } from "~/components/budget/amount";
-import { newId } from "~/components/budget/format";
+import {
+  caretAfterSameDigit,
+  groupThousands,
+  newId,
+} from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
 import { useShellData } from "./shell-data";
@@ -191,7 +194,16 @@ export function AssignedCell({ category }: { category: Category }) {
                 aria-describedby={editor.error ? errorId : undefined}
                 onFocus={(event) => event.currentTarget.select()}
                 onChange={(event) => {
-                  const draft = groupAmountInput(event.target);
+                  const input = event.target;
+                  const draft = groupThousands(input.value);
+                  const caret = caretAfterSameDigit(
+                    input.value,
+                    input.selectionStart ?? input.value.length,
+                    draft,
+                  );
+                  requestAnimationFrame(() =>
+                    input.setSelectionRange(caret, caret),
+                  );
                   setEditor((value) => value && { ...value, draft });
                 }}
                 onBlur={() => commit(false)}

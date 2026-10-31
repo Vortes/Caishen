@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readAmount } from "../../src/components/budget/amount";
-import { money } from "../../src/components/budget/format";
 
 const amountMessage = "Enter an amount, such as 84.20 or 600+150.";
 
@@ -150,12 +149,4 @@ void test("a result beyond a safe number of cents is too large", () => {
     ],
     "That amount is too large.",
   );
-});
-
-void test("other money fields continue to accept literal amounts only", () => {
-  const data = new FormData();
-  data.set("amount", "1,000.00");
-  assert.equal(money(data, "amount"), 100_000);
-  data.set("amount", "600.00+1000");
-  assert.throws(() => money(data, "amount"), /dollar amount/);
 });

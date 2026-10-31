@@ -12,7 +12,7 @@ import {
   type ReactElement,
   type Ref,
 } from "react";
-import { readAmount } from "~/components/budget/amount";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
@@ -105,19 +105,6 @@ export type Option = {
   group: string;
   available: number;
 };
-
-// Whether two amount texts read as the same cents, as when leaving the
-// field turns "50,000" into "50,000.00". A screen keeps its error then.
-export function sameAmount(a: string, b: string) {
-  const [before, after] = [readAmount(a), readAmount(b)];
-  return before.ok && after.ok && before.cents === after.cents;
-}
-
-// "$1,234.50", "1234.5", and "12" all read as dollars; returns cents.
-export function parseAmount(text: string) {
-  const value = Number(text.replace(/[$,\s]/g, ""));
-  return Number.isFinite(value) ? Math.round(value * 100) : NaN;
-}
 
 function MoveForm({
   category,

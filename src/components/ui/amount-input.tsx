@@ -3,7 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { readAmount } from "~/components/budget/amount";
-import { groupThousands } from "~/components/budget/format";
+import {
+  caretAfterSameDigit,
+  groupThousands,
+} from "~/components/budget/format";
 import { useMediaQuery } from "~/components/shared/use-media-query";
 import { useFieldControl } from "./field";
 import styles from "./field.module.css";
@@ -169,16 +172,6 @@ function OperatorRow({ onKey }: { onKey: (key: string) => void }) {
 function assign<T>(ref: Ref<T> | undefined, value: T | null) {
   if (typeof ref === "function") ref(value);
   else if (ref) ref.current = value;
-}
-
-// The caret's place in the grouped text: after as many characters other
-// than separators as it had before it.
-function caretAfterSameDigit(text: string, at: number, grouped: string) {
-  const before = text.slice(0, at).replace(/,/g, "").length;
-  let caret = 0;
-  for (let seen = 0; caret < grouped.length && seen < before; caret++)
-    if (grouped[caret] !== ",") seen++;
-  return caret;
 }
 
 // An amount as a person writes one: no operators, at most two decimals.

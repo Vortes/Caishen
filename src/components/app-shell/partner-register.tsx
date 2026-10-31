@@ -10,7 +10,7 @@ import {
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
-import { readAmount } from "~/components/budget/amount";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Field, FormError } from "~/components/ui/field";
@@ -21,7 +21,6 @@ import { Popover } from "~/components/ui/popover";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
-import { sameAmount } from "./move-money";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";

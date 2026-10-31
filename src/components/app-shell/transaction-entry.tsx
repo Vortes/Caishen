@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { sameAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import {
@@ -35,7 +36,6 @@ import {
   type PartnerImportMatch,
 } from "~/components/transactions/import-draft";
 import { transactionActions } from "~/components/transactions/transaction-actions";
-import { sameAmount } from "./move-money";
 
 type Transaction = View["budget"]["transactions"][number];
 

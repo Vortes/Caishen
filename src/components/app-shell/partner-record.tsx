@@ -2,7 +2,7 @@
 
 import { PlusIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { readAmount } from "~/components/budget/amount";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
@@ -15,7 +15,6 @@ import { Popover } from "~/components/ui/popover";
 import { rememberedSpendingCategory } from "~/domain/partner-ledger";
 import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
-import { sameAmount } from "./move-money";
 import { halfOf } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
 import { ChoiceField, type ChoiceOption } from "./transaction-fields";

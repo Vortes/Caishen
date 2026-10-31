@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { sameAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { AmountInput } from "~/components/ui/amount-input";
@@ -22,7 +23,6 @@ import {
 import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
 import { Select } from "~/components/ui/select";
 import type { Category } from "./model";
-import { sameAmount } from "./move-money";
 import { useShellData } from "./shell-data";
 import { DateField } from "./transaction-date";
 import {

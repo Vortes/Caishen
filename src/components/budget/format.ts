@@ -35,21 +35,14 @@ export function groupThousands(input: string) {
       before + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
   );
 }
-export function money(data: FormData, key: string) {
-  return parseMoney(text(data, key));
-}
-export function parseMoney(input: string) {
-  const value = input.replace(/[$,\s]/g, "");
-  if (!/^-?\d+(\.\d{1,2})?$/.test(value))
-    throw new Error(
-      "Enter a dollar amount with no more than two decimal places.",
-    );
-  const sign = value.startsWith("-") ? -1 : 1;
-  const [whole = "0", fraction = ""] = value.replace("-", "").split(".");
-  const cents = sign * (Number(whole) * 100 + Number(fraction.padEnd(2, "0")));
-  if (!Number.isSafeInteger(cents))
-    throw new Error("That amount is too large.");
-  return cents;
+// Where the caret goes once groupThousands has added or moved separators:
+// after as many characters other than separators as it had before it.
+export function caretAfterSameDigit(text: string, at: number, grouped: string) {
+  const before = text.slice(0, at).replace(/,/g, "").length;
+  let caret = 0;
+  for (let seen = 0; caret < grouped.length && seen < before; caret++)
+    if (grouped[caret] !== ",") seen++;
+  return caret;
 }
 export function text(data: FormData, key: string) {
   const value = data.get(key);

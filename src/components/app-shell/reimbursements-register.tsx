@@ -2,7 +2,7 @@
 
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { readAmount } from "~/components/budget/amount";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { AmountInput } from "~/components/ui/amount-input";
@@ -11,7 +11,6 @@ import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
-import { sameAmount } from "./move-money";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";

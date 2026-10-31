@@ -101,6 +101,13 @@ export function readAmount(text: string): AmountReading {
   }
 }
 
+// Whether two amount texts read as the same cents, as when leaving the
+// field turns "50,000" into "50,000.00". A screen keeps its error then.
+export function sameAmount(a: string, b: string) {
+  const [before, after] = [readAmount(a), readAmount(b)];
+  return before.ok && after.ok && before.cents === after.cents;
+}
+
 // Keeps a fraction in lowest terms with a positive denominator.
 function reduce({ n, d }: Ratio): Ratio {
   if (d === 0n) throw new Unreadable("Divide by a number other than zero.");

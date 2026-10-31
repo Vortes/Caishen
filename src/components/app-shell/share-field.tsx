@@ -9,7 +9,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { readAmount } from "~/components/budget/amount";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Field } from "~/components/ui/field";
@@ -24,7 +24,6 @@ import {
 import type { CounterpartyShare } from "~/domain/engine";
 import { reimbursementPeople } from "~/domain/counterparty";
 import { money } from "./model";
-import { sameAmount } from "./move-money";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import moveStyles from "./move-money.module.css";
