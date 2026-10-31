@@ -51,7 +51,7 @@ export function LoanSetupFields({
           onChange={(loanBalance) => onChange({ loanBalance })}
         />
       </Field>
-      <Field label="APR (%)" sharedErrorId={sharedErrorId}>
+      <Field label="APR" sharedErrorId={sharedErrorId}>
         <TextInput
           value={draft.annualRate}
           suffix="%"

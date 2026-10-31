@@ -144,7 +144,7 @@ export function AccountEntry() {
                 : "The opening balance becomes available to assign."}
           </p>
         </div>
-        <Field label="Opening balance ($)" error={balanceError}>
+        <Field label="Opening balance" error={balanceError}>
           <AmountInput
             value={balance}
             placeholder="0.00"

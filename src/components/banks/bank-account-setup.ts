@@ -353,6 +353,8 @@ export function useBankAccountSetupForm({
   const submit = async () => {
     if (saving.current || busy || !ready || !refreshed) return;
     const errors: Record<string, string> = {};
+    // A new loan's terms as checked here are the ones sent.
+    const loans = new Map<string, LoanTerms>();
     for (const account of selected) {
       const draft = drafts[account.accountId]!;
       if (recoveryAccounts(account).length && !draft.existingAccountId)
@@ -384,6 +386,7 @@ export function useBankAccountSetupForm({
       } else if (account.type === "loan") {
         const terms = loanTerms(account.currentBalance, draft);
         if ("error" in terms) errors[account.accountId] = terms.error;
+        else loans.set(account.accountId, terms);
       }
     }
     if (Object.keys(errors).length) {
@@ -414,7 +417,7 @@ export function useBankAccountSetupForm({
             : account.type === "loan"
               ? {
                   loan: {
-                    ...(loanTerms(account.currentBalance, draft) as LoanTerms),
+                    ...loans.get(account.accountId)!,
                     variable: draft.variable,
                   },
                 }

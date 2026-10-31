@@ -293,7 +293,7 @@ test("a loan with no bank balance offers setup and asks for confirmed lender ter
     "8201.13",
   );
   await shell.user.type(
-    within(dialog).getByRole("textbox", { name: "APR (%)" }),
+    within(dialog).getByRole("textbox", { name: "APR" }),
     "10.99",
   );
   await shell.user.type(

@@ -700,7 +700,7 @@ test("adding a brokerage account sends tracking type and its entered opening bal
     form.getByLabelText("Account type"),
     "tracking",
   );
-  await shell.user.type(form.getByLabelText("Opening balance ($)"), "25000");
+  await shell.user.type(form.getByLabelText("Opening balance"), "25000");
   await shell.user.click(form.getByRole("button", { name: "Add account" }));
   await waitFor(() => expect(shell.execute).toHaveBeenCalledTimes(1));
   expect(sent(shell.execute)[0]).toMatchObject({
