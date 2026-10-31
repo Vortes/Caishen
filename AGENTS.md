@@ -14,6 +14,6 @@ Read the relevant guides before doing that work:
 
 - Implementing application changes or changing repository tooling: [Development](docs/agents/development.md).
 - Changing how budgeting works: [Budgeting](docs/agents/budgeting.md).
-- Building or changing UI, or running E2E tests: [UI review and E2E approval](docs/agents/ui-review.md).
+- Building or changing UI, or running E2E tests: [UI pipeline and E2E approval](docs/agents/ui-review.md).
 - Writing or changing tests: [Testing](docs/agents/testing.md).
 - Grilling the user before a spec: [Grilling](docs/agents/grilling.md).
