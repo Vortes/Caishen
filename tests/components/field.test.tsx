@@ -14,13 +14,13 @@ function Memo({ hint, error }: { hint?: string; error?: string }) {
   );
 }
 
-test("the label names the input, and clicking it focuses the input", async () => {
+test("the label names the input, and clicking it leaves the input alone", async () => {
   const user = userEvent.setup();
   render(<Memo />);
 
   await user.click(screen.getByText("Memo"));
 
-  expect(document.activeElement).toBe(
+  expect(document.activeElement).not.toBe(
     screen.getByRole("textbox", { name: "Memo" }),
   );
 });

@@ -76,17 +76,9 @@ export function Field({
           htmlFor={id}
           className={styles.label}
           data-hidden={labelHidden ? "" : undefined}
-          // A click on it focuses a plain text field, but never reaches a
-          // control that opens something (a list, a calendar, a menu):
-          // only the well itself does that.
-          onClick={(event) => {
-            const control = document.getElementById(id);
-            if (
-              !(control instanceof HTMLInputElement) ||
-              control.getAttribute("role") === "combobox"
-            )
-              event.preventDefault();
-          }}
+          // It names the control and does nothing else: a click on it never
+          // focuses the well or opens a list. Only the well itself does.
+          onClick={(event) => event.preventDefault()}
         >
           {label}
         </label>

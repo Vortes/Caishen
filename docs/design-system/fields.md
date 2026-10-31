@@ -34,9 +34,9 @@ without one. The field gives its input an id, `aria-describedby` and
 
 - `label`: required. `labelHidden` keeps it for screen readers only, where
   something on screen already names the field, such as a register's column
-  header (`EditorCell` in `editor-row.tsx`). A click on the label focuses a
-  plain text field and does nothing else: only the well opens a list, a
-  calendar or a menu.
+  header (`EditorCell` in `editor-row.tsx`). A click on the label does
+  nothing: it never focuses the well or opens a list, a calendar or a
+  menu. Only the well itself does.
 - `hint`: a line under the well that stays.
 - `error`: what to fix, under the well, with the field-error color
   (`--field-error`, `--field-error-line`; see [tokens.md](tokens.md)). It
