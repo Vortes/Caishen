@@ -65,8 +65,9 @@
   font: inherit;
   font-variant-numeric: tabular-nums;
 }
-/* The well draws the focus ring, in place of the shell's own. */
-.input:focus-visible {
+/* The well draws the focus ring, in place of the shell's own; the well in
+   the selector outranks the shell's `.root :focus-visible`. */
+.well .input:focus-visible {
   outline: none;
 }
 .well[data-align="end"] .input {
@@ -154,14 +155,14 @@
   gap: 6px;
   padding: 6px;
   border-top: 1px solid var(--border-subtle);
-  background: var(--surface-raised);
+  background: var(--surface-group);
   pointer-events: auto;
 }
 .operator {
   flex: 1;
   min-width: 0;
   height: 44px;
-  border: 0;
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-row);
   background: var(--control-bg);
   color: var(--text-primary);
