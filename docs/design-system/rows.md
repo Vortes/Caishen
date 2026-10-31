@@ -46,8 +46,8 @@ pseudo-elements, not a border that changes layout. Keep decoration
 Selecting, hovering, focusing, or opening a row to edit moves no text, not
 by a pixel: text keeps its left edge, an amount its right, all their tops.
 
-- Draw state with fills, inset shadows and outlines, never a border or
-  padding that takes space.
+- Draw state with fills, inset shadows and outlines, never space-taking
+  borders.
 - An editor's wells reach past their column by border and padding (8px);
   amounts reach right. Cells set their own `align-self`: equal rules from
   two stylesheets win by load order (`transaction-entry.module.css`).
