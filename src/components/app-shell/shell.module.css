@@ -1127,8 +1127,7 @@ button.actionItem:disabled {
   color: var(--text-tertiary);
   font-size: var(--type-small);
 }
-.groupRow,
-.dayRow {
+.groupRow {
   height: var(--size-row-lg);
   margin-top: 4px;
   border: 0;
@@ -1153,12 +1152,6 @@ button.actionItem:disabled {
 .groupRow .numeric {
   color: var(--text-tertiary);
   font-weight: 400;
-}
-.dayRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 var(--space-row-x) 0 var(--row-gutter);
 }
 .groupName {
   display: flex;
@@ -1216,10 +1209,6 @@ button.actionItem:disabled {
   .groupAdd {
     opacity: 1;
   }
-}
-.groupCount {
-  color: var(--text-tertiary);
-  font-weight: 400;
 }
 /* The column header's + adds a category group. */
 .headerAdd {
