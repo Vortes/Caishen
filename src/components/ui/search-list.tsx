@@ -508,6 +508,8 @@ export function SearchListDetail({
   const narrow = (text: string) => {
     setQuery(text);
     if (!normalize(text)) return;
+    // The first match takes the highlight, so the list starts at the top.
+    if (listRef.current) listRef.current.scrollTop = 0;
     const next = narrowed(options, text, createNoun);
     setActive(next.rows.find((id) => id !== CREATE) ?? next.rows[0] ?? null);
   };

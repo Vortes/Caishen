@@ -112,8 +112,12 @@ export function Popover(props: TriggerProps | AnchorProps) {
             // A control that uses Escape itself first, such as an open list
             // or a search with text to clear, carries data-holds-escape
             // while it does, and the popover stays open for that press.
-            const target = event.target as Element | null;
-            if (anchored || target?.hasAttribute("data-holds-escape"))
+            const target = event.target;
+            if (
+              anchored ||
+              (target instanceof Element &&
+                target.hasAttribute("data-holds-escape"))
+            )
               event.preventDefault();
           }}
           onInteractOutside={(event) => {
