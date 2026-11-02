@@ -86,8 +86,11 @@
    the option list keeps a list's 4px so its fills sit 4px from the border,
    and its rows take a list row's 8px. The field's 8px and the list's 4px
    make the form's 12px between them. */
+/* The well sits 2px inside the option text's 12px: a box edge on the
+   glyphs' line reads wider than the text, which starts past its side
+   bearing. Aligned by eye, not by the number. */
 .whoField {
-  padding: 12px 12px 8px;
+  padding: 12px 14px 8px;
 }
 .shareOptions {
   display: flex;
