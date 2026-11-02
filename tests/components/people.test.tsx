@@ -279,17 +279,25 @@ test("New person with nothing typed asks for the name in the same field", async 
   await user.click(who);
   await user.click(screen.getByRole("option", { name: "New person" }));
   // No second form: the same field waits for the name.
-  expect(who).toHaveProperty("value", "");
+  const nameBox = menu.getByRole("textbox", { name: "Who is this for" });
+  expect(nameBox).toHaveProperty("value", "");
+  await waitFor(() => expect(nameBox).toBe(document.activeElement));
   expect(menu.queryByRole("button", { name: "Continue" })).toBeNull();
   expect(menu.getByRole("button", { name: /^Half/ })).toHaveProperty(
     "disabled",
     true,
   );
-  await user.type(who, "Sam");
-  await user.click(screen.getByRole("option", { name: "New person “Sam”" }));
+  // The field is the name now: no list offers to add them a second time,
+  // and how much enables as the name is typed.
+  await user.type(nameBox, "Sam");
+  expect(screen.queryByRole("option", { name: /New person/ })).toBeNull();
   expect(
     menu.getByText("Joins People once shared. Only you see them."),
   ).toBeTruthy();
+  expect(menu.getByRole("button", { name: /^Half/ })).toHaveProperty(
+    "disabled",
+    false,
+  );
   await user.click(menu.getByRole("button", { name: /^Half/ }));
 
   expect(

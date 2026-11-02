@@ -15,6 +15,7 @@ import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
 import { SearchList } from "~/components/ui/search-list";
+import { TextInput } from "~/components/ui/text-input";
 import {
   halfOf,
   keepShare,
@@ -199,31 +200,38 @@ export function ShareChoices({
     }
     pick({ accountId, amount: cents }, basis);
   };
-  // The New row: a typed name becomes the chosen person at once; with
-  // nothing typed, the well clears and asks for the name.
-  const name = (typed: string) => {
+  // Who a typed name stands for: a person already listed, or someone new.
+  const resolve = (typed: string) => {
     const trimmed = typed.trim().replace(/\s+/g, " ");
-    setError("");
-    if (!trimmed) {
-      setNaming(true);
-      setPersonId("");
-      setPending(null);
-      requestAnimationFrame(() => personInput.current?.focus());
-      return;
-    }
     const known = people.find(
       (item) => !isLinked(item) && personKey(item.name) === personKey(trimmed),
     );
-    setNaming(false);
+    setError("");
     if (known) {
       setPersonId(known.id);
       setPending(null);
     } else {
-      setPending(trimmed);
-      setPersonId(NEW_PERSON);
+      setPending(trimmed || null);
+      setPersonId(trimmed ? NEW_PERSON : "");
     }
+  };
+  // The New row: a typed name becomes the chosen person at once; with
+  // nothing typed, the well becomes a name box and waits for it.
+  const name = (typed: string) => {
+    resolve(typed);
+    if (!typed.trim()) {
+      setNaming(true);
+      return;
+    }
+    setNaming(false);
     requestAnimationFrame(() => firstOption.current?.focus());
   };
+  // Typing in the name box; the amount options enable as the name does.
+  const [typed, setTyped] = useState("");
+  // The name box takes focus as it appears in the well's place.
+  useEffect(() => {
+    if (naming) personInput.current?.focus();
+  }, [naming]);
 
   const half = halfOf(amount);
   // A line with no amount yet has no half or whole to share; only an
@@ -262,9 +270,7 @@ export function ShareChoices({
       type="button"
       data-share-option
       autoFocus={id === current && current !== "mine"}
-      disabled={
-        id !== "mine" && (!person || (id !== "amount" && !sized))
-      }
+      disabled={id !== "mine" && (!person || (id !== "amount" && !sized))}
       className={styles.shareOption}
       aria-pressed={id === "mine" ? current === "mine" : id === chosen}
       onClick={onClick}
@@ -305,36 +311,71 @@ export function ShareChoices({
           </div>
           <div className={styles.whoField}>
             <Field label="Who is this for" labelHidden hint={hint}>
-              <SearchList
-                inputRef={personInput}
-                maxLength={PERSON_NAME_MAX}
-                value={personId}
-                options={[
-                  ...(pending !== null
-                    ? [{ value: NEW_PERSON, label: pending, group: "New" }]
-                    : []),
-                  ...people.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                    group: isLinked(item) ? "On Caishen" : "People",
-                    amount: item.balance,
-                  })),
-                ]}
-                placeholder={
-                  naming || people.length === 0
-                    ? "Their name or company"
-                    : "Choose or add a person"
-                }
-                onChange={(value) => {
-                  setPersonId(value);
-                  setNaming(false);
-                  setError("");
-                }}
-                onPicked={() =>
-                  requestAnimationFrame(() => firstOption.current?.focus())
-                }
-                onCreate={{ noun: "person", create: name }}
-              />
+              {naming ? (
+                // The name box: Enter moves on to how much; Escape goes
+                // back to the list.
+                <form
+                  noValidate
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!person) return setError("Enter their name.");
+                    setNaming(false);
+                    requestAnimationFrame(() => firstOption.current?.focus());
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setNaming(false);
+                    setTyped("");
+                    resolve("");
+                    requestAnimationFrame(() => personInput.current?.focus());
+                  }}
+                >
+                  <TextInput
+                    inputRef={personInput}
+                    maxLength={PERSON_NAME_MAX}
+                    value={typed}
+                    placeholder="Their name or company"
+                    onChange={(value) => {
+                      setTyped(value);
+                      resolve(value);
+                    }}
+                  />
+                </form>
+              ) : (
+                <SearchList
+                  inputRef={personInput}
+                  maxLength={PERSON_NAME_MAX}
+                  value={personId}
+                  options={[
+                    ...(pending !== null
+                      ? [{ value: NEW_PERSON, label: pending, group: "New" }]
+                      : []),
+                    ...people.map((item) => ({
+                      value: item.id,
+                      label: item.name,
+                      group: isLinked(item) ? "On Caishen" : "People",
+                      amount: item.balance,
+                    })),
+                  ]}
+                  placeholder={
+                    naming || people.length === 0
+                      ? "Their name or company"
+                      : "Choose or add a person"
+                  }
+                  onChange={(value) => {
+                    setPersonId(value);
+                    setNaming(false);
+                    setError("");
+                  }}
+                  onPicked={() =>
+                    requestAnimationFrame(() => firstOption.current?.focus())
+                  }
+                  onCreate={{ noun: "person", create: name }}
+                />
+              )}
             </Field>
           </div>
           <div
