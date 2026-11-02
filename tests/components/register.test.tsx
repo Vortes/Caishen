@@ -177,9 +177,7 @@ test("a card's Starting Balance has no category, can be edited and deleted, and 
     editor().getByLabelText("Payee", { exact: true }),
     "Corrected balance",
   );
-  await shell.user.click(
-    editor().getByRole("button", { name: "Save", exact: true }),
-  );
+  await shell.user.click(editor().getByRole("button", { name: "Save" }));
   await waitForSaves();
   expect(
     within(await findRow("Corrected balance")).getByText("$250.00", {
@@ -195,23 +193,16 @@ test("a card's Starting Balance has no category, can be edited and deleted, and 
   await shell.user.click(
     screen.getByRole("checkbox", {
       name: "Select Corrected balance",
-      exact: true,
     }),
   );
-  await shell.user.click(
-    screen.getByRole("button", { name: "More", exact: true }),
-  );
-  await shell.user.click(
-    screen.getByRole("menuitem", { name: "Delete", exact: true }),
-  );
+  await shell.user.click(screen.getByRole("button", { name: "More" }));
+  await shell.user.click(screen.getByRole("menuitem", { name: "Delete" }));
   await findToast("Deleted 1 transaction");
   expect(screen.queryByText("Corrected balance", { exact: true })).toBeNull();
   expect(screen.getByRole("link", { name: /^Visa/ }).textContent).toContain(
     "$0.00",
   );
-  await shell.user.click(
-    screen.getByRole("button", { name: "Undo", exact: true }),
-  );
+  await shell.user.click(screen.getByRole("button", { name: "Undo" }));
   expect(await findRow("Corrected balance")).toBeTruthy();
 });
 
@@ -962,9 +953,7 @@ test("cash, card and tracking adjustments use the existing editor with their cat
       editor().getByLabelText("Outflow", { exact: true }),
       "125.00",
     );
-    await shell.user.click(
-      editor().getByRole("button", { name: "Save", exact: true }),
-    );
+    await shell.user.click(editor().getByRole("button", { name: "Save" }));
     const corrected = await findRow(`Corrected ${name}`);
     expect(within(corrected).getByText(label!)).toBeTruthy();
     expect(within(corrected).getByText("Oct 5")).toBeTruthy();
@@ -998,9 +987,7 @@ test("an adjustment can be corrected to zero and still have its payee edited", a
     editor().getByLabelText("Inflow", { exact: true }),
     "0.00",
   );
-  await shell.user.click(
-    editor().getByRole("button", { name: "Save", exact: true }),
-  );
+  await shell.user.click(editor().getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   await waitForSaves();
   await shell.reload();
@@ -1011,9 +998,7 @@ test("an adjustment can be corrected to zero and still have its payee edited", a
     editor().getByLabelText("Payee", { exact: true }),
     "Zero adjustment",
   );
-  await shell.user.click(
-    editor().getByRole("button", { name: "Save", exact: true }),
-  );
+  await shell.user.click(editor().getByRole("button", { name: "Save" }));
   expect(
     within(await findRow("Zero adjustment")).getByText(
       "Inflow: Ready to Assign",
@@ -1094,9 +1079,7 @@ test("More deletes the removable checked purchases and adjustments, keeps transf
   await shell.user.click(
     screen.getByRole("checkbox", { name: "Select Transfer to Savings" }),
   );
-  expect(
-    screen.queryByRole("button", { name: "More", exact: true }),
-  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   await shell.user.click(
     screen.getByRole("checkbox", { name: "Select Market" }),
   );
@@ -1105,12 +1088,8 @@ test("More deletes the removable checked purchases and adjustments, keeps transf
       name: "Select Reconciliation balance adjustment",
     }),
   );
-  await shell.user.click(
-    screen.getByRole("button", { name: "More", exact: true }),
-  );
-  await shell.user.click(
-    screen.getByRole("menuitem", { name: "Delete", exact: true }),
-  );
+  await shell.user.click(screen.getByRole("button", { name: "More" }));
+  await shell.user.click(screen.getByRole("menuitem", { name: "Delete" }));
   const toast = await findToast("Deleted 2 transactions");
   expect(screen.queryByRole("checkbox", { name: "Select Market" })).toBeNull();
   expect(
@@ -1120,9 +1099,7 @@ test("More deletes the removable checked purchases and adjustments, keeps transf
   ).toBeNull();
   expect(await findRow("Transfer to Savings")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Checking $950.00" })).toBeTruthy();
-  expect(
-    screen.queryByRole("button", { name: "More", exact: true }),
-  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   await shell.user.click(within(toast).getByRole("button", { name: "Undo" }));
   expect(await findRow("Market")).toBeTruthy();
   expect(await findRow("Reconciliation balance adjustment")).toBeTruthy();

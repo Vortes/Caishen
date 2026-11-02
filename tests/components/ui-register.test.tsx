@@ -340,10 +340,10 @@ test("a register that never checks rows draws no checkboxes and keeps the caller
       rows={rows}
       cells={(row) => ({ label: row.name, content: row.name })}
       selectedId={null}
-      onSelect={() => {}}
+      onSelect={() => undefined}
       checked={["a"]}
-      onCheck={() => {}}
-      onOpen={() => {}}
+      onCheck={() => undefined}
+      onOpen={() => undefined}
       layout={{ wide: "minmax(0, 1fr)", gutter: "34px" }}
     />,
   );

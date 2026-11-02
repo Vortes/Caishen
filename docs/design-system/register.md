@@ -36,7 +36,7 @@ new register gets the same behavior.
   ranges, `x` and Select all. Transactions uses `row.actions.select`;
   the Partner uses its categorization eligibility.
 - Omit `checkable` when the register never checks rows, as Reimbursements
-  does. Pass `checked={[]}` and a no-op `onCheck`. It renders no checkboxes,
+  does. Pass `checked={[]}` and `onCheck={() => undefined}`. It renders no checkboxes,
   Select all or checked styling, and its current-row frame stays square.
 - `onOpen(row, column?)` decides what opening means and whether it is
   allowed. Transactions starts its editor at the clicked field; the Partner
@@ -109,7 +109,7 @@ rows={rows}
 selectedId={selectedId}
 onSelect={onSelect}
 checked={[]}
-onCheck={() => {}}
+onCheck={() => undefined}
 onOpen={(entry) =>
   onJump({
     id: entry.transactionId,

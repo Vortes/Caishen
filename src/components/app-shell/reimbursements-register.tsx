@@ -227,7 +227,7 @@ export function ReimbursementsRegister({
       selectedId={selectedId}
       onSelect={onSelect}
       checked={[]}
-      onCheck={() => {}}
+      onCheck={() => undefined}
       onOpen={(entry) =>
         onJump({
           id: entry.transactionId,
