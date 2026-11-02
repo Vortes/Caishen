@@ -102,28 +102,44 @@ function bankImport(
   };
 }
 
-void test("account openings are visible separately from spending and never fund existing card debt", () => {
+void test("Starting Balance adjustments never fund existing card debt", () => {
   const { data } = setup(-120_000);
   const shell = data();
-  assert.deepEqual(shell.openingBalances, [
-    {
-      source: "opening",
-      id: "opening:checking",
-      accountId: "checking",
-      date: "2026-10-01",
-      payee: "Starting Balance",
-      amount: 100_000,
-    },
-    {
-      source: "opening",
-      id: "opening:card",
-      accountId: "card",
-      date: "2026-10-01",
-      payee: "Starting Balance",
-      amount: -120_000,
-    },
-  ]);
-  assert.deepEqual(shell.transactions, []);
+  assert.deepEqual(
+    [
+      shell.transactions.find((t) => t.accountId === "checking")!,
+      shell.transactions.find((t) => t.accountId === "card")!,
+    ].map(({ id, accountId, date, payee, amount, categoryLabel }) => ({
+      id,
+      accountId,
+      date,
+      payee,
+      amount,
+      categoryLabel,
+    })),
+    [
+      {
+        id: "command-1",
+        accountId: "checking",
+        date: "2026-10-01",
+        payee: "Starting Balance",
+        amount: 100_000,
+        categoryLabel: "Inflow: Ready to Assign",
+      },
+      {
+        id: "command-2",
+        accountId: "card",
+        date: "2026-10-01",
+        payee: "Starting Balance",
+        amount: -120_000,
+        categoryLabel: "Category not needed",
+      },
+    ],
+  );
+  assert.deepEqual(
+    shell.transactions.filter((t) => t.needsReview),
+    [],
+  );
   assert.equal(shell.readyToAssign, 100_000);
   assert.equal(
     shell.accounts.find(({ id }) => id === "checking")!.cleared,
@@ -141,7 +157,7 @@ void test("account openings are visible separately from spending and never fund 
   assert.equal(
     setup()
       .data()
-      .openingBalances.find(({ accountId }) => accountId === "card")!.amount,
+      .transactions.find(({ accountId }) => accountId === "card")!.amount,
     0,
   );
 });
@@ -545,7 +561,9 @@ void test("the register excludes pending inflows from its uncleared balance and 
   assert.equal(checking.uncleared, -1_000);
   assert.deepEqual(
     Object.fromEntries(
-      shell.transactions.map(({ id, needsReview }) => [id, needsReview]),
+      shell.transactions
+        .filter((t) => ["posted", "pending", "refund"].includes(t.id))
+        .map(({ id, needsReview }) => [id, needsReview]),
     ),
     { posted: false, pending: true, refund: false },
   );

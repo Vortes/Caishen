@@ -2,7 +2,6 @@
   "id": "counterparty:reimbursements",
   "name": "Reimbursements",
   "kind": "reimbursements",
-  "openingBalance": 0,
   "date": "2026-08-01",
   "userId": "alex",
   "sort": 0

@@ -606,7 +606,6 @@
         "id",
         "kind",
         "name",
-        "openingBalance",
         "reconciled",
         "sort",
         "userId",
