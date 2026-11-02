@@ -81,9 +81,10 @@ Are any rows checked?
   first review action is `primary`; other actions use the default
   `secondary`. `PartnerActions` supplies Categorize and the optional
   Open in account destination. Every action uses `Button size="sm"`.
-- The sticky `.slot` centers the bar at the scrolling register's foot.
-  Keep the register's existing flex column, bottom padding and scroll
-  placement; they leave the last row reachable above the bar.
+- Pass the bar through [`Register`'s `actionBar` prop](register.md).
+  The sticky `.slot` centers it at the scrolling register's foot;
+  `register.module.css` owns the flex column and bottom padding that leave
+  the last row reachable above the bar. Keep that layout in the Register.
 - The frame uses `--surface-raised`, `--border-strong`, `--shadow-drawer`
   and `--type-small`. The count uses tabular numbers. Destination names
   truncate at 18ch while their full label remains accessible.

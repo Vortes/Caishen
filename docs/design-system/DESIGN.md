@@ -45,6 +45,7 @@ you use.
 | [spacing.md](spacing.md)           | Layout tokens; padding and gaps inside a component by role     |
 | [buttons.md](buttons.md)           | `Button`, `IconButton`                                         |
 | [action-bar.md](action-bar.md)     | `ActionBar`: checked-row actions, count, destinations, anchors |
+| [register.md](register.md)         | `Register`: columns, cells, selection, editors, sections       |
 | [fields.md](fields.md)             | `Field`, `FieldButton`, `FormError`, `FormFooter`; which input |
 | [text-inputs.md](text-inputs.md)   | `TextInput`                                                    |
 | [amounts.md](amounts.md)           | `AmountInput`, `readAmount`, the operator row                  |
@@ -69,9 +70,10 @@ These patterns exist in the app shell
 shell's pattern, use only semantic tokens, and say in your summary that
 the screen needs the missing primitive. Never invent a new primitive inline.
 
-- **Rows**: plan, register, list, and menu rows (`.row`, `.listRow`,
-  `.preset`, `.actionItem` in the shell). No shared row primitive exists;
-  selection styling must follow [rows.md](rows.md).
+- **Plain rows**: plan, loan, list, and menu rows (`.row`, `.listRow`,
+  `.preset`, `.actionItem` in the shell). No shared plain-row primitive
+  exists; selection styling follows [rows.md](rows.md). Column-headed
+  registers use [Register](register.md).
 - **Navigation**: sidebar items and section headings, breadcrumbs, the
   Spending Breakdown / Trends report tabs.
 - **Base styles**: the focus ring (`--focus-ring`, 2px) and the button font
