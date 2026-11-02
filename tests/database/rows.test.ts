@@ -142,7 +142,11 @@ void test("a category-free reimbursement split survives database storage", async
   const workspaceId = await household(book, 1);
   const loaded = rowsToBook(await loadRows(db, workspaceId));
   const view = projectBook(loaded, alexId, "2026-10");
-  assert.equal(view.budget.transactions[0]!.lines![1]!.categoryId, undefined);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "dinner")!.lines![1]!
+      .categoryId,
+    undefined,
+  );
   assert.equal(view.personalSpending, 846);
   assert.equal(
     view.accounts.find((item) => item.kind === "reimbursements")!.balance,

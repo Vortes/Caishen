@@ -227,7 +227,10 @@ void test("editing a transfer keeps both sides' locks, and a reconciled side kee
   const counterpartId = setup
     .view()
     .budget.transactions.find(
-      (item) => item.accountId === "savings" && !item.removed,
+      (item) =>
+        item.accountId === "savings" &&
+        item.linkedId === setup.transaction("to-savings").linkedId &&
+        !item.removed,
     )!.id;
   setup.run({
     type: "account.reconcile",

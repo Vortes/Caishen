@@ -361,6 +361,8 @@ void test("a stored split whose line names a category the budget doesn't have do
     ],
   });
   const stored = structuredClone(budget.book);
-  stored.budgets.alan!.transactions[0]!.lines![1]!.categoryId = "gone";
+  stored.budgets.alan!.transactions.find(
+    ({ id }) => id === "costco",
+  )!.lines![1]!.categoryId = "gone";
   assert.equal(bookSchema.safeParse(stored).success, false);
 });

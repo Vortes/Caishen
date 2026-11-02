@@ -9,10 +9,14 @@ import { personalSpendingEntries } from "../../src/domain/spending";
 void test("a stored split survives strict reading and a normalized-row round trip", () => {
   const book = bookSchema.parse(storedLineBook());
   const restored = rowsToBook(bookToRows(book));
-  assert.deepStrictEqual(restored.budgets.alan!.transactions[0]!.lines, [
-    { id: "food", categoryId: "groceries", amount: -15_000 },
-    { id: "paper", categoryId: "household", amount: -5_000 },
-  ]);
+  assert.deepStrictEqual(
+    restored.budgets.alan!.transactions.find(({ id }) => id === "costco")!
+      .lines,
+    [
+      { id: "food", categoryId: "groceries", amount: -15_000 },
+      { id: "paper", categoryId: "household", amount: -5_000 },
+    ],
+  );
 });
 
 void test("stored line amounts count toward their categories' activity", () => {
@@ -34,11 +38,18 @@ void test("a provider amount update preserves and rescales the saved category li
     type: "transaction.upsert", id: "bank-update", transactionId: "costco",
     accountId: "checking", date: "2026-10-10", payee: "Costco posted", amount: -24_000,
   }, "provider");
-  assert.deepStrictEqual(updated.budgets.alan!.transactions[0]!.lines, [
-    { id: "food", categoryId: "groceries", amount: -18_000 },
-    { id: "paper", categoryId: "household", amount: -6_000 },
-  ]);
-  assert.equal(updated.budgets.alan!.transactions[0]!.reviewed, false);
+  assert.deepStrictEqual(
+    updated.budgets.alan!.transactions.find(({ id }) => id === "costco")!.lines,
+    [
+      { id: "food", categoryId: "groceries", amount: -18_000 },
+      { id: "paper", categoryId: "household", amount: -6_000 },
+    ],
+  );
+  assert.equal(
+    updated.budgets.alan!.transactions.find(({ id }) => id === "costco")!
+      .reviewed,
+    false,
+  );
 });
 
 void test("categorizing a stored split replaces its lines and undo restores them", () => {
@@ -46,7 +57,11 @@ void test("categorizing a stored split replaces its lines and undo restores them
   const changed = executeWithChanges(before, "alan", {
     type: "transaction.categorize", id: "categorize", transactionId: "costco", categoryId: "household",
   }, "user");
-  assert.equal(changed.book.budgets.alan!.transactions[0]!.lines, undefined);
+  assert.equal(
+    changed.book.budgets.alan!.transactions.find(({ id }) => id === "costco")!
+      .lines,
+    undefined,
+  );
   const reverted = executeRevert(toRowSet(bookToRows(changed.book)), {
     type: "revert", id: "undo", targetOperationId: "categorize",
   }, changed.changeSet);
@@ -55,9 +70,14 @@ void test("categorizing a stored split replaces its lines and undo restores them
 
 void test("a saved split is already categorized when the user approves it", () => {
   const saved = storedLineBook();
-  saved.budgets.alan.transactions[0]!.reviewed = false;
+  saved.budgets.alan.transactions.find(({ id }) => id === "costco")!.reviewed =
+    false;
   const approved = execute(bookSchema.parse(saved), "alan", {
     type: "transaction.approve", id: "approve", transactionIds: ["costco"],
   }, "user");
-  assert.equal(approved.budgets.alan!.transactions[0]!.reviewed, true);
+  assert.equal(
+    approved.budgets.alan!.transactions.find(({ id }) => id === "costco")!
+      .reviewed,
+    true,
+  );
 });
