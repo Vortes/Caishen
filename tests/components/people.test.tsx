@@ -270,6 +270,60 @@ test("a name typed in Who is this for adds that person with the share", async ()
   );
 });
 
+test("New person with nothing typed asks for the name in the same field", async () => {
+  const { user } = await renderShell({ book: lunch() });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  const who = menu.getByRole("combobox", { name: "Who is this for" });
+  await user.click(who);
+  await user.click(screen.getByRole("option", { name: "New person" }));
+  // No second form: the same field waits for the name.
+  expect(who).toHaveProperty("value", "");
+  expect(menu.queryByRole("button", { name: "Continue" })).toBeNull();
+  expect(menu.getByRole("button", { name: /^Half/ })).toHaveProperty(
+    "disabled",
+    true,
+  );
+  await user.type(who, "Sam");
+  await user.click(screen.getByRole("option", { name: "New person “Sam”" }));
+  expect(
+    menu.getByText("Only you see new people. They get an envelope in People."),
+  ).toBeTruthy();
+  await user.click(menu.getByRole("button", { name: /^Half/ }));
+
+  expect(
+    await screen.findByRole("button", {
+      name: "Sam’s share of Lunch: $15.00. Change",
+    }),
+  ).toBeTruthy();
+});
+
+test("among several people and no partner, nobody is chosen for a new share", async () => {
+  const book = execute(lunch(), "owner", {
+    type: "person.add",
+    id: "add-sam",
+    accountId: personAccountId("sam"),
+    name: "Sam",
+  });
+  const { user } = await renderShell({ book });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  expect(
+    menu.getByRole("combobox", { name: "Who is this for" }),
+  ).toHaveProperty("value", "");
+  for (const amount of [/^Half/, /^All of it/, /^An amount/])
+    expect(menu.getByRole("button", { name: amount })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  expect(menu.getByRole("button", { name: /^Just mine/ })).toHaveProperty(
+    "disabled",
+    false,
+  );
+});
+
 test("the person on Caishen leads Who is this for, and everyone gets the same amounts", async () => {
   const book = withPeople(addMember(lunch(), "anna", "Home budget", "2026-10"));
   const { user } = await renderShell({
