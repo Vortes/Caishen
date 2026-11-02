@@ -1,5 +1,7 @@
 "use client";
 
+import grid from "~/components/ui/register.module.css";
+
 import { useState, type ReactNode } from "react";
 import { newId } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
@@ -64,7 +66,7 @@ export function RepaymentEditor({
         onClose();
       }}
     >
-      <div className={`${shell.txColumns} ${entry.entryRow}`}>
+      <div className={`${grid.columns} ${entry.entryRow}`}>
         {accountName !== undefined && (
           <StaticCell>
             <span className={shell.faint}>{accountName}</span>

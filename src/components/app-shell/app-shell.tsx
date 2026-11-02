@@ -17,7 +17,6 @@ import {
   type ReactNode,
 } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
-import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { AccountSummary, SearchField } from "./account";
 import type { Reconciling } from "./reconcile";
 import {
@@ -229,9 +228,6 @@ export function AppShell({
         : current.filter((id) => !ids.includes(id)),
     );
   };
-  const selectedActions = transactionSelectionActions(
-    transactions.filter((transaction) => checked.includes(transaction.id)),
-  );
   const reviewOnly = budgetAddress.searchParams.get("view") === "review";
   const routeQuery = budgetAddress.searchParams.get("q") ?? "";
   // Keep the input responsive while Next applies its URL transition.
@@ -468,13 +464,6 @@ export function AppShell({
         setAddingGroup(true);
       else if (event.key === "n" && recordable) {
         if (!entry.start({ accountId: screen.accountId })) return;
-      } else if (
-        event.key === "e" &&
-        screen.type === "register" &&
-        selectedActions.edit?.id === selectedId &&
-        selectedActions.edit?.kind === "transaction"
-      ) {
-        if (!entry.start({ transactionId: selectedActions.edit.id })) return;
       } else if (event.key === "Escape") {
         if (peekOpen) dismissPeek();
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
@@ -514,7 +503,6 @@ export function AppShell({
     path,
     entry,
     selectedId,
-    selectedActions,
     settingsOpen,
     closeSettings,
   ]);
