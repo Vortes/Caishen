@@ -156,8 +156,7 @@ const unavailable: Capability = {
 };
 
 // Shapes the register edits and rejects. The others are written by the
-// engine as consequences of something else: a repayment, a statement credit,
-// a reconciliation adjustment.
+// engine as consequences of something else: a repayment or statement credit.
 const registerShapes: Record<TransactionShape["kind"], boolean> = {
   purchase: true,
   income: true,
@@ -167,7 +166,7 @@ const registerShapes: Record<TransactionShape["kind"], boolean> = {
   "loan-payment": true,
   reimbursement: false,
   "statement-credit": false,
-  adjustment: false,
+  adjustment: true,
 };
 // Shapes whose purpose category is set directly on the entry.
 const categorizedShapes: Record<TransactionShape["kind"], boolean> = {

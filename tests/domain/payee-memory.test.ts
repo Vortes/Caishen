@@ -222,3 +222,39 @@ void test("a payee's memory prefills only where it fits the account and directio
   assert.equal(alan.remembered("Trader Joe's", "checking", 1_000), "groceries");
   assert.equal(alan.remembered("Trader Joe's", "brokerage", -1_000), undefined);
 });
+
+void test("renamed balance adjustments never teach payee memory, even when named Starting Balance", () => {
+  const alan = budget();
+  alan.run({
+    type: "account.reconcile",
+    accountId: "checking",
+    date: "2026-10-10",
+    balance: 501_000,
+    adjustmentId: "adjustment",
+  });
+  assert.equal(alan.remembered("Reconciliation balance adjustment"), undefined);
+  for (const payee of ["Starting Balance", "Neighborhood cafe"]) {
+    alan.run({
+      type: "transaction.upsert",
+      transactionId: "adjustment",
+      accountId: "checking",
+      date: "2026-10-10",
+      amount: 1000,
+      payee,
+      status: "posted",
+    });
+    assert.equal(alan.remembered(payee), undefined);
+  }
+  alan.purchase("ordinary", "Starting Balance", "groceries");
+  assert.equal(alan.remembered("Starting Balance"), "groceries");
+  alan.run({
+    type: "transaction.upsert",
+    transactionId: "adjustment",
+    accountId: "checking",
+    date: "2026-10-10",
+    amount: 1000,
+    payee: "Starting Balance",
+    status: "posted",
+  });
+  assert.equal(alan.remembered("Starting Balance"), "groceries");
+});

@@ -3083,7 +3083,7 @@ function ensureReconciledUnchanged(
 ): void {
   if (
     existing.reconciled &&
-    (existing.amount !== next.amount ||
+    ((existing.kind !== "adjustment" && existing.amount !== next.amount) ||
       existing.status !== next.status ||
       next.cleared === false)
   )
@@ -4163,6 +4163,15 @@ function applyCommand(
           loanId: command.loanId,
         },
       );
+      if (
+        entry.shape.kind === "adjustment" &&
+        (command.categoryId ||
+          command.lines ||
+          command.counterpartyShare ||
+          command.transferAccountId ||
+          command.loanId)
+      )
+        fail("A balance adjustment's category and kind cannot change");
       // A bank update may restore a removed transaction: a posting replaces
       // the removed pending purchase it came from (banks.ts restoresPending).
       // The user may not.
@@ -4663,13 +4672,16 @@ function applyCommand(
           source === "user"
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
-        kind: statementCredit
-          ? "statement-credit"
-          : command.amount < 0
-            ? "purchase"
-            : categoryId || lines || counterpartyShare
-              ? "refund"
-              : "income",
+        kind:
+          existing?.kind === "adjustment"
+            ? "adjustment"
+            : statementCredit
+              ? "statement-credit"
+              : command.amount < 0
+                ? "purchase"
+                : categoryId || lines || counterpartyShare
+                  ? "refund"
+                  : "income",
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),

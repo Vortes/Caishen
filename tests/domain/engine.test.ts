@@ -2414,3 +2414,91 @@ void test("F5: the command schema rejects all four retired register payment comm
     );
   }
 });
+
+void test("editing and deleting a reviewed reconciliation adjustment changes balances by its difference", () => {
+  const setup = fixture(100_000);
+  setup.run({
+    type: "account.reconcile",
+    accountId: "checking",
+    date,
+    balance: 110_000,
+    adjustmentId: "adjustment",
+  });
+  const adjustment = setup
+    .view()
+    .budget.transactions.find((item) => item.id === "adjustment")!;
+  assert.equal(adjustment.reviewed, true);
+  assert.equal(
+    setup.view().accounts.find((item) => item.id === "checking")!.balance,
+    110_000,
+  );
+  assert.equal(setup.view().readyToAssign, 110_000);
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "adjustment",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -5000,
+    payee: "Corrected balance",
+    status: "posted",
+  });
+  const edited = setup
+    .view()
+    .budget.transactions.find((item) => item.id === "adjustment")!;
+  assert.equal(edited.kind, "adjustment");
+  assert.equal(edited.date, "2026-10-05");
+  assert.equal(edited.payee, "Corrected balance");
+  assert.equal(
+    setup.view().accounts.find((item) => item.id === "checking")!.balance,
+    95_000,
+  );
+  assert.equal(setup.view().readyToAssign, 95_000);
+  setup.run({ type: "transaction.remove", transactionId: "adjustment" });
+  assert.equal(
+    setup.view().accounts.find((item) => item.id === "checking")!.balance,
+    100_000,
+  );
+  assert.equal(setup.view().readyToAssign, 100_000);
+});
+
+void test("a balance adjustment cannot become categorized spending or a payment through an edit", () => {
+  const setup = fixture(100_000);
+  setup.run({
+    type: "account.add",
+    accountId: "savings",
+    name: "Savings",
+    kind: "cash",
+    openingBalance: 0,
+  });
+  setup.run({
+    type: "account.reconcile",
+    accountId: "checking",
+    date,
+    balance: 110_000,
+    adjustmentId: "adjustment",
+  });
+  const edit = {
+    type: "transaction.upsert" as const,
+    transactionId: "adjustment",
+    accountId: "checking",
+    date,
+    amount: 10_000,
+    payee: "A new name",
+    status: "posted" as const,
+    revision: 2,
+  };
+  for (const change of [
+    { categoryId: "food" },
+    { transferAccountId: "savings" },
+    {
+      lines: [
+        { lineId: "one", categoryId: "food", amount: 5000 },
+        { lineId: "two", categoryId: "food", amount: 5000 },
+      ],
+    },
+  ])
+    assert.throws(
+      () => setup.run({ ...edit, ...change }),
+      /balance adjustment/i,
+    );
+});

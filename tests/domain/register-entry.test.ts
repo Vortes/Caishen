@@ -134,3 +134,39 @@ void test("register classification supplies category and split field rules for p
   assert.equal(transfer.fields.category, "boundary");
   assert.equal(transfer.fields.split, false);
 });
+
+void test("balance adjustments are register-editable with a fixed category on cash, credit and tracking accounts", () => {
+  for (const kind of ["cash", "credit", "tracking"] as const) {
+    let book = execute(createBook("a", "A", "2026-10"), "a", {
+      type: "account.add",
+      id: "account",
+      accountId: kind,
+      name: kind,
+      kind,
+      openingBalance: 0,
+      date: "2026-10-01",
+    });
+    book = execute(book, "a", {
+      type: "account.reconcile",
+      id: "reconcile",
+      accountId: kind,
+      date: "2026-10-10",
+      balance: kind === "cash" ? 1000 : -1000,
+      adjustmentId: "adjustment",
+    });
+    const budget = book.budgets.a!;
+    const adjustment = budget.transactions.find(
+      (item) => item.id === "adjustment",
+    )!;
+    const entry = classifyRegisterEntry(budget, adjustment);
+    assert.deepEqual(entry.capabilities.edit, {
+      ok: true,
+      command: "transaction.upsert",
+    });
+    assert.equal(entry.capabilities.categorize.ok, false);
+    assert.equal(entry.fields.category, kind === "cash" ? "purpose" : "none");
+    assert.equal(entry.fields.needsCategory, false);
+    assert.equal(entry.fields.split, false);
+    assert.deepEqual(entry.capabilities.share, { mode: "none" });
+  }
+});
