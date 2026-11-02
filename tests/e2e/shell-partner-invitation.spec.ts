@@ -1,38 +1,9 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import type { Locator, Page } from "@playwright/test";
+import { rm } from "node:fs/promises";
 import { outboxPath } from "./environment";
+import { invitationLink, stroke } from "./partner-household";
 import { expect, test, shellPath } from "./shell-fixture";
-
-// The link in the newest email to `to` that the test server sent.
-async function invitationLink(to: string) {
-  let link: string | undefined;
-  await expect(async () => {
-    for (const file of (await readdir(outboxPath)).sort().reverse()) {
-      const email = JSON.parse(
-        await readFile(join(outboxPath, file), "utf8"),
-      ) as { to: string[]; text: string };
-      if (!email.to.includes(to)) continue;
-      link = /https?:\/\/\S+\/invite\/[A-Za-z0-9_-]+/.exec(email.text)?.[0];
-      if (link) return;
-    }
-    throw new Error(`No invitation email to ${to} yet.`);
-  }).toPass({ timeout: 15_000 });
-  return new URL(link!).pathname;
-}
-
-// A short stroke across an element, as a finger or mouse would draw it.
-async function stroke(page: Page, target: Locator, to = { x: 0.8, y: 0.6 }) {
-  const box = (await target.boundingBox())!;
-  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * to.x, box.y + box.height * to.y, {
-    steps: 12,
-  });
-  await page.mouse.up();
-}
 
 test("an invitation sent from Settings becomes a shared budget for someone new", async ({
   page,
@@ -76,7 +47,7 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
     "href",
     new RegExp(`${path}\\?sign-in$`),
   );
-  await partner.getByLabel("Password").fill(`Caishen!${randomUUID()}`);
+  await partner.getByLabel("Password", { exact: true }).fill(`Caishen!${randomUUID()}`);
   await partner.getByRole("button", { name: "Continue", exact: true }).click();
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");
@@ -112,9 +83,10 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   await partner.getByLabel("Your name").fill("Alex Newcomer");
   await partner.getByLabel("Budget name").fill("Newcomer budget");
   await partner.getByRole("button", { name: "Create my budget" }).click();
+  // Creating the budget and joining it take a server round trip.
   await expect(
     partner.getByRole("heading", { name: "A few questions about you" }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30_000 });
   await expect(partner).toHaveURL(/\/welcome$/);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();

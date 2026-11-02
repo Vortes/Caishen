@@ -1,6 +1,5 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CircleAlertIcon } from "lucide-react";
 import {
   createContext,
@@ -11,8 +10,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { parseAssignedAmount } from "~/components/budget/assigned-amount";
-import { newId } from "~/components/budget/format";
+import { readAmount } from "~/components/budget/amount";
+import {
+  caretAfterSameDigit,
+  groupThousands,
+  newId,
+} from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
 import { useShellData } from "./shell-data";
@@ -122,16 +125,13 @@ export function AssignedCell({ category }: { category: Category }) {
 
   const commit = (fromKeyboard: boolean) => {
     if (!editor || !ready.current) return;
-    let total: number;
-    try {
-      total = parseAssignedAmount(editor.draft);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Enter a dollar amount.";
-      fail(message);
-      alert(message);
+    const reading = readAmount(editor.draft);
+    if (!reading.ok) {
+      fail(reading.message);
+      alert(reading.message);
       return;
     }
+    const total = reading.cents;
     const { base } = editor;
     // An amount left as it opened changes nothing, even if the total moved
     // since (another tab): only what the user typed is sent.
@@ -194,7 +194,16 @@ export function AssignedCell({ category }: { category: Category }) {
                 aria-describedby={editor.error ? errorId : undefined}
                 onFocus={(event) => event.currentTarget.select()}
                 onChange={(event) => {
-                  const draft = groupAmountInput(event.target);
+                  const input = event.target;
+                  const draft = groupThousands(input.value);
+                  const caret = caretAfterSameDigit(
+                    input.value,
+                    input.selectionStart ?? input.value.length,
+                    draft,
+                  );
+                  requestAnimationFrame(() =>
+                    input.setSelectionRange(caret, caret),
+                  );
                   setEditor((value) => value && { ...value, draft });
                 }}
                 onBlur={() => commit(false)}

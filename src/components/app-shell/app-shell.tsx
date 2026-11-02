@@ -22,7 +22,6 @@ import { AccountSummary, SearchField } from "./account";
 import type { Reconciling } from "./reconcile";
 import {
   AddCategoryProvider,
-  AddGroupButton,
   type AddCategory,
   type Added,
 } from "./add-category";
@@ -46,12 +45,13 @@ import {
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { IconButton } from "~/components/ui/icon-button";
-import { Tooltip, TooltipProvider } from "~/components/ui/tooltip";
+import { SurfaceProvider } from "~/components/ui/surface";
+import { Tooltip } from "~/components/ui/tooltip";
 import { SettingsNav, Sidebar } from "./sidebar";
 import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
-import type { WayBack } from "./transaction-review";
+import type { Way } from "./transaction-review";
 import { PartnerRegister } from "./partner-register";
 import {
   ReimbursementFilters,
@@ -584,13 +584,14 @@ export function AppShell({
   const returnTo = useRef<string | null>(null);
   // Only in the register the transaction opened in; browsing anywhere else
   // forgets it.
-  const back: WayBack | null =
+  const back: Way | null =
     cameFrom &&
     screen.type === "register" &&
     screen.accountId === cameFrom.accountId
       ? {
           name: cameFrom.name,
-          onBack: () => {
+          label: `Back to ${cameFrom.name} in the plan`,
+          onGo: () => {
             if (entry.holdForDraft()) return;
             navigateTo(cameFrom.href);
             setRevealed({ type: "category", id: cameFrom.categoryId });
@@ -723,7 +724,7 @@ export function AppShell({
           data-dragging={sidebar.dragging || inspector.dragging || undefined}
           data-peekable={peekable || undefined}
         >
-          <TooltipProvider container={rootElement}>
+          <SurfaceProvider container={rootElement}>
             <a className={styles.skipLink} href="#app-content">
               Skip to content
             </a>
@@ -954,13 +955,6 @@ export function AppShell({
                         </AddTransactionTooltip>
                       )}
                       <div className={styles.toolbarActions}>
-                        {screen.type === "plan" && (
-                          <AddGroupButton
-                            open={addingGroup}
-                            onOpenChange={setAddingGroup}
-                            compact={phone}
-                          />
-                        )}
                         {screen.type === "register" && (
                           <SearchField
                             value={query}
@@ -1010,6 +1004,8 @@ export function AppShell({
                             onCheck={check}
                             reveal={revealed}
                             onJump={jump}
+                            addingGroup={addingGroup}
+                            onAddingGroupChange={setAddingGroup}
                           />
                         )}
                         {screen.type === "register" && (
@@ -1020,6 +1016,11 @@ export function AppShell({
                                 key={account.id}
                                 account={account}
                                 query={deferredQuery}
+                                onJump={jump}
+                                selectedId={selectedId}
+                                onSelect={selectOnly}
+                                checked={checked}
+                                onCheck={check}
                               />
                             ) : account?.kind === "reimbursements" ? (
                               <ReimbursementsRegister
@@ -1146,7 +1147,7 @@ export function AppShell({
             </div>
 
             {overlays}
-          </TooltipProvider>
+          </SurfaceProvider>
         </div>
       </ActionProviders>
     </ShellDataProvider>
@@ -1212,16 +1213,6 @@ function HeaderTitle({
 
   return (
     <div className={styles.titleGroup}>
-      {screen.type === "register" && accountName && (
-        <>
-          <span className={styles.crumb}>Accounts</span>
-          <ChevronRightIcon
-            size={12}
-            className={styles.crumbSeparator}
-            aria-hidden
-          />
-        </>
-      )}
       <h1 className={styles.headerTitle}>
         {screen.type === "reflect"
           ? "Reflect"

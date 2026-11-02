@@ -6,14 +6,13 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "lucide-react";
-import { Popover } from "radix-ui";
 import { useState, type ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field } from "~/components/ui/field";
 import { IconButton } from "~/components/ui/icon-button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
+import { Select } from "~/components/ui/select";
 import { useShellData } from "../shell-data";
 import {
   filterableCategories,
@@ -158,19 +157,10 @@ function FilterPopover({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const container = usePortalContainer();
-  const [internalOpen, setInternalOpen] = useState(false);
-  const shown = open ?? internalOpen;
-  const motion = usePopoverMotion(shown);
   return (
-    <Popover.Root
-      open={shown}
-      onOpenChange={(next) => {
-        setInternalOpen(next);
-        onOpenChange?.(next);
-      }}
-    >
-      <Popover.Trigger asChild>
+    <Popover
+      label={name}
+      trigger={
         <Button
           size="sm"
           variant={variant}
@@ -181,19 +171,13 @@ function FilterPopover({
           {label}
           <ChevronDownIcon aria-hidden />
         </Button>
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={8}
-        >
-          {children}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      }
+      open={open}
+      onOpenChange={onOpenChange}
+      size="form"
+    >
+      <div className={styles.filterPanel}>{children}</div>
+    </Popover>
   );
 }
 
@@ -212,6 +196,7 @@ function ChecklistFilter({
   selected: string[] | null;
   onChange: (selected: string[] | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const all = sections.flatMap((section) =>
     section.options.map((item) => item.id),
   );
@@ -232,7 +217,7 @@ function ChecklistFilter({
         ? `No ${noun}`
         : `${count} of ${all.length} ${noun}`;
   return (
-    <FilterPopover name={name} label={label}>
+    <FilterPopover name={name} label={label} open={open} onOpenChange={setOpen}>
       <div className={styles.popoverHeader}>
         <Button
           variant="quiet"
@@ -281,9 +266,9 @@ function ChecklistFilter({
         })}
       </div>
       <div className={styles.popoverFooter}>
-        <Popover.Close asChild>
-          <Button size="sm">Done</Button>
-        </Popover.Close>
+        <Button size="sm" onClick={() => setOpen(false)}>
+          Done
+        </Button>
       </div>
     </FilterPopover>
   );
@@ -337,7 +322,10 @@ function DatesFilter({
   const resolved = resolveRange(range, current, start);
   const [from, setFrom] = useState(resolved.from);
   const [to, setTo] = useState(resolved.to);
-  const months = monthsBetween(start, current);
+  const monthOptions = monthsBetween(start, current).map((month) => ({
+    value: month,
+    label: monthOption(month),
+  }));
   const choose = (next: DateRange) => {
     onChange(next);
     setOpen(false);
@@ -386,38 +374,26 @@ function DatesFilter({
             <CheckIcon size={14} strokeWidth={2.5} aria-hidden />
           )}
         </span>
-        <label>
-          <span>From</span>
-          <select
+        <Field label="From">
+          <Select
             value={from}
-            onChange={(event) => {
-              setFrom(event.target.value);
-              if (event.target.value > to) setTo(event.target.value);
+            onChange={(next) => {
+              setFrom(next);
+              if (next > to) setTo(next);
             }}
-          >
-            {months.map((month) => (
-              <option key={month} value={month}>
-                {monthOption(month)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>To</span>
-          <select
+            options={monthOptions}
+          />
+        </Field>
+        <Field label="To">
+          <Select
             value={to}
-            onChange={(event) => {
-              setTo(event.target.value);
-              if (event.target.value < from) setFrom(event.target.value);
+            onChange={(next) => {
+              setTo(next);
+              if (next < from) setFrom(next);
             }}
-          >
-            {months.map((month) => (
-              <option key={month} value={month}>
-                {monthOption(month)}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={monthOptions}
+          />
+        </Field>
         <div className={styles.customSubmit}>
           <Button variant="primary" size="sm" type="submit">
             Apply

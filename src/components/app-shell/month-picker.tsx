@@ -5,7 +5,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "lucide-react";
-import { Popover } from "radix-ui";
 import {
   useEffect,
   useRef,
@@ -16,9 +15,7 @@ import {
 import { moveMonth } from "~/components/budget/format";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
 import type { ShellData } from "./model";
 import shellStyles from "./shell.module.css";
 import styles from "./month-picker.module.css";
@@ -65,9 +62,7 @@ export function MonthNav({
   month: ShellData["month"];
   onChange: (month: string) => void;
 }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   const away = month.key !== month.current;
   const pick = (next: string) => {
     setOpen(false);
@@ -82,8 +77,9 @@ export function MonthNav({
       >
         <ChevronLeftIcon aria-hidden />
       </IconButton>
-      <Popover.Root open={open} onOpenChange={setOpen}>
-        <Popover.Trigger asChild>
+      <Popover
+        label="Choose a month"
+        trigger={
           <button
             type="button"
             className={`${shellStyles.monthButton} ${styles.monthTrigger}`}
@@ -91,31 +87,23 @@ export function MonthNav({
           >
             <MonthLabel year={month.key.slice(0, 4)}>{month.label}</MonthLabel>
           </button>
-        </Popover.Trigger>
-        <Popover.Portal container={container}>
-          <Popover.Content
-            {...motion}
-            className={styles.popover}
-            align="start"
-            sideOffset={POPOVER_GAP}
-            collisionPadding={12}
-            aria-label="Choose a month"
-            // The picker focuses the month on screen itself.
-            onOpenAutoFocus={(event) => event.preventDefault()}
+        }
+        open={open}
+        onOpenChange={setOpen}
+        // The picker focuses the month on screen itself.
+        autoFocus={false}
+      >
+        <MonthGrid month={month} onPick={pick} />
+        <div className={styles.pickerFooter}>
+          <Button
+            size="sm"
+            disabled={!away}
+            onClick={() => pick(month.current)}
           >
-            <MonthGrid month={month} onPick={pick} />
-            <div className={styles.pickerFooter}>
-              <Button
-                size="sm"
-                disabled={!away}
-                onClick={() => pick(month.current)}
-              >
-                This month
-              </Button>
-            </div>
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+            This month
+          </Button>
+        </div>
+      </Popover>
       <IconButton
         label="Next month"
         disabled={month.key >= lastMonth(month)}

@@ -84,41 +84,15 @@
 .island > .actions:empty {
   display: none;
 }
-.categoryMenu {
-  width: min(240px, calc(100vw - 24px));
-  min-width: 0;
-  max-height: var(--radix-popper-available-height);
-  overflow-y: auto;
-}
-.categoryMenu .categoryGroup {
-  height: auto;
-  min-height: var(--size-row-sm);
-  padding-block: 8px;
-}
-.categoryGroup > span {
-  flex: 1;
-}
-.menuError {
-  padding: var(--space-inset);
-}
 .shareConfirmation {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: var(--space-card);
 }
-.sharePopover {
-  width: min(var(--size-popover), calc(100vw - 24px));
-  max-height: var(--radix-popover-content-available-height);
-  overflow-y: auto;
-}
 .shareConfirmation > strong {
   color: var(--text-primary);
   font-weight: 500;
-}
-.shareConfirmation > label {
-  color: var(--text-secondary);
-  font-size: var(--type-small);
 }
 .shareConfirmation > .actions {
   justify-content: flex-end;
@@ -129,17 +103,6 @@
   font-size: var(--type-small);
   font-variant-numeric: tabular-nums;
   line-height: 1.45;
-}
-.error {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin: 0;
-  color: var(--danger-text);
-}
-.error > svg {
-  flex: none;
-  transform: translateY(2px);
 }
 /* A narrow register gives the hint its own line instead of squeezing the
    count. */
@@ -163,8 +126,7 @@
 }
 @media (pointer: coarse) {
   .island,
-  .categoryMenu,
-  .sharePopover {
+  .sharePanel {
     --size-control-xs: var(--size-row-lg);
     --size-control: var(--size-row-lg);
   }

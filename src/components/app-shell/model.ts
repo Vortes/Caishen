@@ -24,9 +24,11 @@ import {
 import { weekdaysIn, type AutoAssignCategory } from "~/domain/auto-assign";
 import { balanceImports } from "~/domain/bank-import-balances";
 import {
+  categoriesWithHistory,
   isCleared,
   isCounterparty,
   isPending,
+  planGroups,
   type Target,
 } from "~/domain/engine";
 
@@ -77,6 +79,8 @@ export type Category = {
   // aside minus what the account says is owed to you.
   pairs?: { accountId: string; name: string; balance: number };
   autoAssign: AutoAssignCategory;
+  // Has transactions or assigned money, which deleting it moves elsewhere.
+  used: boolean;
 };
 
 export type ActivityEntry = {
@@ -305,7 +309,7 @@ export type ShellSource = {
   imports: State["imports"];
   // The partner's first name from their profile, which names the partner
   // account; a member's own name is their budget's.
-  partnerFirstName?: string;
+  partnerFirstName?: string | null;
 };
 
 export function toShellData(
@@ -387,6 +391,7 @@ export function toShellData(
       })
       .sort((a, b) => b.date.localeCompare(a.date));
 
+  const used = categoriesWithHistory(view.budget);
   const categories = view.categories.map((item): Category => {
     const card = item.pairedAccountId
       ? view.accounts.find((account) => account.id === item.pairedAccountId)
@@ -461,33 +466,19 @@ export function toShellData(
         balance: pair.balance,
       },
       autoAssign: item,
+      used: used.has(item.id),
     };
   });
 
-  // The budget's ordered groups lead; the rest follow in the order their
-  // categories were added.
-  const groups: CategoryGroup[] = (view.budget.groups ?? []).map((name) => ({
+  const groups: CategoryGroup[] = planGroups(view.budget).map((name) => ({
     id: name,
     name,
     categories: [],
   }));
-  for (const category of categories) {
-    const group = groups.find((entry) => entry.name === category.group);
-    if (group) group.categories.push(category);
-    else
-      groups.push({
-        id: category.group,
-        name: category.group,
-        categories: [category],
-      });
-  }
-  // People, which holds the paired envelopes, leads the plan until it's
-  // been moved.
-  const people = groups.find((group) =>
-    group.categories.some((category) => category.pairs),
-  );
-  if (people && !view.budget.groups?.includes(people.name))
-    groups.unshift(...groups.splice(groups.indexOf(people), 1));
+  for (const category of categories)
+    groups
+      .find((group) => group.name === category.group)
+      ?.categories.push(category);
 
   const active = view.budget.transactions.filter((item) => !item.removed);
   const imported = balanceImports(view.budget, state.imports, todayKey);

@@ -1,0 +1,178 @@
+/* The raised surface every popover and menu shares. Content lays itself out; the
+   surface adds no padding. Height is clamped to the room Radix finds on the
+   placed side, and content past it scrolls as a whole. The surface is a flex
+   column, so content that pins a header gives its root min-height: 0: the
+   root then shrinks to the room left and scrolls only its own body. */
+.surface {
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  max-height: var(--radix-popper-available-height);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-menu);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-drawer);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  outline: none;
+}
+
+/* A dialog: the same raised surface, centered over a scrim and above every
+   popover. It has no anchor, so it grows from the viewport's center. */
+.scrim {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: var(--overlay);
+}
+.dialog {
+  composes: surface;
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-card);
+  width: min(var(--size-dialog), calc(100vw - 24px));
+  max-height: calc(100dvh - 48px);
+  padding: var(--space-card);
+  color: var(--text-primary);
+  translate: -50% -50%;
+}
+/* Wide content pins its own header and footer; only its body scrolls. */
+.dialog[data-size="wide"] {
+  width: min(var(--size-dialog-wide), calc(100vw - 24px));
+  overflow: hidden;
+}
+/* A dialog that focuses itself shows no ring; its controls still do. The
+   attribute outranks the shell's focus ring, whatever order the sheets
+   load in. */
+.dialog[data-state]:focus-visible {
+  outline: none;
+}
+/* The pointer grows a dialog from the viewport's center and fades its
+   scrim on the same timing, so the two read as one motion. Leaving is
+   quicker and smaller, since attention has already moved on. */
+.scrim[data-motion="occasional"][data-state="open"]:not([data-instant]) {
+  animation: scrim-in var(--duration-dialog-enter) ease-out;
+}
+.scrim[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
+  animation: scrim-out var(--duration-dialog-exit) ease-in forwards;
+}
+.dialog[data-motion="occasional"][data-state="open"]:not([data-instant]) {
+  animation: dialog-in var(--duration-dialog-enter) var(--ease-panel);
+}
+.dialog[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
+  animation: dialog-out var(--duration-dialog-exit) ease-in forwards;
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes scrim-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+/* Widths. Without a size the content sets the width. */
+.form {
+  width: min(var(--size-popover), calc(100vw - 24px));
+}
+/* For a table of transactions. 560px, the Reflect slice panel's width: its
+   four fractional columns truncate first, while the activity list's capped
+   account column only gives the extra 40px to the payee. */
+.wide {
+  width: min(var(--size-popover-wide), calc(100vw - 24px));
+}
+/* As wide as the trigger or anchor, and never narrower than 20rem: room
+   for a long category name beside its balance. A longer name truncates
+   rather than widening the list. */
+.trigger {
+  width: min(
+    max(var(--radix-popover-trigger-width), 20rem),
+    calc(100vw - 24px)
+  );
+}
+
+/* Points at the trigger; the gap grows by its height. */
+.arrow {
+  fill: var(--surface-raised);
+}
+
+/* Motion. Frequent surfaces are instant; occasional ones animate when the
+   pointer opens them. */
+.motion {
+  --popover-enter-x: 0px;
+  --popover-enter-y: 0px;
+}
+.motion[data-motion="occasional"]:not([data-instant]) {
+  transform-origin: var(--radix-popper-transform-origin);
+  transform: translate(0, 0) scale(1);
+  opacity: 1;
+  will-change: transform, opacity;
+  transition:
+    transform var(--duration-popover-enter) var(--ease-panel),
+    opacity var(--duration-popover-enter) var(--ease-panel);
+}
+.motion[data-side="top"] {
+  --popover-enter-y: var(--distance-popover);
+}
+.motion[data-side="bottom"] {
+  --popover-enter-y: calc(-1 * var(--distance-popover));
+}
+.motion[data-side="left"] {
+  --popover-enter-x: var(--distance-popover);
+}
+.motion[data-side="right"] {
+  --popover-enter-x: calc(-1 * var(--distance-popover));
+}
+.motion[data-motion="occasional"][data-state="closed"]:not([data-instant]) {
+  opacity: 0;
+  transform: translate(0, 0) scale(var(--scale-popover));
+  transition-duration: var(--duration-popover-exit);
+  transition-timing-function: ease-in;
+  pointer-events: none;
+  /* Radix Presence waits for animationend, not transitionend. This keeps
+     content mounted for the exit; the transitions own all visible motion. */
+  animation: popover-exit var(--duration-popover-exit);
+}
+@starting-style {
+  .motion[data-motion="occasional"][data-state="open"]:not([data-instant]) {
+    opacity: 0;
+    transform: translate(var(--popover-enter-x), var(--popover-enter-y))
+      scale(var(--scale-popover));
+  }
+}
+@keyframes popover-exit {
+  from,
+  to {
+    pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrim[data-motion="occasional"][data-state]:not([data-instant]),
+  .dialog[data-motion="occasional"][data-state]:not([data-instant]) {
+    animation: none;
+  }
+  .motion[data-motion="occasional"][data-state]:not([data-instant]) {
+    animation: none;
+    transition: none;
+    will-change: auto;
+  }
+}

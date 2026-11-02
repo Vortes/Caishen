@@ -1,0 +1,85 @@
+/* Linear-style: one centered column of sections, each a heading over a card
+   of rows with the label first and the control at the row's end. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.headingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.heading {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 600;
+  letter-spacing: inherit;
+}
+.intro {
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.item {
+  display: flex;
+  flex-direction: column;
+}
+/* Controls sit straight in the row, so each keeps its own sizing; the text
+   pushes them to the end and keeps 16px clear of the first. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.row > :first-child {
+  margin-inline-end: auto;
+  padding-inline-end: 10px;
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.label {
+  font-weight: 500;
+}
+.description {
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.error {
+  color: var(--feedback-attention);
+  font-size: var(--type-small);
+}
+.lead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.below {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.divider {
+  height: 1px;
+  margin: 14px calc(var(--space-card) * -1);
+  background: var(--border-subtle);
+}

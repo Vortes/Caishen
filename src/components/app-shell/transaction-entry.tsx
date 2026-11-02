@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { sameAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import {
@@ -319,32 +320,54 @@ export function useTransactionEntryController({
   };
 
   // Correcting a field clears its error; the rest wait for the next save.
+  // Leaving an amount rewrites it as its result ("1200/12" becomes
+  // "100.00"), which corrects nothing.
   const change = (next: Partial<TransactionDraft>, chosen = false) => {
     setSession((current) => {
       if (!current) return current;
       const fields = { ...current.fields };
-      for (const key of Object.keys(next) as DraftField[]) delete fields[key];
-      if ("outflow" in next || "inflow" in next) {
+      // Whether an amount says something new, not only its result.
+      const differs = (before: string | undefined, after: string) =>
+        before !== after &&
+        !(before !== undefined && sameAmount(before, after));
+      const changed = (key: "outflow" | "inflow" | "interest") =>
+        key in next && differs(current.draft[key], next[key] ?? "");
+      for (const key of Object.keys(next) as DraftField[])
+        if (key !== "outflow" && key !== "inflow" && key !== "interest")
+          delete fields[key];
+      if (changed("interest")) delete fields.interest;
+      const amountChanged = changed("outflow") || changed("inflow");
+      if (amountChanged) {
         delete fields.outflow;
         delete fields.inflow;
       }
       // A line's change clears its own errors and what the lines leave.
-      if ("lines" in next || "outflow" in next || "inflow" in next) {
+      const lines = (next.lines ?? []).map((line) => {
+        const before = current.draft.lines.find(
+          (item) => item.lineId === line.lineId,
+        );
+        return {
+          line,
+          share: before?.counterpartyShare !== line.counterpartyShare,
+          category: before?.categoryId !== line.categoryId,
+          amount:
+            differs(before?.outflow, line.outflow) ||
+            differs(before?.inflow, line.inflow),
+        };
+      });
+      const linesChanged =
+        next.lines !== undefined &&
+        (next.lines.length !== current.draft.lines.length ||
+          lines.some((item) => item.share || item.category || item.amount));
+      if (linesChanged || amountChanged) {
         delete fields.remaining;
-        for (const line of next.lines ?? []) {
-          const before = current.draft.lines.find(
-            (item) => item.lineId === line.lineId,
-          );
-          if (before?.counterpartyShare !== line.counterpartyShare)
-            delete fields[lineField(line.lineId, "counterpartyShare")];
-          for (const field of ["categoryId", "outflow", "inflow"] as const)
-            if (before?.[field] !== line[field]) {
-              delete fields[lineField(line.lineId, field)];
-              if (field !== "categoryId") {
-                delete fields[lineField(line.lineId, "outflow")];
-                delete fields[lineField(line.lineId, "inflow")];
-              }
-            }
+        for (const { line, share, category, amount } of lines) {
+          if (share) delete fields[lineField(line.lineId, "counterpartyShare")];
+          if (category) delete fields[lineField(line.lineId, "categoryId")];
+          if (amount) {
+            delete fields[lineField(line.lineId, "outflow")];
+            delete fields[lineField(line.lineId, "inflow")];
+          }
         }
       }
       const draft = { ...current.draft, ...next };
@@ -765,6 +788,27 @@ export function useTransactionEntryController({
         };
       }
     },
+    // Your side of each partner ledger entry, saved together like a
+    // selection of transactions. rowId is the entry's row in the ledger.
+    categorizePartnerEntries: (
+      entries: { rowId: string; entryId: string }[],
+      categoryId: string,
+      refused: (rowId: string) => void,
+    ) =>
+      saver.saveSelection(
+        entries.map(({ rowId, entryId }) => ({
+          rowIds: [rowId],
+          command: {
+            type: "partner.categorize",
+            id: newId(),
+            entryId,
+            categoryId,
+          },
+          summary: "Categorized a shared entry",
+        })),
+        "categorize",
+        refused,
+      ),
     saveShare,
     toggleCleared,
     shareSelection: (

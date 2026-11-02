@@ -1,5 +1,4 @@
-/* The Assign popover on the Ready to Assign card. Its surface, fields, and
-   footer come from move-money.module.css. */
+/* The Assign popover on the Ready to Assign card. */
 
 .tabs {
   padding: 10px 12px 0;
@@ -7,6 +6,18 @@
 }
 .tabIcon {
   margin-right: 4px;
+}
+
+/* Manual: the fields, then the footer edge to edge. */
+.form {
+  display: flex;
+  flex-direction: column;
+}
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
 }
 
 /* Auto-Assign options: menu rows in groups split by dividers, as YNAB has

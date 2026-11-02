@@ -23,7 +23,6 @@ test("Auto-Assign from a category's details survives reload with the correct Rea
     name: "Details",
     exact: true,
   });
-  await details.getByRole("tab", { name: "Auto-Assign", exact: true }).click();
   await details.getByRole("button", { name: /^Assigned last month/ }).click();
   await saved(page);
 

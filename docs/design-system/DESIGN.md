@@ -32,20 +32,34 @@ you use.
 7. **Row selection uses the grouped outline in [rows.md](rows.md).** Apply
    it to every selectable table or list, not just transactions. Selection
    is distinct from hover, keyboard focus, and the current detail row.
+8. **State changes move nothing.** Selecting, hovering, focusing, or
+   opening a row to edit keeps every value's text exactly where it was. See
+   "Nothing moves" in [rows.md](rows.md); a register spec measures it.
 
 ## Topics
 
-| File                       | Covers                                                      |
-| -------------------------- | ----------------------------------------------------------- |
-| [tokens.md](tokens.md)     | Colors, surfaces, text, borders, money states, feedback     |
-| [scale.md](scale.md)       | Type sizes, control and row heights, spacing, radii, motion |
-| [buttons.md](buttons.md)   | `Button`, `IconButton`                                      |
-| [choices.md](choices.md)   | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`            |
-| [rows.md](rows.md)         | Shared row-selection outline, grouping, states, motion      |
-| [labels.md](labels.md)     | `Tag`, the review dot                                       |
-| [surfaces.md](surfaces.md) | `Card`, `Tooltip`, popover spacing and motion, portals      |
-| [toasts.md](toasts.md)     | `Toast`, `ToastRegion`                                      |
-| [loading.md](loading.md)   | `Skeleton`, and which loading state to use                  |
+| File                               | Covers                                                         |
+| ---------------------------------- | -------------------------------------------------------------- |
+| [tokens.md](tokens.md)             | Colors, surfaces, text, borders, money states, feedback        |
+| [scale.md](scale.md)               | Type sizes, control and row heights, radii, motion             |
+| [spacing.md](spacing.md)           | Layout tokens; padding and gaps inside a component by role     |
+| [buttons.md](buttons.md)           | `Button`, `IconButton`                                         |
+| [fields.md](fields.md)             | `Field`, `FieldButton`, `FormError`, `FormFooter`; which input |
+| [text-inputs.md](text-inputs.md)   | `TextInput`                                                    |
+| [amounts.md](amounts.md)           | `AmountInput`, `readAmount`, the operator row                  |
+| [selects.md](selects.md)           | `Select`                                                       |
+| [search-lists.md](search-lists.md) | `SearchList`, `SearchSuggestions`; which to use                |
+| [dates.md](dates.md)               | `DateField`                                                    |
+| [choices.md](choices.md)           | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`; which to use |
+| [rows.md](rows.md)                 | Shared row-selection outline, grouping, states, motion         |
+| [labels.md](labels.md)             | `Tag`, the review dot                                          |
+| [surfaces.md](surfaces.md)         | `Card`, `Tooltip`, `SurfaceProvider`, surface motion           |
+| [popovers.md](popovers.md)         | `Popover`: sizes, trigger or anchor, height                    |
+| [menus.md](menus.md)               | `Menu`, `MenuItem`, `MenuRadioGroup`, `MenuSub`                |
+| [dialogs.md](dialogs.md)           | `Dialog`, `DialogHeader`, `DialogScrim`, `ConfirmDialog`       |
+| [settings.md](settings.md)         | `SettingsPage`, `SettingsSection`, `SettingRow`, divider       |
+| [toasts.md](toasts.md)             | `Toast`, `ToastRegion`                                         |
+| [loading.md](loading.md)           | `Skeleton`, and which loading state to use                     |
 
 ## Not in the system yet
 
@@ -59,11 +73,6 @@ the screen needs the missing primitive. Never invent a new primitive inline.
   selection styling must follow [rows.md](rows.md).
 - **Navigation**: sidebar items and section headings, breadcrumbs, the
   Spending Breakdown / Trends report tabs.
-- **Form fields**: text inputs, selects, amount fields.
-- **Popover and dialog surfaces**: the shell styles its own popover.
-  Every popover follows the shared gap and motion rules in [surfaces.md](surfaces.md).
-  For a confirm dialog, use Radix `AlertDialog` with that surface, Cancel
-  as `secondary`, and the confirm as `danger` or `primary`.
 - **Base styles**: the focus ring (`--focus-ring`, 2px) and the button font
   reset live in the shell's root class, not globally. A screen outside the
   app shell has to repeat them.

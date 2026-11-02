@@ -50,70 +50,11 @@
 
 /* ---------- Shared form pieces ---------- */
 
-/* A form field isn't in the system yet; these follow the shell's settings
-   input (.settingInput) so every screen in the batch matches. */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
+/* A small caption over a figure, such as onboarding's Ready to Assign. */
 .fieldLabel {
   color: var(--text-secondary);
   font-size: var(--type-small);
   font-weight: 500;
-}
-.fieldHint {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
-.input,
-.select {
-  width: 100%;
-  min-width: 0;
-  height: var(--size-control);
-  padding: 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  outline: none;
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  transition: border-color 150ms;
-}
-/* The native select insets its text by 4px; trim the padding so the value
-   lines up with the inputs above it. */
-.select {
-  padding: 0 6px;
-}
-.input:hover,
-.select:hover {
-  border-color: var(--border-strong);
-}
-.input[aria-invalid="true"] {
-  border-color: var(--feedback-attention);
-}
-.page .input:focus-visible,
-.page .select:focus-visible,
-.input:focus-visible,
-.select:focus-visible {
-  outline: none;
-  border-color: var(--focus-ring);
-}
-.input:disabled,
-.select:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-}
-.input::placeholder {
-  color: var(--text-tertiary);
-}
-@media (pointer: coarse) {
-  .input,
-  .select {
-    font-size: 16px;
-  }
 }
 .error {
   display: flex;

@@ -118,10 +118,11 @@ void test("rows keep each collection's order in explicit sort columns", () => {
     [
       ["Fun", 1],
       ["Bills", 0],
-      // Reordering stores every group, including those known only through
-      // their categories.
-      ["Everyday", 1],
-      ["People", 0],
+      // Reordering, or moving a category between groups, stores every
+      // group, including those known only through their categories.
+      ["Everyday", 2],
+      ["People", 1],
+      ["Home", 0],
     ],
   );
   // Rows given in any order build the same book.

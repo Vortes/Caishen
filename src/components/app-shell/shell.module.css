@@ -47,9 +47,6 @@
 .root[data-switching] *::after {
   transition: none !important;
 }
-.root[data-theme="light"] .scrim {
-  background: oklch(0.2 0.01 var(--hue) / 0.2);
-}
 .root :where(button) {
   font: inherit;
   color: inherit;
@@ -655,11 +652,6 @@
 .rtaCard {
   display: contents;
 }
-.rtaCardLabel {
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  font-weight: 500;
-}
 /* The same figure step as the other inspector cards (.figure): one card's
    headline, not the page's. */
 .rtaCard strong {
@@ -821,33 +813,93 @@
   overflow-y: auto;
   scrollbar-width: none;
 }
-/* The last card runs to the bottom of the panel, like Linear's. */
-.inspectorInner > :last-child {
+/* The last card runs to the bottom of the panel, like Linear's, unless
+   it's folded to its title. */
+.inspectorInner > :last-child:not(:has(> [data-open="false"])) {
   flex: 1;
 }
-.cardTitle {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 2px 2px 6px;
+/* Every card's title, and the titled parts inside a card (Cost to Be
+   Me), share one size: the body's, a step heavier. */
+.cardTitle,
+.cardSectionTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  font-weight: 500;
 }
-.cardTitle p {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
-.cardTitleRow {
+/* The title folds its card, its caret turning like the sidebar's
+   sections. */
+.cardToggle {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-height: var(--size-control-xs);
+  padding: 0 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
-.cardTitleRow h2 {
-  flex: 1;
-  margin: 0;
-  font-size: var(--type-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+.cardToggle .sectionCaret {
+  margin-left: -4px;
+  color: var(--text-tertiary);
+  transition:
+    transform 200ms var(--ease-panel),
+    color 150ms;
+}
+.cardToggle:hover .sectionCaret {
+  color: var(--text-secondary);
+}
+.cardToggle[aria-expanded="false"] .sectionCaret {
+  transform: rotate(-90deg);
+}
+/* Folding animates the card's height through a 0fr/1fr grid track, as the
+   sidebar's sections do. The content bleeds past the track so hover and
+   focus outlines aren't clipped. */
+.cardBody {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 220ms var(--ease-panel),
+    opacity 220ms var(--ease-panel);
+}
+.cardBody[data-open="false"] {
+  grid-template-rows: 0fr;
+  margin-top: -2px;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms var(--ease-panel),
+    opacity 120ms ease-out;
+}
+.cardBody > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: -2px -8px;
+  padding: 6px 8px 2px;
+  overflow: hidden;
+  transition:
+    margin 220ms var(--ease-panel),
+    padding 220ms var(--ease-panel);
+}
+/* Folded, the space under the title folds away too, and the card's gap
+   is taken back, so the title sits evenly in the card. */
+.cardBody[data-open="false"] > div {
+  margin: 0 -8px;
+  padding: 0 8px;
+  transition:
+    margin 180ms var(--ease-panel),
+    padding 180ms var(--ease-panel);
+}
+.cardSubtitle {
+  padding: 0 2px 4px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
 }
 .titleIcon {
   flex: none;
@@ -1053,6 +1105,10 @@ button.actionItem:disabled {
   /* Wide enough for the editor's wells to reach past their columns and
      still sit 8px apart. */
   column-gap: 16px;
+  /* A whole-pixel line, so a row's text and its editor's inputs land on the
+     same pixel: Chrome rounds an input's line to whole pixels and paints a
+     row's where it falls, and at 1.4 (19.6px) they part by one. */
+  line-height: 20px;
 }
 /* The register's columns, shared by its headers, rows, and entry row so a
    new transaction's fields sit under the columns they fill. The last column
@@ -1220,6 +1276,10 @@ button.actionItem:disabled {
   font: inherit;
   cursor: pointer;
 }
+/* The caret alone folds a group whose name renames it. */
+.groupToggle.caretOnly {
+  padding-right: 0;
+}
 .groupAdd {
   display: flex;
   flex: none;
@@ -1241,12 +1301,19 @@ button.actionItem:disabled {
   color: var(--text-tertiary);
   font-weight: 400;
 }
+/* The column header's + adds a category group. */
+.headerAdd {
+  display: flex;
+  flex: none;
+  margin-left: -4px;
+}
 /* The column header's caret folds or opens every group. */
 .columnHeader .groupToggle:hover {
   color: var(--text-secondary);
 }
-/* Dragging a group to reorder the plan. The dragged header follows the
-   pointer above the list; a recessed gap shows where it will land. */
+/* Dragging a group to reorder the plan, or a category within or between
+   groups. The dragged row follows the pointer above the list; a recessed gap
+   shows where it will land. */
 .planList {
   position: relative;
 }
@@ -1257,21 +1324,61 @@ button.actionItem:disabled {
   padding-left: 20px;
 }
 .planList[data-dragging],
-.planList[data-dragging] *,
-.categoryList[data-dragging],
-.categoryList[data-dragging] * {
+.planList[data-dragging] * {
   cursor: grabbing;
 }
-.planList[data-dragging] [data-reorder-slot],
-.categoryList[data-dragging] > [data-reorder-slot] {
+.planList[data-dragging] [data-reorder-slot] {
   pointer-events: none;
 }
 .dropSlot,
-.categoryDropSlot {
+.categoryDropSlot,
+.categoryGap {
   height: var(--size-row-lg);
+}
+.dropSlot,
+.categoryGap {
   border-radius: 6px;
   background: var(--surface-app);
   box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+/* Over a folded group, the gap becomes a ring around its header: the
+   category goes in without the group opening. */
+.categoryGap[data-header] {
+  background: transparent;
+}
+/* Where the dragged category is now, there's no gap to show: its
+   placeholder marks the place. */
+.categoryGap[data-idle] {
+  opacity: 0;
+}
+.categoryGap {
+  transition:
+    background-color 150ms var(--ease-panel),
+    opacity 150ms var(--ease-panel);
+}
+/* The dragged category's row stays in its group, dimmed, until it's dropped
+   somewhere else; sent back with Escape, it brightens as the ghost settles
+   into it. */
+.categoryPlaceholder {
+  opacity: 0.35;
+  transition: opacity 180ms var(--ease-panel);
+}
+.categoryPlaceholder[data-returning] {
+  opacity: 1;
+}
+.rowWrap[data-drop-target] .groupRow {
+  color: var(--text-primary);
+}
+/* A category's gap is drawn over the list, so it slides from place to place,
+   and from group to group, with the rows that make room for it. */
+.categoryGap {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 16px;
+  left: 16px;
+  pointer-events: none;
+  will-change: transform;
 }
 .dropSlot {
   margin-top: 4px;
@@ -1286,10 +1393,6 @@ button.actionItem:disabled {
   left: 16px;
   pointer-events: none;
   will-change: transform;
-}
-.categoryGhost {
-  right: 0;
-  left: 0;
 }
 .categoryGhost .row {
   background: var(--surface-raised);
@@ -1309,13 +1412,33 @@ button.actionItem:disabled {
 .planList[data-settling] .rowWrap:has(> .row) {
   animation: rowsIn 200ms 60ms var(--ease-panel) both;
 }
+/* A folded group a category was dropped into opens the same way, and the
+   category it took lights up briefly to show where it went. */
+.categoryList[data-opened] > .rowWrap {
+  animation: rowsIn 200ms 60ms var(--ease-panel) both;
+}
+.rowWrap[data-landed] > .row {
+  animation: landed 900ms var(--ease-selection) both;
+}
 @keyframes rowsIn {
   from {
     opacity: 0;
   }
 }
+@keyframes landed {
+  0%,
+  30% {
+    background: color-mix(in oklch, var(--accent-solid) 16%, transparent);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .planList[data-settling] .rowWrap:has(> .row) {
+  .categoryGap,
+  .categoryPlaceholder {
+    transition: none;
+  }
+  .planList[data-settling] .rowWrap:has(> .row),
+  .categoryList[data-opened] > .rowWrap,
+  .rowWrap[data-landed] > .row {
     animation: none;
   }
 }
@@ -1349,9 +1472,11 @@ button.actionItem:disabled {
   border-bottom-color: transparent;
 }
 /* The first transaction clears the rule by the same inset as the pending
-   group and the new-transaction editor. */
+   group and the new-transaction editor, and keeps it when it opens in place,
+   so its fields stay level with the text they replace. */
 .register .columnHeader + .rowWrap,
-.register .columnHeader + .row {
+.register .columnHeader + .row,
+.register .columnHeader + form {
   margin-top: var(--space-inset);
 }
 .register .columnHeader::after,
@@ -1719,7 +1844,7 @@ button.actionItem:disabled {
   bottom: var(--space-gutter);
   left: var(--space-gutter);
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  background: oklch(0 0 0 / 0.4);
+  background: var(--overlay);
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease-in;
@@ -1728,9 +1853,6 @@ button.actionItem:disabled {
   opacity: 1;
   pointer-events: auto;
   transition: opacity 260ms var(--ease-panel);
-}
-.root[data-theme="light"] .peekScrim {
-  background: oklch(0.2 0.01 var(--hue) / 0.14);
 }
 /* While collapsed the left edge opens the peek, so it shows no resize beam. */
 .root[data-peekable] .handle[data-side="left"]::after {
@@ -1772,160 +1894,11 @@ button.actionItem:disabled {
   position: absolute;
   z-index: 15;
   inset: 0;
-  background: oklch(0 0 0 / 0.4);
+  background: var(--overlay);
 }
 
-/* ---------- Profile menu ---------- */
+/* ---------- Settings navigation and the theme grid ---------- */
 
-/* Grows from the budget name it drops from; the exit is quicker and only
-   fades and shrinks, since attention has already moved on. */
-.menu {
-  composes: content from "../ui/popover-motion.module.css";
-  z-index: 60;
-  min-width: 220px;
-  padding: 4px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-secondary);
-  font-size: var(--type-body);
-}
-/* The highlight follows the pointer and arrow keys instantly. */
-.menuItem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--size-row-sm);
-  padding: 0 8px;
-  border-radius: var(--radius-row);
-  outline: none;
-  cursor: default;
-  user-select: none;
-}
-.menuItem > svg {
-  flex: none;
-  color: var(--text-tertiary);
-}
-.menuItem[data-highlighted] {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-.root .menuItem:focus-visible {
-  outline: none;
-}
-.menuSeparator {
-  height: 1px;
-  margin: 4px -4px;
-  background: var(--border-subtle);
-}
-
-/* ---------- Settings ---------- */
-
-/* Linear-style: one centered column of sections, each a heading over a card
-   of rows with the label first and the control at the row's end. */
-.settingsPage {
-  display: flex;
-  flex-direction: column;
-  gap: 40px;
-  width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 40px 24px 64px;
-}
-.settingsSection {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.settingsHeadingRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.settingsHeading {
-  margin: 0;
-  font-size: var(--type-title);
-  font-weight: 600;
-  letter-spacing: inherit;
-}
-.settingsIntro {
-  margin: -4px 0 0;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
-.settingRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.settingText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.settingLabel {
-  font-weight: 500;
-}
-.settingLead {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-.settingActions {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.settingDivider {
-  height: 1px;
-  margin: 14px calc(var(--space-card) * -1);
-  background: var(--border-subtle);
-}
-/* A form field isn't in the system yet; this follows the toolbar search. */
-.settingInput {
-  flex: 0 1 240px;
-  min-width: 0;
-  height: var(--size-control);
-  padding: 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-row);
-  outline: none;
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  transition: border-color 150ms;
-}
-.settingInput:hover {
-  border-color: var(--border-strong);
-}
-.settingInput[aria-invalid="true"] {
-  border-color: var(--feedback-attention);
-}
-.root .settingInput:focus-visible {
-  outline: none;
-  border-color: var(--focus-ring);
-}
-@media (pointer: coarse) {
-  .settingInput {
-    font-size: 16px;
-  }
-}
-.settingError {
-  color: var(--feedback-attention);
-  font-size: var(--type-small);
-}
-.settingHint {
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
-}
 .navHeading {
   display: flex;
   align-items: center;
@@ -1940,6 +1913,12 @@ button.actionItem:disabled {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.themeEmpty {
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
 }
 .themeGroupLabel {
   margin: 0 0 8px;
@@ -2076,4 +2055,44 @@ button.actionItem:disabled {
 }
 .snoozeRow[data-disabled] .snoozeLabel {
   color: var(--text-secondary);
+}
+
+/* A titled part of a card, under a divider: Cost to Be Me in the month's
+   summary. */
+/* The divider and the title keep the 14px between the properties' lines. */
+.cardSection {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cardSectionTitle {
+  padding: 0 2px 6px;
+}
+/* A property's value that turns into its field to edit it, outlined on
+   hover like the Activity amount. */
+.propertyButton {
+  height: var(--size-control-xs);
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: box-shadow 150ms;
+}
+.propertyButton[data-empty] {
+  color: var(--text-tertiary);
+}
+.propertyButton:hover {
+  box-shadow: inset 0 0 0 1px var(--control-border-active);
+  color: var(--text-primary);
+}
+/* The field that replaces it, with its "$" where the value's was. */
+.inlineAmount {
+  flex: 1;
+  min-width: 0;
+  margin-left: -11px;
 }

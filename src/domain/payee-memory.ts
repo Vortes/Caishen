@@ -27,6 +27,25 @@ export function payeeKey(payee: string): string {
 }
 
 /**
+ * The payees of the budget's purchases, refunds and income, most recent
+ * first and each once: what a payee field suggests.
+ */
+export function earlierPayees(budget: Pick<Budget, "transactions">): string[] {
+  return [
+    ...new Set(
+      budget.transactions
+        .filter(
+          (item) =>
+            !item.removed &&
+            ["purchase", "refund", "income"].includes(item.kind),
+        )
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map((item) => item.payee),
+    ),
+  ];
+}
+
+/**
  * The category a payee's memory prefills for a transaction in this account,
  * READY_TO_ASSIGN for Ready to Assign, or undefined when the payee has no
  * memory that fits. Ready to Assign fits only money coming into a cash

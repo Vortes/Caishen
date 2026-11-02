@@ -10,17 +10,26 @@ doesn't follow the design system yet. Check items off as they land.
 - [ ] `NavItem`: sidebar items, section headings, budget switcher, Settings
       (`sidebar.tsx`)
 - [ ] Menu row: date presets (`reflect/filters.tsx`), auto-assign items
-      (`inspector.tsx`), the move-money destination options (`move-money.tsx`)
+      (`inspector.tsx`)
 - [ ] Breadcrumbs (`reflect/reflect-view.tsx`)
 - [ ] Header tabs: Spending Breakdown / Trends, and decide whether they become
       a `Tabs` variant or take the pill look (`app-shell.tsx`)
 - [ ] Month label button in the header (`app-shell.tsx`)
-- [ ] `Select`: the custom date range's native selects (`reflect/filters.tsx`)
-- [ ] `Popover` surface: the Reflect filters, slice, and move-money popovers
-      style their own (`reflect/reflect.module.css`, `move-money.module.css`)
-- [ ] Text field and combobox: the move-money amount input and its searchable
-      destination list, including their invalid state and field error
-      (`move-money.tsx`)
+- [x] `Select`: every native select, including the custom date range's
+      (`src/components/ui/select.tsx`, [selects.md](selects.md))
+- [x] `Popover` surface: `Popover`, `Menu`, `Dialog` and `ConfirmDialog`
+      (`src/components/ui/`, [surfaces.md](surfaces.md))
+- [x] Text field: `Field`, `TextInput`, `AmountInput`, `FormError`,
+      `FormFooter` (`src/components/ui/`, [fields.md](fields.md),
+      [amounts.md](amounts.md))
+- [x] Combobox and date input: `SearchList`, `SearchSuggestions` and
+      `DateField` (`src/components/ui/`, [search-lists.md](search-lists.md),
+      [dates.md](dates.md)); the well-shaped buttons are `FieldButton`
+      ([fields.md](fields.md#fieldbutton)). The register's, move money's
+      and the partner forms' own wells, lists and hand-built fields are
+      deleted
+- [x] Text inputs still drawn by hand that `TextInput` can take now
+      ([text-inputs.md](text-inputs.md))
 - [x] Toast: the undo toast after a move (`src/components/ui/toast.tsx`,
       [toasts.md](toasts.md))
 - [x] Skeleton: the app shell's loading screen
@@ -40,10 +49,9 @@ doesn't follow the design system yet. Check items off as they land.
 
 ## Tokens
 
-- [ ] Add a field-error token: move-money's invalid inputs and error text use
-      `--danger-line` and `--danger-text`, which are meant for destructive
-      confirms (`move-money.module.css`, `[data-invalid]`, `.error`)
-- [ ] Add an `--overlay` token for the scrims behind the peeking sidebar and
+- [x] Add a field-error token: `--field-error` and `--field-error-line`,
+      through `Field` ([tokens.md](tokens.md))
+- [x] Add an `--overlay` token for the scrims behind the peeking sidebar and
       the narrow drawer (`shell.module.css`, `.scrim`, `.peekScrim`)
 - [ ] Budget avatar's raw orange and white (`shell.module.css`, `.avatar`)
 - [ ] Chart series colors come from Dither Kit's RGB palette in TypeScript;
@@ -53,17 +61,16 @@ doesn't follow the design system yet. Check items off as they land.
       (`reflect/reflect.module.css`, `.sliceLabel[data-dim]`)
 - [ ] `--surface-group` used for things that aren't group or date headers:
       the settings zone hint (`entry/settings.module.css`, `.zoneHint`), the
-      disabled amount well (`transaction-entry.module.css`,
-      `.well[data-disabled]`), and the reconcile icon
-      (`reconcile.module.css`, `.icon`)
+      disabled well (`ui/field.module.css`, `.well[data-disabled]`), and the
+      reconcile icon (`reconcile.module.css`, `.icon`)
 
 ## Gaps found by testing the docs with a fresh agent
 
 - [ ] Move the focus ring and the button font reset out of `.root` in
       `shell.module.css` into a global base stylesheet, so a screen outside the
       shell doesn't redeclare them
-- [ ] Add a `Dialog` primitive (confirm dialogs use Radix `AlertDialog`
-      directly today)
+- [x] Add a `Dialog` primitive: `Dialog` and `ConfirmDialog`
+      (`src/components/ui/dialog.tsx`)
 - [ ] The account Sync property's attention tag reads "Reconnect", an action;
       rename it to a state ("Signed out" or similar) and decide whether a
       Reconnect button sits beside it (`inspector.tsx`)

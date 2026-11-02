@@ -1,8 +1,5 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import { DropdownMenu } from "radix-ui";
 import {
   createContext,
   useContext,
@@ -10,24 +7,25 @@ import {
   useId,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
+import { sameAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import { DateField } from "~/components/ui/date-field";
+import { Field, FormError } from "~/components/ui/field";
+import { FieldButton } from "~/components/ui/field-button";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "~/components/ui/segmented-control";
-import { Tag } from "~/components/ui/tag";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Menu, MenuRadioGroup, MenuRadioItem } from "~/components/ui/menu";
+import { Select } from "~/components/ui/select";
+import { TextInput } from "~/components/ui/text-input";
 import type { Category } from "./model";
-import { FieldError } from "./move-money";
 import { useShellData } from "./shell-data";
-import { DateField } from "./transaction-date";
 import {
   activeBehavior,
   amountLabel,
@@ -46,8 +44,6 @@ import {
   type TargetDraft,
   type TargetField,
 } from "./target-draft";
-// The transaction editor's field wells, so every field in the shell matches.
-import entry from "./transaction-entry.module.css";
 import styles from "./target-editor.module.css";
 
 export type TargetEditing = {
@@ -70,7 +66,7 @@ export function useTargetEditing() {
   return value;
 }
 
-type FormError = { field: TargetField | "form"; message: string };
+type EditorError = { field: TargetField | "form"; message: string };
 
 // YNAB's target editor, in place of the target's summary in the inspector.
 // The schedule decides which fields follow; a custom schedule asks what to
@@ -90,8 +86,7 @@ export function TargetEditor({
   const [draft, setDraft] = useState<TargetDraft>(() =>
     createTargetDraft(kind, month.key, existing),
   );
-  const [error, setError] = useState<FormError | null>(null);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [error, setError] = useState<EditorError | null>(null);
   const id = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const fieldRefs = useRef<Partial<Record<TargetField, HTMLElement | null>>>(
@@ -124,8 +119,6 @@ export function TargetEditor({
   const fieldId = (field: string) => `${id}-${field}`;
   const errorFor = (field: TargetField) =>
     error?.field === field ? error.message : undefined;
-  const describedBy = (field: TargetField) =>
-    error?.field === field ? fieldId(`${field}-error`) : undefined;
 
   const send = (command: Command, summary: string) => {
     const blocked = save(command, summary);
@@ -162,46 +155,19 @@ export function TargetEditor({
       `Deleted the ${category.name} target`,
     );
 
-  // Leaving the date's calendar with Tab moves on to the next field.
-  const advanceFrom = (element: HTMLElement | null | undefined) => {
-    const stops = [
-      ...(formRef.current?.querySelectorAll<HTMLElement>(
-        "input, select, button:not([tabindex='-1'])",
-      ) ?? []),
-    ].filter((stop) => !stop.hasAttribute("disabled"));
-    const index = element ? stops.indexOf(element) : -1;
-    stops[index + 1]?.focus();
-  };
-
   const amountField = !payoff && (
-    <Field
-      id={fieldId("amount")}
-      label={amountLabel(schedule)}
-      error={errorFor("amount")}
-    >
-      <div
-        className={entry.well}
-        data-invalid={error?.field === "amount" || undefined}
-      >
-        <span className={styles.prefix} aria-hidden>
-          $
-        </span>
-        <input
-          ref={register("amount")}
-          id={fieldId("amount")}
-          className={entry.input}
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="0.00"
-          value={draft.amount}
-          aria-invalid={error?.field === "amount" || undefined}
-          aria-describedby={describedBy("amount")}
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) =>
-            change({ amount: groupAmountInput(event.target) })
-          }
-        />
-      </div>
+    <Field label={amountLabel(schedule)} error={errorFor("amount")}>
+      <AmountInput
+        inputRef={register("amount")}
+        placeholder="0.00"
+        value={draft.amount}
+        onChange={(next) =>
+          // Leaving the field rewrites it as its result; its error stays.
+          sameAmount(draft.amount, next)
+            ? setDraft((value) => ({ ...value, amount: next }))
+            : change({ amount: next })
+        }
+      />
     </Field>
   );
 
@@ -223,29 +189,16 @@ export function TargetEditor({
       : "Works out the monthly payment that clears the loan by this date, at its current rate.";
   const dueDateField = datedSchedule && !balance && (
     <Field
-      id={fieldId("dueDate")}
       label={payoff ? "Pay off by" : custom ? "Due on" : "By"}
       error={errorFor("dueDate")}
       hint={payoffHint}
     >
       <DateField
-        id={fieldId("dueDate")}
-        label={payoff ? "Pay off by" : "Due date"}
         value={draft.dueDate}
         min={`${earliest}-01`}
         today={today}
-        open={calendarOpen}
-        invalid={error?.field === "dueDate"}
-        describedBy={
-          [describedBy("dueDate"), payoffHint && fieldId("dueDate-hint")]
-            .filter(Boolean)
-            .join(" ") || undefined
-        }
         inputRef={register("dueDate")}
-        onOpenChange={setCalendarOpen}
         onChange={(dueDate) => change({ dueDate })}
-        onPicked={() => undefined}
-        onAdvance={() => advanceFrom(fieldRefs.current.dueDate)}
       />
     </Field>
   );
@@ -291,35 +244,31 @@ export function TargetEditor({
       {schedule === "weekly" && (
         <Field id={fieldId("weekday")} label="Every">
           <Select
-            id={fieldId("weekday")}
             value={String(draft.weekday)}
             onChange={(value) => change({ weekday: Number(value) })}
-          >
-            {weekdays.map((day, index) => (
-              <option key={day} value={index}>
-                {day}
-              </option>
-            ))}
-          </Select>
+            options={weekdays.map((day, index) => ({
+              value: String(index),
+              label: day,
+            }))}
+          />
         </Field>
       )}
 
       {schedule === "monthly" && (
         <Field id={fieldId("monthDay")} label="By">
           <Select
-            id={fieldId("monthDay")}
             value={String(draft.monthDay)}
             onChange={(value) =>
               change({ monthDay: value === "last" ? "last" : Number(value) })
             }
-          >
-            <option value="last">Last day of the month</option>
-            {Array.from({ length: 31 }, (_, index) => (
-              <option key={index} value={index + 1}>
-                The {ordinal(index + 1)}
-              </option>
-            ))}
-          </Select>
+            options={[
+              { value: "last", label: "Last day of the month" },
+              ...Array.from({ length: 31 }, (_, index) => ({
+                value: String(index + 1),
+                label: `The ${ordinal(index + 1)}`,
+              })),
+            ]}
+          />
         </Field>
       )}
 
@@ -338,7 +287,6 @@ export function TargetEditor({
             />
           ) : (
             <Repeat
-              id={fieldId("repeatEvery")}
               draft={draft}
               error={errorFor("repeatEvery")}
               register={register("repeatEvery")}
@@ -353,9 +301,7 @@ export function TargetEditor({
         </>
       )}
 
-      {error?.field === "form" && (
-        <FieldError id={fieldId("form-error")} message={error.message} />
-      )}
+      {error?.field === "form" && <FormError>{error.message}</FormError>}
 
       <div className={styles.footer}>
         {existing && (
@@ -375,85 +321,14 @@ export function TargetEditor({
   );
 }
 
-function Field({
-  id,
-  label,
-  error,
-  hint,
-  children,
-}: {
-  id: string;
-  label: string;
-  error?: string;
-  // What the field means, below it; the control names it in
-  // aria-describedby as `${id}-hint`.
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={styles.field}>
-      <label htmlFor={id}>{label}</label>
-      {children}
-      {error && <FieldError id={`${id}-error`} message={error} />}
-      {hint && (
-        <p className={styles.hint} id={`${id}-hint`}>
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// A native select in the shell's field well. A select primitive isn't in
-// the design system yet.
-function Select({
-  id,
-  value,
-  label,
-  invalid,
-  describedBy,
-  selectRef,
-  onChange,
-  children,
-}: {
-  id?: string;
-  value: string;
-  label?: string;
-  invalid?: boolean;
-  describedBy?: string;
-  selectRef?: (element: HTMLElement | null) => void;
-  onChange: (value: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className={entry.well} data-invalid={invalid ? true : undefined}>
-      <select
-        ref={selectRef}
-        id={id}
-        className={`${entry.input} ${styles.select}`}
-        value={value}
-        aria-label={label}
-        aria-invalid={invalid ? true : undefined}
-        aria-describedby={describedBy}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {children}
-      </select>
-      <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
-    </div>
-  );
-}
-
 // Custom targets can come due again: every so many months or years after
 // the due date.
 function Repeat({
-  id,
   draft,
   error,
   register,
   onChange,
 }: {
-  id: string;
   draft: TargetDraft;
   error?: string;
   register: (element: HTMLElement | null) => void;
@@ -469,46 +344,43 @@ function Repeat({
         Repeat
       </label>
       {draft.repeat && (
-        <div className={styles.inline}>
-          <label htmlFor={id}>Every</label>
-          <div
-            className={`${entry.well} ${styles.every}`}
-            data-invalid={error ? true : undefined}
-          >
-            <input
-              ref={register}
-              id={id}
-              className={entry.input}
-              inputMode="numeric"
-              autoComplete="off"
-              value={draft.repeatEvery}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? `${id}-error` : undefined}
-              onFocus={(event) => event.currentTarget.select()}
-              onChange={(event) =>
-                onChange({ repeatEvery: event.target.value })
-              }
-            />
+        <Field label="Every" error={error}>
+          <div className={styles.inline}>
+            <div className={styles.every}>
+              <TextInput
+                inputRef={register}
+                inputMode="numeric"
+                value={draft.repeatEvery}
+                onChange={(repeatEvery) => onChange({ repeatEvery })}
+              />
+            </div>
+            <div className={styles.unit}>
+              <Field label="Repeat unit" labelHidden>
+                <Select
+                  value={draft.repeatUnit}
+                  onChange={(value) =>
+                    onChange({
+                      repeatUnit: value as TargetDraft["repeatUnit"],
+                    })
+                  }
+                  options={[
+                    {
+                      value: "months",
+                      label:
+                        draft.repeatEvery.trim() === "1" ? "Month" : "Months",
+                    },
+                    {
+                      value: "years",
+                      label:
+                        draft.repeatEvery.trim() === "1" ? "Year" : "Years",
+                    },
+                  ]}
+                />
+              </Field>
+            </div>
           </div>
-          <div className={styles.unit}>
-            <Select
-              label="Repeat unit"
-              value={draft.repeatUnit}
-              onChange={(value) =>
-                onChange({ repeatUnit: value as TargetDraft["repeatUnit"] })
-              }
-            >
-              <option value="months">
-                {draft.repeatEvery.trim() === "1" ? "Month" : "Months"}
-              </option>
-              <option value="years">
-                {draft.repeatEvery.trim() === "1" ? "Year" : "Years"}
-              </option>
-            </Select>
-          </div>
-        </div>
+        </Field>
       )}
-      {error && <FieldError id={`${id}-error`} message={error} />}
     </div>
   );
 }
@@ -546,45 +418,40 @@ function BalanceDue({
         Due by date
       </label>
       {draft.balanceDue && (
-        <div className={styles.field}>
-          <label htmlFor={id}>Due on</label>
+        <Field id={id} label="Due on" error={error}>
           <div className={styles.inline}>
             <div className={styles.grow}>
               <Select
-                id={id}
-                selectRef={register}
+                inputRef={register}
                 value={monthIndex!}
-                invalid={Boolean(error)}
-                describedBy={error ? `${id}-error` : undefined}
                 onChange={(value) => onChange({ dueMonth: `${year}-${value}` })}
-              >
-                {months.map((name, index) => (
-                  <option key={name} value={String(index + 1).padStart(2, "0")}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
+                options={months.map((name, index) => ({
+                  value: String(index + 1).padStart(2, "0"),
+                  label: name,
+                }))}
+              />
             </div>
             <div className={styles.year}>
-              <Select
+              <Field
                 label="Due year"
-                value={year!}
-                invalid={Boolean(error)}
-                onChange={(value) =>
-                  onChange({ dueMonth: `${value}-${monthIndex}` })
-                }
+                labelHidden
+                sharedErrorId={error ? `${id}-error` : undefined}
               >
-                {years.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </Select>
+                <Select
+                  value={year!}
+                  onChange={(value) =>
+                    onChange({ dueMonth: `${value}-${monthIndex}` })
+                  }
+                  options={years.map((value) => ({
+                    value: String(value),
+                    label: String(value),
+                  }))}
+                />
+              </Field>
             </div>
           </div>
-        </div>
+        </Field>
       )}
-      {error && <FieldError id={`${id}-error`} message={error} />}
     </div>
   );
 }
@@ -606,73 +473,36 @@ function BehaviorField({
   amount: number;
   onChange: (behavior: Behavior) => void;
 }) {
-  const container = usePortalContainer();
-  const id = useId();
   const chosen = behaviorCopy(value, schedule, amount);
-  const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   return (
-    <div className={styles.field}>
-      <span className={styles.label} id={`${id}-label`}>
-        {label}
-      </span>
-      <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
-        <DropdownMenu.Trigger
-          className={`${entry.well} ${styles.trigger}`}
-          aria-labelledby={`${id}-label ${id}-value`}
+    <Field label={label}>
+      {/* Escape closes only the menu; the editor around it stays open. */}
+      <Menu
+        label={label}
+        trigger={<FieldButton chevron>{chosen.title}</FieldButton>}
+      >
+        <MenuRadioGroup
+          value={value}
+          onValueChange={(next) => onChange(next as Behavior)}
         >
-          <span id={`${id}-value`} className={styles.triggerValue}>
-            {chosen.title}
-          </span>
-          <ChevronDownIcon size={14} className={styles.chevron} aria-hidden />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal container={container}>
-          <DropdownMenu.Content
-            {...motion}
-            className={styles.menu}
-            align="start"
-            sideOffset={POPOVER_GAP}
-            collisionPadding={12}
-            aria-label={label}
-            // Escape closes only the menu; the editor around it stays open.
-            onEscapeKeyDown={(event) => event.stopPropagation()}
-          >
-            <DropdownMenu.RadioGroup
-              value={value}
-              onValueChange={(next) => onChange(next as Behavior)}
-            >
-              {behaviors.map((behavior) => {
-                const copy = behaviorCopy(behavior, schedule, amount);
-                return (
-                  <DropdownMenu.RadioItem
-                    key={behavior}
-                    value={behavior}
-                    className={styles.option}
-                  >
-                    <span className={styles.optionCheck}>
-                      <DropdownMenu.ItemIndicator>
-                        <CheckIcon size={13} strokeWidth={2.5} aria-hidden />
-                      </DropdownMenu.ItemIndicator>
-                    </span>
-                    <span className={styles.optionText}>
-                      <span className={styles.optionTitle}>
-                        {copy.title}
-                        {copy.common && behaviors.length > 1 && (
-                          <Tag>Most common</Tag>
-                        )}
-                      </span>
-                      <span className={styles.optionUse}>
-                        Use for: {copy.use}
-                      </span>
-                      <span className={styles.optionDetail}>{copy.detail}</span>
-                    </span>
-                  </DropdownMenu.RadioItem>
-                );
-              })}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-    </div>
+          {behaviors.map((behavior) => {
+            const copy = behaviorCopy(behavior, schedule, amount);
+            return (
+              <MenuRadioItem
+                key={behavior}
+                value={behavior}
+                title={copy.title}
+                tag={
+                  copy.common && behaviors.length > 1
+                    ? "Most common"
+                    : undefined
+                }
+                detail={[`Use for: ${copy.use}`, copy.detail]}
+              />
+            );
+          })}
+        </MenuRadioGroup>
+      </Menu>
+    </Field>
   );
 }

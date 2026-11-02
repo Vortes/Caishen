@@ -21,19 +21,13 @@
   background: var(--control-bg);
 }
 
-.popover {
-  composes: content from "../../ui/popover-motion.module.css";
-  z-index: 60;
+/* A filter's popover: header and footer stay while the list scrolls,
+   within the room the popover has. */
+.filterPanel {
   display: flex;
   flex-direction: column;
-  width: var(--size-popover);
-  max-height: min(440px, var(--radix-popover-content-available-height));
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-menu);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-secondary);
-  font-size: var(--type-body);
+  min-height: 0;
+  max-height: 440px;
 }
 .popoverHeader,
 .popoverFooter {
@@ -134,23 +128,6 @@
   justify-content: space-between;
   color: var(--text-tertiary);
   font-size: var(--type-small);
-}
-.custom label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-.custom select {
-  height: var(--size-control);
-  padding: 0 6px;
-  border: 1px solid var(--control-border);
-  border-radius: 6px;
-  background: var(--control-bg);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--type-body);
 }
 
 /* ---------- Report body ---------- */
@@ -348,9 +325,13 @@
 
 /* ---------- Slice popover ---------- */
 
-.slicePopover {
-  width: min(560px, calc(100vw - 24px));
-  max-height: min(420px, var(--radix-popover-content-available-height));
+/* Header and footer stay put while the rows scroll, within the room the
+   popover has. */
+.slicePanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 420px;
 }
 .sliceHeader {
   flex: none;
@@ -362,8 +343,7 @@
 }
 .sliceHeader strong {
   color: var(--text-primary);
-  font-size: var(--type-title);
-  font-weight: 600;
+  font-weight: 500;
 }
 .sliceHeader > span:last-child {
   flex: none;
@@ -388,6 +368,10 @@
   min-height: 0;
   overflow-y: auto;
   padding: 4px;
+}
+/* Rows hidden below fade out, so a cut-off row reads as more to scroll. */
+.sliceRows[data-more] {
+  mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent);
 }
 .sliceColumns {
   display: grid;
@@ -436,9 +420,6 @@ button.sliceColumns:hover {
 }
 .sliceColumns[data-static] {
   color: var(--text-tertiary);
-}
-.popoverArrow {
-  fill: var(--surface-raised);
 }
 
 /* ---------- Headline, grouping ---------- */
@@ -594,8 +575,7 @@ button.sliceColumns:hover {
   margin: 0;
 }
 
-/* Touch: rows and controls in the popovers reach a 44px target, and the
-   month pickers use 16px text so iOS doesn't zoom when they're focused. */
+/* Touch: rows and controls in the popovers reach a 44px target. */
 @media (pointer: coarse) {
   .check,
   .preset {
@@ -603,10 +583,6 @@ button.sliceColumns:hover {
   }
   .textAction {
     min-height: 44px;
-  }
-  .custom select {
-    height: 44px;
-    font-size: 16px;
   }
 }
 

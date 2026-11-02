@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeftIcon, CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Field } from "~/components/ui/field";
+import { Select } from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
-import { TimezoneOptions } from "~/components/settings/timezone-options";
+import { TextInput } from "~/components/ui/text-input";
+import { timezoneOptions } from "~/components/settings/timezone-options";
 import { EntryPage } from "./entry-page";
 import { Brand } from "./brand";
 import {
@@ -61,7 +64,6 @@ export function GuidedOnboarding({
   initialDraft?: CategoryDraft;
   onDraftChange?: (draft: CategoryDraft) => void;
 }) {
-  const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const [stage, setStage] = useState(initialStage);
   const [yourName, setYourName] = useState(initialName);
@@ -196,52 +198,28 @@ export function GuidedOnboarding({
               >
                 <Card>
                   <div className={styles.fields}>
-                    <div className={batch.field}>
-                      <label className={batch.fieldLabel} htmlFor={`${id}-you`}>
-                        Your name
-                      </label>
-                      <input
-                        id={`${id}-you`}
-                        className={batch.input}
+                    <Field label="Your name">
+                      <TextInput
                         value={yourName}
                         maxLength={80}
-                        aria-required
                         autoComplete="name"
-                        onChange={(event) => setYourName(event.target.value)}
+                        onChange={setYourName}
                       />
-                    </div>
-                    <div className={batch.field}>
-                      <label
-                        className={batch.fieldLabel}
-                        htmlFor={`${id}-name`}
-                      >
-                        Budget name
-                      </label>
-                      <input
-                        id={`${id}-name`}
-                        className={batch.input}
+                    </Field>
+                    <Field label="Budget name">
+                      <TextInput
                         value={name}
                         maxLength={80}
-                        autoComplete="off"
-                        onChange={(event) => setName(event.target.value)}
+                        onChange={setName}
                       />
-                    </div>
-                    <div className={batch.field}>
-                      <label
-                        className={batch.fieldLabel}
-                        htmlFor={`${id}-zone`}
-                      >
-                        Timezone
-                      </label>
-                      <select
-                        id={`${id}-zone`}
-                        className={batch.select}
+                    </Field>
+                    <Field label="Timezone">
+                      <Select
                         value={timezone}
-                        onChange={(event) => setTimezone(event.target.value)}
-                      >
-                        <TimezoneOptions include={timezone} />
-                      </select>
-                    </div>
+                        onChange={setTimezone}
+                        options={timezoneOptions(timezone)}
+                      />
+                    </Field>
                     <label className={styles.switchRow}>
                       <span className={styles.switchLabel}>
                         Daily review email

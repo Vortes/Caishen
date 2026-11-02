@@ -1,18 +1,26 @@
 "use client";
 
-import { Popover } from "radix-ui";
 import { useState, type ComponentProps } from "react";
+import { readAmount } from "~/components/budget/amount";
 import type { DraftShare } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
-import { parseCents, useShareParties } from "./share-field";
-import { ChoiceField, type ChoiceOption } from "./transaction-fields";
-import moveStyles from "./move-money.module.css";
+import { Field } from "~/components/ui/field";
+import { Popover } from "~/components/ui/popover";
+import { SearchList, type SearchListOption } from "~/components/ui/search-list";
+import { TextInput } from "~/components/ui/text-input";
+import { useShareParties } from "./share-field";
 import styles from "./share.module.css";
 
 const NEW_PERSON = "\u0000person:new";
+
+// The name box takes focus as the form opens.
+const focusName = (input: HTMLInputElement | null) => input?.focus();
+
+// A draft share's amount in cents, or null while it doesn't read.
+function shareCents(text: string) {
+  const reading = readAmount(text);
+  return reading.ok ? reading.cents : null;
+}
 
 export function TransactionCategoryField({
   amount,
@@ -20,19 +28,17 @@ export function TransactionCategoryField({
   peopleEnabled,
   onChange,
   ...field
-}: Omit<ComponentProps<typeof ChoiceField>, "onChange"> & {
+}: Omit<ComponentProps<typeof SearchList>, "onChange"> & {
   amount: number;
   share?: DraftShare | null;
   peopleEnabled: boolean;
   onChange: (categoryId: string, share?: DraftShare | null) => void;
 }) {
   const { partner, reimbursements, people, who } = useShareParties();
-  const container = usePortalContainer();
   const [adding, setAdding] = useState(false);
-  const motion = usePopoverMotion(adding);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const full = share && parseCents(share.amount) === Math.abs(amount);
+  const full = share && shareCents(share.amount) === Math.abs(amount);
   const parties = [
     ...(partner ? [{ accountId: partner.id, name: partner.name }] : []),
     ...(reimbursements
@@ -52,10 +58,10 @@ export function TransactionCategoryField({
         (party) =>
           party.accountId === share.accountId &&
           party.name ===
-            who({ ...share, amount: parseCents(share.amount) ?? 0 }),
+            who({ ...share, amount: shareCents(share.amount) ?? 0 }),
       )
     : undefined;
-  const options: ChoiceOption[] = [
+  const options: SearchListOption[] = [
     ...field.options,
     ...(peopleEnabled
       ? parties.map((party) => ({
@@ -75,10 +81,15 @@ export function TransactionCategoryField({
       amount: (Math.abs(amount) / 100).toFixed(2),
     });
   return (
-    <Popover.Root open={adding} onOpenChange={setAdding}>
-      <Popover.Anchor asChild>
+    <Popover
+      label="Who owes this purchase"
+      size="form"
+      open={adding}
+      onOpenChange={setAdding}
+      autoFocus
+      anchor={
         <div>
-          <ChoiceField
+          <SearchList
             {...field}
             value={selected?.value ?? field.value}
             displayValue={selected?.name ?? field.displayValue}
@@ -99,57 +110,45 @@ export function TransactionCategoryField({
             }}
           />
         </div>
-      </Popover.Anchor>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label="Who owes this purchase"
-          onKeyDown={(event) => event.stopPropagation()}
+      }
+    >
+      {/* Keys typed here stay out of the editor around the field. */}
+      <form
+        className={styles.shareForm}
+        noValidate
+        onKeyDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!name.trim()) return setError("Name who owes it.");
+          pickPerson(reimbursements!.id, name.trim());
+          setAdding(false);
+        }}
+      >
+        <Field
+          label="Who owes it"
+          hint="The full amount goes to Reimbursements."
+          error={error || undefined}
         >
-          <form
-            className={styles.shareForm}
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!name.trim()) return setError("Name who owes it.");
-              pickPerson(reimbursements!.id, name.trim());
-              setAdding(false);
+          <TextInput
+            inputRef={focusName}
+            maxLength={240}
+            value={name}
+            onChange={(next) => {
+              setName(next);
+              setError("");
             }}
-          >
-            <label htmlFor={`${field.id}-person`}>Who owes it</label>
-            <div className={moveStyles.amountInput}>
-              <input
-                id={`${field.id}-person`}
-                autoFocus
-                maxLength={240}
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setError("");
-                }}
-                aria-invalid={Boolean(error)}
-              />
-            </div>
-            <p className={styles.popoverHint}>
-              The full amount goes to Reimbursements.
-            </p>
-            {error && <p className={moveStyles.error}>{error}</p>}
-            <div className={styles.shareFormRow}>
-              <Button size="sm" onClick={() => setAdding(false)}>
-                Cancel
-              </Button>
-              <Button size="sm" variant="primary" type="submit">
-                Apply
-              </Button>
-            </div>
-          </form>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+          />
+        </Field>
+        <div className={styles.shareFormRow}>
+          <Button size="sm" onClick={() => setAdding(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" type="submit">
+            Apply
+          </Button>
+        </div>
+      </form>
+    </Popover>
   );
 }

@@ -27,6 +27,8 @@ export { expect, shellPath };
 type BudgetOptions = {
   name?: string;
   category?: string;
+  // More categories in the default group, with nothing assigned.
+  categories?: string[];
   account?: string;
   cash?: number;
   additionalAccounts?: {
@@ -211,6 +213,13 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
                 amount: 10_000,
               },
             ];
+            for (const name of options.categories ?? [])
+              commands.push({
+                type: "category.add",
+                id: randomUUID(),
+                categoryId: name.toLowerCase(),
+                name,
+              });
             for (const account of options.additionalAccounts ?? [])
               commands.push({
                 ...account,

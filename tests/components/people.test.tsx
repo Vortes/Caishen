@@ -21,8 +21,8 @@ test("People holds the Reimbursements account in the sidebar and leads the plan 
   // The column header's toggle opens and folds every group.
   const groups = plan()
     .getAllByRole("button", { expanded: true })
-    .filter((button) => button.getAttribute("aria-label") === null)
-    .map((button) => button.textContent);
+    .map((button) => button.getAttribute("aria-label"))
+    .filter((name) => name !== "Collapse all groups");
   expect(groups[0]).toMatch(/^People/);
   expect(
     plan().getByRole("checkbox", { name: "Select Reimbursements" }),
@@ -37,8 +37,10 @@ test("People holds the Reimbursements account in the sidebar and leads the plan 
 });
 
 const readyToAssign = () =>
-  screen.getByText("Ready to Assign").parentElement!.querySelector("strong")!
-    .textContent;
+  screen
+    .getByText("Ready to Assign")
+    .closest("section")!
+    .querySelector("strong")!.textContent;
 
 async function setFloat(
   user: Awaited<ReturnType<typeof renderShell>>["user"],

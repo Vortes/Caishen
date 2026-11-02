@@ -16,11 +16,12 @@ import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { newId } from "~/components/budget/format";
 import { Card } from "~/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { Figure, Property, Title } from "./cards";
+import { FormError } from "~/components/ui/field";
+import { FoldProvider, Figure, Property, Section } from "./cards";
 import { useAutoAssign } from "./assign-money";
 import { money, type Category } from "./model";
-import { FieldError, MoveMoneyPopover } from "./move-money";
+import { ExpectedIncomeProperty } from "./expected-income";
+import { MoveMoneyPopover } from "./move-money";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import { TargetEditor, useTargetEditing } from "./target-editor";
@@ -30,7 +31,15 @@ import { FundingRing } from "./views";
 import { ActivityProperty, type ActivityJump } from "./activity";
 import styles from "./shell.module.css";
 
-export function Inspector({
+export function Inspector(props: Parameters<typeof InspectorCards>[0]) {
+  return (
+    <FoldProvider>
+      <InspectorCards {...props} />
+    </FoldProvider>
+  );
+}
+
+function InspectorCards({
   screen,
   selectedId,
   checked,
@@ -59,8 +68,8 @@ export function Inspector({
       <>
         <RtaCard amount={readyToAssign} />
         {everything ? (
-          <SelectionAutoAssign
-            categories={categories.filter((item) => checked.includes(item.id))}
+          <AutoAssign
+            scope={categories.filter((item) => checked.includes(item.id))}
           />
         ) : checked.length > 1 ? (
           <CheckedDetails ids={checked} />
@@ -83,21 +92,21 @@ export function Inspector({
   if (!loan) {
     return (
       <>
-        <Card>
-          <Title
-            icon={<LoanIcon />}
-            title="Loans"
-            subtitle={
-              loans.length
-                ? "Nothing selected. Pick a loan to see its payoff."
-                : "No loans yet."
-            }
-          />
+        <Section
+          id="loans"
+          icon={<LoanIcon />}
+          title="Loans"
+          subtitle={
+            loans.length
+              ? "Nothing selected. Pick a loan to see its payoff."
+              : "No loans yet."
+          }
+        >
           <Figure
             value={money(-loans.reduce((sum, item) => sum + item.balance, 0))}
             caption="Total remaining"
           />
-        </Card>
+        </Section>
         <Card>
           <Property label="Monthly">
             {money(loans.reduce((sum, item) => sum + item.payment, 0))}
@@ -111,10 +120,9 @@ export function Inspector({
   }
   return (
     <>
-      <Card>
-        <Title icon={<LoanIcon />} title={loan.name} />
+      <Section id="loan" icon={<LoanIcon />} title={loan.name}>
         <Figure value={money(-loan.balance)} caption="Remaining balance" />
-      </Card>
+      </Section>
       <Card>
         <Property label="Rate">
           {loan.rate ?? <span className={styles.faint}>No rate yet</span>}
@@ -159,13 +167,12 @@ export const autoAssignOptions: [AutoAssignOption, string][] = [
 ];
 
 // Runs an option over the inspected categories: the whole month, a
-// selection, or one category.
+// selection, or one category. It always stands in its own card.
 function AutoAssign({ scope }: { scope: Category[] }) {
-  const { month } = useShellData();
   const [error, setError] = useState<string | null>(null);
   const { scope: categories, plan, run } = useAutoAssign(scope);
   return (
-    <>
+    <Section id="auto-assign" title="Auto-Assign">
       <ul className={styles.actionList}>
         {autoAssignOptions.map(([option, label]) => (
           <li key={option}>
@@ -186,13 +193,10 @@ function AutoAssign({ scope }: { scope: Category[] }) {
       </ul>
       {error && (
         <div className={styles.autoAssignError}>
-          <FieldError
-            id={`${month.key}-inspector-auto-error`}
-            message={error}
-          />
+          <FormError>{error}</FormError>
         </div>
       )}
-    </>
+    </Section>
   );
 }
 
@@ -200,45 +204,16 @@ function sum(categories: Category[], pick: (item: Category) => number) {
   return categories.reduce((total, item) => total + pick(item), 0);
 }
 
+// YNAB's month summary: how the month's money adds up, then Cost to Be Me,
+// what the month's targets ask for against the income you expect.
 function MonthDetails() {
   const { categories, month, costToBeMe, expectedIncome } = useShellData();
-  const tabs = [
-    {
-      value: "auto-assign",
-      label: "Auto-Assign",
-      content: <AutoAssign scope={categories} />,
-    },
-    {
-      value: "cost-to-be-me",
-      label: "Cost to Be Me",
-      content: (
-        <div className={styles.tabBody}>
-          <Figure
-            value={money(costToBeMe)}
-            caption={`What your targets ask for in ${month.short}`}
-          />
-          {expectedIncome === null ? (
-            <p className={styles.tabEmpty}>
-              Add expected income to see how much of it your targets use.
-            </p>
-          ) : (
-            <Meter
-              ratio={costToBeMe ? Math.min(1, expectedIncome / costToBeMe) : 1}
-              tone={expectedIncome < costToBeMe ? "underfunded" : "funded"}
-              label={
-                expectedIncome < costToBeMe
-                  ? `${money(costToBeMe - expectedIncome)} more than your expected ${money(expectedIncome)}`
-                  : `${money(expectedIncome - costToBeMe)} left from your expected ${money(expectedIncome)}`
-              }
-            />
-          )}
-        </div>
-      ),
-    },
-  ];
   return (
     <>
-      <Card>
+      <Section id="summary" title={`${month.short}'s summary`}>
+        <Property label="Last month">
+          {money(sum(categories, (item) => item.carryover))}
+        </Property>
         <Property label="Assigned">
           {money(sum(categories, (item) => item.assigned))}
         </Property>
@@ -248,23 +223,26 @@ function MonthDetails() {
         <Property label="Available">
           {money(sum(categories, (item) => item.available))}
         </Property>
-      </Card>
-      <Card>
-        <Tabs defaultValue="auto-assign">
-          <TabsList aria-label="Month details">
-            {tabs.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          {tabs.map((tab) => (
-            <TabsContent key={tab.value} value={tab.value}>
-              {tab.content}
-            </TabsContent>
-          ))}
-        </Tabs>
-      </Card>
+        <div className={styles.cardSection}>
+          <h3 className={styles.cardSectionTitle}>Cost to Be Me</h3>
+          <Property label="Targets">{money(costToBeMe)}</Property>
+          <Property label="Income">
+            <ExpectedIncomeProperty />
+          </Property>
+          {expectedIncome !== null && (
+            <Meter
+              ratio={costToBeMe ? Math.min(1, expectedIncome / costToBeMe) : 1}
+              tone={expectedIncome < costToBeMe ? "underfunded" : "funded"}
+              label={
+                expectedIncome < costToBeMe
+                  ? `${money(costToBeMe - expectedIncome)} short of ${month.short}'s targets`
+                  : `${money(expectedIncome - costToBeMe)} left after ${month.short}'s targets`
+              }
+            />
+          )}
+        </div>
+      </Section>
+      <AutoAssign scope={categories} />
     </>
   );
 }
@@ -276,11 +254,11 @@ function CheckedDetails({ ids }: { ids: string[] }) {
   const overspent = categories.filter((item) => item.available < 0);
   return (
     <>
-      <Card>
-        <Title
-          title={`${categories.length} ${categories.length === 1 ? "category" : "categories"} selected`}
-          subtitle={categories.map((item) => item.name).join(", ")}
-        />
+      <Section
+        id="selection"
+        title={`${categories.length} ${categories.length === 1 ? "category" : "categories"} selected`}
+        subtitle={categories.map((item) => item.name).join(", ")}
+      >
         <Figure
           value={money(sum(categories, (item) => item.available))}
           caption={
@@ -290,7 +268,7 @@ function CheckedDetails({ ids }: { ids: string[] }) {
           }
           tone={overspent.length ? "overspent" : undefined}
         />
-      </Card>
+      </Section>
       <Card>
         <Property label="Assigned">
           {money(sum(categories, (item) => item.assigned))}
@@ -302,23 +280,8 @@ function CheckedDetails({ ids }: { ids: string[] }) {
           {money(sum(categories, (item) => item.carryover))}
         </Property>
       </Card>
-      <SelectionAutoAssign categories={categories} />
+      <AutoAssign scope={categories} />
     </>
-  );
-}
-
-function SelectionAutoAssign({ categories }: { categories: Category[] }) {
-  return (
-    <Card>
-      <Tabs defaultValue="auto-assign">
-        <TabsList aria-label="Selection details">
-          <TabsTrigger value="auto-assign">Auto-Assign</TabsTrigger>
-        </TabsList>
-        <TabsContent value="auto-assign">
-          <AutoAssign scope={categories} />
-        </TabsContent>
-      </Tabs>
-    </Card>
   );
 }
 
@@ -333,12 +296,12 @@ function CategoryDetails({
     category.available > 0 ? "Money available" : "No money assigned yet";
   return (
     <>
-      <Card>
-        <Title
-          icon={<FundingRing category={category} size={15} />}
-          title={category.name}
-          subtitle={category.group}
-        />
+      <Section
+        id="category"
+        icon={<FundingRing category={category} size={15} />}
+        title={category.name}
+        subtitle={category.group}
+      >
         <Figure
           value={money(category.available)}
           caption={category.status || fallback}
@@ -353,7 +316,7 @@ function CategoryDetails({
             )}
           </MoveMoneyPopover>
         </div>
-      </Card>
+      </Section>
       {category.pairs && <PairedBalance category={category} />}
       <Card>
         <Property label="Assigned">{money(category.assigned)}</Property>
@@ -378,20 +341,10 @@ function CategoryDetails({
           </Property>
         )}
       </Card>
-      <Card>
-        <Tabs defaultValue="target">
-          <TabsList aria-label="Category details">
-            <TabsTrigger value="target">Target</TabsTrigger>
-            <TabsTrigger value="auto-assign">Auto-Assign</TabsTrigger>
-          </TabsList>
-          <TabsContent value="target">
-            <TargetTab category={category} />
-          </TabsContent>
-          <TabsContent value="auto-assign">
-            <AutoAssign key={category.id} scope={[category]} />
-          </TabsContent>
-        </Tabs>
-      </Card>
+      <Section id="target" title="Target">
+        <TargetTab category={category} />
+      </Section>
+      <AutoAssign scope={[category]} />
     </>
   );
 }
@@ -525,9 +478,7 @@ function TargetSnooze({ category }: { category: Category }) {
           }
         />
       </label>
-      {error && (
-        <FieldError id={`${category.id}-snooze-error`} message={error} />
-      )}
+      {error && <FormError>{error}</FormError>}
     </>
   );
 }

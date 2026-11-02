@@ -98,6 +98,8 @@ What does the color communicate?
  │    --accent-solid mixed into --surface-panel; see rows.md
  ├── A destructive confirm → --danger-text and --danger-line, through
  │    Button variant="danger"
+ ├── A field the user has to fix → --field-error for its error text and
+ │    --field-error-line for its well's border, through Field
  └── Checked boxes, the focus ring → --accent-solid, --focus-ring
 ```
 
@@ -141,3 +143,5 @@ is the band that sweeps it. Only `Skeleton` uses them; a hand-drawn bone in
 
 Shadows: `--shadow-card` for cards, `--shadow-drawer` for anything that
 floats over content (drawers, popovers), `--shadow-tooltip` for tooltips.
+
+Scrims: `--overlay` dims the page behind a dialog or an open drawer.

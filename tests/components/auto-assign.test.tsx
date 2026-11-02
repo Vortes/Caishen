@@ -28,7 +28,6 @@ test("Auto-Assign in a category's details assigns only that category", async () 
   const details = within(
     screen.getByRole("complementary", { name: "Details" }),
   );
-  await shell.user.click(details.getByRole("tab", { name: "Auto-Assign" }));
   await shell.user.click(
     details.getByRole("button", { name: /^Assigned last month/ }),
   );

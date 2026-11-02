@@ -24,32 +24,25 @@ export function moveMonth(month: string, delta: number) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 // Adds thousands separators to each number in a typed amount, including the
-// terms of sums like 600+1000; text with anything else is left as typed for
-// the parsers to judge.
+// numbers in a calculation like 1200*12; text with anything else is left as
+// typed for the parsers to judge.
 export function groupThousands(input: string) {
   const plain = input.replace(/,/g, "");
-  if (!/^[-+\d.]*$/.test(plain)) return input;
+  if (!/^[-+−*/×÷^()\d.\s]*$/.test(plain)) return input;
   return plain.replace(
     /(^|[^.\d])(\d+)/g,
     (_, before: string, whole: string) =>
       before + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
   );
 }
-export function money(data: FormData, key: string) {
-  return parseMoney(text(data, key));
-}
-export function parseMoney(input: string) {
-  const value = input.replace(/[$,\s]/g, "");
-  if (!/^-?\d+(\.\d{1,2})?$/.test(value))
-    throw new Error(
-      "Enter a dollar amount with no more than two decimal places.",
-    );
-  const sign = value.startsWith("-") ? -1 : 1;
-  const [whole = "0", fraction = ""] = value.replace("-", "").split(".");
-  const cents = sign * (Number(whole) * 100 + Number(fraction.padEnd(2, "0")));
-  if (!Number.isSafeInteger(cents))
-    throw new Error("That amount is too large.");
-  return cents;
+// Where the caret goes once groupThousands has added or moved separators:
+// after as many characters other than separators as it had before it.
+export function caretAfterSameDigit(text: string, at: number, grouped: string) {
+  const before = text.slice(0, at).replace(/,/g, "").length;
+  let caret = 0;
+  for (let seen = 0; caret < grouped.length && seen < before; caret++)
+    if (grouped[caret] !== ",") seen++;
+  return caret;
 }
 export function text(data: FormData, key: string) {
   const value = data.get(key);

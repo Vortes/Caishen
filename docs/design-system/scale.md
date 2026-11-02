@@ -1,10 +1,9 @@
 # Scale tokens
 
-Sources: the "Scale" block in `src/styles/tokens.css` and the numeric
-positioning tokens in `src/components/ui/tokens.ts`. Never write a raw
+Source: the "Scale" block in `src/styles/tokens.css`. Never write a raw
 `px` value for a font size, a control height, or a corner radius; use the
-token. Raw pixels are fine for one-off geometry such as icon offsets and
-hairline insets.
+token. Padding and gaps follow [spacing.md](spacing.md). Raw pixels are
+fine for one-off geometry such as icon offsets and hairline insets.
 
 ## Type
 
@@ -65,27 +64,13 @@ rows line up across panels.
 | `--size-header`         | 48px   | Panel header                               |
 | `--size-toolbar`        | 52px   | Toolbar under the header                   |
 
-Popovers are `--size-popover` (320px) wide.
+`Popover size="form"` is `--size-popover` (320px) wide; `size="wide"`, for
+a table of transactions, is `--size-popover-wide` (560px). A `Dialog` is
+`--size-dialog` (400px) wide; `size="wide"` is `--size-dialog-wide` (480px).
 
 ## Spacing
 
-| Token            | Value | Use                                |
-| ---------------- | ----- | ---------------------------------- |
-| `--space-gutter` | 8px   | Between the window edge and panels |
-| `--space-inset`  | 8px   | A panel's inner padding            |
-| `--space-stack`  | 10px  | Between stacked cards              |
-| `--space-row-x`  | 14px  | A row's horizontal padding         |
-| `--space-card`   | 16px  | A card's padding                   |
-
-The trigger gap is `POPOVER_GAP` (6px), exported from
-`src/components/ui/tokens.ts`. Use `sideOffset={POPOVER_GAP}` for every
-popover, dropdown menu, and tooltip. Radix takes a pixel number, so this
-token is TypeScript rather than a CSS custom property. Never hardcode a
-separate gap or omit the offset, which defaults to zero.
-
-This is the space between the trigger button and the floating surface.
-It does not replace internal padding (`--space-inset`, `--space-card`)
-or `collisionPadding`, which keeps the surface inside the viewport.
+Spacing has its own rules by role: see [spacing.md](spacing.md).
 
 ## Radii
 
@@ -112,8 +97,9 @@ skeleton's shine takes `--duration-shimmer` (1600ms) per pass. Under
 `prefers-reduced-motion`, panel motion is 0ms and skeletons hold still;
 never add animation that ignores it.
 
-Frequent-use popovers and dropdown menus open and close instantly. Only
-occasional secondary actions opt into the [surface motion pattern](surfaces.md#popover-and-dropdown-menu-motion):
+Frequent-use popovers and menus open and close instantly. Only occasional
+secondary actions opt in with [`motion="occasional"`](surfaces.md#motion),
+which reads these tokens:
 
 | Token                      | Value | Use                                |
 | -------------------------- | ----- | ---------------------------------- |
@@ -122,6 +108,11 @@ occasional secondary actions opt into the [surface motion pattern](surfaces.md#p
 | `--scale-popover`          | 0.97  | Starting and exiting scale         |
 | `--distance-popover`       | 4px   | Entrance offset toward the trigger |
 
-Use the shared motion stylesheet and hook rather than copying transitions or
-timings. Keyboard opening and `prefers-reduced-motion: reduce` are instant.
-Keep popup triggers stationary during press so the positioned surface cannot jump.
+Dialogs are always occasional. A dialog and its scrim read these:
+
+| Token                     | Value | Use                                                            |
+| ------------------------- | ----- | -------------------------------------------------------------- |
+| `--duration-dialog-enter` | 200ms | Entrance: the dialog with `--ease-panel`, the scrim `ease-out` |
+| `--duration-dialog-exit`  | 150ms | Exit with `ease-in`                                            |
+
+The surface modules own these transitions; feature CSS never repeats them.

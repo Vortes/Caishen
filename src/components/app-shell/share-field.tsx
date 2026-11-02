@@ -1,15 +1,22 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
 import { CheckIcon, UsersIcon } from "lucide-react";
-import { Popover } from "radix-ui";
-import { useId, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { readAmount, sameAmount } from "~/components/budget/amount";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Field, FieldError, FormError } from "~/components/ui/field";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Popover } from "~/components/ui/popover";
+import { SearchSuggestions } from "~/components/ui/search-list";
 import {
   halfOf,
   keepShare,
@@ -94,39 +101,31 @@ export function ShareMenu({
   // The payee whose last categorization prefilled this share.
   remembered?: string;
   onChange: (share: CounterpartyShare | null) => string | null;
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>{children}</Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={moveStyles.popover}
-          align="start"
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label="Who this is for"
-        >
-          <ShareChoices
-            key={String(open)}
-            amounts={[amount]}
-            share={share}
-            saved={saved}
-            remembered={remembered}
-            onChange={(next) => {
-              const failure = onChange(next);
-              if (!failure) setOpen(false);
-              return failure;
-            }}
-          />
-          <Popover.Arrow className={moveStyles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <Popover
+      label="Who this is for"
+      trigger={children}
+      open={open}
+      onOpenChange={setOpen}
+      size="form"
+      arrow
+    >
+      <ShareChoices
+        key={String(open)}
+        amounts={[amount]}
+        share={share}
+        saved={saved}
+        remembered={remembered}
+        onChange={(next) => {
+          const failure = onChange(next);
+          if (!failure) setOpen(false);
+          return failure;
+        }}
+      />
+    </Popover>
   );
 }
 
@@ -296,9 +295,9 @@ export function ShareChoices({
             />
           )}
           {error && (
-            <p className={`${moveStyles.error} ${styles.popoverHint}`}>
-              {error}
-            </p>
+            <div className={styles.popoverHint}>
+              <FormError>{error}</FormError>
+            </div>
           )}
           {remembered && (
             <p className={styles.popoverHint}>
@@ -311,11 +310,19 @@ export function ShareChoices({
   );
 }
 
-export function parseCents(text: string): number | null {
-  const cleaned = text.replace(/[$,\s]/g, "");
-  if (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(cleaned)) return null;
-  const [whole = "0", fraction = ""] = cleaned.split(".");
-  return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+// A share typed in a field, in cents, or why it can't be one. A line with
+// no amount yet takes the share as its amount, so nothing caps it.
+function readShare(text: string, most: number) {
+  const reading = readAmount(text);
+  if (!reading.ok) return reading;
+  if (reading.cents < 0)
+    return { ok: false as const, message: "Enter an amount, like 24.50." };
+  if (most > 0 && reading.cents > most)
+    return {
+      ok: false as const,
+      message: `A share can be at most ${money(most)}.`,
+    };
+  return reading;
 }
 
 function CustomShare({
@@ -329,9 +336,10 @@ function CustomShare({
   initial: number;
   onApply: (value: number) => void;
 }) {
-  const id = useId();
   const [text, setText] = useState((initial / 100).toFixed(2));
   const [error, setError] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => input.current?.focus(), []);
   return (
     <form
       className={styles.shareForm}
@@ -339,30 +347,26 @@ function CustomShare({
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        const value = parseCents(text);
-        if (value === null) return setError("Enter an amount, like 24.50.");
-        if (value > amount)
-          return setError(`A share can be at most ${money(amount)}.`);
-        onApply(value);
+        const share = readShare(text, amount);
+        if (!share.ok) return setError(share.message);
+        onApply(share.cents);
       }}
     >
-      <label htmlFor={id}>{label}</label>
-      <div className={styles.shareFormRow}>
-        <AmountWell
-          id={id}
-          value={text}
-          invalid={Boolean(error)}
-          autoFocus
-          onChange={(value) => {
-            setText(value);
-            if (error) setError("");
-          }}
-        />
-        <Button size="sm" variant="primary" type="submit">
-          Apply
-        </Button>
-      </div>
-      {error && <p className={moveStyles.error}>{error}</p>}
+      <Field label={label} error={error || undefined}>
+        <div className={styles.shareFormRow}>
+          <AmountInput
+            inputRef={input}
+            value={text}
+            onChange={(value) => {
+              if (!sameAmount(text, value)) setError("");
+              setText(value);
+            }}
+          />
+          <Button size="sm" variant="primary" type="submit">
+            Apply
+          </Button>
+        </div>
+      </Field>
     </form>
   );
 }
@@ -381,14 +385,18 @@ function OtherShare({
   const amount = Math.min(...amounts);
   const multiple = amounts.length > 1;
   const [full, setFull] = useState(multiple && !initial);
-  const nameId = useId();
-  const amountId = useId();
-  const listId = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => nameInput.current?.focus(), []);
   const [name, setName] = useState(initial?.counterpartyName ?? "");
   const [text, setText] = useState(
     ((initial?.amount ?? amount) / 100).toFixed(2),
   );
-  const [error, setError] = useState("");
+  const [error, setError] = useState<{
+    field: "name" | "amount";
+    message: string;
+  } | null>(null);
+  // The two fields share a row, so their error sits once under it.
+  const errorId = useId();
   return (
     <form
       className={styles.shareForm}
@@ -396,68 +404,64 @@ function OtherShare({
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        const value = full ? amount : parseCents(text);
-        if (!name.trim()) return setError("Name who owes it.");
-        if (value === null) return setError("Enter an amount, like 24.50.");
-        if (value > amount)
-          return setError(`A share can be at most ${money(amount)}.`);
-        onApply(name.trim(), value, full ? "full" : "fixed");
+        if (!name.trim())
+          return setError({ field: "name", message: "Name who owes it." });
+        const share = full
+          ? { ok: true as const, cents: amount }
+          : readShare(text, amount);
+        if (!share.ok)
+          return setError({ field: "amount", message: share.message });
+        onApply(name.trim(), share.cents, full ? "full" : "fixed");
       }}
     >
-      <div className={styles.shareFormRow}>
+      <div className={styles.shareFormRow} data-fields>
         <div className={styles.shareFormField}>
-          <label htmlFor={nameId}>Who owes it</label>
-          <div className={moveStyles.amountInput}>
-            <input
-              id={nameId}
-              list={listId}
+          <Field
+            label="Who owes it"
+            sharedErrorId={error?.field === "name" ? errorId : undefined}
+          >
+            <SearchSuggestions
+              inputRef={nameInput}
               value={name}
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
+              suggestions={people}
               placeholder="Name or company"
-              onChange={(event) => {
-                setName(event.target.value);
-                if (error) setError("");
+              onChange={(value) => {
+                setName(value);
+                setError(null);
               }}
             />
-            <datalist id={listId}>
-              {people.map((person) => (
-                <option key={person} value={person} />
-              ))}
-            </datalist>
-          </div>
+          </Field>
         </div>
         {!full && (
           <div className={styles.shareFormField} data-narrow>
-            <label htmlFor={amountId}>
-              {multiple ? "Amount each" : "Amount"}
-            </label>
-            <AmountWell
-              id={amountId}
-              value={text}
-              invalid={Boolean(error)}
-              onChange={(value) => {
-                setText(value);
-                if (error) setError("");
-              }}
-            />
+            <Field
+              label={multiple ? "Amount each" : "Amount"}
+              sharedErrorId={error?.field === "amount" ? errorId : undefined}
+            >
+              <AmountInput
+                value={text}
+                onChange={(value) => {
+                  if (!sameAmount(text, value)) setError(null);
+                  setText(value);
+                }}
+              />
+            </Field>
           </div>
         )}
       </div>
+      {error && <FieldError id={errorId}>{error.message}</FieldError>}
       {multiple && (
         <label className={styles.fullShare}>
           <Checkbox
             checked={full}
             onCheckedChange={(value) => {
               setFull(value === true);
-              setError("");
+              setError(null);
             }}
           />
           Full amount of each transaction
         </label>
       )}
-      {error && <p className={moveStyles.error}>{error}</p>}
       <p className={styles.formHint}>
         Tracked in your Reimbursements account. Only you see it.
       </p>
@@ -467,39 +471,5 @@ function OtherShare({
         </Button>
       </div>
     </form>
-  );
-}
-
-export function AmountWell({
-  id,
-  value,
-  invalid,
-  autoFocus,
-  onChange,
-}: {
-  id: string;
-  value: string;
-  invalid?: boolean;
-  autoFocus?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div
-      className={moveStyles.amountInput}
-      data-invalid={invalid ? "" : undefined}
-    >
-      <span aria-hidden>$</span>
-      <input
-        id={id}
-        inputMode="decimal"
-        autoComplete="off"
-        spellCheck={false}
-        autoFocus={autoFocus}
-        value={value}
-        aria-invalid={invalid ? true : undefined}
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => onChange(groupAmountInput(event.target))}
-      />
-    </div>
   );
 }

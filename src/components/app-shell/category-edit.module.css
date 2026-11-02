@@ -1,0 +1,62 @@
+/* Renaming and deleting a category or group from its name. */
+
+/* What the move step asks, above its field. */
+.note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+/* A plan row's name opens the popover. The row is a button and can't hold
+   another, so a copy of its name cell sits over it on the row's own grid,
+   hidden but for the name's button. The row keeps drawing the name; the
+   button's text is clear, so nothing moves under the pointer. */
+.overlay {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Reads as the name; a dotted underline on hover says it can be edited.
+   Its padding hangs past the text, so the text keeps its place and the
+   shell's inset focus ring has room around it. */
+.name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: calc(100% + 12px);
+  margin: -4px -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline dotted 1px transparent;
+  text-underline-offset: 4px;
+  visibility: visible;
+  pointer-events: auto;
+  cursor: pointer;
+  transition:
+    text-decoration-color 150ms ease-out,
+    color 150ms ease-out;
+}
+/* A tap shouldn't leave the underline behind on touch. */
+@media (hover: hover) and (pointer: fine) {
+  .name:hover {
+    color: var(--text-primary);
+    text-decoration-color: var(--text-tertiary);
+  }
+}
+.name[data-state="open"] {
+  color: var(--text-primary);
+  text-decoration-color: var(--text-tertiary);
+}
+/* Over a row, only the underline shows; the row draws the text. */
+.overlay .name {
+  color: transparent;
+}

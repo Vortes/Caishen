@@ -6,7 +6,10 @@ What is the user choosing?
  ├── Which items to include or act on → Checkbox
  ├── Which of 2–4 views of the same content → SegmentedControl
  ├── Which of 2+ sections of different content → Tabs
- └── One of 5+ options → a select (not in the system yet; see DESIGN.md)
+ ├── One of 5+ options, or a value a form asks for (account type, rate)
+ │     → Select (selects.md)
+ └── One item from a list long enough to search → SearchList
+       (search-lists.md)
 ```
 
 None of these take variants or sizes.
@@ -46,22 +49,22 @@ includes. Settings never wait for a Save button: a switch that only applies
 after Save tells the user something happened when it didn't.
 
 `checked` is `true` or `false`; `onCheckedChange` receives the new value.
-Name it like a Checkbox: wrap it in a `<label>` with its text, or pass
-`aria-label`. In a settings list the text goes first and the switch sits at
-the row's end.
+On a settings screen, put it in a `SettingRow`, which names and describes it
+and keeps clicks on its text from flipping it ([settings.md](settings.md)).
+Elsewhere, name it like a Checkbox: wrap it in a `<label>` with its text, or
+pass `aria-label`.
 
 ```tsx
-// Correct
-<label className={styles.check}>
-  <span className={styles.checkText}>
-    <span className={styles.checkLabel}>{section.label}</span>
-    <span className={styles.checkHint}>{section.hint}</span>
-  </span>
+// Correct (entry/profile-preferences.tsx)
+<SettingRow
+  label="Send the daily review"
+  description="Your budget and bank updates keep working when this is off."
+>
   <Switch
-    checked={sections.includes(section.id)}
-    onCheckedChange={(on) => onToggle(section.id, on)}
+    checked={value.emailEnabled}
+    onCheckedChange={(emailEnabled) => change({ emailEnabled })}
   />
-</label>
+</SettingRow>
 
 // Incorrect: checkboxes for a setting, held until Save
 <Checkbox checked={draft.includes(id)} onCheckedChange={setDraft} />
@@ -75,8 +78,11 @@ when every option shows the same content arranged differently: group the
 report by Categories or Groups. When each option shows different content,
 use `Tabs`.
 
-Always controlled with `value` and `onValueChange`, and always named with
-`aria-label`, because there is no visible label.
+Always controlled with `value` and `onValueChange`. Standing alone it has
+no visible label, so name it with `aria-label`. As a question in a form
+("Who paid" in `partner-record.tsx`), put it in a
+[`Field`](fields.md#field): the field's label names it and its hint or
+error describes it, so it takes no `aria-label`.
 
 ```tsx
 // Correct
@@ -98,17 +104,10 @@ Always controlled with `value` and `onValueChange`, and always named with
 ```
 
 `fill` spans the control across its container, its segments sharing the
-width. Use it
-only where the choice leads a form in a narrow panel, like a target's
-schedule in the inspector, so every option stays visible as the panel
-narrows. Everywhere else it takes its natural width.
-
-```tsx
-<SegmentedControl fill aria-label="Schedule" value={schedule} onValueChange={set}>
-  <SegmentedControlItem value="weekly">Weekly</SegmentedControlItem>
-  <SegmentedControlItem value="monthly">Monthly</SegmentedControlItem>
-</SegmentedControl>
-```
+width. Use it only where the choice leads a form in a narrow panel (a
+target's Schedule in `target-editor.tsx`, "Who paid" in
+`partner-record.tsx`), so every option stays visible as the panel narrows.
+Everywhere else it takes its natural width.
 
 ## Tabs
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { screenHref } from "~/components/workspace/routes";
-import { counterpartyLines, isFullShare } from "~/domain/counterparty";
 import {
   ArrowRightLeftIcon,
   CheckIcon,
@@ -13,7 +12,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
-  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -40,6 +38,7 @@ import {
 import { motion, MotionConfig } from "motion/react";
 import { newId } from "~/components/budget/format";
 import {
+  AddGroupButton,
   AddToGroupButton,
   FirstGroupButton,
   isSystemGroup,
@@ -49,11 +48,17 @@ import {
 import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
 import { ActivityCell, activityColumn, type ActivityJump } from "./activity";
 import { AssignedCell } from "./assigned";
+import {
+  CategoryNameCell,
+  EditNamePopover,
+  editableCategory,
+  editableGroup,
+} from "./category-edit";
 import { FundingBar } from "./funding-bar";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { TransactionEditor } from "./transaction-form";
 import { RepaymentEditor } from "./repayment-editor";
-import { ShareCell, ShareDetail } from "./share-detail";
+import { ShareCell } from "./share-cell";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
@@ -62,10 +67,11 @@ import { useShellData } from "./shell-data";
 import {
   SelectAll,
   SelectionIsland,
-  type WayBack,
+  type Way,
   useReviewSelection,
 } from "./transaction-review";
 import styles from "./shell.module.css";
+import editStyles from "./category-edit.module.css";
 import reviewStyles from "./transaction-review.module.css";
 
 // Arrow keys move the selection through the rows of a list, like Linear's j/k.
@@ -97,6 +103,8 @@ export function PlanView({
   onCheck,
   reveal,
   onJump,
+  addingGroup,
+  onAddingGroupChange,
 }: {
   view: PlanViewId | null;
   onSelect: (id: string) => void;
@@ -105,10 +113,29 @@ export function PlanView({
   onCheck: (ids: string[], value: boolean) => void;
   // A group or category to bring into view and focus, like one just added.
   reveal: Added | null;
+  // The Category header's add-group form, which the shell opens with N too.
+  addingGroup: boolean;
+  onAddingGroupChange: (open: boolean) => void;
 }) {
   const shell = useShellData();
   const selectionStyle = useRowSelection(checked);
   const [closed, setClosed] = useState<string[]>([]);
+  // The group whose rename popover is open.
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  // A category just dropped into a folded group, which opens to show it.
+  const [landed, setLanded] = useState<{ id: string; group: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!landed) return;
+    const row = document.querySelector(
+      `[data-row][data-id="${CSS.escape(landed.id)}"]`,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+    // Long enough for the highlight to play out.
+    const timer = setTimeout(() => setLanded(null), 1000);
+    return () => clearTimeout(timer);
+  }, [landed]);
   const toggle = (id: string) =>
     setClosed((values) =>
       values.includes(id)
@@ -150,7 +177,7 @@ export function PlanView({
         }))
         .filter((group) => group.categories.length)
     : shell.groups;
-  const { add } = useAddCategory();
+  const { send } = useAddCategory();
   const reorder = useReorderDrag({
     ids: groups.map((group) => group.id),
     enabled: groups.length > 1,
@@ -162,7 +189,7 @@ export function PlanView({
       const names = shell.groups.map((group) =>
         showing.has(group.id) ? order[next++]! : group.id,
       );
-      const blocked = add(
+      const blocked = send(
         { type: "group.reorder", id: newId(), names },
         // A group's id is its name.
         `Moved ${id}`,
@@ -172,6 +199,142 @@ export function PlanView({
     },
   });
   const byId = new Map(groups.map((group) => [group.id, group]));
+  // Categories drag across the whole plan, so they're one list: each group's
+  // header, then its categories.
+  const headers = new Map(groups.map((group) => [headerKey(group.id), group]));
+  const categoryById = new Map(
+    groups.flatMap((group) =>
+      group.categories.map((category) => [category.id, category] as const),
+    ),
+  );
+  const groupOf = new Map(
+    groups.flatMap((group) =>
+      group.categories.map((category) => [category.id, group] as const),
+    ),
+  );
+  const entries = groups.flatMap((group) => [
+    headerKey(group.id),
+    ...group.categories.map((category) => category.id),
+  ]);
+  // Shut, or empty, so a drop lands on its header rather than opening it.
+  const isFolded = (group: (typeof groups)[number], id: string) =>
+    group.categories.length === 0 ||
+    (closed.includes(group.id) &&
+      group.categories.some((category) => category.id !== id));
+  const moving = useReorderDrag({
+    ids: entries,
+    enabled: categoryById.size > 0,
+    places: (id, list, by) => {
+      const source = groupOf.get(id);
+      const own = list?.querySelector<HTMLElement>(categorySlot(id));
+      if (!source || !own?.parentElement) return [];
+      // Card, loan, and partner categories stay in their group; nothing
+      // else goes into one of those groups.
+      const pinned = isSystemGroup(source);
+      const listGap = parseFloat(getComputedStyle(own.parentElement).marginTop);
+      // The dragged row stays where it was, as a placeholder, so the plan
+      // keeps its shape: each place is measured as it stands.
+      const settled = (element: HTMLElement) => offsetIn(element, list);
+      const headerOf = (group: { id: string }) =>
+        list.querySelector<HTMLElement>(
+          `[data-reorder-header="${CSS.escape(group.id)}"]`,
+        );
+      const rest = entries.filter((entry) => entry !== id);
+      return entries.map((_, index) => {
+        const before = rest[index - 1];
+        if (before === undefined) return null;
+        const group = headers.get(before) ?? groupOf.get(before);
+        if (!group || (pinned ? group !== source : isSystemGroup(group)))
+          return null;
+        if (isFolded(group, id)) {
+          // A folded group takes the drop on its header, at the group's end,
+          // and stays folded. Keys skip it, so the row stays in view.
+          const after = rest[index];
+          const last = after === undefined || headers.has(after);
+          const empty = group.categories.length === 0;
+          if (by === "keys" || !last || (headers.has(before) && !empty))
+            return null;
+          const header = headerOf(group);
+          return header && settled(header);
+        }
+        if (headers.has(before)) {
+          // The first place in an open group.
+          const header = headerOf(group);
+          return header && settled(header) + header.offsetHeight + listGap;
+        }
+        const row = list.querySelector<HTMLElement>(categorySlot(before));
+        return row && settled(row) + row.offsetHeight;
+      });
+    },
+    onDrop: (order, id, done) => {
+      const at = order.indexOf(id);
+      let from = at;
+      while (from > 0 && !headers.has(order[from]!)) from--;
+      let to = at;
+      while (to < order.length && !headers.has(order[to]!)) to++;
+      const target = headers.get(order[from]!);
+      const category = categoryById.get(id);
+      if (!target || !category) return done();
+      if (isFolded(target, id)) {
+        setClosed((values) => values.filter((value) => value !== target.id));
+        setLanded({ id, group: target.id });
+      }
+      const categoryIds = order.slice(from + 1, to);
+      const blocked =
+        category.group === target.id
+          ? send(
+              {
+                type: "category.reorder",
+                id: newId(),
+                group: target.id,
+                categoryIds,
+              },
+              `Moved ${category.name}`,
+              done,
+            )
+          : send(
+              {
+                type: "category.move",
+                id: newId(),
+                categoryId: id,
+                group: target.id,
+                categoryIds,
+              },
+              `Moved ${category.name} to ${target.name}`,
+              done,
+            );
+      if (blocked) done();
+    },
+  });
+  // Each group's categories as the drag has them.
+  const shown = new Map<string, string[]>();
+  let showing: string[] = [];
+  for (const entry of moving.order) {
+    const group = headers.get(entry);
+    if (group) shown.set(group.id, (showing = []));
+    else showing.push(entry);
+  }
+  // While a category is dragged, its group keeps it as a placeholder, and a
+  // gap opens where it would land, unless that's where it already is.
+  const draggingId = moving.drag?.id;
+  const moved =
+    draggingId !== undefined &&
+    moving.order.indexOf(draggingId) !== entries.indexOf(draggingId);
+  const rowsOf = (group: (typeof groups)[number]): PlanRow[] => {
+    const rows: PlanRow[] = (shown.get(group.id) ?? []).map((id) => ({
+      id,
+      kind: id === draggingId ? "gap" : "row",
+    }));
+    if (draggingId === undefined || groupOf.get(draggingId) !== group)
+      return rows;
+    const original = group.categories.map((category) => category.id);
+    const previous = original[original.indexOf(draggingId) - 1];
+    const at = previous
+      ? rows.findIndex((row) => row.id === previous && row.kind === "row") + 1
+      : 0;
+    rows.splice(at, 0, { id: draggingId, kind: "placeholder" });
+    return moved ? rows : rows.filter((row) => row.kind !== "gap");
+  };
   if (!shell.groups.length) {
     return (
       <Empty title="Give every dollar a job." action={<FirstGroupButton />}>
@@ -205,6 +368,14 @@ export function PlanView({
     );
   };
   const dragged = reorder.drag && byId.get(reorder.drag.id);
+  const draggedCategory = moving.drag && categoryById.get(moving.drag.id);
+  const intoFolded =
+    draggedCategory &&
+    groups.find(
+      (group) =>
+        shown.get(group.id)?.includes(draggedCategory.id) &&
+        isFolded(group, draggedCategory.id),
+    );
   // The column header's controls cover every group showing.
   const everyId = groups.flatMap((group) =>
     group.categories.map((item) => item.id),
@@ -216,7 +387,10 @@ export function PlanView({
   return (
     <MotionConfig reducedMotion="user">
       <div
-        ref={reorder.listRef}
+        ref={(node) => {
+          reorder.listRef.current = node;
+          moving.listRef.current = node;
+        }}
         className={`${styles.list} ${styles.planList} ${selectionStyles.list}`}
         {...selectionStyle.listProps}
         style={
@@ -235,7 +409,7 @@ export function PlanView({
         role="group"
         aria-label="Categories"
         data-selecting={checked.length > 0 || undefined}
-        data-dragging={reorder.drag ? true : undefined}
+        data-dragging={reorder.drag || moving.drag ? true : undefined}
         data-settling={reorder.settling || undefined}
         onKeyDown={(event) => {
           const focused =
@@ -260,8 +434,26 @@ export function PlanView({
             );
             return;
           }
-          // x toggles the focused row's checkbox, like Linear.
+          // Alt+Up and Alt+Down move the focused category, into the next
+          // group from either end of its own.
           const id = focused?.dataset.id;
+          if (
+            event.altKey &&
+            id &&
+            (event.key === "ArrowUp" || event.key === "ArrowDown")
+          ) {
+            event.preventDefault();
+            moving.nudge(id, event.key === "ArrowUp" ? -1 : 1);
+            requestAnimationFrame(() =>
+              moving.listRef.current
+                ?.querySelector<HTMLElement>(
+                  `[data-row][data-id="${CSS.escape(id)}"]`,
+                )
+                ?.focus(),
+            );
+            return;
+          }
+          // x toggles the focused row's checkbox, like Linear.
           if (event.key === "x" && id) {
             event.preventDefault();
             onCheck([id], !checked.includes(id));
@@ -303,6 +495,12 @@ export function PlanView({
               />
               <span aria-hidden>Category</span>
             </button>
+            <span className={styles.headerAdd}>
+              <AddGroupButton
+                open={addingGroup}
+                onOpenChange={onAddingGroupChange}
+              />
+            </span>
           </span>
           <span className={styles.numeric} data-optional aria-hidden>
             Assigned
@@ -318,16 +516,28 @@ export function PlanView({
           const group = byId.get(groupId);
           if (!group) return null;
           const ids = group.categories.map((item) => item.id);
+          const order = rowsOf(group);
           // A group with no categories stays folded; its header's + adds one.
-          // Every group folds while one is dragged.
+          // A dragged category doesn't open a folded group, only a drop
+          // does. Every group folds while one is dragged.
           const open =
-            ids.length > 0 && !closed.includes(group.id) && !reorder.drag;
+            order.length > 0 &&
+            !closed.includes(group.id) &&
+            !(draggingId && isFolded(group, draggingId)) &&
+            !reorder.drag;
+          // An empty group has nothing to show, but its caret still turns
+          // when it's toggled.
+          const expanded =
+            ids.length > 0 ? open : !closed.includes(group.id) && !reorder.drag;
           const count = ids.filter((id) => checked.includes(id)).length;
+          const editable = editableGroup(group);
           return (
             <motion.div
               key={group.id}
               data-reorder-slot
-              layout={reorder.animating ? "position" : false}
+              layout={
+                reorder.animating || moving.animating ? "position" : false
+              }
               transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
             >
               {reorder.drag?.id === group.id ? (
@@ -335,7 +545,14 @@ export function PlanView({
               ) : (
                 <div
                   className={styles.rowWrap}
+                  data-reorder-header={group.id}
+                  data-drop-target={intoFolded === group || undefined}
                   onPointerDown={(event) => reorder.start(event, group.id)}
+                  onContextMenu={(event) => {
+                    if (!editable) return;
+                    event.preventDefault();
+                    setEditingGroup(group.id);
+                  }}
                 >
                   {ids.length > 0 && (
                     <RowCheckbox
@@ -351,7 +568,8 @@ export function PlanView({
                     />
                   )}
                   {/* The whole header toggles the group for the pointer; the
-                    name is the button, so the + beside it can be one too. */}
+                    caret is the button, so the name and the + beside it can
+                    be ones too. */}
                   <div
                     className={`${styles.columns} ${styles.groupRow}`}
                     onClick={(event) => {
@@ -362,8 +580,9 @@ export function PlanView({
                     <span className={styles.groupName}>
                       <button
                         type="button"
-                        className={styles.groupToggle}
-                        aria-expanded={open}
+                        className={`${styles.groupToggle} ${styles.caretOnly}`}
+                        aria-label={group.name}
+                        aria-expanded={expanded}
                         aria-keyshortcuts={
                           reorder.enabled
                             ? "Alt+ArrowUp Alt+ArrowDown"
@@ -378,8 +597,35 @@ export function PlanView({
                           className={styles.groupCaret}
                           aria-hidden
                         />
-                        <span className={styles.truncate}>{group.name}</span>
                       </button>
+                      {editable ? (
+                        <EditNamePopover
+                          editing={{
+                            type: "group",
+                            name: group.name,
+                            categories: shell.categories.filter(
+                              (item) => item.group === group.name,
+                            ),
+                          }}
+                          open={editingGroup === group.id}
+                          onOpenChange={(open) =>
+                            setEditingGroup(open ? group.id : null)
+                          }
+                          onDeleted={(ids) => onCheck(ids, false)}
+                        >
+                          <button
+                            type="button"
+                            className={editStyles.name}
+                            aria-label={`Edit ${group.name}`}
+                          >
+                            <span className={styles.truncate}>
+                              {group.name}
+                            </span>
+                          </button>
+                        </EditNamePopover>
+                      ) : (
+                        <span className={styles.truncate}>{group.name}</span>
+                      )}
                       {!isSystemGroup(group) && (
                         <span className={styles.groupAdd} data-no-drag>
                           <AddToGroupButton group={group.name} />
@@ -392,7 +638,10 @@ export function PlanView({
               )}
               {open && (
                 <PlanCategoryList
-                  group={group}
+                  rows={order}
+                  landed={landed?.group === group.id ? landed.id : null}
+                  categories={categoryById}
+                  drag={moving}
                   checked={checked}
                   selectionStyle={selectionStyle}
                   onCheck={onCheck}
@@ -403,6 +652,39 @@ export function PlanView({
             </motion.div>
           );
         })}
+        {draggedCategory && (
+          <motion.div
+            className={styles.categoryGap}
+            style={{ y: moving.gap }}
+            data-header={intoFolded ? true : undefined}
+            data-idle={moved ? undefined : true}
+            aria-hidden
+          />
+        )}
+        {draggedCategory && (
+          <motion.div
+            className={styles.categoryGhost}
+            style={{ y: moving.y }}
+            initial={{ scale: 1 }}
+            // Over a folded group it gives way to the ringed header it's
+            // going into.
+            // Sent back, it settles into its placeholder and dissolves.
+            animate={
+              intoFolded || moving.returning
+                ? { scale: moving.returning ? 1 : 0.98, opacity: 0 }
+                : { scale: 1.01, opacity: 1 }
+            }
+            transition={{
+              duration: moving.returning ? 0.18 : 0.15,
+              ease: EASE,
+            }}
+            aria-hidden
+          >
+            <div className={`${styles.columns} ${styles.row}`}>
+              <PlanCategoryContents category={draggedCategory} />
+            </div>
+          </motion.div>
+        )}
         {dragged && (
           <motion.div
             className={styles.groupGhost}
@@ -432,8 +714,13 @@ export function PlanView({
   );
 }
 
+type PlanRow = { id: string; kind: "row" | "placeholder" | "gap" };
+
 function PlanCategoryList({
-  group,
+  rows,
+  categories,
+  drag,
+  landed,
   checked,
   selectionStyle,
   onCheck,
@@ -443,67 +730,67 @@ function PlanCategoryList({
   Parameters<typeof PlanView>[0],
   "checked" | "onCheck" | "onSelect" | "onJump"
 > & {
-  group: { id: string; categories: Category[] };
+  rows: PlanRow[];
+  categories: Map<string, Category>;
+  // The plan's category drag, which can bring in a category from another
+  // group.
+  drag: ReturnType<typeof useReorderDrag>;
   selectionStyle: ReturnType<typeof useRowSelection>;
+  // The category just dropped in while the group was folded.
+  landed: string | null;
 }) {
-  const { add } = useAddCategory();
-  const byId = new Map(
-    group.categories.map((category) => [category.id, category]),
-  );
-  const reorder = useReorderDrag({
-    ids: group.categories.map((category) => category.id),
-    enabled: group.categories.length > 1,
-    onDrop: (categoryIds, id, done) => {
-      const blocked = add(
-        { type: "category.reorder", id: newId(), group: group.id, categoryIds },
-        `Moved ${byId.get(id)?.name ?? "category"}`,
-        done,
-      );
-      if (blocked) done();
-    },
-  });
-  const dragged = reorder.drag && byId.get(reorder.drag.id);
+  // The category whose rename popover is open.
+  const [editing, setEditing] = useState<string | null>(null);
   return (
     <div
-      ref={reorder.listRef}
       className={styles.categoryList}
-      data-dragging={reorder.drag ? true : undefined}
-      onKeyDown={(event) => {
-        const focused = document.activeElement;
-        const id =
-          focused instanceof HTMLElement ? focused.dataset.id : undefined;
-        if (
-          !event.altKey ||
-          !id ||
-          (event.key !== "ArrowUp" && event.key !== "ArrowDown")
-        )
-          return;
-        event.preventDefault();
-        event.stopPropagation();
-        reorder.nudge(id, event.key === "ArrowUp" ? -1 : 1);
-        requestAnimationFrame(() =>
-          reorder.listRef.current
-            ?.querySelector<HTMLElement>(
-              `[data-row][data-id="${CSS.escape(id)}"]`,
-            )
-            ?.focus(),
-        );
-      }}
+      data-opened={landed ? true : undefined}
     >
-      {reorder.order.map((id) => {
-        const category = byId.get(id);
+      {rows.map(({ id, kind }) => {
+        const category = categories.get(id);
         if (!category) return null;
         const isChecked = checked.includes(id);
+        if (kind === "placeholder")
+          return (
+            <motion.div
+              key={`placeholder:${id}`}
+              data-reorder-slot
+              data-reorder-category={id}
+              className={styles.rowWrap}
+              layout={drag.animating ? "position" : false}
+              transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
+            >
+              <div
+                className={`${styles.columns} ${styles.row} ${styles.categoryPlaceholder}`}
+                data-returning={drag.returning || undefined}
+                aria-hidden
+              >
+                <PlanCategoryContents category={category} />
+              </div>
+            </motion.div>
+          );
+        // The gap keeps the category's key, so the row it becomes on a drop
+        // is already in place.
         return (
           <motion.div
             key={id}
             data-reorder-slot
+            data-reorder-category={kind === "row" ? id : undefined}
+            data-landed={landed === id || undefined}
             className={`${styles.rowWrap} ${selectionStyles.row}`}
             {...selectionStyle.rowProps(id)}
-            layout={reorder.animating ? "position" : false}
+            // A right-click anywhere on the row opens the rename popover,
+            // in place of the browser's menu.
+            onContextMenu={(event) => {
+              if (!editableCategory(category)) return;
+              event.preventDefault();
+              setEditing(id);
+            }}
+            layout={drag.animating ? "position" : false}
             transition={{ duration: SETTLE_MS / 1000, ease: EASE }}
           >
-            {reorder.drag?.id === id ? (
+            {kind === "gap" ? (
+              // Holds the place; the plan draws the gap over it.
               <div className={styles.categoryDropSlot} aria-hidden />
             ) : (
               <>
@@ -523,13 +810,20 @@ function PlanCategoryList({
                       : undefined
                   }
                   aria-keyshortcuts={
-                    reorder.enabled ? "Alt+ArrowUp Alt+ArrowDown" : undefined
+                    drag.enabled ? "Alt+ArrowUp Alt+ArrowDown" : undefined
                   }
-                  onPointerDown={(event) => reorder.start(event, id)}
+                  onPointerDown={(event) => drag.start(event, id)}
                   onClick={() => onSelect(id)}
                 >
                   <PlanCategoryContents category={category} placeholder />
                 </button>
+                <CategoryNameCell
+                  category={category}
+                  open={editing === id}
+                  onOpenChange={(open) => setEditing(open ? id : null)}
+                  onPointerDown={(event) => drag.start(event, id)}
+                  onDeleted={(ids) => onCheck(ids, false)}
+                />
                 <AssignedCell category={category} />
                 <ActivityCell category={category} onJump={onJump} />
                 <MoveMoneyPopover category={category} align="end">
@@ -550,22 +844,24 @@ function PlanCategoryList({
           </motion.div>
         );
       })}
-      {dragged && (
-        <motion.div
-          className={styles.categoryGhost}
-          style={{ y: reorder.y }}
-          initial={{ scale: 1 }}
-          animate={{ scale: 1.01 }}
-          transition={{ duration: 0.15, ease: EASE }}
-          aria-hidden
-        >
-          <div className={`${styles.columns} ${styles.row}`}>
-            <PlanCategoryContents category={dragged} />
-          </div>
-        </motion.div>
-      )}
     </div>
   );
+}
+
+const headerKey = (groupId: string) => `group:${groupId}`;
+const categorySlot = (id: string) =>
+  `[data-reorder-category="${CSS.escape(id)}"]`;
+
+// The element's top within the list, before any transform moves it.
+function offsetIn(element: HTMLElement, list: HTMLElement) {
+  let top = 0;
+  for (
+    let node: HTMLElement | null = element;
+    node && node !== list;
+    node = node.offsetParent as HTMLElement | null
+  )
+    top += node.offsetTop;
+  return top;
 }
 
 function PlanCategoryContents({
@@ -611,7 +907,7 @@ function PlanCategoryContents({
 
 // Lives in the row's left padding; shows on hover, focus, or once anything
 // in the list is checked. The label is the hit area: the full row height.
-function RowCheckbox({
+export function RowCheckbox({
   label,
   state,
   onChange,
@@ -798,7 +1094,7 @@ export function RegisterView({
   checked: string[];
   onCheck: (ids: string[], value: boolean) => void;
   onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
-  back: WayBack | null;
+  back: Way | null;
 }) {
   const { transactions, openingBalances, accounts, month } = useShellData();
   const entry = useTransactionEntry();
@@ -927,14 +1223,6 @@ export function RegisterView({
   // the selection moves on.
   const [repaymentId, setRepaymentId] = useState<string | null>(null);
   if (repaymentId && repaymentId !== selectedId) setRepaymentId(null);
-  const fullySharedIds = new Set(
-    entry.view.budget.transactions
-      .filter((transaction) => {
-        const lines = counterpartyLines(transaction);
-        return lines.length > 0 && lines.every(isFullShare);
-      })
-      .map((transaction) => transaction.id),
-  );
   const closeRepayment = () => {
     const id = repaymentId;
     setRepaymentId(null);
@@ -1016,193 +1304,190 @@ export function RegisterView({
       </span>
     );
     return (
-      <Fragment key={item.id}>
-        <div
-          className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
-          {...selectionStyle.rowProps(item.id)}
-          onMouseDown={(event) => {
-            // Shift would otherwise extend a text selection across rows.
-            if (checkable && event.shiftKey) event.preventDefault();
-          }}
-        >
-          {checkable && (
-            <RowCheckbox
-              label={`Select ${item.payee}`}
-              state={isChecked}
-              onChange={() => {
-                anchor.current = item.id;
-                onCheck([item.id], !isChecked);
-              }}
-              onShiftClick={() => checkTo(item.id, !isChecked)}
-            />
-          )}
-          <button
-            type="button"
-            data-row
-            data-id={checkable ? item.id : undefined}
-            data-transaction-row={item.id}
-            data-pending={mark === "pending" || undefined}
-            className={`${styles.txColumns} ${styles.row}`}
-            aria-current={selectedId === item.id ? "true" : undefined}
-            onClick={(event) => {
-              if (checkable && event.shiftKey) {
-                checkTo(item.id, !isChecked);
+      <div
+        key={item.id}
+        className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
+        {...selectionStyle.rowProps(item.id)}
+        onMouseDown={(event) => {
+          // Shift would otherwise extend a text selection across rows.
+          if (checkable && event.shiftKey) event.preventDefault();
+          // A double-click would select a word, and the click handler would
+          // take it for a text selection and not open the field.
+          if (event.detail > 1) event.preventDefault();
+        }}
+      >
+        {checkable && (
+          <RowCheckbox
+            label={`Select ${item.payee}`}
+            state={isChecked}
+            onChange={() => {
+              anchor.current = item.id;
+              onCheck([item.id], !isChecked);
+            }}
+            onShiftClick={() => checkTo(item.id, !isChecked)}
+          />
+        )}
+        <button
+          type="button"
+          data-row
+          data-id={checkable ? item.id : undefined}
+          data-transaction-row={item.id}
+          data-pending={mark === "pending" || undefined}
+          className={`${styles.txColumns} ${styles.row}`}
+          aria-current={selectedId === item.id ? "true" : undefined}
+          onClick={(event) => {
+            if (checkable && event.shiftKey) {
+              checkTo(item.id, !isChecked);
+              return;
+            }
+            // Finishing a text selection in the row doesn't click it.
+            if (event.detail > 0 && window.getSelection()?.toString()) return;
+            anchor.current = item.id;
+            // A pointer click; Enter and Space click with no position.
+            if (selection.actions.edit?.id === item.id && event.detail > 0) {
+              if (selection.actions.edit.kind === "repayment") {
+                setRepaymentId(item.id);
                 return;
               }
-              // Finishing a text selection in the row doesn't click it.
-              if (event.detail > 0 && window.getSelection()?.toString()) return;
-              anchor.current = item.id;
-              // A pointer click; Enter and Space click with no position.
-              if (selection.actions.edit?.id === item.id && event.detail > 0) {
-                if (selection.actions.edit.kind === "repayment") {
-                  setRepaymentId(item.id);
-                  return;
-                }
-                const skip = item.categoryNotNeeded ? "category" : undefined;
-                // The cell clicked, or the column nearest the pointer when the
-                // click lands between cells.
-                const clicked =
-                  event.target instanceof Element
-                    ? event.target.closest<HTMLElement>("[data-column]")
-                        ?.dataset.column
-                    : undefined;
-                const column =
-                  clicked && clicked in registerEditFields && clicked !== skip
-                    ? clicked
-                    : columnAt(event.currentTarget, event.clientX, skip);
-                if (column && item.actions.edit === "transaction") {
-                  entry.start({
-                    transactionId: item.id,
-                    field: registerEditFields[column]!,
-                  });
-                  return;
-                }
+              const skip = item.categoryNotNeeded ? "category" : undefined;
+              // The cell clicked, or the column nearest the pointer when the
+              // click lands between cells.
+              const clicked =
+                event.target instanceof Element
+                  ? event.target.closest<HTMLElement>("[data-column]")?.dataset
+                      .column
+                  : undefined;
+              const column =
+                clicked && clicked in registerEditFields && clicked !== skip
+                  ? clicked
+                  : columnAt(event.currentTarget, event.clientX, skip);
+              if (column && item.actions.edit === "transaction") {
+                entry.start({
+                  transactionId: item.id,
+                  field: registerEditFields[column]!,
+                });
+                return;
               }
-              onSelect(item.id);
-            }}
-          >
-            {accountColumn && (
-              <span
-                className={styles.rowName}
-                data-column="account"
-                data-optional
-              >
-                {reviewDot}
-                <span className={`${styles.truncate} ${styles.faint}`}>
-                  {accountName(item.accountId) ?? "Unlinked bank account"}
-                </span>
-              </span>
-            )}
-            <span className={styles.rowName} data-column="date" data-optional>
-              {!accountColumn && reviewDot}
-              <span className={`${styles.truncate} ${styles.muted}`}>
-                {shortDay(item.date)}
-              </span>
-            </span>
+            }
+            onSelect(item.id);
+          }}
+        >
+          {accountColumn && (
             <span
               className={styles.rowName}
-              data-column="payee"
-              data-jump={Boolean(item.counterpart) || undefined}
+              data-column="account"
+              data-optional
             >
-              <span className={styles.truncate}>{item.payee}</span>
+              {reviewDot}
+              <span className={`${styles.truncate} ${styles.faint}`}>
+                {accountName(item.accountId) ?? "Unlinked bank account"}
+              </span>
             </span>
-            <span className={styles.truncate} data-column="category">
-              {item.needsCategory ? (
-                <Tag tone="attention">{item.categoryLabel}</Tag>
-              ) : (
-                <span className={styles.muted}>{item.categoryLabel}</span>
-              )}
-              {item.forMonth && (
-                <span className={styles.faint}> · {item.forMonth}</span>
-              )}
+          )}
+          <span className={styles.rowName} data-column="date" data-optional>
+            {!accountColumn && reviewDot}
+            <span className={`${styles.truncate} ${styles.muted}`}>
+              {shortDay(item.date)}
             </span>
-            {/* The Share cell's control sits over the row, in ShareCell. */}
-            <span data-column="share" aria-hidden />
-            <span
-              className={styles.numeric}
-              data-column="outflow"
-              data-empty={item.amount < 0 ? undefined : true}
-            >
-              {item.amount < 0 && money(-item.amount)}
-            </span>
-            <span
-              className={styles.numeric}
-              data-column="inflow"
-              data-empty={item.amount > 0 ? undefined : true}
-              data-inflow={item.amount > 0 || undefined}
-            >
-              {item.amount > 0 && money(item.amount)}
-            </span>
-            <span className={styles.statusCell} data-column="status">
-              {/* A toggle shows its mark over the row, below; the row
+          </span>
+          <span
+            className={styles.rowName}
+            data-column="payee"
+            data-jump={Boolean(item.counterpart) || undefined}
+          >
+            <span className={styles.truncate}>{item.payee}</span>
+          </span>
+          <span className={styles.truncate} data-column="category">
+            {item.needsCategory ? (
+              <Tag tone="attention">{item.categoryLabel}</Tag>
+            ) : (
+              <span className={styles.muted}>{item.categoryLabel}</span>
+            )}
+            {item.forMonth && (
+              <span className={styles.faint}> · {item.forMonth}</span>
+            )}
+          </span>
+          {/* The Share cell's control sits over the row, in ShareCell. */}
+          <span data-column="share" aria-hidden />
+          <span
+            className={styles.numeric}
+            data-column="outflow"
+            data-empty={item.amount < 0 ? undefined : true}
+          >
+            {item.amount < 0 && money(-item.amount)}
+          </span>
+          <span
+            className={styles.numeric}
+            data-column="inflow"
+            data-empty={item.amount > 0 ? undefined : true}
+            data-inflow={item.amount > 0 || undefined}
+          >
+            {item.amount > 0 && money(item.amount)}
+          </span>
+          <span className={styles.statusCell} data-column="status">
+            {/* A toggle shows its mark over the row, below; the row
                   still says its status. */}
-              {togglesCleared ? (
-                <span className="sr-only">{statusMark}</span>
-              ) : (
-                statusMark
-              )}
-            </span>
-          </button>
-          <ShareCell row={item} accountColumn={accountColumn} />
-          {togglesCleared && (
-            <div className={`${styles.txColumns} ${styles.clearedActions}`}>
-              <span className={styles.clearedSlot}>
-                <IconButton
-                  size="sm"
-                  label={item.cleared ? "Mark uncleared" : "Mark cleared"}
-                  onClick={() => entry.toggleCleared(item.id)}
-                >
-                  <ClearedMark state={mark} labeled={false} />
-                </IconButton>
-              </span>
-            </div>
-          )}
-          {item.counterpart && (
-            <div className={`${styles.txColumns} ${styles.rowActions}`}>
-              <span className={styles.counterpartAction}>
-                <IconButton
-                  asChild
-                  label={`View in ${item.counterpart.accountName}`}
-                  size="sm"
-                >
-                  <a
-                    href={`${screenHref({ type: "register", accountId: item.counterpart.accountId })}?${new URLSearchParams(
-                      {
-                        transaction: item.counterpart.id,
-                        month: item.counterpart.date.slice(0, 7),
-                      },
-                    ).toString()}`}
-                    onClick={(event) => {
-                      if (
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.altKey
-                      )
-                        return;
-                      event.preventDefault();
-                      onJump(item.counterpart!);
-                    }}
-                  >
-                    <ArrowRightLeftIcon aria-hidden />
-                  </a>
-                </IconButton>
-              </span>
-              <span
-                aria-hidden
-                className={`${styles.numeric} ${styles.actionAmountSizer}`}
+            {togglesCleared ? (
+              <span className="sr-only">{statusMark}</span>
+            ) : (
+              statusMark
+            )}
+          </span>
+        </button>
+        <ShareCell row={item} accountColumn={accountColumn} />
+        {togglesCleared && (
+          <div className={`${styles.txColumns} ${styles.clearedActions}`}>
+            <span className={styles.clearedSlot}>
+              <IconButton
+                size="sm"
+                label={item.cleared ? "Mark uncleared" : "Mark cleared"}
+                onClick={() => entry.toggleCleared(item.id)}
               >
-                {money(Math.abs(item.amount))}
-              </span>
-            </div>
-          )}
-        </div>
-        {selectedId === item.id &&
-          item.source === "budget" &&
-          !fullySharedIds.has(item.id) && (
-            <ShareDetail transactionId={item.id} />
-          )}
-      </Fragment>
+                <ClearedMark state={mark} labeled={false} />
+              </IconButton>
+            </span>
+          </div>
+        )}
+        {item.counterpart && (
+          <div className={`${styles.txColumns} ${styles.rowActions}`}>
+            <span className={styles.counterpartAction}>
+              <IconButton
+                asChild
+                label={`View in ${item.counterpart.accountName}`}
+                size="sm"
+              >
+                <a
+                  href={`${screenHref({ type: "register", accountId: item.counterpart.accountId })}?${new URLSearchParams(
+                    {
+                      transaction: item.counterpart.id,
+                      month: item.counterpart.date.slice(0, 7),
+                    },
+                  ).toString()}`}
+                  onClick={(event) => {
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    )
+                      return;
+                    event.preventDefault();
+                    onJump(item.counterpart!);
+                  }}
+                >
+                  <ArrowRightLeftIcon aria-hidden />
+                </a>
+              </IconButton>
+            </span>
+            <span
+              aria-hidden
+              className={`${styles.numeric} ${styles.actionAmountSizer}`}
+            >
+              {money(Math.abs(item.amount))}
+            </span>
+          </div>
+        )}
+      </div>
     );
   };
   return (

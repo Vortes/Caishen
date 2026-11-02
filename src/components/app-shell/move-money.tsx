@@ -1,24 +1,21 @@
 "use client";
 
-import { groupAmountInput } from "~/components/budget/amount-input";
-import { CheckIcon, CircleAlertIcon, SearchIcon } from "lucide-react";
-import { Popover } from "radix-ui";
 import {
   createContext,
   useContext,
   useEffect,
-  useId,
-  useRef,
   useState,
-  type ReactNode,
+  type ReactElement,
 } from "react";
+import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId } from "~/components/budget/format";
 import type { Command } from "~/domain/engine";
 import { money, type Category } from "./model";
+import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
-import { usePortalContainer } from "~/components/ui/tooltip";
-import { usePopoverMotion } from "~/components/ui/popover-motion";
-import { POPOVER_GAP } from "~/components/ui/tokens";
+import { Field, FormError, FormFooter } from "~/components/ui/field";
+import { Popover } from "~/components/ui/popover";
+import { SearchList } from "~/components/ui/search-list";
 import { useShellData } from "./shell-data";
 import shell from "./shell.module.css";
 import styles from "./move-money.module.css";
@@ -44,10 +41,6 @@ export function useMoveMoney() {
   return value;
 }
 
-// The popover's height with its destination list open, plus the gap and
-// collision padding around it.
-const TALLEST_FORM = 520;
-
 // YNAB's move-money popover. A category with money moves it somewhere else;
 // an overspent one covers the overspending from somewhere else. Ready to
 // Assign can be either side.
@@ -58,64 +51,28 @@ export function MoveMoneyPopover({
 }: {
   category: Category;
   align?: "start" | "center" | "end";
-  children: ReactNode;
+  children: ReactElement;
 }) {
-  const container = usePortalContainer();
   const [open, setOpen] = useState(false);
-  const motion = usePopoverMotion(open);
-  const [side, setSide] = useState<"top" | "bottom">("bottom");
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const listOpen = useRef(false);
   const cover = category.available < 0;
   const { holdOpen } = useMoveMoney();
   useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (
-    <Popover.Root
+    <Popover
+      label={
+        cover
+          ? `Cover ${category.name}'s overspending`
+          : `Move money from ${category.name}`
+      }
+      trigger={children}
       open={open}
-      onOpenChange={(next) => {
-        // The form grows once its list opens, so the side is chosen for its
-        // tallest state, when it opens, and kept. Near the bottom of the
-        // window it opens upward and grows away from the trigger.
-        const rect = triggerRef.current?.getBoundingClientRect();
-        if (next && rect) {
-          const below = window.innerHeight - rect.bottom;
-          setSide(
-            below >= TALLEST_FORM || below >= rect.top ? "bottom" : "top",
-          );
-        }
-        setOpen(next);
-      }}
+      onOpenChange={setOpen}
+      align={align}
+      size="form"
+      arrow
     >
-      <Popover.Trigger asChild ref={triggerRef}>
-        {children}
-      </Popover.Trigger>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          {...motion}
-          className={styles.popover}
-          side={side}
-          align={align}
-          sideOffset={POPOVER_GAP}
-          collisionPadding={12}
-          aria-label={
-            cover
-              ? `Cover ${category.name}'s overspending`
-              : `Move money from ${category.name}`
-          }
-          // Escape closes an open destination list before the popover.
-          onEscapeKeyDown={(event) => {
-            if (listOpen.current) event.preventDefault();
-          }}
-        >
-          <MoveForm
-            category={category}
-            listOpen={listOpen}
-            onDone={() => setOpen(false)}
-          />
-          <Popover.Arrow className={styles.arrow} width={14} height={7} />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      <MoveForm category={category} onDone={() => setOpen(false)} />
+    </Popover>
   );
 }
 
@@ -126,19 +83,11 @@ export type Option = {
   available: number;
 };
 
-// "$1,234.50", "1234.5", and "12" all read as dollars; returns cents.
-export function parseAmount(text: string) {
-  const value = Number(text.replace(/[$,\s]/g, ""));
-  return Number.isFinite(value) ? Math.round(value * 100) : NaN;
-}
-
 function MoveForm({
   category,
-  listOpen,
   onDone,
 }: {
   category: Category;
-  listOpen: { current: boolean };
   onDone: () => void;
 }) {
   const { categories, readyToAssign, month } = useShellData();
@@ -154,8 +103,8 @@ function MoveForm({
     field: "amount" | "other" | "form";
     message: string;
   } | null>(null);
-  const amountId = useId();
-  const cents = parseAmount(amount);
+  const reading = readAmount(amount);
+  const cents = reading.ok ? reading.cents : NaN;
 
   // Covering draws only from somewhere with money; moving can go anywhere.
   const options: Option[] = [
@@ -178,6 +127,10 @@ function MoveForm({
     cover && cents > 0 && option.available < cents;
 
   const submit = (to = other) => {
+    if (!reading.ok) {
+      setError({ field: "amount", message: reading.message });
+      return;
+    }
     if (!(cents > 0)) {
       setError({ field: "amount", message: "Enter an amount above zero." });
       return;
@@ -239,36 +192,19 @@ function MoveForm({
   };
 
   const amountField = (
-    <div className={styles.field}>
-      <label htmlFor={amountId}>
-        {cover ? "Overspending to cover" : "Amount"}
-      </label>
-      <div
-        className={styles.amountInput}
-        data-invalid={error?.field === "amount" || undefined}
-      >
-        <span aria-hidden>$</span>
-        <input
-          id={amountId}
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="0.00"
-          value={amount}
-          aria-invalid={error?.field === "amount" || undefined}
-          aria-describedby={
-            error?.field === "amount" ? `${amountId}-error` : undefined
-          }
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) => {
-            setAmount(groupAmountInput(event.target));
-            setError(null);
-          }}
-        />
-      </div>
-      {error?.field === "amount" && (
-        <FieldError id={`${amountId}-error`} message={error.message} />
-      )}
-    </div>
+    <Field
+      label={cover ? "Overspending to cover" : "Amount"}
+      error={error?.field === "amount" ? error.message : undefined}
+    >
+      <AmountInput
+        placeholder="0.00"
+        value={amount}
+        onChange={(next) => {
+          if (!sameAmount(amount, next)) setError(null);
+          setAmount(next);
+        }}
+      />
+    </Field>
   );
   const destination = (
     <Destination
@@ -277,7 +213,6 @@ function MoveForm({
       value={other}
       short={short}
       error={error?.field === "other" ? error.message : undefined}
-      listOpen={listOpen}
       onChange={(id) => {
         setOther(id);
         setError(null);
@@ -302,43 +237,36 @@ function MoveForm({
           {money(category.available)}
         </span>
       </div>
-      {amountField}
-      {destination}
-      {error?.field === "form" && (
-        <div className={styles.formError}>
-          <FieldError id={`${amountId}-form-error`} message={error.message} />
-        </div>
-      )}
-      <div className={styles.footer}>
-        <Popover.Close asChild>
-          <Button size="sm">Cancel</Button>
-        </Popover.Close>
-        <Button variant="primary" size="sm" type="submit">
-          {cover ? "Cover" : "Move"}
-        </Button>
+      <div className={styles.fields}>
+        {amountField}
+        {destination}
+        {error?.field === "form" && <FormError>{error.message}</FormError>}
       </div>
+      <FormFooter
+        actions={
+          <>
+            <Button size="sm" onClick={onDone}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit">
+              {cover ? "Cover" : "Move"}
+            </Button>
+          </>
+        }
+      />
     </form>
   );
 }
 
-export function FieldError({ id, message }: { id: string; message: string }) {
-  return (
-    <p className={styles.error} id={id} role="alert">
-      <CircleAlertIcon size={13} aria-hidden />
-      {message}
-    </p>
-  );
-}
-
-// The destination (or, when covering, the source): a searchable list of Ready
-// to Assign and the plan's categories under their groups.
+// The destination (or, when covering, the source): Ready to Assign and the
+// plan's categories under their groups, with their balances. An option
+// short of the amount shows but can't be picked.
 export function Destination({
   label,
   options,
   value,
   short,
   error,
-  listOpen,
   onChange,
 }: {
   label: string;
@@ -346,197 +274,22 @@ export function Destination({
   value: string | null;
   short: (option: Option) => boolean;
   error?: string;
-  listOpen: { current: boolean };
   onChange: (id: string) => void;
 }) {
-  const id = useId();
-  const listId = `${id}-list`;
-  const listRef = useRef<HTMLDivElement>(null);
-  const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState(false);
-  const [active, setActive] = useState<string | null>(null);
-  useEffect(() => {
-    listOpen.current = expanded;
-  }, [listOpen, expanded]);
-  const show = () => {
-    if (expanded) return;
-    setQuery("");
-    setActive(null);
-    setExpanded(true);
-  };
-  const hide = () => {
-    setExpanded(false);
-  };
-
-  const visible = options.filter((option) =>
-    option.name.toLowerCase().includes(query.trim().toLowerCase()),
-  );
-  const pickable = visible.filter((option) => !short(option));
-  const current =
-    pickable.find((option) => option.id === active) ?? pickable[0];
-  const chosen = options.find((option) => option.id === value);
-
-  const pick = (option: Option) => {
-    if (short(option)) return;
-    onChange(option.id);
-    hide();
-  };
-  const step = (by: number) => {
-    const index = current ? pickable.indexOf(current) : -1;
-    const next =
-      pickable[Math.min(pickable.length - 1, Math.max(0, index + by))];
-    if (!next) return;
-    setActive(next.id);
-    listRef.current
-      ?.querySelector(`[data-id="${CSS.escape(next.id)}"]`)
-      ?.scrollIntoView({ block: "nearest" });
-  };
-
-  let lastGroup = "";
   return (
-    <div className={styles.field}>
-      {/* While the list is open, the label closes it like any click outside
-          the list. Left alone, the press would blur the field and close the
-          list, then the label's click would focus the field and reopen it. */}
-      <label
-        htmlFor={id}
-        onMouseDown={(event) => {
-          if (expanded) event.preventDefault();
-        }}
-        onClick={(event) => {
-          if (!expanded) return;
-          event.preventDefault();
-          hide();
-        }}
-      >
-        {label}
-      </label>
-      <div
-        className={styles.search}
-        data-invalid={error ? "" : undefined}
-        data-expanded={expanded || undefined}
-      >
-        {expanded && (
-          <SearchIcon size={14} className={styles.searchIcon} aria-hidden />
-        )}
-        <input
-          id={id}
-          role="combobox"
-          autoComplete="off"
-          aria-expanded={expanded}
-          aria-controls={listId}
-          aria-activedescendant={
-            expanded && current ? `${listId}-${current.id}` : undefined
-          }
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `${id}-error` : undefined}
-          placeholder={expanded ? "Find a category" : "Choose a category"}
-          value={expanded ? query : (chosen?.name ?? "")}
-          readOnly={!expanded}
-          onFocus={show}
-          onClick={show}
-          onBlur={hide}
-          onChange={(event) => {
-            show();
-            setQuery(event.target.value);
-            setActive(null);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              if (!expanded) show();
-              else step(event.key === "ArrowDown" ? 1 : -1);
-            } else if (event.key === "Enter" && expanded) {
-              event.preventDefault();
-              if (current) pick(current);
-            } else if (event.key === "Escape" && expanded) {
-              hide();
-            }
-          }}
-        />
-        {chosen && !expanded && (
-          <span
-            className={styles.optionAmount}
-            data-tone={tone(chosen.available)}
-          >
-            {money(chosen.available)}
-          </span>
-        )}
-      </div>
-      {error && <FieldError id={`${id}-error`} message={error} />}
-      <div
-        className={styles.listFrame}
-        data-open={expanded || undefined}
-        aria-hidden={!expanded || undefined}
-        inert={!expanded}
-      >
-        <div className={styles.listClip}>
-          <div
-            ref={listRef}
-            id={listId}
-            role="listbox"
-            aria-label={label}
-            className={styles.list}
-            // Keeps focus in the search field while the pointer picks.
-            onMouseDown={(event) => event.preventDefault()}
-          >
-            {visible.length === 0 && (
-              <p className={styles.empty}>No categories match</p>
-            )}
-            {visible.map((option) => {
-              const heading =
-                option.group !== lastGroup ? (
-                  <p
-                    key={`group-${option.group}`}
-                    className={styles.group}
-                    aria-hidden
-                  >
-                    {option.group}
-                  </p>
-                ) : null;
-              lastGroup = option.group;
-              const disabled = short(option);
-              return [
-                heading,
-                <div
-                  key={option.id}
-                  id={`${listId}-${option.id}`}
-                  data-id={option.id}
-                  role="option"
-                  aria-selected={option.id === value}
-                  aria-disabled={disabled || undefined}
-                  data-active={option.id === current?.id || undefined}
-                  className={styles.option}
-                  title={
-                    disabled
-                      ? `Only ${money(option.available)} available`
-                      : undefined
-                  }
-                  onMouseEnter={() => !disabled && setActive(option.id)}
-                  onClick={() => pick(option)}
-                >
-                  <span className={styles.check} aria-hidden>
-                    {option.id === value && (
-                      <CheckIcon size={13} strokeWidth={2.5} />
-                    )}
-                  </span>
-                  <span className={shell.truncate}>{option.name}</span>
-                  <span
-                    className={styles.optionAmount}
-                    data-tone={tone(option.available)}
-                  >
-                    {money(option.available)}
-                  </span>
-                </div>,
-              ];
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
+    <Field label={label} error={error}>
+      <SearchList
+        value={value ?? ""}
+        onChange={onChange}
+        options={options.map((option) => ({
+          value: option.id,
+          label: option.name,
+          group: option.group,
+          amount: option.available,
+          disabled: short(option),
+        }))}
+        placeholder="Choose a category"
+      />
+    </Field>
   );
-}
-
-function tone(value: number) {
-  return value < 0 ? "negative" : value > 0 ? "positive" : "zero";
 }

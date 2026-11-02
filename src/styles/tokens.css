@@ -77,6 +77,11 @@
   --danger-text: var(--red-300);
   --danger-line: oklch(from var(--red-500) l c h / 0.6);
 
+  /* A field the user has to fix: its error text and its well's border.
+     Not a destructive confirm, so not --danger-*. */
+  --field-error: var(--red-300);
+  --field-error-line: oklch(from var(--red-500) l c h / 0.6);
+
   /* A category's funding state. Credit overspending is amber, not red: it
      takes no cash, it adds card debt the plan hasn't funded yet. */
   --status-funded: var(--green-300);
@@ -106,6 +111,8 @@
   --shadow-drawer:
     0 8px 24px oklch(0 0 0 / 0.35), 0 24px 64px oklch(0 0 0 / 0.3);
   --shadow-tooltip: 0 4px 12px oklch(0 0 0 / 0.2);
+  /* Dims the page behind a dialog or an open drawer. */
+  --overlay: oklch(0 0 0 / 0.4);
 }
 
 /* ---------- Semantic: light ---------- */
@@ -146,6 +153,9 @@
   --danger-text: var(--red-700);
   --danger-line: oklch(from var(--red-600) l c h / 0.55);
 
+  --field-error: var(--red-700);
+  --field-error-line: oklch(from var(--red-600) l c h / 0.55);
+
   --status-funded: var(--green-600);
   --status-funded-bg: var(--green-100);
   --status-underfunded: var(--amber-600);
@@ -170,6 +180,7 @@
   --shadow-drawer:
     0 8px 24px oklch(0.2 0.01 var(--hue) / 0.12),
     0 24px 64px oklch(0.2 0.01 var(--hue) / 0.1);
+  --overlay: oklch(0.2 0.01 var(--hue) / 0.2);
 }
 
 /* ---------- Semantic: derived ---------- */
@@ -224,6 +235,9 @@
   --size-header: 48px;
   --size-toolbar: 52px;
   --size-popover: 320px;
+  --size-popover-wide: 560px;
+  --size-dialog: 400px;
+  --size-dialog-wide: 480px;
 
   --space-gutter: 8px;
   --space-inset: 8px;
@@ -247,6 +261,8 @@
   --duration-popover-exit: 120ms;
   --scale-popover: 0.97;
   --distance-popover: 4px;
+  --duration-dialog-enter: 200ms;
+  --duration-dialog-exit: 150ms;
   --ease-selection: cubic-bezier(0.165, 0.84, 0.44, 1);
   --duration-selection: 160ms;
   /* One pass of a skeleton's shine across the window. */

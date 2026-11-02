@@ -435,10 +435,6 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
   gap: 12px;
 }
-.amountInput {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
 @media (max-width: 520px) {
   .manualFields {
     grid-template-columns: 1fr;

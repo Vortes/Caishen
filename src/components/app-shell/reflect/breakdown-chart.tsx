@@ -1,16 +1,16 @@
 "use client";
 
-import { Popover } from "radix-ui";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pie } from "~/components/dither-kit/pie";
 import { PieChart } from "~/components/dither-kit/pie-chart";
+import { Popover } from "~/components/ui/popover";
 import type { SpendingEntry } from "~/domain/spending";
 import { money } from "../model";
 import type { Highlight } from "./chart-utils";
 import { ChartBridge, configOf } from "./dither-charts";
 import type { ChartItem, DrillPath } from "./report";
 import { RingSkeleton } from "./ring-skeleton";
-import { SlicePopover } from "./slice-popover";
+import { SlicePanel } from "./slice-popover";
 import styles from "./reflect.module.css";
 
 // Spending Breakdown's ring leads the page, as in YNAB: alone, it takes all
@@ -163,113 +163,116 @@ export function BreakdownChart({
       style={fill ? undefined : { height }}
     >
       {width > 0 && (
-        <Popover.Root
-          open={Boolean(open)}
-          onOpenChange={(value) => {
-            if (!value) setOpen(null);
-          }}
-        >
-          <div className={styles.stage} aria-hidden>
-            {displayed && (
-              <Popover.Anchor asChild>
+        <div className={styles.stage} aria-hidden>
+          {displayed && (
+            <Popover
+              label={`${displayed.item.name} transactions`}
+              anchor={
                 <span
                   className={styles.anchor}
                   style={{ left: displayed.x, top: displayed.y }}
                 />
-              </Popover.Anchor>
-            )}
-            {/* The kit's canvas takes the pointer, so the click is handled on
+              }
+              open={Boolean(open)}
+              onOpenChange={(value) => {
+                if (!value) setOpen(null);
+              }}
+              autoFocus
+              side="top"
+              align="center"
+              size="wide"
+              arrow
+            >
+              <SlicePanel
+                item={displayed.item}
+                entries={itemEntries[displayed.item.id] ?? []}
+                onOpenEntry={(entry) => {
+                  setOpen(null);
+                  onOpenEntry(entry);
+                }}
+                onDrill={
+                  drill?.group && !drill.categoryId
+                    ? () => {
+                        setOpen(null);
+                        highlight.drill(drill);
+                      }
+                    : undefined
+                }
+                onClose={() => setOpen(null)}
+              />
+            </Popover>
+          )}
+          {/* The kit's canvas takes the pointer, so the click is handled on
                 the frame around it, for whichever slice the chart reports as
                 hovered. */}
-            <div
-              className={`${styles.dither} ${styles.ditherDonut}`}
-              style={{ width: ring, height: ring }}
-              data-clickable={hovered ? "" : undefined}
-              onClick={(event) => {
-                if (!hovered) return;
-                const bounds =
-                  event.currentTarget.parentElement!.getBoundingClientRect();
-                setOpen({
-                  item: hovered,
-                  x: event.clientX - bounds.left,
-                  y: event.clientY - bounds.top,
-                });
-              }}
-            >
-              {afterSkeleton && (
-                <div className={styles.ringUnder}>
-                  <RingSkeleton
-                    size={ring}
-                    sweep={SWEEP}
-                    onSwept={onSkeletonGone}
-                  />
-                </div>
-              )}
-              <PieChart
-                data={data}
-                animationDuration={SWEEP}
-                config={config}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={0.62}
-                margins={{ top: 0, right: 0, bottom: 0, left: 0 }}
-                bloom="off"
-              >
-                <Pie variant="gradient" />
-                <ChartBridge
-                  focusId={open?.item.id ?? highlight.id}
-                  items={items}
-                  onHover={setHovered}
+          <div
+            className={`${styles.dither} ${styles.ditherDonut}`}
+            style={{ width: ring, height: ring }}
+            data-clickable={hovered ? "" : undefined}
+            onClick={(event) => {
+              if (!hovered) return;
+              const bounds =
+                event.currentTarget.parentElement!.getBoundingClientRect();
+              setOpen({
+                item: hovered,
+                x: event.clientX - bounds.left,
+                y: event.clientY - bounds.top,
+              });
+            }}
+          >
+            {afterSkeleton && (
+              <div className={styles.ringUnder}>
+                <RingSkeleton
+                  size={ring}
+                  sweep={SWEEP}
+                  onSwept={onSkeletonGone}
                 />
-              </PieChart>
-              <div className={styles.donutCenter}>
-                <span>{focused ? focused.name : "Total spending"}</span>
-                <strong>{money(focused ? focused.total : total)}</strong>
-                {focused && (
-                  <span>
-                    {Math.round((focused.total / total) * 100)}% of spending
-                  </span>
-                )}
               </div>
-            </div>
-            {labels.map(({ item, x, y, side }) => (
-              <div
-                key={item.id}
-                className={styles.sliceLabel}
-                data-side={side}
-                data-dim={
-                  (focused !== undefined && focused.id !== item.id) || undefined
-                }
-                style={{ left: x, top: y }}
-              >
-                <span>{item.name}</span>
+            )}
+            <PieChart
+              data={data}
+              animationDuration={SWEEP}
+              config={config}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={0.62}
+              margins={{ top: 0, right: 0, bottom: 0, left: 0 }}
+              bloom="off"
+            >
+              <Pie variant="gradient" />
+              <ChartBridge
+                focusId={open?.item.id ?? highlight.id}
+                items={items}
+                onHover={setHovered}
+              />
+            </PieChart>
+            <div className={styles.donutCenter}>
+              <span>{focused ? focused.name : "Total spending"}</span>
+              <strong>{money(focused ? focused.total : total)}</strong>
+              {focused && (
                 <span>
-                  {money(item.total)} · {Math.round((item.total / total) * 100)}
-                  %
+                  {Math.round((focused.total / total) * 100)}% of spending
                 </span>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
-          {displayed && (
-            <SlicePopover
-              open={Boolean(open)}
-              item={displayed.item}
-              entries={itemEntries[displayed.item.id] ?? []}
-              onOpenEntry={(entry) => {
-                setOpen(null);
-                onOpenEntry(entry);
-              }}
-              onDrill={
-                drill?.group && !drill.categoryId
-                  ? () => {
-                      setOpen(null);
-                      highlight.drill(drill);
-                    }
-                  : undefined
+          {labels.map(({ item, x, y, side }) => (
+            <div
+              key={item.id}
+              className={styles.sliceLabel}
+              data-side={side}
+              data-dim={
+                (focused !== undefined && focused.id !== item.id) || undefined
               }
-            />
-          )}
-        </Popover.Root>
+              style={{ left: x, top: y }}
+            >
+              <span>{item.name}</span>
+              <span>
+                {money(item.total)} · {Math.round((item.total / total) * 100)}%
+              </span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
