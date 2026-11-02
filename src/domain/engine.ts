@@ -681,8 +681,8 @@ export type Transaction = {
   removed?: boolean;
   // Whether the bank has cleared it, independently of pending status.
   cleared?: boolean;
-  // Cleared and confirmed against the bank by a reconciliation. Its amount
-  // and cleared status are locked from then on.
+  // Cleared and confirmed against the bank by a reconciliation. Cleared
+  // status is locked; only balance adjustments can still change amount.
   reconciled?: boolean;
   history: TransactionHistory[];
 };
@@ -3065,15 +3065,15 @@ function clearedBalance(budget: Budget, account: Account): number {
     )
     .reduce((total, item) => safe(total + item.amount), account.openingBalance);
 }
-// Reconciling confirmed these against the bank, so only what doesn't change
-// the cleared balance can still change.
+// Reconciled transactions keep their confirmed amount and status; balance
+// adjustments remain editable so an accepted difference can be corrected.
 function ensureReconciledUnchanged(
   existing: Transaction,
   next: { amount: number; status: "pending" | "posted"; cleared?: boolean },
 ): void {
   if (
     existing.reconciled &&
-    (existing.amount !== next.amount ||
+    ((existing.kind !== "adjustment" && existing.amount !== next.amount) ||
       existing.status !== next.status ||
       next.cleared === false)
   )
@@ -4143,6 +4143,15 @@ function applyCommand(
           loanId: command.loanId,
         },
       );
+      if (
+        entry.shape.kind === "adjustment" &&
+        (command.categoryId ||
+          command.lines ||
+          command.counterpartyShare ||
+          command.transferAccountId ||
+          command.loanId)
+      )
+        fail("A balance adjustment's category and kind cannot change");
       // A bank update may restore a removed transaction: a posting replaces
       // the removed pending purchase it came from (banks.ts restoresPending).
       // The user may not.
@@ -4639,13 +4648,16 @@ function applyCommand(
           source === "user"
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
-        kind: statementCredit
-          ? "statement-credit"
-          : command.amount < 0
-            ? "purchase"
-            : categoryId || lines || counterpartyShare
-              ? "refund"
-              : "income",
+        kind:
+          existing?.kind === "adjustment"
+            ? "adjustment"
+            : statementCredit
+              ? "statement-credit"
+              : command.amount < 0
+                ? "purchase"
+                : categoryId || lines || counterpartyShare
+                  ? "refund"
+                  : "income",
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
@@ -4696,14 +4708,9 @@ function applyCommand(
     }
     case "transaction.remove": {
       const transaction = getTransaction(budget, command.transactionId);
-      if (
-        !["purchase", "refund", "income", "adjustment"].includes(
-          transaction.kind,
-        )
-      )
-        fail(
-          "Dedicated payment records cannot be deleted through transaction removal",
-        );
+      const capability = classifyRegisterEntry(budget, transaction).capabilities
+        .remove;
+      if (!capability.ok) fail(capability.reason);
       changes.transaction(budget, transaction).removed = true;
       transaction.history.push({
         revision: ++transaction.revision,

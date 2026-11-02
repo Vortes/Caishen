@@ -7,7 +7,10 @@ import {
 } from "~/domain/register-entry";
 import { earlierPayees } from "~/domain/payee-memory";
 import { transferNeedsCategory } from "~/domain/transfers";
-import { cardPaymentCategoryLabel } from "~/components/transactions/transaction-category";
+import {
+  cardPaymentCategoryLabel,
+  transactionCategory,
+} from "~/components/transactions/transaction-category";
 import { CircleAlertIcon, PlusIcon, SplitIcon, XIcon } from "lucide-react";
 import {
   useEffect,
@@ -122,7 +125,8 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
 
   const account = view.accounts.find((item) => item.id === draft.accountId);
   const matches = session.imported ? partnerMatchesOf(session.imported) : [];
-  const destinations = paymentPayees(view, draft);
+  const adjustment = initial?.kind === "adjustment";
+  const destinations = adjustment ? [] : paymentPayees(view, draft);
   const destination = destinations.find((item) =>
     item.accountId
       ? item.accountId === draft.transferAccountId
@@ -138,6 +142,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         payee: draft.payee,
         amount: draftCents === 0 ? (draft.inflow ? 1 : -1) : draftCents,
         status: draft.status,
+        kind: adjustment ? "adjustment" : undefined,
         transferAccountId: draft.transferAccountId || undefined,
         loanId: draft.loanId || undefined,
         categoryId:
@@ -152,6 +157,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     : undefined;
   const boundary = draftEntry?.fields.category === "boundary";
   const categoryNotNeeded = draftEntry?.fields.category === "none";
+  const fixedCategory = categoryNotNeeded || adjustment;
   const budgetInflow = (draftEntry?.fields.budgetAmount ?? 0) > 0;
   const splittable = draftEntry?.fields.split ?? false;
   const split = draft.lines.length > 0;
@@ -345,7 +351,8 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           )
         )
           advance(selected.label.includes(" from ") ? "inflow" : "outflow");
-        else if (!selected && categoryNotNeeded) advance("outflow");
+        else if (!selected && (categoryNotNeeded || adjustment))
+          advance("outflow");
         else advance("categoryId");
       }}
     />
@@ -461,7 +468,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           ? "inflow"
           : "outflow",
     );
-  const categoryControl = categoryNotNeeded ? (
+  const categoryControl = fixedCategory ? (
     <TextInput
       value={
         draftEntry?.shape.kind === "card-payment"
@@ -470,7 +477,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
               draft.accountId,
               draft.transferAccountId,
             )
-          : "Category not needed"
+          : categoryNotNeeded
+            ? "Category not needed"
+            : transactionCategory("adjustment", draftCents)
       }
       onChange={() => undefined}
       disabled

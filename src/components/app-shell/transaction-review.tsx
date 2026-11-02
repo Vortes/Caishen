@@ -1,6 +1,11 @@
 "use client";
 
-import { CircleCheckIcon, CircleXIcon, TagsIcon } from "lucide-react";
+import {
+  CircleCheckIcon,
+  CircleXIcon,
+  EllipsisIcon,
+  TagsIcon,
+} from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { newId } from "~/components/budget/format";
 import { useBudgetSelector } from "~/components/sync/hooks";
@@ -26,6 +31,7 @@ export type TransactionReview = {
   approve: (transactionIds: string[]) => void;
   enter: (transactionIds: string[]) => void;
   reject: (transactionIds: string[]) => void;
+  remove: (transactionIds: string[]) => void;
 };
 
 const TransactionReviewContext = createContext<TransactionReview | null>(null);
@@ -166,7 +172,39 @@ export function TransactionActions({
         }
       />
       <ShareSelection selected={selected} disabled={busy} onCheck={onCheck} />
+      {actions.remove.length > 0 && (
+        <MoreAction ids={actions.remove} disabled={busy} />
+      )}
     </ActionBar>
+  );
+}
+
+function MoreAction({ ids, disabled }: { ids: string[]; disabled: boolean }) {
+  const review = useTransactionReview();
+  const { holdOpen } = useTransactionEntry();
+  const [open, setOpen] = useState(false);
+  useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
+  return (
+    <Menu
+      label="More transaction actions"
+      trigger={
+        <Button variant="subtle" size="sm" disabled={disabled}>
+          <EllipsisIcon aria-hidden />
+          More
+        </Button>
+      }
+      anchor={<span className={barStyles.anchor} aria-hidden />}
+      side="top"
+      align="end"
+      open={open}
+      onOpenChange={setOpen}
+    >
+      <MenuItem
+        title="Delete"
+        disabled={disabled}
+        onSelect={() => review.remove(ids)}
+      />
+    </Menu>
   );
 }
 

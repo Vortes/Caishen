@@ -804,3 +804,267 @@ test("F3: the new transaction account picker excludes Partner and Reimbursements
     screen.queryByRole("option", { name: /Partner|Anna|Reimbursements/ }),
   ).toBeNull();
 });
+
+test("cash, card and tracking adjustments use the existing editor with their category fixed", async () => {
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.add",
+        id: "card",
+        accountId: "card",
+        name: "Visa",
+        kind: "credit",
+        openingBalance: -50_000,
+        date: "2026-10-01",
+      },
+      {
+        type: "account.add",
+        id: "tracking",
+        accountId: "tracking",
+        name: "Brokerage",
+        kind: "tracking",
+        openingBalance: 0,
+        date: "2026-10-01",
+      },
+      {
+        type: "account.reconcile",
+        id: "cash-adjust",
+        accountId: "checking",
+        date: "2026-10-10",
+        balance: 110_000,
+        adjustmentId: "cash-adjustment",
+      },
+      {
+        type: "account.reconcile",
+        id: "card-adjust",
+        accountId: "card",
+        date: "2026-10-10",
+        balance: -60_000,
+        adjustmentId: "card-adjustment",
+      },
+      {
+        type: "account.reconcile",
+        id: "tracking-adjust",
+        accountId: "tracking",
+        date: "2026-10-10",
+        balance: 10_000,
+        adjustmentId: "tracking-adjustment",
+      },
+    ],
+  });
+  for (const [name, label] of [
+    ["Checking", "Inflow: Ready to Assign"],
+    ["Visa", "Category not needed"],
+    ["Brokerage", "Category not needed"],
+  ]) {
+    await shell.user.click(
+      screen.getByRole("link", { name: new RegExp(`^${name}`) }),
+    );
+    expect(
+      within(row("Reconciliation balance adjustment")).getByText(label!),
+    ).toBeTruthy();
+    expect(
+      within(row("Reconciliation balance adjustment")).queryByText(
+        "Needs review",
+      ),
+    ).toBeNull();
+    await shell.user.click(row("Reconciliation balance adjustment"));
+    await shell.user.keyboard("e");
+    expect(editor().getByLabelText("Category", { exact: true })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(editor().getByLabelText("Category", { exact: true })).toHaveProperty(
+      "value",
+      label,
+    );
+    expect(editor().getByLabelText("Payee", { exact: true })).toBe(
+      document.activeElement,
+    );
+    expect(editor().queryByRole("button", { name: "Split" })).toBeNull();
+    await shell.user.clear(editor().getByLabelText("Date", { exact: true }));
+    await shell.user.type(
+      editor().getByLabelText("Date", { exact: true }),
+      "10/05/2026{Tab}",
+    );
+    await shell.user.clear(editor().getByLabelText("Payee", { exact: true }));
+    await shell.user.type(
+      editor().getByLabelText("Payee", { exact: true }),
+      `Corrected ${name}`,
+    );
+    await shell.user.clear(editor().getByLabelText("Inflow", { exact: true }));
+    await shell.user.clear(editor().getByLabelText("Outflow", { exact: true }));
+    await shell.user.type(
+      editor().getByLabelText("Outflow", { exact: true }),
+      "125.00",
+    );
+    await shell.user.click(
+      editor().getByRole("button", { name: "Save", exact: true }),
+    );
+    const corrected = await findRow(`Corrected ${name}`);
+    expect(within(corrected).getByText(label!)).toBeTruthy();
+    expect(within(corrected).getByText("Oct 5")).toBeTruthy();
+    expect(within(corrected).getByText("$125.00")).toBeTruthy();
+    await waitForSaves();
+    await shell.reload();
+    expect(
+      within(await findRow(`Corrected ${name}`)).getByText(label!),
+    ).toBeTruthy();
+  }
+});
+
+test("an adjustment can be corrected to zero and still have its payee edited", async () => {
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.reconcile",
+        id: "reconcile-zero",
+        accountId: "checking",
+        date: "2026-10-10",
+        balance: 101_000,
+        adjustmentId: "adjustment-zero",
+      },
+    ],
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(row("Reconciliation balance adjustment"));
+  await shell.user.keyboard("e");
+  await shell.user.clear(editor().getByLabelText("Inflow", { exact: true }));
+  await shell.user.type(
+    editor().getByLabelText("Inflow", { exact: true }),
+    "0.00",
+  );
+  await shell.user.click(
+    editor().getByRole("button", { name: "Save", exact: true }),
+  );
+  expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
+  await waitForSaves();
+  await shell.reload();
+  await shell.user.click(row("Reconciliation balance adjustment"));
+  await shell.user.keyboard("e");
+  await shell.user.clear(editor().getByLabelText("Payee", { exact: true }));
+  await shell.user.type(
+    editor().getByLabelText("Payee", { exact: true }),
+    "Zero adjustment",
+  );
+  await shell.user.click(
+    editor().getByRole("button", { name: "Save", exact: true }),
+  );
+  expect(
+    within(await findRow("Zero adjustment")).getByText(
+      "Inflow: Ready to Assign",
+    ),
+  ).toBeTruthy();
+  await waitForSaves();
+  await shell.reload();
+  expect(await findRow("Zero adjustment")).toBeTruthy();
+});
+
+test("opening an adjustment from its fixed category focuses Payee and Cancel returns focus to its row", async () => {
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.reconcile",
+        id: "reconcile-focus",
+        accountId: "checking",
+        date: "2026-10-10",
+        balance: 101_000,
+        adjustmentId: "adjustment-focus",
+      },
+    ],
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(row("Reconciliation balance adjustment"));
+  await shell.user.click(
+    within(row("Reconciliation balance adjustment")).getByText(
+      "Inflow: Ready to Assign",
+    ),
+  );
+  expect(editor().getByLabelText("Payee", { exact: true })).toBe(
+    document.activeElement,
+  );
+  await shell.user.click(editor().getByRole("button", { name: "Cancel" }));
+  await waitFor(() =>
+    expect(row("Reconciliation balance adjustment")).toBe(
+      document.activeElement,
+    ),
+  );
+});
+
+test("More deletes the removable checked purchases and adjustments, keeps transfer sides, and Undo restores their balances", async () => {
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.add",
+        id: "savings",
+        accountId: "savings",
+        name: "Savings",
+        kind: "cash",
+        openingBalance: 0,
+        date: "2026-10-01",
+      },
+      {
+        type: "account.reconcile",
+        id: "reconcile-delete",
+        accountId: "checking",
+        date: "2026-10-10",
+        balance: 110_000,
+        adjustmentId: "adjustment-delete",
+      },
+      purchase(),
+      {
+        type: "transaction.upsert",
+        id: "transfer-delete",
+        transactionId: "transfer-delete",
+        accountId: "checking",
+        transferAccountId: "savings",
+        date: "2026-10-10",
+        amount: -5000,
+        payee: "Transfer",
+        status: "posted",
+      },
+    ],
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  expect(screen.getByRole("link", { name: "Checking $1,025.00" })).toBeTruthy();
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Transfer to Savings" }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "More", exact: true }),
+  ).toBeNull();
+  await shell.user.click(
+    screen.getByRole("checkbox", { name: "Select Market" }),
+  );
+  await shell.user.click(
+    screen.getByRole("checkbox", {
+      name: "Select Reconciliation balance adjustment",
+    }),
+  );
+  await shell.user.click(
+    screen.getByRole("button", { name: "More", exact: true }),
+  );
+  await shell.user.click(
+    screen.getByRole("menuitem", { name: "Delete", exact: true }),
+  );
+  const toast = await findToast("Deleted 2 transactions");
+  expect(screen.queryByRole("checkbox", { name: "Select Market" })).toBeNull();
+  expect(
+    screen.queryByRole("checkbox", {
+      name: "Select Reconciliation balance adjustment",
+    }),
+  ).toBeNull();
+  expect(await findRow("Transfer to Savings")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Checking $950.00" })).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "More", exact: true }),
+  ).toBeNull();
+  await shell.user.click(within(toast).getByRole("button", { name: "Undo" }));
+  expect(await findRow("Market")).toBeTruthy();
+  expect(await findRow("Reconciliation balance adjustment")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Checking $1,025.00" })).toBeTruthy();
+  await waitForSaves();
+  await shell.reload();
+  expect(await findRow("Market")).toBeTruthy();
+  expect(await findRow("Reconciliation balance adjustment")).toBeTruthy();
+});
