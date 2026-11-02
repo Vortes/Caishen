@@ -372,6 +372,11 @@ function CustomShare({
   useEffect(() => {
     if (!focus) return;
     input.current?.focus();
+    // Stacked on a phone, the field can open below the popover's clamped
+    // height; the popover can only scroll to it once it has been placed.
+    requestAnimationFrame(() =>
+      input.current?.scrollIntoView({ block: "nearest" }),
+    );
     onFocused();
   }, [focus, onFocused]);
   return (

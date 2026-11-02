@@ -175,17 +175,21 @@
   border-left: 1px solid var(--border-subtle);
 }
 /* Starts where the choices' titles do (4px list, 4px row, 16px check, 6px
-   gap), so the name heads their column. */
+   gap), so the name heads their column. One line is as tall as the search
+   well; a long name takes a second line rather than losing its end, since
+   the list beside it truncates. */
 .paneTitle {
+  display: -webkit-box;
   flex: none;
-  height: var(--size-control);
   margin: 12px 12px 8px 30px;
+  padding: 6px 0;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   color: var(--text-primary);
   font-weight: 500;
-  line-height: var(--size-control);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 20px;
+  overflow-wrap: anywhere;
 }
 .paneTitle[data-placeholder] {
   color: var(--text-tertiary);
@@ -266,7 +270,6 @@
     min-height: var(--size-row-lg);
   }
   .paneTitle {
-    height: var(--size-row-lg);
-    line-height: var(--size-row-lg);
+    padding: 12px 0;
   }
 }

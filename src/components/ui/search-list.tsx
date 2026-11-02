@@ -477,6 +477,12 @@ export function SearchListDetail({
       ? `${listId}-create`
       : `${listId}-${options.findIndex((option) => option.value === id)}`;
 
+  // The highlight at open may be far down a long list.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector("[data-active]")
+      ?.scrollIntoView({ block: "nearest" });
+  }, []);
   const choices = () => [
     ...(paneRef.current?.querySelectorAll<HTMLButtonElement>(
       "[data-detail-option]:not(:disabled)",
