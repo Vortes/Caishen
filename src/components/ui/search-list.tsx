@@ -503,9 +503,16 @@ export function SearchListDetail({
     element.setSelectionRange(text.length, text.length);
   };
 
+  // Hover intent: a pointer moving right, toward the detail, doesn't
+  // highlight every row it crosses. The highlight waits until the pointer
+  // rests or moves along the list.
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const wait = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(wait.current), []);
   // Typing narrows the list: the highlight takes the first match, or New
   // once nothing matches. Clearing the text keeps it where it was.
   const narrow = (text: string) => {
+    window.clearTimeout(wait.current);
     setQuery(text);
     if (!normalize(text)) return;
     // The first match takes the highlight, so the list starts at the top.
@@ -514,6 +521,7 @@ export function SearchListDetail({
     setActive(next.rows.find((id) => id !== CREATE) ?? next.rows[0] ?? null);
   };
   const step = (by: number) => {
+    window.clearTimeout(wait.current);
     const index = current === null ? -1 : rows.indexOf(current);
     const next =
       index < 0
@@ -526,12 +534,6 @@ export function SearchListDetail({
       ?.scrollIntoView({ block: "nearest" });
   };
 
-  // Hover intent: a pointer moving right, toward the detail, doesn't
-  // highlight every row it crosses. The highlight waits until the pointer
-  // rests or moves along the list.
-  const pointer = useRef<{ x: number; y: number } | null>(null);
-  const wait = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(wait.current), []);
   const hover = (id: string, event: MouseEvent) => {
     const last = pointer.current;
     pointer.current = { x: event.clientX, y: event.clientY };

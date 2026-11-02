@@ -607,3 +607,19 @@ test("maxLength stops a typed name where it would be refused", async () => {
   await user.keyboard("Alexandra");
   expect(search).toHaveProperty("value", "Alexa");
 });
+
+test("a pointer's pending highlight gives way to the arrow keys", async () => {
+  const { user, search } = await openPicker();
+
+  fireEvent.mouseMove(screen.getByRole("option", { name: /^Mom-/ }), {
+    clientX: 20,
+    clientY: 60,
+  });
+  fireEvent.mouseMove(screen.getByRole("option", { name: /^Sam/ }), {
+    clientX: 80,
+    clientY: 90,
+  });
+  await user.keyboard("{ArrowUp}");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(highlighted(search)).toMatch(/^Mei Chen/);
+});
