@@ -985,9 +985,13 @@ export function budgetReferenceIssues(
     )
   )
     issues.push("Invalid transaction reference");
+  // Stored budgets may still hold legacy counterparty kinds until
+  // withPeople converts them on load.
   const counterpartyAccount = (id: string) =>
     budget.accounts.find(
-      (account) => account.id === id && isCounterparty(account),
+      (account) =>
+        account.id === id &&
+        (isCounterparty(account) || isLegacyCounterparty(account)),
     );
   const hasPairedEnvelope = (id: string) =>
     budget.categories.some((category) => category.counterpartyAccountId === id);
@@ -1321,6 +1325,12 @@ function refusePairedEnvelope(category: Category): void {
 /** Whether an account is a person's: what they owe you or you owe them. */
 export const isCounterparty = (account: Pick<Account, "kind">) =>
   account.kind === "person";
+
+/** Whether an account is of a kind stored before every counterparty was a person. */
+export const isLegacyCounterparty = (account: Pick<Account, "kind">) =>
+  account.kind === "partner" ||
+  account.kind === "reimbursements" ||
+  account.kind === "former-partner";
 
 /** The person linked to the other member of the household: the partner. */
 export const isLinkedPerson = (
