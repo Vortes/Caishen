@@ -69,8 +69,7 @@ width.
 What opens it?
  ├── A button
  │    ├── It should hang from the button → trigger={button}
- │    └── It should hang from a frame around the button (the selection
- │        island) → trigger={button} anchor={frame}
+ │    └── It should hang from an Action Bar → trigger={button} anchor={frame}
  └── Something else the site controls (an input, a field's "New" row,
      a chart slice) → anchor={element} open onOpenChange
       ├── Focus must stay in the input while the user types → no autoFocus
