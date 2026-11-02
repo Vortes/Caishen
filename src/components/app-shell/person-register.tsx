@@ -754,7 +754,7 @@ export function PersonRegister({
               <span
                 className={styles.numeric}
                 data-column="amount"
-                aria-label={owedLabel(row.change, account.name)}
+                aria-label={owedLabel(row.change)}
               >
                 {money(row.change, true)}
               </span>
@@ -912,10 +912,11 @@ type RowCells = Record<
   ReactNode
 >;
 
-// How an entry's Owed figure reads aloud: which way it moved the balance.
-function owedLabel(change: number, name: string) {
-  if (change > 0) return `${name} owes you ${money(change)} more`;
-  if (change < 0) return `You owe ${name} ${money(-change)} more`;
+// How an entry's Owed figure reads aloud: which way it moved the balance,
+// whoever owed whom before it.
+function owedLabel(change: number) {
+  if (change > 0) return `${money(change)} more owed to you`;
+  if (change < 0) return `${money(-change)} less owed to you`;
   return "Nothing owed";
 }
 
@@ -1135,7 +1136,9 @@ function EntryEditor({
       <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
         {readOnly("date", cells.date)}
         {readOnly("payee", cells.payee)}
-        {readOnly("paidBy", cells.paidBy)}
+        <EditorText column="paidBy" optional>
+          {cells.paidBy}
+        </EditorText>
         {categoryEditable ? (
           <EditorCell column="category" label="Your category">
             <SearchList
@@ -1150,7 +1153,9 @@ function EntryEditor({
         ) : (
           readOnly("category", cells.category)
         )}
-        {readOnly("total", cells.amount, true)}
+        <EditorText column="total" numeric optional>
+          {cells.amount}
+        </EditorText>
         {shareEditable ? (
           <EditorCell column="amount" label={shareLabel} error={errors.amount}>
             <AmountInput

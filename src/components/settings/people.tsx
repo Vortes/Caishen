@@ -129,13 +129,14 @@ function PersonRow({
       >
         Rename
       </Button>
-      <Button
-        aria-expanded={open === "invite"}
-        disabled={!invitable && open !== "invite"}
-        onClick={() => setOpen(open === "invite" ? null : "invite")}
-      >
-        Invite to Caishen…
-      </Button>
+      {(invitable || open === "invite") && (
+        <Button
+          aria-expanded={open === "invite"}
+          onClick={() => setOpen(open === "invite" ? null : "invite")}
+        >
+          Invite to Caishen…
+        </Button>
+      )}
     </SettingRow>
   );
 }
@@ -263,7 +264,7 @@ function PartnerRows() {
       {partner ? (
         <SettingRow
           label={`Connected with ${partner.name}`}
-          description="A budget has room for one partner."
+          description="What you share with them shows in both budgets."
         >
           <Disconnect name={partner.name} />
         </SettingRow>

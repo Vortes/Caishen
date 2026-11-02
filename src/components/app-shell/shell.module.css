@@ -1826,6 +1826,11 @@ button.actionItem:disabled {
   background: var(--surface-hover);
   color: var(--text-secondary);
 }
+@media (pointer: coarse) {
+  .navMore {
+    height: var(--size-row-lg);
+  }
+}
 /* ---------- Collapsed sidebar peek ---------- */
 
 /* Floats below the header so the breadcrumb and sidebar button stay usable.
