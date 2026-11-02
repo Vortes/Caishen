@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, UsersIcon } from "lucide-react";
+import { UsersIcon } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -15,7 +15,6 @@ import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
 import { SearchList } from "~/components/ui/search-list";
-import { TextInput } from "~/components/ui/text-input";
 import {
   halfOf,
   keepShare,
@@ -150,12 +149,16 @@ export function ShareChoices({
   const multiple = amounts.length > 1;
   const current = presetOf(share, amount);
   const [error, setError] = useState("");
-  // Whoever the share is with, or else the first person in the list.
+  // Whoever the share is with. With no share yet, the partner, or the only
+  // person there is; among several others, nobody is a safe guess.
   const [personId, setPersonId] = useState(
-    share?.amount ? share.accountId : (people[0]?.id ?? ""),
+    share?.amount
+      ? share.accountId
+      : (partner?.id ?? (people.length === 1 ? people[0]!.id : "")),
   );
-  // A new person's name: typed in the list, or in its own field.
+  // A new person's name, typed in the list and added once a share applies.
   const [pending, setPending] = useState<string | null>(null);
+  // New person was picked before a name was typed.
   const [naming, setNaming] = useState(false);
   const [form, setForm] = useState(current === "amount");
   const personInput = useRef<HTMLInputElement>(null);
@@ -167,8 +170,8 @@ export function ShareChoices({
   // The share already set shows as chosen while its person is.
   const chosen = share?.amount && share.accountId === personId ? current : null;
   useEffect(() => {
-    if (current === "mine" && !naming) personInput.current?.focus();
-  }, [current, naming]);
+    if (current === "mine") personInput.current?.focus();
+  }, [current]);
 
   const pick = (
     next: CounterpartyShare | null,
@@ -193,13 +196,22 @@ export function ShareChoices({
     }
     pick({ accountId, amount: cents }, basis);
   };
+  // The New row: a typed name becomes the chosen person at once; with
+  // nothing typed, the well clears and asks for the name.
   const name = (typed: string) => {
     const trimmed = typed.trim().replace(/\s+/g, " ");
+    setError("");
+    if (!trimmed) {
+      setNaming(true);
+      setPersonId("");
+      setPending(null);
+      requestAnimationFrame(() => personInput.current?.focus());
+      return;
+    }
     const known = people.find(
       (item) => !isLinked(item) && personKey(item.name) === personKey(trimmed),
     );
     setNaming(false);
-    setError("");
     if (known) {
       setPersonId(known.id);
       setPending(null);
@@ -245,19 +257,20 @@ export function ShareChoices({
       data-share-option
       autoFocus={id === current && current !== "mine"}
       disabled={id !== "mine" && !person}
-      className={`${moveStyles.option} ${styles.shareOption}`}
+      className={styles.shareOption}
       aria-pressed={id === "mine" ? current === "mine" : id === chosen}
       onClick={onClick}
     >
-      <span className={moveStyles.check}>
-        {(id === "mine" ? current === "mine" : id === chosen) && (
-          <CheckIcon size={14} aria-hidden />
-        )}
-      </span>
-      <span>{label}</span>
-      <span className={styles.optionDetail}>{detail}</span>
+      <span className={styles.optionLabel}>{label}</span>
+      {detail && <span className={styles.optionDetail}>{detail}</span>}
     </button>
   );
+  const hint =
+    naming || personId === NEW_PERSON
+      ? "Only you see new people. They get an envelope in People."
+      : remembered
+        ? `Prefilled from ${remembered} last time.`
+        : undefined;
   return (
     <PopoverSteps step={confirmation ? "confirmation" : "choices"}>
       {confirmation ?? (
@@ -281,51 +294,37 @@ export function ShareChoices({
         >
           <div className={moveStyles.header}>
             <strong>Who is this for?</strong>
-            <span className={moveStyles.balance}>
-              {money(amounts.reduce((sum, value) => sum + value, 0))}
-            </span>
           </div>
           <div className={styles.whoField}>
-            {naming ? (
-              <NewPerson
-                onCancel={() => {
+            <Field label="Who is this for" labelHidden hint={hint}>
+              <SearchList
+                inputRef={personInput}
+                value={personId}
+                options={[
+                  ...(pending !== null
+                    ? [{ value: NEW_PERSON, label: pending, group: "New" }]
+                    : []),
+                  ...people.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                    group: isLinked(item) ? "On Caishen" : "People",
+                    amount: item.balance,
+                  })),
+                ]}
+                placeholder={
+                  naming ? "Their name or company" : "Choose or add a person"
+                }
+                onChange={(value) => {
+                  setPersonId(value);
                   setNaming(false);
-                  requestAnimationFrame(() => personInput.current?.focus());
+                  setError("");
                 }}
-                onName={name}
+                onPicked={() =>
+                  requestAnimationFrame(() => firstOption.current?.focus())
+                }
+                onCreate={{ noun: "person", create: name }}
               />
-            ) : (
-              <Field label="Who is this for" labelHidden>
-                <SearchList
-                  inputRef={personInput}
-                  value={personId}
-                  options={[
-                    ...(pending !== null
-                      ? [{ value: NEW_PERSON, label: pending, group: "New" }]
-                      : []),
-                    ...people.map((item) => ({
-                      value: item.id,
-                      label: item.name,
-                      group: isLinked(item) ? "On Caishen" : "People",
-                      amount: item.balance,
-                    })),
-                  ]}
-                  placeholder="Choose or add a person"
-                  onChange={(value) => {
-                    setPersonId(value);
-                    setError("");
-                  }}
-                  onPicked={() =>
-                    requestAnimationFrame(() => firstOption.current?.focus())
-                  }
-                  onCreate={{
-                    noun: "person",
-                    create: (typed) =>
-                      typed.trim() ? name(typed) : setNaming(true),
-                  }}
-                />
-              </Field>
-            )}
+            </Field>
           </div>
           <div
             className={styles.shareOptions}
@@ -357,75 +356,13 @@ export function ShareChoices({
             )}
           </div>
           {error && (
-            <div className={styles.popoverHint}>
+            <div className={styles.popoverError}>
               <FormError>{error}</FormError>
             </div>
-          )}
-          {remembered && (
-            <p className={styles.popoverHint}>
-              Prefilled from {remembered} last time.
-            </p>
           )}
         </div>
       )}
     </PopoverSteps>
-  );
-}
-
-// A new person's name, when New person was picked before typing one.
-function NewPerson({
-  onName,
-  onCancel,
-}: {
-  onName: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [text, setText] = useState("");
-  const [error, setError] = useState("");
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
-  return (
-    <form
-      className={styles.newPerson}
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!text.trim()) return setError("Enter their name.");
-        onName(text);
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        event.stopPropagation();
-        onCancel();
-      }}
-    >
-      <Field
-        label="New person"
-        error={error || undefined}
-        hint="Only you see them. They get an envelope in People."
-      >
-        <TextInput
-          inputRef={input}
-          maxLength={120}
-          value={text}
-          placeholder="Name or company"
-          onChange={(value) => {
-            setText(value);
-            setError("");
-          }}
-        />
-      </Field>
-      <div className={styles.shareFormActions}>
-        <Button size="sm" onClick={onCancel}>
-          Back
-        </Button>
-        <Button size="sm" variant="primary" type="submit">
-          Continue
-        </Button>
-      </div>
-    </form>
   );
 }
 
@@ -461,7 +398,7 @@ function CustomShare({
   useEffect(() => input.current?.focus(), []);
   return (
     <form
-      className={styles.shareForm}
+      className={styles.customShare}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();

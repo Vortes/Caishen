@@ -81,51 +81,78 @@
   }
 }
 
+/* The share picker: one left edge. The header's title, the person's well
+   and the option rows' labels all start at the popover form's 12px inset;
+   the option list keeps a list's 4px so its fills sit 4px from the border,
+   and its rows take a list row's 8px. */
+.whoField {
+  padding: 12px 12px 0;
+}
 .shareOptions {
   display: flex;
   flex-direction: column;
   padding: 4px;
 }
-.shareOption {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-}
-.shareOption:hover,
-.shareOption:focus-visible {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-.shareOption[aria-pressed="true"] {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-.optionDetail {
-  flex: none;
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-/* Who the share is with, between the header and the amounts. */
-.whoField {
-  padding: 12px 12px 0;
-}
-.newPerson {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 /* Just mine stands apart from the amounts it clears. */
 .shareOptions[data-after] {
   border-top: 1px solid var(--border-subtle);
 }
-.popoverHint {
-  margin: 0;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--border-subtle);
+.shareOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--size-row-sm);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shareOption:hover:not(:disabled),
+.shareOption:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+/* The share as it stands: a pressed quiet control. */
+.shareOption[aria-pressed="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.shareOption:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.optionLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.optionDetail {
+  flex: none;
   color: var(--text-tertiary);
-  font-size: var(--type-small);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+/* An amount's field, under the options it belongs to: the list's 4px and
+   8px more make the form's 12px between sections. */
+.customShare {
+  padding: 8px 12px 12px;
+}
+.popoverError {
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+@media (pointer: coarse) {
+  .shareOption {
+    min-height: var(--size-row-lg);
+  }
 }
 .shareForm {
   display: flex;
@@ -162,10 +189,6 @@
 .shareFormField[data-narrow] {
   flex: 0 0 104px;
   min-width: 0;
-}
-.shareFormActions {
-  display: flex;
-  justify-content: flex-end;
 }
 .shareForm .fullShare {
   display: flex;
