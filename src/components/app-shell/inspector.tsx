@@ -85,7 +85,7 @@ function InspectorCards({
       </>
     );
   }
-  // An account's register has no details panel; its island and balance
+  // An account's register has no details panel; its action bar and balance
   // strip take its place.
   if (screen.type === "register") return null;
   const loan = loans.find((item) => item.id === selectedId);

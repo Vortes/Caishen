@@ -149,7 +149,7 @@ test("clicking an entry selects it, and clicking it again opens the field clicke
   );
 });
 
-test("checked entries are categorized together from the selection island", async () => {
+test("checked entries are categorized together from the action bar", async () => {
   const shell = await showLedger();
   await shell.user.click(
     ledger().getByRole("checkbox", { name: "Select Groceries" }),
@@ -157,11 +157,11 @@ test("checked entries are categorized together from the selection island", async
   await shell.user.click(
     ledger().getByRole("checkbox", { name: "Select Pharmacy" }),
   );
-  const island = within(
+  const actionBar = within(
     screen.getByRole("toolbar", { name: "Selected transactions" }),
   );
-  expect(island.getByText("2 transactions")).toBeTruthy();
-  await shell.user.click(island.getByRole("button", { name: "Categorize" }));
+  expect(actionBar.getByText("2 transactions")).toBeTruthy();
+  await shell.user.click(actionBar.getByRole("button", { name: "Categorize" }));
   await shell.user.click(screen.getByRole("menuitem", { name: "Everyday" }));
   expect(screen.getByRole("menuitem", { name: "Household" })).toBeTruthy();
   await shell.user.keyboard("{ArrowRight}{End}{Enter}");
@@ -187,7 +187,7 @@ test("an open entry keeps what's typed when another entry is clicked", async () 
   ).toHaveProperty("value", "12");
 });
 
-test("an entry you paid opens its transaction from the selection island", async () => {
+test("an entry you paid opens its transaction from the action bar", async () => {
   let book = execute(sharedBook(), "owner", {
     type: "account.add",
     id: "add-checking",

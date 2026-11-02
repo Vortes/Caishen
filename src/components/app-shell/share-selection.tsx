@@ -15,6 +15,7 @@ import { money, type Transaction } from "./model";
 import { ShareChoices, useShareParties } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
 import styles from "./transaction-review.module.css";
+import barStyles from "~/components/ui/action-bar.module.css";
 
 export function ShareSelection({
   selected,
@@ -100,8 +101,8 @@ export function ShareSelection({
           Share
         </Button>
       }
-      // Hangs from the island's outer border, not the button inside it.
-      anchor={<div className={styles.islandAnchor} aria-hidden />}
+      // Hangs from the action bar's outer border, not the button inside it.
+      anchor={<div className={barStyles.anchor} aria-hidden />}
       open={open}
       onOpenChange={(next) => {
         if (next) {
@@ -116,7 +117,7 @@ export function ShareSelection({
       align="end"
       size="form"
     >
-      {/* Keys typed here stay out of the island and register around it. */}
+      {/* Keys typed here stay out of the action bar and register around it. */}
       <div
         className={styles.sharePanel}
         onKeyDown={(event) => event.stopPropagation()}
