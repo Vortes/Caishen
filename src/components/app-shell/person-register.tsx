@@ -385,8 +385,8 @@ function personLedger(view: View, account: Account): Row[] {
     .reverse();
 }
 
-// A person's ledger, as a register: clicking an entry selects it and opens
-// its detail, and clicking it again opens it at the field clicked. The
+// A person's ledger, as a register: clicking an entry selects it, and
+// clicking it again opens it at the field clicked. The
 // partner's entries you can categorize can be checked and categorized
 // together.
 export function PersonRegister({
@@ -687,7 +687,7 @@ export function PersonRegister({
               data-entry-row={row.id}
               className={`${styles.txColumns} ${styles.row}`}
               aria-current={isSelected ? "true" : undefined}
-              aria-expanded={isSelected}
+              aria-expanded={settlement ? isSelected : undefined}
               onClick={(event) => {
                 if (checkable && event.shiftKey) {
                   checkTo(row.id, !isChecked);
@@ -763,12 +763,9 @@ export function PersonRegister({
               </span>
               <span />
             </button>
-            {isSelected &&
-              (settlement ? (
-                <SettlementDetail row={row} partnerName={account.name} />
-              ) : (
-                <EntryDetail row={row} name={account.name} linked={linked} />
-              ))}
+            {isSelected && settlement && (
+              <SettlementDetail row={row} partnerName={account.name} />
+            )}
           </div>
         );
       })}
@@ -918,75 +915,6 @@ function owedLabel(change: number) {
   if (change > 0) return `${money(change)} more owed to you`;
   if (change < 0) return `${money(-change)} less owed to you`;
   return "Nothing owed";
-}
-
-// An entry other than a settlement, opened under its row: who paid and
-// each side's part. The selection island leads to the transaction behind
-// it.
-function EntryDetail({
-  row,
-  name,
-  linked,
-}: {
-  row: Row;
-  name: string;
-  linked: boolean;
-}) {
-  const { view } = useTransactionEntry();
-  const transaction = view.budget.transactions.find(
-    (item) => item.id === row.transactionId && !item.removed,
-  );
-  const account = view.accounts.find(
-    (item) => item.id === transaction?.accountId,
-  );
-  const category = view.categories.find((item) => item.id === row.categoryId);
-  const paid = row.payerId === view.budget.userId;
-  const facts: [string, string][] =
-    row.kind === "repayment"
-      ? [
-          [`${name} paid you back`, money(Math.abs(row.change))],
-          ...(account ? [["Into", account.name] as [string, string]] : []),
-        ]
-      : paid
-        ? [
-            [
-              row.kind === "refund" ? "Refunded to you" : "You paid",
-              money(row.shared),
-            ],
-            [`${name}’s share`, money(row.partner)],
-            ["Your part", money(row.you)],
-          ]
-        : [
-            [`${name} paid`, money(row.shared)],
-            ["Your share", money(row.you)],
-            [`${name}’s part`, money(row.partner)],
-          ];
-  const note =
-    row.kind === "repayment"
-      ? `It lowered what ${name} owes and refilled your ${name} envelope. Ready to Assign didn’t change.`
-      : row.you > 0 && category
-        ? `Your part is in ${category.name}.${linked ? " Only you see that." : ""}`
-        : row.you > 0
-          ? "Your part needs a category."
-          : `All of it is ${name}’s.`;
-  return (
-    <div
-      className={share.detail}
-      onKeyDown={(event) => event.stopPropagation()}
-    >
-      <div className={share.detailMain}>
-        <dl className={share.facts}>
-          {facts.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className={local.source}>{note}</p>
-      </div>
-    </div>
-  );
 }
 
 // An entry, opened in place with the register's editor row. Its amount is
