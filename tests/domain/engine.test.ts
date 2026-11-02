@@ -1855,56 +1855,67 @@ void test("cash, reserves, and reported expenses conserve cents across varied fu
   }
 });
 
-void test("account activity cannot predate its confirmed opening balance", () => {
+void test("purchases and card payments can predate their accounts and count once", () => {
   const setup = fixture();
-  setup.run({
-    type: "account.add",
-    accountId: "later",
-    name: "Later bank",
-    kind: "cash",
-    openingBalance: 1000,
-    date: "2026-10-17",
-  });
-  assert.throws(
-    () =>
-      setup.run({
-        type: "transaction.upsert",
-        transactionId: "earlier",
-        accountId: "later",
-        date: "2026-10-01",
-        amount: -100,
-        payee: "Earlier",
-        categoryId: "food",
-      }),
-    /confirmed opening/,
-  );
-  setup.run({
-    type: "account.add",
-    accountId: "later-card",
-    name: "Later card",
-    kind: "credit",
-    openingBalance: -1000,
-    date: "2026-10-17",
-  });
+  setup.run({ type: "assign", categoryId: "food", month, amount: 200 });
+  for (const [accountId, kind, openingBalance] of [
+    ["later", "cash", 1000],
+    ["later-card", "credit", -1000],
+    ["later-tracking", "tracking", 1000],
+  ] as const) {
+    setup.run({
+      type: "account.add",
+      accountId,
+      name: accountId,
+      kind,
+      openingBalance,
+      date: "2026-10-17",
+    });
+    setup.run({
+      type: "transaction.upsert",
+      transactionId: `earlier-${accountId}`,
+      accountId,
+      date: "2026-10-01",
+      amount: -100,
+      payee: "Earlier purchase",
+      ...(kind === "tracking" ? {} : { categoryId: "food" }),
+    });
+  }
   setup.run({
     type: "assign",
     categoryId: "card:later-card",
     month,
     amount: 1000,
   });
-  assert.throws(
-    () =>
-      setup.run({
-        type: "transaction.upsert",
-        transactionId: `register-payment-12:2026-10-16`,
-        date: "2026-10-16",
-        accountId: "checking",
-        transferAccountId: "later-card",
-        amount: -1000,
-        payee: "Credit card payment",
-        status: "posted",
-      }),
-    /confirmed opening/,
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "earlier-card-payment",
+    date: "2026-10-16",
+    accountId: "checking",
+    transferAccountId: "later-card",
+    amount: -1000,
+    payee: "Credit card payment",
+    status: "posted",
+  });
+  const view = setup.view();
+  assert.equal(view.accounts.find((item) => item.id === "later")!.balance, 900);
+  assert.equal(
+    view.accounts.find((item) => item.id === "later-card")!.balance,
+    -100,
+  );
+  assert.equal(
+    view.accounts.find((item) => item.id === "later-tracking")!.balance,
+    900,
+  );
+  assert.equal(
+    view.accounts.find((item) => item.id === "checking")!.balance,
+    499_000,
+  );
+  assert.equal(view.cash, 499_900);
+  assert.equal(view.readyToAssign, 499_800);
+  assert.equal(
+    view.categories.find((item) => item.id === "food")!.activity,
+    -200,
   );
 });
 
