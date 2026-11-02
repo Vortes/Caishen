@@ -114,7 +114,8 @@ export function ShareSelection({
       }}
       side="top"
       align="end"
-      size="form"
+      // The picker is two panes; the confirmation after it is a form.
+      size={choice ? "form" : "wide"}
     >
       {/* Keys typed here stay out of the island and register around it. */}
       <div
@@ -123,6 +124,7 @@ export function ShareSelection({
       >
         <ShareChoices
           amounts={targets.map((row) => Math.abs(row.amount))}
+          clearable={targets.some((row) => row.shareLabel)}
           onChange={(share, basis) => {
             setChoice({ share, basis });
             return null;

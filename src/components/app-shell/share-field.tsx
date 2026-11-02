@@ -14,18 +14,20 @@ import { Field, FormError } from "~/components/ui/field";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
-import { SearchList } from "~/components/ui/search-list";
-import { TextInput } from "~/components/ui/text-input";
+import {
+  DetailOption,
+  DetailSeparator,
+  SearchListDetail,
+  type SearchListHighlight,
+} from "~/components/ui/search-list";
 import {
   halfOf,
   keepShare,
   type ShareBasis,
 } from "~/components/transactions/transaction-share";
 import type { CounterpartyShare } from "~/domain/engine";
-import { personKey } from "~/domain/people";
 import { money } from "./model";
 import { isLinked, usePeople } from "./people";
-import moveStyles from "./move-money.module.css";
 import styles from "./share.module.css";
 
 // Who a line's cost is for: nobody else, or one person, for half of it,
@@ -76,8 +78,8 @@ export function ShareLabel({
   );
 }
 
-// The popover that opens from a Share cell. Picking Half, All, or Just
-// mine applies at once; Amount opens a field first. onChange returns why
+// The popover that opens from a Share cell. Picking Half, All of it, or
+// Just mine applies at once; An amount… opens a field first. onChange returns why
 // the share can't apply, which keeps the popover open.
 export function ShareMenu({
   amount,
@@ -104,7 +106,7 @@ export function ShareMenu({
       trigger={children}
       open={open}
       onOpenChange={setOpen}
-      size="form"
+      size="wide"
       arrow
     >
       <ShareChoices
@@ -123,18 +125,20 @@ export function ShareMenu({
   );
 }
 
-// Stands for a person named here and added once a share is applied, so
-// closing the popover leaves nobody behind.
-const NEW_PERSON = "\u0000person:new";
 // The longest name person.add takes.
 const PERSON_NAME_MAX = 120;
 
+// Who it's for on the left, searched by typing, with the partner first;
+// how much for whoever is highlighted on the right. A typed name nobody has
+// is a New row, and the person is added only once a share applies. Just
+// mine, last on the right, clears a share there is.
 export function ShareChoices({
   confirmation,
   amounts,
   share,
   saved,
   remembered,
+  clearable = false,
   onChange,
 }: {
   confirmation?: ReactNode;
@@ -142,6 +146,8 @@ export function ShareChoices({
   share?: CounterpartyShare | null;
   saved?: CounterpartyShare | null;
   remembered?: string;
+  // Some of several lines have a share that Just mine would clear.
+  clearable?: boolean;
   onChange: (
     share: CounterpartyShare | null,
     basis: ShareBasis,
@@ -151,35 +157,26 @@ export function ShareChoices({
   const amount = Math.min(...amounts);
   const multiple = amounts.length > 1;
   const current = presetOf(share, amount);
-  const [error, setError] = useState("");
   // Whoever the share is with. With no share yet, the partner, or the only
   // person there is; among several others, nobody is a safe guess.
   const [only] = people;
-  const [personId, setPersonId] = useState(
-    share?.amount
-      ? share.accountId
-      : (partner?.id ?? (people.length === 1 && only ? only.id : "")),
+  const initial = share?.amount
+    ? share.accountId
+    : (partner?.id ?? (people.length === 1 && only ? only.id : undefined));
+  // A refusal, for the person it was about.
+  const [error, setError] = useState<{ key: string; message: string } | null>(
+    null,
   );
-  // A new person's name, typed in the list and added once a share applies.
-  const [pending, setPending] = useState<string | null>(null);
-  // New person was picked before a name was typed.
-  const [naming, setNaming] = useState(false);
-  const [form, setForm] = useState(current === "amount");
-  const personInput = useRef<HTMLInputElement>(null);
-  const firstOption = useRef<HTMLButtonElement>(null);
-  const person =
-    personId === NEW_PERSON
-      ? { id: NEW_PERSON, name: pending ?? "" }
-      : people.find((item) => item.id === personId);
-  // The share already set shows as chosen while its person is.
-  const chosen = share?.amount && share.accountId === personId ? current : null;
-  useEffect(() => {
-    if (current === "mine") personInput.current?.focus();
-  }, [current]);
+  // The person whose amount field is open, and whether it takes focus as it
+  // shows: on a click, or at open, not when the highlight comes back to it.
+  const [form, setForm] = useState<{ key: string; focus: boolean } | null>(
+    current === "amount" && initial ? { key: initial, focus: true } : null,
+  );
 
   const pick = (
     next: CounterpartyShare | null,
-    basis: ShareBasis = "fixed",
+    basis: ShareBasis,
+    key: string,
   ) => {
     const failure = onChange(
       multiple && basis !== "fixed"
@@ -187,236 +184,156 @@ export function ShareChoices({
         : keepShare(saved, next, partner?.id),
       basis,
     );
-    if (failure) setError(failure);
+    if (failure) setError({ key, message: failure });
   };
-  // A share for whoever is chosen, adding them first when they're new.
-  const apply = (cents: number, basis: ShareBasis) => {
-    if (!person) return setError("Choose who this is for.");
-    let accountId = person.id;
-    if (accountId === NEW_PERSON) {
-      const added = addPerson(person.name);
-      if (added.failure !== undefined) return setError(added.failure);
+  // A share for the highlighted person, adding them first when they're new.
+  const apply = (
+    highlight: SearchListHighlight,
+    cents: number,
+    basis: ShareBasis,
+  ) => {
+    const key = keyOf(highlight);
+    let accountId: string;
+    if (highlight.kind === "create") {
+      const added = addPerson(highlight.name);
+      if (added.failure !== undefined)
+        return setError({ key, message: added.failure });
       accountId = added.accountId;
-    }
-    pick({ accountId, amount: cents }, basis);
+    } else accountId = highlight.option.value;
+    pick({ accountId, amount: cents }, basis, key);
   };
-  // Who a typed name stands for: a person already listed, or someone new.
-  const resolve = (typed: string) => {
-    const trimmed = typed.trim().replace(/\s+/g, " ");
-    const known = people.find(
-      (item) => !isLinked(item) && personKey(item.name) === personKey(trimmed),
-    );
-    setError("");
-    if (known) {
-      setPersonId(known.id);
-      setPending(null);
-    } else {
-      setPending(trimmed || null);
-      setPersonId(trimmed ? NEW_PERSON : "");
-    }
-  };
-  // The New row: a typed name becomes the chosen person at once; with
-  // nothing typed, the well becomes a name box and waits for it.
-  const name = (typed: string) => {
-    resolve(typed);
-    if (!typed.trim()) {
-      setNaming(true);
-      return;
-    }
-    setNaming(false);
-    requestAnimationFrame(() => firstOption.current?.focus());
-  };
-  // Typing in the name box; the amount options enable as the name does.
-  const [typed, setTyped] = useState("");
-  // The name box takes focus as it appears in the well's place.
-  useEffect(() => {
-    if (naming) personInput.current?.focus();
-  }, [naming]);
 
   const half = halfOf(amount);
   // A line with no amount yet has no half or whole to share; only an
   // amount typed here can be the share.
   const sized = multiple || amount > 0;
-  const options: {
-    id: Exclude<Preset, "mine">;
-    label: string;
-    detail: string;
-    apply?: () => void;
-  }[] = [
+  const options = [
     {
       id: "half",
       label: "Half",
       detail: multiple ? "50% of each" : money(half),
-      apply: () => apply(half, "half"),
+      cents: half,
+      basis: "half",
     },
     {
       id: "all",
       label: "All of it",
       detail: multiple ? "Full amount each" : money(amount),
-      apply: () => apply(amount, "full"),
+      cents: amount,
+      basis: "full",
     },
-    { id: "amount", label: "An amount…", detail: "" },
-  ];
-  const optionButton = (
-    id: Preset,
-    label: string,
-    detail: string,
-    onClick: () => void,
-    first = false,
-  ) => (
-    <button
-      key={id}
-      ref={first ? firstOption : undefined}
-      type="button"
-      data-share-option
-      autoFocus={id === current && current !== "mine"}
-      disabled={id !== "mine" && (!person || (id !== "amount" && !sized))}
-      className={styles.shareOption}
-      aria-pressed={id === "mine" ? current === "mine" : id === chosen}
-      onClick={onClick}
-    >
-      <span className={styles.optionLabel}>{label}</span>
-      {detail && <span className={styles.optionDetail}>{detail}</span>}
-    </button>
-  );
-  const hint =
-    naming || personId === NEW_PERSON
-      ? "Joins People once shared. Only you see them."
-      : remembered
-        ? `Prefilled from ${remembered} last time.`
-        : undefined;
+  ] as const;
+  // Nothing to clear without a share.
+  const mine = current !== "mine" || clearable;
+  if (confirmation)
+    return <PopoverSteps step="confirmation">{confirmation}</PopoverSteps>;
   return (
-    <PopoverSteps step={confirmation ? "confirmation" : "choices"}>
-      {confirmation ?? (
-        <div
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.target instanceof HTMLInputElement) return;
-            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-            const items = [
-              ...event.currentTarget.querySelectorAll<HTMLElement>(
-                "[data-share-option]:not(:disabled)",
-              ),
-            ];
-            const index = items.indexOf(document.activeElement as HTMLElement);
-            items[
-              (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-                items.length
-            ]?.focus();
-            event.preventDefault();
-          }}
-        >
-          <div className={moveStyles.header}>
-            <strong>Who is this for?</strong>
-          </div>
-          <div className={styles.whoField}>
-            <Field label="Who is this for" labelHidden hint={hint}>
-              {naming ? (
-                // The name box: Enter moves on to how much; Escape goes
-                // back to the list.
-                <form
-                  noValidate
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (!person) return setError("Enter their name.");
-                    setNaming(false);
-                    requestAnimationFrame(() => firstOption.current?.focus());
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Escape") return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setNaming(false);
-                    setTyped("");
-                    resolve("");
-                    requestAnimationFrame(() => personInput.current?.focus());
-                  }}
-                >
-                  <TextInput
-                    inputRef={personInput}
-                    maxLength={PERSON_NAME_MAX}
-                    value={typed}
-                    placeholder="Their name or company"
-                    onChange={(value) => {
-                      setTyped(value);
-                      resolve(value);
-                    }}
+    // The keys typed here stay out of the register around the popover.
+    <div
+      className={styles.sharePicker}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <SearchListDetail
+        label="Who is this for"
+        placeholder={
+          people.length === 0 ? "Their name or company" : "Find or add a person"
+        }
+        empty="Type a name to share with someone"
+        maxLength={PERSON_NAME_MAX}
+        createNoun="person"
+        value={share?.amount ? share.accountId : ""}
+        defaultHighlight={initial}
+        options={people.map((item) => ({
+          value: item.id,
+          label: item.name,
+          tag: isLinked(item) ? "On Caishen" : undefined,
+          amount: item.balance,
+        }))}
+        detail={(highlight) => {
+          const key = highlight ? keyOf(highlight) : "";
+          const name =
+            highlight?.kind === "option"
+              ? highlight.option.label
+              : highlight?.name;
+          // The share as it stands shows as chosen while its person is.
+          const chosen =
+            highlight?.kind === "option" &&
+            share?.amount &&
+            share.accountId === highlight.option.value
+              ? current
+              : null;
+          return {
+            label: name ? `How much is for ${name}` : "How much",
+            title:
+              name ??
+              (people.length === 0
+                ? "Who is this for?"
+                : "Choose who it’s for"),
+            children: (
+              <>
+                {options.map((option) => (
+                  <DetailOption
+                    key={option.id}
+                    title={option.label}
+                    detail={option.detail}
+                    pressed={option.id === chosen}
+                    disabled={!highlight || !sized}
+                    onClick={() =>
+                      highlight && apply(highlight, option.cents, option.basis)
+                    }
                   />
-                </form>
-              ) : (
-                <SearchList
-                  inputRef={personInput}
-                  maxLength={PERSON_NAME_MAX}
-                  value={personId}
-                  options={[
-                    ...(pending !== null
-                      ? [{ value: NEW_PERSON, label: pending, group: "New" }]
-                      : []),
-                    ...people.map((item) => ({
-                      value: item.id,
-                      label: item.name,
-                      group: isLinked(item) ? "On Caishen" : "People",
-                      amount: item.balance,
-                    })),
-                  ]}
-                  placeholder={
-                    naming || people.length === 0
-                      ? "Their name or company"
-                      : "Choose or add a person"
-                  }
-                  onChange={(value) => {
-                    setPersonId(value);
-                    setNaming(false);
-                    setError("");
-                  }}
-                  onPicked={() =>
-                    requestAnimationFrame(() => firstOption.current?.focus())
-                  }
-                  onCreate={{ noun: "person", create: name }}
+                ))}
+                <DetailOption
+                  title="An amount…"
+                  pressed={chosen === "amount"}
+                  disabled={!highlight}
+                  onClick={() => setForm({ key, focus: true })}
                 />
-              )}
-            </Field>
-          </div>
-          <div
-            className={styles.shareOptions}
-            role="group"
-            aria-label={person ? `How much is for ${person.name}` : "How much"}
-          >
-            {options.map((option, index) =>
-              optionButton(
-                option.id,
-                option.label,
-                option.detail,
-                () => (option.apply ? option.apply() : setForm(true)),
-                index === 0,
-              ),
-            )}
-          </div>
-          {form && person && (
-            <CustomShare
-              key="custom"
-              label={`${person.name}’s share${multiple ? " per transaction" : ""}`}
-              amount={amount}
-              initial={chosen === "amount" ? share!.amount : half}
-              onApply={(value) => apply(value, "fixed")}
-            />
-          )}
-          <div className={styles.shareOptions} data-after>
-            {optionButton("mine", "Just mine", "Nothing shared", () =>
-              pick(null),
-            )}
-          </div>
-          {error && (
-            <div className={styles.popoverError}>
-              <FormError>{error}</FormError>
-            </div>
-          )}
-        </div>
-      )}
-    </PopoverSteps>
+                {highlight && form?.key === key && name && (
+                  <CustomShare
+                    key={key}
+                    label={`${name}’s share${multiple ? " per transaction" : ""}`}
+                    amount={amount}
+                    initial={chosen === "amount" ? share!.amount : half}
+                    focus={form.focus}
+                    onFocused={() => setForm({ key, focus: false })}
+                    onApply={(cents) => apply(highlight, cents, "fixed")}
+                  />
+                )}
+                {mine && (
+                  <>
+                    <DetailSeparator />
+                    <DetailOption
+                      title="Just mine"
+                      detail="Nothing shared"
+                      onClick={() => pick(null, "fixed", key)}
+                    />
+                  </>
+                )}
+                {remembered && chosen && (
+                  <p className={styles.shareNote}>
+                    Prefilled from {remembered} last time.
+                  </p>
+                )}
+                {error?.key === key && (
+                  <div className={styles.shareNote}>
+                    <FormError>{error.message}</FormError>
+                  </div>
+                )}
+              </>
+            ),
+          };
+        }}
+      />
+    </div>
   );
 }
+
+// Which highlight a refusal or an open amount field belongs to.
+const keyOf = (highlight: SearchListHighlight) =>
+  highlight.kind === "create"
+    ? `\u0000new:${highlight.name}`
+    : highlight.option.value;
 
 // A share typed in a field, in cents, or why it can't be one. A line with
 // no amount yet takes the share as its amount, so nothing caps it.
@@ -437,17 +354,26 @@ function CustomShare({
   label,
   amount,
   initial,
+  focus,
+  onFocused,
   onApply,
 }: {
   label: string;
   amount: number;
   initial: number;
+  // Takes focus as it shows, then says so.
+  focus: boolean;
+  onFocused: () => void;
   onApply: (value: number) => void;
 }) {
   const [text, setText] = useState((initial / 100).toFixed(2));
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
+  useEffect(() => {
+    if (!focus) return;
+    input.current?.focus();
+    onFocused();
+  }, [focus, onFocused]);
   return (
     <form
       className={styles.customShare}

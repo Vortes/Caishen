@@ -124,6 +124,12 @@
     display: none;
   }
 }
+/* A column, so the share picker inside can clamp and scroll its list. */
+.sharePanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 @media (pointer: coarse) {
   .island,
   .sharePanel {

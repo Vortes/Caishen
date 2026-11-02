@@ -779,3 +779,65 @@ test("the register offers Share for purchases and categorized refunds while bloc
   ).toBeTruthy();
   expect(screen.getAllByRole("button", { name: /^Share / })).toHaveLength(2);
 });
+
+// Two lines in Checking, Tea with Mom's half of it when shared.
+const twoLines = (shared: boolean) =>
+  execute(
+    execute(withMom(budgetFixture()), "owner", {
+      type: "transaction.upsert",
+      id: "tea",
+      transactionId: "tea",
+      accountId: "checking",
+      date: "2026-10-06",
+      payee: "Tea",
+      amount: -1_000,
+      categoryId: "gifts",
+      recordedAt: "2026-10-06T12:00:00Z",
+      counterpartyShare: shared
+        ? { accountId: personAccountId("mom"), amount: 500 }
+        : undefined,
+    }),
+    "owner",
+    {
+      type: "transaction.upsert",
+      id: "cake",
+      transactionId: "cake",
+      accountId: "checking",
+      date: "2026-10-06",
+      payee: "Cake",
+      amount: -2_000,
+      categoryId: "gifts",
+    },
+  );
+
+async function shareBoth(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("checkbox", { name: "Select Tea" }));
+  await user.click(screen.getByRole("checkbox", { name: "Select Cake" }));
+  await user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Share" }),
+  );
+  return within(
+    screen.getByRole("dialog", { name: "Share selected transactions" }),
+  );
+}
+
+test("the selection's Share has no Just mine when nothing selected is shared", async () => {
+  const { user } = await renderShell({ book: twoLines(false) });
+  const popover = await shareBoth(user);
+  expect(popover.getByRole("button", { name: /^Half/ })).toBeTruthy();
+  expect(popover.queryByRole("button", { name: /^Just mine/ })).toBeNull();
+});
+
+test("the selection's Share offers Just mine once a selected line has a share to clear", async () => {
+  const { user } = await renderShell({ book: twoLines(true) });
+  const popover = await shareBoth(user);
+  await user.click(popover.getByRole("button", { name: /^Just mine/ }));
+  expect(
+    within(screen.getByRole("form", { name: "Share transactions" })).getByText(
+      "Keep these just yours",
+    ),
+  ).toBeTruthy();
+});

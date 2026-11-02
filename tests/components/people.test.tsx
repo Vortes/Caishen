@@ -232,12 +232,14 @@ test("picking a person who already has an account shares half with them", async 
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Share Lunch" }));
   const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
-  expect(menu.getByText("Who is this for?")).toBeTruthy();
-  // The only person is already chosen; Half applies at once.
+  // The only person is already highlighted; Half applies at once.
   expect(
     menu.getByRole("combobox", { name: "Who is this for" }),
-  ).toHaveProperty("value", "Mom");
-  await user.click(menu.getByRole("button", { name: /^Half/ }));
+  ).toHaveProperty("value", "");
+  const amounts = within(
+    menu.getByRole("group", { name: "How much is for Mom" }),
+  );
+  await user.click(amounts.getByRole("button", { name: /^Half/ }));
 
   expect(
     await screen.findByRole("button", {
@@ -270,35 +272,26 @@ test("a name typed in Who is this for adds that person with the share", async ()
   );
 });
 
-test("New person with nothing typed asks for the name in the same field", async () => {
+test("New person shows only for a typed name nobody has, and takes the highlight once nothing else matches", async () => {
   const { user } = await renderShell({ book: lunch() });
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Share Lunch" }));
   const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  expect(menu.queryByRole("option", { name: /New person/ })).toBeNull();
+
+  await user.keyboard("Sa");
   const who = menu.getByRole("combobox", { name: "Who is this for" });
-  await user.click(who);
-  await user.click(screen.getByRole("option", { name: "New person" }));
-  // No second form: the same field waits for the name.
-  const nameBox = menu.getByRole("textbox", { name: "Who is this for" });
-  expect(nameBox).toHaveProperty("value", "");
-  await waitFor(() => expect(nameBox).toBe(document.activeElement));
-  expect(menu.queryByRole("button", { name: "Continue" })).toBeNull();
-  expect(menu.getByRole("button", { name: /^Half/ })).toHaveProperty(
-    "disabled",
-    true,
-  );
-  // The field is the name now: no list offers to add them a second time,
-  // and how much enables as the name is typed.
-  await user.type(nameBox, "Sam");
-  expect(screen.queryByRole("option", { name: /New person/ })).toBeNull();
   expect(
-    menu.getByText("Joins People once shared. Only you see them."),
-  ).toBeTruthy();
-  expect(menu.getByRole("button", { name: /^Half/ })).toHaveProperty(
-    "disabled",
-    false,
+    document.getElementById(who.getAttribute("aria-activedescendant") ?? "")
+      ?.textContent,
+  ).toBe("New person “Sa”");
+  await user.keyboard("m");
+  const amounts = within(
+    menu.getByRole("group", { name: "How much is for Sam" }),
   );
-  await user.click(menu.getByRole("button", { name: /^Half/ }));
+  // Nothing says who will see them; the pane holds only the amounts.
+  expect(menu.queryByText(/Only you see them/)).toBeNull();
+  await user.click(amounts.getByRole("button", { name: /^Half/ }));
 
   expect(
     await screen.findByRole("button", {
@@ -318,18 +311,16 @@ test("among several people and no partner, nobody is chosen for a new share", as
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Share Lunch" }));
   const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
-  expect(
-    menu.getByRole("combobox", { name: "Who is this for" }),
-  ).toHaveProperty("value", "");
+  const who = menu.getByRole("combobox", { name: "Who is this for" });
+  expect(who.getAttribute("aria-activedescendant")).toBeNull();
+  const amounts = within(menu.getByRole("group", { name: "How much" }));
   for (const amount of [/^Half/, /^All of it/, /^An amount/])
-    expect(menu.getByRole("button", { name: amount })).toHaveProperty(
+    expect(amounts.getByRole("button", { name: amount })).toHaveProperty(
       "disabled",
       true,
     );
-  expect(menu.getByRole("button", { name: /^Just mine/ })).toHaveProperty(
-    "disabled",
-    false,
-  );
+  // Nothing is shared yet, so there is nothing for Just mine to clear.
+  expect(menu.queryByRole("button", { name: /^Just mine/ })).toBeNull();
 });
 
 test("the person on Caishen leads Who is this for, and everyone gets the same amounts", async () => {
@@ -341,19 +332,26 @@ test("the person on Caishen leads Who is this for, and everyone gets the same am
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Share Lunch" }));
   const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
-  const who = menu.getByRole("combobox", { name: "Who is this for" });
-  expect(who).toHaveProperty("value", "Anna");
-  await user.click(who);
+  expect(
+    menu.getByRole("group", { name: "How much is for Anna" }),
+  ).toBeTruthy();
   const options = screen
     .getAllByRole("option")
     .map((option) => option.textContent);
-  expect(options[0]).toMatch(/^New person/);
-  expect(options[1]).toMatch(/^Anna/);
-  expect(options[2]).toMatch(/^Mom/);
-  expect(screen.getByText("On Caishen")).toBeTruthy();
+  // One flat list: the partner first, marked, with no group headings.
+  expect(options[0]).toMatch(/^AnnaOn Caishen/);
+  expect(options[1]).toMatch(/^Mom/);
+  expect(
+    within(menu.getByRole("listbox", { name: "Who is this for" })).queryByText(
+      "People",
+    ),
+  ).toBeNull();
   await user.click(screen.getByRole("option", { name: /^Mom/ }));
+  const amounts = within(
+    menu.getByRole("group", { name: "How much is for Mom" }),
+  );
   for (const amount of [/^Half/, /^All of it/, /^An amount/])
-    expect(menu.getByRole("button", { name: amount })).toBeTruthy();
+    expect(amounts.getByRole("button", { name: amount })).toBeTruthy();
 });
 
 test("a repayment recorded from a person's register clears what they owe", async () => {

@@ -53,7 +53,8 @@ not props.
 What is inside?
  ├── A list that filters as the user types in a field → size="trigger"
  │     (the field's width, never under 20rem; long rows truncate)
- ├── A table of transactions → size="wide" (--size-popover-wide, 560px)
+ ├── A table of transactions, or a SearchListDetail (a list beside the
+ │     highlighted row's detail) → size="wide" (--size-popover-wide, 560px)
  ├── A form → size="form" (--size-popover, 320px). The default choice.
  └── A grid with a natural width of its own (month picker, date calendar)
        → no size; the content sets the width
@@ -112,6 +113,15 @@ What opens it?
 
 Never pass `side` or `align` to dodge the window edge; the module flips and
 shifts the surface. They say where the trigger is, not where there is room.
+
+### Escape
+
+Escape closes the popover, except where a control inside uses it first: an
+open list under a field closes, a search with text clears. That control
+carries `data-holds-escape` while it does, and the popover stays open for
+that press. The ui controls already set it (`SearchList`,
+`SearchSuggestions`, `SearchListDetail`, `DateField`); a screen never
+does.
 
 ### Height
 

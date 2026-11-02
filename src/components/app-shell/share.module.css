@@ -81,88 +81,22 @@
   }
 }
 
-/* The share picker: one left edge. The header's title, the person's well
-   and the option rows' labels all start at the popover form's 12px inset;
-   the option list keeps a list's 4px so its fills sit 4px from the border,
-   and its rows take a list row's 8px. The field's 8px and the list's 4px
-   make the form's 12px between them. */
-/* The well sits 2px inside the option text's 12px: a box edge on the
-   glyphs' line reads wider than the text, which starts past its side
-   bearing. Aligned by eye, not by the number. */
-.whoField {
-  padding: 12px 14px 8px;
-}
-.shareOptions {
+/* The share picker: SearchListDetail in a column the popover can clamp,
+   so only its list scrolls. In the detail, the amount field and notes sit
+   at a form's 12px: the detail's 4px and 8px more. */
+.sharePicker {
   display: flex;
   flex-direction: column;
-  padding: 4px;
+  min-height: 0;
 }
-/* Just mine stands apart from the amounts it clears. */
-.shareOptions[data-after] {
-  border-top: 1px solid var(--border-subtle);
+.customShare,
+.shareNote {
+  padding: 8px;
 }
-.shareOption {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: var(--size-row-sm);
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-row);
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.shareOption:focus-visible {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-/* Only a real pointer hovers; a tap on An amount… leaves no fill behind. */
-@media (hover: hover) {
-  .shareOption:hover:not(:disabled) {
-    background: var(--surface-hover);
-    color: var(--text-primary);
-  }
-}
-/* The share as it stands, in the weight a search list gives its chosen
-   option; no fill, so it never outweighs the choice still to make. */
-.shareOption[aria-pressed="true"] {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-.shareOption:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-.optionLabel {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.optionDetail {
-  flex: none;
+.shareNote {
   color: var(--text-tertiary);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-/* An amount's field, under the options it belongs to: the list's 4px and
-   8px more make the form's 12px between sections. */
-.customShare {
-  padding: 8px 12px 12px;
-}
-.popoverError {
-  padding: 12px;
-  border-top: 1px solid var(--border-subtle);
-}
-@media (pointer: coarse) {
-  .shareOption {
-    min-height: var(--size-row-lg);
-  }
+  font-size: var(--type-small);
+  text-wrap: pretty;
 }
 .shareForm {
   display: flex;
