@@ -13,6 +13,7 @@ import type { View } from "~/components/budget/types";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { ActionBar, type Way } from "~/components/ui/action-bar";
 import { Field, FormError } from "~/components/ui/field";
 import { Tag } from "~/components/ui/tag";
 import { useRowSelection } from "~/components/ui/use-row-selection";
@@ -25,12 +26,7 @@ import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { EditorCell, EditorFooter, EditorForm, EditorText } from "./editor-row";
-import {
-  CategorizeAction,
-  SelectAll,
-  SelectionBar,
-  type Way,
-} from "./transaction-review";
+import { CategorizeAction, SelectAll } from "./transaction-review";
 import { Empty, moveSelection, RowCheckbox } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
@@ -684,7 +680,7 @@ export function PartnerRegister({
           </div>
         );
       })}
-      <PartnerSelection
+      <PartnerActions
         selected={selected}
         onCheck={onCheck}
         disabled={Boolean(entry.session) || editing !== null}
@@ -694,10 +690,10 @@ export function PartnerRegister({
   );
 }
 
-// The island over the ledger while entries are selected: the way to the
+// The action bar over the ledger while entries are selected: the way to the
 // selected entry's transaction, and the one thing checked entries share,
 // your category.
-function PartnerSelection({
+function PartnerActions({
   selected,
   onCheck,
   disabled,
@@ -711,7 +707,7 @@ function PartnerSelection({
   const entry = useTransactionEntry();
   const ids = selected.map((row) => row.id);
   return (
-    <SelectionBar
+    <ActionBar
       count={selected.length}
       onClear={() => onCheck(ids, false)}
       way={way}
@@ -728,7 +724,7 @@ function PartnerSelection({
           )
         }
       />
-    </SelectionBar>
+    </ActionBar>
   );
 }
 

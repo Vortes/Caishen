@@ -66,12 +66,12 @@ import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import {
   SelectAll,
-  SelectionIsland,
-  type Way,
+  TransactionActions,
   useReviewSelection,
 } from "./transaction-review";
 import styles from "./shell.module.css";
 import editStyles from "./category-edit.module.css";
+import type { Way } from "~/components/ui/action-bar";
 import reviewStyles from "./transaction-review.module.css";
 
 // Arrow keys move the selection through the rows of a list, like Linear's j/k.
@@ -1159,7 +1159,7 @@ export function RegisterView({
     const originalHeight = content.scrollHeight;
     const neededHeight = top + content.clientHeight;
     if (neededHeight > originalHeight) {
-      // First fill the island's auto margin, then keep only the room needed.
+      // First fill the action bar's auto margin, then keep only the room needed.
       space.style.height = `${content.clientHeight}px`;
       space.style.height = `${Math.max(
         0,
@@ -1617,7 +1617,7 @@ export function RegisterView({
         ),
       )}
       <div ref={revealSpace} className={styles.revealSpace} aria-hidden />
-      <SelectionIsland selection={selection} onCheck={onCheck} back={back} />
+      <TransactionActions selection={selection} onCheck={onCheck} back={back} />
     </div>
   );
 }

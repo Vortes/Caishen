@@ -3011,8 +3011,8 @@ function validateCardPayment(
   date: string,
   amount: number,
 ) {
-  requireCash(budget, cashAccountId, date);
-  if (accountAtDate(budget, cardAccountId, date).kind !== "credit")
+  requireCash(budget, cashAccountId);
+  if (getAccount(budget, cardAccountId).kind !== "credit")
     fail("Select a credit-card account");
   const calculated = materialize(book, budget.userId, monthOf(date), date);
   if (amount > calculated.accounts.get(cashAccountId)!.balance)
@@ -3045,16 +3045,6 @@ function appendTransaction(
   });
 }
 
-function accountAtDate(
-  budget: Budget,
-  accountId: string,
-  date: string,
-): Account {
-  const account = getAccount(budget, accountId);
-  if (date < account.date)
-    fail("Activity predates the account's confirmed opening balance");
-  return account;
-}
 function nextCleared(
   requested: boolean | undefined,
   status: "pending" | "posted",
@@ -3091,14 +3081,8 @@ function ensureReconciledUnchanged(
       "This transaction is reconciled, so its amount and cleared status can't change",
     );
 }
-function requireCash(
-  budget: Budget,
-  accountId: string,
-  date?: string,
-): Account {
-  const account = date
-    ? accountAtDate(budget, accountId, date)
-    : getAccount(budget, accountId);
+function requireCash(budget: Budget, accountId: string): Account {
+  const account = getAccount(budget, accountId);
   return account.kind === "cash" ? account : fail("Select a cash account");
 }
 function requireDate(budget: Budget, date: string): void {
@@ -3549,7 +3533,7 @@ function recordSettlement(
   for (const leg of command.legs) {
     const budget = book.budgets[leg.userId]!;
     requireDate(budget, leg.date);
-    const account = accountAtDate(budget, leg.accountId, leg.date);
+    const account = getAccount(budget, leg.accountId);
     if (
       account.kind !== "cash" &&
       !(account.kind === "credit" && leg.amount > 0)
@@ -3668,12 +3652,8 @@ function applyCommand(
     }
     case "counterparty.receive": {
       requireDate(budget, command.date);
-      requireCash(budget, command.cashAccountId, command.date);
-      const counterparty = accountAtDate(
-        budget,
-        command.counterpartyAccountId,
-        command.date,
-      );
+      requireCash(budget, command.cashAccountId);
+      const counterparty = getAccount(budget, command.counterpartyAccountId);
       if (!isCounterparty(counterparty))
         fail("Choose Partner or Reimbursements");
       if (counterparty.kind === "former-partner") fail(frozenLedgerMessage);
@@ -3826,7 +3806,7 @@ function applyCommand(
     }
     case "account.reconcile": {
       requireDate(budget, command.date);
-      const account = accountAtDate(budget, command.accountId, command.date);
+      const account = getAccount(budget, command.accountId);
       const difference = safe(
         command.balance - clearedBalance(budget, account),
       );
@@ -4147,7 +4127,7 @@ function applyCommand(
       )
         fail("Only a bank update can attach the other side's bank facts");
       requireDate(budget, command.date);
-      const account = accountAtDate(budget, command.accountId, command.date);
+      const account = getAccount(budget, command.accountId);
       const existing = budget.transactions.find(
         (transaction) => transaction.id === command.transactionId,
       );
@@ -4304,11 +4284,7 @@ function applyCommand(
             (source === "provider" || otherPrevious.providerId)
               ? otherPrevious.date
               : command.date);
-          const other = accountAtDate(
-            budget,
-            command.transferAccountId,
-            counterpartDate,
-          );
+          const other = getAccount(budget, command.transferAccountId);
           if (command.transferCounterpart) {
             requireDate(budget, command.transferCounterpart.date);
             if (
@@ -4402,7 +4378,7 @@ function applyCommand(
             reusable,
           );
         } else if (command.loanId) {
-          requireCash(budget, account.id, command.date);
+          requireCash(budget, account.id);
           const loan =
             budget.loans.find((item) => item.id === command.loanId) ??
             fail("Loan access denied");

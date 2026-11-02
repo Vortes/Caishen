@@ -51,7 +51,7 @@ import { SettingsNav, Sidebar } from "./sidebar";
 import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
-import type { Way } from "./transaction-review";
+import type { Way } from "~/components/ui/action-bar";
 import { PartnerRegister } from "./partner-register";
 import {
   ReimbursementFilters,
