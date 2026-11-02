@@ -7,10 +7,10 @@ import {
   budgetReferenceIssues,
   execute,
   mergeBooks,
-  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "~/domain/engine";
+import { withPeople } from "~/domain/people";
 import { FORMER_PARTNER } from "~/domain/register-entry";
 import { bookToRows, diffRows, tombstone, type ChangeSet } from "~/domain/rows";
 import { Prisma } from "~/generated/prisma";
@@ -60,7 +60,7 @@ export async function onboard(
 ): Promise<OperationResult> {
   try {
     const book = execute(
-      withCounterpartyAccounts(createBook(userId, input.name, input.month)),
+      withPeople(createBook(userId, input.name, input.month)),
       userId,
       {
         type: "settings.update",
@@ -126,7 +126,7 @@ export async function addCounterpartyAccounts(
   const book = ledger.state as Book;
   const changes = diffRows(
     bookToRows(book),
-    bookToRows(withCounterpartyAccounts(book)),
+    bookToRows(withPeople(book)),
   );
   if (!changes.after.length) return;
   const operationId = randomUUID();
@@ -210,7 +210,7 @@ async function join(
           code: "NOT_FOUND",
           message: "This invitation is invalid, expired, or already used.",
         });
-      const merged = withCounterpartyAccounts(
+      const merged = withPeople(
         mergeBooks(host.book, own.book, userId),
       );
       const operationId = randomUUID();

@@ -176,7 +176,6 @@ export type Target = z.infer<typeof targetSchema>;
 const shareInputSchema = z.object({
   accountId: identifier,
   amount: nonnegativeCents,
-  counterpartyName: z.string().trim().min(1).max(240).optional(),
 });
 const transactionInput = {
   cleared: z.boolean().optional(),
@@ -311,12 +310,25 @@ export const commandSchema = z.discriminatedUnion("type", [
     cashAccountId: identifier,
     date: daySchema,
     amount: positiveCents,
-    counterpartyName: z.string().trim().min(1).max(240).optional(),
     recordedAt: z.string().datetime().optional(),
     // A repayment recognized in a bank import: the bank's name for it and
     // its transaction, waiting for the user's review.
     payee: z.string().trim().min(1).max(240).optional(),
     providerId: identifier.optional(),
+  }),
+  // A person who owes you or whom you owe, with their own account and
+  // paired envelope.
+  z.object({
+    type: z.literal("person.add"),
+    id: identifier,
+    accountId: identifier,
+    name: z.string().trim().min(1).max(120),
+  }),
+  z.object({
+    type: z.literal("person.rename"),
+    id: identifier,
+    accountId: identifier,
+    name: z.string().trim().min(1).max(120),
   }),
   z.object({
     type: z.literal("account.add"),
@@ -585,24 +597,25 @@ type ParsedCommand = z.output<typeof commandSchema>;
 export type Account = {
   id: string;
   name: string;
-  // Partner and reimbursements are the counterparty accounts: what the
-  // partner, or anyone else, owes you (positive) or you owe them. A former
-  // partner's account is the partner ledger as it stood when the
+  // A person is a counterparty account: what one person or organization
+  // owes you (positive) or you owe them. A person linked to another Caishen
+  // user is the partner, whose entries are mirrored into their budget. A
+  // former partner's account is the partner ledger as it stood when the
   // partnership ended, closed: its balance and entries never change again.
-  kind:
-    | "cash"
-    | "credit"
-    | "tracking"
-    | "partner"
-    | "reimbursements"
-    | "former-partner";
+  // The legacy kinds are only read until withPeople converts them.
+  kind: "cash" | "credit" | "tracking" | "person" | LegacyCounterpartyKind;
   openingBalance: number;
   date: string;
   // The last time the cleared balance was confirmed against the bank's.
   reconciled?: { date: string; balance: number };
+  // A person who is also a Caishen user in this household: the partner.
+  linkedUserId?: string;
   // When a former partner's account was closed, and who disconnected.
   closed?: { at: string; by: string };
 };
+// Counterparty kinds stored before every counterparty became a person.
+export type LegacyCounterpartyKind =
+  "partner" | "reimbursements" | "former-partner";
 export type Category = {
   id: string;
   name: string;
@@ -616,6 +629,8 @@ export type Category = {
 export type CounterpartyShare = {
   accountId: string;
   amount: number;
+  // Legacy: the person a Reimbursements share named, read only until
+  // withPeople gives that person an account of their own.
   counterpartyName?: string;
 };
 export type ShareChange = {
@@ -883,6 +898,7 @@ export const budgetShape = z.object({
         "cash",
         "credit",
         "tracking",
+        "person",
         "partner",
         "reimbursements",
         "former-partner",
@@ -890,6 +906,7 @@ export const budgetShape = z.object({
       openingBalance: cents,
       date: daySchema,
       reconciled: z.object({ date: daySchema, balance: cents }).optional(),
+      linkedUserId: storedIdentifier.optional(),
       closed: z
         .object({ at: z.string().datetime(), by: storedIdentifier })
         .optional(),
@@ -1001,9 +1018,7 @@ export function budgetReferenceIssues(
         source?.kind !== "cash" ||
         transaction.categoryId ||
         transaction.lines ||
-        transaction.counterpartyShare ||
-        (counterparty.kind === "reimbursements" &&
-          !transaction.counterpartyName?.trim())
+        transaction.counterpartyShare
       )
         issues.push("Invalid counterparty repayment reference");
     }
@@ -1025,9 +1040,7 @@ export function budgetReferenceIssues(
         category?.counterpartyAccountId ||
         category?.pairedAccountId ||
         category?.pairedLoanId ||
-        !["purchase", "refund"].includes(transaction.kind) ||
-        (counterparty.kind === "reimbursements" &&
-          !share.counterpartyName?.trim())
+        !["purchase", "refund"].includes(transaction.kind)
       )
         issues.push("Invalid counterparty share reference");
     }
@@ -1284,17 +1297,16 @@ export function createBook(userId: string, name: string, month: string): Book {
   };
 }
 
-// The counterparty accounts a budget holds, each with one paired envelope in
-// People: reimbursements always, for everyone who is not the partner, and the
-// partner account once the household has two members.
-const counterparties = [
-  { kind: "reimbursements", name: "Reimbursements" },
-  { kind: "partner", name: "Partner" },
-] as const;
-export const counterpartyId = (kind: CounterpartyKind) =>
-  `counterparty:${kind}`;
-export const pairedEnvelopeId = (kind: CounterpartyKind) => `envelope:${kind}`;
-export type CounterpartyKind = (typeof counterparties)[number]["kind"];
+// Every counterparty is a person: one account and one paired envelope in
+// People each. The person linked to the other member of a partnered
+// household is the partner; their ids stay the ones the Partner account
+// always had, so the mirrored ledger keeps finding them.
+export const LINKED_PERSON_ACCOUNT_ID = "counterparty:partner";
+/** A new person's account id. */
+export const personAccountId = (key: string) => `counterparty:person:${key}`;
+/** The paired envelope of a person's account. */
+export const personEnvelopeId = (accountId: string) =>
+  `envelope:${accountId.replace(/^counterparty:/, "")}`;
 export const PEOPLE_GROUP = "People";
 
 // A paired envelope's activity is its counterparty account's, so nothing
@@ -1306,14 +1318,18 @@ function refusePairedEnvelope(category: Category): void {
     );
 }
 
-/**
- * The partner, reimbursements, and former partners' accounts, which the
- * system keeps.
- */
+/** Whether an account is a person's: what they owe you or you owe them. */
 export const isCounterparty = (account: Pick<Account, "kind">) =>
-  account.kind === "partner" ||
-  account.kind === "reimbursements" ||
-  account.kind === "former-partner";
+  account.kind === "person";
+
+/** The person linked to the other member of the household: the partner. */
+export const isLinkedPerson = (
+  account: Pick<Account, "kind" | "linkedUserId" | "closed">,
+) => account.kind === "person" && !!account.linkedUserId && !account.closed;
+
+/** A former partner's closed account, frozen as the partnership ended. */
+export const isFormerPartner = (account: Pick<Account, "kind" | "closed">) =>
+  account.kind === "person" && !!account.closed;
 
 export const frozenLedgerMessage =
   "Shared balances with a former partner are frozen. New spending stays in your own budget";
@@ -1324,7 +1340,7 @@ function frozenFacts(budget: Budget, transaction?: Transaction): string {
   if (!transaction || transaction.removed) return "[]";
   const closed = (id?: string) =>
     budget.accounts.some(
-      (account) => account.id === id && account.kind === "former-partner",
+      (account) => account.id === id && isFormerPartner(account),
     );
   return JSON.stringify([
     ...(closed(transaction.linkedCounterpartyAccountId)
@@ -1349,8 +1365,7 @@ function refuseFrozenChanges(book: AccountingState, changes: Changes): void {
   for (const budget of isPersonalLedger(book)
     ? [book.budget]
     : Object.values(book.budgets)) {
-    if (!budget.accounts.some((account) => account.kind === "former-partner"))
-      continue;
+    if (!budget.accounts.some(isFormerPartner)) continue;
     for (const { before, after } of changes.transactionEdits(budget))
       if (frozenFacts(budget, before) !== frozenFacts(budget, after))
         fail(frozenLedgerMessage);
@@ -1404,58 +1419,6 @@ function reorder<T extends { id: string }>(
   const moved = new Set(named);
   let next = 0;
   return items.map((item) => (moved.has(item) ? named[next++]! : item));
-}
-
-/**
- * The book with every counterparty account and paired envelope its budgets
- * should hold, adding only what is missing. The server runs it when a budget
- * is created, when a partner joins, and on budgets made before these
- * accounts existed.
- */
-export function withCounterpartyAccounts(book: Book): Book {
-  const result = structuredClone(book);
-  const partnered = Object.keys(result.budgets).length === 2;
-  for (const budget of Object.values(result.budgets))
-    for (const { kind, name } of counterparties) {
-      if (kind === "partner" && !partnered) continue;
-      const accountId = counterpartyId(kind);
-      const existing = budget.accounts.find(
-        (account) => account.id === accountId,
-      );
-      if (existing && existing.kind !== kind)
-        fail("A budget account already uses a counterparty account's ID");
-      // The partner's account goes ahead of Reimbursements.
-      const before =
-        kind === "partner"
-          ? budget.accounts.findIndex(
-              (account) => account.kind === "reimbursements",
-            )
-          : -1;
-      if (!existing)
-        budget.accounts.splice(
-          before < 0 ? budget.accounts.length : before,
-          0,
-          {
-            id: accountId,
-            name,
-            kind,
-            openingBalance: 0,
-            date: `${budget.startMonth}-01`,
-          },
-        );
-      const envelopeId = pairedEnvelopeId(kind);
-      const envelope = budget.categories.find((item) => item.id === envelopeId);
-      if (envelope && envelope.counterpartyAccountId !== accountId)
-        fail("A category already uses a paired envelope's ID");
-      if (!envelope)
-        budget.categories.push({
-          id: envelopeId,
-          name,
-          group: PEOPLE_GROUP,
-          counterpartyAccountId: accountId,
-        });
-    }
-  return result;
 }
 
 export function addMember(
@@ -1532,7 +1495,7 @@ export function closePartnerLedger(
       ? {
           id: accountId,
           name: close.name,
-          kind: "former-partner",
+          kind: "person",
           openingBalance: 0,
           date: account.date,
           closed: { at: close.at, by: close.by },
@@ -1916,8 +1879,7 @@ export function materialize(
 // A paired envelope's card spending is kept per counterparty, so a repayment
 // funds the card its payer's shares were fronted on. Other categories' card
 // spending is kept under the category's own ID.
-const creditKey = (categoryId: string, counterpartyName = "") =>
-  `${categoryId}\u0000${counterpartyName}`;
+const creditKey = (categoryId: string) => categoryId;
 const creditCategory = (key: string) => key.split("\u0000")[0]!;
 
 // Replays the budget month by month from its start through the given month.
@@ -2116,7 +2078,7 @@ function replay(
           category.id,
           safe((cashByCategory.get(category.id) ?? 0) + transaction.amount),
         );
-        const key = creditKey(category.id, transaction.counterpartyName);
+        const key = creditKey(category.id);
         repaidByKey.set(
           key,
           safe((repaidByKey.get(key) ?? 0) + Math.max(0, transaction.amount)),
@@ -2153,7 +2115,7 @@ function replay(
             {
               categoryId: paired.id,
               amount: -contribution,
-              key: creditKey(paired.id, share.counterpartyName),
+              key: creditKey(paired.id),
             },
           ];
         },
@@ -2894,7 +2856,7 @@ function projectAccountingState(
     // Each former partner's register, as it stood when it closed.
     formerPartnerLedgers: Object.fromEntries(
       budget.accounts
-        .filter((account) => account.kind === "former-partner")
+        .filter(isFormerPartner)
         .map((account) => [
           account.id,
           partnerLedgerRows(
@@ -3674,12 +3636,11 @@ function applyCommand(
         command.counterpartyAccountId,
         command.date,
       );
-      if (!isCounterparty(counterparty))
-        fail("Choose Partner or Reimbursements");
-      if (counterparty.kind === "former-partner") fail(frozenLedgerMessage);
+      if (!isCounterparty(counterparty)) fail("Choose who paid you back");
+      if (isFormerPartner(counterparty)) fail(frozenLedgerMessage);
       // A partner's payment changes both budgets' ledger, which a
       // one-sided repayment can't keep mirrored.
-      if (counterparty.kind === "partner")
+      if (isLinkedPerson(counterparty))
         fail(
           "Payments between partners come from both partners' bank imports, matched into one settlement",
         );
@@ -3692,14 +3653,11 @@ function applyCommand(
         )
       )
         fail("Provider transaction already exists");
-      if (counterparty.kind === "reimbursements" && !command.counterpartyName)
-        fail("Name the person or organization making the reimbursement");
       if (source === "user" && !command.recordedAt)
         fail("Repayments require their recorded time");
       const outstanding = sum(
         counterpartyRegisterEntries(budget, {
           accountId: counterparty.id,
-          counterpartyName: command.counterpartyName,
           cutoff: command.date,
         }).map((entry) => entry.amount),
       );
@@ -3710,12 +3668,11 @@ function applyCommand(
         accountId: command.cashAccountId,
         date: command.date,
         amount: command.amount,
-        payee: command.payee ?? command.counterpartyName ?? counterparty.name,
+        payee: command.payee ?? counterparty.name,
         status: "posted",
         expenseMonth: monthOf(command.date),
         kind: "reimbursement",
         linkedCounterpartyAccountId: counterparty.id,
-        counterpartyName: command.counterpartyName,
         ...(command.providerId ? { providerId: command.providerId } : {}),
       });
       const receipt = getTransaction(budget, `${command.id}:receipt`);
@@ -3789,6 +3746,45 @@ function applyCommand(
         operationId: command.id,
         at: command.recordedAt,
       });
+      break;
+    }
+    case "person.add": {
+      if (budget.accounts.some((account) => account.id === command.accountId))
+        fail("Account ID already exists");
+      if (
+        budget.accounts.some(
+          (account) =>
+            isCounterparty(account) &&
+            !account.closed &&
+            account.name.trim().toLowerCase() ===
+              command.name.trim().toLowerCase(),
+        )
+      )
+        fail(`${command.name} is already one of your people`);
+      changes.addAccount(budget, {
+        id: command.accountId,
+        name: command.name,
+        kind: "person",
+        openingBalance: 0,
+        date: `${budget.startMonth}-01`,
+      });
+      changes.addCategory(budget, {
+        id: personEnvelopeId(command.accountId),
+        name: command.name,
+        group: PEOPLE_GROUP,
+        counterpartyAccountId: command.accountId,
+      });
+      break;
+    }
+    case "person.rename": {
+      const account = getAccount(budget, command.accountId);
+      if (!isCounterparty(account)) fail("Choose a person to rename");
+      if (isFormerPartner(account)) fail(frozenLedgerMessage);
+      changes.account(budget, account).name = command.name;
+      const envelope = budget.categories.find(
+        (category) => category.counterpartyAccountId === account.id,
+      );
+      if (envelope) changes.category(budget, envelope).name = command.name;
       break;
     }
     case "account.add": {
@@ -4531,11 +4527,8 @@ function applyCommand(
         if (share.amount > Math.abs(amount))
           fail("Counterparty share exceeds its line amount");
         const account = getAccount(budget, share.accountId);
-        if (!isCounterparty(account))
-          fail("Choose Partner or Reimbursements for the share");
-        if (account.kind === "former-partner") fail(frozenLedgerMessage);
-        if (account.kind === "reimbursements" && !share.counterpartyName)
-          fail("Name the person or organization for this reimbursement");
+        if (!isCounterparty(account)) fail("Choose who the share is for");
+        if (isFormerPartner(account)) fail(frozenLedgerMessage);
         if (
           !budget.categories.some(
             (item) => item.counterpartyAccountId === share.accountId,

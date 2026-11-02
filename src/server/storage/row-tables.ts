@@ -111,6 +111,7 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
         within: "reconciled",
         type: "cents",
       },
+      text("linkedUserId", true),
       { name: "closedAt", field: "at", within: "closed", type: "text" },
       { name: "closedBy", field: "by", within: "closed", type: "text" },
       sort,

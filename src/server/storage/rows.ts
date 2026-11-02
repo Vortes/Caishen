@@ -655,9 +655,10 @@ export async function readHouseholdRevision(db: Database, userId: string) {
 }
 
 /**
- * Whether a member's household lacks a counterparty account its budgets
- * should hold: reimbursements for every member, and partner for both once
- * there are two. Cheap enough to ask on every pull.
+ * Whether a member's household may lack the people its budgets should
+ * hold: an account of a kind stored before every counterparty became a
+ * person, or a partnered household without both linked people. Cheap
+ * enough to ask on every pull.
  */
 export async function lacksCounterpartyAccounts(
   db: Database,
@@ -677,14 +678,16 @@ export async function lacksCounterpartyAccounts(
     where: {
       workspaceId,
       deleted: false,
-      kind: { in: ["partner", "reimbursements"] },
+      OR: [
+        { kind: { in: ["partner", "reimbursements", "former-partner"] } },
+        { linkedUserId: { not: null }, closedAt: null },
+      ],
     },
     select: { kind: true },
   });
-  const count = (kind: string) =>
-    accounts.filter((account) => account.kind === kind).length;
   return (
-    count("reimbursements") < members || (members === 2 && count("partner") < 2)
+    accounts.some((account) => account.kind !== "person") ||
+    (members === 2 && accounts.length < 2)
   );
 }
 

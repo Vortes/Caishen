@@ -6,7 +6,8 @@ import type {
   Transaction,
 } from "./engine";
 import { READY_TO_ASSIGN } from "./transfers";
-import { isFullShare, reimbursementPeople } from "./counterparty";
+import { isFullShare } from "./counterparty";
+import { personNamed } from "./people";
 
 // Payee memory, like YNAB's memorized payee category: the user's most recent
 // categorization of each payee prefills that payee's new bank imports and
@@ -83,7 +84,7 @@ export function rememberedCategory(
     : undefined;
 }
 
-/** An exact known reimbursement-person payee defaults to their full outflow. */
+/** A payee that is one person's name defaults to their full outflow. */
 export function reimbursementShareForPayee(
   budget: Budget,
   {
@@ -100,18 +101,10 @@ export function reimbursementShareForPayee(
     amount >= 0
   )
     return undefined;
-  const people = reimbursementPeople(budget).filter(
-    (name) => payeeKey(name) === payeeKey(payee),
-  );
-  const reimbursements = budget.accounts.find(
-    (item) => item.kind === "reimbursements",
-  );
-  return people.length === 1 && reimbursements
-    ? {
-        accountId: reimbursements.id,
-        counterpartyName: people[0]!,
-        amount: Math.abs(amount),
-      }
+  const person = personNamed(budget.accounts, payee);
+  return person &&
+    budget.categories.some((item) => item.counterpartyAccountId === person.id)
+    ? { accountId: person.id, amount: Math.abs(amount) }
     : undefined;
 }
 
@@ -146,10 +139,7 @@ export function rememberedCounterpartyShare(
   const counterparty = budget.accounts.find(
     (item) => item.id === share.accountId,
   );
-  if (
-    !counterparty ||
-    (counterparty.kind !== "partner" && counterparty.kind !== "reimbursements")
-  )
+  if (!counterparty || counterparty.kind !== "person" || counterparty.closed)
     return undefined;
   return {
     ...share,
@@ -221,10 +211,7 @@ function categorization(
 const sameShare = (
   a: CounterpartyShare | undefined,
   b: CounterpartyShare | undefined,
-) =>
-  a?.accountId === b?.accountId &&
-  a?.amount === b?.amount &&
-  a?.counterpartyName === b?.counterpartyName;
+) => a?.accountId === b?.accountId && a?.amount === b?.amount;
 
 const same = (a: PayeeMemory, b: PayeeMemory) =>
   a.payee === b.payee &&
