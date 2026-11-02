@@ -1,0 +1,35 @@
+/* The harness around the share picker: a page with one register panel. */
+.lab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100dvh;
+  padding: var(--space-gutter) var(--space-gutter) 96px;
+  background: var(--surface-app);
+  color: var(--text-primary);
+}
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px var(--space-row-x) 0;
+}
+.title {
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+.hint {
+  flex: 1;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.notice {
+  min-height: 20px;
+  padding: 0 var(--space-row-x);
+  color: var(--text-secondary);
+  font-size: var(--type-small);
+}
+.rows {
+  padding: 0 var(--space-inset) var(--space-inset);
+}

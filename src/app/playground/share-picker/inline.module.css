@@ -1,0 +1,68 @@
+/* Inline: one column on the form popover. The rows are the search list's;
+   an open person's amounts sit under them, indented one icon column so
+   their checks line up under the person's name. */
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 480px;
+}
+/* The well sits 2px inside the rows' text, as in the share picker today. */
+.search {
+  flex: none;
+  padding: 12px 14px 8px;
+}
+.list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 4px 4px;
+}
+/* New and Just mine stay put under the scrolling people. */
+.pinned {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  padding: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.person[data-open] {
+  color: var(--text-primary);
+}
+.caret {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.person[data-open] .caret {
+  rotate: 90deg;
+}
+/* The icon column and its 6px gap: the amounts' checks sit under the
+   person's name. */
+.nested {
+  display: flex;
+  flex-direction: column;
+  padding-left: 22px;
+}
+.nestedOption {
+  font-weight: 400;
+}
+.amount {
+  padding: 8px 8px 8px 4px;
+}
+.note {
+  padding: 2px 8px 8px 26px;
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+  text-wrap: pretty;
+}
+.error {
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
