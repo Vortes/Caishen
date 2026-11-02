@@ -65,6 +65,7 @@ export type Capabilities = {
   approve: Capability;
   enter: Capability;
   reject: Capability;
+  remove: Capability;
   categorize: Capability;
   share: { mode: "edit" } | { mode: "none" };
   record: Capability;
@@ -303,6 +304,12 @@ function transactionCapabilities(
     approve: capability(approve()),
     enter: unavailable,
     reject: capability(reject()),
+    remove: capability(
+      removed ??
+        (["purchase", "refund", "income", "adjustment"].includes(shape.kind)
+          ? null
+          : "Dedicated payment records cannot be deleted through transaction removal"),
+    ),
     categorize: capability(categorize()),
     share: share(),
     record: unavailable,
@@ -353,6 +360,7 @@ export function classifyRegisterEntry(
           ? review
           : capability("Posted bank activity uses Approve"),
         reject: record,
+        remove: unavailable,
         categorize:
           record.ok &&
           (account?.kind === "cash" || account?.kind === "credit") &&

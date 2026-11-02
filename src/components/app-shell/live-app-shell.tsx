@@ -473,7 +473,7 @@ function LiveWorkspace({
     `${ids.length} ${ids.length === 1 ? "transaction" : "transactions"}`;
   const reviewSelection = (
     transactionIds: string[],
-    action: "approve" | "enter" | "reject",
+    action: "approve" | "enter" | "reject" | "remove",
   ) => {
     if (!transactionIds.length) return;
     const selectedImports = imports.filter((item) =>
@@ -495,42 +495,59 @@ function LiveWorkspace({
       return;
     }
     const recordedIds = recorded.map((item) => item.id);
-    if (action === "reject") {
+    if (action === "reject" || action === "remove") {
       const actionId = newId();
       const summary =
-        transactionIds.length === 1 && selectedImports[0]
-          ? `Rejected ${selectedImports[0].payee}`
-          : `Rejected ${count(transactionIds)}`;
-      let remaining = selectedImports.length + (recordedIds.length ? 1 : 0);
+        action === "remove"
+          ? `Deleted ${count(transactionIds)}`
+          : transactionIds.length === 1 && selectedImports[0]
+            ? `Rejected ${selectedImports[0].payee}`
+            : `Rejected ${count(transactionIds)}`;
+      const commands: Command[] =
+        action === "remove"
+          ? recordedIds.map((transactionId) => ({
+              type: "transaction.remove",
+              id: newId(),
+              transactionId,
+            }))
+          : recordedIds.length
+            ? [
+                {
+                  type: "transaction.reject",
+                  id: newId(),
+                  transactionIds: recordedIds,
+                },
+              ]
+            : [];
+      let remaining = selectedImports.length + commands.length;
       const failures: { payee: string; message: string }[] = [];
       const settled = (payee: string, result: Settled) => {
         if (!result.ok) failures.push({ payee, message: result.message });
         if (--remaining !== 0) return;
         if (failures.length)
           notify(
-            `Couldn’t reject ${failures.map((item) => item.payee).join(", ")}. ${[...new Set(failures.map((item) => item.message))].join(" ")}`,
+            `Couldn’t ${action === "remove" ? "delete" : "reject"} ${failures.map((item) => item.payee).join(", ")}. ${[...new Set(failures.map((item) => item.message))].join(" ")}`,
             "attention",
           );
         else notify(summary, "neutral", actionId);
         void utils.budget.overview.invalidate();
       };
-      if (recordedIds.length) {
-        const command: Command = {
-          type: "transaction.reject",
-          id: newId(),
-          transactionIds: recordedIds,
-        };
+      for (const command of commands) {
+        const affected =
+          command.type === "transaction.remove"
+            ? recorded.find((item) => item.id === command.transactionId)!.payee
+            : count(recordedIds);
         const result = client.run(command, {
           summary,
           action: actionId,
           onSettled: (result) => {
             if (result.ok) shownInPlace.current.delete(command.id);
-            settled(count(recordedIds), result);
+            settled(affected, result);
           },
         });
         if (result.ok) shownInPlace.current.add(command.id);
         else
-          settled(count(recordedIds), {
+          settled(affected, {
             ok: false,
             kind: "local",
             message: result.message,
@@ -644,6 +661,7 @@ function LiveWorkspace({
     approve: (ids) => reviewSelection(ids, "approve"),
     enter: (ids) => reviewSelection(ids, "enter"),
     reject: (ids) => reviewSelection(ids, "reject"),
+    remove: (ids) => reviewSelection(ids, "remove"),
   };
   const saveImportedTransaction = async (
     item: (typeof imports)[number],

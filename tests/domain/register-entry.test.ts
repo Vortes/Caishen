@@ -170,3 +170,44 @@ void test("balance adjustments are register-editable with a fixed category on ca
     assert.deepEqual(entry.capabilities.share, { mode: "none" });
   }
 });
+
+void test("removal is available only for active purchases, refunds, income and balance adjustments", () => {
+  const { steps } = buildCommandCorpus();
+  const removable = new Set(["purchase", "refund", "income", "adjustment"]);
+  for (const { after } of steps) {
+    for (const budget of Object.values(after.budgets)) {
+      for (const transaction of budget.transactions) {
+        const entry = classifyRegisterEntry(budget, transaction);
+        assert.equal(
+          entry.capabilities.remove?.ok,
+          !transaction.removed && removable.has(transaction.kind),
+          `${transaction.kind}: ${transaction.payee}`,
+        );
+        const confirmed = classifyRegisterEntry(budget, {
+          ...transaction,
+          reviewed: true,
+          reconciled: true,
+        });
+        assert.equal(
+          confirmed.capabilities.remove?.ok,
+          !transaction.removed && removable.has(transaction.kind),
+        );
+        const removed = classifyRegisterEntry(budget, {
+          ...transaction,
+          removed: true,
+        });
+        assert.equal(removed.capabilities.remove?.ok, false);
+      }
+    }
+  }
+  const budget = steps.at(-1)!.after.budgets.alex!;
+  const imported = classifyRegisterEntry(budget, {
+    eligibility: "eligible",
+    accountId: "checking",
+    removed: false,
+    quarantined: false,
+    amount: -100,
+    pending: false,
+  });
+  assert.equal(imported.capabilities.remove?.ok, false);
+});

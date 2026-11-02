@@ -570,7 +570,7 @@ function parseAmount(text: string) {
   return reading.ok && reading.cents >= 0 ? reading.cents : undefined;
 }
 
-// Why typed text isn't an amount above zero, or undefined when it is.
+// Why the typed amount isn't allowed; adjustments may hold zero.
 function amountProblem(text: string, allowZero = false) {
   const reading = readAmount(text);
   if (!reading.ok) return reading.message;
