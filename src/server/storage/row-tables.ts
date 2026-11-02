@@ -97,7 +97,6 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("id"),
       text("name"),
       text("kind"),
-      cents("openingBalance"),
       text("date"),
       {
         name: "reconciledDate",

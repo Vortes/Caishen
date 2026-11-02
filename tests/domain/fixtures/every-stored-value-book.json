@@ -10,14 +10,12 @@
           "id": "checking",
           "name": "Demo · Chase Total Checking",
           "kind": "cash",
-          "openingBalance": 850000,
           "date": "2026-08-01"
         },
         {
           "id": "savings",
           "name": "Demo · Discover savings",
           "kind": "cash",
-          "openingBalance": 1250000,
           "date": "2026-08-01",
           "reconciled": {
             "date": "2026-10-17",
@@ -28,21 +26,18 @@
           "id": "amex",
           "name": "Demo · American Express",
           "kind": "credit",
-          "openingBalance": -42500,
           "date": "2026-08-01"
         },
         {
           "id": "discover",
           "name": "Demo · Discover It",
           "kind": "credit",
-          "openingBalance": -18000,
           "date": "2026-08-01"
         },
         {
           "id": "brokerage",
           "name": "Brokerage",
           "kind": "tracking",
-          "openingBalance": 1500000,
           "date": "2026-08-01"
         }
       ],
@@ -3731,6 +3726,126 @@
               "reason": "created"
             }
           ]
+        },
+        {
+          "id": "starting-balance:checking",
+          "accountId": "checking",
+          "date": "2026-08-01",
+          "amount": 850000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": 850000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:savings",
+          "accountId": "savings",
+          "date": "2026-08-01",
+          "amount": 1250000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": 1250000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:amex",
+          "accountId": "amex",
+          "date": "2026-08-01",
+          "amount": -42500,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": -42500,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:discover",
+          "accountId": "discover",
+          "date": "2026-08-01",
+          "amount": -18000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": -18000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:brokerage",
+          "accountId": "brokerage",
+          "date": "2026-08-01",
+          "amount": 1500000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": 1500000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
         }
       ],
       "assignments": [
@@ -4175,28 +4290,24 @@
           "id": "checking",
           "name": "Demo · Chase checking",
           "kind": "cash",
-          "openingBalance": 620000,
           "date": "2026-08-01"
         },
         {
           "id": "savings",
           "name": "Demo · Discover savings",
           "kind": "cash",
-          "openingBalance": 800000,
           "date": "2026-08-01"
         },
         {
           "id": "amex",
           "name": "Demo · American Express",
           "kind": "credit",
-          "openingBalance": -22000,
           "date": "2026-08-01"
         },
         {
           "id": "discover",
           "name": "Demo · Discover It",
           "kind": "credit",
-          "openingBalance": -18000,
           "date": "2026-08-01"
         }
       ],
@@ -6878,6 +6989,102 @@
               "date": "2026-10-17",
               "payee": "Credit card payment",
               "operationId": "dev-seed:342",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:checking",
+          "accountId": "checking",
+          "date": "2026-08-01",
+          "amount": 620000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": 620000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:savings",
+          "accountId": "savings",
+          "date": "2026-08-01",
+          "amount": 800000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": 800000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:amex",
+          "accountId": "amex",
+          "date": "2026-08-01",
+          "amount": -22000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": -22000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
+              "reason": "created"
+            }
+          ]
+        },
+        {
+          "id": "starting-balance:discover",
+          "accountId": "discover",
+          "date": "2026-08-01",
+          "amount": -18000,
+          "payee": "Starting Balance",
+          "status": "posted",
+          "cleared": true,
+          "expenseMonth": "2026-08",
+          "kind": "adjustment",
+          "revision": 1,
+          "reviewed": true,
+          "history": [
+            {
+              "revision": 1,
+              "amount": -18000,
+              "status": "posted",
+              "date": "2026-08-01",
+              "payee": "Starting Balance",
+              "operationId": "migration:starting-balance",
               "reason": "created"
             }
           ]

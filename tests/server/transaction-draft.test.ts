@@ -144,7 +144,7 @@ void test("invalid dual, signed, zero, unreadable, and unsafe amounts never chan
   assert.deepEqual(setup.book, before);
 });
 
-void test("calendar, account opening, and future dates are validated", () => {
+void test("calendar, budget start, and future dates are validated", () => {
   const setup = fixture();
   assert.throws(
     () => setup.build(setup.draft({ date: "2026-02-31" })),
@@ -163,7 +163,10 @@ void test("calendar, account opening, and future dates are validated", () => {
     date: "2026-10-15",
   });
   assert.throws(
-    () => setup.build(setup.draft({ accountId: "new-account" })),
+    () =>
+      setup.build(
+        setup.draft({ accountId: "new-account", date: "2026-09-30" }),
+      ),
     TransactionDraftError,
   );
   // Activity is recorded once it happened: today in the budget's timezone

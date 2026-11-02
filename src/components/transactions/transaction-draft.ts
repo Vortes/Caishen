@@ -323,9 +323,6 @@ export function buildTransactionDraftCommand({
   if (!isCalendarDate(date)) fields.date = "Enter a valid transaction date.";
   else if (date < `${view.budget.startMonth}-01`)
     fields.date = "The transaction date must be on or after the budget start.";
-  else if (account && date < account.date)
-    fields.date =
-      "The transaction date must be on or after the account opening date.";
   else if (date > budgetDay(view.budget.settings.timezone))
     fields.date = "The transaction date must be today or earlier.";
 

@@ -223,8 +223,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   }
   const payees = useMemo(() => earlierPayees(view.budget), [view.budget]);
   const startDate = `${view.budget.startMonth}-01`;
-  const minDate =
-    account && account.date > startDate ? account.date : startDate;
+  const minDate = startDate;
 
   const id = (field: DraftField) => `${formId}-${field}`;
   // One message about both amounts shows once, across their two columns.

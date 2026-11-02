@@ -135,33 +135,87 @@ test("matching an import to a recorded purchase offers Undo and supports redo", 
   expect(await findRow("Recorded Market")).toBeTruthy();
 });
 
-test("the opening balance is read-only and excluded from purchase selection and review", async () => {
-  const shell = await renderShell({ seedCommands: [purchase()] });
-  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
-  const opening = screen.getByRole("group", {
-    name: "Starting Balance for Checking",
+test("a card's Starting Balance has no category, can be edited and deleted, and arrives reviewed", async () => {
+  const shell = await renderShell({
+    seedCommands: [
+      {
+        type: "account.add",
+        id: "card",
+        accountId: "card",
+        name: "Visa",
+        kind: "credit",
+        openingBalance: -20_000,
+        date: "2026-10-10",
+      },
+    ],
   });
-  expect(within(opening).getByText("$1,000.00", { exact: true })).toBeTruthy();
-  expect(within(opening).getByLabelText("Cleared")).toBeTruthy();
-  expect(within(opening).queryByRole("button")).toBeNull();
-  expect(within(opening).queryByRole("checkbox")).toBeNull();
-  await shell.user.click(
-    within(opening).getByText("Starting Balance", { exact: true }),
+  await shell.user.click(screen.getByRole("link", { name: /^Visa/ }));
+  expect(screen.getAllByText("Starting Balance", { exact: true })).toHaveLength(
+    1,
   );
-  await shell.user.keyboard("ex");
-  expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
-  await shell.user.click(screen.getByRole("checkbox", { name: "Select all" }));
+  const opening = await findRow("Starting Balance");
+  expect(within(opening).getByText("Category not needed")).toBeTruthy();
+  expect(within(opening).getByLabelText("Cleared")).toBeTruthy();
+  await shell.user.click(opening);
+  await shell.user.keyboard("e");
+  expect(editor().getByLabelText("Category", { exact: true })).toHaveProperty(
+    "disabled",
+    true,
+  );
+  await shell.user.clear(editor().getByLabelText("Date", { exact: true }));
+  await shell.user.type(
+    editor().getByLabelText("Date", { exact: true }),
+    "10/05/2026{Tab}",
+  );
+  await shell.user.clear(editor().getByLabelText("Outflow", { exact: true }));
+  await shell.user.type(
+    editor().getByLabelText("Outflow", { exact: true }),
+    "250",
+  );
+  await shell.user.clear(editor().getByLabelText("Payee", { exact: true }));
+  await shell.user.type(
+    editor().getByLabelText("Payee", { exact: true }),
+    "Corrected balance",
+  );
+  await shell.user.click(
+    editor().getByRole("button", { name: "Save", exact: true }),
+  );
+  await waitForSaves();
   expect(
-    screen.getByRole("toolbar", { name: "Selected transactions" }).textContent,
-  ).toContain("1 transaction");
-  await shell.user.click(screen.getByRole("checkbox", { name: "Select all" }));
+    within(await findRow("Corrected balance")).getByText("$250.00", {
+      exact: true,
+    }),
+  ).toBeTruthy();
+  expect(screen.getByRole("link", { name: /^Visa/ }).textContent).toContain(
+    "-$250.00",
+  );
   await shell.user.click(screen.getByRole("button", { name: /To review/ }));
-  expect(
-    screen.queryByRole("group", { name: "Starting Balance for Checking" }),
-  ).toBeNull();
+  expect(screen.queryByText("Corrected balance", { exact: true })).toBeNull();
+  await shell.user.click(screen.getByRole("button", { name: /To review/ }));
+  await shell.user.click(
+    screen.getByRole("checkbox", {
+      name: "Select Corrected balance",
+      exact: true,
+    }),
+  );
+  await shell.user.click(
+    screen.getByRole("button", { name: "More", exact: true }),
+  );
+  await shell.user.click(
+    screen.getByRole("menuitem", { name: "Delete", exact: true }),
+  );
+  await findToast("Deleted 1 transaction");
+  expect(screen.queryByText("Corrected balance", { exact: true })).toBeNull();
+  expect(screen.getByRole("link", { name: /^Visa/ }).textContent).toContain(
+    "$0.00",
+  );
+  await shell.user.click(
+    screen.getByRole("button", { name: "Undo", exact: true }),
+  );
+  expect(await findRow("Corrected balance")).toBeTruthy();
 });
 
-test("opening balances follow account and search filters, including zero balances from earlier months", async () => {
+test("Starting Balances follow account and search filters, including zero balances from earlier months", async () => {
   let book = createBook("owner", "Opening balances", "2026-09");
   book = execute(book, "owner", {
     type: "account.add",
@@ -184,32 +238,42 @@ test("opening balances follow account and search filters, including zero balance
   const shell = await renderShell({ book });
   await shell.user.click(screen.getByRole("link", { name: "All accounts" }));
   expect(
-    screen.getByRole("group", { name: "Starting Balance for Checking" }),
+    screen.getByRole("button", {
+      name: /Starting Balance.*Inflow: Ready to Assign/,
+    }),
   ).toBeTruthy();
   expect(
-    screen.queryByRole("group", { name: "Starting Balance for Travel card" }),
+    screen.queryByRole("button", {
+      name: /Starting Balance.*Category not needed/,
+    }),
   ).toBeNull();
   const search = screen.getByPlaceholderText("Search all accounts");
   await shell.user.type(search, "Travel card");
-  const opening = screen.getByRole("group", {
-    name: "Starting Balance for Travel card",
+  const opening = screen.getByRole("button", {
+    name: /Starting Balance.*Category not needed/,
   });
   expect(within(opening).getByText("$0.00", { exact: true })).toBeTruthy();
   expect(
     within(opening).getByText("Travel card", { exact: true }),
   ).toBeTruthy();
   expect(
-    screen.queryByRole("group", { name: "Starting Balance for Checking" }),
+    screen.queryByRole("button", {
+      name: /Starting Balance.*Inflow: Ready to Assign/,
+    }),
   ).toBeNull();
   await shell.user.clear(search);
   await shell.user.type(search, "Starting Balance");
   expect(
-    screen.getAllByRole("group", { name: /^Starting Balance for/ }),
+    screen.getAllByRole("button", {
+      name: /Starting Balance.*(?:Inflow: Ready to Assign|Category not needed)/,
+    }),
   ).toHaveLength(2);
   await shell.user.clear(search);
   await shell.user.type(search, "no-such-merchant");
   expect(
-    screen.queryByRole("group", { name: /^Starting Balance for/ }),
+    screen.queryByRole("button", {
+      name: /Starting Balance.*(?:Inflow: Ready to Assign|Category not needed)/,
+    }),
   ).toBeNull();
 });
 

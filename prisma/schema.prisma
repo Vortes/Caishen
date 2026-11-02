@@ -313,7 +313,6 @@ model Account {
   id                String
   name              String
   kind              String
-  openingBalance    BigInt
   date              String
   reconciledDate    String?
   reconciledBalance BigInt?

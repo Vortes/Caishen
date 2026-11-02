@@ -231,12 +231,12 @@ void test("rows that can't be stored whole are refused", () => {
   refused({ ...data, nickname: "Checking" }, /no column holds nickname/);
   refused({ ...data, name: undefined }, /name is missing/);
   refused(
-    { ...data, openingBalance: 1.5 },
-    /openingBalance is not a valid cents/,
+    { ...data, reconciled: { date: "2026-10-01", balance: 1.5 } },
+    /reconciledBalance is not a valid cents/,
   );
   refused(
-    { ...data, openingBalance: 2 ** 53 },
-    /openingBalance is not a valid cents/,
+    { ...data, reconciled: { date: "2026-10-01", balance: 2 ** 53 } },
+    /reconciledBalance is not a valid cents/,
   );
   refused(
     { ...data, reconciled: { date: "2026-10-01" } },

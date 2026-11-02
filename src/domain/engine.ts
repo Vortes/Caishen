@@ -596,7 +596,6 @@ export type Account = {
     | "partner"
     | "reimbursements"
     | "former-partner";
-  openingBalance: number;
   date: string;
   // The last time the cleared balance was confirmed against the bank's.
   reconciled?: { date: string; balance: number };
@@ -887,7 +886,6 @@ export const budgetShape = z.object({
         "reimbursements",
         "former-partner",
       ]),
-      openingBalance: cents,
       date: daySchema,
       reconciled: z.object({ date: daySchema, balance: cents }).optional(),
       closed: z
@@ -1439,7 +1437,6 @@ export function withCounterpartyAccounts(book: Book): Book {
             id: accountId,
             name,
             kind,
-            openingBalance: 0,
             date: `${budget.startMonth}-01`,
           },
         );
@@ -1533,7 +1530,6 @@ export function closePartnerLedger(
           id: accountId,
           name: close.name,
           kind: "former-partner",
-          openingBalance: 0,
           date: account.date,
           closed: { at: close.at, by: close.by },
         }
@@ -2011,10 +2007,6 @@ function replay(
       activity?.delete(categoryId);
       state.cashActivity = 0;
     }
-    for (const account of budget.accounts.filter(
-      (item) => monthOf(item.date) === cursor && item.date <= cutoff,
-    ))
-      accounts.get(account.id)!.balance = account.openingBalance;
     for (const [accountId, state] of accounts) {
       startingBalances.set(accountId, state.balance);
       state.priorBalance = state.balance;
@@ -3055,15 +3047,15 @@ function nextCleared(
     return status === "posted";
   return isCleared(existing);
 }
-// What the bank has finished processing: the opening balance plus every
-// cleared transaction, whatever its date.
+// What the bank has finished processing: every cleared transaction,
+// whatever its date.
 function clearedBalance(budget: Budget, account: Account): number {
   return budget.transactions
     .filter(
       (item) =>
         active(item) && item.accountId === account.id && isCleared(item),
     )
-    .reduce((total, item) => safe(total + item.amount), account.openingBalance);
+    .reduce((total, item) => safe(total + item.amount), 0);
 }
 // Reconciled transactions keep their confirmed amount and status; balance
 // adjustments remain editable so an accepted difference can be corrected.
@@ -3780,8 +3772,18 @@ function applyCommand(
         id: command.accountId,
         name: command.name,
         kind: command.kind,
-        openingBalance: command.openingBalance,
         date,
+      });
+      appendTransaction(changes, budget, command.id, {
+        id: command.id,
+        accountId: command.accountId,
+        date,
+        amount: command.openingBalance,
+        payee: "Starting Balance",
+        status: "posted",
+        cleared: true,
+        expenseMonth: monthOf(date),
+        kind: "adjustment",
       });
       if (command.kind === "credit")
         changes.addCategory(budget, {

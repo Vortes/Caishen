@@ -190,7 +190,7 @@ export function syntheticBook(options: SyntheticOptions): Book {
 
   for (const userId of MEMBERS) {
     const later = (count: number) => `${monthAfter(startMonth, count)}-01`;
-    const accounts: Account[] = [
+    const openings: (Account & { openingBalance: number })[] = [
       {
         id: "checking",
         name: "Checking",
@@ -227,6 +227,9 @@ export function syntheticBook(options: SyntheticOptions): Book {
         date: `${startMonth}-01`,
       },
     ];
+    const accounts: Account[] = openings.map(
+      ({ openingBalance: _, ...account }) => account,
+    );
     const categories: Category[] = spendingCategories.map((id, index) => ({
       id,
       name: id,
@@ -495,6 +498,17 @@ export function syntheticBook(options: SyntheticOptions): Book {
           transactions[index]!,
         ];
       }
+    for (const { id, date, openingBalance } of openings)
+      add({
+        id: `starting-balance:${id}`,
+        accountId: id,
+        date,
+        amount: openingBalance,
+        payee: "Starting Balance",
+        status: "posted",
+        cleared: true,
+        kind: "adjustment",
+      });
     budgets[userId] = {
       userId,
       name: `${userId} budget`,

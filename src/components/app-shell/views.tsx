@@ -33,7 +33,6 @@ import {
   type Category,
   type Funding,
   type Transaction,
-  type OpeningBalance,
 } from "./model";
 import { motion, MotionConfig } from "motion/react";
 import { newId } from "~/components/budget/format";
@@ -1019,16 +1018,12 @@ export function AvailablePill({
   );
 }
 
-function matches(
-  item: Transaction | OpeningBalance,
-  query: string,
-  accountName?: string,
-) {
+function matches(item: Transaction, query: string, accountName?: string) {
   const text = query.toLowerCase();
   return [
     item.payee,
-    item.source !== "opening" ? item.categoryLabel : undefined,
-    item.source !== "opening" ? item.shareLabel : undefined,
+    item.categoryLabel,
+    item.shareLabel,
     accountName,
     money(Math.abs(item.amount)),
   ].some((value) => value?.toLowerCase().includes(text));
@@ -1096,7 +1091,7 @@ export function RegisterView({
   onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
   back: Way | null;
 }) {
-  const { transactions, openingBalances, accounts, month } = useShellData();
+  const { transactions, accounts, month } = useShellData();
   const entry = useTransactionEntry();
   const { session } = entry;
   const register = useRef<HTMLDivElement>(null);
@@ -1179,20 +1174,8 @@ export function RegisterView({
       space.style.height = "0px";
     };
   }, [revealId, canReveal]);
-  const openings = reviewOnly
-    ? []
-    : openingBalances.filter(
-        (item) =>
-          (!accountId || item.accountId === accountId) &&
-          (search
-            ? matches(item, search, accountName(item.accountId))
-            : item.date.startsWith(month.key)),
-      );
-  const entries = [...entered, ...openings].sort(
-    (a, b) =>
-      b.date.localeCompare(a.date) ||
-      Number(a.source === "opening") - Number(b.source === "opening") ||
-      b.id.localeCompare(a.id),
+  const entries = [...entered].sort(
+    (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
   );
   // A collapsed heading's rows can't be selected.
   const selection = useReviewSelection({
@@ -1241,7 +1224,7 @@ export function RegisterView({
   const counterparty = accounts.find(
     (entry) => entry.id === accountId && isCounterparty(entry),
   );
-  if (!rows.length && !openings.length && !session) {
+  if (!rows.length && !session) {
     // A counterparty account's entries come from shares and settlements,
     // so its empty register says what will fill it.
     if (counterparty && !search)
@@ -1419,10 +1402,10 @@ export function RegisterView({
           <span
             className={styles.numeric}
             data-column="inflow"
-            data-empty={item.amount > 0 ? undefined : true}
+            data-empty={item.amount >= 0 ? undefined : true}
             data-inflow={item.amount > 0 || undefined}
           >
-            {item.amount > 0 && money(item.amount)}
+            {item.amount >= 0 && money(item.amount)}
           </span>
           <span className={styles.statusCell} data-column="status">
             {/* A toggle shows its mark over the row, below; the row
@@ -1604,80 +1587,9 @@ export function RegisterView({
             .map(row)}
         </div>
       )}
-      {entries.map((item) =>
-        item.source === "opening" ? (
-          <OpeningBalanceRow
-            key={item.id}
-            opening={item}
-            accountName={accountName(item.accountId)!}
-            accountColumn={accountColumn}
-          />
-        ) : (
-          row(item)
-        ),
-      )}
+      {entries.map(row)}
       <div ref={revealSpace} className={styles.revealSpace} aria-hidden />
       <TransactionActions selection={selection} onCheck={onCheck} back={back} />
-    </div>
-  );
-}
-
-function OpeningBalanceRow({
-  opening,
-  accountName,
-  accountColumn,
-}: {
-  opening: OpeningBalance;
-  accountName: string;
-  accountColumn: boolean;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label={`Starting Balance for ${accountName}`}
-      className={`${styles.txColumns} ${styles.row} ${styles.openingBalance}`}
-    >
-      {accountColumn && (
-        <span
-          className={`${styles.truncate} ${styles.faint}`}
-          data-column="account"
-        >
-          {accountName}
-        </span>
-      )}
-      <span className={styles.muted} data-column="date" data-optional>
-        {shortDay(opening.date)}
-      </span>
-      <span className={styles.truncate} data-column="payee">
-        {opening.payee}
-      </span>
-      <span
-        className={`${styles.truncate} ${styles.muted}`}
-        data-column="category"
-        data-wide={accountColumn || undefined}
-        title="Read-only balance when this account was added"
-      >
-        Balance when added
-      </span>
-      <span data-column="share" aria-hidden />
-      <span
-        className={styles.numeric}
-        data-column="outflow"
-        data-empty={opening.amount < 0 ? undefined : true}
-      >
-        {opening.amount < 0 && money(-opening.amount)}
-      </span>
-      <span
-        className={styles.numeric}
-        data-column="inflow"
-        data-empty={opening.amount >= 0 ? undefined : true}
-        data-inflow={opening.amount > 0 || undefined}
-      >
-        {opening.amount >= 0 && money(opening.amount)}
-      </span>
-      <span className={styles.statusCell} data-column="status">
-        <ClearedMark state="cleared" />
-      </span>
     </div>
   );
 }
