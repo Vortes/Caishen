@@ -163,13 +163,16 @@ export function useBankConnections({
   resumeReturn?: boolean;
 }) {
   const link = usePlaidLink();
-  const { isLoaded, userId, resume, cancel } = link;
+  const { isLoaded, userId, resume, cancel, retrySync } = link;
   useEffect(() => {
     if (!resumeReturn || !isLoaded || !userId) return;
     void resume();
     return cancel;
   }, [resumeReturn, isLoaded, userId, resume, cancel]);
-  const [setupId, setSetupId] = useState<string | null>(null);
+  const [setupRequest, setSetupRequest] = useState<{
+    connectionId: string;
+    updated: boolean;
+  } | null>(null);
   const [disconnectId, setDisconnectId] = useState<string | null>(null);
   // The user closed the dialog for the flow that's running; reopen it for the
   // next one.
@@ -198,19 +201,31 @@ export function useBankConnections({
     if (connection?.error) notify(connection.error, "attention");
     else if (connection && addableAccounts(connection).length) {
       setDismissed(false);
-      setSetupId(connection.id);
+      setSetupRequest({ connectionId: connection.id, updated: true });
     } else
       notify(
         `${reconnect.current ? "Reconnected" : "Connected"} ${bankName(connection)}`,
       );
   }, [link.phase]);
 
-  const setup = state.connections.find((item) => item.id === setupId);
+  useEffect(() => {
+    if (dismissed || link.phase !== "complete" || !link.needsSync) return;
+    const timer = window.setTimeout(() => void retrySync(), 30_000);
+    return () => window.clearTimeout(timer);
+  }, [dismissed, link.phase, link.needsSync, retrySync]);
+
+  const setup = state.connections.find(
+    (item) => item.id === setupRequest?.connectionId,
+  );
   const disconnect = state.connections.find((item) => item.id === disconnectId);
   const view: DialogView | null = disconnect
     ? { type: "disconnect", connection: disconnect }
-    : setup
-      ? { type: "setup", connection: setup }
+    : setup && setupRequest
+      ? {
+          type: "setup",
+          connection: setup,
+          updated: setupRequest.updated,
+        }
       : dismissed
         ? null
         : link.phase === "review" && link.review
@@ -252,13 +267,13 @@ export function useBankConnections({
       setDismissed(false);
       void link.start(connectionId);
     },
-    setUp: (connectionId: string) => setSetupId(connectionId),
+    setUp: (connectionId: string) =>
+      setSetupRequest({ connectionId, updated: false }),
     disconnect: (connectionId: string) => setDisconnectId(connectionId),
-    retrySync: () => void link.retrySync(),
     confirmReview: link.confirmReview,
     close: () => {
       if (link.phase === "review") link.dismissReview();
-      setSetupId(null);
+      setSetupRequest(null);
       setDisconnectId(null);
       setDismissed(true);
     },
@@ -275,7 +290,7 @@ type DialogView =
   | { type: "progress"; phase: "saving" | "syncing" }
   | { type: "sync-failed"; error: string }
   | { type: "elsewhere"; origin: string }
-  | { type: "setup"; connection: Connection };
+  | { type: "setup"; connection: Connection; updated: boolean };
 
 export type BankConnections = Omit<
   ReturnType<typeof useBankConnections>,
@@ -786,16 +801,13 @@ export function BankDialog() {
             <div className={styles.header}>
               <h2 className={styles.title}>{title}</h2>
               <p className={styles.description}>
-                Its accounts couldn’t update yet, so there’s nothing to add to
-                your budget. Try again in a moment.
+                Its accounts aren’t ready yet. We’ll keep trying automatically.
+                You can return later to finish adding them.
               </p>
             </div>
             {view.error && <ErrorText>{view.error}</ErrorText>}
             <div className={styles.footer}>
               <Button onClick={close}>Later</Button>
-              <Button variant="primary" onClick={banks.retrySync}>
-                Try again
-              </Button>
             </div>
           </>
         )}
@@ -820,6 +832,7 @@ export function BankDialog() {
           <SetupForm
             key={view.connection.id}
             connection={view.connection}
+            updated={view.updated}
             locked={locked}
             onTitle={setSetupTitle}
           />
@@ -895,10 +908,12 @@ function DisconnectDialog({ connection }: { connection: Connection }) {
 
 function SetupForm({
   connection,
+  updated,
   locked,
   onTitle,
 }: {
   connection: Connection;
+  updated: boolean;
   locked: { current: () => boolean };
   onTitle: (title: string) => void;
 }) {
@@ -909,6 +924,7 @@ function SetupForm({
     state: banks.state,
     runOnServer: banks.runOnServer,
     connection,
+    updated,
     onSaved: (added) => {
       banks.close();
       banks.notify(
@@ -1152,13 +1168,6 @@ function SetupForm({
       {form.waiting && (
         <div className={styles.waiting} role="status">
           <p>{form.waiting}</p>
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() => void form.updateBank()}
-          >
-            {form.updating ? "Updating…" : "Update bank"}
-          </Button>
         </div>
       )}
       {form.error && <ErrorText>{form.error}</ErrorText>}
