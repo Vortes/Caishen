@@ -64,7 +64,7 @@ export type RegisterProps<Row extends { id: string }> = Attributes & {
   actionBar?: ReactNode;
   "aria-label"?: string;
   ref?: Ref<HTMLDivElement>;
-  layout?: { wide: string; narrow?: string; compact?: string };
+  layout?: { wide: string; narrow?: string; compact?: string; gutter?: string };
 };
 
 // Grid tracks include the empty part of right-aligned cells and the gaps
@@ -173,7 +173,7 @@ export function Register<Row extends { id: string }>({
     return (
       <div
         key={row.id}
-        className={`${styles.rowWrap} ${selectionStyles.row}`}
+        className={`${styles.rowWrap} ${canCheck ? selectionStyles.row : ""}`}
         {...(canCheck ? selection.rowProps(row.id) : {})}
         onMouseDown={(event) => {
           if ((canCheck && event.shiftKey) || event.detail > 1)
@@ -245,6 +245,7 @@ export function Register<Row extends { id: string }>({
       className={`${styles.list} ${styles.register} ${selectionStyles.list}`}
       style={
         {
+          "--row-gutter": layout?.gutter,
           "--columns-wide":
             layout?.wide ??
             columns

@@ -1,7 +1,5 @@
 "use client";
 
-import grid from "~/components/ui/register.module.css";
-
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
@@ -19,7 +17,7 @@ import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { Empty } from "./views";
-import { moveSelection } from "~/components/ui/move-selection";
+import { Register } from "~/components/ui/register";
 import styles from "./shell.module.css";
 import local from "./reimbursements-register.module.css";
 
@@ -173,11 +171,15 @@ export function ReimbursementsRegister({
   account,
   who,
   query,
+  selectedId,
+  onSelect,
   onJump,
 }: {
   account: Account;
   who: string | null;
   query: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
   onJump: (transaction: {
     id: string;
     accountId: string;
@@ -186,7 +188,6 @@ export function ReimbursementsRegister({
 }) {
   const { entries } = useReimbursements(account);
   const { accounts } = useShellData();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const search = query.trim().toLowerCase();
   // Balances run over the filtered entries, so one person's column ends at
   // what that person owes. A name with no entries left shows everyone.
@@ -205,70 +206,62 @@ export function ReimbursementsRegister({
           .includes(search),
     )
     .reverse();
-  if (!entries.length)
-    return (
-      <Empty title="Nothing owed yet." icon={UsersIcon}>
-        When you pay for someone, give the expense a share and what they owe you
-        shows here. A repayment refills its envelope in People.
-      </Empty>
-    );
-  if (!rows.length)
-    return (
-      <Empty title={`No entries match “${query.trim()}”.`} icon={SearchIcon}>
-        Search looks at payees, people, categories, and amounts.
-      </Empty>
-    );
   return (
-    <div
-      className={`${styles.list} ${grid.register} ${local.register}`}
-      role="group"
+    <Register
       aria-label={account.name}
-      onKeyDown={moveSelection}
-    >
-      <div className={`${grid.columns} ${grid.columnHeader}`} aria-hidden>
-        <span data-optional>Date</span>
-        <span>Payee</span>
-        <span>Who</span>
-        <span data-optional>Category</span>
-        <span className={styles.numeric}>Amount</span>
-        <span className={styles.numeric}>Balance</span>
-        <span />
-      </div>
-      {rows.map((entry) => (
-        <div
-          key={entry.id}
-          className={grid.rowWrap}
-          onMouseDown={(event) => {
-            // A double-click would select a word, and the click handler
-            // would take it for a text selection and not open the entry.
-            if (event.detail > 1) event.preventDefault();
-          }}
-        >
-          <button
-            type="button"
-            data-row
-            className={`${grid.columns} ${grid.row}`}
-            aria-current={selectedId === entry.id ? "true" : undefined}
-            title={
-              selectedId === entry.id
-                ? `Open in ${accounts.find((item) => item.id === entry.accountId)?.name ?? "its account"}`
-                : undefined
-            }
-            onClick={(event) => {
-              if (event.detail > 0 && window.getSelection()?.toString()) return;
-              // A selected entry opens its transaction where it can be
-              // edited: the purchase with its share, or the deposit.
-              if (selectedId === entry.id) {
-                onJump({
-                  id: entry.transactionId,
-                  accountId: entry.accountId,
-                  date: entry.date,
-                });
-                return;
-              }
-              setSelectedId(entry.id);
-            }}
+      columns={[
+        { key: "date", label: "Date", optional: true },
+        { key: "payee", label: "Payee" },
+        { key: "who", label: "Who" },
+        { key: "category", label: "Category", optional: true },
+        { key: "amount", label: "Amount", numeric: true },
+        { key: "balance", label: "Balance", numeric: true },
+        { key: "status", label: "" },
+      ]}
+      layout={{
+        gutter: "34px",
+        wide: "5.5rem minmax(0, 0.9fr) minmax(0, 0.6fr) minmax(0, 1.4fr) 7rem 7rem 16px",
+        narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px",
+      }}
+      rows={rows}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      checkable={() => false}
+      checked={[]}
+      onCheck={() => {}}
+      onOpen={(entry) =>
+        onJump({
+          id: entry.transactionId,
+          accountId: entry.accountId,
+          date: entry.date,
+        })
+      }
+      empty={
+        <Empty title="Nothing owed yet." icon={UsersIcon}>
+          When you pay for someone, give the expense a share and what they owe
+          you shows here. A repayment refills its envelope in People.
+        </Empty>
+      }
+      noMatch={
+        entries.length ? (
+          <Empty
+            title={`No entries match “${query.trim()}”.`}
+            icon={SearchIcon}
           >
+            Search looks at payees, people, categories, and amounts.
+          </Empty>
+        ) : undefined
+      }
+      cells={(entry) => ({
+        label: entry.payee,
+        attributes: {
+          title:
+            selectedId === entry.id
+              ? `Open in ${accounts.find((item) => item.id === entry.accountId)?.name ?? "its account"}`
+              : undefined,
+        },
+        content: (
+          <>
             <span className={styles.rowName} data-column="date" data-optional>
               <span
                 className={styles.reviewDot}
@@ -305,10 +298,10 @@ export function ReimbursementsRegister({
               {money(entry.balance)}
             </span>
             <span />
-          </button>
-        </div>
-      ))}
-    </div>
+          </>
+        ),
+      })}
+    />
   );
 }
 

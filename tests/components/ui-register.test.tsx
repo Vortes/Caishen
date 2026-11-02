@@ -310,3 +310,26 @@ test("finishing a text selection does not select or open the row", async () => {
   expect(row.getAttribute("aria-current")).toBeNull();
   expect(screen.getByLabelText("Opened").textContent).toBe("");
 });
+
+test("layout preserves a caller's row gutter", () => {
+  render(
+    <Register
+      columns={[{ key: "name", label: "Name" }]}
+      rows={rows}
+      cells={(row) => ({ label: row.name, content: row.name })}
+      checkable={() => false}
+      selectedId={null}
+      onSelect={() => {}}
+      checked={[]}
+      onCheck={() => {}}
+      onOpen={() => {}}
+      layout={{ wide: "minmax(0, 1fr)", gutter: "34px" }}
+    />,
+  );
+
+  expect(
+    getComputedStyle(
+      screen.getByRole("group", { name: "Register" }),
+    ).getPropertyValue("--row-gutter"),
+  ).toBe("34px");
+});
