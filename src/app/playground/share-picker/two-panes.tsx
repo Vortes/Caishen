@@ -270,7 +270,7 @@ export function TwoPanes(props: VariantProps) {
       <Heading
         title={active === NEW_PERSON ? "New person" : "How much is theirs"}
         detail={
-          active === NEW_PERSON
+          active === NEW_PERSON || people.length === 0
             ? "Type their name to the left"
             : "Choose someone to the left"
         }

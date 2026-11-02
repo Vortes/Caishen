@@ -297,12 +297,9 @@ export function Inline(props: VariantProps) {
         }}
       >
         <div className={styles.scroll}>
-          {matches.length === 0 && (
-            <p className={list.empty}>
-              {typed
-                ? `No one called “${typed}” yet`
-                : "You haven’t shared with anyone yet"}
-            </p>
+          {/* The New row already offers what was typed. */}
+          {matches.length === 0 && !typed && (
+            <p className={list.empty}>You haven’t shared with anyone yet</p>
           )}
           {matches.map((item, index) => (
             <Fragment key={item.id}>
