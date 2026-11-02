@@ -181,7 +181,11 @@ void test("card payment edits preserve both IDs and consume reserve without new 
   });
   const original = f
     .view()
-    .budget.transactions.find((item) => item.accountId === "visa")!;
+    .budget.transactions.find(
+      (item) =>
+        item.accountId === "visa" &&
+        item.linkedId === f.transaction(`register-payment-1:${date}`).linkedId,
+    )!;
   const sent = transferCounterparts(f.view().budget, original)[0]!;
   f.save({ inflow: "65.00", outflow: "" }, original.id);
   assert.equal(f.transaction(sent.id).amount, -6500);
@@ -262,7 +266,13 @@ void test("changing destination retires the old counterpart and stale saves cann
     /removed/,
   );
   assert.equal(
-    f.view().budget.transactions.filter((item) => !item.removed).length,
+    f
+      .view()
+      .budget.transactions.filter(
+        (item) =>
+          item.linkedId === f.transaction(original.id).linkedId &&
+          !item.removed,
+      ).length,
     2,
   );
 });

@@ -21,8 +21,8 @@ type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 
 // A budget with a spending category, a card, and a loan, each of which can
 // hold a target.
-function budget() {
-  let book = createBook("alan", "Alan", month);
+function budget(startMonth = month) {
+  let book = createBook("alan", "Alan", startMonth);
   let sequence = 0;
   const run = (command: WithoutId<Command>) => {
     book = execute(book, "alan", { ...command, id: `setup-${++sequence}` });
@@ -41,7 +41,7 @@ function budget() {
     name: "Card",
     kind: "credit",
     openingBalance: -50_000,
-    date: `${month}-01`,
+    date: `${startMonth}-01`,
   });
   run({
     type: "loan.add",
@@ -352,7 +352,7 @@ void test("paying a card off by a date needs no amount", () => {
     build("card", { schedule: "card-payoff", dueDate: "2027-04-30" }),
     { ok: true, target },
   );
-  const category = budget()("card", target);
+  const category = budget("2026-09")("card", target);
   assert.deepEqual(category.target, target);
   // The card owes $500.00 over seven months, rounded up to the cent.
   assert.equal(category.targetProgress?.needed, 7_143);

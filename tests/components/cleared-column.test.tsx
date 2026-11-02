@@ -28,7 +28,9 @@ test("unclearing a posted purchase keeps it out of Pending and moves its amount 
   expect(summary("Cleared")).toBe("$957.90");
 
   await shell.user.click(
-    screen.getByRole("button", { name: "Mark uncleared" }),
+    within(transactionRow("Corner Grocer").parentElement!).getByRole("button", {
+      name: "Mark uncleared",
+    }),
   );
   await findToast("Marked Corner Grocer uncleared");
   expect(
@@ -61,7 +63,11 @@ test("clearing an entered pending deposit counts it in the balance, and uncleari
   ).toBeTruthy();
   expect(summary("Working balance")).toBe("$1,000.00");
 
-  await shell.user.click(screen.getByRole("button", { name: "Mark cleared" }));
+  await shell.user.click(
+    within(transactionRow("Payroll").parentElement!).getByRole("button", {
+      name: "Mark cleared",
+    }),
+  );
   await findToast("Marked Payroll cleared");
   expect(
     await within(transactionRow("Payroll")).findByLabelText("Cleared"),
@@ -70,7 +76,9 @@ test("clearing an entered pending deposit counts it in the balance, and uncleari
   expect(summary("Working balance")).toBe("$4,250.00");
 
   await shell.user.click(
-    screen.getByRole("button", { name: "Mark uncleared" }),
+    within(transactionRow("Payroll").parentElement!).getByRole("button", {
+      name: "Mark uncleared",
+    }),
   );
   await findToast("Marked Payroll uncleared");
   expect(

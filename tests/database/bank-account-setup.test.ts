@@ -356,7 +356,9 @@ void test("bank setup records Starting Balance adjustments on the link day and l
     }),
     { code: "BAD_REQUEST" },
   );
-  const starting = saved.view!.budget.transactions[0]!;
+  const starting = saved.view!.budget.transactions.find(
+    ({ accountId }) => accountId === mappings.checking!.accountId,
+  )!;
   await alice.budget.execute({
     baseRevision: saved.revision,
     clientId: "starting-balance-edit",

@@ -168,8 +168,16 @@ void test("a bank purchase counts toward account balances while it waits for rev
   const checking = shell.accounts.find(({ id }) => id === "checking")!;
   assert.equal(checking.balance, 98_000);
   assert.equal(checking.cleared, 98_000);
-  assert.equal(shell.transactions[0]!.needsReview, true);
-  assert.equal(shell.transactions[0]!.source, "bank");
+  assert.equal(
+    shell.transactions.find(({ id }) => id === 'bank:["connection","import"]')!
+      .needsReview,
+    true,
+  );
+  assert.equal(
+    shell.transactions.find(({ id }) => id === 'bank:["connection","import"]')!
+      .source,
+    "bank",
+  );
 });
 
 void test("card balances include unreviewed posted payments while untouched pending imports wait outside balances", () => {
@@ -271,7 +279,11 @@ void test("only untouched bank pending imports belong in the pending section, an
   const { run, data } = setup();
   const pending = bankImport({ pending: true });
   const before = data(month, month, [pending]);
-  assert.equal(before.transactions[0]!.pendingImport, true);
+  assert.equal(
+    before.transactions.find(({ id }) => id === 'bank:["connection","import"]')!
+      .pendingImport,
+    true,
+  );
   assert.equal(before.accounts[0]!.balance, 100_000);
   run({
     type: "transaction.upsert",
@@ -285,7 +297,13 @@ void test("only untouched bank pending imports belong in the pending section, an
     providerId: "provider-purchase",
   });
   const after = data();
-  assert.equal(Boolean(after.transactions[0]!.pendingImport), false);
+  assert.equal(
+    Boolean(
+      after.transactions.find(({ id }) => id === "entered-pending")!
+        .pendingImport,
+    ),
+    false,
+  );
   assert.equal(after.accounts[0]!.balance, 98_000);
   assert.equal(after.accounts[0]!.uncleared, -2_000);
   const changed = data(month, month, [
@@ -321,7 +339,10 @@ void test("an entered purchase missing its category keeps its account review dot
     shell.accounts.find(({ id }) => id === "checking")!.toReview,
     true,
   );
-  assert.equal(shell.transactions[0]!.needsReview, true);
+  assert.equal(
+    shell.transactions.find(({ id }) => id === "uncategorized")!.needsReview,
+    true,
+  );
 });
 
 void test("import balances respect the selected month while cleared balances include current activity", (t) => {
@@ -614,10 +635,19 @@ void test("changed opening history explains the domain refusal in its register r
       shell.accounts.find((account) => account.id === "checking")!.balance,
       100_000,
     );
-    assert.equal(shell.transactions[0]!.actions.edit, null);
-    assert.equal(shell.transactions[0]!.needsReview, true);
     assert.equal(
-      shell.transactions[0]!.reviewReason,
+      shell.transactions.find(({ id }) => id === 'bank:["bank","opening"]')!
+        .actions.edit,
+      null,
+    );
+    assert.equal(
+      shell.transactions.find(({ id }) => id === 'bank:["bank","opening"]')!
+        .needsReview,
+      true,
+    );
+    assert.equal(
+      shell.transactions.find(({ id }) => id === 'bank:["bank","opening"]')!
+        .reviewReason,
       "This activity may already be included in this account's opening balance. Investigate the bank's changes or uncertain matches before recording an adjustment; importing it could count it twice.",
     );
   }
