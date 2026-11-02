@@ -237,6 +237,9 @@ export function AppShell({
   useEffect(() => setQuery(routeQuery), [registerPath, routeQuery]);
   // The person or organization the Reimbursements register is narrowed to.
   const [owedBy, setOwedBy] = useState<string | null>(null);
+  const [reimbursementSelectedId, setReimbursementSelectedId] = useState<
+    string | null
+  >(null);
   // Transient selections and filters belong to the address they were opened on.
   const selectionSearch = new URLSearchParams(budgetAddress.searchParams);
   selectionSearch.delete("month");
@@ -477,6 +480,8 @@ export function AppShell({
               new URLSearchParams(window.location.search),
             ),
           );
+        } else if (account?.kind === "reimbursements") {
+          setReimbursementSelectedId(null);
         } else if (checked.length) {
           setChecked([]);
           setSelectedId(null);
@@ -498,6 +503,7 @@ export function AppShell({
     drawer,
     peekOpen,
     checked.length,
+    account?.kind,
     screen,
     recordable,
     path,
@@ -1016,6 +1022,8 @@ export function AppShell({
                                 account={account}
                                 who={owedBy}
                                 query={deferredQuery}
+                                selectedId={reimbursementSelectedId}
+                                onSelect={setReimbursementSelectedId}
                                 onJump={jump}
                               />
                             ) : (

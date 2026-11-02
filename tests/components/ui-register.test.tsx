@@ -332,3 +332,26 @@ test("a caller can set the shared checkbox gutter for its cells and editor", () 
     ).getPropertyValue("--row-gutter"),
   ).toBe("34px");
 });
+
+test("a register that never checks rows draws no checkboxes and keeps the caller's row gutter", () => {
+  render(
+    <Register
+      columns={[{ key: "name", label: "Name" }]}
+      rows={rows}
+      cells={(row) => ({ label: row.name, content: row.name })}
+      selectedId={null}
+      onSelect={() => {}}
+      checked={["a"]}
+      onCheck={() => {}}
+      onOpen={() => {}}
+      layout={{ wide: "minmax(0, 1fr)", gutter: "34px" }}
+    />,
+  );
+
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  expect(
+    getComputedStyle(
+      screen.getByRole("group", { name: "Register" }),
+    ).getPropertyValue("--row-gutter"),
+  ).toBe("34px");
+});

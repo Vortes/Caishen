@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { addMember, withCounterpartyAccounts } from "~/domain/engine";
+import { addMember, execute, withCounterpartyAccounts } from "~/domain/engine";
 import { budgetFixture, readyOverview, renderShell } from "./shell-harness";
 
 // The owner's budget as every budget now is: with its reimbursements account
@@ -124,6 +124,67 @@ test("Reimbursements opens its register, which explains where its entries come f
   expect(screen.getByText("Owed to you").nextElementSibling?.textContent).toBe(
     "$0.00",
   );
+});
+
+function reimbursedPurchase() {
+  return execute(withPeople(), "owner", {
+    type: "transaction.upsert",
+    id: "noodles",
+    transactionId: "noodles",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -1_154,
+    payee: "Noodles Plus",
+    recordedAt: "2026-10-05T12:00:00Z",
+    counterpartyShare: {
+      accountId: "counterparty:reimbursements",
+      counterpartyName: "Mom",
+      amount: 1_154,
+    },
+  });
+}
+
+test("Enter keeps the selected Reimbursements row in place and a second pointer click opens its account", async () => {
+  const { user } = await renderShell({ book: reimbursedPurchase() });
+  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
+  const row = within(
+    screen.getByRole("group", { name: "Reimbursements" }),
+  ).getByRole("button", { name: /Noodles Plus/ });
+  await user.click(row);
+  await user.keyboard("{Enter}");
+
+  expect(screen.getByRole("heading", { name: "Reimbursements" })).toBeTruthy();
+  expect(row.getAttribute("aria-current")).toBe("true");
+  expect(row.title).toBe("Open in Checking");
+
+  await user.click(row);
+  expect(screen.getByRole("heading", { name: "Checking" })).toBeTruthy();
+  expect(
+    within(screen.getByRole("group", { name: "Transactions" })).getByRole(
+      "button",
+      { name: /Noodles Plus/, current: true },
+    ),
+  ).toBeTruthy();
+});
+
+test("the selected Reimbursements row survives switching views and coming back", async () => {
+  const { user } = await renderShell({ book: reimbursedPurchase() });
+  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
+  await user.click(
+    within(screen.getByRole("group", { name: "Reimbursements" })).getByRole(
+      "button",
+      { name: /Noodles Plus/ },
+    ),
+  );
+  await user.click(sidebar().getByRole("link", { name: "Plan" }));
+  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
+
+  expect(
+    within(screen.getByRole("group", { name: "Reimbursements" })).getByRole(
+      "button",
+      { name: /Noodles Plus/, current: true },
+    ),
+  ).toBe(document.activeElement);
 });
 
 test("a new transaction can't go to a counterparty account or into a paired envelope", async () => {

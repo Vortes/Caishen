@@ -50,7 +50,9 @@ export type RegisterProps<Row extends { id: string }> = Attributes & {
   columns: readonly RegisterColumn[];
   rows: readonly Row[];
   cells: (row: Row) => RegisterCells;
-  checkable: (row: Row) => boolean;
+  // Omitted when the register never checks rows: no checkboxes, no Select
+  // all, and no checked styling.
+  checkable?: (row: Row) => boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   checked: readonly string[];
@@ -129,7 +131,7 @@ export function Register<Row extends { id: string }>({
     ...sections.flatMap((section) => (section.open ? section.rows : [])),
     ...ordinary,
   ];
-  const selectable = visible.filter(checkable);
+  const selectable = checkable ? visible.filter(checkable) : [];
   const selected = selectable.filter((row) => checked.includes(row.id));
   const root = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => root.current!);
@@ -168,13 +170,13 @@ export function Register<Row extends { id: string }>({
     if (editingId === row.id)
       return <Fragment key={row.id}>{renderEditor?.(row)}</Fragment>;
     const cell = cells(row);
-    const canCheck = checkable(row);
+    const canCheck = checkable?.(row) ?? false;
     const isChecked = canCheck && checked.includes(row.id);
     return (
       <div
         key={row.id}
-        className={`${styles.rowWrap} ${selectionStyles.row}`}
-        {...selection.rowProps(row.id)}
+        className={`${styles.rowWrap} ${checkable ? selectionStyles.row : ""}`}
+        {...(checkable ? selection.rowProps(row.id) : {})}
         onMouseDown={(event) => {
           if ((canCheck && event.shiftKey) || event.detail > 1)
             event.preventDefault();
