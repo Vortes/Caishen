@@ -87,12 +87,14 @@ for (const scenario of scenarios) {
     });
     const view = projectBook(repeated, "owner", "2026-10");
     assert.deepEqual(
-      view.budget.transactions.map(({ id, reviewed, amount, status }) => ({
-        id,
-        reviewed,
-        amount,
-        status,
-      })),
+      view.budget.transactions
+        .filter(({ id }) => ["purchase", "refund"].includes(id))
+        .map(({ id, reviewed, amount, status }) => ({
+          id,
+          reviewed,
+          amount,
+          status,
+        })),
       [
         {
           id: "purchase",

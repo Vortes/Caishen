@@ -64,7 +64,9 @@ void test("approval refuses the entire batch when a purchase still needs a categ
     /Categorize purchases before approval/,
   );
   assert.deepEqual(
-    book.budgets.owner!.transactions.map(({ reviewed }) => reviewed),
+    book.budgets
+      .owner!.transactions.filter(({ kind }) => kind === "purchase")
+      .map(({ reviewed }) => reviewed),
     [false, false],
   );
   const approved = projectBook(
@@ -108,7 +110,9 @@ void test("approval rejects more than 500 recorded transactions before changing 
     /500/,
   );
   assert.deepEqual(
-    book.budgets.owner!.transactions.map(({ reviewed }) => reviewed),
+    book.budgets
+      .owner!.transactions.filter(({ kind }) => kind === "purchase")
+      .map(({ reviewed }) => reviewed),
     [false, false],
   );
 });

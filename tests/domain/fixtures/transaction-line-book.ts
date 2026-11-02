@@ -15,13 +15,17 @@ export function storedLineBook() {
     budgets: {
       alan: {
         ...budget,
-        transactions: budget.transactions.map(transaction => ({
-          ...transaction,
-          lines: [
-            { id: "food", categoryId: "groceries", amount: -15_000 },
-            { id: "paper", categoryId: "household", amount: -5_000 },
-          ],
-        })),
+        transactions: budget.transactions.map(transaction =>
+          transaction.id === "costco"
+            ? {
+                ...transaction,
+                lines: [
+                  { id: "food", categoryId: "groceries", amount: -15_000 },
+                  { id: "paper", categoryId: "household", amount: -5_000 },
+                ],
+              }
+            : transaction,
+        ),
       },
     },
   };
