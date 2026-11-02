@@ -973,7 +973,9 @@ void test("same-connection repair retires only the unused duplicate and preserve
   );
   assert.deepEqual(
     after.view!.budget.transactions,
-    before.view!.budget.transactions,
+    before.view!.budget.transactions.filter(
+      ({ accountId }) => accountId !== "duplicate-gold",
+    ),
   );
   assert.deepEqual(after.imports, before.imports);
   assert.deepEqual(after.connections[0]!.accountMappings, {
@@ -986,7 +988,12 @@ void test("same-connection repair retires only the unused duplicate and preserve
   );
   assert.ok(
     result.changeSet?.after.every(
-      (row) => row.table === "account" || row.table === "category",
+      (row) =>
+        row.deleted &&
+        (row.table === "account" ||
+          row.table === "category" ||
+          row.table === "transaction" ||
+          row.table === "transactionHistory"),
     ),
   );
   const providerRows = await db.bankAccount.findMany({
@@ -1253,7 +1260,12 @@ void test("repairing untouched duplicate cards keeps the original accounts and t
     after.view!.budget.accounts,
     before.accounts.filter((account) => account.id !== "duplicate-gold"),
   );
-  assert.deepEqual(after.view!.budget.transactions, before.transactions);
+  assert.deepEqual(
+    after.view!.budget.transactions,
+    before.transactions.filter(
+      ({ accountId }) => accountId !== "duplicate-gold",
+    ),
+  );
   assert.equal(
     after.view!.budget.categories.some(
       (category) => category.pairedAccountId === "duplicate-gold",
