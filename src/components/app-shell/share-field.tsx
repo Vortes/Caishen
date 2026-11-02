@@ -267,7 +267,7 @@ export function ShareChoices({
   );
   const hint =
     naming || personId === NEW_PERSON
-      ? "Only you see new people. They get an envelope in People."
+      ? "Joins People once shared. Only you see them."
       : remembered
         ? `Prefilled from ${remembered} last time.`
         : undefined;

@@ -288,7 +288,7 @@ test("New person with nothing typed asks for the name in the same field", async 
   await user.type(who, "Sam");
   await user.click(screen.getByRole("option", { name: "New person “Sam”" }));
   expect(
-    menu.getByText("Only you see new people. They get an envelope in People."),
+    menu.getByText("Joins People once shared. Only you see them."),
   ).toBeTruthy();
   await user.click(menu.getByRole("button", { name: /^Half/ }));
 

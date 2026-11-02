@@ -84,9 +84,10 @@
 /* The share picker: one left edge. The header's title, the person's well
    and the option rows' labels all start at the popover form's 12px inset;
    the option list keeps a list's 4px so its fills sit 4px from the border,
-   and its rows take a list row's 8px. */
+   and its rows take a list row's 8px. The field's 8px and the list's 4px
+   make the form's 12px between them. */
 .whoField {
-  padding: 12px 12px 0;
+  padding: 12px 12px 8px;
 }
 .shareOptions {
   display: flex;
@@ -117,9 +118,9 @@
   background: var(--surface-hover);
   color: var(--text-primary);
 }
-/* The share as it stands: a pressed quiet control. */
+/* The share as it stands, in the weight a search list gives its chosen
+   option; no fill, so it never outweighs the choice still to make. */
 .shareOption[aria-pressed="true"] {
-  background: var(--surface-selected);
   color: var(--text-primary);
   font-weight: 500;
 }
