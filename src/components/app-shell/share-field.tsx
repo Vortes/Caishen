@@ -151,10 +151,11 @@ export function ShareChoices({
   const [error, setError] = useState("");
   // Whoever the share is with. With no share yet, the partner, or the only
   // person there is; among several others, nobody is a safe guess.
+  const [only] = people;
   const [personId, setPersonId] = useState(
     share?.amount
       ? share.accountId
-      : (partner?.id ?? (people.length === 1 ? people[0]!.id : "")),
+      : (partner?.id ?? (people.length === 1 && only ? only.id : "")),
   );
   // A new person's name, typed in the list and added once a share applies.
   const [pending, setPending] = useState<string | null>(null);
