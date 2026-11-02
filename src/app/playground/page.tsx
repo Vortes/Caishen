@@ -8,12 +8,6 @@ const pages = [
     description:
       "A paper plane delivers a signed card; countersign, tally seal, and slot it in.",
   },
-  {
-    href: "/playground/share-picker",
-    title: "Share picker",
-    description:
-      "Who a line is for, three ways: today's column, two panes, and people that open in place.",
-  },
 ];
 
 export default function PlaygroundIndex() {
