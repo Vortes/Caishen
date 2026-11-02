@@ -475,7 +475,9 @@ test("the arrow keys move the highlight, the detail follows, and the ends hold",
 
   await user.keyboard("{ArrowDown}");
   expect(highlighted(search)).toMatch(/^Momd/);
-  expect(screen.getByRole("group", { name: "How much is for Momd" })).toBeDefined();
+  expect(
+    screen.getByRole("group", { name: "How much is for Momd" }),
+  ).toBeDefined();
   await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}");
   expect(highlighted(search)).toMatch(/^Mei Chen/);
 });
@@ -484,17 +486,15 @@ test("typing filters, the highlight takes the first match, and New carries a nam
   const { user, search } = await openPicker();
 
   await user.keyboard("mo");
-  expect(optionNames()).toEqual([
-    "New person “mo”",
-    "Mom-$40.00",
-    "Momd$0.00",
-  ]);
+  expect(optionNames()).toEqual(["New person “mo”", "Mom-$40.00", "Momd$0.00"]);
   expect(highlighted(search)).toMatch(/^Mom-/);
 
   await user.keyboard("x");
   expect(optionNames()).toEqual(["New person “mox”"]);
   expect(highlighted(search)).toBe("New person “mox”");
-  expect(screen.getByRole("group", { name: "How much is for mox" })).toBeDefined();
+  expect(
+    screen.getByRole("group", { name: "How much is for mox" }),
+  ).toBeDefined();
 
   // A name already listed is never offered as new.
   await user.clear(search);
@@ -578,7 +578,9 @@ test("moving right toward the detail waits before following the pointer, and rea
 
   fireEvent.mouseMove(mom, { clientX: 20, clientY: 60 });
   fireEvent.mouseMove(sam, { clientX: 80, clientY: 90 });
-  fireEvent.mouseMove(screen.getByRole("group", { name: "How much is for Mom" }));
+  fireEvent.mouseMove(
+    screen.getByRole("group", { name: "How much is for Mom" }),
+  );
   await new Promise((resolve) => setTimeout(resolve, 200));
   expect(highlighted(search)).toMatch(/^Mom-/);
 });

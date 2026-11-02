@@ -457,9 +457,7 @@ export function SearchListDetail({
 }) {
   const listId = useId();
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState<string | null>(
-    defaultHighlight ?? null,
-  );
+  const [active, setActive] = useState<string | null>(defaultHighlight ?? null);
   // Bumped to cross into the detail once it shows the new highlight.
   const [crossing, setCrossing] = useState(0);
   const input = useRef<HTMLInputElement | null>(null);
@@ -488,8 +486,9 @@ export function SearchListDetail({
     if (!crossing) return;
     const buttons = choices();
     (
-      buttons.find((button) => button.getAttribute("aria-pressed") === "true") ??
-      buttons[0]
+      buttons.find(
+        (button) => button.getAttribute("aria-pressed") === "true",
+      ) ?? buttons[0]
     )?.focus();
   }, [crossing]);
   const cross = (id = current) => {
@@ -510,9 +509,7 @@ export function SearchListDetail({
     setQuery(text);
     if (!normalize(text)) return;
     const next = narrowed(options, text, createNoun);
-    setActive(
-      next.rows.find((id) => id !== CREATE) ?? next.rows[0] ?? null,
-    );
+    setActive(next.rows.find((id) => id !== CREATE) ?? next.rows[0] ?? null);
   };
   const step = (by: number) => {
     const index = current === null ? -1 : rows.indexOf(current);
@@ -522,8 +519,8 @@ export function SearchListDetail({
         : rows[Math.min(rows.length - 1, Math.max(0, index + by))];
     if (next === undefined) return;
     setActive(next);
-    listRef.current
-      ?.parentElement?.querySelector(`[id="${optionId(next)}"]`)
+    listRef.current?.parentElement
+      ?.querySelector(`[id="${optionId(next)}"]`)
       ?.scrollIntoView({ block: "nearest" });
   };
 
