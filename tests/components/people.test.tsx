@@ -215,31 +215,83 @@ const momOwes = () =>
     counterpartyShare: { accountId: mom, amount: 2_000 },
   });
 
-test("picking a person who already has an account shares half with them", async () => {
-  const { user } = await renderShell({
-    book: execute(withMom(), "owner", {
-      type: "transaction.upsert",
-      id: "lunch",
-      transactionId: "lunch",
-      accountId: "checking",
-      date: "2026-10-06",
-      payee: "Lunch",
-      amount: -3_000,
-      categoryId: "gifts",
-    }),
+const lunch = () =>
+  execute(withMom(), "owner", {
+    type: "transaction.upsert",
+    id: "lunch",
+    transactionId: "lunch",
+    accountId: "checking",
+    date: "2026-10-06",
+    payee: "Lunch",
+    amount: -3_000,
+    categoryId: "gifts",
   });
+
+test("picking a person who already has an account shares half with them", async () => {
+  const { user } = await renderShell({ book: lunch() });
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Share Lunch" }));
   const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
   expect(menu.getByText("Who is this for?")).toBeTruthy();
-  await user.click(menu.getByRole("button", { name: /^Mom/ }));
+  // The only person is already chosen; Half applies at once.
+  expect(
+    menu.getByRole("combobox", { name: "Who is this for" }),
+  ).toHaveProperty("value", "Mom");
   await user.click(menu.getByRole("button", { name: /^Half/ }));
 
   expect(
     await screen.findByRole("button", {
-      name: "Mom's share of Lunch: $15.00. Change",
+      name: "Mom’s share of Lunch: $15.00. Change",
     }),
   ).toBeTruthy();
+});
+
+test("a name typed in Who is this for adds that person with the share", async () => {
+  const { user } = await renderShell({ book: lunch() });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  const who = menu.getByRole("combobox", { name: "Who is this for" });
+  await user.clear(who);
+  await user.type(who, "Sam");
+  await user.click(screen.getByRole("option", { name: "New person “Sam”" }));
+  // Nobody is added until the share applies.
+  expect(sidebar().queryByRole("link", { name: /^Sam/ })).toBeNull();
+  await user.click(menu.getByRole("button", { name: /^All of it/ }));
+
+  expect(
+    await screen.findByRole("button", {
+      name: "Sam’s share of Lunch: $30.00. Change",
+    }),
+  ).toBeTruthy();
+  await user.click(sidebar().getByRole("link", { name: /^Sam/ }));
+  expect(screen.getByText("Sam owes you").nextElementSibling?.textContent).toBe(
+    "$30.00",
+  );
+});
+
+test("the person on Caishen leads Who is this for, and everyone gets the same amounts", async () => {
+  const book = withPeople(addMember(lunch(), "anna", "Home budget", "2026-10"));
+  const { user } = await renderShell({
+    book,
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  const who = menu.getByRole("combobox", { name: "Who is this for" });
+  expect(who).toHaveProperty("value", "Anna");
+  await user.click(who);
+  const options = screen
+    .getAllByRole("option")
+    .map((option) => option.textContent);
+  expect(options[0]).toMatch(/^New person/);
+  expect(options[1]).toMatch(/^Anna/);
+  expect(options[2]).toMatch(/^Mom/);
+  expect(screen.getByText("On Caishen")).toBeTruthy();
+  await user.click(screen.getByRole("option", { name: /^Mom/ }));
+  for (const amount of [/^Half/, /^All of it/, /^An amount/])
+    expect(menu.getByRole("button", { name: amount })).toBeTruthy();
 });
 
 test("a repayment recorded from a person's register clears what they owe", async () => {
@@ -251,7 +303,7 @@ test("a repayment recorded from a person's register clears what they owe", async
 
   await user.click(screen.getByRole("button", { name: "Record repayment" }));
   const popover = within(
-    screen.getByRole("dialog", { name: "Record a repayment" }),
+    screen.getByRole("dialog", { name: "Record a repayment from Mom" }),
   );
   // What Mom owes and the only cash account are filled in.
   expect(popover.getByLabelText("Amount")).toHaveProperty("value", "20.00");
@@ -269,10 +321,8 @@ test("a person is renamed from the People settings page", async () => {
   await user.click(screen.getByRole("button", { name: "Component budget" }));
   await user.click(screen.getByRole("menuitem", { name: "Settings" }));
   await user.click(screen.getByRole("link", { name: "People" }));
-  await screen.findByRole("heading", { name: "People" });
-  expect(
-    screen.getByText("Owes you $20.00. Only you see this person."),
-  ).toBeTruthy();
+  await screen.findByRole("heading", { name: "Other people" });
+  expect(screen.getByText("Mom owes you $20.00.")).toBeTruthy();
 
   await user.click(screen.getByRole("button", { name: "Rename" }));
   const name = screen.getByLabelText("Name");

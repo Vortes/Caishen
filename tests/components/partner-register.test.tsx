@@ -1,12 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import {
-  addMember,
-  createBook,
-  execute,
-  withCounterpartyAccounts,
-  type Command,
-} from "~/domain/engine";
+import { addMember, createBook, execute, type Command } from "~/domain/engine";
+import { withPeople } from "~/domain/people";
 import {
   findToast,
   readyOverview,
@@ -15,7 +10,7 @@ import {
 } from "./shell-harness";
 
 function sharedBook() {
-  const book = withCounterpartyAccounts(
+  const book = withPeople(
     addMember(
       createBook("owner", "Alan", "2026-10"),
       "partner",
@@ -86,7 +81,7 @@ test("an opened shared entry edits its amount and your category, in the row", as
   expect(form.getAllByRole("combobox")).toHaveLength(1);
   expect(form.getByRole("combobox", { name: "Your category" })).toBeTruthy();
   expect(form.getByText("Groceries", { exact: true })).toBeTruthy();
-  const amount = form.getByRole("textbox", { name: "Amount" });
+  const amount = form.getByRole("textbox", { name: "Your share" });
   expect(amount).toHaveProperty("value", "30.00");
   expect(screen.queryByRole("button", { name: "Split evenly" })).toBeNull();
   expect(screen.queryByText("History")).toBeNull();
@@ -102,7 +97,7 @@ test("an opened shared entry edits its amount and your category, in the row", as
 test("an amount over the shared total is refused and Cancel closes the row", async () => {
   const shell = await openLedger();
   const form = within(screen.getByRole("form", { name: "Edit shared entry" }));
-  const amount = form.getByRole("textbox", { name: "Amount" });
+  const amount = form.getByRole("textbox", { name: "Your share" });
   await shell.user.clear(amount);
   await shell.user.type(amount, "61");
   await shell.user.click(form.getByRole("button", { name: "Save" }));
@@ -116,7 +111,7 @@ test("your category for what your partner paid saves with its amount", async () 
   const form = within(screen.getByRole("form", { name: "Edit shared entry" }));
   await shell.user.click(form.getByRole("combobox", { name: "Your category" }));
   await shell.user.click(screen.getByRole("option", { name: /Household/ }));
-  const amount = form.getByRole("textbox", { name: "Amount" });
+  const amount = form.getByRole("textbox", { name: "Your share" });
   await shell.user.clear(amount);
   await shell.user.type(amount, "25");
   await shell.user.click(form.getByRole("button", { name: "Save" }));
@@ -175,14 +170,14 @@ test("checked entries are categorized together from the selection island", async
 test("an open entry keeps what's typed when another entry is clicked", async () => {
   const shell = await openLedger();
   const form = within(screen.getByRole("form", { name: "Edit shared entry" }));
-  const amount = form.getByRole("textbox", { name: "Amount" });
+  const amount = form.getByRole("textbox", { name: "Your share" });
   await shell.user.clear(amount);
   await shell.user.type(amount, "12");
   await shell.user.click(entryRow("Pharmacy"));
   expect(
     within(screen.getByRole("form", { name: "Edit shared entry" })).getByRole(
       "textbox",
-      { name: "Amount" },
+      { name: "Your share" },
     ),
   ).toHaveProperty("value", "12");
 });

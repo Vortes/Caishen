@@ -170,7 +170,9 @@ function migrateLegacyCounterparties(
   const people = new Map<string, Person>();
   const taken = new Set(budget.accounts.map((account) => account.id));
   const personFor = (name: string | undefined): Person => {
-    const shown = name?.trim().replace(/\s+/g, " ") || "Someone";
+    // A share stored without a name still needs someone to owe it.
+    const trimmed = name?.trim().replace(/\s+/g, " ");
+    const shown = trimmed?.length ? trimmed : "Someone";
     const key = personKey(shown);
     let person = people.get(key);
     if (!person) {
@@ -206,7 +208,8 @@ function migrateLegacyCounterparties(
 
   const point = (share: CounterpartyShare): CounterpartyShare => {
     if (share.accountId !== legacy.id) {
-      const { counterpartyName: _, ...kept } = share;
+      const kept = { ...share };
+      delete kept.counterpartyName;
       return kept;
     }
     return {

@@ -19,8 +19,11 @@ import { useRowSelection } from "~/components/ui/use-row-selection";
 import selectionStyles from "~/components/ui/row-selection.module.css";
 import { Popover } from "~/components/ui/popover";
 import { SearchList, type SearchListOption } from "~/components/ui/search-list";
+import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
 import { RecordPurchase } from "./partner-record";
+import { isLinked, owedSentence } from "./people";
+import { RecordRepayment } from "./record-repayment";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
@@ -34,36 +37,43 @@ import {
 import { Empty, moveSelection, RowCheckbox } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
-import local from "./partner-register.module.css";
+import local from "./person-register.module.css";
 import editorStyles from "./transaction-entry.module.css";
 import reviewStyles from "./transaction-review.module.css";
 
 type Row = View["partnerLedger"][number];
 
-function owedSentence(name: string, balance: number) {
-  if (balance > 0) return `${name} owes you`;
-  if (balance < 0) return `You owe ${name}`;
-  return `You and ${name} are even`;
-}
-
-// The Partner account: the one ledger both budgets share. Its balance is
-// what's owed, live, and the envelope beside it holds money against it.
-export function PartnerSummary({ account }: { account: Account }) {
+// A person's account: what's owed either way, live, and the envelope beside
+// it that holds money against it. The partner, also on Caishen, settles up
+// through both budgets' bank imports; anyone else pays you back by hand or
+// in an import of yours. A former partner's reads as it stood when it
+// closed.
+export function PersonSummary({ account }: { account: Account }) {
   const { categories } = useShellData();
   const { view } = useTransactionEntry();
   const envelope = categories.find(
     (category) => category.pairs?.accountId === account.id,
   );
-  const request = view.partnerRequest;
+  const linked = isLinked(account);
+  const request = linked ? view.partnerRequest : undefined;
   const asker =
     request?.requesterId === view.budget.userId ? "You" : account.name;
+  const balance = account.balance;
   return (
     <>
       <div className={styles.accountSummary}>
         <dl className={styles.balances}>
           <div data-total>
-            <dt>{owedSentence(account.name, account.balance)}</dt>
-            <dd className={local.owed}>{money(Math.abs(account.balance))}</dd>
+            <dt>
+              {!account.closed
+                ? owedSentence(account.name, balance)
+                : balance > 0
+                  ? `${account.name} owed you`
+                  : balance < 0
+                    ? `You owed ${account.name}`
+                    : `You and ${account.name} were even`}
+            </dt>
+            <dd className={local.owed}>{money(Math.abs(balance))}</dd>
           </div>
           {request && (
             <div>
@@ -78,7 +88,7 @@ export function PartnerSummary({ account }: { account: Account }) {
               </dd>
             </div>
           )}
-          {envelope && (
+          {envelope && !account.closed && (
             <div>
               <dt>
                 {envelope.name} envelope
@@ -92,12 +102,31 @@ export function PartnerSummary({ account }: { account: Account }) {
           )}
         </dl>
         <div className={styles.summaryActions}>
-          <RecordPurchase account={account} />
-          {account.balance > 0 ? (
-            <RequestPopover account={account} />
-          ) : account.balance < 0 ? (
-            <PayPopover account={account} />
-          ) : null}
+          {account.closed ? (
+            <span className={styles.reconciledLabel}>
+              Closed {shortDay(account.closed.at.slice(0, 10))} · frozen as it
+              stood
+            </span>
+          ) : linked ? (
+            <>
+              <span className={styles.reconciledLabel}>
+                On Caishen · shared with {account.name}
+              </span>
+              <RecordPurchase account={account} />
+              {balance > 0 ? (
+                <RequestPopover account={account} />
+              ) : balance < 0 ? (
+                <PayPopover account={account} />
+              ) : null}
+            </>
+          ) : (
+            <>
+              <span className={styles.reconciledLabel}>
+                Only you see {account.name}.
+              </span>
+              <RecordRepayment account={account} />
+            </>
+          )}
         </div>
       </div>
       {request && request.left > 0 && (
@@ -108,36 +137,6 @@ export function PartnerSummary({ account }: { account: Account }) {
         />
       )}
     </>
-  );
-}
-
-// A former partner's closed account: what was owed when the partnership
-// ended, kept as it stood. Nothing settles it or adds to it in the app.
-export function FormerPartnerSummary({ account }: { account: Account }) {
-  const balance = account.balance;
-  return (
-    <div className={styles.accountSummary}>
-      <dl className={styles.balances}>
-        <div data-total>
-          <dt>
-            {balance > 0
-              ? `${account.name} owed you`
-              : balance < 0
-                ? `You owed ${account.name}`
-                : `You and ${account.name} were even`}
-          </dt>
-          <dd className={local.owed}>{money(Math.abs(balance))}</dd>
-        </div>
-      </dl>
-      {account.closed && (
-        <div className={styles.summaryActions}>
-          <span className={styles.reconciledLabel}>
-            Closed {shortDay(account.closed.at.slice(0, 10))} · frozen as it
-            stood
-          </span>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -336,10 +335,61 @@ function categorizable(row: Row, you: string, closed: boolean) {
 
 type EditorField = "category" | "amount";
 
-// The partner ledger, as a register: clicking an entry selects it, and
-// clicking it again opens it at the field clicked. Entries you can
-// categorize can be checked and categorized together.
-export function PartnerRegister({
+// An unlinked person's entries as ledger rows, newest first, so every
+// person reads through one register: your shares of what you paid for
+// them, refunds of those, and what they paid you back.
+function personLedger(view: View, account: Account): Row[] {
+  let balance = 0;
+  return counterpartyRegisterEntries(view.budget, { accountId: account.id })
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((entry): Row => {
+      const transaction = view.budget.transactions.find(
+        (item) => item.id === entry.transactionId,
+      );
+      const line =
+        transaction?.lines?.find((item) => item.id === entry.lineId) ??
+        transaction;
+      const repayment = entry.kind === "repayment";
+      const theirs = Math.abs(entry.amount);
+      const shared = repayment ? theirs : Math.abs(line?.amount ?? theirs);
+      balance += entry.amount;
+      return {
+        id: entry.id,
+        kind: repayment
+          ? "repayment"
+          : entry.kind === "refund"
+            ? "refund"
+            : "purchase",
+        date: entry.date,
+        payee: entry.payee,
+        status: transaction?.status ?? "posted",
+        // They paid you back; you paid for everything else.
+        payerId: repayment ? account.id : view.budget.userId,
+        shared,
+        you: repayment ? 0 : shared - theirs,
+        partner: theirs,
+        change: entry.amount,
+        balance,
+        categoryId: repayment ? undefined : line?.categoryId,
+        needsCategory: false,
+        transactionId: entry.transactionId,
+        lineId: repayment ? undefined : entry.lineId,
+        awaitingImport: false,
+        // A repayment from a bank import waits for your review.
+        confirmed:
+          repayment && transaction?.reviewed === false ? false : undefined,
+        shareMode: { mode: "edit" },
+        history: [],
+      };
+    })
+    .reverse();
+}
+
+// A person's ledger, as a register: clicking an entry selects it and opens
+// its detail, and clicking it again opens it at the field clicked. The
+// partner's entries you can categorize can be checked and categorized
+// together.
+export function PersonRegister({
   account,
   query,
   selectedId,
@@ -374,10 +424,13 @@ export function PartnerRegister({
   // this one, like the other registers.
   const anchor = useRef<string | null>(null);
   // A former partner's ledger reads as it stood when it closed.
-  const closed = account.kind === "former-partner";
+  const closed = Boolean(account.closed);
+  const linked = isLinked(account);
   const ledger = closed
     ? (view.formerPartnerLedgers[account.id] ?? [])
-    : view.partnerLedger;
+    : linked
+      ? view.partnerLedger
+      : personLedger(view, account);
   const name = (id: string | undefined) =>
     view.categories.find((item) => item.id === id)?.name;
   const search = query.trim().toLowerCase();
@@ -439,8 +492,9 @@ export function PartnerRegister({
       </Empty>
     ) : (
       <Empty title="Nothing owed yet." icon={UsersIcon}>
-        When you and {account.name} share a cost, what one of you owes the other
-        shows here, in both budgets.
+        {linked
+          ? `When you and ${account.name} share a cost, what one of you owes the other shows here, in both budgets.`
+          : `When you pay for ${account.name}, give the expense a share and what they owe you shows here. Only you see it.`}
       </Empty>
     );
   if (!rows.length)
@@ -493,9 +547,15 @@ export function PartnerRegister({
           Date
         </span>
         <span aria-hidden>Payee</span>
+        <span data-optional aria-hidden>
+          Paid by
+        </span>
         <span aria-hidden>Your category</span>
-        <span className={styles.numeric} aria-hidden>
+        <span className={styles.numeric} data-optional aria-hidden>
           Amount
+        </span>
+        <span className={styles.numeric} aria-hidden>
+          Owed
         </span>
         <span className={styles.numeric} aria-hidden>
           Balance
@@ -509,12 +569,7 @@ export function PartnerRegister({
         const settlement = Boolean(row.settlementId);
         const unconfirmed = row.confirmed === false;
         const opens = Boolean(row.entryId ?? row.lineId ?? row.settlementId);
-        const paidBy =
-          row.kind === "repayment" || settlement
-            ? null
-            : row.payerId === view.budget.userId
-              ? "You paid"
-              : `${account.name} paid`;
+        const paidBy = row.payerId === you ? "You" : account.name;
         const cells: RowCells = {
           date: (
             <>
@@ -538,11 +593,6 @@ export function PartnerRegister({
               <span className={`${styles.truncate} ${local.payeeName}`}>
                 {payee(row)}
               </span>
-              {paidBy && (
-                <span className={`${local.paidBy} ${styles.faint}`}>
-                  {paidBy}
-                </span>
-              )}
               {row.awaitingImport && (
                 <LinkIcon
                   size={12}
@@ -564,12 +614,28 @@ export function PartnerRegister({
           ) : row.awaitingImport && row.payerId === view.budget.userId ? (
             <span className={styles.faint}>Waiting for your import</span>
           ) : row.kind === "repayment" ? (
-            <span className={styles.faint}>Repayment</span>
+            unconfirmed ? (
+              <Tag tone="attention">Review</Tag>
+            ) : (
+              <span className={styles.faint}>Repayment</span>
+            )
           ) : row.you === 0 ? (
             <span className={styles.faint}>Not yours</span>
           ) : (
             <span className={styles.muted}>
               {name(row.categoryId) ?? "No category"}
+            </span>
+          ),
+          paidBy: <span className={styles.muted}>{paidBy}</span>,
+          // What it cost, whoever paid; settlements and repayments moved
+          // only what they settled.
+          amount: (
+            <span className={styles.muted}>
+              {money(
+                row.kind === "purchase" || row.kind === "refund"
+                  ? row.shared
+                  : Math.abs(row.change),
+              )}
             </span>
           ),
           // Each cell carries its own tone, so it reads the same in the row
@@ -584,6 +650,7 @@ export function PartnerRegister({
               row={row}
               cells={cells}
               partnerName={account.name}
+              linked={linked}
               categoryEditable={checkable}
               focus={editing.field}
               onClose={() => closeEditor(row.id)}
@@ -620,7 +687,7 @@ export function PartnerRegister({
               data-entry-row={row.id}
               className={`${styles.txColumns} ${styles.row}`}
               aria-current={isSelected ? "true" : undefined}
-              aria-expanded={settlement ? isSelected : undefined}
+              aria-expanded={isSelected}
               onClick={(event) => {
                 if (checkable && event.shiftKey) {
                   checkTo(row.id, !isChecked);
@@ -667,10 +734,28 @@ export function PartnerRegister({
               <span className={styles.rowName} data-column="payee">
                 {cells.payee}
               </span>
+              <span
+                className={styles.truncate}
+                data-column="paidBy"
+                data-optional
+              >
+                {cells.paidBy}
+              </span>
               <span className={styles.truncate} data-column="category">
                 {cells.category}
               </span>
-              <span className={styles.numeric} data-column="amount">
+              <span
+                className={styles.numeric}
+                data-column="total"
+                data-optional
+              >
+                {cells.amount}
+              </span>
+              <span
+                className={styles.numeric}
+                data-column="amount"
+                aria-label={owedLabel(row.change, account.name)}
+              >
                 {money(row.change, true)}
               </span>
               <span className={styles.numeric} data-column="balance">
@@ -678,9 +763,12 @@ export function PartnerRegister({
               </span>
               <span />
             </button>
-            {isSelected && settlement && (
-              <SettlementDetail row={row} partnerName={account.name} />
-            )}
+            {isSelected &&
+              (settlement ? (
+                <SettlementDetail row={row} partnerName={account.name} />
+              ) : (
+                <EntryDetail row={row} name={account.name} linked={linked} />
+              ))}
           </div>
         );
       })}
@@ -819,7 +907,86 @@ function SettlementDetail({
   );
 }
 
-type RowCells = Record<"date" | "payee" | "category" | "balance", ReactNode>;
+type RowCells = Record<
+  "date" | "payee" | "paidBy" | "category" | "amount" | "balance",
+  ReactNode
+>;
+
+// How an entry's Owed figure reads aloud: which way it moved the balance.
+function owedLabel(change: number, name: string) {
+  if (change > 0) return `${name} owes you ${money(change)} more`;
+  if (change < 0) return `You owe ${name} ${money(-change)} more`;
+  return "Nothing owed";
+}
+
+// An entry other than a settlement, opened under its row: who paid and
+// each side's part. The selection island leads to the transaction behind
+// it.
+function EntryDetail({
+  row,
+  name,
+  linked,
+}: {
+  row: Row;
+  name: string;
+  linked: boolean;
+}) {
+  const { view } = useTransactionEntry();
+  const transaction = view.budget.transactions.find(
+    (item) => item.id === row.transactionId && !item.removed,
+  );
+  const account = view.accounts.find(
+    (item) => item.id === transaction?.accountId,
+  );
+  const category = view.categories.find((item) => item.id === row.categoryId);
+  const paid = row.payerId === view.budget.userId;
+  const facts: [string, string][] =
+    row.kind === "repayment"
+      ? [
+          [`${name} paid you back`, money(Math.abs(row.change))],
+          ...(account ? [["Into", account.name] as [string, string]] : []),
+        ]
+      : paid
+        ? [
+            [
+              row.kind === "refund" ? "Refunded to you" : "You paid",
+              money(row.shared),
+            ],
+            [`${name}’s share`, money(row.partner)],
+            ["Your part", money(row.you)],
+          ]
+        : [
+            [`${name} paid`, money(row.shared)],
+            ["Your share", money(row.you)],
+            [`${name}’s part`, money(row.partner)],
+          ];
+  const note =
+    row.kind === "repayment"
+      ? `It lowered what ${name} owes and refilled your ${name} envelope. Ready to Assign didn’t change.`
+      : row.you > 0 && category
+        ? `Your part is in ${category.name}.${linked ? " Only you see that." : ""}`
+        : row.you > 0
+          ? "Your part needs a category."
+          : `All of it is ${name}’s.`;
+  return (
+    <div
+      className={share.detail}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <div className={share.detailMain}>
+        <dl className={share.facts}>
+          {facts.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className={local.source}>{note}</p>
+      </div>
+    </div>
+  );
+}
 
 // An entry, opened in place with the register's editor row. Its amount is
 // the share of the one who didn't pay, which either partner can change; the
@@ -829,6 +996,7 @@ function EntryEditor({
   row,
   cells,
   partnerName,
+  linked,
   categoryEditable,
   focus,
   onClose,
@@ -836,6 +1004,8 @@ function EntryEditor({
   row: Row;
   cells: RowCells;
   partnerName: string;
+  // Whether the entry shows in the person's budget too.
+  linked: boolean;
   categoryEditable: boolean;
   // The field clicked to open it, which takes focus.
   focus: EditorField;
@@ -904,8 +1074,8 @@ function EntryEditor({
     if (cents === theirShare) return null;
     const notice =
       cents === 0
-        ? `Wrote off the share of ${row.payee}. Both ledgers show $0.00 now.`
-        : `${shareLabel} of ${row.payee} is ${money(cents)}. Both budgets updated.`;
+        ? `Wrote off the share of ${row.payee}.${linked ? " Both ledgers show $0.00 now." : ""}`
+        : `${shareLabel} of ${row.payee} is ${money(cents)}.${linked ? " Both budgets updated." : ""}`;
     // Your own imported purchase saves like its Share cell; anything else
     // goes through the shared entry, which changes the payer's transaction.
     return row.transactionId
@@ -965,6 +1135,7 @@ function EntryEditor({
       <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
         {readOnly("date", cells.date)}
         {readOnly("payee", cells.payee)}
+        {readOnly("paidBy", cells.paidBy)}
         {categoryEditable ? (
           <EditorCell column="category" label="Your category">
             <SearchList
@@ -979,8 +1150,9 @@ function EntryEditor({
         ) : (
           readOnly("category", cells.category)
         )}
+        {readOnly("total", cells.amount, true)}
         {shareEditable ? (
-          <EditorCell column="amount" label="Amount" error={errors.amount}>
+          <EditorCell column="amount" label={shareLabel} error={errors.amount}>
             <AmountInput
               inputRef={input}
               negative={row.change < 0}

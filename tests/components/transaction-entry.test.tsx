@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { SyncError } from "~/components/sync/transport";
 import { execute, personAccountId } from "~/domain/engine";
+import { withPeople } from "~/domain/people";
 import {
   deferred,
   findToast,
@@ -103,7 +104,7 @@ test("choosing a person under People categorizes the whole purchase and survives
   );
   await shell.user.click(screen.getByRole("option", { name: "New person…" }));
   await shell.user.type(screen.getByLabelText("New person"), "Mom");
-  await shell.user.click(screen.getByRole("button", { name: "Apply" }));
+  await shell.user.click(screen.getByRole("button", { name: "Add" }));
   expect(
     within(form).getByRole("combobox", { name: "Category" }),
   ).toHaveProperty("value", "Mom");
@@ -136,7 +137,7 @@ test("a person picked before the amount keeps the full share as the amount chang
   );
   await shell.user.click(screen.getByRole("option", { name: "New person…" }));
   await shell.user.type(screen.getByLabelText("New person"), "Mom");
-  await shell.user.click(screen.getByRole("button", { name: "Apply" }));
+  await shell.user.click(screen.getByRole("button", { name: "Add" }));
   await shell.user.type(
     within(form).getByLabelText("Outflow", { exact: true }),
     "11.54",
@@ -163,7 +164,7 @@ test("a person picked before the amount keeps the full share as the amount chang
 
 test("a share typed before the amount fills the outflow with it", async () => {
   const shell = await renderShell({
-    book: withCounterpartyAccounts(budgetFixture()),
+    book: withPeople(budgetFixture()),
   });
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
@@ -172,15 +173,16 @@ test("a share typed before the amount fills the outflow with it", async () => {
   await shell.user.keyboard("{Escape}");
   const form = screen.getByRole("form", { name: "New transaction" });
   await shell.user.click(within(form).getByRole("button", { name: /^Share / }));
-  await shell.user.click(
-    screen.getByRole("button", { name: /Someone else owes/ }),
-  );
-  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
-  await shell.user.clear(screen.getByLabelText("Amount", { exact: true }));
   await shell.user.type(
-    screen.getByLabelText("Amount", { exact: true }),
-    "120",
+    screen.getByRole("combobox", { name: "Who is this for" }),
+    "Mom",
   );
+  await shell.user.click(
+    screen.getByRole("option", { name: "New person “Mom”" }),
+  );
+  await shell.user.click(screen.getByRole("button", { name: /An amount/ }));
+  await shell.user.clear(screen.getByLabelText("Mom’s share"));
+  await shell.user.type(screen.getByLabelText("Mom’s share"), "120");
   await shell.user.click(screen.getByRole("button", { name: "Apply" }));
   expect(
     within(form).getByLabelText("Outflow", { exact: true }),
@@ -206,19 +208,22 @@ test("a full share saves from the register and reducing it asks for a personal c
     screen.getByRole("button", { name: "Share Noodles Plus" }),
   );
   // A new person, then all of it theirs.
-  await shell.user.click(screen.getByRole("button", { name: /New person/ }));
-  await shell.user.type(screen.getByLabelText("Name"), "Mom");
-  await shell.user.click(screen.getByRole("button", { name: "Add" }));
-  await shell.user.click(screen.getByRole("button", { name: /All Mom's/ }));
+  await shell.user.type(
+    screen.getByRole("combobox", { name: "Who is this for" }),
+    "Mom",
+  );
+  await shell.user.click(
+    screen.getByRole("option", { name: "New person “Mom”" }),
+  );
+  await shell.user.click(screen.getByRole("button", { name: /^All of it/ }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   await shell.user.click(
-    screen.getByRole("button", { name: /Mom's share of Noodles Plus/ }),
+    screen.getByRole("button", { name: /Mom’s share of Noodles Plus/ }),
   );
   const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
-  await shell.user.click(menu.getByRole("button", { name: /^Mom/ }));
-  await shell.user.click(menu.getByRole("button", { name: /Amount…/ }));
-  await shell.user.clear(screen.getByLabelText("Mom's share"));
-  await shell.user.type(screen.getByLabelText("Mom's share"), "7.00");
+  await shell.user.click(menu.getByRole("button", { name: /An amount/ }));
+  await shell.user.clear(screen.getByLabelText("Mom’s share"));
+  await shell.user.type(screen.getByLabelText("Mom’s share"), "7.00");
   await shell.user.click(screen.getByRole("button", { name: "Apply" }));
   const form = screen.getByRole("form", { name: "Edit transaction" });
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
@@ -260,7 +265,7 @@ test("a split line can go entirely to someone under People", async () => {
   );
   await shell.user.click(screen.getByRole("option", { name: "New person…" }));
   await shell.user.type(screen.getByLabelText("New person"), "Mom");
-  await shell.user.click(screen.getByRole("button", { name: "Apply" }));
+  await shell.user.click(screen.getByRole("button", { name: "Add" }));
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   await shell.reload();
@@ -349,7 +354,7 @@ test("writing off a person's full share opens the editor to categorize the new p
   await shell.user.click(transactionRow("Noodles Plus"));
   expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
   await shell.user.click(
-    screen.getByRole("button", { name: /Mom's share of Noodles Plus/ }),
+    screen.getByRole("button", { name: /Mom’s share of Noodles Plus/ }),
   );
   await shell.user.click(screen.getByRole("button", { name: /Just mine/ }));
   const form = screen.getByRole("form", { name: "Edit transaction" });

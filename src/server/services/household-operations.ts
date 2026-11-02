@@ -124,10 +124,7 @@ export async function addCounterpartyAccounts(
   if (ledger.status !== "ready" || ledger.personal || ledger.failures.length)
     return;
   const book = ledger.state as Book;
-  const changes = diffRows(
-    bookToRows(book),
-    bookToRows(withPeople(book)),
-  );
+  const changes = diffRows(bookToRows(book), bookToRows(withPeople(book)));
   if (!changes.after.length) return;
   const operationId = randomUUID();
   try {
@@ -210,9 +207,7 @@ async function join(
           code: "NOT_FOUND",
           message: "This invitation is invalid, expired, or already used.",
         });
-      const merged = withPeople(
-        mergeBooks(host.book, own.book, userId),
-      );
+      const merged = withPeople(mergeBooks(host.book, own.book, userId));
       const operationId = randomUUID();
       const changeSet: ChangeSet = {
         operationId,

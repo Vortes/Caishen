@@ -1247,9 +1247,9 @@ export function RegisterView({
     if (counterparty && !search)
       return (
         <Empty title="Nothing owed yet." icon={UsersIcon}>
-          {counterparty.kind === "partner"
+          {counterparty.linkedUserId && !counterparty.closed
             ? `When you and ${counterparty.name} share a cost, what one of you owes the other shows here.`
-            : "When you pay for someone, what they owe you shows here. Its envelope in People can set money aside to cover it."}
+            : `When you pay for ${counterparty.name}, what they owe you shows here. Their envelope in People can set money aside to cover it.`}
         </Empty>
       );
     return search ? (

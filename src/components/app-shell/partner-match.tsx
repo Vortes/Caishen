@@ -4,9 +4,10 @@ import { LinkIcon } from "lucide-react";
 import type { PartnerImportMatch } from "~/components/transactions/import-draft";
 import { Button } from "~/components/ui/button";
 import { money, shortDay } from "./model";
+import { isLinked } from "./people";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
-import styles from "./partner-register.module.css";
+import styles from "./person-register.module.css";
 
 // A bank import that may be a purchase recorded before it arrived. The
 // payer says which, so it's never counted twice or matched to the wrong
@@ -16,8 +17,8 @@ export function PartnerMatches({ matches }: { matches: PartnerImportMatch[] }) {
   const { view } = entry;
   const { accounts } = useShellData();
   const partner =
-    accounts.find((account) => account.kind === "partner")?.name ??
-    "Your partner";
+    accounts.find((account) => isLinked(account) && account.kind === "person")
+      ?.name ?? "Your partner";
   const single = matches.length === 1;
   return (
     <div className={styles.matches}>

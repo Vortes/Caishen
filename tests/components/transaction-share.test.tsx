@@ -34,8 +34,9 @@ async function pickShare(
   person: string,
   amount: RegExp,
 ) {
+  await user.click(screen.getByRole("combobox", { name: "Who is this for" }));
   await user.click(
-    screen.getByRole("button", { name: new RegExp(`^${person}(?!')`) }),
+    screen.getByRole("option", { name: new RegExp(`^${person}`) }),
   );
   await user.click(screen.getByRole("button", { name: amount }));
 }
@@ -117,7 +118,7 @@ test("mixed selections offer Share for eligible purchases and leave transfers se
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await pickShare(shell.user, "Mom", /^All Mom's/);
+  await pickShare(shell.user, "Mom", /^All of it/);
   await shell.user.click(
     screen.getByRole("button", { name: "Share 1 transaction" }),
   );
@@ -131,7 +132,7 @@ test("mixed selections offer Share for eligible purchases and leave transfers se
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   expect(
     await screen.findByRole("button", {
-      name: "Mom's share of Coffee: $25.00. Change",
+      name: "Mom’s share of Coffee: $25.00. Change",
     }),
   ).toBeTruthy();
   expect(
@@ -196,7 +197,7 @@ test("sharing previews the whole selection before the server answers and restore
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await pickShare(user, "Mom", /^All Mom's/);
+  await pickShare(user, "Mom", /^All of it/);
   await user.click(
     screen.getByRole("button", { name: "Share 3 transactions" }),
   );
@@ -208,7 +209,7 @@ test("sharing previews the whole selection before the server answers and restore
   ]) {
     expect(
       screen.getByRole("button", {
-        name: `Mom's share of ${payee}: ${amount}. Change`,
+        name: `Mom’s share of ${payee}: ${amount}. Change`,
       }),
     ).toBeTruthy();
     expect(
@@ -223,7 +224,7 @@ test("sharing previews the whole selection before the server answers and restore
   await waitFor(() =>
     expect(
       screen.queryByRole("button", {
-        name: "Mom's share of Imported coffee: $25.01. Change",
+        name: "Mom’s share of Imported coffee: $25.01. Change",
       }),
     ).toBeNull(),
   );
@@ -239,12 +240,12 @@ test("sharing previews the whole selection before the server answers and restore
   ).toBe("false");
   expect(
     screen.getByRole("button", {
-      name: "Mom's share of Market: $10.00. Change",
+      name: "Mom’s share of Market: $10.00. Change",
     }),
   ).toBeTruthy();
   expect(
     screen.getByRole("button", {
-      name: "Mom's share of Imported lunch: $15.01. Change",
+      name: "Mom’s share of Imported lunch: $15.01. Change",
     }),
   ).toBeTruthy();
   await user.click(
@@ -252,12 +253,12 @@ test("sharing previews the whole selection before the server answers and restore
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await pickShare(user, "Mom", /^All Mom's/);
+  await pickShare(user, "Mom", /^All of it/);
   await user.click(screen.getByRole("button", { name: "Share 1 transaction" }));
   await waitFor(() =>
     expect(
       screen.getByRole("button", {
-        name: "Mom's share of Imported coffee: $25.01. Change",
+        name: "Mom’s share of Imported coffee: $25.01. Change",
       }),
     ).toBeTruthy(),
   );
@@ -287,13 +288,13 @@ test("a rejected import also rolls back edits made to its preview instead of cre
   await user.click(
     screen.getByRole("button", { name: "Share Imported coffee" }),
   );
-  await pickShare(user, "Mom", /^All Mom's/);
+  await pickShare(user, "Mom", /^All of it/);
   let form = within(screen.getByRole("form", { name: "Edit transaction" }));
   await user.click(form.getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   await user.click(
     screen.getByRole("button", {
-      name: "Mom's share of Imported coffee: $25.00. Change",
+      name: "Mom’s share of Imported coffee: $25.00. Change",
     }),
   );
   await user.click(screen.getByRole("button", { name: /Just mine/ }));
@@ -365,7 +366,7 @@ test("the island fully reimburses unequal imports to someone else without requir
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await pickShare(user, "Mom", /^All Mom's/);
+  await pickShare(user, "Mom", /^All of it/);
   const form = within(screen.getByRole("form", { name: "Share transactions" }));
   expect(
     form.queryByRole("combobox", { name: "Category for your portion" }),
@@ -375,12 +376,12 @@ test("the island fully reimburses unequal imports to someone else without requir
   await waitFor(() => {
     expect(
       screen.getByRole("button", {
-        name: "Mom's share of Imported coffee: $25.01. Change",
+        name: "Mom’s share of Imported coffee: $25.01. Change",
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Mom's share of Imported lunch: $15.01. Change",
+        name: "Mom’s share of Imported lunch: $15.01. Change",
       }),
     ).toBeTruthy();
   });
@@ -440,12 +441,12 @@ test("the selection island splits each uncategorized import and categorizes only
   await waitFor(() => {
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported coffee: $12.50. Change",
+        name: "Anna’s share of Imported coffee: $12.50. Change",
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported lunch: $7.50. Change",
+        name: "Anna’s share of Imported lunch: $7.50. Change",
       }),
     ).toBeTruthy();
   });
@@ -507,7 +508,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await pickShare(user, "Anna", /^All Anna's/);
+  await pickShare(user, "Anna", /^All of it/);
   await user.click(
     within(screen.getByRole("form", { name: "Share transactions" })).getByRole(
       "button",
@@ -532,7 +533,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await pickShare(user, "Anna", /^All Anna's/);
+  await pickShare(user, "Anna", /^All of it/);
   const form = within(screen.getByRole("form", { name: "Share transactions" }));
   expect(
     form.queryByRole("combobox", { name: "Category for your portion" }),
@@ -541,7 +542,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
   await waitFor(() =>
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported coffee: $25.00. Change",
+        name: "Anna’s share of Imported coffee: $25.00. Change",
       }),
     ).toBeTruthy(),
   );
@@ -595,7 +596,7 @@ test("sharing a saved purchase and a bank import keeps keyboard focus and needs 
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await pickShare(user, "Anna", /^All Anna's/);
+  await pickShare(user, "Anna", /^All of it/);
   const form = within(screen.getByRole("form", { name: "Share transactions" }));
   const save = form.getByRole("button", { name: "Share 2 transactions" });
   expect(document.activeElement).toBe(save);
@@ -604,12 +605,12 @@ test("sharing a saved purchase and a bank import keeps keyboard focus and needs 
   await waitFor(() => {
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Market: $30.00. Change",
+        name: "Anna’s share of Market: $30.00. Change",
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported coffee: $18.00. Change",
+        name: "Anna’s share of Imported coffee: $18.00. Change",
       }),
     ).toBeTruthy();
   });
@@ -690,7 +691,7 @@ test.each([
     await waitFor(() =>
       expect(
         screen.getByRole("button", {
-          name: "Anna's share of Imported coffee: $12.50. Change",
+          name: "Anna’s share of Imported coffee: $12.50. Change",
         }),
       ).toBeTruthy(),
     );

@@ -107,22 +107,18 @@
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
-.optionKey {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  color: var(--text-tertiary);
-  font-family: inherit;
-  font-size: var(--type-caption);
+/* Who the share is with, between the header and the amounts. */
+.whoField {
+  padding: 12px 12px 0;
 }
-@media (hover: none) {
-  .optionKey {
-    display: none;
-  }
+.newPerson {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Just mine stands apart from the amounts it clears. */
+.shareOptions[data-after] {
+  border-top: 1px solid var(--border-subtle);
 }
 .popoverHint {
   margin: 0;

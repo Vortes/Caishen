@@ -10,8 +10,7 @@ import {
   reconciledLabel,
   type Reconciling,
 } from "./reconcile";
-import { FormerPartnerSummary, PartnerSummary } from "./partner-register";
-import { ReimbursementsSummary } from "./reimbursements-register";
+import { PersonSummary } from "./person-register";
 import { useShellData } from "./shell-data";
 import styles from "./shell.module.css";
 
@@ -22,35 +21,18 @@ export function AccountSummary({
   accounts,
   account,
   reconciling,
-  owedBy,
 }: {
   accounts: Account[];
   account?: Account;
   reconciling: Reconciling;
-  // The person or organization the Reimbursements register is narrowed to.
-  owedBy: string | null;
 }) {
   const { today } = useShellData();
   const working = accounts.reduce((sum, item) => sum + item.balance, 0);
   const uncleared = accounts.reduce((sum, item) => sum + item.uncleared, 0);
-  if (account?.kind === "reimbursements")
-    return <ReimbursementsSummary account={account} who={owedBy} />;
-  if (account?.kind === "partner") return <PartnerSummary account={account} />;
-  if (account?.kind === "former-partner")
-    return <FormerPartnerSummary account={account} />;
-  // No bank clears a counterparty account's entries: its balance is just
-  // what one side owes the other.
+  // No bank clears a person's entries: their balance is just what one of
+  // you owes the other.
   if (account && isCounterparty(account))
-    return (
-      <div className={styles.accountSummary}>
-        <dl className={styles.balances}>
-          <div data-total>
-            <dt>{account.balance < 0 ? "You owe" : "Owed to you"}</dt>
-            <dd>{money(Math.abs(account.balance))}</dd>
-          </div>
-        </dl>
-      </div>
-    );
+    return <PersonSummary account={account} />;
   return (
     <div className={styles.accountSummary}>
       <dl className={styles.balances}>

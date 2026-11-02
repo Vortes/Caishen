@@ -1,6 +1,7 @@
 import type { View } from "~/components/budget/types";
 import type { CounterpartyShare } from "~/domain/engine";
 import { isFullShare } from "~/domain/counterparty";
+import { partnerAccountOf } from "~/domain/partner-ledger";
 import {
   buildTransactionDraftCommand,
   createTransactionDraft,
@@ -21,9 +22,9 @@ export type ShareChoice = {
 };
 export const halfOf = (amount: number) => Math.floor(Math.abs(amount) / 2);
 
-// A partner share set to nothing stays on the partner account at $0.00, so
-// the write-off and its history stay visible. Any other empty share is just
-// no share.
+// A share with the partner set to nothing stays on their account at $0.00,
+// so the write-off and its history stay visible in both budgets. Any other
+// empty share is just no share.
 export function keepShare(
   saved: CounterpartyShare | null | undefined,
   next: CounterpartyShare | null,
@@ -80,7 +81,7 @@ export function prepareTransactionShares(
     const share = keepShare(
       transaction?.counterpartyShare,
       shareForAmount(choice, item.amount),
-      view.accounts.find((account) => account.kind === "partner")?.id,
+      partnerAccountOf(view.budget)?.id,
     );
     draft.counterpartyShare = share && {
       ...share,

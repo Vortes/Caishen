@@ -24,7 +24,7 @@ import { money, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
 import { halfOf } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
-import local from "./partner-register.module.css";
+import local from "./person-register.module.css";
 
 type Field = "payee" | "amount" | "share";
 

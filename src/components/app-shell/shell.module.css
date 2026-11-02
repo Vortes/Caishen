@@ -1804,6 +1804,28 @@ button.actionItem:disabled {
   color: var(--text-tertiary);
   font-size: var(--type-small);
 }
+/* Reveals what a section keeps folded away, like settled people. */
+.navMore {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--size-row-sm);
+  padding: 0 8px 0 20px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--type-small);
+  text-align: left;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.navMore:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
 /* ---------- Collapsed sidebar peek ---------- */
 
 /* Floats below the header so the breadcrumb and sidebar button stay usable.

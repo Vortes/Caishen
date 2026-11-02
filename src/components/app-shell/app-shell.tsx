@@ -26,7 +26,7 @@ import {
   type Added,
 } from "./add-category";
 import { AppearanceSettings } from "./appearance";
-import { PartnerSettings } from "~/components/settings/partner";
+import { PeopleSettings } from "~/components/settings/people";
 import { ProfileSettings } from "~/components/settings/profile";
 import { Inspector } from "./inspector";
 import { MonthNav } from "./month-picker";
@@ -52,11 +52,7 @@ import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Way } from "./transaction-review";
-import { PartnerRegister } from "./partner-register";
-import {
-  ReimbursementFilters,
-  ReimbursementsRegister,
-} from "./reimbursements-register";
+import { PersonRegister } from "./person-register";
 import type { Highlight } from "./reflect/chart-utils";
 import { SpendingList, SpendingListSkeleton } from "./reflect/spending-list";
 import { ReflectFilters } from "./reflect/filters";
@@ -94,7 +90,7 @@ import type { UpdatePreferences } from "~/components/entry/profile-preferences";
 const settingsTitles: Record<SettingsPage, string> = {
   profile: "Profile",
   appearance: "Appearance",
-  partner: "Partner",
+  people: "People",
 };
 
 // A panel nobody has resized fills the window's cap; a resized one keeps its
@@ -182,8 +178,8 @@ export function AppShell({
     screen.type === "register"
       ? accounts.find((item) => item.id === screen.accountId)
       : undefined;
-  // Partner and Reimbursements fill from shares and settlements, not from
-  // entries or bank statements.
+  // A person's account fills from shares, repayments, and settlements, not
+  // from entries or bank statements.
   const recordable =
     screen.type === "register" && !(account && isCounterparty(account));
   const [reportKind, setReportKind] = useState<ReportKind>("breakdown");
@@ -239,8 +235,6 @@ export function AppShell({
   const deferredQuery = useDeferredValue(query);
   const registerPath = budgetAddress.pathname;
   useEffect(() => setQuery(routeQuery), [registerPath, routeQuery]);
-  // The person or organization the Reimbursements register is narrowed to.
-  const [owedBy, setOwedBy] = useState<string | null>(null);
   // Transient selections and filters belong to the address they were opened on.
   const selectionSearch = new URLSearchParams(budgetAddress.searchParams);
   selectionSearch.delete("month");
@@ -253,7 +247,6 @@ export function AppShell({
     setChecked(
       routeSelection && screen.type === "register" ? [routeSelection] : [],
     );
-    setOwedBy(null);
   }, [selectionAddress, routeSelection, screen.type]);
   const [addingGroup, setAddingGroup] = useState(false);
   const [revealed, setRevealed] = useState<Added | null>(null);
@@ -858,8 +851,8 @@ export function AppShell({
                       className={styles.content}
                       tabIndex={-1}
                     >
-                      {settingsPage === "partner" ? (
-                        <PartnerSettings />
+                      {settingsPage === "people" ? (
+                        <PeopleSettings />
                       ) : settingsPage === "profile" ? (
                         <ProfileSettings
                           onRename={renameBudget}
@@ -882,7 +875,6 @@ export function AppShell({
                         accounts={account ? [account] : accounts}
                         account={account}
                         reconciling={reconciling}
-                        owedBy={owedBy}
                       />
                     )}
 
@@ -905,13 +897,6 @@ export function AppShell({
                             setFilters(next);
                             setPath({});
                           }}
-                        />
-                      )}
-                      {account?.kind === "reimbursements" && (
-                        <ReimbursementFilters
-                          account={account}
-                          value={owedBy}
-                          onChange={setOwedBy}
                         />
                       )}
                       {recordable && (
@@ -1010,9 +995,8 @@ export function AppShell({
                         )}
                         {screen.type === "register" && (
                           <>
-                            {account?.kind === "partner" ||
-                            account?.kind === "former-partner" ? (
-                              <PartnerRegister
+                            {account?.kind === "person" ? (
+                              <PersonRegister
                                 key={account.id}
                                 account={account}
                                 query={deferredQuery}
@@ -1021,14 +1005,6 @@ export function AppShell({
                                 onSelect={selectOnly}
                                 checked={checked}
                                 onCheck={check}
-                              />
-                            ) : account?.kind === "reimbursements" ? (
-                              <ReimbursementsRegister
-                                key={account.id}
-                                account={account}
-                                who={owedBy}
-                                query={deferredQuery}
-                                onJump={jump}
                               />
                             ) : (
                               <RegisterView

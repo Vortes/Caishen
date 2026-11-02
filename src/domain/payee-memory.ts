@@ -139,8 +139,7 @@ export function rememberedCounterpartyShare(
   const counterparty = budget.accounts.find(
     (item) => item.id === share.accountId,
   );
-  if (!counterparty || counterparty.kind !== "person" || counterparty.closed)
-    return undefined;
+  if (counterparty?.kind !== "person" || counterparty.closed) return undefined;
   return {
     ...share,
     amount:

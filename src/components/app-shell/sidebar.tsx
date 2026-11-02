@@ -7,13 +7,13 @@ import {
   ChartPieIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
-  HeartHandshakeIcon,
   LogOutIcon,
   PaletteIcon,
   CircleUserRoundIcon,
   PanelLeftIcon,
   SettingsIcon,
   UserPlusIcon,
+  UsersIcon,
   WalletCardsIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -32,6 +32,7 @@ import { AccountEntry } from "./account-entry";
 import { useAddCategory } from "./add-category";
 import { BanksPopover } from "./banks";
 import { isCounterparty, money } from "./model";
+import { isLinked, isSettled } from "./people";
 import { type Screen, type SettingsPage } from "~/components/workspace/routes";
 import { EASE, SETTLE_MS, useReorderDrag } from "./reorder-drag";
 import { useShellData } from "./shell-data";
@@ -57,7 +58,20 @@ export function Sidebar({
   sectionOrder: string[];
   onReorderSections: (order: string[]) => void;
 }) {
-  const { accounts, loans, transactions } = useShellData();
+  const { accounts, categories, loans, transactions } = useShellData();
+  // Settled people stay out of the way until asked for, unless one is open.
+  // The partner, on Caishen, always shows.
+  const [showSettled, setShowSettled] = useState(false);
+  const floatOf = (accountId: string) =>
+    categories.find((category) => category.pairs?.accountId === accountId)
+      ?.available ?? 0;
+  const people = accounts.filter((account) => isCounterparty(account));
+  const settled = people.filter(
+    (account) =>
+      !isLinked(account) &&
+      isSettled(account, floatOf(account.id)) &&
+      !(screen.type === "register" && screen.accountId === account.id),
+  );
   const reviewCount = transactions.filter((item) => item.needsReview).length;
   const [closed, setClosed] = useState<string[]>([]);
   const toggle = (id: string) =>
@@ -120,13 +134,27 @@ export function Sidebar({
         })),
     },
     {
-      // The counterparty accounts: the partner, Reimbursements, and each
-      // former partner's closed account.
+      // Everyone who owes you or whom you owe: the partner first, then the
+      // rest as ordered, then former partners' closed accounts.
       id: "people",
       label: "People",
       empty: undefined,
-      items: accounts
-        .filter((account) => isCounterparty(account))
+      more: settled.length ? (
+        <button
+          type="button"
+          className={styles.navMore}
+          aria-expanded={showSettled}
+          onClick={() => setShowSettled((value) => !value)}
+        >
+          {showSettled ? "Hide settled" : `Show settled (${settled.length})`}
+        </button>
+      ) : undefined,
+      items: [
+        ...people.filter(isLinked),
+        ...people.filter((account) => !isLinked(account) && !account.closed),
+        ...people.filter((account) => account.closed),
+      ]
+        .filter((account) => showSettled || !settled.includes(account))
         .map((account) => ({
           id: account.id,
           label: account.name,
@@ -161,7 +189,10 @@ export function Sidebar({
     return section ? [section] : [];
   });
   const visible = ordered.filter(
-    (section) => section.items.length || section.empty,
+    (section) =>
+      section.items.length > 0 ||
+      Boolean(section.empty) ||
+      ("more" in section && Boolean(section.more)),
   );
   const reorder = useReorderDrag({
     ids: visible.map((section) => section.id),
@@ -300,8 +331,11 @@ export function Sidebar({
                               onNavigate={onNavigate}
                             />
                           ) : (
-                            <p className={styles.navEmpty}>{section.empty}</p>
+                            section.empty && (
+                              <p className={styles.navEmpty}>{section.empty}</p>
+                            )
                           )}
+                          {"more" in section && section.more}
                         </div>
                       </div>
                     </>
@@ -391,10 +425,10 @@ export function SettingsNav({
             onNavigate={onNavigate}
           />
           <NavItem
-            icon={HeartHandshakeIcon}
-            label="Partner"
-            current={page === "partner"}
-            href={hrefFor("partner")}
+            icon={UsersIcon}
+            label="People"
+            current={page === "people"}
+            href={hrefFor("people")}
             onNavigate={onNavigate}
           />
         </ul>
@@ -434,8 +468,8 @@ function ProfileMenu({
       />
       <MenuItem
         icon={<UserPlusIcon size={14} aria-hidden />}
-        title={partner ? "Partner" : "Invite partner"}
-        href={hrefFor("partner")}
+        title={partner ? "People" : "Invite someone to Caishen"}
+        href={hrefFor("people")}
         onNavigate={onNavigate}
       />
       <MenuSeparator />
