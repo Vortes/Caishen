@@ -5,7 +5,7 @@ The language used to describe spending, categorization, and decisions about how 
 ## Language
 
 **Personal budget**:
-An individual's plan for their money and spending. Each partner has a separate personal budget; only the partner ledger is visible to both, and everything else, including categories and Reimbursements, stays private.
+An individual's plan for their money and spending. Each partner has a separate personal budget; only the partner ledger is visible to both, and everything else, including categories and every other person's account, stays private.
 
 **Budget currency**:
 US dollars (USD), used for both personal budgets, their envelope allocations, and settlements in the first version.
@@ -68,22 +68,23 @@ The assignment of spending to a budget category that describes its purpose.
 **Counterparty**:
 A person or organization who owes you, or whom you owe, for part of what you paid: your partner, or anyone else, such as an employer or a friend.
 
+**Person**:
+A counterparty with an account of their own in your budget, holding what they owe you (positive) or you owe them (negative), and one paired envelope in People. You add a person by name the first time you share with them. Everyone you track is a person, whether or not they use Caishen.
+_Avoid_: Reimbursements, obligation, receivable, payee
+
 **Counterparty account**:
-An account in your budget that holds what one kind of counterparty owes you (positive) or you owe them (negative). Every budget has a Reimbursements account; a partnered budget also has a Partner account.
-_Avoid_: Obligation, receivable
+A person's account. Shares and repayments name it, never a free-text name.
 
-**Reimbursements account**:
-The private counterparty account for everyone except your partner. Each of its entries names the person or organization involved, and is filtered by them rather than given an account of its own.
-
-**Partner account**:
-The counterparty account for your partner, showing the partner ledger. Its balance is the opposite of the same account in your partner's budget.
+**Linked person**:
+The person who is also the other member of your household: your partner, shown as "On Caishen". What you share with them is mirrored into the partner ledger, and their account's balance is the opposite of the same account in their budget. A budget has at most one.
+_Avoid_: Partner account
 
 **Invitation**:
 A handwritten card one person sends by email to the partner they want. Opening its link is what proves it; it is live until it is used, cancelled, replaced by a newer one, or expires.
 _Avoid_: Invite code, token
 
 **Former partner**:
-A partner who disconnected, or whose account was deleted. Each side keeps the partner ledger as it stood, frozen under a closed counterparty account named after the former partner, which can neither be settled nor added to and leaves the partner slot free.
+A linked person who disconnected, or whose account was deleted. Each side keeps the partner ledger as it stood, frozen under a closed, unlinked person named after the former partner, which can neither be settled nor added to and leaves the partner slot free.
 _Avoid_: Ex-partner, removed member
 
 **Paired envelope**:
@@ -145,7 +146,7 @@ Comparison of recorded account activity and cleared balances against financial-i
 A difference between the recorded account and financial-institution records that remains unexplained after investigation, including statement comparison. It is surfaced for user input rather than silently removed through an invented adjustment; an account is reconciled only when its cleared balance matches the bank's at the same point in time.
 
 **Partner ledger**:
-The one record of what the partners owe each other, held by both budgets: each shared purchase's date, payee, amount, who paid, and the other partner's share, plus settlements between them. It shares no category, no line without a share, no other account, and nothing from Reimbursements.
+The one record of what the partners owe each other, held by both budgets: each shared purchase's date, payee, amount, who paid, and the other partner's share, plus settlements between them. It shares no category, no line without a share, no other account, and nothing about any other person.
 
 **Source line facts**:
 The facts inside a mirrored partner entry's source that let either partner's browser enforce share-edit rules: whether the payer's line has a purpose category and whether it is on a split purchase. They disclose no category identifier or other private value. A recorded purchase awaiting its payer's import has no source yet.
@@ -161,11 +162,11 @@ A partner ledger entry either partner records for a purchase before the payer's 
 Pairing a payer's bank import with their recorded purchase, so the purchase counts once. A certain match is made as the import arrives; any other possible match waits in the review inbox for the payer to confirm, and the import doesn't count until then.
 
 **Repayment**:
-Money a counterparty pays you back. It reduces what they owe and restores their paired envelope; it is never income and never goes to Ready to Assign.
+Money a person who isn't linked pays you back, recorded from their register or recognized in a bank import by their name. It reduces what they owe and restores their paired envelope; it is never income and never goes to Ready to Assign. The linked person pays you back by a settlement instead.
 _Avoid_: Reimbursement received
 
 **Settlement**:
-A payment between the partners, such as a Venmo, Zelle, or bank transfer, or one partner paying the other's credit card. It is always recorded in both budgets at once, moves both Partner accounts, and never touches Ready to Assign; confirming it in either budget confirms it in both.
+A payment between the partners, such as a Venmo, Zelle, or bank transfer, or one partner paying the other's credit card. It is always recorded in both budgets at once, moves both linked people's accounts, and never touches Ready to Assign; confirming it in either budget confirms it in both.
 _Avoid_: Net settlement
 
 **Request**:
