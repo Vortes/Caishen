@@ -55,6 +55,14 @@ An imported transaction's payee as the bank provides it: the bank's merchant nam
 **Transaction**:
 A single financial activity, such as a purchase or repayment. Its reported amount can change as the activity is finalized without becoming a second purchase or repayment.
 
+**Starting Balance**:
+The earliest transaction in an account: a balance adjustment holding everything that happened in the account before it was added, as one amount.
+_Avoid_: Balance when added, opening row
+
+**Balance adjustment**:
+A transaction that changes an account's balance without being a purchase, income or transfer: a Starting Balance, or a difference the user accepts when reconciling. On a cash account it is money for Ready to Assign; on any other account it needs no category.
+_Avoid_: Correction, plug
+
 **Register entry**:
 A transaction or bank inbox item named once by the domain with its financial shape and the actions the register may offer. A permitted action still validates the values the user submits.
 _Avoid_: Transaction variant, editable-kind list
