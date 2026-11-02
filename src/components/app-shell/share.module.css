@@ -113,10 +113,16 @@
   text-align: left;
   cursor: pointer;
 }
-.shareOption:hover:not(:disabled),
 .shareOption:focus-visible {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+/* Only a real pointer hovers; a tap on An amount… leaves no fill behind. */
+@media (hover: hover) {
+  .shareOption:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
 }
 /* The share as it stands, in the weight a search list gives its chosen
    option; no fill, so it never outweighs the choice still to make. */
