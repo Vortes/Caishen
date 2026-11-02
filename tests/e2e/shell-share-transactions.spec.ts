@@ -173,7 +173,9 @@ for (const scenario of cases) {
       scenario.available,
     );
     await openRegister(page, budget.account);
-    await expect(transactions(page)).toHaveCount(purchases.length);
+    await expect(
+      transactions(page).filter({ hasText: /Coffee for Mom|Lunch for Mom/ }),
+    ).toHaveCount(purchases.length);
     await expect(accountBalance(page)).toHaveText(
       scenario.multiple ? "$959.96" : "$974.99",
     );

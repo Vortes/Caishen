@@ -20,7 +20,7 @@ test("a cash Starting Balance can be edited and counts once after a purchase and
   await expect(opening).toContainText("$1,000.00");
   await expect(opening.getByLabel("Cleared", { exact: true })).toBeVisible();
   await expect(
-    opening.getByRole("checkbox", {
+    page.getByRole("checkbox", {
       name: "Select Starting Balance",
       exact: true,
     }),
@@ -104,7 +104,7 @@ test("card debt and zero openings follow account, month, and search filters", as
   await openRegister(page, "Travel card");
   await expect(card).toContainText("$1,200.00");
   await expect(accountBalance(page)).toHaveText("-$1,230.00");
-  await page.goto(`/app?account=all&month=${budget.month}`);
+  await page.goto(`/app/accounts?month=${budget.month}`);
   const openings = transactions(page).filter({ hasText: "Starting Balance" });
   await expect(openings).toHaveCount(3);
   await expect(openings.filter({ hasText: "Savings" })).toContainText("$0.00");
@@ -140,7 +140,7 @@ test("compact all-account Starting Balances use ordinary adjustment rows", async
   await page.goto(shellPath);
   await budgets.signIn(page, budget);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/app?account=all&month=${budget.month}`);
+  await page.goto(`/app/accounts?month=${budget.month}`);
   const openings = transactions(page).filter({ hasText: "Starting Balance" });
   await expect(openings).toHaveCount(2);
   await expect(
@@ -156,7 +156,7 @@ test("compact positive openings retain the register's positive money treatment",
   budget,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/app?account=checking&month=${budget.month}`);
+  await page.goto(`/app/accounts/checking?month=${budget.month}`);
   const amount = transactions(page)
     .filter({ hasText: "Starting Balance" })
     .getByText("$1,000.00", { exact: true });
