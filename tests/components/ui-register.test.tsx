@@ -310,3 +310,25 @@ test("finishing a text selection does not select or open the row", async () => {
   expect(row.getAttribute("aria-current")).toBeNull();
   expect(screen.getByLabelText("Opened").textContent).toBe("");
 });
+
+test("a caller can set the shared checkbox gutter for its cells and editor", () => {
+  render(
+    <Register
+      columns={[{ key: "name", label: "Name" }]}
+      layout={{ wide: "minmax(0, 1fr)", gutter: "34px" }}
+      rows={rows}
+      cells={(row) => ({ label: row.name, content: row.name })}
+      checkable={() => true}
+      selectedId={null}
+      onSelect={() => undefined}
+      checked={[]}
+      onCheck={() => undefined}
+      onOpen={() => undefined}
+    />,
+  );
+  expect(
+    getComputedStyle(
+      screen.getByRole("group", { name: "Register" }),
+    ).getPropertyValue("--row-gutter"),
+  ).toBe("34px");
+});
