@@ -550,74 +550,107 @@ export function buildDevelopmentSeed({
     annualRateBps: 675,
     effectiveDate: date(month, 1),
   });
-  buy(
-    userId,
-    month,
-    6,
+  // The other people's entries run over the last six weeks, counted back
+  // from the seed date, so their registers read as weeks of history
+  // whatever day of the month it is.
+  const ago = (days: number): [string, number] => {
+    const day = new Date(`${asOf}T12:00:00Z`);
+    day.setUTCDate(day.getUTCDate() - days);
+    const iso = day.toISOString();
+    return [iso.slice(0, 7), Number(iso.slice(8, 10))];
+  };
+  const shared = (
+    days: number,
+    transactionId: string,
+    payee: string,
+    amount: number,
+    categoryId: string,
+    accountId: string,
+    person: string,
+    theirs: number,
+  ) => {
+    const [period, day] = ago(days);
+    buy(
+      userId,
+      period,
+      day,
+      transactionId,
+      payee,
+      amount,
+      categoryId,
+      accountId,
+      share(period, day, person, theirs),
+    );
+  };
+  const repaid = (days: number, amount: number, accountId: string) => {
+    const on = date(...ago(days));
+    run(userId, {
+      type: "counterparty.receive",
+      counterpartyAccountId: accountId,
+      cashAccountId: "checking",
+      date: on,
+      amount,
+      recordedAt: `${on}T20:00:00.000Z`,
+    });
+  };
+  // Cedar Labs, Alex's employer, pays back work costs in part, then in
+  // full: $280.00 still owed.
+  shared(
+    38,
     "conference-hotel",
     "Hyatt Regency · work conference",
     48000,
     "work",
     "amex",
-    share(month, 6, cedarLabs, 48000),
+    cedarLabs,
+    48000,
   );
-  const repaid = (day: number, amount: number, accountId = cedarLabs) =>
-    run(userId, {
-      type: "counterparty.receive",
-      counterpartyAccountId: accountId,
-      cashAccountId: "checking",
-      date: date(month, day),
-      amount,
-      recordedAt: `${date(month, day)}T20:00:00.000Z`,
-    });
-  repaid(10, 20000);
-  buy(
-    userId,
-    month,
-    7,
+  repaid(30, 20000, cedarLabs);
+  shared(
+    20,
     "work-train",
     "Amtrak · client visit",
     8500,
     "work",
     "checking",
-    share(month, 7, cedarLabs, 8500),
+    cedarLabs,
+    8500,
   );
-  repaid(11, 8500);
-  buy(
-    userId,
-    month,
-    2,
+  repaid(12, 8500, cedarLabs);
+  // Mia owes half of two nights out, less what she sent: $77.00.
+  shared(
+    26,
     "mia-concert-tickets",
     "Ticketmaster · two concert tickets",
     13000,
     "gifts",
     "amex",
-    share(month, 2, mia, 6500),
+    mia,
+    6500,
   );
-  repaid(4, 3000, mia);
-  buy(
-    userId,
-    month,
-    3,
+  repaid(19, 3000, mia);
+  shared(
+    9,
     "mia-dinner",
     "Nopa · dinner with Mia",
     8400,
     "dining",
     "amex",
-    share(month, 3, mia, 4200),
+    mia,
+    4200,
   );
-  buy(
-    userId,
-    shiftMonth(month, -1),
-    9,
+  // Sam paid back his half of a ski rental, so he's settled.
+  shared(
+    33,
     "sam-ski-rental",
     "Tahoe ski rental",
     5000,
     "travel",
     "checking",
-    share(shiftMonth(month, -1), 9, sam, 2500),
+    sam,
+    2500,
   );
-  repaid(1, 2500, sam);
+  repaid(24, 2500, sam);
   buy(
     userId,
     month,

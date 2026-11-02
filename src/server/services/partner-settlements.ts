@@ -56,7 +56,7 @@ import {
 // - a payment between the partners, once both partners' imports of it have
 //   arrived and match (src/lib/settlement-recognition.ts), becomes one
 //   settlement with both legs, and each import is linked to its leg;
-// - a deposit naming someone who owes you through Reimbursements, for no
+// - a deposit naming a person (not the partner) who owes you, for no
 //   more than they owe, becomes their repayment, waiting for your review.
 //
 // Runs after a bank update, as its own operation, so a match can use
