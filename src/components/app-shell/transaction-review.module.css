@@ -1,12 +1,5 @@
 /* ---------- Transaction review ---------- */
 
-/* The register fills the panel, so the action bar's slot can sit at its foot
-   even when there are only a few rows. */
-.register {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
 .actions {
   display: flex;
   align-items: center;
@@ -42,12 +35,5 @@
   .sharePanel {
     --size-control-xs: var(--size-row-lg);
     --size-control: var(--size-row-lg);
-  }
-}
-
-/* Touch has no hover to reveal the checkboxes, so they always show. */
-@media (hover: none) {
-  .checkable > label {
-    opacity: 1;
   }
 }
