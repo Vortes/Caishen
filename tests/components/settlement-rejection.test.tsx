@@ -68,13 +68,15 @@ test("a partner settlement can be rejected from its ledger", async () => {
       screen.getByRole("navigation", { name: "Budget navigation" }),
     ).findByRole("link", { name: /^Anna/ }),
   );
-  await shell.user.click(
-    within(screen.getByRole("group", { name: "Anna ledger" })).getByRole(
-      "button",
-      { name: /Venmo from Anna/ },
-    ),
+  const settlement = within(
+    screen.getByRole("group", { name: "Anna ledger" }),
+  ).getByRole("button", { name: /Venmo from Anna/ });
+  await shell.user.click(settlement);
+  await shell.user.click(settlement);
+  const form = within(
+    screen.getByRole("form", { name: "Settlement from Anna" }),
   );
-  await shell.user.click(screen.getByRole("button", { name: "Reject match" }));
+  await shell.user.click(form.getByRole("button", { name: "Reject match" }));
   await findToast("Match rejected. Both bank imports are back in review.");
   expect(screen.queryByText("Venmo from Anna", { exact: true })).toBeNull();
   expect(

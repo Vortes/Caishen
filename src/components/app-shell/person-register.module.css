@@ -31,24 +31,6 @@
   color: var(--status-credit);
 }
 
-/* A settlement's source: how both budgets recognized it. */
-.source {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-}
-.source > svg {
-  flex: none;
-  color: var(--text-tertiary);
-}
-.detailActions {
-  display: flex;
-  gap: 8px;
-}
-
 /* An open request: what's been paid toward it since it was asked. */
 .requestStrip {
   display: flex;

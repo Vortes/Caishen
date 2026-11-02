@@ -191,50 +191,6 @@
   font-size: var(--type-small);
 }
 
-/* A settlement, opened under its row: what it moved and how both budgets
-   recognized it. */
-.detail {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 24px;
-  margin: 2px 0 10px var(--row-gutter);
-  padding: 14px 16px 16px;
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-card);
-  background: var(--surface-raised);
-}
-@container (max-width: 760px) {
-  .detail {
-    grid-template-columns: minmax(0, 1fr);
-    margin-left: var(--space-row-x);
-  }
-}
-.detailMain {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 24px;
-  margin: 0;
-}
-.facts > div {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 2px;
-}
-.facts dt {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-.facts dd {
-  margin: 0;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
 @media (pointer: coarse) {
   .shareForm input {
     font-size: var(--type-title);

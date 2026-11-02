@@ -6,6 +6,8 @@
 // their rows start over.
 // Format 8 reads category-free full shares and share-only payee memory.
 // Format 9 requires source line facts and the unified register command.
-export const CLIENT_FORMAT = 9;
-export const MINIMUM_CLIENT_FORMAT = 9;
+// Format 10 reads every counterparty as a person account, and shares and
+// repayments without a counterparty name (ADR 0013).
+export const CLIENT_FORMAT = 10;
+export const MINIMUM_CLIENT_FORMAT = 10;
 export const CLIENT_FORMAT_HEADER = "x-caishen-client-format";

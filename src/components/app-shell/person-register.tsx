@@ -531,8 +531,7 @@ export function PersonRegister({
           row &&
           document.activeElement instanceof HTMLElement &&
           document.activeElement.dataset.entryRow === row.id &&
-          row.entryId &&
-          !row.settlementId
+          (row.entryId || row.settlementId)
         ) {
           event.preventDefault();
           setEditing({ id: row.id, field: "amount" });
@@ -626,7 +625,12 @@ export function PersonRegister({
               {name(row.categoryId) ?? "No category"}
             </span>
           ),
-          paidBy: <span className={styles.muted}>{paidBy}</span>,
+          // Truncates in the editor's cell as it does in the row.
+          paidBy: (
+            <span className={`${styles.truncate} ${styles.muted}`}>
+              {paidBy}
+            </span>
+          ),
           // What it cost, whoever paid; settlements and repayments moved
           // only what they settled.
           amount: (
@@ -642,7 +646,17 @@ export function PersonRegister({
           // and in the editor.
           balance: <span className={styles.muted}>{money(row.balance)}</span>,
         };
-        const edits = opens && !settlement;
+        const edits = opens;
+        if (settlement && editing?.id === row.id)
+          return (
+            <SettlementEditor
+              key={row.id}
+              row={row}
+              cells={cells}
+              partnerName={account.name}
+              onClose={() => closeEditor(row.id)}
+            />
+          );
         if (edits && editing?.id === row.id)
           return (
             <EntryEditor
@@ -687,7 +701,6 @@ export function PersonRegister({
               data-entry-row={row.id}
               className={`${styles.txColumns} ${styles.row}`}
               aria-current={isSelected ? "true" : undefined}
-              aria-expanded={settlement ? isSelected : undefined}
               onClick={(event) => {
                 if (checkable && event.shiftKey) {
                   checkTo(row.id, !isChecked);
@@ -763,9 +776,6 @@ export function PersonRegister({
               </span>
               <span />
             </button>
-            {isSelected && settlement && (
-              <SettlementDetail row={row} partnerName={account.name} />
-            )}
           </div>
         );
       })}
@@ -825,82 +835,101 @@ function settlementPayee(row: Row, view: View, partnerName: string) {
   return `${row.method} ${sent ? "to" : "from"} ${partnerName}`;
 }
 
-// A settlement, opened: what it moved, how both budgets recognized it, and
-// the one confirmation that resolves both sides.
-function SettlementDetail({
+// A settlement, opened in place like any entry. Its amount and date came
+// from both banks, so every cell only reads; what's left is confirming it,
+// which confirms the partner's side too, or rejecting a wrong match.
+function SettlementEditor({
   row,
+  cells,
   partnerName,
+  onClose,
 }: {
   row: Row;
+  cells: RowCells;
   partnerName: string;
+  onClose: () => void;
 }) {
+  const formId = useId();
   const { saveCommand } = useTransactionEntry();
   const [error, setError] = useState("");
+  const run = (command: Parameters<typeof saveCommand>[0], notice: string) => {
+    const failure = saveCommand(command, notice);
+    if (failure) setError(failure);
+    else onClose();
+  };
+  const confirm = () =>
+    row.confirmed
+      ? onClose()
+      : run(
+          {
+            type: "partner.settlement.confirm",
+            id: newId(),
+            settlementId: row.settlementId!,
+          },
+          `Confirmed. ${partnerName}’s side is confirmed too.`,
+        );
+  const reject = () =>
+    run(
+      {
+        type: "partner.settlement.reject",
+        id: newId(),
+        settlementId: row.settlementId!,
+      },
+      "Match rejected. Both bank imports are back in review.",
+    );
   return (
-    <div
-      className={share.detail}
-      onKeyDown={(event) => event.stopPropagation()}
+    <EditorForm
+      id={formId}
+      title={`Settlement ${row.change >= 0 ? "to" : "from"} ${partnerName}`}
+      onSubmit={confirm}
+      onCancel={onClose}
     >
-      <div className={share.detailMain}>
-        <dl className={share.facts}>
-          <div>
-            <dt>
-              {row.change >= 0
-                ? `You paid ${partnerName}`
-                : `${partnerName} paid you`}
-            </dt>
-            <dd>{money(Math.abs(row.change))}</dd>
-          </div>
-        </dl>
-        <p className={local.source}>
-          <LinkIcon size={13} aria-hidden />
-          {row.confirmed
-            ? "Matched in both budgets"
-            : "Imported in both budgets. Confirm it in either one."}
-          {" Reject a wrong match to review both bank imports separately."}
-        </p>
-        <div className={local.detailActions}>
-          {!row.confirmed && (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() =>
-                setError(
-                  saveCommand(
-                    {
-                      type: "partner.settlement.confirm",
-                      id: newId(),
-                      settlementId: row.settlementId!,
-                    },
-                    `Confirmed. ${partnerName}’s side is confirmed too.`,
-                  ) ?? "",
-                )
-              }
-            >
-              Confirm settlement
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() =>
-              setError(
-                saveCommand(
-                  {
-                    type: "partner.settlement.reject",
-                    id: newId(),
-                    settlementId: row.settlementId!,
-                  },
-                  "Match rejected. Both bank imports are back in review.",
-                ) ?? "",
-              )
-            }
-          >
-            Reject match
-          </Button>
-        </div>
-        {error && <FormError>{error}</FormError>}
+      <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
+        <EditorText column="date">{cells.date}</EditorText>
+        <EditorText column="payee">{cells.payee}</EditorText>
+        <EditorText column="paidBy" optional>
+          {cells.paidBy}
+        </EditorText>
+        <EditorText column="category">{cells.category}</EditorText>
+        <EditorText column="total" numeric optional>
+          {cells.amount}
+        </EditorText>
+        <EditorText column="amount" numeric>
+          {money(row.change, true)}
+        </EditorText>
+        <EditorText column="balance" numeric>
+          {cells.balance}
+        </EditorText>
+        <span data-column="status" aria-hidden />
       </div>
-    </div>
+      <EditorFooter
+        actions={
+          <>
+            <Button size="sm" onClick={onClose}>
+              {row.confirmed ? "Close" : "Cancel"}
+            </Button>
+            <Button size="sm" onClick={reject}>
+              Reject match
+            </Button>
+            {!row.confirmed && (
+              <Button variant="primary" size="sm" type="submit" autoFocus>
+                Confirm settlement
+              </Button>
+            )}
+          </>
+        }
+      >
+        {error ? (
+          <FormError>{error}</FormError>
+        ) : (
+          <span className={share.footerHint}>
+            {row.confirmed
+              ? "Confirmed in both budgets."
+              : `Imported in both budgets. Confirming here confirms ${partnerName}’s side too.`}
+          </span>
+        )}
+      </EditorFooter>
+    </EditorForm>
   );
 }
 
