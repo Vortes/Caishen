@@ -4,6 +4,10 @@
 .input:not(:disabled) {
   cursor: pointer;
 }
+/* A name longer than the well ends in an ellipsis until it's focused. */
+.input {
+  text-overflow: ellipsis;
+}
 .input[aria-expanded="true"] {
   cursor: text;
 }

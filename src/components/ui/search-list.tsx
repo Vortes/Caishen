@@ -37,6 +37,7 @@ export function SearchList({
   placeholder,
   disabled,
   readOnly,
+  maxLength,
   inputRef,
   onPicked,
   onCreate,
@@ -49,6 +50,8 @@ export function SearchList({
   placeholder?: string;
   disabled?: boolean;
   readOnly?: boolean;
+  // The longest name onCreate can take.
+  maxLength?: number;
   inputRef?: Ref<HTMLInputElement>;
   // Moves on to the next field after a click or Enter takes an option.
   onPicked?: (value: string) => void;
@@ -183,6 +186,7 @@ export function SearchList({
             aria-describedby={control.describedBy}
             disabled={disabled}
             readOnly={readOnly}
+            maxLength={maxLength}
             placeholder={placeholder}
             value={open ? query : (chosen?.label ?? displayValue ?? "")}
             onChange={(event) => show(event.target.value)}

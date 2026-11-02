@@ -27,8 +27,8 @@ What does the person enter?
 ## SearchList
 
 `value` (the chosen option's `value`, `""` for none), `onChange(value)`,
-`options`, `placeholder`, `disabled`, `readOnly`, `inputRef`, `onPicked`,
-`onCreate`, `action`, `displayValue`. Nothing else exists.
+`options`, `placeholder`, `disabled`, `readOnly`, `maxLength`, `inputRef`,
+`onPicked`, `onCreate`, `action`, `displayValue`. Nothing else exists.
 
 `options` are `{ value, label, group?, amount?, disabled? }`:
 
@@ -46,7 +46,9 @@ The rows above the options:
 - `onCreate: { noun, create(name) }`: a New row pinned at the top
   ("New category “Rent”"). Enter takes it once nothing else matches.
   Only where the person can make the missing option on the spot (the
-  register's category).
+  register's category, a share's person).
+- `maxLength`: the longest name the New row can carry, so the well stops
+  typing where the server would refuse it (a share's person: 120).
 - `action: { label, icon, onSelect }`: an action that shares the New row,
   such as the register's Split. It is not an option and never shows in
   the closed field.

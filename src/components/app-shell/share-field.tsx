@@ -125,6 +125,8 @@ export function ShareMenu({
 // Stands for a person named here and added once a share is applied, so
 // closing the popover leaves nobody behind.
 const NEW_PERSON = "\u0000person:new";
+// The longest name person.add takes.
+const PERSON_NAME_MAX = 120;
 
 export function ShareChoices({
   confirmation,
@@ -224,6 +226,9 @@ export function ShareChoices({
   };
 
   const half = halfOf(amount);
+  // A line with no amount yet has no half or whole to share; only an
+  // amount typed here can be the share.
+  const sized = multiple || amount > 0;
   const options: {
     id: Exclude<Preset, "mine">;
     label: string;
@@ -257,7 +262,9 @@ export function ShareChoices({
       type="button"
       data-share-option
       autoFocus={id === current && current !== "mine"}
-      disabled={id !== "mine" && !person}
+      disabled={
+        id !== "mine" && (!person || (id !== "amount" && !sized))
+      }
       className={styles.shareOption}
       aria-pressed={id === "mine" ? current === "mine" : id === chosen}
       onClick={onClick}
@@ -300,6 +307,7 @@ export function ShareChoices({
             <Field label="Who is this for" labelHidden hint={hint}>
               <SearchList
                 inputRef={personInput}
+                maxLength={PERSON_NAME_MAX}
                 value={personId}
                 options={[
                   ...(pending !== null
@@ -313,7 +321,9 @@ export function ShareChoices({
                   })),
                 ]}
                 placeholder={
-                  naming ? "Their name or company" : "Choose or add a person"
+                  naming || people.length === 0
+                    ? "Their name or company"
+                    : "Choose or add a person"
                 }
                 onChange={(value) => {
                   setPersonId(value);

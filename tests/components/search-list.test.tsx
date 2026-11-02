@@ -196,6 +196,22 @@ test("the New row carries the typed name, and Enter takes it once nothing else m
   expect(screen.getByRole("status", { name: "Chosen" }).textContent).toBe("");
 });
 
+test("maxLength stops a new name where it would be refused", async () => {
+  const user = userEvent.setup();
+  const created: string[] = [];
+  render(
+    <Category
+      maxLength={12}
+      onCreate={{ noun: "category", create: (name) => created.push(name) }}
+    />,
+  );
+
+  await user.click(screen.getByRole("combobox", { name: "Category" }));
+  await user.keyboard("Weekend getaways{Enter}");
+
+  expect(created).toEqual(["Weekend geta"]);
+});
+
 test("the action row runs its action and picks nothing", async () => {
   const user = userEvent.setup();
   const actions: string[] = [];

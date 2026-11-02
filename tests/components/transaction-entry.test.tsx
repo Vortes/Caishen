@@ -180,6 +180,12 @@ test("a share typed before the amount fills the outflow with it", async () => {
   await shell.user.click(
     screen.getByRole("option", { name: "New person “Mom”" }),
   );
+  // With no amount yet there's no half or whole to share.
+  for (const amount of [/^Half/, /^All of it/])
+    expect(screen.getByRole("button", { name: amount })).toHaveProperty(
+      "disabled",
+      true,
+    );
   await shell.user.click(screen.getByRole("button", { name: /An amount/ }));
   await shell.user.clear(screen.getByLabelText("Mom’s share"));
   await shell.user.type(screen.getByLabelText("Mom’s share"), "120");
