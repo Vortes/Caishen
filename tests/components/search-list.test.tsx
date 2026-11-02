@@ -1,10 +1,21 @@
-import { render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps } from "react";
 import { expect, test } from "vitest";
 import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
-import { SearchList, SearchSuggestions } from "~/components/ui/search-list";
+import {
+  DetailOption,
+  SearchList,
+  SearchListDetail,
+  SearchSuggestions,
+} from "~/components/ui/search-list";
 import { SurfaceProvider } from "~/components/ui/surface";
 
 const categories = [
@@ -360,4 +371,237 @@ test("Enter on typed text sends the surrounding form, even with suggestions show
   await user.keyboard("{Enter}");
 
   expect(submitted).toEqual(["Tar"]);
+});
+
+const people = [
+  { value: "mei", label: "Mei Chen", amount: 12050, tag: "On Caishen" },
+  { value: "mom", label: "Mom", amount: -4000 },
+  { value: "momd", label: "Momd", amount: 0 },
+  { value: "sam", label: "Sam", amount: 0 },
+];
+
+// A share picker in miniature: who on the left, how much on the right.
+function Picker(
+  props: Partial<ComponentProps<typeof SearchListDetail>> & {
+    picked?: string[];
+  },
+) {
+  const { picked = [], ...rest } = props;
+  return (
+    <SurfaceProvider container={document.body}>
+      <Popover
+        label="Who this is for"
+        trigger={<button>Share</button>}
+        size="wide"
+      >
+        <SearchListDetail
+          label="Who is this for"
+          options={people}
+          value="mom"
+          defaultHighlight="mom"
+          createNoun="person"
+          placeholder="Find or add a person"
+          maxLength={120}
+          detail={(highlight) => {
+            const name =
+              highlight?.kind === "option"
+                ? highlight.option.label
+                : highlight?.name;
+            return {
+              label: name ? `How much is for ${name}` : "How much",
+              title: name ?? "Choose who it’s for",
+              children: (
+                <>
+                  <DetailOption
+                    title="Half"
+                    detail="$15.00"
+                    disabled={!name}
+                    onClick={() => picked.push(`half ${name}`)}
+                  />
+                  <DetailOption
+                    title="All of it"
+                    detail="$30.00"
+                    disabled={!name}
+                    pressed={name === "Mom"}
+                    onClick={() => picked.push(`all ${name}`)}
+                  />
+                </>
+              ),
+            };
+          }}
+          {...rest}
+        />
+      </Popover>
+    </SurfaceProvider>
+  );
+}
+
+async function openPicker(props: Parameters<typeof Picker>[0] = {}) {
+  const user = userEvent.setup();
+  render(<Picker {...props} />);
+  await user.click(screen.getByRole("button", { name: "Share" }));
+  const search = screen.getByRole("combobox", { name: "Who is this for" });
+  return { user, search };
+}
+
+const highlighted = (search: HTMLElement) =>
+  document.getElementById(search.getAttribute("aria-activedescendant") ?? "")
+    ?.textContent;
+const optionNames = () =>
+  screen.getAllByRole("option").map((option) => option.textContent);
+
+test("the search opens empty beside the always-open list, with the default highlight's detail", async () => {
+  const { search } = await openPicker();
+
+  expect(document.activeElement).toBe(search);
+  expect(search).toHaveProperty("value", "");
+  expect(search.getAttribute("aria-expanded")).toBe("true");
+  expect(highlighted(search)).toMatch(/^Mom/);
+  expect(
+    screen.getByRole("listbox", { name: "Who is this for" }),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("option", { name: /^Mom-/ }).getAttribute("aria-selected"),
+  ).toBe("true");
+  // The one person on Caishen carries the mark; no group headings.
+  expect(optionNames()[0]).toBe("Mei ChenOn Caishen$120.50");
+  expect(screen.queryByText("People")).toBeNull();
+  const detail = screen.getByRole("group", { name: "How much is for Mom" });
+  expect(within(detail).getByText("Mom")).toBeDefined();
+});
+
+test("the arrow keys move the highlight, the detail follows, and the ends hold", async () => {
+  const { user, search } = await openPicker();
+
+  await user.keyboard("{ArrowDown}");
+  expect(highlighted(search)).toMatch(/^Momd/);
+  expect(screen.getByRole("group", { name: "How much is for Momd" })).toBeDefined();
+  await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}");
+  expect(highlighted(search)).toMatch(/^Mei Chen/);
+});
+
+test("typing filters, the highlight takes the first match, and New carries a name nothing matches", async () => {
+  const { user, search } = await openPicker();
+
+  await user.keyboard("mo");
+  expect(optionNames()).toEqual([
+    "New person “mo”",
+    "Mom-$40.00",
+    "Momd$0.00",
+  ]);
+  expect(highlighted(search)).toMatch(/^Mom-/);
+
+  await user.keyboard("x");
+  expect(optionNames()).toEqual(["New person “mox”"]);
+  expect(highlighted(search)).toBe("New person “mox”");
+  expect(screen.getByRole("group", { name: "How much is for mox" })).toBeDefined();
+
+  // A name already listed is never offered as new.
+  await user.clear(search);
+  await user.keyboard("mom");
+  expect(optionNames()).toEqual(["Mom-$40.00", "Momd$0.00"]);
+});
+
+test("Enter crosses into the detail at its pressed choice; ArrowLeft or a letter comes back", async () => {
+  const { user, search } = await openPicker();
+
+  await user.keyboard("{Enter}");
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: /^All of it/ }),
+  );
+  await user.keyboard("{ArrowUp}");
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: /^Half/ }),
+  );
+  await user.keyboard("{ArrowLeft}");
+  expect(document.activeElement).toBe(search);
+
+  await user.keyboard("{ArrowDown}{ArrowRight}");
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: /^Half/ }),
+  );
+  await user.keyboard("s");
+  expect(document.activeElement).toBe(search);
+  expect(search).toHaveProperty("value", "s");
+});
+
+test("ArrowRight crosses only with the caret at the end of the search", async () => {
+  const { user, search } = await openPicker();
+
+  await user.keyboard("mo{ArrowLeft}{ArrowRight}");
+  expect(document.activeElement).toBe(search);
+  await user.keyboard("{ArrowRight}");
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: /^All of it/ }),
+  );
+});
+
+test("Escape clears the search first, then closes the popover", async () => {
+  const { user, search } = await openPicker();
+
+  await user.keyboard("sa{Escape}");
+  expect(search).toHaveProperty("value", "");
+  expect(screen.getByRole("dialog", { name: "Who this is for" })).toBeDefined();
+
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog", { name: "Who this is for" })).toBeNull();
+});
+
+test("the pointer highlights the row it rests on, and a click crosses into the detail", async () => {
+  const picked: string[] = [];
+  const { user, search } = await openPicker({ picked });
+
+  fireEvent.mouseMove(screen.getByRole("option", { name: /^Sam/ }), {
+    clientX: 20,
+    clientY: 120,
+  });
+  expect(highlighted(search)).toMatch(/^Sam/);
+
+  await user.click(screen.getByRole("option", { name: /^Momd/ }));
+  expect(highlighted(search)).toMatch(/^Momd/);
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: /^Half/ }),
+  );
+  await user.click(screen.getByRole("button", { name: /^All of it/ }));
+  expect(picked).toEqual(["all Momd"]);
+});
+
+test("moving right toward the detail waits before following the pointer, and reaching it cancels", async () => {
+  const { search } = await openPicker();
+  const mom = screen.getByRole("option", { name: /^Mom-/ });
+  const sam = screen.getByRole("option", { name: /^Sam/ });
+
+  fireEvent.mouseMove(mom, { clientX: 20, clientY: 60 });
+  fireEvent.mouseMove(sam, { clientX: 80, clientY: 90 });
+  expect(highlighted(search)).toMatch(/^Mom-/);
+  await waitFor(() => expect(highlighted(search)).toMatch(/^Sam/));
+
+  fireEvent.mouseMove(mom, { clientX: 20, clientY: 60 });
+  fireEvent.mouseMove(sam, { clientX: 80, clientY: 90 });
+  fireEvent.mouseMove(screen.getByRole("group", { name: "How much is for Mom" }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(highlighted(search)).toMatch(/^Mom-/);
+});
+
+test("with no default highlight the detail waits for a choice, and an empty list says why", async () => {
+  const { search } = await openPicker({
+    defaultHighlight: undefined,
+    options: [],
+    empty: "You haven’t shared with anyone yet",
+  });
+
+  expect(search.getAttribute("aria-activedescendant")).toBeNull();
+  expect(screen.getByText("You haven’t shared with anyone yet")).toBeDefined();
+  expect(screen.getByRole("group", { name: "How much" })).toBeDefined();
+  expect(screen.getByRole("button", { name: /^Half/ })).toHaveProperty(
+    "disabled",
+    true,
+  );
+});
+
+test("maxLength stops a typed name where it would be refused", async () => {
+  const { user, search } = await openPicker({ maxLength: 5 });
+
+  await user.keyboard("Alexandra");
+  expect(search).toHaveProperty("value", "Alexa");
 });
