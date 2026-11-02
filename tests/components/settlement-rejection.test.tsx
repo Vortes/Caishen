@@ -1,11 +1,7 @@
 import { screen, within } from "@testing-library/react";
+import { withPeople } from "~/domain/people";
 import { expect, test } from "vitest";
-import {
-  addMember,
-  createBook,
-  execute,
-  withCounterpartyAccounts,
-} from "~/domain/engine";
+import { addMember, createBook, execute } from "~/domain/engine";
 import {
   findToast,
   readyOverview,
@@ -14,7 +10,7 @@ import {
 } from "./shell-harness";
 
 function settledBook() {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(
       createBook("owner", "Alan", "2026-10"),
       "partner",

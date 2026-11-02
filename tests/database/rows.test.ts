@@ -7,7 +7,6 @@ import {
   createBook,
   executeWithChanges,
   projectBook,
-  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "../../src/domain/engine";
@@ -37,6 +36,8 @@ import {
   writeChangeSet,
 } from "../../src/server/storage/rows";
 import { buildCommandCorpus } from "../domain/fixtures/command-corpus";
+import { withPeople } from "../../src/domain/people";
+import { personId, withPerson } from "../domain/fixtures/people";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
@@ -98,7 +99,11 @@ test.after(async () => {
 });
 
 void test("a category-free reimbursement split survives database storage", async () => {
-  let book = withCounterpartyAccounts(createBook(alexId, "Alex", "2026-10"));
+  let book = withPerson(
+    withPeople(createBook(alexId, "Alex", "2026-10")),
+    alexId,
+    "Mom",
+  );
   const commands: Command[] = [
     {
       type: "account.add",
@@ -129,8 +134,7 @@ void test("a category-free reimbursement split survives database storage", async
           lineId: "mom",
           amount: -1_154,
           counterpartyShare: {
-            accountId: "counterparty:reimbursements",
-            counterpartyName: "Mom",
+            accountId: personId("Mom"),
             amount: 1_154,
           },
         },
@@ -145,7 +149,7 @@ void test("a category-free reimbursement split survives database storage", async
   assert.equal(view.budget.transactions[0]!.lines![1]!.categoryId, undefined);
   assert.equal(view.personalSpending, 846);
   assert.equal(
-    view.accounts.find((item) => item.kind === "reimbursements")!.balance,
+    view.accounts.find((item) => item.id === personId("Mom"))!.balance,
     1_154,
   );
 });

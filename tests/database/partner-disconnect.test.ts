@@ -106,7 +106,10 @@ void test("disconnecting splits the household and freezes the partner ledger on 
   });
   const before = { jordan: await jordan.view(), alex: await alex.view() };
   const partnerBalance = (view: typeof before.jordan) =>
-    view.accounts.find((account) => account.kind === "partner")?.balance;
+    view.accounts.find(
+      (account) =>
+        account.kind === "person" && account.linkedUserId && !account.closed,
+    )?.balance;
   assert.equal(partnerBalance(before.jordan), 2_000);
   assert.equal(partnerBalance(before.alex), -2_000);
 
@@ -120,7 +123,7 @@ void test("disconnecting splits the household and freezes the partner ledger on 
     const was = before[person === jordan ? "jordan" : "alex"];
     assert.equal(view.members.length, 1, "each person is on their own");
     assert.equal(partnerBalance(view), undefined, "the partner slot is free");
-    const closed = view.accounts.filter((a) => a.kind === "former-partner");
+    const closed = view.accounts.filter((a) => a.kind === "person" && a.closed);
     assert.equal(closed.length, 1);
     assert.equal(closed[0]!.name, formerName);
     assert.equal(closed[0]!.balance, balance, "the balance is frozen");
@@ -166,8 +169,9 @@ void test("disconnecting splits the household and freezes the partner ledger on 
   const again = await jordan.view();
   assert.equal(partnerBalance(again), 0);
   assert.equal(
-    again.accounts.find((account) => account.kind === "former-partner")
-      ?.balance,
+    again.accounts.find(
+      (account) => account.kind === "person" && account.closed,
+    )?.balance,
     2_000,
   );
   assert.equal(again.readyToAssign, before.jordan.readyToAssign);

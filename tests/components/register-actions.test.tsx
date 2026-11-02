@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
+import { withPeople } from "~/domain/people";
 import { expect, test } from "vitest";
 import { SyncError } from "~/components/sync/transport";
-import { withCounterpartyAccounts } from "~/domain/engine";
 import {
   budgetFixture,
   deferred,
@@ -716,7 +716,7 @@ test("other bulk actions stay available while a bank rejection saves", async () 
     bankImport({ logicalId: "lunch", payee: "Lunch", categoryId: "gifts" }),
   ];
   const shell = await renderShell({
-    book: withCounterpartyAccounts(budgetFixture()),
+    book: withPeople(budgetFixture()),
     overview: () => readyOverview({ imports }),
     resolveImport: async (input, server) => {
       if (input.ignore) {

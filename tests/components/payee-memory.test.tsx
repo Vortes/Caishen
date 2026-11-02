@@ -1,10 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import {
-  execute,
-  withCounterpartyAccounts,
-  type Command,
-} from "~/domain/engine";
+import { execute, personAccountId, type Command } from "~/domain/engine";
 import {
   findToast,
   findTransactionRow,
@@ -56,6 +52,15 @@ const bankImport = (
 
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
+
+// The owner's budget with one person, Mom.
+const withMom = () =>
+  execute(budgetFixture(), "owner", {
+    type: "person.add",
+    id: "add-mom",
+    accountId: personAccountId("mom"),
+    name: "Mom",
+  });
 
 test("a waiting bank import from a remembered payee shows and saves its remembered category", async () => {
   const shell = await renderShell({
@@ -128,9 +133,9 @@ test("a new transaction takes its payee's remembered category", async () => {
   });
 });
 
-test("an existing reimbursement person's payee fills that person's full category", async () => {
+test("a payee named after one of your people fills that person's full share", async () => {
   const shell = await renderShell({
-    book: execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+    book: execute(withMom(), "owner", {
       type: "transaction.upsert",
       id: "seed-mom",
       transactionId: "for-mom",
@@ -140,8 +145,7 @@ test("an existing reimbursement person's payee fills that person's full category
       amount: -1154,
       recordedAt: "2026-10-03T12:00:00Z",
       counterpartyShare: {
-        accountId: "counterparty:reimbursements",
-        counterpartyName: "Mom",
+        accountId: personAccountId("mom"),
         amount: 1154,
       },
     }),
@@ -168,8 +172,8 @@ test("an existing reimbursement person's payee fills that person's full category
   ).toBeTruthy();
 });
 
-test("opening an uncategorized transaction already named Mom fills and saves her reimbursement category", async () => {
-  let book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+test("opening an uncategorized transaction already named Mom fills and saves her full share", async () => {
+  let book = execute(withMom(), "owner", {
     type: "transaction.upsert",
     id: "known-mom",
     transactionId: "known-mom",
@@ -179,8 +183,7 @@ test("opening an uncategorized transaction already named Mom fills and saves her
     amount: -1_000,
     recordedAt: "2026-10-03T12:00:00Z",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personAccountId("mom"),
       amount: 1_000,
     },
   });

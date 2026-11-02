@@ -1,0 +1,10 @@
+{
+  "id": "counterparty:partner",
+  "name": "Partner",
+  "kind": "person",
+  "openingBalance": 0,
+  "date": "2026-08-01",
+  "linkedUserId": "jordan",
+  "userId": "alex",
+  "sort": 4
+}

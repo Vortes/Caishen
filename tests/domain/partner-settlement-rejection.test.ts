@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   addMember,
-  counterpartyId,
   createBook,
   execute,
+  LINKED_PERSON_ACCOUNT_ID,
   projectBook,
-  withCounterpartyAccounts,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
 
 function matchedSettlement() {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("alan", "Alan", "2026-10"), "anna", "Anna", "2026-10"),
   );
   for (const actor of ["alan", "anna"])
@@ -75,7 +75,7 @@ void test("either partner can reject a settlement and restore both budgets", () 
         100_000,
       );
       assert.equal(
-        view.accounts.find((item) => item.id === counterpartyId("partner"))!
+        view.accounts.find((item) => item.id === LINKED_PERSON_ACCOUNT_ID)!
           .balance,
         0,
       );

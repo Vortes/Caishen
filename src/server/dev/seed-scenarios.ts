@@ -1,16 +1,17 @@
 import {
   addMember,
   bookSchema,
-  counterpartyId,
   createBook,
   execute,
-  pairedEnvelopeId,
+  LINKED_PERSON_ACCOUNT_ID,
+  personAccountId,
+  personEnvelopeId,
   projectBook,
-  withCounterpartyAccounts,
   type Command,
   type Target,
 } from "~/domain/engine";
 import { partnerEntryId } from "~/domain/partner-ledger";
+import { withPeople } from "~/domain/people";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 export type SeedOperation = {
   actorId: string;
@@ -69,7 +70,7 @@ export function buildDevelopmentSeed({
     throw new Error("Use a valid YYYY-MM-DD seed date.");
   const month = asOf.slice(0, 7);
   const firstMonth = shiftMonth(month, -2);
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(
       createBook(userId, "Demo · Alex’s budget", firstMonth),
       partnerId,
@@ -94,17 +95,26 @@ export function buildDevelopmentSeed({
     const limit = period === month ? Number(asOf.slice(8)) : 28;
     return `${period}-${String(Math.min(day, limit)).padStart(2, "0")}`;
   };
-  const partner = counterpartyId("partner");
-  const reimbursements = counterpartyId("reimbursements");
+  const partner = LINKED_PERSON_ACCOUNT_ID;
+  // Alex's other people: an employer who reimburses work costs, a friend
+  // who still owes for a concert and dinner, and a friend who is settled.
+  const cedarLabs = personAccountId("cedar-labs");
+  const mia = personAccountId("mia");
+  const sam = personAccountId("sam");
+  for (const [accountId, name] of [
+    [cedarLabs, "Cedar Labs"],
+    [mia, "Mia"],
+    [sam, "Sam"],
+  ] as const)
+    run(userId, { type: "person.add", accountId, name });
   // A purchase line shared with a counterparty, recorded when it was made.
   const share = (
     period: string,
     day: number,
     accountId: string,
     amount: number,
-    counterpartyName?: string,
   ) => ({
-    counterpartyShare: { accountId, amount, counterpartyName },
+    counterpartyShare: { accountId, amount },
     recordedAt: `${date(period, day)}T20:00:00.000Z`,
   });
   // The non-payer's side of a shared purchase, in their own category.
@@ -351,8 +361,8 @@ export function buildDevelopmentSeed({
       // Float in the People envelopes: cash set aside for what each fronts
       // for the other until it's paid back.
       if (offset === -2) {
-        funding[pairedEnvelopeId("partner")] = index ? 130000 : 25000;
-        if (!index) funding[pairedEnvelopeId("reimbursements")] = 60000;
+        funding[personEnvelopeId(partner)] = index ? 130000 : 25000;
+        if (!index) funding[personEnvelopeId(cedarLabs)] = 60000;
       }
       for (const [categoryId, amount] of Object.entries(funding))
         run(actorId, { type: "assign", categoryId, amount, month: period });
@@ -549,16 +559,15 @@ export function buildDevelopmentSeed({
     48000,
     "work",
     "amex",
-    share(month, 6, reimbursements, 48000, "Cedar Labs"),
+    share(month, 6, cedarLabs, 48000),
   );
-  const repaid = (day: number, amount: number) =>
+  const repaid = (day: number, amount: number, accountId = cedarLabs) =>
     run(userId, {
       type: "counterparty.receive",
-      counterpartyAccountId: reimbursements,
+      counterpartyAccountId: accountId,
       cashAccountId: "checking",
       date: date(month, day),
       amount,
-      counterpartyName: "Cedar Labs",
       recordedAt: `${date(month, day)}T20:00:00.000Z`,
     });
   repaid(10, 20000);
@@ -571,9 +580,44 @@ export function buildDevelopmentSeed({
     8500,
     "work",
     "checking",
-    share(month, 7, reimbursements, 8500, "Cedar Labs"),
+    share(month, 7, cedarLabs, 8500),
   );
   repaid(11, 8500);
+  buy(
+    userId,
+    month,
+    2,
+    "mia-concert-tickets",
+    "Ticketmaster · two concert tickets",
+    13000,
+    "gifts",
+    "amex",
+    share(month, 2, mia, 6500),
+  );
+  repaid(4, 3000, mia);
+  buy(
+    userId,
+    month,
+    3,
+    "mia-dinner",
+    "Nopa · dinner with Mia",
+    8400,
+    "dining",
+    "amex",
+    share(month, 3, mia, 4200),
+  );
+  buy(
+    userId,
+    shiftMonth(month, -1),
+    9,
+    "sam-ski-rental",
+    "Tahoe ski rental",
+    5000,
+    "travel",
+    "checking",
+    share(shiftMonth(month, -1), 9, sam, 2500),
+  );
+  repaid(1, 2500, sam);
   buy(
     userId,
     month,

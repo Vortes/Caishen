@@ -6,7 +6,6 @@ import {
   createBook,
   execute,
   executeWithChanges,
-  withCounterpartyAccounts,
 } from "../../src/domain/engine";
 import { bookToRows, tombstone, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
@@ -28,10 +27,17 @@ import {
   normalizePlaidTransaction,
 } from "../../src/server/integrations/transactions";
 import { bankSetupDate } from "../../src/server/services/bank-account-setup";
+import {
+  asLegacyReimbursements,
+  envelopeOf,
+  personId,
+  withPerson,
+} from "../domain/fixtures/people";
 
-// Every budget holds its counterparty accounts and their paired envelopes:
-// from creation, from joining a partner, and, for budgets made before they
-// existed, from the first time a browser loads the budget.
+// Every counterparty is a person with an account and paired envelope: added
+// one at a time, the partner's linked person from joining, and, for budgets
+// stored with a Reimbursements account, converted the first time a browser
+// loads the budget.
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
 const db = new PrismaClient();
@@ -67,7 +73,7 @@ async function pullAll(who: Member, since: number | null = null) {
   return { ...first, rows };
 }
 
-// The counterparty accounts and paired envelopes among a member's rows.
+// The people and paired envelopes among a member's rows.
 function people(rows: WireRow[]) {
   const data = (row: WireRow) => row.data as Record<string, unknown>;
   return {
@@ -75,9 +81,15 @@ function people(rows: WireRow[]) {
       .filter(
         (row) =>
           row.table === "account" &&
-          ["partner", "reimbursements"].includes(String(data(row).kind)),
+          ["person", "partner", "reimbursements"].includes(
+            String(data(row).kind),
+          ),
       )
-      .map((row) => data(row).kind)
+      .map((row) =>
+        [data(row).kind, data(row).name, data(row).linkedUserId ?? null].join(
+          " ",
+        ),
+      )
       .sort(),
     envelopes: rows
       .filter(
@@ -112,17 +124,23 @@ test.after(async () => {
   await db.$disconnect();
 });
 
-void test("a new budget starts with the reimbursements account and its envelope", async () => {
+// A legacy budget: a checking account and the empty Reimbursements account
+// and envelope every budget was given before people.
+function legacyBook(userId: string, name: string, startMonth = month) {
+  return asLegacyReimbursements(createBook(userId, name, startMonth), userId);
+}
+
+void test("a new budget starts with nobody", async () => {
   const alan = await member("Alan");
   await onboard(alan, "Alan");
 
   assert.deepEqual(people((await pullAll(alan)).rows), {
-    accounts: ["reimbursements"],
-    envelopes: [["Reimbursements", "counterparty:reimbursements"]],
+    accounts: [],
+    envelopes: [],
   });
 });
 
-void test("joining a partner gives each budget a partner account and its envelope", async () => {
+void test("joining a partner gives each budget the person linked to the other and their envelope", async () => {
   const alan = await member("Host");
   const anna = await member("Guest");
   await onboard(alan, "Alan");
@@ -132,13 +150,13 @@ void test("joining a partner gives each budget a partner account and its envelop
     id: await invitationFrom(db, alan.userId),
   });
 
-  for (const who of [alan, anna])
+  for (const [who, other] of [
+    [alan, anna.userId],
+    [anna, alan.userId],
+  ] as const)
     assert.deepEqual(people((await pullAll(who)).rows), {
-      accounts: ["partner", "reimbursements"],
-      envelopes: [
-        ["Partner", "counterparty:partner"],
-        ["Reimbursements", "counterparty:reimbursements"],
-      ],
+      accounts: [`person Partner ${other}`],
+      envelopes: [["Partner", "counterparty:partner"]],
     });
   // The partner account goes by the partner's first name.
   await db.user.update({
@@ -155,20 +173,50 @@ void test("joining a partner gives each budget a partner account and its envelop
   assert.equal(state.status === "ready" && state.partnerFirstName, "Anna");
 });
 
-void test("a budget made before counterparty accounts gets them once, the first time it loads", async () => {
+void test("a budget stored with a Reimbursements account gets a person for each name once, the first time it loads", async () => {
   const sam = await member("Sam");
+  let book = withPerson(
+    createBook(sam.userId, "Sam", month),
+    sam.userId,
+    "Mom",
+  );
+  book = execute(book, sam.userId, {
+    type: "account.add",
+    id: randomUUID(),
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+  });
+  book = execute(book, sam.userId, {
+    type: "transaction.upsert",
+    id: randomUUID(),
+    transactionId: "lunch",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -2_000,
+    payee: "Lunch",
+    counterpartyShare: { accountId: personId("Mom"), amount: 2_000 },
+    recordedAt: "2026-10-05T12:00:00Z",
+  });
   const household = await createHousehold(
     db,
-    createBook(sam.userId, "Sam", month),
+    asLegacyReimbursements(book, sam.userId),
   );
   workspaceIds.push(household);
 
   const first = await pullAll(sam);
   assert.equal(first.revision, 2);
   assert.deepEqual(people(first.rows), {
-    accounts: ["reimbursements"],
-    envelopes: [["Reimbursements", "counterparty:reimbursements"]],
+    accounts: ["person Mom "],
+    envelopes: [["Mom", personId("Mom")]],
   });
+  const state = await sam.api.budget.state({ month });
+  assert.equal(
+    state.view?.accounts.find((account) => account.id === personId("Mom"))
+      ?.balance,
+    2_000,
+  );
   // Later loads find them there and write nothing.
   const again = await pullAll(sam, first.revision);
   assert.deepEqual([again.revision, again.rows], [first.revision, []]);
@@ -180,9 +228,9 @@ void test("a budget under maintenance shows maintenance instead of being upgrade
   const household = await createHousehold(db, book);
   workspaceIds.push(household);
   // A newer release saved an account kind this code doesn't know.
-  const account = bookToRows(
-    withCounterpartyAccounts(createBook(kim.userId, "Kim", month)),
-  ).find((row) => row.table === "account")!;
+  const account = bookToRows(legacyBook(kim.userId, "Kim")).find(
+    (row) => row.table === "account",
+  )!;
   const unknown = {
     ...account,
     data: { ...account.data!, kind: "crypto" },
@@ -209,9 +257,13 @@ void test("a budget under maintenance shows maintenance instead of being upgrade
   await assert.rejects(() => pullAll(kim), /maintenance/);
 });
 
-void test("a legacy budget's first direct command creates its paired envelopes before assigning a float and retries only once", async () => {
+void test("a legacy budget's first direct command creates its people's envelopes before assigning a float and retries only once", async () => {
   const lee = await member("Lee");
-  let book = createBook(lee.userId, "Lee", month);
+  let book = withPerson(
+    createBook(lee.userId, "Lee", month),
+    lee.userId,
+    "Mom",
+  );
   book = execute(book, lee.userId, {
     type: "account.add",
     id: randomUUID(),
@@ -220,11 +272,24 @@ void test("a legacy budget's first direct command creates its paired envelopes b
     kind: "cash",
     openingBalance: 100_000,
   });
-  workspaceIds.push(await createHousehold(db, book));
+  book = execute(book, lee.userId, {
+    type: "transaction.upsert",
+    id: randomUUID(),
+    transactionId: "lunch",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -2_000,
+    payee: "Lunch",
+    counterpartyShare: { accountId: personId("Mom"), amount: 2_000 },
+    recordedAt: "2026-10-05T12:00:00Z",
+  });
+  workspaceIds.push(
+    await createHousehold(db, asLegacyReimbursements(book, lee.userId)),
+  );
   const command = {
     type: "assign.set" as const,
     id: randomUUID(),
-    categoryId: "envelope:reimbursements",
+    categoryId: envelopeOf("Mom"),
     month,
     amount: 20_000,
   };
@@ -241,17 +306,16 @@ void test("a legacy budget's first direct command creates its paired envelopes b
   assert.equal(state.view?.readyToAssign, 80_000);
   assert.equal(
     state.view?.categories.find(
-      (category) =>
-        category.counterpartyAccountId === "counterparty:reimbursements",
+      (category) => category.counterpartyAccountId === personId("Mom"),
     )?.available,
-    20_000,
+    18_000,
   );
 });
 
 void test("a legacy budget's first category import upgrades its accounts without invalidating the request revision", async () => {
   const robin = await member("Robin");
   workspaceIds.push(
-    await createHousehold(db, createBook(robin.userId, "Robin", month)),
+    await createHousehold(db, legacyBook(robin.userId, "Robin")),
   );
 
   const saved = await robin.api.budget.execute({
@@ -267,7 +331,7 @@ void test("a legacy budget's first category import upgrades its accounts without
   });
   const state = await robin.api.budget.state({ month });
   assert.ok(
-    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+    !state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
   assert.ok(
     state.view?.categories.some((category) => category.id === "groceries"),
@@ -279,7 +343,7 @@ void test("a legacy budget's first category import upgrades its accounts without
 void test("a future command revision is still refused when it happens to equal the upgrade's revision", async () => {
   const quinn = await member("Quinn");
   workspaceIds.push(
-    await createHousehold(db, createBook(quinn.userId, "Quinn", month)),
+    await createHousehold(db, legacyBook(quinn.userId, "Quinn")),
   );
 
   await assert.rejects(
@@ -303,7 +367,7 @@ void test("a legacy budget can add its first bank account before pulling and ret
   const today = bankSetupDate("America/Los_Angeles");
   const bankMonth = today.slice(0, 7);
   workspaceIds.push(
-    await createHousehold(db, createBook(dana.userId, "Dana", bankMonth)),
+    await createHousehold(db, legacyBook(dana.userId, "Dana", bankMonth)),
   );
   const connectionId = randomUUID();
   await createBankConnection(db, {
@@ -349,7 +413,7 @@ void test("a legacy budget can add its first bank account before pulling and ret
   assert.equal(state.revision, 3);
   assert.equal(state.view?.readyToAssign, 100_000);
   assert.ok(
-    state.view?.categories.some(
+    !state.view?.categories.some(
       (category) =>
         category.counterpartyAccountId === "counterparty:reimbursements",
     ),
@@ -358,7 +422,7 @@ void test("a legacy budget can add its first bank account before pulling and ret
 
 void test("a legacy budget's first bank import keeps its original revision and records the purchase once", async () => {
   const remy = await member("Remy");
-  let book = createBook(remy.userId, "Remy", month);
+  let book = legacyBook(remy.userId, "Remy");
   book = execute(book, remy.userId, {
     type: "account.add",
     id: randomUUID(),
@@ -432,20 +496,23 @@ void test("a legacy budget's first bank import keeps its original revision and r
   assert.equal(state.view?.budget.transactions.length, 1);
   assert.equal(state.view?.personalSpending, 1500);
   assert.ok(
-    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+    !state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
 });
 
+// Converting a legacy budget removes its Reimbursements envelope, which
+// renumbers the categories after it, so this change is one that converting
+// leaves alone.
 void test("a legacy budget can undo its previous user change before pulling without undoing the system accounts", async () => {
   const noa = await member("Noa");
-  const book = createBook(noa.userId, "Noa", month);
+  const book = legacyBook(noa.userId, "Noa");
   const workspaceId = await createHousehold(db, book);
   workspaceIds.push(workspaceId);
   const command = {
-    type: "category.add" as const,
+    type: "income.expect" as const,
     id: randomUUID(),
-    categoryId: "old-category",
-    name: "Old category",
+    month,
+    amount: 50_000,
   };
   const legacy = executeWithChanges(book, noa.userId, command);
   await writeChangeSet(db, {
@@ -477,11 +544,8 @@ void test("a legacy budget can undo its previous user change before pulling with
     rebased: false,
   });
   const state = await noa.api.budget.state({ month });
-  assert.equal(
-    state.view?.categories.some((category) => category.id === "old-category"),
-    false,
-  );
+  assert.equal(state.view?.budget.expectedIncome[month], undefined);
   assert.ok(
-    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+    !state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
 });

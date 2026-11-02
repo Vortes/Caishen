@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { SyncError } from "~/components/sync/transport";
-import { execute, withCounterpartyAccounts } from "~/domain/engine";
+import { execute, personAccountId } from "~/domain/engine";
 import {
   deferred,
   findToast,
@@ -10,6 +10,15 @@ import {
   budgetFixture,
   transactionRow,
 } from "./shell-harness";
+
+// The owner's budget with one person, Mom.
+const withMom = () =>
+  execute(budgetFixture(), "owner", {
+    type: "person.add",
+    id: "add-mom",
+    accountId: personAccountId("mom"),
+    name: "Mom",
+  });
 
 test("a save closes the editor at once, and a draft the server refuses comes back", async () => {
   const gate = deferred<void>();
@@ -73,7 +82,7 @@ test("a dirty transaction holds shell navigation until canceled; a pristine edit
 
 test("choosing a person under People categorizes the whole purchase and survives reload", async () => {
   const shell = await renderShell({
-    book: withCounterpartyAccounts(budgetFixture()),
+    book: budgetFixture(),
   });
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
@@ -92,8 +101,8 @@ test("choosing a person under People categorizes the whole purchase and survives
   await shell.user.click(
     within(form).getByRole("combobox", { name: "Category" }),
   );
-  await shell.user.click(screen.getByRole("option", { name: "Someone else…" }));
-  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await shell.user.click(screen.getByRole("option", { name: "New person…" }));
+  await shell.user.type(screen.getByLabelText("New person"), "Mom");
   await shell.user.click(screen.getByRole("button", { name: "Apply" }));
   expect(
     within(form).getByRole("combobox", { name: "Category" }),
@@ -110,7 +119,7 @@ test("choosing a person under People categorizes the whole purchase and survives
 
 test("a person picked before the amount keeps the full share as the amount changes", async () => {
   const shell = await renderShell({
-    book: withCounterpartyAccounts(budgetFixture()),
+    book: budgetFixture(),
   });
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   await shell.user.click(
@@ -125,8 +134,8 @@ test("a person picked before the amount keeps the full share as the amount chang
   await shell.user.click(
     within(form).getByRole("combobox", { name: "Category" }),
   );
-  await shell.user.click(screen.getByRole("option", { name: "Someone else…" }));
-  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await shell.user.click(screen.getByRole("option", { name: "New person…" }));
+  await shell.user.type(screen.getByLabelText("New person"), "Mom");
   await shell.user.click(screen.getByRole("button", { name: "Apply" }));
   await shell.user.type(
     within(form).getByLabelText("Outflow", { exact: true }),
@@ -147,8 +156,8 @@ test("a person picked before the amount keeps the full share as the amount chang
   ).toContain("$20.00");
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "New transaction" })).toBeNull();
-  await shell.user.click(screen.getByRole("link", { name: /^Reimbursements/ }));
-  expect(screen.getByRole("heading", { name: "Reimbursements" })).toBeTruthy();
+  await shell.user.click(screen.getByRole("link", { name: /^Mom/ }));
+  expect(screen.getByRole("heading", { name: "Mom" })).toBeTruthy();
   expect(screen.getAllByText("$20.00").length).toBeGreaterThan(0);
 });
 
@@ -182,7 +191,7 @@ test("a share typed before the amount fills the outflow with it", async () => {
 });
 
 test("a full share saves from the register and reducing it asks for a personal category", async () => {
-  const book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+  const book = execute(budgetFixture(), "owner", {
     type: "transaction.upsert",
     id: "noodles",
     transactionId: "noodles",
@@ -196,20 +205,20 @@ test("a full share saves from the register and reducing it asks for a personal c
   await shell.user.click(
     screen.getByRole("button", { name: "Share Noodles Plus" }),
   );
-  await shell.user.click(
-    screen.getByRole("button", { name: /Someone else owes/ }),
-  );
-  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
-  await shell.user.click(screen.getByRole("button", { name: "Apply" }));
+  // A new person, then all of it theirs.
+  await shell.user.click(screen.getByRole("button", { name: /New person/ }));
+  await shell.user.type(screen.getByLabelText("Name"), "Mom");
+  await shell.user.click(screen.getByRole("button", { name: "Add" }));
+  await shell.user.click(screen.getByRole("button", { name: /All Mom's/ }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   await shell.user.click(
     screen.getByRole("button", { name: /Mom's share of Noodles Plus/ }),
   );
-  await shell.user.clear(screen.getByLabelText("Amount", { exact: true }));
-  await shell.user.type(
-    screen.getByLabelText("Amount", { exact: true }),
-    "7.00",
-  );
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  await shell.user.click(menu.getByRole("button", { name: /^Mom/ }));
+  await shell.user.click(menu.getByRole("button", { name: /Amount…/ }));
+  await shell.user.clear(screen.getByLabelText("Mom's share"));
+  await shell.user.type(screen.getByLabelText("Mom's share"), "7.00");
   await shell.user.click(screen.getByRole("button", { name: "Apply" }));
   const form = screen.getByRole("form", { name: "Edit transaction" });
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
@@ -228,7 +237,7 @@ test("a full share saves from the register and reducing it asks for a personal c
 });
 
 test("a split line can go entirely to someone under People", async () => {
-  const book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+  const book = execute(budgetFixture(), "owner", {
     type: "transaction.upsert",
     id: "noodles",
     transactionId: "noodles",
@@ -249,8 +258,8 @@ test("a split line can go entirely to someone under People", async () => {
   await shell.user.click(
     within(form).getByRole("combobox", { name: "Line 2 category" }),
   );
-  await shell.user.click(screen.getByRole("option", { name: "Someone else…" }));
-  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
+  await shell.user.click(screen.getByRole("option", { name: "New person…" }));
+  await shell.user.type(screen.getByLabelText("New person"), "Mom");
   await shell.user.click(screen.getByRole("button", { name: "Apply" }));
   await shell.user.click(within(form).getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
@@ -267,8 +276,8 @@ test("a split line can go entirely to someone under People", async () => {
   ).toHaveProperty("value", "Mom");
 });
 
-test("a fully reimbursable refund reopens with its person and saves without a category", async () => {
-  let book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+test("a refund owed in full to a person reopens with its person and saves without a category", async () => {
+  let book = execute(withMom(), "owner", {
     type: "account.add",
     id: "card",
     accountId: "card",
@@ -286,8 +295,7 @@ test("a fully reimbursable refund reopens with its person and saves without a ca
     payee: "Noodles Plus",
     recordedAt: "2026-10-05T12:00:00Z",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personAccountId("mom"),
       amount: 1_154,
     },
   });
@@ -300,8 +308,7 @@ test("a fully reimbursable refund reopens with its person and saves without a ca
     amount: 1_154,
     payee: "Noodles refund",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personAccountId("mom"),
       amount: 1_154,
     },
     recordedAt: "2026-10-06T12:00:00Z",
@@ -322,8 +329,8 @@ test("a fully reimbursable refund reopens with its person and saves without a ca
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
 });
 
-test("writing off a full reimbursement opens the editor to categorize the new personal cost", async () => {
-  const book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+test("writing off a person's full share opens the editor to categorize the new personal cost", async () => {
+  const book = execute(withMom(), "owner", {
     type: "transaction.upsert",
     id: "purchase",
     transactionId: "purchase",
@@ -333,8 +340,7 @@ test("writing off a full reimbursement opens the editor to categorize the new pe
     payee: "Noodles Plus",
     recordedAt: "2026-10-05T12:00:00Z",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personAccountId("mom"),
       amount: 1_154,
     },
   });

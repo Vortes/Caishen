@@ -178,7 +178,7 @@ test("sidebar addresses survive reloading and browser history keeps the selected
   await screen.findByRole("heading", { name: "Plan" });
 });
 
-test("settings opens Profile and Partner at their app addresses and returns to the same budget", async () => {
+test("settings opens Profile and People at their app addresses and returns to the same budget", async () => {
   const { user } = await renderShell();
   await user.click(screen.getByRole("button", { name: "Component budget" }));
   await user.click(screen.getByRole("menuitem", { name: "Settings" }));
@@ -186,9 +186,9 @@ test("settings opens Profile and Partner at their app addresses and returns to t
   await screen.findByRole("heading", { name: "Profile" });
   expect(screen.getByLabelText("Budget name")).toBeTruthy();
 
-  await user.click(screen.getByRole("link", { name: "Partner" }));
-  expect(window.location.pathname).toBe("/app/settings/partner");
-  await screen.findByRole("heading", { name: "Partner" });
+  await user.click(screen.getByRole("link", { name: "People" }));
+  expect(window.location.pathname).toBe("/app/settings/people");
+  await screen.findByRole("heading", { name: "People" });
   expect(screen.getByRole("button", { name: "Write invitation" })).toBeTruthy();
 
   await user.click(screen.getByRole("link", { name: "Back to app" }));

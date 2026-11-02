@@ -92,6 +92,9 @@ function everyRow(): WireRow[] {
     data: sample("rows.payeeMemory/category.json"),
   } as WireRow);
   extend("category", { counterpartyAccountId: "partner" });
+  // A repayment stored before people still names its person until
+  // withPeople converts it.
+  extend("transaction", { counterpartyName: "Employer" });
   extend("target", { cadence: "monthly", monthDay: 15 });
   extend("transaction", { providerId: "plaid:item:transaction" });
   extend("partnerEntry", { removed: true });

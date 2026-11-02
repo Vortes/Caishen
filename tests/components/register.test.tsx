@@ -1,12 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { withPeople } from "~/domain/people";
 import { expect, test } from "vitest";
-import {
-  addMember,
-  createBook,
-  execute,
-  withCounterpartyAccounts,
-  type Command,
-} from "~/domain/engine";
+import { addMember, createBook, execute, type Command } from "~/domain/engine";
 import { SyncError } from "~/components/sync/transport";
 import {
   budgetFixture,
@@ -40,9 +35,7 @@ const editor = () =>
 
 test("matching an import to a recorded purchase offers Undo and supports redo", async () => {
   const book = execute(
-    withCounterpartyAccounts(
-      addMember(budgetFixture(), "partner", "Anna", "2026-10"),
-    ),
+    withPeople(addMember(budgetFixture(), "partner", "Anna", "2026-10")),
     "partner",
     {
       type: "partner.record",
@@ -785,8 +778,8 @@ test("choosing and removing a transfer payee changes category requirements witho
   ).toBeTruthy();
 });
 
-test("F3: the new transaction account picker excludes Partner and Reimbursements", async () => {
-  const book = withCounterpartyAccounts(
+test("F3: the new transaction account picker excludes people", async () => {
+  const book = withPeople(
     addMember(budgetFixture(), "partner", "Anna", "2026-10"),
   );
   const shell = await renderShell({
@@ -800,7 +793,5 @@ test("F3: the new transaction account picker excludes Partner and Reimbursements
   const form = within(screen.getByRole("form", { name: "New transaction" }));
   await shell.user.click(form.getByRole("combobox", { name: "Account" }));
   expect(screen.getByRole("option", { name: /Checking/ })).toBeTruthy();
-  expect(
-    screen.queryByRole("option", { name: /Partner|Anna|Reimbursements/ }),
-  ).toBeNull();
+  expect(screen.queryByRole("option", { name: /Partner|Anna/ })).toBeNull();
 });

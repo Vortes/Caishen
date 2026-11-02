@@ -15,14 +15,15 @@ import {
   createBook,
   execute,
   personalLedger,
-  withCounterpartyAccounts,
   executeWithChanges,
   projectBook,
   type Command,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
+import { personId, withPerson } from "./fixtures/people";
 
 void test("F1: the non-payer and household refuse a share reduction without the payer's purpose category", () => {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
   );
   book = execute(book, "a", {
@@ -60,9 +61,10 @@ void test("F1: the non-payer and household refuse a share reduction without the 
 
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 function agreementBook() {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
   );
+  for (const actor of ["a", "b"]) book = withPerson(book, actor, "Employer");
   let sequence = 0;
   const run = (actor: string, command: WithoutId<Command>) => {
     book = execute(book, actor, { ...command, id: `matrix-${++sequence}` });
@@ -188,17 +190,15 @@ function agreementBook() {
       ...base,
       transactionId: "reimbursable",
       counterpartyShare: {
-        accountId: "counterparty:reimbursements",
+        accountId: personId("Employer"),
         amount: 1000,
-        counterpartyName: "Employer",
       },
     });
     run(actor, {
       type: "counterparty.receive",
-      counterpartyAccountId: "counterparty:reimbursements",
+      counterpartyAccountId: personId("Employer"),
       cashAccountId: "cash",
       amount: 500,
-      counterpartyName: "Employer",
       date: "2026-10-11",
       recordedAt: "2026-10-11T12:00:00Z",
     });
@@ -403,7 +403,7 @@ void test("register capabilities and UI commands agree across both members' Pers
 });
 
 void test("source line facts follow a non-payer's full-share edit before the next preview", () => {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
   );
   book = execute(book, "a", {

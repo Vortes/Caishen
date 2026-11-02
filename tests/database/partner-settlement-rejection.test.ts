@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test, { mock } from "node:test";
-import {
-  addMember,
-  createBook,
-  execute,
-  withCounterpartyAccounts,
-} from "../../src/domain/engine";
+import { addMember, createBook, execute } from "../../src/domain/engine";
 import {
   CLIENT_FORMAT,
   CLIENT_FORMAT_HEADER,
@@ -25,6 +20,7 @@ import { bankInbox, syncBanks } from "../../src/server/services/banks";
 import { settleFromImports } from "../../src/server/services/partner-settlements";
 import { replaceRows } from "../../src/server/storage/rows";
 import { encryptBankToken } from "../../src/server/token-crypto";
+import { withPeople } from "../../src/domain/people";
 
 const url = new URL(process.env.DATABASE_URL!);
 if (!(
@@ -55,7 +51,7 @@ void test("rejecting a settlement returns both imports to review and later syncs
     await db.workspaceMember.createMany({
       data: [alan, anna].map((clerkUserId) => ({ clerkUserId, workspaceId })),
     });
-    let book = withCounterpartyAccounts(
+    let book = withPeople(
       addMember(createBook(alan, "Alan", "2026-10"), anna, "Anna", "2026-10"),
     );
     const imports = [];

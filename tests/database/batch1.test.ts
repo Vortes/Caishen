@@ -177,8 +177,10 @@ void test("deleting a personal budget erases private data and freezes the partne
   });
   const before = await partner.api.budget.state({ month });
   assert.equal(
-    before.view?.accounts.find((account) => account.kind === "partner")
-      ?.balance,
+    before.view?.accounts.find(
+      (account) =>
+        account.kind === "person" && !!account.linkedUserId && !account.closed,
+    )?.balance,
     -5_000,
   );
   await db.user.update({
@@ -188,11 +190,16 @@ void test("deleting a personal budget erases private data and freezes the partne
   await deletePersonalBudget(db, owner.id);
   const after = await partner.api.budget.state({ month });
   const closed = (view: typeof after.view) =>
-    view?.accounts.find((account) => account.kind === "former-partner");
+    view?.accounts.find(
+      (account) => account.kind === "person" && !!account.closed,
+    );
   assert.equal(closed(after.view)?.name, "Deleted partner");
   assert.equal(closed(after.view)?.balance, -5_000);
   assert.equal(
-    after.view?.accounts.find((account) => account.kind === "partner"),
+    after.view?.accounts.find(
+      (account) =>
+        account.kind === "person" && !!account.linkedUserId && !account.closed,
+    ),
     undefined,
     "the partner slot is free again",
   );
