@@ -1,5 +1,7 @@
 "use client";
 
+import grid from "~/components/ui/register.module.css";
+
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
@@ -16,7 +18,8 @@ import { money, shortDay, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
-import { Empty, moveSelection } from "./views";
+import { Empty } from "./views";
+import { moveSelection } from "~/components/ui/move-selection";
 import styles from "./shell.module.css";
 import local from "./reimbursements-register.module.css";
 
@@ -217,12 +220,12 @@ export function ReimbursementsRegister({
     );
   return (
     <div
-      className={`${styles.list} ${styles.register} ${local.register}`}
+      className={`${styles.list} ${grid.register} ${local.register}`}
       role="group"
       aria-label={account.name}
       onKeyDown={moveSelection}
     >
-      <div className={`${styles.txColumns} ${styles.columnHeader}`} aria-hidden>
+      <div className={`${grid.columns} ${grid.columnHeader}`} aria-hidden>
         <span data-optional>Date</span>
         <span>Payee</span>
         <span>Who</span>
@@ -234,7 +237,7 @@ export function ReimbursementsRegister({
       {rows.map((entry) => (
         <div
           key={entry.id}
-          className={styles.rowWrap}
+          className={grid.rowWrap}
           onMouseDown={(event) => {
             // A double-click would select a word, and the click handler
             // would take it for a text selection and not open the entry.
@@ -244,7 +247,7 @@ export function ReimbursementsRegister({
           <button
             type="button"
             data-row
-            className={`${styles.txColumns} ${styles.row}`}
+            className={`${grid.columns} ${grid.row}`}
             aria-current={selectedId === entry.id ? "true" : undefined}
             title={
               selectedId === entry.id

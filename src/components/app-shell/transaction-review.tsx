@@ -14,12 +14,10 @@ import type { Command } from "~/domain/engine";
 import { TRANSACTION_ACTION_LIMIT } from "~/domain/register-entry";
 import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
 import { ActionBar, type Way } from "~/components/ui/action-bar";
 import barStyles from "~/components/ui/action-bar.module.css";
 import { Menu, MenuItem, MenuSub } from "~/components/ui/menu";
 import type { Transaction } from "./model";
-import shell from "./shell.module.css";
 import { useTransactionEntry } from "./transaction-entry";
 import { ShareSelection } from "./share-selection";
 
@@ -74,34 +72,6 @@ export function useReviewSelection({
     selected,
     actions: transactionSelectionActions(selected),
   };
-}
-
-// Sits in the column header's checkbox gutter, over the rows' checkboxes.
-export function SelectAll({
-  selection: { selectable, selected },
-  onCheck,
-}: {
-  selection: { selectable: { id: string }[]; selected: { id: string }[] };
-  onCheck: (ids: string[], value: boolean) => void;
-}) {
-  if (!selectable.length) return null;
-  const all = selectable.map((item) => item.id);
-  return (
-    <label className={shell.checkboxSlot}>
-      <Checkbox
-        aria-label="Select all"
-        checked={
-          selected.length === 0
-            ? false
-            : selected.length === all.length
-              ? true
-              : "indeterminate"
-        }
-        // With anything checked, the box clears the selection.
-        onCheckedChange={() => onCheck(all, selected.length === 0)}
-      />
-    </label>
-  );
 }
 
 // Floats over the bottom of the register while rows are selected, in place

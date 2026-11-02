@@ -1,0 +1,330 @@
+.register :where(button) {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  transition: none;
+}
+/* Rows sit inset from the panel edge with a wide left padding that holds
+   the checkbox, keeping row controls clear of the strip at the window edge
+   that opens the collapsed sidebar. */
+.list {
+  /* The left padding that holds a row's checkbox, 10px in from the row's
+     edge like the column header's. */
+  --row-gutter: 34px;
+  /* Wide enough that macOS's overlay scrollbar, which draws over the
+     content, clears the rows and the editor's border. */
+  padding: 0 16px 72px;
+}
+.columns {
+  display: grid;
+  align-items: center;
+  column-gap: 16px;
+  width: 100%;
+  padding: 0 var(--space-row-x) 0 var(--row-gutter);
+  grid-template-columns: var(--columns, var(--tx-columns));
+  /* Wide enough for the editor's wells to reach past their columns and
+     still sit 8px apart. */
+  column-gap: 16px;
+  /* A whole-pixel line, so a row's text and its editor's inputs land on the
+     same pixel: Chrome rounds an input's line to whole pixels and paints a
+     row's where it falls, and at 1.4 (19.6px) they part by one. */
+  line-height: 20px;
+}
+
+.register .columns {
+  display: grid;
+  line-height: 20px;
+}
+/* The register's columns, shared by its headers, rows, and entry row so a
+   new transaction's fields sit under the columns they fill. The last column
+   holds the bank status. */
+.register {
+  --columns: var(--columns-wide, var(--tx-columns));
+  /* A register row's review dot follows the checkbox: 6px past it, and 6px
+     before the row's text. */
+  --row-gutter: 42px;
+  --tx-columns: 8.25rem minmax(0, 1.3fr) minmax(0, 1fr) 10.5rem 6.5rem 6.5rem
+    16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.register[data-accounts] {
+  --tx-columns: minmax(0, 0.8fr) 8.25rem minmax(0, 1.2fr) minmax(0, 1fr) 10.5rem
+    6.5rem 6.5rem 16px;
+}
+.register .columns > [data-narrow] {
+  display: none;
+}
+.statusCell {
+  display: flex;
+  justify-content: center;
+}
+/* The C column's toggle, over its row in the last column. */
+.clearedActions {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.clearedSlot {
+  display: flex;
+  grid-column: -2;
+  justify-content: center;
+  pointer-events: auto;
+}
+@container (max-width: 760px) {
+  .register [data-optional] {
+    display: none;
+  }
+  .register,
+  .register[data-accounts] {
+    --columns: var(--columns-narrow, var(--tx-columns));
+    --tx-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto 16px;
+  }
+  .register .row > [data-column="share"],
+  .register .columnHeader > [data-column="share"],
+  .register .columns > [data-wide],
+  .register .row > [data-empty] {
+    display: none;
+  }
+  .register .columns > [data-narrow] {
+    display: block;
+  }
+}
+.columnHeader {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  height: var(--size-row-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+/* A new transaction stays pinned under the column header while the
+   register scrolls beneath it. The top padding keeps the editor's border
+   clear of the header; flow-root keeps its bottom margin inside the opaque
+   band. */
+.editorDock {
+  position: sticky;
+  z-index: 1;
+  top: var(--size-row-md);
+  display: flow-root;
+  padding-top: 8px;
+  background: var(--surface-panel);
+}
+.groupRow,
+.dayRow {
+  height: var(--size-row-lg);
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface-group);
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  font-weight: 500;
+  text-align: left;
+}
+.register .groupRow {
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+.register .groupRow:hover {
+  color: var(--text-primary);
+}
+.dayRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--space-row-x) 0 var(--row-gutter);
+}
+.groupCaret {
+  color: var(--text-tertiary);
+  transition: transform 150ms var(--ease-panel);
+}
+/* Rotated, the chevron keeps its box's center, but a > carries its weight
+   on the open side and reads as sitting left, away from the name. A pixel
+   toward the point centers it. */
+.groupRow[aria-expanded="false"] .groupCaret {
+  transform: translateX(1px) rotate(-90deg);
+}
+.groupCount {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.row {
+  height: var(--size-row-lg);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.row:hover {
+  background: var(--surface-hover);
+}
+.row[aria-current="true"] {
+  background: var(--surface-selected);
+}
+/* Pending rows sit one text step back from cleared ones, in a single tone:
+   the bank hasn't settled them, so their amounts may still change. A
+   pending inflow isn't in the balance yet, so it isn't green either. */
+.row[data-pending],
+.row[data-pending] .numeric[data-inflow] {
+  color: var(--text-secondary);
+}
+/* The register's rules, under its column header and its pending rows, run
+   past the list's inset to the panel's edges, like the panel header's. The
+   border stays, transparent, so the rows keep their place. */
+.register .columnHeader {
+  border-bottom-color: transparent;
+}
+/* The first transaction clears the rule by the same inset as the pending
+   group and the new-transaction editor, and keeps it when it opens in place,
+   so its fields stay level with the text they replace. */
+.register .columnHeader + .rowWrap,
+.register .columnHeader + .row,
+.register .columnHeader + form {
+  margin-top: var(--space-inset);
+}
+.register .columnHeader::after,
+.pendingGroup::after {
+  content: "";
+  position: absolute;
+  right: -8px;
+  bottom: -1px;
+  left: -8px;
+  height: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+}
+/* The pending heading and rows, set apart from the cleared ones below. Each
+   rule has the same 8px on both sides. */
+.pendingHeader {
+  width: 100%;
+  margin: 0;
+}
+.pendingHeader:not(:last-child) {
+  margin-bottom: var(--space-inset);
+}
+.pendingGroup {
+  position: relative;
+  margin-bottom: var(--space-inset);
+  padding-block: var(--space-inset);
+  border-bottom: 1px solid transparent;
+}
+.rowWrap {
+  position: relative;
+}
+/* Each row isolates its own stacking, so the row whose Assigned field is
+   open rises above the rows below for the field's error to hang over them. */
+.rowWrap:has([data-editing]) {
+  z-index: 3;
+}
+/* The checkbox overlays the row, so hover is tracked on the wrapper to keep
+   the row highlighted while the pointer is on the checkbox. */
+.rowWrap:has(> .row):hover {
+  background: var(--surface-hover);
+}
+.rowWrap:has(> .row[aria-current="true"]) {
+  background: var(--surface-selected);
+}
+.rowWrap > .row,
+.rowWrap:hover > .row,
+.rowWrap > .row[aria-current="true"] {
+  background: transparent;
+}
+.rowActions {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.counterpartAction {
+  grid-column: 2;
+  justify-self: end;
+  pointer-events: auto;
+}
+.register[data-accounts] .counterpartAction {
+  grid-column: 3;
+}
+.actionAmountSizer {
+  display: none;
+  visibility: hidden;
+}
+@container (max-width: 760px) {
+  .register .counterpartAction,
+  .register[data-accounts] .counterpartAction {
+    grid-column: 1;
+  }
+  .actionAmountSizer {
+    display: block;
+    grid-column: 3;
+  }
+}
+@container (max-width: 480px) {
+  .register,
+  .register[data-accounts] {
+    --columns: var(--columns-compact, var(--columns-narrow, var(--tx-columns)));
+    --tx-columns: minmax(0, 1fr) auto 16px;
+  }
+  .register .columnHeader > [data-column="category"] {
+    display: none;
+  }
+  .register .row {
+    height: auto;
+    min-height: var(--size-row-lg);
+    padding-block: var(--space-inset);
+    row-gap: 2px;
+  }
+  .register .row > [data-column="payee"] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .register .row > [data-column="category"] {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: var(--type-small);
+  }
+  .register .row > [data-narrow] {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+  .register .row > [data-column="status"] {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
+  .register .actionAmountSizer {
+    grid-column: 2;
+  }
+}
+.numeric {
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.numeric[data-inflow] {
+  color: var(--money-positive);
+}
+
+.register [data-row] [data-column] {
+  user-select: text;
+}
+
+.row:focus-visible,
+.groupRow:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+@media (hover: none) {
+  .rowWrap > label {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .groupCaret {
+    transition: none;
+  }
+}

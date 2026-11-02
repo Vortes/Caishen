@@ -1,5 +1,7 @@
 "use client";
 
+import grid from "~/components/ui/register.module.css";
+
 import {
   CheckIcon,
   CopyIcon,
@@ -26,8 +28,11 @@ import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { EditorCell, EditorFooter, EditorForm, EditorText } from "./editor-row";
-import { CategorizeAction, SelectAll } from "./transaction-review";
-import { Empty, moveSelection, RowCheckbox } from "./views";
+import { CategorizeAction } from "./transaction-review";
+import { SelectAll } from "~/components/ui/select-all";
+import { Empty } from "./views";
+import { moveSelection } from "~/components/ui/move-selection";
+import { RowCheckbox } from "~/components/ui/row-checkbox";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
 import local from "./partner-register.module.css";
@@ -448,7 +453,7 @@ export function PartnerRegister({
   return (
     <div
       ref={register}
-      className={`${styles.list} ${styles.register} ${local.register} ${reviewStyles.register} ${selectionStyles.list}`}
+      className={`${styles.list} ${grid.register} ${local.register} ${reviewStyles.register} ${selectionStyles.list}`}
       {...selectionStyle.listProps}
       role="group"
       aria-label={`${account.name} ledger`}
@@ -483,7 +488,7 @@ export function PartnerRegister({
         moveSelection(event);
       }}
     >
-      <div className={`${styles.txColumns} ${styles.columnHeader}`}>
+      <div className={`${grid.columns} ${grid.columnHeader}`}>
         <SelectAll selection={{ selectable, selected }} onCheck={onCheck} />
         <span data-optional aria-hidden>
           Date
@@ -588,7 +593,7 @@ export function PartnerRegister({
         return (
           <div
             key={row.id}
-            className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
+            className={`${grid.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
             {...selectionStyle.rowProps(row.id)}
             onMouseDown={(event) => {
               // Shift would otherwise extend a text selection across rows.
@@ -614,7 +619,7 @@ export function PartnerRegister({
               data-row
               data-id={checkable ? row.id : undefined}
               data-entry-row={row.id}
-              className={`${styles.txColumns} ${styles.row}`}
+              className={`${grid.columns} ${grid.row}`}
               aria-current={isSelected ? "true" : undefined}
               aria-expanded={settlement ? isSelected : undefined}
               onClick={(event) => {
@@ -958,7 +963,7 @@ function EntryEditor({
       onSubmit={editable ? save : onClose}
       onCancel={onClose}
     >
-      <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
+      <div className={`${grid.columns} ${editorStyles.entryRow}`}>
         {readOnly("date", cells.date)}
         {readOnly("payee", cells.payee)}
         {categoryEditable ? (

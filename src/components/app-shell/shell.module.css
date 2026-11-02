@@ -1086,7 +1086,6 @@ button.actionItem:disabled {
   padding: 0 16px 72px;
 }
 .columns,
-.txColumns,
 .loanColumns {
   display: grid;
   align-items: center;
@@ -1100,52 +1099,9 @@ button.actionItem:disabled {
     minmax(0, 1fr) 104px var(--activity-column, 104px)
     116px;
 }
-.txColumns {
-  grid-template-columns: var(--tx-columns);
-  /* Wide enough for the editor's wells to reach past their columns and
-     still sit 8px apart. */
-  column-gap: 16px;
-  /* A whole-pixel line, so a row's text and its editor's inputs land on the
-     same pixel: Chrome rounds an input's line to whole pixels and paints a
-     row's where it falls, and at 1.4 (19.6px) they part by one. */
-  line-height: 20px;
-}
-/* The register's columns, shared by its headers, rows, and entry row so a
-   new transaction's fields sit under the columns they fill. The last column
-   holds the bank status. */
-.register {
-  /* A register row's review dot follows the checkbox: 6px past it, and 6px
-     before the row's text. */
-  --row-gutter: 42px;
-  --tx-columns: 8.25rem minmax(0, 1.3fr) minmax(0, 1fr) 10.5rem 6.5rem 6.5rem
-    16px;
-}
-.register[data-accounts] {
-  --tx-columns: minmax(0, 0.8fr) 8.25rem minmax(0, 1.2fr) minmax(0, 1fr) 10.5rem
-    6.5rem 6.5rem 16px;
-}
 .revealSpace {
   flex: none;
   pointer-events: none;
-}
-.register .txColumns > [data-narrow] {
-  display: none;
-}
-.statusCell {
-  display: flex;
-  justify-content: center;
-}
-/* The C column's toggle, over its row in the last column. */
-.clearedActions {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.clearedSlot {
-  display: flex;
-  grid-column: -2;
-  justify-content: center;
-  pointer-events: auto;
 }
 .loanColumns {
   grid-template-columns: minmax(0, 1fr) 80px 96px 128px;
@@ -1161,24 +1117,6 @@ button.actionItem:disabled {
     grid-template-columns: minmax(0, 1fr) 128px;
   }
 }
-@container (max-width: 760px) {
-  .register [data-optional] {
-    display: none;
-  }
-  .register,
-  .register[data-accounts] {
-    --tx-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto 16px;
-  }
-  .register .row > [data-column="share"],
-  .register .columnHeader > [data-column="share"],
-  .register .txColumns > [data-wide],
-  .register .row > [data-empty] {
-    display: none;
-  }
-  .register .txColumns > [data-narrow] {
-    display: block;
-  }
-}
 .columnHeader {
   position: sticky;
   z-index: 2;
@@ -1188,18 +1126,6 @@ button.actionItem:disabled {
   background: var(--surface-panel);
   color: var(--text-tertiary);
   font-size: var(--type-small);
-}
-/* A new transaction stays pinned under the column header while the
-   register scrolls beneath it. The top padding keeps the editor's border
-   clear of the header; flow-root keeps its bottom margin inside the opaque
-   band. */
-.editorDock {
-  position: sticky;
-  z-index: 1;
-  top: var(--size-row-md);
-  display: flow-root;
-  padding-top: 8px;
-  background: var(--surface-panel);
 }
 .groupRow,
 .dayRow {
@@ -1449,53 +1375,6 @@ button.actionItem:disabled {
 .row[aria-current="true"] {
   background: var(--surface-selected);
 }
-/* Pending rows sit one text step back from cleared ones, in a single tone:
-   the bank hasn't settled them, so their amounts may still change. A
-   pending inflow isn't in the balance yet, so it isn't green either. */
-.row[data-pending],
-.row[data-pending] .numeric[data-inflow] {
-  color: var(--text-secondary);
-}
-/* The register's rules, under its column header and its pending rows, run
-   past the list's inset to the panel's edges, like the panel header's. The
-   border stays, transparent, so the rows keep their place. */
-.register .columnHeader {
-  border-bottom-color: transparent;
-}
-/* The first transaction clears the rule by the same inset as the pending
-   group and the new-transaction editor, and keeps it when it opens in place,
-   so its fields stay level with the text they replace. */
-.register .columnHeader + .rowWrap,
-.register .columnHeader + .row,
-.register .columnHeader + form {
-  margin-top: var(--space-inset);
-}
-.register .columnHeader::after,
-.pendingGroup::after {
-  content: "";
-  position: absolute;
-  right: -8px;
-  bottom: -1px;
-  left: -8px;
-  height: 1px;
-  background: var(--border-subtle);
-  pointer-events: none;
-}
-/* The pending heading and rows, set apart from the cleared ones below. Each
-   rule has the same 8px on both sides. */
-.pendingHeader {
-  width: 100%;
-  margin: 0;
-}
-.pendingHeader:not(:last-child) {
-  margin-bottom: var(--space-inset);
-}
-.pendingGroup {
-  position: relative;
-  margin-bottom: var(--space-inset);
-  padding-block: var(--space-inset);
-  border-bottom: 1px solid transparent;
-}
 .root .row:focus-visible,
 .root .groupRow:focus-visible,
 .root .groupToggle:focus-visible {
@@ -1526,26 +1405,6 @@ button.actionItem:disabled {
 .rowWrap:hover > .groupRow {
   color: var(--text-primary);
 }
-.checkboxSlot {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  bottom: 0;
-  left: 4px;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  cursor: pointer;
-  opacity: 0;
-}
-.rowWrap:hover .checkboxSlot,
-.columnHeader:hover .checkboxSlot,
-.list[data-selecting] .checkboxSlot,
-.checkboxSlot:focus-within,
-.checkboxSlot:has([data-state="checked"]),
-.checkboxSlot:has([data-state="indeterminate"]) {
-  opacity: 1;
-}
 .rowName {
   display: flex;
   align-items: center;
@@ -1554,68 +1413,6 @@ button.actionItem:disabled {
 }
 .rowName[data-jump] {
   padding-right: 32px;
-}
-.rowActions {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.counterpartAction {
-  grid-column: 2;
-  justify-self: end;
-  pointer-events: auto;
-}
-.register[data-accounts] .counterpartAction {
-  grid-column: 3;
-}
-.actionAmountSizer {
-  display: none;
-  visibility: hidden;
-}
-@container (max-width: 760px) {
-  .register .counterpartAction,
-  .register[data-accounts] .counterpartAction {
-    grid-column: 1;
-  }
-  .actionAmountSizer {
-    display: block;
-    grid-column: 3;
-  }
-}
-@container (max-width: 480px) {
-  .register,
-  .register[data-accounts] {
-    --tx-columns: minmax(0, 1fr) auto 16px;
-  }
-  .register .columnHeader > [data-column="category"] {
-    display: none;
-  }
-  .register .row {
-    height: auto;
-    min-height: var(--size-row-lg);
-    padding-block: var(--space-inset);
-    row-gap: 2px;
-  }
-  .register .row > [data-column="payee"] {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .register .row > [data-column="category"] {
-    grid-column: 1;
-    grid-row: 2;
-    font-size: var(--type-small);
-  }
-  .register .row > [data-narrow] {
-    grid-column: 2;
-    grid-row: 1 / 3;
-  }
-  .register .row > [data-column="status"] {
-    grid-column: 3;
-    grid-row: 1 / 3;
-  }
-  .register .actionAmountSizer {
-    grid-column: 2;
-  }
 }
 @media (max-width: 560px) {
   .root[data-has-selection] .controls {
@@ -2016,10 +1813,6 @@ button.actionItem:disabled {
   .empty > .spin {
     animation: none;
   }
-}
-
-.register [data-row] [data-column] {
-  user-select: text;
 }
 
 .snoozeRow {

@@ -1,5 +1,7 @@
 "use client";
 
+import grid from "~/components/ui/register.module.css";
+
 import {
   classifyRegisterEntry,
   directEntryAccounts,
@@ -56,7 +58,6 @@ import { ShareLabel, ShareMenu } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
 import { TransactionCategoryField } from "./transaction-category-field";
-import shell from "./shell.module.css";
 import shareStyles from "./share.module.css";
 import styles from "./transaction-entry.module.css";
 
@@ -645,7 +646,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     return (
       <div
         key={line.lineId}
-        className={`${shell.txColumns} ${styles.entryRow} ${styles.lineRow}`}
+        className={`${grid.columns} ${styles.entryRow} ${styles.lineRow}`}
         data-accounts={accountColumn || undefined}
       >
         {leadingColumns}
@@ -779,7 +780,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     >
       {notice}
       <div
-        className={`${shell.txColumns} ${styles.entryRow}`}
+        className={`${grid.columns} ${styles.entryRow}`}
         data-accounts={accountColumn || undefined}
       >
         {accountColumn &&
@@ -830,7 +831,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         <div role="group" aria-label="Split" className={styles.lines}>
           {draft.lines.map((line, index) => lineRow(line, index))}
           <div
-            className={`${shell.txColumns} ${styles.splitFooter}`}
+            className={`${grid.columns} ${styles.splitFooter}`}
             data-accounts={accountColumn || undefined}
           >
             {leadingColumns}
