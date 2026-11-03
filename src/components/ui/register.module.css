@@ -8,9 +8,6 @@
    the checkbox, keeping row controls clear of the strip at the window edge
    that opens the collapsed sidebar. */
 .list {
-  /* The left padding that holds a row's checkbox, 10px in from the row's
-     edge like the column header's. */
-  --row-gutter: 34px;
   /* Wide enough that macOS's overlay scrollbar, which draws over the
      content, clears the rows and the editor's border. */
   padding: 0 16px 72px;
@@ -40,8 +37,10 @@
    holds the bank status. */
 .register {
   --columns: var(--columns-wide);
-  /* A register row's review dot follows the checkbox: 6px past it, and 6px
-     before the row's text. */
+  /* The left padding that holds a row's checkbox and review dot: the dot
+     sits 6px past the checkbox and 6px before the row's text. Every
+     register keeps it, with or without checkboxes, so their columns line
+     up from one register to the next. */
   --row-gutter: 42px;
   display: flex;
   flex-direction: column;
@@ -146,11 +145,24 @@
   font-weight: 400;
 }
 .row {
+  position: relative;
   height: var(--size-row-lg);
   border: 0;
   border-radius: 6px;
   background: transparent;
   text-align: left;
+}
+/* Something the row waits on, in the gutter between the checkbox and the
+   row's text. */
+.reviewDot {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--row-gutter) - 12px);
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--text-secondary);
 }
 .row:hover {
   background: var(--surface-hover);

@@ -9,13 +9,10 @@
   flex-shrink: 0;
   max-width: 100%;
 }
-.paidBy {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--type-small);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+.fronted {
+  flex: none;
+  display: inline-flex;
+  width: var(--size-badge);
 }
 
 .owed {

@@ -32,6 +32,9 @@ export type RegisterColumn = {
 export type RegisterCells = {
   label: string;
   content: ReactNode;
+  // What the row is waiting on, like "Needs review". The Register marks it
+  // with the review dot in the gutter and reads it before the row's cells.
+  review?: string;
   controls?: ReactNode;
   openColumns?: readonly string[];
   attributes?: Attributes & { title?: string; "aria-expanded"?: boolean };
@@ -66,7 +69,7 @@ export type RegisterProps<Row extends { id: string }> = Attributes & {
   actionBar?: ReactNode;
   "aria-label"?: string;
   ref?: Ref<HTMLDivElement>;
-  layout?: { wide: string; narrow?: string; compact?: string; gutter?: string };
+  layout?: { wide: string; narrow?: string; compact?: string };
 };
 
 // Grid tracks include the empty part of right-aligned cells and the gaps
@@ -84,7 +87,8 @@ function columnAt(
     parseFloat(style.borderLeftWidth) +
     parseFloat(style.paddingLeft);
   const children = [...row.children].filter(
-    (cell): cell is HTMLElement => cell instanceof HTMLElement,
+    (cell): cell is HTMLElement =>
+      cell instanceof HTMLElement && !("reviewDot" in cell.dataset),
   );
   const measured = children.filter((cell) => cell.getClientRects().length > 0);
   const cells = measured.length ? measured : children;
@@ -230,6 +234,11 @@ export function Register<Row extends { id: string }>({
             if (selectedId !== row.id) onSelect(row.id);
           }}
         >
+          {cell.review && (
+            <span className={styles.reviewDot} data-review-dot>
+              <span className="sr-only">{cell.review}</span>
+            </span>
+          )}
           {cell.content}
         </button>
         {cell.controls}
@@ -247,7 +256,6 @@ export function Register<Row extends { id: string }>({
       className={`${styles.list} ${styles.register} ${selectionStyles.list}`}
       style={
         {
-          "--row-gutter": layout?.gutter,
           "--columns-wide":
             layout?.wide ??
             columns
