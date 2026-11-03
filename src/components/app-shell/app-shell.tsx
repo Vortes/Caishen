@@ -51,7 +51,11 @@ import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Way } from "~/components/ui/action-bar";
-import { PartnerRegister } from "./partner-register";
+import {
+  PartnerFilters,
+  PartnerRegister,
+  type PartnerSide,
+} from "./partner-register";
 import {
   ReimbursementFilters,
   ReimbursementsRegister,
@@ -237,6 +241,8 @@ export function AppShell({
   useEffect(() => setQuery(routeQuery), [registerPath, routeQuery]);
   // The person or organization the Reimbursements register is narrowed to.
   const [owedBy, setOwedBy] = useState<string | null>(null);
+  // Which way the Partner register is narrowed: owed to you, or by you.
+  const [partnerSide, setPartnerSide] = useState<PartnerSide | null>(null);
   const [reimbursementSelectedId, setReimbursementSelectedId] = useState<
     string | null
   >(null);
@@ -901,6 +907,17 @@ export function AppShell({
                           }}
                         />
                       )}
+                      {(account?.kind === "partner" ||
+                        account?.kind === "former-partner") && (
+                        <PartnerFilters
+                          value={partnerSide}
+                          onChange={(next) => {
+                            setPartnerSide(next);
+                            setSelectedId(null);
+                            setChecked([]);
+                          }}
+                        />
+                      )}
                       {account?.kind === "reimbursements" && (
                         <ReimbursementFilters
                           account={account}
@@ -1010,6 +1027,7 @@ export function AppShell({
                                 key={account.id}
                                 account={account}
                                 query={deferredQuery}
+                                side={partnerSide}
                                 onJump={jump}
                                 selectedId={selectedId}
                                 onSelect={selectOnly}

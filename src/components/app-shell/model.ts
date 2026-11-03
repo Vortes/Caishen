@@ -196,7 +196,7 @@ export type ShellData = {
   transactions: Transaction[];
   costToBeMe: number;
   expectedIncome: number | null;
-  partner?: { name: string };
+  partner?: { name: string; imageUrl: string | null };
   // The latest former partner, when they were the one who disconnected.
   disconnectedBy?: { name: string; at: string };
 };
@@ -300,6 +300,8 @@ export type ShellSource = {
   // The partner's first name from their profile, which names the partner
   // account; a member's own name is their budget's.
   partnerFirstName?: string | null;
+  // The partner's profile photo, when they have one.
+  partnerImageUrl?: string | null;
 };
 
 export function toShellData(
@@ -701,7 +703,10 @@ export function toShellData(
     costToBeMe: view.costToBeMe,
     expectedIncome: view.expectedIncome,
     // Settings names the partner like the shell does: by first name.
-    partner: partner && { name: state.partnerFirstName ?? partner.name },
+    partner: partner && {
+      name: state.partnerFirstName ?? partner.name,
+      imageUrl: state.partnerImageUrl ?? null,
+    },
     disconnectedBy:
       lastClosed && lastClosed.closed.by !== view.budget.userId
         ? { name: lastClosed.name, at: lastClosed.closed.at }
