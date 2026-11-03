@@ -101,19 +101,22 @@ const savedBankConnections = async (db: Database, userId: string) => {
 };
 
 // The partner's first name from their profile, which names the partner
-// account in the shell.
-async function partnerFirstName(
+// account in the shell, and their photo, which marks what they fronted.
+async function partnerProfile(
   db: Database,
   workspaceId: string,
   userId: string,
 ) {
   const partner = await db.workspaceMember.findFirst({
     where: { workspaceId, clerkUserId: { not: userId } },
-    select: { user: { select: { firstName: true } } },
+    select: { user: { select: { firstName: true, imageUrl: true } } },
   });
   const name = partner?.user.firstName?.trim();
-  // A blank name counts as none.
-  return name === "" ? null : (name ?? null);
+  return {
+    // A blank name counts as none.
+    firstName: name === "" ? null : (name ?? null),
+    imageUrl: partner?.user.imageUrl ?? null,
+  };
 }
 
 export const budgetRouter = createTRPCRouter({
@@ -146,16 +149,18 @@ export const budgetRouter = createTRPCRouter({
     const banks = savedConnections.map((connection) =>
       readBankConnection(connection, imports),
     );
+    const partner = await partnerProfile(
+      ctx.db,
+      opened.household.workspaceId,
+      ctx.userId,
+    );
     return {
       status: "ready" as const,
       services,
       connections: banks.map(bankConnectionView),
       imports: bankInboxItems(banks, opened.ledger.budget, opened.ledger.state),
-      partnerFirstName: await partnerFirstName(
-        ctx.db,
-        opened.household.workspaceId,
-        ctx.userId,
-      ),
+      partnerFirstName: partner.firstName,
+      partnerImageUrl: partner.imageUrl,
     };
   }),
 
@@ -185,6 +190,11 @@ export const budgetRouter = createTRPCRouter({
       );
       const connections = banks.map(bankConnectionView);
       try {
+        const partner = await partnerProfile(
+          ctx.db,
+          household.workspaceId,
+          ctx.userId,
+        );
         return {
           status: "ready" as const,
           view: projectBook(
@@ -197,11 +207,8 @@ export const budgetRouter = createTRPCRouter({
           services,
           connections,
           imports: bankInboxItems(banks, ledger.budget, ledger.state),
-          partnerFirstName: await partnerFirstName(
-            ctx.db,
-            household.workspaceId,
-            ctx.userId,
-          ),
+          partnerFirstName: partner.firstName,
+          partnerImageUrl: partner.imageUrl,
         };
       } catch (error) {
         domainError(error);

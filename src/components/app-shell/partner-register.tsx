@@ -33,8 +33,55 @@ import styles from "./shell.module.css";
 import share from "./share.module.css";
 import local from "./partner-register.module.css";
 import editorStyles from "./transaction-entry.module.css";
+import { PersonAvatar, UserAvatar } from "./user-avatar";
 
 type Row = View["partnerLedger"][number];
+
+// Which way a shared cost runs: what your partner owes you for, or what you
+// owe them for. Settlements and repayments pay these down, so they show
+// only with everything.
+export type PartnerSide = "owed" | "owing";
+
+function sideOf(row: Row): PartnerSide | null {
+  if (row.kind !== "purchase" && row.kind !== "refund") return null;
+  return row.change > 0 ? "owed" : row.change < 0 ? "owing" : null;
+}
+
+// The partner ledger split by who owes whom, as filters over the one
+// register.
+export function PartnerFilters({
+  value,
+  onChange,
+}: {
+  value: PartnerSide | null;
+  onChange: (side: PartnerSide | null) => void;
+}) {
+  const sides: [PartnerSide, string][] = [
+    ["owed", "Owed to you"],
+    ["owing", "Owed by you"],
+  ];
+  return (
+    <>
+      <Button
+        size="sm"
+        aria-pressed={value === null}
+        onClick={() => onChange(null)}
+      >
+        All
+      </Button>
+      {sides.map(([side, label]) => (
+        <Button
+          key={side}
+          size="sm"
+          aria-pressed={value === side}
+          onClick={() => onChange(value === side ? null : side)}
+        >
+          {label}
+        </Button>
+      ))}
+    </>
+  );
+}
 
 function owedSentence(name: string, balance: number) {
   if (balance > 0) return `${name} owes you`;
@@ -338,6 +385,7 @@ type EditorField = "category" | "amount";
 export function PartnerRegister({
   account,
   query,
+  side,
   selectedId,
   onSelect,
   checked,
@@ -346,6 +394,7 @@ export function PartnerRegister({
 }: {
   account: Account;
   query: string;
+  side: PartnerSide | null;
   // Opens a transaction in its own account's register.
   onJump: (transaction: {
     id: string;
@@ -366,6 +415,8 @@ export function PartnerRegister({
   } | null>(null);
   // A former partner's ledger reads as it stood when it closed.
   const closed = account.kind === "former-partner";
+  const { partner } = useShellData();
+  const partnerImage = closed ? null : partner?.imageUrl;
   const ledger = closed
     ? (view.formerPartnerLedgers[account.id] ?? [])
     : view.partnerLedger;
@@ -373,7 +424,8 @@ export function PartnerRegister({
     view.categories.find((item) => item.id === id)?.name;
   const search = query.trim().toLowerCase();
   const payee = (row: Row) => settlementPayee(row, view, account.name);
-  const rows = ledger.filter(
+  const sided = side ? ledger.filter((row) => sideOf(row) === side) : ledger;
+  const rows = sided.filter(
     (row) =>
       !search ||
       [payee(row), name(row.categoryId), money(row.shared), money(row.change)]
@@ -408,12 +460,15 @@ export function PartnerRegister({
   const rowCells = (row: Row): RowCells => {
     const settlement = Boolean(row.settlementId);
     const unconfirmed = row.confirmed === false;
+    // Who fronted the shared cost, or got its refund back. "Paid" alone
+    // could also mean paid back, which is what a settlement does.
+    const yours = row.payerId === view.budget.userId;
     const paidBy =
       row.kind === "repayment" || settlement
         ? null
-        : row.payerId === view.budget.userId
-          ? "You paid"
-          : `${account.name} paid`;
+        : row.kind === "refund"
+          ? `Refund to ${yours ? "you" : account.name}`
+          : `${yours ? "You" : account.name} fronted`;
     const cells: RowCells = {
       date: (
         <span className={`${styles.truncate} ${styles.muted}`}>
@@ -422,12 +477,23 @@ export function PartnerRegister({
       ),
       payee: (
         <>
+          {/* Who fronted it leads the row, so a glance down the faces
+            shows who paid at the register. Settlements keep the space. */}
+          {paidBy ? (
+            <span className={local.fronted} title={paidBy}>
+              {row.payerId === view.budget.userId ? (
+                <UserAvatar fallback="You" />
+              ) : (
+                <PersonAvatar name={account.name} imageUrl={partnerImage} />
+              )}
+              <span className="sr-only">{paidBy}</span>
+            </span>
+          ) : (
+            <span className={local.fronted} aria-hidden />
+          )}
           <span className={`${styles.truncate} ${local.payeeName}`}>
             {payee(row)}
           </span>
-          {paidBy && (
-            <span className={`${local.paidBy} ${styles.faint}`}>{paidBy}</span>
-          )}
           {row.awaitingImport && (
             <LinkIcon
               size={12}
@@ -459,25 +525,36 @@ export function PartnerRegister({
       ),
       // Each cell carries its own tone, so it reads the same in the row
       // and in the editor.
-      balance: <span className={styles.muted}>{money(row.balance)}</span>,
+      balance: side ? null : (
+        <span className={styles.muted}>{money(row.balance)}</span>
+      ),
     };
     return cells;
   };
   const register = (
     <Register
       aria-label={`${account.name} ledger`}
+      // A running balance only adds up over every entry, so one side of
+      // the ledger shows its amounts alone.
       columns={[
         { key: "date", label: "Date", optional: true },
         { key: "payee", label: "Payee" },
         { key: "your-category", label: "Your category" },
         { key: "amount", label: "Amount", numeric: true },
-        { key: "balance", label: "Balance", numeric: true },
+        ...(side ? [] : [{ key: "balance", label: "Balance", numeric: true }]),
         { key: "status", label: "" },
       ]}
-      layout={{
-        wide: "5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 7rem 16px",
-        narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px",
-      }}
+      layout={
+        side
+          ? {
+              wide: "5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 16px",
+              narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 16px",
+            }
+          : {
+              wide: "5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 7rem 16px",
+              narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px",
+            }
+      }
       rows={rows}
       cells={(row) => {
         const cells = rowCells(row);
@@ -509,9 +586,11 @@ export function PartnerRegister({
               <span className={styles.numeric} data-column="amount">
                 {money(row.change, true)}
               </span>
-              <span className={styles.numeric} data-column="balance">
-                {cells.balance}
-              </span>
+              {cells.balance && (
+                <span className={styles.numeric} data-column="balance">
+                  {cells.balance}
+                </span>
+              )}
               <span />
             </>
           ),
@@ -560,12 +639,25 @@ export function PartnerRegister({
         )
       }
       noMatch={
-        ledger.length ? (
+        sided.length ? (
           <Empty
             title={`No entries match “${query.trim()}”.`}
             icon={SearchIcon}
           >
             Search looks at payees, categories, and amounts.
+          </Empty>
+        ) : ledger.length ? (
+          <Empty
+            title={
+              side === "owed"
+                ? `Nothing ${account.name} owes you for.`
+                : `Nothing you owe ${account.name} for.`
+            }
+            icon={UsersIcon}
+          >
+            {side === "owed"
+              ? `Costs you paid and shared with ${account.name} show here.`
+              : `Costs ${account.name} paid and shared with you show here.`}
           </Empty>
         ) : undefined
       }
@@ -887,7 +979,7 @@ function EntryEditor({
         ) : (
           readOnly("amount", money(row.change, true), true)
         )}
-        {readOnly("balance", cells.balance, true)}
+        {cells.balance && readOnly("balance", cells.balance, true)}
         <span data-column="status" aria-hidden />
       </div>
       <EditorFooter
