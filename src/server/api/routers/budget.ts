@@ -114,8 +114,8 @@ async function partnerProfile(
   const name = partner?.user.firstName?.trim();
   return {
     // A blank name counts as none.
-    partnerFirstName: name === "" ? null : (name ?? null),
-    partnerImageUrl: partner?.user.imageUrl ?? null,
+    firstName: name === "" ? null : (name ?? null),
+    imageUrl: partner?.user.imageUrl ?? null,
   };
 }
 
@@ -149,16 +149,18 @@ export const budgetRouter = createTRPCRouter({
     const banks = savedConnections.map((connection) =>
       readBankConnection(connection, imports),
     );
+    const partner = await partnerProfile(
+      ctx.db,
+      opened.household.workspaceId,
+      ctx.userId,
+    );
     return {
       status: "ready" as const,
       services,
       connections: banks.map(bankConnectionView),
       imports: bankInboxItems(banks, opened.ledger.budget, opened.ledger.state),
-      ...(await partnerProfile(
-        ctx.db,
-        opened.household.workspaceId,
-        ctx.userId,
-      )),
+      partnerFirstName: partner.firstName,
+      partnerImageUrl: partner.imageUrl,
     };
   }),
 
@@ -188,6 +190,11 @@ export const budgetRouter = createTRPCRouter({
       );
       const connections = banks.map(bankConnectionView);
       try {
+        const partner = await partnerProfile(
+          ctx.db,
+          household.workspaceId,
+          ctx.userId,
+        );
         return {
           status: "ready" as const,
           view: projectBook(
@@ -200,7 +207,8 @@ export const budgetRouter = createTRPCRouter({
           services,
           connections,
           imports: bankInboxItems(banks, ledger.budget, ledger.state),
-          ...(await partnerProfile(ctx.db, household.workspaceId, ctx.userId)),
+          partnerFirstName: partner.firstName,
+          partnerImageUrl: partner.imageUrl,
         };
       } catch (error) {
         domainError(error);
