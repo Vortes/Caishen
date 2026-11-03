@@ -921,11 +921,7 @@ export function AppShell({
                             setChecked([]);
                           }}
                         >
-                          <span
-                            className={styles.reviewDot}
-                            data-on
-                            data-inline
-                          />
+                          <span className={styles.reviewDot} data-on />
                           To review
                           <span className={styles.numeric}>{reviewCount}</span>
                         </Button>
