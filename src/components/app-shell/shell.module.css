@@ -1203,8 +1203,10 @@ button.actionItem:disabled {
   opacity: 0;
   transition: opacity 150ms;
 }
+/* Keyboard focus shows it; the focus a click leaves on it, or that its
+   form hands back as it closes, doesn't keep it up once the pointer goes. */
 .rowWrap:hover .groupAdd,
-.groupAdd:focus-within,
+.groupAdd:has(:focus-visible),
 .groupAdd:has([data-state="open"]) {
   opacity: 1;
 }
