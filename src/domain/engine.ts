@@ -42,7 +42,7 @@ import {
   partnerLedgerRows,
   partnerSideIssues,
   partnerSideSchema,
-  sideCategory,
+  sideSpending,
   spendingCategory,
   synchronizePartnerEntries,
   writeEntry,
@@ -214,6 +214,14 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: identifier,
     entryId: identifier,
     categoryId: identifier.nullable(),
+    // A split of your part across categories, with categoryId null.
+    lines: z
+      .array(
+        z.object({ lineId: identifier, categoryId: identifier, amount: cents }),
+      )
+      .min(2)
+      .max(100)
+      .optional(),
   }),
   z.object({
     type: z.literal("partner.edit"),
@@ -1128,8 +1136,10 @@ export function categoriesWithHistory(
   }
   for (const assignment of budget.assignments)
     if (assignment.amount) add(assignment.categoryId);
-  for (const side of Object.values(budget.partnerSides ?? {}))
+  for (const side of Object.values(budget.partnerSides ?? {})) {
     add(side.categoryId);
+    for (const line of side.lines ?? []) add(line.categoryId);
+  }
   return used;
 }
 // Removes categories with their targets. Their history must have somewhere
@@ -1205,10 +1215,21 @@ function moveCategoryHistory(
     if (memory.categoryId && ids.has(memory.categoryId))
       changes.payeeMemory(budget, key)[key] = { ...memory, categoryId: moveTo };
   for (const [entryId, side] of Object.entries(budget.partnerSides ?? {}))
-    if (side.categoryId && ids.has(side.categoryId))
+    if (
+      ids.has(side.categoryId ?? "") ||
+      side.lines?.some((line) => ids.has(line.categoryId))
+    )
       changes.partnerSide(budget, entryId)[entryId] = {
         ...side,
-        categoryId: moveTo,
+        ...(side.categoryId ? { categoryId: moved(side.categoryId) } : {}),
+        ...(side.lines
+          ? {
+              lines: side.lines.map((line) => ({
+                ...line,
+                categoryId: moved(line.categoryId)!,
+              })),
+            }
+          : {}),
       };
 }
 const getCategory = (budget: Budget, id: string): Category =>
@@ -2154,11 +2175,10 @@ function replay(
       const change = mirroredChange(entry, userId);
       const counterparty = accounts.get(entry.accountId)!;
       counterparty.balance = safe(counterparty.balance + change);
-      const categoryId = sideCategory(budget, entry.id);
       for (const [id, amount] of [
-        [categoryId, change],
-        [pairedEnvelope.get(entry.accountId)?.id, -change],
-      ] as const) {
+        ...sideSpending(budget, entry.id, change),
+        [pairedEnvelope.get(entry.accountId)?.id, -change] as const,
+      ]) {
         if (!id || !amount) continue;
         const state = categories.get(id)!;
         state.activity = safe(state.activity + amount);
@@ -3211,6 +3231,35 @@ function executeAccountingState<T extends AccountingState>(
   return { book, changeSet: changes.changeSet(command.id) };
 }
 
+// One partner's split of their side of an entry across categories. Like a
+// split transaction's, it leaves their payee memory as it was.
+function splitSide(
+  budget: Budget,
+  entry: PartnerEntry,
+  lines: { lineId: string; categoryId: string; amount: number }[],
+  changes: Changes,
+): void {
+  if (new Set(lines.map((line) => line.lineId)).size !== lines.length)
+    fail("Each split line needs its own id");
+  for (const line of lines) {
+    if (!line.amount) fail("Enter an amount on every split line");
+    if (!spendingCategory(getCategory(budget, line.categoryId)))
+      fail("Choose a spending category for every split line");
+  }
+  if (
+    sum(lines.map((line) => line.amount)) !==
+    mirroredChange(entry, budget.userId)
+  )
+    fail("Split lines must add up to your part");
+  changes.partnerSide(budget, entry.id)[entry.id] = {
+    lines: lines.map(({ lineId, categoryId, amount }) => ({
+      id: lineId,
+      categoryId,
+      amount,
+    })),
+  };
+}
+
 // One partner's category for their side of an entry, which their payee
 // memory then remembers for the payee.
 function categorizeSide(
@@ -3486,6 +3535,12 @@ function applyCommand(
         ) ?? partnerEntry(book, command.entryId);
       if (entry.payerId === actorId)
         fail("Categorize your own purchase on its transaction");
+      if (command.lines) {
+        if (command.categoryId !== null)
+          fail("Choose one category or split it, not both");
+        splitSide(budget, entry, command.lines, changes);
+        break;
+      }
       if (command.categoryId === null) {
         const sides = changes.partnerSide(budget, entry.id);
         delete sides[entry.id];

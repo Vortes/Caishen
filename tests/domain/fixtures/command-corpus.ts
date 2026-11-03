@@ -477,6 +477,23 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     entryId: "alex:market:market",
     categoryId: "household",
   });
+  alex(
+    purchase("hardware", -6_000, "food", {
+      recordedAt: "2026-01-20T12:30:00Z",
+      date: "2026-01-20",
+      payee: "Hardware",
+      counterpartyShare: { accountId: "counterparty:partner", amount: 3_000 },
+    }),
+  );
+  jordan({
+    type: "partner.categorize",
+    entryId: "alex:hardware:hardware",
+    categoryId: null,
+    lines: [
+      { lineId: "hardware-home", categoryId: "household", amount: -2_000 },
+      { lineId: "hardware-garden", categoryId: "garden", amount: -1_000 },
+    ],
+  });
   jordan({
     type: "partner.edit",
     entryId: "alex:market:market",

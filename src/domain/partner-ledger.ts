@@ -80,7 +80,14 @@ export type PartnerEntry = {
   history: PartnerEntryChange[];
 };
 
-export type PartnerSide = { categoryId?: string };
+// One partner's side of an entry: one category, or lines across several
+// that add up to their part, like a split transaction's.
+export type PartnerSideLine = {
+  id: string;
+  categoryId: string;
+  amount: number;
+};
+export type PartnerSide = { categoryId?: string; lines?: PartnerSideLine[] };
 
 const identifier = z.string().min(1).max(1024);
 const cents = z.number().int().safe();
@@ -144,8 +151,14 @@ export const formerPartnerEntrySchema = partnerEntryObject
   .extend({ accountId: identifier })
   .refine(...shareWithinAmount);
 
+export const partnerSideLineSchema = z.object({
+  id: identifier,
+  categoryId: identifier,
+  amount: cents,
+});
 export const partnerSideSchema = z.object({
   categoryId: identifier.optional(),
+  lines: z.array(partnerSideLineSchema).optional(),
 });
 
 /** A mirrored entry's id: the payer's transaction line it mirrors. */
@@ -268,6 +281,32 @@ export function sideCategory(
   return category && spendingCategory(category) ? category.id : undefined;
 }
 
+/**
+ * How the viewer's side of an entry spends its change: the whole change in
+ * its category, or each split line in its own. What the lines leave of the
+ * change, once the share is edited after the split, spends nowhere until
+ * it's categorized.
+ */
+export function sideSpending(
+  budget: Pick<Budget, "categories" | "partnerSides">,
+  entryId: string,
+  change: number,
+): [categoryId: string, amount: number][] {
+  const lines = budget.partnerSides?.[entryId]?.lines;
+  if (!lines) {
+    const categoryId = sideCategory(budget, entryId);
+    return categoryId ? [[categoryId, change]] : [];
+  }
+  return lines.flatMap((line) => {
+    const category = budget.categories.find(
+      (item) => item.id === line.categoryId,
+    );
+    return category && spendingCategory(category)
+      ? [[category.id, line.amount] as [string, number]]
+      : [];
+  });
+}
+
 export function spendingCategory(
   category: Budget["categories"][number],
 ): boolean {
@@ -282,13 +321,16 @@ export function spendingCategory(
 export function partnerSideIssues(
   budget: Pick<Budget, "categories" | "partnerSides">,
 ): string[] {
-  return Object.values(budget.partnerSides ?? {}).some((side) => {
-    if (side.categoryId === undefined) return false;
-    const category = budget.categories.find(
-      (item) => item.id === side.categoryId,
-    );
-    return !category || !spendingCategory(category);
-  })
+  return Object.values(budget.partnerSides ?? {}).some((side) =>
+    [
+      side.categoryId,
+      ...(side.lines ?? []).map((line) => line.categoryId),
+    ].some((categoryId) => {
+      if (categoryId === undefined) return false;
+      const category = budget.categories.find((item) => item.id === categoryId);
+      return !category || !spendingCategory(category);
+    }),
+  )
     ? ["Invalid partner entry category reference"]
     : [];
 }
@@ -308,6 +350,8 @@ export type PartnerLedgerRow = {
   change: number;
   balance: number;
   categoryId?: string;
+  // The viewer's split of their side of a partner's purchase.
+  lines?: PartnerSideLine[];
   // The viewer's payee memory for an entry they haven't categorized.
   suggestedCategoryId?: string;
   needsCategory: boolean;
@@ -410,8 +454,17 @@ export function partnerLedgerRows(
   for (const entry of mirroredEntries(entries, viewerId)) {
     if (!entryCounts(entry, cutoff)) continue;
     const categoryId = sideCategory(budget, entry.id);
+    const lines = budget.partnerSides?.[entry.id]?.lines;
+    const change = mirroredChange(entry, viewerId);
     const shared = Math.abs(entry.amount);
-    const needsCategory = !categoryId && entry.share > 0;
+    // A split whose lines no longer add up, after a share edit, leaves the
+    // rest to categorize.
+    const needsCategory = lines
+      ? sideSpending(budget, entry.id, change).reduce(
+          (total, [, amount]) => total + amount,
+          0,
+        ) !== change
+      : !categoryId && entry.share > 0;
     rows.push({
       id: entry.id,
       kind: entry.amount > 0 ? "refund" : "purchase",
@@ -422,11 +475,13 @@ export function partnerLedgerRows(
       shared,
       you: entry.share,
       partner: shared - entry.share,
-      change: mirroredChange(entry, viewerId),
+      change,
       categoryId,
-      suggestedCategoryId: needsCategory
-        ? rememberedSpendingCategory(budget, entry.payee)
-        : undefined,
+      ...(lines ? { lines } : {}),
+      suggestedCategoryId:
+        needsCategory && !lines
+          ? rememberedSpendingCategory(budget, entry.payee)
+          : undefined,
       needsCategory,
       entryId: entry.id,
       shareMode: { mode: "edit" },

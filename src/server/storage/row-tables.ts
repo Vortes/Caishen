@@ -367,6 +367,19 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
     visibleTo: "userId",
     columns: [userId, text("entryId"), text("categoryId", true)],
   },
+  partnerEntrySideLine: {
+    model: "PartnerEntrySideLine",
+    key: ["userId", "entryId", "id"],
+    visibleTo: "userId",
+    columns: [
+      userId,
+      text("entryId"),
+      text("id"),
+      text("categoryId"),
+      cents("amount"),
+      sort,
+    ],
+  },
   partnerSettlement: {
     model: "PartnerSettlement",
     key: ["id"],
