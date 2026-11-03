@@ -311,13 +311,16 @@ test("finishing a text selection does not select or open the row", async () => {
   expect(screen.getByLabelText("Opened").textContent).toBe("");
 });
 
-test("a caller can set the shared checkbox gutter for its cells and editor", () => {
+test("a row waiting for review is marked in the gutter and named for screen readers", () => {
   render(
     <Register
       columns={[{ key: "name", label: "Name" }]}
-      layout={{ wide: "minmax(0, 1fr)", gutter: "34px" }}
       rows={rows}
-      cells={(row) => ({ label: row.name, content: row.name })}
+      cells={(row) => ({
+        label: row.name,
+        content: <span data-column="name">{row.name}</span>,
+        review: row.id === "a" ? "Needs review" : undefined,
+      })}
       checkable={() => true}
       selectedId={null}
       onSelect={() => undefined}
@@ -326,14 +329,16 @@ test("a caller can set the shared checkbox gutter for its cells and editor", () 
       onOpen={() => undefined}
     />,
   );
-  expect(
-    getComputedStyle(
-      screen.getByRole("group", { name: "Register" }),
-    ).getPropertyValue("--row-gutter"),
-  ).toBe("34px");
+
+  const waiting = screen.getByRole("button", {
+    name: /^Needs review\s*Alpha$/,
+  });
+  expect(waiting.querySelectorAll("[data-review-dot]")).toHaveLength(1);
+  const done = screen.getByRole("button", { name: "Beta" });
+  expect(done.querySelectorAll("[data-review-dot]")).toHaveLength(0);
 });
 
-test("a register that never checks rows draws no checkboxes and keeps the caller's row gutter", () => {
+test("a register that never checks rows draws no checkboxes", () => {
   render(
     <Register
       columns={[{ key: "name", label: "Name" }]}
@@ -344,14 +349,8 @@ test("a register that never checks rows draws no checkboxes and keeps the caller
       checked={["a"]}
       onCheck={() => undefined}
       onOpen={() => undefined}
-      layout={{ wide: "minmax(0, 1fr)", gutter: "34px" }}
     />,
   );
 
   expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
-  expect(
-    getComputedStyle(
-      screen.getByRole("group", { name: "Register" }),
-    ).getPropertyValue("--row-gutter"),
-  ).toBe("34px");
 });

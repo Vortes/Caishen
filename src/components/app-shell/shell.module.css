@@ -1517,16 +1517,10 @@ button.actionItem:disabled {
   flex: none;
   width: 6px;
   height: 6px;
-  margin-left: -12px;
-  margin-right: -4px;
   border-radius: 50%;
 }
 .reviewDot[data-on] {
   background: var(--text-secondary);
-}
-.reviewDot[data-inline],
-.actionItem .reviewDot {
-  margin: 0;
 }
 .empty {
   display: flex;

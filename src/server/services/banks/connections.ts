@@ -17,6 +17,7 @@ import {
 } from "../bank-account-rows";
 import { TRPCError } from "@trpc/server";
 import { encryptBankToken, decryptBankToken } from "~/server/token-crypto";
+import { isDevelopmentSeedBank } from "~/server/dev/seed-banks";
 import { domainError, operationHash } from "../safety";
 import {
   type PlaidLinkMetadata,
@@ -551,7 +552,7 @@ export async function disconnectBank(
       changeSet: composeChangeSets(input.operationId, []),
       alongside: async (tx) => {
         await lockBankConnections(tx, userId, [connection.id]);
-        if (!state.disconnectedAt)
+        if (!state.disconnectedAt && !isDevelopmentSeedBank(connection))
           await client(db, userId, connection.id).removeItem(
             decryptBankToken(connection.encryptedToken, userId),
           );

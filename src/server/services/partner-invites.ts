@@ -79,7 +79,7 @@ const outbox: InvitationOutbox = {
 
 // The link's token is derived from the invitation, so Resend can send the
 // same link again while only its hash is stored.
-function invitationToken(id: string) {
+export function invitationToken(id: string) {
   const key = process.env.CLERK_SECRET_KEY;
   if (!key) throw new Error("Invitations require the application signing key.");
   return createHmac("sha256", key)
