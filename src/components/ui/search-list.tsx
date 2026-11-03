@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type Ref,
 } from "react";
@@ -161,10 +162,17 @@ export function SearchList({
       }}
       anchor={
         <div
-          className={field.well}
+          className={`${field.well} ${styles.well}`}
           data-well=""
           data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
+          onMouseDown={keepFocus}
+          onClick={(event) =>
+            fromWell(event, () => {
+              if (open) setExpanded(false);
+              else show();
+            })
+          }
         >
           <input
             ref={inputRef}
@@ -189,9 +197,6 @@ export function SearchList({
             onFocus={(event) => {
               if (!open && arrivedByKeyboard()) show();
               event.currentTarget.select();
-            }}
-            onClick={() => {
-              if (!open) show();
             }}
             onBlur={() => setExpanded(false)}
             onKeyDown={onKeyDown}
@@ -287,6 +292,22 @@ if (typeof document !== "undefined") {
   document.addEventListener("keydown", () => (pointerLast = false), true);
 }
 const arrivedByKeyboard = () => !pointerLast;
+
+// A click anywhere in the well, the input or the chevron, opens the list
+// or closes it, and focuses the input. A press around the input keeps focus
+// where it is until then. The toggle is on click because iOS Safari sends
+// mouse events only to elements React marks as clickable, which takes an
+// onClick.
+function keepFocus(event: MouseEvent<HTMLDivElement>) {
+  if (event.target !== event.currentTarget.querySelector("input"))
+    event.preventDefault();
+}
+function fromWell(event: MouseEvent<HTMLDivElement>, toggle: () => void) {
+  const input = event.currentTarget.querySelector("input");
+  if (!input || input.disabled || input.readOnly) return;
+  input.focus();
+  toggle();
+}
 
 function tone(cents: number) {
   return cents < 0 ? "negative" : cents > 0 ? "positive" : "zero";
@@ -467,10 +488,17 @@ export function SearchSuggestions({
       }}
       anchor={
         <div
-          className={field.well}
+          className={`${field.well} ${styles.well}`}
           data-well=""
           data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
+          onMouseDown={keepFocus}
+          onClick={(event) =>
+            fromWell(event, () => {
+              if (expanded) setExpanded(false);
+              else show();
+            })
+          }
         >
           <input
             ref={inputRef}
@@ -501,9 +529,6 @@ export function SearchSuggestions({
             onFocus={(event) => {
               if (arrivedByKeyboard()) show();
               event.currentTarget.select();
-            }}
-            onClick={() => {
-              if (!expanded) show();
             }}
             onBlur={() => setExpanded(false)}
             onKeyDown={onKeyDown}
