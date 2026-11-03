@@ -1,5 +1,10 @@
 import { expect, test } from "./shell-fixture";
-import { notifications, reloadBudget, saved } from "./shell-controls";
+import {
+  notifications,
+  openRegister,
+  reloadBudget,
+  saved,
+} from "./shell-controls";
 
 test("category groups and their categories are added separately and persist", async ({
   page,
@@ -74,4 +79,59 @@ test("category groups and their categories are added separately and persist", as
   await expect(groups).toHaveText([/^People$/, /^Bills$/, /^Everyday$/]);
   await expect(row("Rent")).toBeVisible();
   await expect(row("Coffee")).toBeVisible();
+});
+
+test("a category in a new group is added from a transaction's Category field and shows on the plan", async ({
+  page,
+  budget,
+}) => {
+  await openRegister(page, budget.account);
+  await page
+    .getByRole("button", { name: "Add transaction", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Date calendar", exact: true })
+    .press("Escape");
+  const transaction = page.getByRole("form", {
+    name: "New transaction",
+    exact: true,
+  });
+  const category = transaction.getByRole("combobox", {
+    name: "Category",
+    exact: true,
+  });
+  await category.fill("Dog walker");
+  await category.press("Enter");
+
+  const form = page.getByRole("dialog", { name: "Add a category" });
+  const group = form.getByRole("combobox", { name: "Category group" });
+  await expect(group).toHaveValue("Everyday");
+  await group.fill("Pets");
+  await group.press("Enter");
+  const newGroup = form.getByRole("textbox", { name: "New group" });
+  await expect(newGroup).toHaveValue("Pets");
+  await expect(newGroup).toBeFocused();
+  await form
+    .getByRole("button", { name: "Add group and category", exact: true })
+    .click();
+  await saved(page);
+  await expect(notifications(page)).toContainText(
+    "Added the Pets group with Dog walker",
+  );
+  await expect(category).toHaveValue("Dog walker");
+  await transaction
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+
+  await reloadBudget(page, budget);
+  const pets = page.getByRole("button", { name: /^Pets/ });
+  await expect(pets).toBeVisible();
+  if ((await pets.getAttribute("aria-expanded")) === "false")
+    await pets.click();
+  await expect(
+    page
+      .getByRole("group", { name: "Categories", exact: true })
+      .locator("[data-row]")
+      .filter({ hasText: "Dog walker" }),
+  ).toBeVisible();
 });
