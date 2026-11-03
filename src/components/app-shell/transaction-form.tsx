@@ -1,5 +1,7 @@
 "use client";
 
+import grid from "~/components/ui/register.module.css";
+
 import {
   classifyRegisterEntry,
   directEntryAccounts,
@@ -7,7 +9,10 @@ import {
 } from "~/domain/register-entry";
 import { earlierPayees } from "~/domain/payee-memory";
 import { transferNeedsCategory } from "~/domain/transfers";
-import { cardPaymentCategoryLabel } from "~/components/transactions/transaction-category";
+import {
+  cardPaymentCategoryLabel,
+  transactionCategory,
+} from "~/components/transactions/transaction-category";
 import { CircleAlertIcon, PlusIcon, SplitIcon, XIcon } from "lucide-react";
 import {
   useEffect,
@@ -53,7 +58,6 @@ import { ShareLabel, ShareMenu } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
 import { TransactionCategoryField } from "./transaction-category-field";
-import shell from "./shell.module.css";
 import shareStyles from "./share.module.css";
 import styles from "./transaction-entry.module.css";
 
@@ -122,7 +126,8 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
 
   const account = view.accounts.find((item) => item.id === draft.accountId);
   const matches = session.imported ? partnerMatchesOf(session.imported) : [];
-  const destinations = paymentPayees(view, draft);
+  const adjustment = initial?.kind === "adjustment";
+  const destinations = adjustment ? [] : paymentPayees(view, draft);
   const destination = destinations.find((item) =>
     item.accountId
       ? item.accountId === draft.transferAccountId
@@ -138,6 +143,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         payee: draft.payee,
         amount: draftCents === 0 ? (draft.inflow ? 1 : -1) : draftCents,
         status: draft.status,
+        kind: adjustment ? "adjustment" : undefined,
         transferAccountId: draft.transferAccountId || undefined,
         loanId: draft.loanId || undefined,
         categoryId:
@@ -152,6 +158,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     : undefined;
   const boundary = draftEntry?.fields.category === "boundary";
   const categoryNotNeeded = draftEntry?.fields.category === "none";
+  const fixedCategory = categoryNotNeeded || adjustment;
   const budgetInflow = (draftEntry?.fields.budgetAmount ?? 0) > 0;
   const splittable = draftEntry?.fields.split ?? false;
   const split = draft.lines.length > 0;
@@ -217,8 +224,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   }
   const payees = useMemo(() => earlierPayees(view.budget), [view.budget]);
   const startDate = `${view.budget.startMonth}-01`;
-  const minDate =
-    account && account.date > startDate ? account.date : startDate;
+  const minDate = startDate;
 
   const id = (field: DraftField) => `${formId}-${field}`;
   // One message about both amounts shows once, across their two columns.
@@ -345,7 +351,8 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           )
         )
           advance(selected.label.includes(" from ") ? "inflow" : "outflow");
-        else if (!selected && categoryNotNeeded) advance("outflow");
+        else if (!selected && (categoryNotNeeded || adjustment))
+          advance("outflow");
         else advance("categoryId");
       }}
     />
@@ -461,7 +468,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           ? "inflow"
           : "outflow",
     );
-  const categoryControl = categoryNotNeeded ? (
+  const categoryControl = fixedCategory ? (
     <TextInput
       value={
         draftEntry?.shape.kind === "card-payment"
@@ -470,7 +477,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
               draft.accountId,
               draft.transferAccountId,
             )
-          : "Category not needed"
+          : categoryNotNeeded
+            ? "Category not needed"
+            : transactionCategory("adjustment", draftCents)
       }
       onChange={() => undefined}
       disabled
@@ -637,7 +646,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     return (
       <div
         key={line.lineId}
-        className={`${shell.txColumns} ${styles.entryRow} ${styles.lineRow}`}
+        className={`${grid.columns} ${styles.entryRow} ${styles.lineRow}`}
         data-accounts={accountColumn || undefined}
       >
         {leadingColumns}
@@ -771,7 +780,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     >
       {notice}
       <div
-        className={`${shell.txColumns} ${styles.entryRow}`}
+        className={`${grid.columns} ${styles.entryRow}`}
         data-accounts={accountColumn || undefined}
       >
         {accountColumn &&
@@ -822,7 +831,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         <div role="group" aria-label="Split" className={styles.lines}>
           {draft.lines.map((line, index) => lineRow(line, index))}
           <div
-            className={`${shell.txColumns} ${styles.splitFooter}`}
+            className={`${grid.columns} ${styles.splitFooter}`}
             data-accounts={accountColumn || undefined}
           >
             {leadingColumns}

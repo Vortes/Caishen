@@ -1,88 +1,9 @@
-/* ---------- Selection island ---------- */
+/* ---------- Transaction review ---------- */
 
-/* The register fills the panel, so the island's slot can sit at its foot
-   even when there are only a few rows. */
-.register {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-/* Sticks to the bottom of the scrolling register, centered, so it floats
-   over the rows without leaving the list. The negative margin puts it 16px
-   from the panel's foot whether or not the list scrolls; the list's bottom
-   padding keeps the last row reachable above it. */
-.islandSlot {
-  position: sticky;
-  z-index: 3;
-  bottom: max(var(--space-card), env(safe-area-inset-bottom));
-  display: flex;
-  margin: auto 0 -56px;
-  align-items: flex-end;
-  justify-content: center;
-  height: 0;
-  pointer-events: none;
-}
-/* A popover surface. Its corners are a pill, concentric with the pill
-   buttons inside. */
-.island {
-  --island-border-width: 1px;
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: calc(100% - 16px);
-  padding: 6px;
-  border: var(--island-border-width) solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-drawer);
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-  pointer-events: auto;
-}
-/* Each action measures the island's outer border, including when its rows wrap. */
-.islandAnchor {
-  position: absolute;
-  inset: calc(-1 * var(--island-border-width));
-  pointer-events: none;
-}
-.summary {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  min-width: 0;
-}
-.count {
-  color: var(--text-primary);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-/* A long category name can't push the selection's actions off the island. */
-.backName {
-  overflow: hidden;
-  max-width: 18ch;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hint {
-  color: var(--feedback-attention);
-}
-.divider {
-  flex: none;
-  align-self: stretch;
-  width: 1px;
-  margin: 4px 2px;
-  background: var(--border-subtle);
-}
 .actions {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.island:has(> .actions:empty) > .divider,
-.island > .actions:empty {
-  display: none;
 }
 .shareConfirmation {
   display: flex;
@@ -104,37 +25,15 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.45;
 }
-/* A narrow register gives the hint its own line instead of squeezing the
-   count. */
 @container (max-width: 560px) {
-  .island {
-    flex-wrap: wrap;
-    justify-content: center;
-    border-radius: var(--radius-menu);
-  }
   .actions {
     flex-wrap: wrap;
     justify-content: center;
   }
-  .summary {
-    flex-wrap: wrap;
-    row-gap: 4px;
-  }
-  .divider {
-    display: none;
-  }
 }
 @media (pointer: coarse) {
-  .island,
   .sharePanel {
     --size-control-xs: var(--size-row-lg);
     --size-control: var(--size-row-lg);
-  }
-}
-
-/* Touch has no hover to reveal the checkboxes, so they always show. */
-@media (hover: none) {
-  .checkable > label {
-    opacity: 1;
   }
 }

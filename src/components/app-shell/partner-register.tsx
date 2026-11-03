@@ -1,5 +1,7 @@
 "use client";
 
+import grid from "~/components/ui/register.module.css";
+
 import {
   CheckIcon,
   CopyIcon,
@@ -13,10 +15,10 @@ import type { View } from "~/components/budget/types";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { ActionBar, type Way } from "~/components/ui/action-bar";
 import { Field, FormError } from "~/components/ui/field";
 import { Tag } from "~/components/ui/tag";
-import { useRowSelection } from "~/components/ui/use-row-selection";
-import selectionStyles from "~/components/ui/row-selection.module.css";
+import { Register } from "~/components/ui/register";
 import { Popover } from "~/components/ui/popover";
 import { SearchList, type SearchListOption } from "~/components/ui/search-list";
 import { money, shortDay, type Account } from "./model";
@@ -25,18 +27,12 @@ import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { EditorCell, EditorFooter, EditorForm, EditorText } from "./editor-row";
-import {
-  CategorizeAction,
-  SelectAll,
-  SelectionBar,
-  type Way,
-} from "./transaction-review";
-import { Empty, moveSelection, RowCheckbox } from "./views";
+import { CategorizeAction } from "./transaction-review";
+import { Empty } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
 import local from "./partner-register.module.css";
 import editorStyles from "./transaction-entry.module.css";
-import reviewStyles from "./transaction-review.module.css";
 
 type Row = View["partnerLedger"][number];
 
@@ -364,15 +360,10 @@ export function PartnerRegister({
   const entry = useTransactionEntry();
   const { view } = entry;
   const you = view.budget.userId;
-  const register = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{
     id: string;
     field: EditorField;
   } | null>(null);
-  const selectionStyle = useRowSelection(checked);
-  // Shift-click checks, or clears, every entry from the last one clicked to
-  // this one, like the other registers.
-  const anchor = useRef<string | null>(null);
   // A former partner's ledger reads as it stood when it closed.
   const closed = account.kind === "former-partner";
   const ledger = closed
@@ -390,28 +381,10 @@ export function PartnerRegister({
         .toLowerCase()
         .includes(search),
   );
-  const selectable = rows.filter((row) => categorizable(row, you, closed));
-  const selected = selectable.filter((row) => checked.includes(row.id));
-  const order = selectable.map((row) => row.id);
-  const checkTo = (id: string, value: boolean) => {
-    const from = order.indexOf(anchor.current ?? selectedId ?? "");
-    const to = order.indexOf(id);
-    onCheck(
-      from < 0 ? [id] : order.slice(Math.min(from, to), Math.max(from, to) + 1),
-      value,
-    );
-    anchor.current = id;
-  };
-  const closeEditor = (id: string) => {
-    setEditing(null);
-    requestAnimationFrame(() =>
-      register.current
-        ?.querySelector<HTMLButtonElement>(
-          `[data-entry-row="${CSS.escape(id)}"]`,
-        )
-        ?.focus(),
-    );
-  };
+  const checkable = (row: Row) => categorizable(row, you, closed);
+  const selected = rows.filter(
+    (row) => checkable(row) && checked.includes(row.id),
+  );
   // The one selected entry you paid traces back to its transaction, in its
   // own account's register.
   const wayToTransaction = (): Way | null => {
@@ -432,235 +405,105 @@ export function PartnerRegister({
       onGo: () => onJump(transaction),
     };
   };
-  if (!ledger.length)
-    return closed ? (
-      <Empty title="Nothing was shared." icon={UsersIcon}>
-        You and {account.name} didn’t share a cost before they parted.
-      </Empty>
-    ) : (
-      <Empty title="Nothing owed yet." icon={UsersIcon}>
-        When you and {account.name} share a cost, what one of you owes the other
-        shows here, in both budgets.
-      </Empty>
-    );
-  if (!rows.length)
-    return (
-      <Empty title={`No entries match “${query.trim()}”.`} icon={SearchIcon}>
-        Search looks at payees, categories, and amounts.
-      </Empty>
-    );
-  return (
-    <div
-      ref={register}
-      className={`${styles.list} ${styles.register} ${local.register} ${reviewStyles.register} ${selectionStyles.list}`}
-      {...selectionStyle.listProps}
-      role="group"
-      aria-label={`${account.name} ledger`}
-      data-selecting={selected.length > 0 || undefined}
-      onKeyDown={(event) => {
-        // x toggles the focused entry's checkbox, like the other registers.
-        const id =
-          document.activeElement instanceof HTMLElement
-            ? document.activeElement.dataset.id
-            : undefined;
-        if (event.key === "x" && id) {
-          event.preventDefault();
-          anchor.current = id;
-          onCheck([id], !checked.includes(id));
-          return;
-        }
-        // e opens the selected entry at its amount.
-        const row = rows.find((item) => item.id === selectedId);
-        if (
-          event.key === "e" &&
-          !editing &&
-          row &&
-          document.activeElement instanceof HTMLElement &&
-          document.activeElement.dataset.entryRow === row.id &&
-          row.entryId &&
-          !row.settlementId
-        ) {
-          event.preventDefault();
-          setEditing({ id: row.id, field: "amount" });
-          return;
-        }
-        moveSelection(event);
-      }}
-    >
-      <div className={`${styles.txColumns} ${styles.columnHeader}`}>
-        <SelectAll selection={{ selectable, selected }} onCheck={onCheck} />
-        <span data-optional aria-hidden>
-          Date
-        </span>
-        <span aria-hidden>Payee</span>
-        <span aria-hidden>Your category</span>
-        <span className={styles.numeric} aria-hidden>
-          Amount
-        </span>
-        <span className={styles.numeric} aria-hidden>
-          Balance
-        </span>
-        <span aria-hidden />
-      </div>
-      {rows.map((row) => {
-        const isSelected = selectedId === row.id;
-        const checkable = categorizable(row, you, closed);
-        const isChecked = checkable && checked.includes(row.id);
-        const settlement = Boolean(row.settlementId);
-        const unconfirmed = row.confirmed === false;
-        const opens = Boolean(row.entryId ?? row.lineId ?? row.settlementId);
-        const paidBy =
-          row.kind === "repayment" || settlement
-            ? null
-            : row.payerId === view.budget.userId
-              ? "You paid"
-              : `${account.name} paid`;
-        const cells: RowCells = {
-          date: (
-            <>
-              <span
-                className={styles.reviewDot}
-                data-on={row.needsCategory || unconfirmed ? "" : undefined}
-              >
-                {(row.needsCategory || unconfirmed) && (
-                  <span className="sr-only">
-                    {unconfirmed ? "Needs confirming" : "Needs a category"}
-                  </span>
-                )}
-              </span>
-              <span className={`${styles.truncate} ${styles.muted}`}>
-                {shortDay(row.date)}
-              </span>
-            </>
-          ),
-          payee: (
-            <>
-              <span className={`${styles.truncate} ${local.payeeName}`}>
-                {payee(row)}
-              </span>
-              {paidBy && (
-                <span className={`${local.paidBy} ${styles.faint}`}>
-                  {paidBy}
-                </span>
-              )}
-              {row.awaitingImport && (
-                <LinkIcon
-                  size={12}
-                  className={styles.inlineIcon}
-                  role="img"
-                  aria-label="Waiting for a bank import to match"
-                />
-              )}
-            </>
-          ),
-          category: row.needsCategory ? (
-            <Tag tone="attention">Needs category</Tag>
-          ) : settlement ? (
-            unconfirmed ? (
-              <Tag tone="attention">Confirm</Tag>
-            ) : (
-              <span className={styles.faint}>Settlement</span>
-            )
-          ) : row.awaitingImport && row.payerId === view.budget.userId ? (
-            <span className={styles.faint}>Waiting for your import</span>
-          ) : row.kind === "repayment" ? (
-            <span className={styles.faint}>Repayment</span>
-          ) : row.you === 0 ? (
-            <span className={styles.faint}>Not yours</span>
-          ) : (
-            <span className={styles.muted}>
-              {name(row.categoryId) ?? "No category"}
-            </span>
-          ),
-          // Each cell carries its own tone, so it reads the same in the row
-          // and in the editor.
-          balance: <span className={styles.muted}>{money(row.balance)}</span>,
-        };
-        const edits = opens && !settlement;
-        if (edits && editing?.id === row.id)
-          return (
-            <EntryEditor
-              key={row.id}
-              row={row}
-              cells={cells}
-              partnerName={account.name}
-              categoryEditable={checkable}
-              focus={editing.field}
-              onClose={() => closeEditor(row.id)}
-            />
-          );
-        return (
-          <div
-            key={row.id}
-            className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
-            {...selectionStyle.rowProps(row.id)}
-            onMouseDown={(event) => {
-              // Shift would otherwise extend a text selection across rows.
-              if (checkable && event.shiftKey) event.preventDefault();
-              // A double-click would select a word, and the click handler
-              // would take it for a text selection and not open the entry.
-              if (event.detail > 1) event.preventDefault();
-            }}
+  const rowCells = (row: Row): RowCells => {
+    const settlement = Boolean(row.settlementId);
+    const unconfirmed = row.confirmed === false;
+    const paidBy =
+      row.kind === "repayment" || settlement
+        ? null
+        : row.payerId === view.budget.userId
+          ? "You paid"
+          : `${account.name} paid`;
+    const cells: RowCells = {
+      date: (
+        <>
+          <span
+            className={styles.reviewDot}
+            data-on={row.needsCategory || unconfirmed ? "" : undefined}
           >
-            {checkable && (
-              <RowCheckbox
-                label={`Select ${row.payee}`}
-                state={isChecked}
-                onChange={() => {
-                  anchor.current = row.id;
-                  onCheck([row.id], !isChecked);
-                }}
-                onShiftClick={() => checkTo(row.id, !isChecked)}
-              />
+            {(row.needsCategory || unconfirmed) && (
+              <span className="sr-only">
+                {unconfirmed ? "Needs confirming" : "Needs a category"}
+              </span>
             )}
-            <button
-              type="button"
-              data-row
-              data-id={checkable ? row.id : undefined}
-              data-entry-row={row.id}
-              className={`${styles.txColumns} ${styles.row}`}
-              aria-current={isSelected ? "true" : undefined}
-              aria-expanded={settlement ? isSelected : undefined}
-              onClick={(event) => {
-                if (checkable && event.shiftKey) {
-                  checkTo(row.id, !isChecked);
-                  return;
-                }
-                // Finishing a text selection in the row doesn't click it.
-                if (event.detail > 0 && window.getSelection()?.toString())
-                  return;
-                anchor.current = row.id;
-                // A second pointer click on the one selected entry opens it
-                // at the field clicked: the category when you can change it,
-                // otherwise the amount. Enter and Space click with no
-                // position, and only select.
-                // Like a transaction's editor, an open entry stays open, with
-                // what's typed, until it's saved or canceled.
-                if (
-                  edits &&
-                  !editing &&
-                  isSelected &&
-                  checked.length === 1 &&
-                  checked[0] === row.id &&
-                  event.detail > 0
-                ) {
-                  const column =
-                    event.target instanceof Element
-                      ? event.target.closest<HTMLElement>("[data-column]")
-                          ?.dataset.column
-                      : undefined;
-                  setEditing({
-                    id: row.id,
-                    field:
-                      column === "category" && checkable
-                        ? "category"
-                        : "amount",
-                  });
-                  return;
-                }
-                onSelect(row.id);
-              }}
-            >
+          </span>
+          <span className={`${styles.truncate} ${styles.muted}`}>
+            {shortDay(row.date)}
+          </span>
+        </>
+      ),
+      payee: (
+        <>
+          <span className={`${styles.truncate} ${local.payeeName}`}>
+            {payee(row)}
+          </span>
+          {paidBy && (
+            <span className={`${local.paidBy} ${styles.faint}`}>{paidBy}</span>
+          )}
+          {row.awaitingImport && (
+            <LinkIcon
+              size={12}
+              className={styles.inlineIcon}
+              role="img"
+              aria-label="Waiting for a bank import to match"
+            />
+          )}
+        </>
+      ),
+      category: row.needsCategory ? (
+        <Tag tone="attention">Needs category</Tag>
+      ) : settlement ? (
+        unconfirmed ? (
+          <Tag tone="attention">Confirm</Tag>
+        ) : (
+          <span className={styles.faint}>Settlement</span>
+        )
+      ) : row.awaitingImport && row.payerId === view.budget.userId ? (
+        <span className={styles.faint}>Waiting for your import</span>
+      ) : row.kind === "repayment" ? (
+        <span className={styles.faint}>Repayment</span>
+      ) : row.you === 0 ? (
+        <span className={styles.faint}>Not yours</span>
+      ) : (
+        <span className={styles.muted}>
+          {name(row.categoryId) ?? "No category"}
+        </span>
+      ),
+      // Each cell carries its own tone, so it reads the same in the row
+      // and in the editor.
+      balance: <span className={styles.muted}>{money(row.balance)}</span>,
+    };
+    return cells;
+  };
+  const register = (
+    <Register
+      aria-label={`${account.name} ledger`}
+      columns={[
+        { key: "date", label: "Date", optional: true },
+        { key: "payee", label: "Payee" },
+        { key: "your-category", label: "Your category" },
+        { key: "amount", label: "Amount", numeric: true },
+        { key: "balance", label: "Balance", numeric: true },
+        { key: "status", label: "" },
+      ]}
+      layout={{
+        wide: "5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 7rem 16px",
+        narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px",
+        gutter: "34px",
+      }}
+      rows={rows}
+      cells={(row) => {
+        const cells = rowCells(row);
+        const settlement = Boolean(row.settlementId);
+        const isSelected = selectedId === row.id;
+        return {
+          label: row.payee,
+          attributes: {
+            "data-entry-row": row.id,
+            "aria-expanded": settlement ? isSelected : undefined,
+          },
+          content: (
+            <>
               <span className={styles.rowName} data-column="date" data-optional>
                 {cells.date}
               </span>
@@ -677,27 +520,83 @@ export function PartnerRegister({
                 {cells.balance}
               </span>
               <span />
-            </button>
-            {isSelected && settlement && (
-              <SettlementDetail row={row} partnerName={account.name} />
-            )}
-          </div>
-        );
-      })}
-      <PartnerSelection
-        selected={selected}
-        onCheck={onCheck}
-        disabled={Boolean(entry.session) || editing !== null}
-        way={wayToTransaction()}
-      />
-    </div>
+            </>
+          ),
+          controls: isSelected && settlement && (
+            <SettlementDetail row={row} partnerName={account.name} />
+          ),
+        };
+      }}
+      checkable={checkable}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      checked={checked}
+      onCheck={onCheck}
+      onOpen={(row, column) => {
+        if (editing || row.settlementId || !(row.entryId ?? row.lineId)) return;
+        setEditing({
+          id: row.id,
+          field:
+            column === "category" && checkable(row) ? "category" : "amount",
+        });
+      }}
+      editingId={rows.find((row) => row.id === editing?.id)?.id}
+      renderEditor={(row) =>
+        row &&
+        editing && (
+          <EntryEditor
+            row={row}
+            cells={rowCells(row)}
+            partnerName={account.name}
+            categoryEditable={checkable(row)}
+            focus={editing.field}
+            onClose={() => setEditing(null)}
+          />
+        )
+      }
+      empty={
+        closed ? (
+          <Empty title="Nothing was shared." icon={UsersIcon}>
+            You and {account.name} didn’t share a cost before they parted.
+          </Empty>
+        ) : (
+          <Empty title="Nothing owed yet." icon={UsersIcon}>
+            When you and {account.name} share a cost, what one of you owes the
+            other shows here, in both budgets.
+          </Empty>
+        )
+      }
+      noMatch={
+        ledger.length ? (
+          <Empty
+            title={`No entries match “${query.trim()}”.`}
+            icon={SearchIcon}
+          >
+            Search looks at payees, categories, and amounts.
+          </Empty>
+        ) : undefined
+      }
+      actionBar={
+        <PartnerActions
+          selected={selected}
+          onCheck={onCheck}
+          disabled={Boolean(entry.session) || editing !== null}
+          way={wayToTransaction()}
+        />
+      }
+    />
+  );
+  return rows.length ? (
+    <div className={local.ledger}>{register}</div>
+  ) : (
+    register
   );
 }
 
-// The island over the ledger while entries are selected: the way to the
+// The action bar over the ledger while entries are selected: the way to the
 // selected entry's transaction, and the one thing checked entries share,
 // your category.
-function PartnerSelection({
+function PartnerActions({
   selected,
   onCheck,
   disabled,
@@ -711,7 +610,7 @@ function PartnerSelection({
   const entry = useTransactionEntry();
   const ids = selected.map((row) => row.id);
   return (
-    <SelectionBar
+    <ActionBar
       count={selected.length}
       onClear={() => onCheck(ids, false)}
       way={way}
@@ -728,7 +627,7 @@ function PartnerSelection({
           )
         }
       />
-    </SelectionBar>
+    </ActionBar>
   );
 }
 
@@ -962,7 +861,7 @@ function EntryEditor({
       onSubmit={editable ? save : onClose}
       onCancel={onClose}
     >
-      <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
+      <div className={`${grid.columns} ${editorStyles.entryRow}`}>
         {readOnly("date", cells.date)}
         {readOnly("payee", cells.payee)}
         {categoryEditable ? (

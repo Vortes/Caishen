@@ -11,28 +11,28 @@ import {
 
 const cases = [
   {
-    entry: "island",
+    entry: "actionBar",
     multiple: false,
     full: true,
     available: "$200.00",
     total: "$25.01",
   },
   {
-    entry: "island",
+    entry: "actionBar",
     multiple: false,
     full: false,
     available: "$181.24",
     total: "$6.25",
   },
   {
-    entry: "island",
+    entry: "actionBar",
     multiple: true,
     full: true,
     available: "$200.00",
     total: "$40.04",
   },
   {
-    entry: "island",
+    entry: "actionBar",
     multiple: true,
     full: false,
     available: "$172.46",
@@ -72,7 +72,7 @@ for (const scenario of cases) {
         "Needs category",
       );
 
-    if (scenario.entry === "island") {
+    if (scenario.entry === "actionBar") {
       for (const purchase of purchases)
         await page
           .getByRole("checkbox", {
@@ -91,7 +91,7 @@ for (const scenario of cases) {
     }
     const popover = page.getByRole("dialog", {
       name:
-        scenario.entry === "island"
+        scenario.entry === "actionBar"
           ? "Share selected transactions"
           : "Who this is for",
       exact: true,
@@ -113,7 +113,7 @@ for (const scenario of cases) {
         .fill("6.25");
     await popover.getByRole("button", { name: "Apply", exact: true }).click();
 
-    if (scenario.entry === "island") {
+    if (scenario.entry === "actionBar") {
       const confirmation = page.getByRole("form", {
         name: "Share transactions",
         exact: true,
@@ -173,7 +173,9 @@ for (const scenario of cases) {
       scenario.available,
     );
     await openRegister(page, budget.account);
-    await expect(transactions(page)).toHaveCount(purchases.length);
+    await expect(
+      transactions(page).filter({ hasText: /Coffee for Mom|Lunch for Mom/ }),
+    ).toHaveCount(purchases.length);
     await expect(accountBalance(page)).toHaveText(
       scenario.multiple ? "$959.96" : "$974.99",
     );

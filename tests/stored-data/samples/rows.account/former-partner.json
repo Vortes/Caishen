@@ -2,7 +2,6 @@
   "id": "counterparty:former:parted",
   "name": "Jordan",
   "kind": "former-partner",
-  "openingBalance": 0,
   "date": "2026-08-01",
   "closed": {
     "at": "2026-10-28T12:00:00.000Z",

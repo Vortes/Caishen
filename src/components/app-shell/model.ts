@@ -176,15 +176,6 @@ export type Transaction = {
   history: { reason: string; amount: number }[];
 };
 
-export type OpeningBalance = {
-  source: "opening";
-  id: string;
-  accountId: string;
-  date: string;
-  payee: "Starting Balance";
-  amount: number;
-};
-
 export type ShellData = {
   budgetName: string;
   preferences?: View["budget"]["settings"];
@@ -203,7 +194,6 @@ export type ShellData = {
   accounts: Account[];
   loans: Loan[];
   transactions: Transaction[];
-  openingBalances: OpeningBalance[];
   costToBeMe: number;
   expectedIncome: number | null;
   partner?: { name: string };
@@ -708,16 +698,6 @@ export function toShellData(
       payments: item.payments.length,
     })),
     transactions,
-    openingBalances: view.budget.accounts
-      .filter((account) => account.kind === "cash" || account.kind === "credit")
-      .map((account) => ({
-        source: "opening",
-        id: `opening:${account.id}`,
-        accountId: account.id,
-        date: account.date,
-        payee: "Starting Balance",
-        amount: account.openingBalance,
-      })),
     costToBeMe: view.costToBeMe,
     expectedIncome: view.expectedIncome,
     // Settings names the partner like the shell does: by first name.

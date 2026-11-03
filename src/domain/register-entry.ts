@@ -65,6 +65,7 @@ export type Capabilities = {
   approve: Capability;
   enter: Capability;
   reject: Capability;
+  remove: Capability;
   categorize: Capability;
   share: { mode: "edit" } | { mode: "none" };
   record: Capability;
@@ -156,8 +157,7 @@ const unavailable: Capability = {
 };
 
 // Shapes the register edits and rejects. The others are written by the
-// engine as consequences of something else: a repayment, a statement credit,
-// a reconciliation adjustment.
+// engine as consequences of something else: a repayment or statement credit.
 const registerShapes: Record<TransactionShape["kind"], boolean> = {
   purchase: true,
   income: true,
@@ -167,7 +167,7 @@ const registerShapes: Record<TransactionShape["kind"], boolean> = {
   "loan-payment": true,
   reimbursement: false,
   "statement-credit": false,
-  adjustment: false,
+  adjustment: true,
 };
 // Shapes whose purpose category is set directly on the entry.
 const categorizedShapes: Record<TransactionShape["kind"], boolean> = {
@@ -304,6 +304,12 @@ function transactionCapabilities(
     approve: capability(approve()),
     enter: unavailable,
     reject: capability(reject()),
+    remove: capability(
+      removed ??
+        (["purchase", "refund", "income", "adjustment"].includes(shape.kind)
+          ? null
+          : "Dedicated payment records cannot be deleted through transaction removal"),
+    ),
     categorize: capability(categorize()),
     share: share(),
     record: unavailable,
@@ -354,6 +360,7 @@ export function classifyRegisterEntry(
           ? review
           : capability("Posted bank activity uses Approve"),
         reject: record,
+        remove: unavailable,
         categorize:
           record.ok &&
           (account?.kind === "cash" || account?.kind === "credit") &&

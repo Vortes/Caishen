@@ -17,7 +17,6 @@ import {
   type ReactNode,
 } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
-import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { AccountSummary, SearchField } from "./account";
 import type { Reconciling } from "./reconcile";
 import {
@@ -51,7 +50,7 @@ import { SettingsNav, Sidebar } from "./sidebar";
 import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
-import type { Way } from "./transaction-review";
+import type { Way } from "~/components/ui/action-bar";
 import { PartnerRegister } from "./partner-register";
 import {
   ReimbursementFilters,
@@ -229,9 +228,6 @@ export function AppShell({
         : current.filter((id) => !ids.includes(id)),
     );
   };
-  const selectedActions = transactionSelectionActions(
-    transactions.filter((transaction) => checked.includes(transaction.id)),
-  );
   const reviewOnly = budgetAddress.searchParams.get("view") === "review";
   const routeQuery = budgetAddress.searchParams.get("q") ?? "";
   // Keep the input responsive while Next applies its URL transition.
@@ -241,6 +237,9 @@ export function AppShell({
   useEffect(() => setQuery(routeQuery), [registerPath, routeQuery]);
   // The person or organization the Reimbursements register is narrowed to.
   const [owedBy, setOwedBy] = useState<string | null>(null);
+  const [reimbursementSelectedId, setReimbursementSelectedId] = useState<
+    string | null
+  >(null);
   // Transient selections and filters belong to the address they were opened on.
   const selectionSearch = new URLSearchParams(budgetAddress.searchParams);
   selectionSearch.delete("month");
@@ -468,13 +467,6 @@ export function AppShell({
         setAddingGroup(true);
       else if (event.key === "n" && recordable) {
         if (!entry.start({ accountId: screen.accountId })) return;
-      } else if (
-        event.key === "e" &&
-        screen.type === "register" &&
-        selectedActions.edit?.id === selectedId &&
-        selectedActions.edit?.kind === "transaction"
-      ) {
-        if (!entry.start({ transactionId: selectedActions.edit.id })) return;
       } else if (event.key === "Escape") {
         if (peekOpen) dismissPeek();
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
@@ -488,6 +480,8 @@ export function AppShell({
               new URLSearchParams(window.location.search),
             ),
           );
+        } else if (account?.kind === "reimbursements") {
+          setReimbursementSelectedId(null);
         } else if (checked.length) {
           setChecked([]);
           setSelectedId(null);
@@ -509,12 +503,12 @@ export function AppShell({
     drawer,
     peekOpen,
     checked.length,
+    account?.kind,
     screen,
     recordable,
     path,
     entry,
     selectedId,
-    selectedActions,
     settingsOpen,
     closeSettings,
   ]);
@@ -1028,6 +1022,8 @@ export function AppShell({
                                 account={account}
                                 who={owedBy}
                                 query={deferredQuery}
+                                selectedId={reimbursementSelectedId}
+                                onSelect={setReimbursementSelectedId}
                                 onJump={jump}
                               />
                             ) : (

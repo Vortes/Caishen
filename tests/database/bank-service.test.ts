@@ -973,7 +973,9 @@ void test("same-connection repair retires only the unused duplicate and preserve
   );
   assert.deepEqual(
     after.view!.budget.transactions,
-    before.view!.budget.transactions,
+    before.view!.budget.transactions.filter(
+      ({ accountId }) => accountId !== "duplicate-gold",
+    ),
   );
   assert.deepEqual(after.imports, before.imports);
   assert.deepEqual(after.connections[0]!.accountMappings, {
@@ -986,7 +988,12 @@ void test("same-connection repair retires only the unused duplicate and preserve
   );
   assert.ok(
     result.changeSet?.after.every(
-      (row) => row.table === "account" || row.table === "category",
+      (row) =>
+        row.deleted &&
+        (row.table === "account" ||
+          row.table === "category" ||
+          row.table === "transaction" ||
+          row.table === "transactionHistory"),
     ),
   );
   const providerRows = await db.bankAccount.findMany({
@@ -1253,7 +1260,12 @@ void test("repairing untouched duplicate cards keeps the original accounts and t
     after.view!.budget.accounts,
     before.accounts.filter((account) => account.id !== "duplicate-gold"),
   );
-  assert.deepEqual(after.view!.budget.transactions, before.transactions);
+  assert.deepEqual(
+    after.view!.budget.transactions,
+    before.transactions.filter(
+      ({ accountId }) => accountId !== "duplicate-gold",
+    ),
+  );
   assert.equal(
     after.view!.budget.categories.some(
       (category) => category.pairedAccountId === "duplicate-gold",
@@ -1400,7 +1412,12 @@ void test("reviewing imported activity replaces its balance contribution without
   });
   const after = await h.state();
   assert.equal(after.imports.length, 0);
-  assert.equal(after.view!.budget.transactions.length, 1);
+  assert.equal(
+    after.view!.budget.transactions.filter(
+      ({ id }) => id === "reviewed-purchase",
+    ).length,
+    1,
+  );
   assert.equal(
     toShellData({ ...after, view: after.view! }).accounts.find(
       ({ id }) => id === "cash",
@@ -1439,9 +1456,20 @@ void test("approving posted bank activity records it reviewed and retries withou
   await h.api.budget.resolveImport(input);
   const saved = await h.state();
   assert.equal(saved.imports.length, 0);
-  assert.equal(saved.view!.budget.transactions.length, 1);
-  assert.equal(saved.view!.budget.transactions[0]!.reviewed, true);
-  assert.equal(saved.view!.budget.transactions[0]!.status, "posted");
+  assert.equal(
+    saved.view!.budget.transactions.filter(({ id }) => id === "purchase")
+      .length,
+    1,
+  );
+  assert.equal(
+    saved.view!.budget.transactions.find(({ id }) => id === "purchase")!
+      .reviewed,
+    true,
+  );
+  assert.equal(
+    saved.view!.budget.transactions.find(({ id }) => id === "purchase")!.status,
+    "posted",
+  );
 });
 
 void test("bank review refuses Approve on pending activity and Enter now on posted activity", async () => {
@@ -1469,7 +1497,12 @@ void test("bank review refuses Approve on pending activity and Enter now on post
     }),
     /posted/i,
   );
-  assert.equal((await h.state()).view!.budget.transactions.length, 0);
+  assert.equal(
+    (await h.state()).view!.budget.transactions.filter(
+      ({ id }) => id === "purchase",
+    ).length,
+    0,
+  );
 });
 
 void test("Reject checks the bank fingerprint, changes no budget transactions, and retries once", async () => {
@@ -1600,6 +1633,7 @@ void test("bulk Enter now supports immediate Undo and Redo while database saves 
   const saves = new Promise<void>((resolve) => {
     release = resolve;
   });
+  const transactionIds: string[] = [];
   try {
     for (const item of before.imports) {
       const command = {
@@ -1613,6 +1647,7 @@ void test("bulk Enter now supports immediate Undo and Redo while database saves 
         status: "pending" as const,
         reviewed: true,
       };
+      transactionIds.push(command.transactionId);
       assert.equal(
         client.run(command, {
           summary: "Entered 2 transactions",
@@ -1642,7 +1677,12 @@ void test("bulk Enter now supports immediate Undo and Redo while database saves 
     assert.equal(balance(), 4500, "Redo reapplies the whole unsaved selection");
     const waiting = await h.state();
     assert.equal(waiting.imports.length, 2);
-    assert.equal(waiting.view!.budget.transactions.length, 0);
+    assert.equal(
+      waiting.view!.budget.transactions.filter(({ id }) =>
+        transactionIds.includes(id),
+      ).length,
+      0,
+    );
   } finally {
     release();
     await client.idle();
@@ -1650,11 +1690,13 @@ void test("bulk Enter now supports immediate Undo and Redo while database saves 
   const entered = await h.state();
   assert.deepEqual(entered.imports, []);
   assert.deepEqual(
-    entered.view!.budget.transactions.map((item) => ({
-      providerId: item.providerId,
-      status: item.status,
-      reviewed: item.reviewed,
-    })),
+    entered
+      .view!.budget.transactions.filter(({ id }) => transactionIds.includes(id))
+      .map((item) => ({
+        providerId: item.providerId,
+        status: item.status,
+        reviewed: item.reviewed,
+      })),
     [
       { providerId: "pending-coffee", status: "pending", reviewed: true },
       { providerId: "pending-lunch", status: "pending", reviewed: true },
@@ -1729,7 +1771,10 @@ void test("a card credit entered while pending matches its posted bank record an
     },
   });
   const entered = await h.state();
-  assert.equal(entered.view!.budget.transactions[0]!.status, "pending");
+  assert.equal(
+    entered.view!.budget.transactions.find(({ id }) => id === "credit")!.status,
+    "pending",
+  );
   assert.equal(
     entered.view!.accounts.find((item) => item.id === "card")!.balance,
     -5000,
@@ -1754,10 +1799,23 @@ void test("a card credit entered while pending matches its posted bank record an
   await syncBanks(h.db, alice);
   const posted = await h.state();
   assert.equal(posted.imports.length, 0);
-  assert.equal(posted.view!.budget.transactions.length, 1);
-  assert.equal(posted.view!.budget.transactions[0]!.id, "credit");
-  assert.equal(posted.view!.budget.transactions[0]!.status, "posted");
-  assert.equal(posted.view!.budget.transactions[0]!.reviewed, true);
+  assert.equal(
+    posted.view!.budget.transactions.filter(({ id }) => id === "credit").length,
+    1,
+  );
+  assert.equal(
+    posted.view!.budget.transactions.find(({ id }) => id === "credit")!.id,
+    "credit",
+  );
+  assert.equal(
+    posted.view!.budget.transactions.find(({ id }) => id === "credit")!.status,
+    "posted",
+  );
+  assert.equal(
+    posted.view!.budget.transactions.find(({ id }) => id === "credit")!
+      .reviewed,
+    true,
+  );
   assert.equal(
     posted.view!.accounts.find((item) => item.id === "card")!.balance,
     -3000,
@@ -1767,9 +1825,11 @@ void test("a card credit entered while pending matches its posted bank record an
 void test("the register can edit pending bank activity without clearing it or changing the bank fact", async () => {
   const h = await pendingImport();
   await resolveImport(h.db, alice, h.input);
-  const transactions = (await h.state()).view!.budget.transactions;
+  const transactions = (await h.state()).view!.budget.transactions.filter(
+    ({ id }) => id === "purchase",
+  );
   assert.equal(transactions.length, 1);
-  const saved = transactions[0]!;
+  const saved = transactions.find(({ id }) => id === "purchase")!;
   assert.equal(saved.payee, "Neighborhood cafe");
   assert.equal(saved.amount, -2375);
   assert.equal(saved.date, "2026-10-19");
@@ -1786,7 +1846,12 @@ void test("retrying a pending import save does not record it twice", async () =>
   const start = await h.revision();
   await resolveImport(h.db, alice, h.input);
   await resolveImport(h.db, alice, h.input);
-  assert.equal((await h.state()).view!.budget.transactions.length, 1);
+  assert.equal(
+    (await h.state()).view!.budget.transactions.filter(
+      ({ id }) => id === "purchase",
+    ).length,
+    1,
+  );
   assert.equal(await h.revision(), start + 1);
   await assert.rejects(
     resolveImport(h.db, alice, {
@@ -1853,8 +1918,16 @@ void test("entering a pending import counts it once, removes its review dot, and
     postedShell.accounts.find(({ id }) => id === "cash")!.toReview,
     false,
   );
-  assert.equal(posted.view!.budget.transactions.length, 1);
-  assert.equal(posted.view!.budget.transactions[0]!.status, "posted");
+  assert.equal(
+    posted.view!.budget.transactions.filter(({ id }) => id === "purchase")
+      .length,
+    1,
+  );
+  assert.equal(
+    posted.view!.budget.transactions.find(({ id }) => id === "purchase")!
+      .status,
+    "posted",
+  );
 });
 
 void test("an edited pending import posts to the same transaction and keeps the user's payee and category", async () => {
@@ -1886,13 +1959,27 @@ void test("an edited pending import posts to the same transaction and keeps the 
     return Response.json(accountsResponse());
   });
   await syncBanks(h.db, alice);
-  const transactions = (await h.state()).view!.budget.transactions;
+  const transactions = (await h.state()).view!.budget.transactions.filter(
+    ({ id }) => id === "purchase",
+  );
   assert.equal(transactions.length, 1);
-  assert.equal(transactions[0]!.id, "purchase");
-  assert.equal(transactions[0]!.status, "posted");
-  assert.equal(transactions[0]!.amount, -2400);
-  assert.equal(transactions[0]!.payee, "Neighborhood cafe");
-  assert.equal(transactions[0]!.categoryId, "dining");
+  assert.equal(
+    transactions.find(({ id }) => id === "purchase")!.id,
+    "purchase",
+  );
+  assert.equal(
+    transactions.find(({ id }) => id === "purchase")!.status,
+    "posted",
+  );
+  assert.equal(transactions.find(({ id }) => id === "purchase")!.amount, -2400);
+  assert.equal(
+    transactions.find(({ id }) => id === "purchase")!.payee,
+    "Neighborhood cafe",
+  );
+  assert.equal(
+    transactions.find(({ id }) => id === "purchase")!.categoryId,
+    "dining",
+  );
   assert.deepEqual(await bankInbox(h.db, alice), []);
 });
 
@@ -1918,7 +2005,11 @@ void test("entering a pending bank transfer approves both sides without marking 
       categoryId: undefined,
     },
   });
-  const pair = (await h.state()).view!.budget.transactions;
+  const transactions = (await h.state()).view!.budget.transactions;
+  const purchase = transactions.find(({ id }) => id === "purchase")!;
+  const pair = transactions.filter(
+    ({ linkedId }) => linkedId === purchase.linkedId,
+  );
   assert.equal(pair.length, 2);
   assert.equal(pair[0]!.amount + pair[1]!.amount, 0);
   assert.equal(
@@ -1947,7 +2038,12 @@ void test("a pending import edit refuses stale bank facts, stale budgets, and ot
   await assert.rejects(resolveImport(h.db, bob, h.input), {
     code: "NOT_FOUND",
   });
-  assert.deepEqual((await h.state()).view!.budget.transactions, []);
+  assert.deepEqual(
+    (await h.state()).view!.budget.transactions.filter(
+      ({ id }) => id === "purchase",
+    ),
+    [],
+  );
   assert.equal(await h.revision(), start);
 });
 
@@ -1978,7 +2074,11 @@ void test("pending edits retain bank status and reject account changes or duplic
     /matching ledger record/,
   );
   assert.deepEqual(
-    (await h.state()).view!.budget.transactions.map((item) => item.id),
+    (await h.state())
+      .view!.budget.transactions.filter(({ id }) =>
+        ["existing", "purchase"].includes(id),
+      )
+      .map((item) => item.id),
     ["existing"],
   );
   const fresh = await pendingImport();
@@ -1987,7 +2087,9 @@ void test("pending edits retain bank status and reject account changes or duplic
     command: { ...fresh.input.command, status: "posted" },
   });
   assert.equal(
-    (await fresh.state()).view!.budget.transactions[0]!.status,
+    (await fresh.state()).view!.budget.transactions.find(
+      ({ id }) => id === "purchase",
+    )!.status,
     "pending",
   );
 });
@@ -2297,7 +2399,9 @@ for (const delivery of [
         updated: delivery === "user deletion" ? 0 : 1,
       });
       assert.equal(
-        (await h.state()).view!.budget.transactions[0]!.removed,
+        (await h.state()).view!.budget.transactions.find(
+          ({ id }) => id === "purchase",
+        )!.removed,
         true,
       );
       if (delivery !== "user deletion")
@@ -2307,8 +2411,15 @@ for (const delivery of [
       imported: 0,
       updated: delivery === "user deletion" ? 0 : 1,
     });
-    assert.equal((await h.state()).view!.budget.transactions.length, 1);
-    const purchase = (await h.state()).view!.budget.transactions[0]!;
+    assert.equal(
+      (await h.state()).view!.budget.transactions.filter(
+        ({ id }) => id === "purchase",
+      ).length,
+      1,
+    );
+    const purchase = (await h.state()).view!.budget.transactions.find(
+      ({ id }) => id === "purchase",
+    )!;
     assert.equal(
       purchase.status,
       delivery === "user deletion" ? "pending" : "posted",
@@ -3926,7 +4037,7 @@ void test("bank sync recognizes a card payment's original checking source and li
   await syncBanks(h.db, alice);
   const read = await h.state();
   const payments = read.view!.budget.transactions.filter(
-    (item) => !item.removed,
+    (item) => item.kind === "card-payment" && !item.removed,
   );
   assert.equal(payments.length, 2);
   const paid = payments.find((item) => item.accountId === "cash")!;
@@ -3943,7 +4054,12 @@ void test("bank sync recognizes a card payment's original checking source and li
   assert.deepEqual([paid.reviewed, received.reviewed], [false, false]);
   assert.deepEqual(await bankInbox(h.db, alice), []);
   await syncBanks(h.db, alice);
-  assert.deepEqual((await h.state()).view!.budget.transactions, payments);
+  assert.deepEqual(
+    (await h.state()).view!.budget.transactions.filter(
+      ({ kind }) => kind === "card-payment",
+    ),
+    payments,
+  );
   await h.api.budget.execute({
     command: {
       type: "transaction.upsert",
@@ -3979,7 +4095,7 @@ void test("two distinct card payments of the same amount both link on successive
   await syncBanks(h.db, alice);
   await syncBanks(h.db, alice);
   const payments = (await h.state()).view!.budget.transactions.filter(
-    (item) => !item.removed,
+    (item) => item.kind === "card-payment" && !item.removed,
   );
   assert.equal(payments.length, 4);
   assert.equal(new Set(payments.map((item) => item.linkedId)).size, 2);
@@ -4003,11 +4119,15 @@ void test("bank entries attach to an existing manual card payment without creati
     payee: "Visa",
   });
   // Older manual payments were reviewed but did not attribute history entries.
-  for (const transaction of manual.budgets[alice]!.transactions)
+  for (const transaction of manual.budgets[alice]!.transactions.filter(
+    ({ linkedId }) => linkedId === "manual-payment",
+  ))
     for (const entry of transaction.history) delete entry.actorId;
   await h.setBook(manual);
   await syncBanks(h.db, alice);
-  let transactions = (await h.state()).view!.budget.transactions;
+  let transactions = (await h.state()).view!.budget.transactions.filter(
+    ({ linkedId }) => linkedId === "manual-payment",
+  );
   assert.equal(transactions.length, 2);
   assert.equal(
     transactions.find((item) => item.id === "manual-cash")!.providerId,
@@ -4020,7 +4140,9 @@ void test("bank entries attach to an existing manual card payment without creati
   );
   assert.deepEqual(await bankInbox(h.db, alice), []);
   await syncBanks(h.db, alice);
-  transactions = (await h.state()).view!.budget.transactions;
+  transactions = (await h.state()).view!.budget.transactions.filter(
+    ({ linkedId }) => linkedId === "manual-payment",
+  );
   assert.equal(transactions.length, 2);
   assert.deepEqual(
     transactions.map((item) => [item.accountId, item.date, item.providerId]),
@@ -4072,7 +4194,9 @@ void test("explicitly linking payment imports attaches their bank identities to 
   });
   for (const item of await bankInbox(h.db, alice)) {
     const transaction = (await h.state()).view!.budget.transactions.find(
-      (entry) => entry.accountId === item.accountId,
+      (entry) =>
+        entry.accountId === item.accountId &&
+        entry.linkedId === "entered-payment",
     )!;
     await resolveImport(h.db, alice, {
       connectionId: item.connectionId,
@@ -4083,7 +4207,9 @@ void test("explicitly linking payment imports attaches their bank identities to 
       ignore: false,
     });
   }
-  const transactions = (await h.state()).view!.budget.transactions;
+  const transactions = (await h.state()).view!.budget.transactions.filter(
+    ({ linkedId }) => linkedId === "entered-payment",
+  );
   assert.equal(transactions.length, 2);
   assert.equal(
     transactions.find((item) => item.accountId === "cash")!.providerId,
@@ -4096,11 +4222,15 @@ void test("explicitly linking payment imports attaches their bank identities to 
   assert.deepEqual(await bankInbox(h.db, alice), []);
   // Earlier explicit links lived in import resolutions without provider tags.
   const legacy = await h.book();
-  for (const transaction of legacy.budgets[alice]!.transactions)
+  for (const transaction of legacy.budgets[alice]!.transactions.filter(
+    ({ linkedId }) => linkedId === "entered-payment",
+  ))
     delete transaction.providerId;
   await h.setBook(legacy);
   await syncBanks(h.db, alice);
-  const later = (await h.state()).view!.budget.transactions;
+  const later = (await h.state()).view!.budget.transactions.filter(
+    ({ kind }) => kind === "card-payment",
+  );
   assert.equal(
     later.length,
     4,
@@ -4201,7 +4331,9 @@ void test("an awaiting manual payment does not steal the bank entry of a second 
   );
   await syncBanks(h.db, alice);
   await syncBanks(h.db, alice);
-  const transactions = (await h.state()).view!.budget.transactions;
+  const transactions = (await h.state()).view!.budget.transactions.filter(
+    ({ kind }) => kind === "card-payment",
+  );
   assert.equal(transactions.length, 2);
   assert.equal(
     transactions.find((item) => item.accountId === "visa")!.providerId,
@@ -4264,7 +4396,7 @@ void test("a saved payment destination recognizes the next bank payee before its
   });
   await syncBanks(h.db, alice);
   let transactions = (await h.state()).view!.budget.transactions.filter(
-    (entry) => !entry.removed,
+    (entry) => entry.kind === "card-payment" && !entry.removed,
   );
   const next = transactions.find((entry) => entry.providerId === "next-cash");
   assert.ok(next, "the established bank payee should create a linked payment");
@@ -4282,7 +4414,7 @@ void test("a saved payment destination recognizes the next bank payee before its
   assert.deepEqual(await bankInbox(h.db, alice), []);
   await syncBanks(h.db, alice);
   transactions = (await h.state()).view!.budget.transactions.filter(
-    (entry) => !entry.removed,
+    (entry) => entry.kind === "card-payment" && !entry.removed,
   );
   assert.equal(transactions.length, 4);
   assert.equal(
@@ -4444,15 +4576,16 @@ void test("a bank payee used for multiple cards waits for an unambiguous importe
   });
   await syncBanks(h.db, alice);
   assert.equal(
-    (await h.state()).view!.budget.transactions.filter((item) => !item.removed)
-      .length,
+    (await h.state()).view!.budget.transactions.filter(
+      (item) => item.kind === "card-payment" && !item.removed,
+    ).length,
     4,
     "the shared bank payee cannot choose a card on its own",
   );
   assert.equal((await bankInbox(h.db, alice)).length, 1);
   await syncBanks(h.db, alice);
   const transactions = (await h.state()).view!.budget.transactions.filter(
-    (item) => !item.removed,
+    (item) => item.kind === "card-payment" && !item.removed,
   );
   assert.equal(transactions.length, 6);
   const paid = transactions.find(
@@ -4536,7 +4669,13 @@ void test("a card inflow is not linked to an unrelated bill payment of the same 
     },
   ]);
   await syncBanks(h.db, alice);
-  assert.deepEqual((await h.state()).view!.budget.transactions, []);
+  assert.deepEqual(
+    (await h.state()).view!.budget.transactions.filter(
+      ({ providerId }) =>
+        providerId === "checking-payment" || providerId === "visa-payment",
+    ),
+    [],
+  );
   assert.equal((await bankInbox(h.db, alice)).length, 2);
 });
 
@@ -4579,7 +4718,15 @@ void test("a remembered expense category does not consume a card payment before 
     }),
   );
   await syncBanks(h.db, alice);
-  assert.equal((await h.state()).view!.budget.transactions.length, 1);
+  assert.equal(
+    (await h.state()).view!.budget.transactions.filter(
+      ({ id, providerId }) =>
+        id === "old-category" ||
+        providerId === "checking-payment" ||
+        providerId === "visa-payment",
+    ).length,
+    1,
+  );
   assert.equal((await bankInbox(h.db, alice)).length, 1);
   await syncBanks(h.db, alice);
   const payments = (await h.state()).view!.budget.transactions.filter(
@@ -4662,7 +4809,10 @@ void test("a bank import already named Mom gets Mom's full reimbursement categor
     },
   ]);
   await syncBanks(h.db, alice);
-  const transactions = (await h.state()).view!.budget.transactions;
+  const transactions = (await h.state()).view!.budget.transactions.filter(
+    ({ id, providerId }) =>
+      id === "noodles-for-mom" || providerId === "first-mom-payee",
+  );
   assert.equal(transactions.length, 2);
   const mom = transactions.find(
     (item) => item.providerId === "first-mom-payee",
@@ -4834,7 +4984,7 @@ void test("a remembered payee's import waits in the inbox when a hand-entered tr
   await syncBanks(h.db, alice);
   assert.equal(
     (await h.state()).view!.budget.transactions.filter(
-      (transaction) => !transaction.removed,
+      (transaction) => transaction.kind === "purchase" && !transaction.removed,
     ).length,
     2,
   );

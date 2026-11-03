@@ -283,11 +283,13 @@ void test("a deleted category's transactions and assigned money move to the cate
   });
   const budget = rowsToBook(bookToRows(moved)).budgets.owner!;
   assert.deepEqual(
-    budget.transactions.map((transaction) => [
-      transaction.id,
-      transaction.categoryId ??
-        transaction.lines?.map((line) => line.categoryId),
-    ]),
+    budget.transactions
+      .filter(({ id }) => ["coffee", "lunch", "mistake"].includes(id))
+      .map((transaction) => [
+        transaction.id,
+        transaction.categoryId ??
+          transaction.lines?.map((line) => line.categoryId),
+      ]),
     [
       ["coffee", "rent"],
       ["lunch", ["rent", "rent"]],

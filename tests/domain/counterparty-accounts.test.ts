@@ -229,8 +229,14 @@ void test("a purchase entirely for Mom needs no personal category and can be rev
     view.categories.find((item) => item.counterpartyAccountId)!.available,
     -1_154,
   );
-  assert.equal(view.budget.transactions[0]!.categoryId, undefined);
-  assert.equal(view.budget.transactions[0]!.reviewed, true);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "noodles")!.categoryId,
+    undefined,
+  );
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "noodles")!.reviewed,
+    true,
+  );
 });
 
 void test("repayment funds a fully shared card purchase and a later refund leaves money owed back to Mom", () => {
@@ -343,7 +349,11 @@ void test("taking back part or all of Mom's share asks for a personal category a
     -454,
   );
   budget.run({ ...purchase, categoryId: "dining", counterpartyShare: share });
-  assert.equal(budget.view().budget.transactions[0]!.categoryId, undefined);
+  assert.equal(
+    budget.view().budget.transactions.find(({ id }) => id === "noodles")!
+      .categoryId,
+    undefined,
+  );
   budget.run({ ...purchase, categoryId: "dining", counterpartyShare: null });
   assert.equal(budget.view().personalSpending, 1_154);
   assert.equal(
@@ -388,7 +398,11 @@ void test("a split keeps its fully reimbursable line without a category through 
     view.accounts.find((item) => item.kind === "reimbursements")!.balance,
     1_154,
   );
-  assert.equal(view.budget.transactions[0]!.lines![1]!.categoryId, undefined);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "dinner")!.lines![1]!
+      .categoryId,
+    undefined,
+  );
 });
 
 void test("a fully reimbursable payee remembers the person without a purpose category", () => {
@@ -457,7 +471,10 @@ void test("a fully shared recorded partner purchase matches its bank import with
   });
   const view = projectBook(book, "alan", month);
   assert.equal(view.personalSpending, 0);
-  assert.equal(view.budget.transactions[0]!.categoryId, undefined);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "bank")!.categoryId,
+    undefined,
+  );
   assert.equal(
     view.accounts.find((item) => item.kind === "partner")!.balance,
     1_154,
@@ -496,7 +513,10 @@ void test("a bank amount update keeps a category-free purchase fully reimbursabl
     view.accounts.find((item) => item.kind === "reimbursements")!.balance,
     1_500,
   );
-  assert.equal(view.budget.transactions[0]!.categoryId, undefined);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "noodles")!.categoryId,
+    undefined,
+  );
 });
 
 void test("rounding a bank amount update keeps fully reimbursable split lines whole", () => {
@@ -567,6 +587,10 @@ void test("batch categorization leaves fully reimbursable lines without a purpos
     transactionIds: ["noodles"],
     categoryId: "dining",
   });
-  assert.equal(budget.view().budget.transactions[0]!.categoryId, undefined);
+  assert.equal(
+    budget.view().budget.transactions.find(({ id }) => id === "noodles")!
+      .categoryId,
+    undefined,
+  );
   assert.equal(budget.view().personalSpending, 0);
 });

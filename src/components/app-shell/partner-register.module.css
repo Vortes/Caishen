@@ -1,14 +1,6 @@
-/* Date, payee with who paid, your category, what the entry moves, the
-   running balance, and the status column every register keeps. The doubled
-   class outranks the shell register's own columns. */
-.register.register {
-  --tx-columns: 5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 7rem 16px;
+.ledger {
+  height: 100%;
   padding-top: 6px;
-}
-@container (max-width: 760px) {
-  .register.register {
-    --tx-columns: minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px;
-  }
 }
 
 /* Who paid gives way before the payee's name does: the name keeps its

@@ -277,11 +277,41 @@ void test("bank setup retries reuse the original result and reject changed detai
   );
 });
 
-void test("bank setup creates named accounts with opening balances and leaves pending imports for review", async (t) => {
+void test("bank setup records Starting Balance adjustments on the link day and leaves the import boundary unchanged", async (t) => {
   const { alice, bob, request, ready, state, today, month } = await fixture(t);
   await ready();
   const added = await alice.budget.setupBankAccounts(request);
   const saved = await state();
+  assert.deepEqual(
+    saved.view!.budget.transactions.map(
+      ({ date, payee, amount, kind, status, reviewed }) => ({
+        date,
+        payee,
+        amount,
+        kind,
+        status,
+        reviewed,
+      }),
+    ),
+    [
+      {
+        date: today,
+        payee: "Starting Balance",
+        amount: 120050,
+        kind: "adjustment",
+        status: "posted",
+        reviewed: true,
+      },
+      {
+        date: today,
+        payee: "Starting Balance",
+        amount: -20025,
+        kind: "adjustment",
+        status: "posted",
+        reviewed: true,
+      },
+    ],
+  );
   assert.equal(saved.view!.cash, 120050);
   assert.equal(saved.view!.readyToAssign, 120050);
   assert.deepEqual(
@@ -325,6 +355,36 @@ void test("bank setup creates named accounts with opening balances and leaves pe
       expectedRevision: saved.revision,
     }),
     { code: "BAD_REQUEST" },
+  );
+  const starting = saved.view!.budget.transactions.find(
+    ({ accountId }) => accountId === mappings.checking!.accountId,
+  )!;
+  await alice.budget.execute({
+    baseRevision: saved.revision,
+    clientId: "starting-balance-edit",
+    command: {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId: starting.id,
+      accountId: starting.accountId,
+      date: `${month}-01`,
+      amount: 120150,
+      payee: "Corrected balance",
+      status: "posted",
+    },
+  });
+  const corrected = await state();
+  assert.deepEqual(
+    bankMappingsSchema.parse(corrected.connections[0]!.accountMappings),
+    mappings,
+  );
+  assert.equal(
+    corrected.imports.some((record) => record.payee === "Already posted"),
+    false,
+  );
+  assert.equal(
+    corrected.imports.some((record) => record.payee === "Pending today"),
+    true,
   );
 });
 

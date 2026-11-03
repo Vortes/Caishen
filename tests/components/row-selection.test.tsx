@@ -143,13 +143,14 @@ test("select-all clears a partial transaction selection and selects all from non
 
   await user.click(all);
 
+  // Market, Coffee and the account's Starting Balance.
   expect(
     transactions.getByRole("checkbox", { name: "Select all", checked: true }),
   ).toBe(all);
   expect(
     within(
       screen.getByRole("toolbar", { name: "Selected transactions" }),
-    ).getByText("2 transactions"),
+    ).getByText("3 transactions"),
   ).toBeTruthy();
 });
 

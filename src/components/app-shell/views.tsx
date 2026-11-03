@@ -18,10 +18,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
 import { Tag } from "~/components/ui/tag";
 import { useRowSelection } from "~/components/ui/use-row-selection";
@@ -33,7 +31,6 @@ import {
   type Category,
   type Funding,
   type Transaction,
-  type OpeningBalance,
 } from "./model";
 import { motion, MotionConfig } from "motion/react";
 import { newId } from "~/components/budget/format";
@@ -64,37 +61,18 @@ import { MoveMoneyPopover } from "./move-money";
 import { viewOf, type PlanView as PlanViewId } from "./plan-views";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
-import {
-  SelectAll,
-  SelectionIsland,
-  type Way,
-  useReviewSelection,
-} from "./transaction-review";
+import { TransactionActions, useReviewSelection } from "./transaction-review";
 import styles from "./shell.module.css";
 import editStyles from "./category-edit.module.css";
-import reviewStyles from "./transaction-review.module.css";
-
-// Arrow keys move the selection through the rows of a list, like Linear's j/k.
-export function moveSelection(event: KeyboardEvent<HTMLElement>) {
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-  const rows = [
-    ...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-row]"),
-  ];
-  const index = rows.findIndex((row) => row === document.activeElement);
-  const next =
-    rows[
-      index === -1
-        ? 0
-        : Math.min(
-            rows.length - 1,
-            Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)),
-          )
-    ];
-  if (!next) return;
-  event.preventDefault();
-  next.focus();
-  next.click();
-}
+import type { Way } from "~/components/ui/action-bar";
+import {
+  Register,
+  type RegisterColumn,
+  type RegisterCells,
+} from "~/components/ui/register";
+import { RowCheckbox } from "~/components/ui/row-checkbox";
+import { moveSelection } from "~/components/ui/move-selection";
+import grid from "~/components/ui/register.module.css";
 
 export function PlanView({
   view,
@@ -905,38 +883,6 @@ function PlanCategoryContents({
   );
 }
 
-// Lives in the row's left padding; shows on hover, focus, or once anything
-// in the list is checked. The label is the hit area: the full row height.
-export function RowCheckbox({
-  label,
-  state,
-  onChange,
-  onShiftClick,
-}: {
-  label: string;
-  state: boolean | "mixed";
-  onChange: () => void;
-  // Takes over a shift-click, which otherwise toggles just this box.
-  onShiftClick?: () => void;
-}) {
-  return (
-    <label
-      className={styles.checkboxSlot}
-      onClickCapture={(event) => {
-        if (!onShiftClick || !event.shiftKey) return;
-        event.preventDefault();
-        onShiftClick();
-      }}
-    >
-      <Checkbox
-        aria-label={label}
-        checked={state === "mixed" ? "indeterminate" : state}
-        onCheckedChange={onChange}
-      />
-    </label>
-  );
-}
-
 const fundingLabel: Record<Funding, string> = {
   funded: "Funded",
   underfunded: "Underfunded",
@@ -1019,16 +965,12 @@ export function AvailablePill({
   );
 }
 
-function matches(
-  item: Transaction | OpeningBalance,
-  query: string,
-  accountName?: string,
-) {
+function matches(item: Transaction, query: string, accountName?: string) {
   const text = query.toLowerCase();
   return [
     item.payee,
-    item.source !== "opening" ? item.categoryLabel : undefined,
-    item.source !== "opening" ? item.shareLabel : undefined,
+    item.categoryLabel,
+    item.shareLabel,
     accountName,
     money(Math.abs(item.amount)),
   ].some((value) => value?.toLowerCase().includes(text));
@@ -1042,36 +984,6 @@ const registerEditFields: Record<string, DraftField> = {
   outflow: "outflow",
   inflow: "inflow",
 };
-
-// The editable column under a click at x, or the nearest one, so a click
-// anywhere in the row opens a field: above or below a cell's text, in a gap,
-// or on a column the editor can't change. Columns are measured by their
-// grid tracks, since amounts hug their text and an empty one has no width.
-function columnAt(row: HTMLElement, x: number, skip?: string) {
-  const style = getComputedStyle(row);
-  const tracks = style.gridTemplateColumns.split(" ").map(parseFloat);
-  const gap = parseFloat(style.columnGap);
-  let left =
-    row.getBoundingClientRect().left +
-    parseFloat(style.borderLeftWidth) +
-    parseFloat(style.paddingLeft);
-  const cells = [...row.children].filter(
-    (cell): cell is HTMLElement =>
-      cell instanceof HTMLElement && cell.getClientRects().length > 0,
-  );
-  let nearest: { column: string; distance: number } | undefined;
-  cells.forEach((cell, index) => {
-    const right = left + (tracks[index] ?? 0);
-    const column = cell.dataset.column;
-    if (column && column in registerEditFields && column !== skip) {
-      const distance = x < left ? left - x : x > right ? x - right : 0;
-      if (!nearest || distance < nearest.distance)
-        nearest = { column, distance };
-    }
-    left = right + gap;
-  });
-  return nearest?.column;
-}
 
 export function RegisterView({
   accountId,
@@ -1096,19 +1008,11 @@ export function RegisterView({
   onJump: (transaction: NonNullable<Transaction["counterpart"]>) => void;
   back: Way | null;
 }) {
-  const { transactions, openingBalances, accounts, month } = useShellData();
+  const { transactions, accounts, month } = useShellData();
   const entry = useTransactionEntry();
   const { session } = entry;
   const register = useRef<HTMLDivElement>(null);
   const revealSpace = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!selectedId) return;
-    const row = register.current?.querySelector<HTMLButtonElement>(
-      `[data-transaction-row="${CSS.escape(selectedId)}"]`,
-    );
-    row?.scrollIntoView({ block: "nearest" });
-    row?.focus({ preventScroll: true });
-  }, [selectedId, accountId]);
   const accountNames = useMemo(
     () => new Map(accounts.map((account) => [account.id, account.name])),
     [accounts],
@@ -1159,7 +1063,7 @@ export function RegisterView({
     const originalHeight = content.scrollHeight;
     const neededHeight = top + content.clientHeight;
     if (neededHeight > originalHeight) {
-      // First fill the island's auto margin, then keep only the room needed.
+      // First fill the action bar's auto margin, then keep only the room needed.
       space.style.height = `${content.clientHeight}px`;
       space.style.height = `${Math.max(
         0,
@@ -1179,20 +1083,8 @@ export function RegisterView({
       space.style.height = "0px";
     };
   }, [revealId, canReveal]);
-  const openings = reviewOnly
-    ? []
-    : openingBalances.filter(
-        (item) =>
-          (!accountId || item.accountId === accountId) &&
-          (search
-            ? matches(item, search, accountName(item.accountId))
-            : item.date.startsWith(month.key)),
-      );
-  const entries = [...entered, ...openings].sort(
-    (a, b) =>
-      b.date.localeCompare(a.date) ||
-      Number(a.source === "opening") - Number(b.source === "opening") ||
-      b.id.localeCompare(a.id),
+  const entries = [...entered].sort(
+    (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
   );
   // A collapsed heading's rows can't be selected.
   const selection = useReviewSelection({
@@ -1200,22 +1092,6 @@ export function RegisterView({
     checked,
     onCheck,
   });
-  const selectionStyle = useRowSelection(checked);
-  // Shift-click checks, or clears, every row from the last one clicked to
-  // this one, like YNAB and Gmail.
-  const anchor = useRef<string | null>(null);
-  const order = [...(pendingOpen ? pending : []), ...entered]
-    .filter((item) => item.actions.select)
-    .map((item) => item.id);
-  const checkTo = (id: string, value: boolean) => {
-    const from = order.indexOf(anchor.current ?? selectedId ?? "");
-    const to = order.indexOf(id);
-    onCheck(
-      from < 0 ? [id] : order.slice(Math.min(from, to), Math.max(from, to) + 1),
-      value,
-    );
-    anchor.current = id;
-  };
   // In the register the editor takes its transaction's row. A new one, or one
   // this month or filter hides, opens at the top.
   const editingId = session?.rowId;
@@ -1223,17 +1099,7 @@ export function RegisterView({
   // the selection moves on.
   const [repaymentId, setRepaymentId] = useState<string | null>(null);
   if (repaymentId && repaymentId !== selectedId) setRepaymentId(null);
-  const closeRepayment = () => {
-    const id = repaymentId;
-    setRepaymentId(null);
-    requestAnimationFrame(() =>
-      register.current
-        ?.querySelector<HTMLButtonElement>(
-          `[data-transaction-row="${CSS.escape(id ?? "")}"]`,
-        )
-        ?.focus(),
-    );
-  };
+  const closeRepayment = () => setRepaymentId(null);
   const inPlace =
     session && rows.some((item) => item.id === editingId)
       ? editingId
@@ -1241,59 +1107,37 @@ export function RegisterView({
   const counterparty = accounts.find(
     (entry) => entry.id === accountId && isCounterparty(entry),
   );
-  if (!rows.length && !openings.length && !session) {
-    // A counterparty account's entries come from shares and settlements,
-    // so its empty register says what will fill it.
-    if (counterparty && !search)
-      return (
-        <Empty title="Nothing owed yet." icon={UsersIcon}>
-          {counterparty.kind === "partner"
-            ? `When you and ${counterparty.name} share a cost, what one of you owes the other shows here.`
-            : "When you pay for someone, what they owe you shows here. Its envelope in People can set money aside to cover it."}
-        </Empty>
-      );
-    return search ? (
-      <Empty title={`No transactions match “${search}”.`} icon={SearchIcon}>
-        Search looks at payees, categories, and amounts in every month.
-      </Empty>
-    ) : reviewOnly ? (
-      <Empty title="Everything here is reviewed." icon={CheckIcon} done>
-        New bank imports will show up as they arrive.
-      </Empty>
-    ) : (
-      <Empty title={`No transactions in ${month.label}.`}>
-        Pick another month to see its transactions.
-      </Empty>
-    );
-  }
+  const empty = counterparty ? (
+    <Empty title="Nothing owed yet." icon={UsersIcon}>
+      {counterparty.kind === "partner"
+        ? `When you and ${counterparty.name} share a cost, what one of you owes the other shows here.`
+        : "When you pay for someone, what they owe you shows here. Its envelope in People can set money aside to cover it."}
+    </Empty>
+  ) : reviewOnly ? (
+    <Empty title="Everything here is reviewed." icon={CheckIcon} done>
+      New bank imports will show up as they arrive.
+    </Empty>
+  ) : (
+    <Empty title={`No transactions in ${month.label}.`}>
+      Pick another month to see its transactions.
+    </Empty>
+  );
+  const noMatch = search ? (
+    <Empty title={`No transactions match “${search}”.`} icon={SearchIcon}>
+      Search looks at payees, categories, and amounts in every month.
+    </Empty>
+  ) : undefined;
   // Every row, the headers, and the editor share one grid, so each field
   // sits under the column it fills. All accounts leads with an Account
   // column, since that's what a new entry picks first.
   const accountColumn = !accountId;
-  const row = (item: Transaction) => {
-    if (item.id === inPlace)
-      return <TransactionEditor key={item.id} accountColumn={accountColumn} />;
-    if (item.id === repaymentId && item.repayment)
-      return (
-        <RepaymentEditor
-          key={item.id}
-          transaction={{ ...item, repayment: item.repayment }}
-          accountName={
-            accountColumn
-              ? (accountName(item.accountId) ?? "Unlinked bank account")
-              : undefined
-          }
-          onClose={closeRepayment}
-        />
-      );
+  const cells = (item: Transaction): RegisterCells => {
     const mark = clearedState(item);
     const statusMark = <ClearedMark state={mark} />;
     // YNAB's C column: a transaction flips between cleared and uncleared in
     // place, until reconciling locks it.
     const togglesCleared =
       !item.reconciled && item.actions.edit === "transaction";
-    const checkable = item.actions.select;
-    const isChecked = checkable && checked.includes(item.id);
     // Marks the row in its first column.
     const reviewDot = (
       <span
@@ -1303,75 +1147,17 @@ export function RegisterView({
         {item.needsReview && <span className="sr-only">Needs review</span>}
       </span>
     );
-    return (
-      <div
-        key={item.id}
-        className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
-        {...selectionStyle.rowProps(item.id)}
-        onMouseDown={(event) => {
-          // Shift would otherwise extend a text selection across rows.
-          if (checkable && event.shiftKey) event.preventDefault();
-          // A double-click would select a word, and the click handler would
-          // take it for a text selection and not open the field.
-          if (event.detail > 1) event.preventDefault();
-        }}
-      >
-        {checkable && (
-          <RowCheckbox
-            label={`Select ${item.payee}`}
-            state={isChecked}
-            onChange={() => {
-              anchor.current = item.id;
-              onCheck([item.id], !isChecked);
-            }}
-            onShiftClick={() => checkTo(item.id, !isChecked)}
-          />
-        )}
-        <button
-          type="button"
-          data-row
-          data-id={checkable ? item.id : undefined}
-          data-transaction-row={item.id}
-          data-pending={mark === "pending" || undefined}
-          className={`${styles.txColumns} ${styles.row}`}
-          aria-current={selectedId === item.id ? "true" : undefined}
-          onClick={(event) => {
-            if (checkable && event.shiftKey) {
-              checkTo(item.id, !isChecked);
-              return;
-            }
-            // Finishing a text selection in the row doesn't click it.
-            if (event.detail > 0 && window.getSelection()?.toString()) return;
-            anchor.current = item.id;
-            // A pointer click; Enter and Space click with no position.
-            if (selection.actions.edit?.id === item.id && event.detail > 0) {
-              if (selection.actions.edit.kind === "repayment") {
-                setRepaymentId(item.id);
-                return;
-              }
-              const skip = item.categoryNotNeeded ? "category" : undefined;
-              // The cell clicked, or the column nearest the pointer when the
-              // click lands between cells.
-              const clicked =
-                event.target instanceof Element
-                  ? event.target.closest<HTMLElement>("[data-column]")?.dataset
-                      .column
-                  : undefined;
-              const column =
-                clicked && clicked in registerEditFields && clicked !== skip
-                  ? clicked
-                  : columnAt(event.currentTarget, event.clientX, skip);
-              if (column && item.actions.edit === "transaction") {
-                entry.start({
-                  transactionId: item.id,
-                  field: registerEditFields[column]!,
-                });
-                return;
-              }
-            }
-            onSelect(item.id);
-          }}
-        >
+    return {
+      label: item.payee,
+      attributes: {
+        "data-transaction-row": item.id,
+        "data-pending": mark === "pending" || undefined,
+      },
+      openColumns: Object.keys(registerEditFields).filter(
+        (column) => column !== "category" || !item.categoryNotNeeded,
+      ),
+      content: (
+        <>
           {accountColumn && (
             <span
               className={styles.rowName}
@@ -1410,21 +1196,21 @@ export function RegisterView({
           {/* The Share cell's control sits over the row, in ShareCell. */}
           <span data-column="share" aria-hidden />
           <span
-            className={styles.numeric}
+            className={grid.numeric}
             data-column="outflow"
             data-empty={item.amount < 0 ? undefined : true}
           >
             {item.amount < 0 && money(-item.amount)}
           </span>
           <span
-            className={styles.numeric}
+            className={grid.numeric}
             data-column="inflow"
-            data-empty={item.amount > 0 ? undefined : true}
+            data-empty={item.amount >= 0 ? undefined : true}
             data-inflow={item.amount > 0 || undefined}
           >
-            {item.amount > 0 && money(item.amount)}
+            {item.amount >= 0 && money(item.amount)}
           </span>
-          <span className={styles.statusCell} data-column="status">
+          <span className={grid.statusCell} data-column="status">
             {/* A toggle shows its mark over the row, below; the row
                   still says its status. */}
             {togglesCleared ? (
@@ -1433,252 +1219,198 @@ export function RegisterView({
               statusMark
             )}
           </span>
-        </button>
-        <ShareCell row={item} accountColumn={accountColumn} />
-        {togglesCleared && (
-          <div className={`${styles.txColumns} ${styles.clearedActions}`}>
-            <span className={styles.clearedSlot}>
-              <IconButton
-                size="sm"
-                label={item.cleared ? "Mark uncleared" : "Mark cleared"}
-                onClick={() => entry.toggleCleared(item.id)}
-              >
-                <ClearedMark state={mark} labeled={false} />
-              </IconButton>
-            </span>
-          </div>
-        )}
-        {item.counterpart && (
-          <div className={`${styles.txColumns} ${styles.rowActions}`}>
-            <span className={styles.counterpartAction}>
-              <IconButton
-                asChild
-                label={`View in ${item.counterpart.accountName}`}
-                size="sm"
-              >
-                <a
-                  href={`${screenHref({ type: "register", accountId: item.counterpart.accountId })}?${new URLSearchParams(
-                    {
-                      transaction: item.counterpart.id,
-                      month: item.counterpart.date.slice(0, 7),
-                    },
-                  ).toString()}`}
-                  onClick={(event) => {
-                    if (
-                      event.metaKey ||
-                      event.ctrlKey ||
-                      event.shiftKey ||
-                      event.altKey
-                    )
-                      return;
-                    event.preventDefault();
-                    onJump(item.counterpart!);
-                  }}
+        </>
+      ),
+      controls: (
+        <>
+          <ShareCell row={item} accountColumn={accountColumn} />
+          {togglesCleared && (
+            <div className={`${grid.columns} ${grid.clearedActions}`}>
+              <span className={grid.clearedSlot}>
+                <IconButton
+                  size="sm"
+                  label={item.cleared ? "Mark uncleared" : "Mark cleared"}
+                  onClick={() => entry.toggleCleared(item.id)}
                 >
-                  <ArrowRightLeftIcon aria-hidden />
-                </a>
-              </IconButton>
-            </span>
-            <span
-              aria-hidden
-              className={`${styles.numeric} ${styles.actionAmountSizer}`}
-            >
-              {money(Math.abs(item.amount))}
-            </span>
-          </div>
-        )}
-      </div>
-    );
+                  <ClearedMark state={mark} labeled={false} />
+                </IconButton>
+              </span>
+            </div>
+          )}
+          {item.counterpart && (
+            <div className={`${grid.columns} ${grid.rowActions}`}>
+              <span className={grid.counterpartAction}>
+                <IconButton
+                  asChild
+                  label={`View in ${item.counterpart.accountName}`}
+                  size="sm"
+                >
+                  <a
+                    href={`${screenHref({ type: "register", accountId: item.counterpart.accountId })}?${new URLSearchParams(
+                      {
+                        transaction: item.counterpart.id,
+                        month: item.counterpart.date.slice(0, 7),
+                      },
+                    ).toString()}`}
+                    onClick={(event) => {
+                      if (
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      )
+                        return;
+                      event.preventDefault();
+                      onJump(item.counterpart!);
+                    }}
+                  >
+                    <ArrowRightLeftIcon aria-hidden />
+                  </a>
+                </IconButton>
+              </span>
+              <span
+                aria-hidden
+                className={`${grid.numeric} ${grid.actionAmountSizer}`}
+              >
+                {money(Math.abs(item.amount))}
+              </span>
+            </div>
+          )}
+        </>
+      ),
+    };
   };
-  return (
-    <div
-      className={`${styles.list} ${styles.register} ${reviewStyles.register} ${selectionStyles.list}`}
-      {...selectionStyle.listProps}
-      ref={register}
-      data-accounts={accountColumn || undefined}
-      role="group"
-      aria-label="Transactions"
-      data-selecting={selection.selected.length > 0 || undefined}
-      onKeyDown={(event) => {
-        // x toggles the focused row's checkbox, like the plan.
-        const id =
-          document.activeElement instanceof HTMLElement
-            ? document.activeElement.dataset.id
-            : undefined;
-        if (event.key === "x" && id) {
-          event.preventDefault();
-          anchor.current = id;
-          onCheck([id], !checked.includes(id));
-          return;
-        }
-        // e edits the selected row; a repayment's opens its note.
-        if (
-          event.key === "e" &&
-          id === selectedId &&
-          selection.actions.edit?.id === id &&
-          selection.actions.edit?.kind === "repayment"
-        ) {
-          event.preventDefault();
-          setRepaymentId(id);
-          return;
-        }
-        moveSelection(event);
-      }}
-    >
-      <div className={`${styles.txColumns} ${styles.columnHeader}`}>
-        <SelectAll selection={selection} onCheck={onCheck} />
-        {accountColumn && (
-          <span data-column="account" data-optional aria-hidden>
-            Account
-          </span>
-        )}
-        <span data-column="date" data-optional aria-hidden>
-          Date
-        </span>
-        <span data-column="payee" aria-hidden>
-          Payee
-        </span>
-        <span data-column="category" aria-hidden>
-          Category
-        </span>
-        <span data-column="share" aria-hidden>
-          Share
-        </span>
+  const columns: RegisterColumn[] = [
+    ...(accountColumn
+      ? [{ key: "account", label: "Account", optional: true }]
+      : []),
+    { key: "date", label: "Date", optional: true },
+    { key: "payee", label: "Payee" },
+    { key: "category", label: "Category" },
+    { key: "share", label: "Share" },
+    {
+      key: "outflow",
+      numeric: true,
+      label: (
         <span
-          className={styles.numeric}
+          className={grid.numeric}
           data-column="outflow"
           data-wide
           aria-hidden
         >
           Outflow
         </span>
+      ),
+    },
+    {
+      key: "inflow",
+      numeric: true,
+      label: (
         <span
-          className={styles.numeric}
+          className={grid.numeric}
           data-column="inflow"
           data-wide
           aria-hidden
         >
           Inflow
         </span>
-        <span className={styles.numeric} data-narrow aria-hidden>
+      ),
+    },
+    {
+      key: "amount",
+      numeric: true,
+      label: (
+        <span className={grid.numeric} data-narrow aria-hidden>
           Amount
         </span>
+      ),
+    },
+    {
+      key: "status",
+      label: (
         <span
-          className={styles.statusCell}
+          className={grid.statusCell}
           data-column="status"
           title="Cleared"
           aria-hidden
         >
           <CopyrightIcon size={14} />
         </span>
-      </div>
-      {session && !inPlace && (
-        <div className={styles.editorDock}>
-          <TransactionEditor accountColumn={accountColumn} />
-        </div>
-      )}
-      {pending.length > 0 && (
-        <div
-          role="group"
-          aria-label="Pending transactions"
-          className={styles.pendingGroup}
-        >
-          <button
-            type="button"
-            className={`${styles.dayRow} ${styles.groupRow} ${styles.pendingHeader}`}
-            aria-expanded={pendingOpen}
-            onClick={() => setPendingOpen(!pendingOpen)}
-          >
-            <ChevronDownIcon
-              size={12}
-              strokeWidth={2.5}
-              className={styles.groupCaret}
-              aria-hidden
-            />
-            <span>Pending</span>
-            <span className={styles.groupCount}>{pending.length}</span>
-          </button>
-          {/* Collapsing keeps a transaction that's being edited open. */}
-          {pending
-            .filter((item) => pendingOpen || item.id === inPlace)
-            .map(row)}
-        </div>
-      )}
-      {entries.map((item) =>
-        item.source === "opening" ? (
-          <OpeningBalanceRow
-            key={item.id}
-            opening={item}
-            accountName={accountName(item.accountId)!}
-            accountColumn={accountColumn}
+      ),
+    },
+  ];
+  return (
+    <Register
+      ref={register}
+      aria-label="Transactions"
+      data-accounts={accountColumn || undefined}
+      columns={columns}
+      layout={{
+        wide: accountColumn
+          ? "minmax(0, 0.8fr) 8.25rem minmax(0, 1.2fr) minmax(0, 1fr) 10.5rem 6.5rem 6.5rem 16px"
+          : "8.25rem minmax(0, 1.3fr) minmax(0, 1fr) 10.5rem 6.5rem 6.5rem 16px",
+        narrow: "minmax(0, 1.2fr) minmax(0, 1fr) auto 16px",
+        compact: "minmax(0, 1fr) auto 16px",
+      }}
+      rows={[...pending, ...entries]}
+      cells={cells}
+      checkable={(row) => row.actions.select}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      checked={checked}
+      onCheck={onCheck}
+      onOpen={(row, column) => {
+        if (selection.actions.edit?.id !== row.id || session) return;
+        if (selection.actions.edit.kind === "repayment") {
+          setRepaymentId(row.id);
+        } else {
+          entry.start({
+            transactionId: row.id,
+            field: column ? registerEditFields[column] : undefined,
+          });
+        }
+      }}
+      editingId={
+        inPlace ?? repaymentId ?? (session ? (session.rowId ?? "new") : null)
+      }
+      renderEditor={(row) =>
+        row?.id === repaymentId && row.repayment ? (
+          <RepaymentEditor
+            transaction={{ ...row, repayment: row.repayment }}
+            accountName={
+              accountColumn
+                ? (accountName(row.accountId) ?? "Unlinked bank account")
+                : undefined
+            }
+            onClose={closeRepayment}
           />
         ) : (
-          row(item)
-        ),
-      )}
-      <div ref={revealSpace} className={styles.revealSpace} aria-hidden />
-      <SelectionIsland selection={selection} onCheck={onCheck} back={back} />
-    </div>
-  );
-}
-
-function OpeningBalanceRow({
-  opening,
-  accountName,
-  accountColumn,
-}: {
-  opening: OpeningBalance;
-  accountName: string;
-  accountColumn: boolean;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label={`Starting Balance for ${accountName}`}
-      className={`${styles.txColumns} ${styles.row} ${styles.openingBalance}`}
-    >
-      {accountColumn && (
-        <span
-          className={`${styles.truncate} ${styles.faint}`}
-          data-column="account"
-        >
-          {accountName}
-        </span>
-      )}
-      <span className={styles.muted} data-column="date" data-optional>
-        {shortDay(opening.date)}
-      </span>
-      <span className={styles.truncate} data-column="payee">
-        {opening.payee}
-      </span>
-      <span
-        className={`${styles.truncate} ${styles.muted}`}
-        data-column="category"
-        data-wide={accountColumn || undefined}
-        title="Read-only balance when this account was added"
-      >
-        Balance when added
-      </span>
-      <span data-column="share" aria-hidden />
-      <span
-        className={styles.numeric}
-        data-column="outflow"
-        data-empty={opening.amount < 0 ? undefined : true}
-      >
-        {opening.amount < 0 && money(-opening.amount)}
-      </span>
-      <span
-        className={styles.numeric}
-        data-column="inflow"
-        data-empty={opening.amount >= 0 ? undefined : true}
-        data-inflow={opening.amount > 0 || undefined}
-      >
-        {opening.amount >= 0 && money(opening.amount)}
-      </span>
-      <span className={styles.statusCell} data-column="status">
-        <ClearedMark state="cleared" />
-      </span>
-    </div>
+          <TransactionEditor accountColumn={accountColumn} />
+        )
+      }
+      sections={[
+        {
+          key: "pending",
+          label: "Pending",
+          "aria-label": "Pending transactions",
+          rows: pending,
+          open: pendingOpen,
+          onOpenChange: setPendingOpen,
+        },
+      ]}
+      empty={empty}
+      noMatch={noMatch}
+      actionBar={
+        <>
+          <div ref={revealSpace} className={styles.revealSpace} aria-hidden />
+          <TransactionActions
+            selection={selection}
+            onCheck={onCheck}
+            back={back}
+          />
+        </>
+      }
+    />
   );
 }
 

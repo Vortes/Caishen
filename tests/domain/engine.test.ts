@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   addMember,
   bookSchema,
+  closePartnerLedger,
   commandSchema,
   createBook,
   execute,
@@ -18,8 +19,8 @@ import {
 const month = "2026-10";
 const date = "2026-10-10";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
-function fixture(cash = 500_000) {
-  let book = createBook("alan", "Alan", month);
+function fixture(cash = 500_000, startMonth = month) {
+  let book = createBook("alan", "Alan", startMonth);
   let sequence = 0;
   const run = (
     command: WithoutId<Command>,
@@ -598,10 +599,21 @@ void test("pending $30 restaurant becomes one posted $36 purchase with categoriz
   });
   assert.equal(setup.view().personalSpending, 3600);
   assert.equal(setup.view().cash, 96_400);
-  assert.equal(setup.view().budget.transactions.length, 1);
-  assert.equal(setup.view().budget.transactions[0]?.categoryId, "food");
+  assert.equal(
+    setup.view().budget.transactions.filter((t) => t.id === "restaurant")
+      .length,
+    1,
+  );
+  assert.equal(
+    setup.view().budget.transactions.find((t) => t.id === "restaurant")
+      ?.categoryId,
+    "food",
+  );
   assert.deepEqual(
-    setup.view().budget.transactions[0]?.history.map((item) => item.amount),
+    setup
+      .view()
+      .budget.transactions.find((t) => t.id === "restaurant")
+      ?.history.map((item) => item.amount),
     [-3000, -3600],
   );
 });
@@ -635,7 +647,10 @@ void test("provider identity is unique and removals reverse bookkeeping without 
   assert.equal(setup.view().personalSpending, 0);
   assert.equal(setup.view().cash, 500_000);
   assert.equal(
-    setup.view().budget.transactions[0]?.history.at(-1)?.reason,
+    setup
+      .view()
+      .budget.transactions.find((t) => t.id === "first")
+      ?.history.at(-1)?.reason,
     "removed",
   );
 });
@@ -1060,12 +1075,13 @@ void test("cost to be me totals this month's target asks and keeps expected inco
 });
 
 void test("card balance and payment reserve break down into the month's movements", () => {
-  const setup = fixture();
+  const setup = fixture(500_000, "2026-09");
   setup.run({
     type: "account.add",
     accountId: "card",
     name: "Card",
     kind: "credit",
+    date: "2026-09-01",
     openingBalance: -10_000,
   });
   setup.run({ type: "assign", categoryId: "food", month, amount: 20_000 });
@@ -1233,12 +1249,13 @@ void test("yearly/custom goals distribute remaining contributions, count spendin
 });
 
 void test("card targets are paired, cannot snooze, and existing debt can be funded directly", () => {
-  const setup = fixture();
+  const setup = fixture(500_000, "2026-09");
   setup.run({
     type: "account.add",
     accountId: "card",
     name: "Card",
     kind: "credit",
+    date: "2026-09-01",
     openingBalance: -60_000,
   });
   setup.run({
@@ -1855,56 +1872,67 @@ void test("cash, reserves, and reported expenses conserve cents across varied fu
   }
 });
 
-void test("account activity cannot predate its confirmed opening balance", () => {
+void test("purchases and card payments can predate their accounts and count once", () => {
   const setup = fixture();
-  setup.run({
-    type: "account.add",
-    accountId: "later",
-    name: "Later bank",
-    kind: "cash",
-    openingBalance: 1000,
-    date: "2026-10-17",
-  });
-  assert.throws(
-    () =>
-      setup.run({
-        type: "transaction.upsert",
-        transactionId: "earlier",
-        accountId: "later",
-        date: "2026-10-01",
-        amount: -100,
-        payee: "Earlier",
-        categoryId: "food",
-      }),
-    /confirmed opening/,
-  );
-  setup.run({
-    type: "account.add",
-    accountId: "later-card",
-    name: "Later card",
-    kind: "credit",
-    openingBalance: -1000,
-    date: "2026-10-17",
-  });
+  setup.run({ type: "assign", categoryId: "food", month, amount: 200 });
+  for (const [accountId, kind, openingBalance] of [
+    ["later", "cash", 1000],
+    ["later-card", "credit", -1000],
+    ["later-tracking", "tracking", 1000],
+  ] as const) {
+    setup.run({
+      type: "account.add",
+      accountId,
+      name: accountId,
+      kind,
+      openingBalance,
+      date: "2026-10-17",
+    });
+    setup.run({
+      type: "transaction.upsert",
+      transactionId: `earlier-${accountId}`,
+      accountId,
+      date: "2026-10-01",
+      amount: -100,
+      payee: "Earlier purchase",
+      ...(kind === "tracking" ? {} : { categoryId: "food" }),
+    });
+  }
   setup.run({
     type: "assign",
     categoryId: "card:later-card",
     month,
     amount: 1000,
   });
-  assert.throws(
-    () =>
-      setup.run({
-        type: "transaction.upsert",
-        transactionId: `register-payment-12:2026-10-16`,
-        date: "2026-10-16",
-        accountId: "checking",
-        transferAccountId: "later-card",
-        amount: -1000,
-        payee: "Credit card payment",
-        status: "posted",
-      }),
-    /confirmed opening/,
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "earlier-card-payment",
+    date: "2026-10-16",
+    accountId: "checking",
+    transferAccountId: "later-card",
+    amount: -1000,
+    payee: "Credit card payment",
+    status: "posted",
+  });
+  const view = setup.view();
+  assert.equal(view.accounts.find((item) => item.id === "later")!.balance, 900);
+  assert.equal(
+    view.accounts.find((item) => item.id === "later-card")!.balance,
+    -100,
+  );
+  assert.equal(
+    view.accounts.find((item) => item.id === "later-tracking")!.balance,
+    900,
+  );
+  assert.equal(
+    view.accounts.find((item) => item.id === "checking")!.balance,
+    499_000,
+  );
+  assert.equal(view.cash, 499_900);
+  assert.equal(view.readyToAssign, 499_800);
+  assert.equal(
+    view.categories.find((item) => item.id === "food")!.activity,
+    -200,
   );
 });
 
@@ -1936,7 +1964,11 @@ void test("an agent cannot approve its own category suggestion and cannot recate
     "alan",
     "agent",
   );
-  assert.equal(setup.view().budget.transactions[0]?.reviewed, false);
+  assert.equal(
+    setup.view().budget.transactions.find((t) => t.id === "suggestion")
+      ?.reviewed,
+    false,
+  );
   assert.throws(
     () =>
       setup.run(
@@ -1947,7 +1979,11 @@ void test("an agent cannot approve its own category suggestion and cannot recate
     /user action/,
   );
   setup.run({ type: "transaction.approve", transactionIds: ["suggestion"] });
-  assert.equal(setup.view().budget.transactions[0]?.reviewed, true);
+  assert.equal(
+    setup.view().budget.transactions.find((t) => t.id === "suggestion")
+      ?.reviewed,
+    true,
+  );
   setup.run({
     type: "loan.add",
     loanId: "loan",
@@ -2413,4 +2449,359 @@ void test("F5: the command schema rejects all four retired register payment comm
       parts.join("."),
     );
   }
+});
+
+void test("editing and deleting a reviewed reconciliation adjustment changes balances by its difference", () => {
+  const setup = fixture(100_000);
+  setup.run({
+    type: "account.reconcile",
+    accountId: "checking",
+    date,
+    balance: 110_000,
+    adjustmentId: "adjustment",
+  });
+  const adjustment = setup
+    .view()
+    .budget.transactions.find((item) => item.id === "adjustment")!;
+  assert.equal(adjustment.reviewed, true);
+  assert.equal(
+    setup.view().accounts.find((item) => item.id === "checking")!.balance,
+    110_000,
+  );
+  assert.equal(setup.view().readyToAssign, 110_000);
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "adjustment",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -5000,
+    payee: "Corrected balance",
+    status: "posted",
+  });
+  const edited = setup
+    .view()
+    .budget.transactions.find((item) => item.id === "adjustment")!;
+  assert.equal(edited.kind, "adjustment");
+  assert.equal(edited.date, "2026-10-05");
+  assert.equal(edited.payee, "Corrected balance");
+  assert.equal(
+    setup.view().accounts.find((item) => item.id === "checking")!.balance,
+    95_000,
+  );
+  assert.equal(setup.view().readyToAssign, 95_000);
+  setup.run({ type: "transaction.remove", transactionId: "adjustment" });
+  assert.equal(
+    setup.view().accounts.find((item) => item.id === "checking")!.balance,
+    100_000,
+  );
+  assert.equal(setup.view().readyToAssign, 100_000);
+});
+
+void test("a balance adjustment cannot become categorized spending or a payment through an edit", () => {
+  const setup = fixture(100_000);
+  setup.run({
+    type: "account.add",
+    accountId: "savings",
+    name: "Savings",
+    kind: "cash",
+    openingBalance: 0,
+  });
+  setup.run({
+    type: "account.reconcile",
+    accountId: "checking",
+    date,
+    balance: 110_000,
+    adjustmentId: "adjustment",
+  });
+  const edit = {
+    type: "transaction.upsert" as const,
+    transactionId: "adjustment",
+    accountId: "checking",
+    date,
+    amount: 10_000,
+    payee: "A new name",
+    status: "posted" as const,
+    revision: 2,
+  };
+  for (const change of [
+    { categoryId: "food" },
+    { transferAccountId: "savings" },
+    {
+      lines: [
+        { lineId: "one", categoryId: "food", amount: 5000 },
+        { lineId: "two", categoryId: "food", amount: 5000 },
+      ],
+    },
+  ])
+    assert.throws(
+      () => setup.run({ ...edit, ...change }),
+      /balance adjustment/i,
+    );
+});
+
+void test("a positive card Starting Balance funds same-day spending as cash", () => {
+  const setup = fixture(10_000);
+  setup.run({
+    type: "account.add",
+    accountId: "card",
+    name: "Card",
+    kind: "credit",
+    openingBalance: 10_000,
+    date,
+  });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "same-day-purchase",
+    accountId: "card",
+    date,
+    amount: -2000,
+    payee: "Market",
+    categoryId: "food",
+  });
+  const view = setup.view();
+  assert.equal(
+    view.accounts.find((account) => account.id === "card")!.balance,
+    8000,
+  );
+  assert.equal(
+    view.categories.find((category) => category.id === "food")!
+      .cashOverspending,
+    2000,
+  );
+  assert.equal(view.readyToAssign, 20_000);
+});
+
+void test("accounts record Starting Balances once, and their adjustments can move earlier, change and be removed", () => {
+  let book = withCounterpartyAccounts(
+    addMember(
+      createBook("alan", "Alan", "2026-09"),
+      "partner",
+      "Partner",
+      "2026-09",
+    ),
+  );
+  const run = (command: Command) => {
+    book = execute(book, "alan", command);
+    return projectBook(book, "alan", "2026-10");
+  };
+  for (const [accountId, kind, openingBalance] of [
+    ["cash", "cash", 100_000],
+    ["card", "credit", -50_000],
+    ["tracking", "tracking", 25_000],
+    ["empty", "cash", 0],
+  ] as const) {
+    run({
+      type: "account.add",
+      id: `add-${accountId}`,
+      accountId,
+      name: accountId,
+      kind,
+      openingBalance,
+      date: "2026-10-10",
+    });
+  }
+  const view = projectBook(book, "alan", "2026-10");
+  assert.deepEqual(
+    view.budget.transactions.map(
+      ({
+        accountId,
+        date,
+        payee,
+        amount,
+        kind,
+        status,
+        reviewed,
+        reconciled,
+      }) => ({
+        accountId,
+        date,
+        payee,
+        amount,
+        kind,
+        status,
+        reviewed,
+        reconciled,
+      }),
+    ),
+    [
+      {
+        accountId: "cash",
+        date: "2026-10-10",
+        payee: "Starting Balance",
+        amount: 100_000,
+        kind: "adjustment",
+        status: "posted",
+        reviewed: true,
+        reconciled: undefined,
+      },
+      {
+        accountId: "card",
+        date: "2026-10-10",
+        payee: "Starting Balance",
+        amount: -50_000,
+        kind: "adjustment",
+        status: "posted",
+        reviewed: true,
+        reconciled: undefined,
+      },
+      {
+        accountId: "tracking",
+        date: "2026-10-10",
+        payee: "Starting Balance",
+        amount: 25_000,
+        kind: "adjustment",
+        status: "posted",
+        reviewed: true,
+        reconciled: undefined,
+      },
+      {
+        accountId: "empty",
+        date: "2026-10-10",
+        payee: "Starting Balance",
+        amount: 0,
+        kind: "adjustment",
+        status: "posted",
+        reviewed: true,
+        reconciled: undefined,
+      },
+    ],
+  );
+  assert.equal(view.readyToAssign, 100_000);
+  assert.equal(
+    view.categories.every((c) => c.activity === 0 && c.available === 0),
+    true,
+  );
+  assert.deepEqual(
+    view.accounts
+      .filter((a) => ["cash", "card"].includes(a.id))
+      .map(({ id, priorBalance, inflows, outflows, balance }) => ({
+        id,
+        priorBalance,
+        inflows,
+        outflows,
+        balance,
+      })),
+    [
+      {
+        id: "cash",
+        priorBalance: 0,
+        inflows: 100_000,
+        outflows: 0,
+        balance: 100_000,
+      },
+      {
+        id: "card",
+        priorBalance: 0,
+        inflows: 0,
+        outflows: -50_000,
+        balance: -50_000,
+      },
+    ],
+  );
+  assert.equal(view.accounts.find((a) => a.id === "card")!.cleared, -50_000);
+  assert.equal(view.accounts.find((a) => a.id === "empty")!.balance, 0);
+  assert.equal(projectBook(book, "alan", "2026-09").readyToAssign, 0);
+  assert.equal(projectBook(book, "alan", "2026-11").readyToAssign, 100_000);
+  assert.equal(
+    "openingBalance" in view.budget.accounts.find((a) => a.id === "cash")!,
+    false,
+  );
+  for (const [accountId, amount, ready] of [
+    ["cash", 120_000, 120_000],
+    ["card", -60_000, 120_000],
+  ] as const) {
+    const starting = book.budgets.alan!.transactions.find(
+      (t) => t.accountId === accountId,
+    )!;
+    const edited = run({
+      type: "transaction.upsert",
+      id: `edit-${accountId}`,
+      transactionId: starting.id,
+      accountId,
+      date: "2026-09-15",
+      payee: "Corrected balance",
+      amount,
+      status: "posted",
+    });
+    assert.equal(
+      edited.accounts.find((a) => a.id === accountId)!.balance,
+      amount,
+    );
+    assert.equal(
+      projectBook(book, "alan", "2026-09").accounts.find(
+        (a) => a.id === accountId,
+      )!.cleared,
+      amount,
+    );
+    assert.equal(edited.readyToAssign, ready);
+    assert.equal(
+      edited.categories.every((c) => c.activity === 0 && c.available === 0),
+      true,
+    );
+  }
+  for (const accountId of ["cash", "card"]) {
+    const starting = book.budgets.alan!.transactions.find(
+      (t) => t.accountId === accountId,
+    )!;
+    const removed = run({
+      type: "transaction.remove",
+      id: `remove-${accountId}`,
+      transactionId: starting.id,
+    });
+    assert.equal(removed.accounts.find((a) => a.id === accountId)!.balance, 0);
+    assert.equal(removed.readyToAssign, 0);
+  }
+  book = closePartnerLedger(book, "alan", {
+    id: "former-partner",
+    name: "Former partner",
+    at: "2026-10-31T12:00:00.000Z",
+    by: "alan",
+  });
+  const counterpartyIds = new Set(
+    book.budgets
+      .alan!.accounts.filter(
+        (a) => !["cash", "credit", "tracking"].includes(a.kind),
+      )
+      .map((a) => a.id),
+  );
+  assert.equal(
+    book.budgets.alan!.accounts.some((a) => a.kind === "former-partner"),
+    true,
+  );
+  assert.equal(
+    book.budgets.alan!.transactions.some((t) =>
+      counterpartyIds.has(t.accountId),
+    ),
+    false,
+  );
+});
+
+void test("a Starting Balance stays editable and removable at the maximum account ID length", () => {
+  const accountId = "a".repeat(160);
+  let book = execute(createBook("owner", "Budget", month), "owner", {
+    type: "account.add",
+    id: "add-long-account",
+    accountId,
+    name: "Long account",
+    kind: "cash",
+    openingBalance: 1000,
+  });
+  const transactionId = book.budgets.owner!.transactions[0]!.id;
+  book = execute(book, "owner", {
+    type: "transaction.upsert",
+    id: "edit-long-account",
+    transactionId,
+    accountId,
+    date: "2026-10-01",
+    payee: "Corrected balance",
+    amount: 2000,
+    status: "posted",
+  });
+  assert.equal(projectBook(book, "owner", month).readyToAssign, 2000);
+  book = execute(book, "owner", {
+    type: "transaction.remove",
+    id: "remove-long-account",
+    transactionId,
+  });
+  assert.equal(projectBook(book, "owner", month).readyToAssign, 0);
 });

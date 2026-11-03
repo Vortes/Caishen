@@ -1,20 +1,12 @@
 "use client";
 
 import {
-  ArrowLeftIcon,
-  ArrowUpRightIcon,
   CircleCheckIcon,
   CircleXIcon,
+  EllipsisIcon,
   TagsIcon,
-  XIcon,
 } from "lucide-react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { newId } from "~/components/budget/format";
 import { useBudgetSelector } from "~/components/sync/hooks";
 import type { BudgetSnapshot } from "~/components/sync/budget-store";
@@ -22,13 +14,11 @@ import type { Command } from "~/domain/engine";
 import { TRANSACTION_ACTION_LIMIT } from "~/domain/register-entry";
 import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
-import { Tooltip } from "~/components/ui/tooltip";
+import { ActionBar, type Way } from "~/components/ui/action-bar";
+import barStyles from "~/components/ui/action-bar.module.css";
 import { Menu, MenuItem, MenuSub } from "~/components/ui/menu";
 import type { Transaction } from "./model";
-import shell from "./shell.module.css";
 import { useTransactionEntry } from "./transaction-entry";
-import styles from "./transaction-review.module.css";
 import { ShareSelection } from "./share-selection";
 
 export function approveCommand(transactionIds: string[]): Command {
@@ -39,6 +29,7 @@ export type TransactionReview = {
   approve: (transactionIds: string[]) => void;
   enter: (transactionIds: string[]) => void;
   reject: (transactionIds: string[]) => void;
+  remove: (transactionIds: string[]) => void;
 };
 
 const TransactionReviewContext = createContext<TransactionReview | null>(null);
@@ -83,49 +74,11 @@ export function useReviewSelection({
   };
 }
 
-// Sits in the column header's checkbox gutter, over the rows' checkboxes.
-export function SelectAll({
-  selection: { selectable, selected },
-  onCheck,
-}: {
-  selection: { selectable: { id: string }[]; selected: { id: string }[] };
-  onCheck: (ids: string[], value: boolean) => void;
-}) {
-  if (!selectable.length) return null;
-  const all = selectable.map((item) => item.id);
-  return (
-    <label className={shell.checkboxSlot}>
-      <Checkbox
-        aria-label="Select all"
-        checked={
-          selected.length === 0
-            ? false
-            : selected.length === all.length
-              ? true
-              : "indeterminate"
-        }
-        // With anything checked, the box clears the selection.
-        onCheckedChange={() => onCheck(all, selected.length === 0)}
-      />
-    </label>
-  );
-}
-
-// Somewhere the island can take you, named on its button: the plan
-// category a transaction was opened from, or the transaction a row came
-// from. label says where it goes in full.
-export type Way = {
-  name: string;
-  label: string;
-  forward?: boolean;
-  onGo: () => void;
-};
-
 // Floats over the bottom of the register while rows are selected, in place
 // of a details panel. Review actions disappear once the selection is approved.
 // A transaction opened from the plan leads it with the way back, which stays
 // once the selection clears.
-export function SelectionIsland({
+export function TransactionActions({
   selection: { selected, actions },
   onCheck,
   back,
@@ -136,8 +89,8 @@ export function SelectionIsland({
 }) {
   const review = useTransactionReview();
   const entry = useTransactionEntry();
-  // With nothing selected, the island keeps just the way back.
-  if (!selected.length) return <SelectionBar count={0} way={back} />;
+  // With nothing selected, the action bar keeps just the way back.
+  if (!selected.length) return <ActionBar count={0} way={back} />;
   const { approve: approvable, enter: enterable, reject: rejectable } = actions;
   const approvals = [
     { label: "Approve", ids: approvable, save: review.approve },
@@ -150,7 +103,7 @@ export function SelectionIsland({
   const busy = Boolean(entry.session);
   const ids = selected.map((item) => item.id);
   return (
-    <SelectionBar
+    <ActionBar
       count={selected.length}
       onClear={() => onCheck(ids, false)}
       way={back}
@@ -189,85 +142,39 @@ export function SelectionIsland({
         }
       />
       <ShareSelection selected={selected} disabled={busy} onCheck={onCheck} />
-    </SelectionBar>
+      {actions.remove.length > 0 && (
+        <MoreAction ids={actions.remove} disabled={busy} />
+      )}
+    </ActionBar>
   );
 }
 
-// The island's frame: how many rows are selected, with the way to clear
-// them, then what can be done with them. A register's own island fills in
-// its actions.
-export function SelectionBar({
-  count,
-  onClear,
-  way = null,
-  hint,
-  children,
-}: {
-  count: number;
-  onClear?: () => void;
-  way?: Way | null;
-  hint?: string | false;
-  children?: ReactNode;
-}) {
-  // With nothing selected, the island keeps just its way somewhere else.
-  if (!count)
-    return way ? (
-      <div className={styles.islandSlot}>
-        <div className={styles.island}>
-          <WayButton way={way} />
-        </div>
-      </div>
-    ) : null;
+function MoreAction({ ids, disabled }: { ids: string[]; disabled: boolean }) {
+  const review = useTransactionReview();
+  const { holdOpen } = useTransactionEntry();
+  const [open, setOpen] = useState(false);
+  useEffect(() => (open ? holdOpen() : undefined), [open, holdOpen]);
   return (
-    <div className={styles.islandSlot}>
-      <div
-        className={styles.island}
-        role="toolbar"
-        aria-label="Selected transactions"
-      >
-        {way && (
-          <>
-            <WayButton way={way} />
-            <span className={styles.divider} aria-hidden />
-          </>
-        )}
-        <span className={styles.summary} aria-live="polite">
-          <Tooltip label="Clear selection" shortcut="Esc">
-            <Button
-              variant="subtle"
-              size="sm"
-              aria-label="Clear selection"
-              onClick={onClear}
-            >
-              <XIcon aria-hidden />
-              <span className={styles.count}>
-                {count} {count === 1 ? "transaction" : "transactions"}
-              </span>
-            </Button>
-          </Tooltip>
-          {hint && <span className={styles.hint}>{hint}</span>}
-        </span>
-        <span className={styles.divider} aria-hidden />
-        <div className={styles.actions}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function WayButton({ way }: { way: Way }) {
-  const Icon = way.forward ? ArrowUpRightIcon : ArrowLeftIcon;
-  return (
-    <Tooltip label={way.label}>
-      <Button
-        variant="subtle"
-        size="sm"
-        aria-label={way.label}
-        onClick={way.onGo}
-      >
-        <Icon aria-hidden />
-        <span className={styles.backName}>{way.name}</span>
-      </Button>
-    </Tooltip>
+    <Menu
+      label="More transaction actions"
+      trigger={
+        <Button variant="subtle" size="sm" disabled={disabled}>
+          <EllipsisIcon aria-hidden />
+          More
+        </Button>
+      }
+      anchor={<span className={barStyles.anchor} aria-hidden />}
+      side="top"
+      align="end"
+      open={open}
+      onOpenChange={setOpen}
+    >
+      <MenuItem
+        title="Delete"
+        disabled={disabled}
+        onSelect={() => review.remove(ids)}
+      />
+    </Menu>
   );
 }
 
@@ -317,7 +224,7 @@ export function CategorizeAction({
           Categorize
         </Button>
       }
-      anchor={<span className={styles.islandAnchor} aria-hidden />}
+      anchor={<span className={barStyles.anchor} aria-hidden />}
       side="top"
       align="end"
       open={open}

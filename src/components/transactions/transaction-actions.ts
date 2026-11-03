@@ -12,6 +12,7 @@ export type TransactionActions = {
   approve: boolean;
   enter: boolean;
   reject: boolean;
+  remove: boolean;
   categorize: boolean;
   share: "edit" | null;
 };
@@ -53,6 +54,7 @@ export function transactionSelectionActions(
       ? []
       : selected.filter((row) => row.actions.enter).map((row) => row.id),
     reject: selected.filter((row) => row.actions.reject).map((row) => row.id),
+    remove: selected.filter((row) => row.actions.remove).map((row) => row.id),
     categorize: selected
       .filter((row) => row.actions.categorize)
       .map((row) => row.id),
@@ -75,6 +77,7 @@ export function transactionActions(
       approve: capabilities.approve.ok,
       enter: capabilities.enter.ok,
       reject: capabilities.reject.ok,
+      remove: capabilities.remove.ok,
       categorize: capabilities.categorize.ok,
       share:
         capabilities.link.ok && capabilities.share.mode !== "none"
@@ -93,6 +96,7 @@ export function transactionActions(
     approve: transactionNeedsReview(view, item) && capabilities.approve.ok,
     enter: capabilities.enter.ok,
     reject: capabilities.reject.ok,
+    remove: capabilities.remove.ok,
     categorize: capabilities.categorize.ok,
     share: capabilities.share.mode === "none" ? null : capabilities.share.mode,
   };

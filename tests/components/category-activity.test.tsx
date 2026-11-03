@@ -91,7 +91,7 @@ test("the details panel's Activity opens the same transactions, for plans too na
 });
 
 // A transaction opened from the plan's activity keeps a way back to the
-// category it was opened from, in the register's selection island.
+// category it was opened from, in the register's action bar.
 
 async function jumpToFlorist(shell: Awaited<ReturnType<typeof renderShell>>) {
   await shell.user.click(

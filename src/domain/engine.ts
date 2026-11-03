@@ -596,7 +596,6 @@ export type Account = {
     | "partner"
     | "reimbursements"
     | "former-partner";
-  openingBalance: number;
   date: string;
   // The last time the cleared balance was confirmed against the bank's.
   reconciled?: { date: string; balance: number };
@@ -681,8 +680,8 @@ export type Transaction = {
   removed?: boolean;
   // Whether the bank has cleared it, independently of pending status.
   cleared?: boolean;
-  // Cleared and confirmed against the bank by a reconciliation. Its amount
-  // and cleared status are locked from then on.
+  // Cleared and confirmed against the bank by a reconciliation. Cleared
+  // status is locked; only balance adjustments can still change amount.
   reconciled?: boolean;
   history: TransactionHistory[];
 };
@@ -887,7 +886,6 @@ export const budgetShape = z.object({
         "reimbursements",
         "former-partner",
       ]),
-      openingBalance: cents,
       date: daySchema,
       reconciled: z.object({ date: daySchema, balance: cents }).optional(),
       closed: z
@@ -1439,7 +1437,6 @@ export function withCounterpartyAccounts(book: Book): Book {
             id: accountId,
             name,
             kind,
-            openingBalance: 0,
             date: `${budget.startMonth}-01`,
           },
         );
@@ -1533,7 +1530,6 @@ export function closePartnerLedger(
           id: accountId,
           name: close.name,
           kind: "former-partner",
-          openingBalance: 0,
           date: account.date,
           closed: { at: close.at, by: close.by },
         }
@@ -1681,7 +1677,8 @@ type Materialized = {
 // month touches only its own rows, with ID lookups that keep the first match
 // as a list search would.
 type MonthRows = {
-  // Same-day outflows precede inflows; IDs only break ties within each side.
+  // Balance adjustments establish the day's balance before activity spends
+  // it. Other same-day outflows precede inflows; IDs break remaining ties.
   transactions: Transaction[];
   assignments: Assignment[];
   // The partner's ledger entries dated in the month, by date and then ID,
@@ -1731,6 +1728,7 @@ function indexReplay(book: AccountingState, budget: Budget): ReplayIndex {
     transactions.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
+        Number(b.kind === "adjustment") - Number(a.kind === "adjustment") ||
         Math.sign(a.amount) - Math.sign(b.amount) ||
         a.id.localeCompare(b.id),
     );
@@ -2011,10 +2009,6 @@ function replay(
       activity?.delete(categoryId);
       state.cashActivity = 0;
     }
-    for (const account of budget.accounts.filter(
-      (item) => monthOf(item.date) === cursor && item.date <= cutoff,
-    ))
-      accounts.get(account.id)!.balance = account.openingBalance;
     for (const [accountId, state] of accounts) {
       startingBalances.set(accountId, state.balance);
       state.priorBalance = state.balance;
@@ -2531,7 +2525,7 @@ function targetProgress(
   currentMonth: string,
   snapshots: Map<string, Map<string, CategoryMonth>>,
   balance: number,
-  startingBalance: number,
+  payoffBalance: number,
   loan?: Loan,
 ): TargetProgress {
   const snoozed = target.snoozedMonths.includes(month);
@@ -2635,7 +2629,7 @@ function targetProgress(
     total = Math.max(0, -balance);
     funded = Math.max(0, state.available);
     const required = Math.ceil(
-      Math.max(0, -startingBalance - state.opening) / monthsRemaining,
+      Math.max(0, -payoffBalance - state.opening) / monthsRemaining,
     );
     return {
       needed: Math.max(0, required - state.assigned),
@@ -2793,6 +2787,20 @@ function projectAccountingState(
     activity,
   );
   const cutoff = endOf(month);
+  // Adjustments correct existing debt, including debt first entered this
+  // month. They belong in the payoff target without treating new purchases
+  // or payments as changes to the month's original requirement.
+  const payoffBalances = new Map(calculated.startingBalances);
+  for (const transaction of budget.transactions)
+    if (
+      active(transaction) &&
+      transaction.kind === "adjustment" &&
+      monthOf(transaction.date) === month
+    )
+      payoffBalances.set(
+        transaction.accountId,
+        safe(payoffBalances.get(transaction.accountId)! + transaction.amount),
+      );
   const personalSpending = sum(
     personalSpendingEntries(book, userId)
       .filter((entry) => entry.month === month)
@@ -2849,7 +2857,7 @@ function projectAccountingState(
                 ? calculated.accounts.get(category.pairedAccountId)!.balance
                 : 0,
               category.pairedAccountId
-                ? calculated.startingBalances.get(category.pairedAccountId)!
+                ? payoffBalances.get(category.pairedAccountId)!
                 : 0,
               category.pairedLoanId
                 ? budget.loans.find((loan) => loan.id === category.pairedLoanId)
@@ -3011,8 +3019,8 @@ function validateCardPayment(
   date: string,
   amount: number,
 ) {
-  requireCash(budget, cashAccountId, date);
-  if (accountAtDate(budget, cardAccountId, date).kind !== "credit")
+  requireCash(budget, cashAccountId);
+  if (getAccount(budget, cardAccountId).kind !== "credit")
     fail("Select a credit-card account");
   const calculated = materialize(book, budget.userId, monthOf(date), date);
   if (amount > calculated.accounts.get(cashAccountId)!.balance)
@@ -3045,16 +3053,6 @@ function appendTransaction(
   });
 }
 
-function accountAtDate(
-  budget: Budget,
-  accountId: string,
-  date: string,
-): Account {
-  const account = getAccount(budget, accountId);
-  if (date < account.date)
-    fail("Activity predates the account's confirmed opening balance");
-  return account;
-}
 function nextCleared(
   requested: boolean | undefined,
   status: "pending" | "posted",
@@ -3065,25 +3063,25 @@ function nextCleared(
     return status === "posted";
   return isCleared(existing);
 }
-// What the bank has finished processing: the opening balance plus every
-// cleared transaction, whatever its date.
+// What the bank has finished processing: every cleared transaction,
+// whatever its date.
 function clearedBalance(budget: Budget, account: Account): number {
   return budget.transactions
     .filter(
       (item) =>
         active(item) && item.accountId === account.id && isCleared(item),
     )
-    .reduce((total, item) => safe(total + item.amount), account.openingBalance);
+    .reduce((total, item) => safe(total + item.amount), 0);
 }
-// Reconciling confirmed these against the bank, so only what doesn't change
-// the cleared balance can still change.
+// Reconciled transactions keep their confirmed amount and status; balance
+// adjustments remain editable so an accepted difference can be corrected.
 function ensureReconciledUnchanged(
   existing: Transaction,
   next: { amount: number; status: "pending" | "posted"; cleared?: boolean },
 ): void {
   if (
     existing.reconciled &&
-    (existing.amount !== next.amount ||
+    ((existing.kind !== "adjustment" && existing.amount !== next.amount) ||
       existing.status !== next.status ||
       next.cleared === false)
   )
@@ -3091,14 +3089,8 @@ function ensureReconciledUnchanged(
       "This transaction is reconciled, so its amount and cleared status can't change",
     );
 }
-function requireCash(
-  budget: Budget,
-  accountId: string,
-  date?: string,
-): Account {
-  const account = date
-    ? accountAtDate(budget, accountId, date)
-    : getAccount(budget, accountId);
+function requireCash(budget: Budget, accountId: string): Account {
+  const account = getAccount(budget, accountId);
   return account.kind === "cash" ? account : fail("Select a cash account");
 }
 function requireDate(budget: Budget, date: string): void {
@@ -3549,7 +3541,7 @@ function recordSettlement(
   for (const leg of command.legs) {
     const budget = book.budgets[leg.userId]!;
     requireDate(budget, leg.date);
-    const account = accountAtDate(budget, leg.accountId, leg.date);
+    const account = getAccount(budget, leg.accountId);
     if (
       account.kind !== "cash" &&
       !(account.kind === "credit" && leg.amount > 0)
@@ -3668,12 +3660,8 @@ function applyCommand(
     }
     case "counterparty.receive": {
       requireDate(budget, command.date);
-      requireCash(budget, command.cashAccountId, command.date);
-      const counterparty = accountAtDate(
-        budget,
-        command.counterpartyAccountId,
-        command.date,
-      );
+      requireCash(budget, command.cashAccountId);
+      const counterparty = getAccount(budget, command.counterpartyAccountId);
       if (!isCounterparty(counterparty))
         fail("Choose Partner or Reimbursements");
       if (counterparty.kind === "former-partner") fail(frozenLedgerMessage);
@@ -3800,8 +3788,18 @@ function applyCommand(
         id: command.accountId,
         name: command.name,
         kind: command.kind,
-        openingBalance: command.openingBalance,
         date,
+      });
+      appendTransaction(changes, budget, command.id, {
+        id: command.id,
+        accountId: command.accountId,
+        date,
+        amount: command.openingBalance,
+        payee: "Starting Balance",
+        status: "posted",
+        cleared: true,
+        expenseMonth: monthOf(date),
+        kind: "adjustment",
       });
       if (command.kind === "credit")
         changes.addCategory(budget, {
@@ -3826,7 +3824,7 @@ function applyCommand(
     }
     case "account.reconcile": {
       requireDate(budget, command.date);
-      const account = accountAtDate(budget, command.accountId, command.date);
+      const account = getAccount(budget, command.accountId);
       const difference = safe(
         command.balance - clearedBalance(budget, account),
       );
@@ -4147,7 +4145,7 @@ function applyCommand(
       )
         fail("Only a bank update can attach the other side's bank facts");
       requireDate(budget, command.date);
-      const account = accountAtDate(budget, command.accountId, command.date);
+      const account = getAccount(budget, command.accountId);
       const existing = budget.transactions.find(
         (transaction) => transaction.id === command.transactionId,
       );
@@ -4163,6 +4161,15 @@ function applyCommand(
           loanId: command.loanId,
         },
       );
+      if (
+        entry.shape.kind === "adjustment" &&
+        (command.categoryId ||
+          command.lines ||
+          command.counterpartyShare ||
+          command.transferAccountId ||
+          command.loanId)
+      )
+        fail("A balance adjustment's category and kind cannot change");
       // A bank update may restore a removed transaction: a posting replaces
       // the removed pending purchase it came from (banks.ts restoresPending).
       // The user may not.
@@ -4295,11 +4302,7 @@ function applyCommand(
             (source === "provider" || otherPrevious.providerId)
               ? otherPrevious.date
               : command.date);
-          const other = accountAtDate(
-            budget,
-            command.transferAccountId,
-            counterpartDate,
-          );
+          const other = getAccount(budget, command.transferAccountId);
           if (command.transferCounterpart) {
             requireDate(budget, command.transferCounterpart.date);
             if (
@@ -4393,7 +4396,7 @@ function applyCommand(
             reusable,
           );
         } else if (command.loanId) {
-          requireCash(budget, account.id, command.date);
+          requireCash(budget, account.id);
           const loan =
             budget.loans.find((item) => item.id === command.loanId) ??
             fail("Loan access denied");
@@ -4663,13 +4666,16 @@ function applyCommand(
           source === "user"
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
-        kind: statementCredit
-          ? "statement-credit"
-          : command.amount < 0
-            ? "purchase"
-            : categoryId || lines || counterpartyShare
-              ? "refund"
-              : "income",
+        kind:
+          existing?.kind === "adjustment"
+            ? "adjustment"
+            : statementCredit
+              ? "statement-credit"
+              : command.amount < 0
+                ? "purchase"
+                : categoryId || lines || counterpartyShare
+                  ? "refund"
+                  : "income",
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
@@ -4720,14 +4726,9 @@ function applyCommand(
     }
     case "transaction.remove": {
       const transaction = getTransaction(budget, command.transactionId);
-      if (
-        !["purchase", "refund", "income", "adjustment"].includes(
-          transaction.kind,
-        )
-      )
-        fail(
-          "Dedicated payment records cannot be deleted through transaction removal",
-        );
+      const capability = classifyRegisterEntry(budget, transaction).capabilities
+        .remove;
+      if (!capability.ok) fail(capability.reason);
       changes.transaction(budget, transaction).removed = true;
       transaction.history.push({
         revision: ++transaction.revision,

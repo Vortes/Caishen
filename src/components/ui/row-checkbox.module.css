@@ -1,0 +1,19 @@
+.slot {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  cursor: pointer;
+  opacity: 0;
+}
+*:hover > .slot,
+:global([data-selecting]) .slot,
+.slot:focus-within,
+.slot:has([data-state="checked"]),
+.slot:has([data-state="indeterminate"]) {
+  opacity: 1;
+}

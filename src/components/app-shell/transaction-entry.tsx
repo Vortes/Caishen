@@ -252,6 +252,7 @@ export function useTransactionEntryController({
             : ""
         : draft.categoryId;
     const editField =
+      transaction?.kind === "adjustment" ||
       draft.transferAccountId ||
       draft.loanId ||
       view.accounts.find((item) => item.id === draft.accountId)?.kind ===
@@ -312,8 +313,10 @@ export function useTransactionEntryController({
     // register that's the date, whose calendar never opens a touch keyboard;
     // All accounts starts on the account.
     focus(
-      field ??
-        (transactionId ? editField : accountId ? "calendar" : "accountId"),
+      transaction?.kind === "adjustment" && field === "categoryId"
+        ? "payee"
+        : (field ??
+            (transactionId ? editField : accountId ? "calendar" : "accountId")),
       !field,
     );
     return true;
