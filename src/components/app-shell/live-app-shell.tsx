@@ -370,10 +370,19 @@ function LiveWorkspace({
       return next.size === current.size ? current : next;
     });
   }, [allImports]);
-  const partnerFirstName = overview?.partnerFirstName ?? undefined;
+  const ready = overview?.status === "ready" ? overview : undefined;
+  const partnerFirstName = ready?.partnerFirstName ?? undefined;
+  const partnerImageUrl = ready?.partnerImageUrl ?? undefined;
   const data = useMemo(
-    () => toShellData({ view, connections, imports, partnerFirstName }),
-    [view, connections, imports, partnerFirstName],
+    () =>
+      toShellData({
+        view,
+        connections,
+        imports,
+        partnerFirstName,
+        partnerImageUrl,
+      }),
+    [view, connections, imports, partnerFirstName, partnerImageUrl],
   );
 
   const [notice, setNotice] = useState<Notice | null>(null);

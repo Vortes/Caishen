@@ -1,11 +1,10 @@
 /* The search list: the field's well as a combobox, and the list that floats
    under it on the Popover surface. The well itself is field.module.css's. */
 
+/* A click anywhere in the well opens or closes the list. */
+.well:has(.input:not(:disabled, [readonly])),
 .input:not(:disabled) {
   cursor: pointer;
-}
-.input[aria-expanded="true"] {
-  cursor: text;
 }
 .chevron {
   flex: none;

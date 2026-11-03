@@ -1138,17 +1138,9 @@ export function RegisterView({
     // place, until reconciling locks it.
     const togglesCleared =
       !item.reconciled && item.actions.edit === "transaction";
-    // Marks the row in its first column.
-    const reviewDot = (
-      <span
-        className={styles.reviewDot}
-        data-on={item.needsReview ? "" : undefined}
-      >
-        {item.needsReview && <span className="sr-only">Needs review</span>}
-      </span>
-    );
     return {
       label: item.payee,
+      review: item.needsReview ? "Needs review" : undefined,
       attributes: {
         "data-transaction-row": item.id,
         "data-pending": mark === "pending" || undefined,
@@ -1164,14 +1156,12 @@ export function RegisterView({
               data-column="account"
               data-optional
             >
-              {reviewDot}
               <span className={`${styles.truncate} ${styles.faint}`}>
                 {accountName(item.accountId) ?? "Unlinked bank account"}
               </span>
             </span>
           )}
           <span className={styles.rowName} data-column="date" data-optional>
-            {!accountColumn && reviewDot}
             <span className={`${styles.truncate} ${styles.muted}`}>
               {shortDay(item.date)}
             </span>

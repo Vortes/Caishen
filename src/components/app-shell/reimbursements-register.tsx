@@ -219,7 +219,6 @@ export function ReimbursementsRegister({
         { key: "status", label: "" },
       ]}
       layout={{
-        gutter: "34px",
         wide: "5.5rem minmax(0, 0.9fr) minmax(0, 0.6fr) minmax(0, 1.4fr) 7rem 7rem 16px",
         narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px",
       }}
@@ -253,6 +252,7 @@ export function ReimbursementsRegister({
       }
       cells={(entry) => ({
         label: entry.payee,
+        review: entry.reviewed ? undefined : "Needs review",
         attributes: {
           title:
             selectedId === entry.id
@@ -262,14 +262,6 @@ export function ReimbursementsRegister({
         content: (
           <>
             <span className={styles.rowName} data-column="date" data-optional>
-              <span
-                className={styles.reviewDot}
-                data-on={entry.reviewed ? undefined : ""}
-              >
-                {!entry.reviewed && (
-                  <span className="sr-only">Needs review</span>
-                )}
-              </span>
               <span className={`${styles.truncate} ${styles.muted}`}>
                 {shortDay(entry.date)}
               </span>
