@@ -22,7 +22,10 @@ new register gets the same behavior.
   A React element in `label` supplies its own header cell, as Transactions
   does for its wide Outflow/Inflow and narrow Amount headers.
 - `cells(row)` returns `label` and `content`. `label` names the row's
-  checkbox. Put `data-column` on content cells to identify the field a
+  checkbox. `review` says what the row waits on, like "Needs review"; the
+  Register draws the [review dot](labels.md#review-dot) in the gutter and
+  reads the text before the row's cells. Never draw the dot in `content`.
+  Put `data-column` on content cells to identify the field a
   pointer opens; mark optional content with `data-optional` too. Optional
   `controls` render beside the row button, for Share and cleared toggles,
   rather than nesting interactive controls inside it. `openColumns` limits
@@ -65,8 +68,11 @@ new register gets the same behavior.
 ### Layout and interaction
 
 Set column widths through `layout`, as all three callers do. Its required
-`wide` and optional `narrow`, `compact` and `gutter` feed `--columns-wide`,
-`--columns-narrow`, `--columns-compact` and `--row-gutter`. Without `layout`,
+`wide` and optional `narrow` and `compact` feed `--columns-wide`,
+`--columns-narrow` and `--columns-compact`. The left gutter, `--row-gutter`,
+is fixed at 42px in every register, with or without checkboxes: the
+checkbox, then the review dot 6px past it, then the row's text 6px past
+that. Editors inside a register align with `var(--row-gutter)`. Without `layout`,
 tracks come from `columns`: numeric columns get `6.5rem`, others get
 `minmax(0, 1fr)`, and narrow tracks omit optional columns.
 

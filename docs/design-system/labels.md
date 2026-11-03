@@ -55,7 +55,9 @@ It says "look here", never how many. Never a number and never the accent:
 a colored count in the sidebar competes with money states for attention,
 and the register already shows what is waiting.
 
-Give a standalone dot `role="img"` and an `aria-label` saying what is
+In a [Register](register.md), pass the waiting state as `review` in
+`cells(row)`; the Register draws the dot in its gutter. Elsewhere, give a
+standalone dot `role="img"` and an `aria-label` saying what is
 waiting. Drop the dot when nothing is, except in a column of amounts like
 the sidebar's accounts: there every row keeps the dot's slot, off and
 `aria-hidden`, so the amounts line up and the dots sit in their own column.
@@ -68,7 +70,6 @@ Section totals above those rows clear the same slot.
     <span
       className={styles.reviewDot}
       data-on={toReview ? "" : undefined}
-      data-inline
       role={toReview ? "img" : undefined}
       aria-label={toReview ? "Transactions to review" : undefined}
       aria-hidden={toReview ? undefined : true}

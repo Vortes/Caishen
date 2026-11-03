@@ -416,21 +416,9 @@ export function PartnerRegister({
           : `${account.name} paid`;
     const cells: RowCells = {
       date: (
-        <>
-          <span
-            className={styles.reviewDot}
-            data-on={row.needsCategory || unconfirmed ? "" : undefined}
-          >
-            {(row.needsCategory || unconfirmed) && (
-              <span className="sr-only">
-                {unconfirmed ? "Needs confirming" : "Needs a category"}
-              </span>
-            )}
-          </span>
-          <span className={`${styles.truncate} ${styles.muted}`}>
-            {shortDay(row.date)}
-          </span>
-        </>
+        <span className={`${styles.truncate} ${styles.muted}`}>
+          {shortDay(row.date)}
+        </span>
       ),
       payee: (
         <>
@@ -489,7 +477,6 @@ export function PartnerRegister({
       layout={{
         wide: "5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 7rem 16px",
         narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px",
-        gutter: "34px",
       }}
       rows={rows}
       cells={(row) => {
@@ -498,6 +485,12 @@ export function PartnerRegister({
         const isSelected = selectedId === row.id;
         return {
           label: row.payee,
+          review:
+            row.confirmed === false
+              ? "Needs confirming"
+              : row.needsCategory
+                ? "Needs a category"
+                : undefined,
           attributes: {
             "data-entry-row": row.id,
             "aria-expanded": settlement ? isSelected : undefined,
