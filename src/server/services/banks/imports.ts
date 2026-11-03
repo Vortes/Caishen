@@ -24,6 +24,7 @@ import { TRPCError } from "@trpc/server";
 import { readImportStates, importStateChange } from "../bank-import-rows";
 import { itemHealthChange } from "../bank-connection-status";
 import { decryptBankToken } from "~/server/token-crypto";
+import { isDevelopmentSeedBank } from "~/server/dev/seed-banks";
 import { RevisionConflictError, findOperation } from "~/server/storage/rows";
 import {
   isPrismaError,
@@ -144,6 +145,7 @@ export async function syncBanks(
     const read = readBankConnection(connection, readable);
     if (
       read.status === "maintenance" ||
+      isDevelopmentSeedBank(connection) ||
       read.state.disconnectedAt ||
       // No update can reach an Item the user has revoked or disconnected.
       ["revoked", "disconnected"].includes(connection.status)
