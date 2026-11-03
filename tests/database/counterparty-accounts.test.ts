@@ -696,3 +696,85 @@ void test("joining converts a legacy host budget even before the host's next pul
     });
   }
 });
+
+void test("legacy partner settlement legs load through conversion and keep both budgets' balances", async () => {
+  const host = await member("SettlementHost");
+  const guest = await member("SettlementGuest");
+  let book = withPeople(
+    addMember(
+      createBook(host.userId, "Host", month),
+      guest.userId,
+      "Guest",
+      month,
+    ),
+  );
+  for (const who of [host, guest])
+    book = execute(book, who.userId, {
+      type: "account.add",
+      id: `checking-${who.userId}`,
+      accountId: "checking",
+      name: "Checking",
+      kind: "cash",
+      openingBalance: 100_000,
+    });
+  book = execute(
+    book,
+    host.userId,
+    {
+      type: "partner.settle",
+      id: "settlement",
+      settlementId: "payment",
+      method: "Venmo",
+      legs: [
+        {
+          userId: host.userId,
+          accountId: "checking",
+          date: `${month}-12`,
+          amount: -5_000,
+          payee: "Venmo to Guest",
+          providerId: "payment-sent",
+        },
+        {
+          userId: guest.userId,
+          accountId: "checking",
+          date: `${month}-12`,
+          amount: 5_000,
+          payee: "Venmo from Host",
+          providerId: "payment-received",
+        },
+      ],
+    },
+    "provider",
+  );
+  for (const budget of Object.values(book.budgets))
+    for (const account of budget.accounts)
+      if (account.linkedUserId) {
+        account.kind = "partner";
+        delete account.linkedUserId;
+      }
+  workspaceIds.push(await createHousehold(db, book));
+
+  const first = await pullAll(host);
+  assert.equal(first.revision, 2);
+  for (const [who, bankBalance, personBalance] of [
+    [host, 95_000, 5_000],
+    [guest, 105_000, -5_000],
+  ] as const) {
+    const state = await who.api.budget.state({ month });
+    assert.equal(state.status, "ready");
+    assert.equal(state.revision, 2);
+    assert.equal(state.view?.readyToAssign, 100_000);
+    assert.equal(
+      state.view?.accounts.find((account) => account.id === "checking")
+        ?.balance,
+      bankBalance,
+    );
+    assert.equal(
+      state.view?.accounts.find((account) => account.linkedUserId)?.balance,
+      personBalance,
+    );
+    assert.equal(state.view?.partnerSettlements[0]?.amount, 5_000);
+    const again = await pullAll(who, state.revision);
+    assert.deepEqual([again.revision, again.rows], [2, []]);
+  }
+});

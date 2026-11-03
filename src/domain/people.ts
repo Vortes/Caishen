@@ -11,15 +11,14 @@ import {
   type Budget,
   type CounterpartyShare,
 } from "./engine";
+import { personKey } from "./person-name";
+
+export { personKey } from "./person-name";
 
 // Every counterparty is a person with an account and a paired envelope of
 // their own (ADR 0013). Budgets stored before then held one Reimbursements
 // account whose entries named their person, a Partner account, and former
 // partners' accounts; withPeople converts them.
-
-/** How two spellings of one person's name compare. */
-export const personKey = (name: string) =>
-  name.trim().replace(/\s+/g, " ").toLowerCase();
 
 function slug(name: string): string {
   return (

@@ -61,13 +61,14 @@ import {
   settlementLegId,
   partnerRequestSchema,
   partnerSettlementSchema,
-  settlementLegIssues,
+  storedSettlementLegIssues,
   type PartnerRequest,
   type PartnerSettlement,
 } from "./partner-settlements";
 import { canonicalJson } from "./canonical-json";
 import { Changes } from "./changes";
 import { payeeKey, rememberCategorizations } from "./payee-memory";
+import { personKey } from "./person-name";
 import { foldAssignments, type ChangeSet } from "./rows";
 
 const identifier = z.string().min(1).max(160);
@@ -1006,7 +1007,7 @@ export function budgetReferenceIssues(
         transaction.lines !== undefined)
     )
       issues.push("Invalid counterparty share reference");
-    // A settlement leg reads by its own rules (settlementLegIssues).
+    // A settlement leg reads by its own rules (storedSettlementLegIssues).
     if (
       transaction.linkedCounterpartyAccountId &&
       !isSettlementLeg(transaction)
@@ -1072,7 +1073,7 @@ export function budgetReferenceIssues(
   return [
     ...issues,
     ...partnerSideIssues(budget),
-    ...settlementLegIssues(budget),
+    ...storedSettlementLegIssues(budget),
   ];
 }
 // The stored data both partners share: the partner ledger, settling up,
@@ -1323,6 +1324,23 @@ function refusePairedEnvelope(category: Category): void {
 /** Whether an account is a person's: what they owe you or you owe them. */
 export const isCounterparty = (account: Pick<Account, "kind">) =>
   account.kind === "person";
+
+function requireUniquePersonName(
+  budget: Budget,
+  name: string,
+  accountId: string,
+): void {
+  if (
+    budget.accounts.some(
+      (account) =>
+        account.id !== accountId &&
+        isCounterparty(account) &&
+        !account.closed &&
+        personKey(account.name) === personKey(name),
+    )
+  )
+    fail(`${name} is already one of your people`);
+}
 
 /** Whether an account is of a kind stored before every counterparty was a person. */
 export const isLegacyCounterparty = (account: Pick<Account, "kind">) =>
@@ -3759,16 +3777,7 @@ function applyCommand(
     case "person.add": {
       if (budget.accounts.some((account) => account.id === command.accountId))
         fail("Account ID already exists");
-      if (
-        budget.accounts.some(
-          (account) =>
-            isCounterparty(account) &&
-            !account.closed &&
-            account.name.trim().toLowerCase() ===
-              command.name.trim().toLowerCase(),
-        )
-      )
-        fail(`${command.name} is already one of your people`);
+      requireUniquePersonName(budget, command.name, command.accountId);
       changes.addAccount(budget, {
         id: command.accountId,
         name: command.name,
@@ -3788,6 +3797,7 @@ function applyCommand(
       const account = getAccount(budget, command.accountId);
       if (!isCounterparty(account)) fail("Choose a person to rename");
       if (isFormerPartner(account)) fail(frozenLedgerMessage);
+      requireUniquePersonName(budget, command.name, account.id);
       changes.account(budget, account).name = command.name;
       const envelope = budget.categories.find(
         (category) => category.counterpartyAccountId === account.id,

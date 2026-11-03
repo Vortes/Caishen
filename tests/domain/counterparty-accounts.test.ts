@@ -116,6 +116,45 @@ void test("renaming a person renames their account and paired envelope", () => {
   });
 });
 
+void test("creating and renaming people use the same unique normalized name", () => {
+  const book = withPerson(
+    withPerson(createBook("alan", "Alan", month), "alan", "Mom Smith"),
+    "alan",
+    "Dad",
+  );
+  const before = structuredClone(book);
+  for (const command of [
+    {
+      type: "person.rename",
+      id: "rename-dad",
+      accountId: personId("Dad"),
+      name: " mom   SMITH ",
+    },
+    {
+      type: "person.add",
+      id: "add-duplicate",
+      accountId: "another-mom",
+      name: " mom   SMITH ",
+    },
+  ] satisfies Command[])
+    assert.throws(
+      () => execute(book, "alan", command),
+      /already one of your people/,
+    );
+  assert.deepEqual(book, before);
+
+  const renamed = execute(book, "alan", {
+    type: "person.rename",
+    id: "change-spelling",
+    accountId: personId("Mom Smith"),
+    name: "MOM SMITH",
+  });
+  assert.deepEqual(
+    people(renamed, "alan").accounts.map((account) => account.name),
+    ["MOM SMITH", "Dad"],
+  );
+});
+
 void test("partners each get a person linked to the other, ahead of everyone else, and adding them again changes nothing", () => {
   let book = withPerson(
     withPeople(createBook("alan", "Alan", month)),

@@ -141,12 +141,13 @@ export function isRejectedSettlementImport(
 }
 
 /**
- * Why a budget's settlement legs don't read: a leg must be a repayment
+ * Why a stored budget's settlement legs don't read: a leg must be a repayment
  * linked to the budget's Partner account, or the closed account of the
  * former partner it settled with, out of a cash account, or into a cash
- * account or credit card.
+ * account or credit card. Legacy partner kinds must read here so the
+ * household can convert them before running current accounting.
  */
-export function settlementLegIssues(
+export function storedSettlementLegIssues(
   budget: Pick<Budget, "accounts" | "transactions">,
 ): string[] {
   return budget.transactions.some((transaction) => {
@@ -159,7 +160,11 @@ export function settlementLegIssues(
     );
     return (
       !linked ||
-      !isPartnerLedger(linked) ||
+      !(
+        isPartnerLedger(linked) ||
+        linked.kind === "partner" ||
+        linked.kind === "former-partner"
+      ) ||
       transaction.kind !== "reimbursement" ||
       !transaction.amount ||
       transaction.categoryId !== undefined ||
