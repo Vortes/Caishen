@@ -39,6 +39,9 @@ export function PieCanvas() {
   useEffect(() => {
     state.current = ctx;
   });
+  // The entrance outlives the paint loop, which restarts on every resize, so a
+  // resize repaints in place rather than sweeping in again.
+  const entrance = useRef({ revision: -1, start: 0, animate: false });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -55,12 +58,9 @@ export function PieCanvas() {
     }
 
     const reduce = prefersReducedMotion();
-    const animate = state.current.animate && !reduce;
     const duration = state.current.animationDuration;
     let raf = 0;
-    let animStart = 0;
     let lastProg = -1;
-    let lastRevision = state.current.revision;
     let intensity = 0;
     let popEase = 0; // eases the hovered slice's outward bulge
     let needsFill = true;
@@ -139,13 +139,16 @@ export function PieCanvas() {
           bloomCtx.drawImage(canvas, 0, 0);
         }
       }
-      if (s.revision !== lastRevision) {
-        lastRevision = s.revision;
-        animStart = 0;
+      if (s.revision !== entrance.current.revision) {
+        entrance.current = {
+          revision: s.revision,
+          start: now,
+          animate: s.animate && !reduce,
+        };
         lastProg = -1;
       }
-      if (!animStart) animStart = now;
-      const prog = animate ? Math.min(1, (now - animStart) / duration) : 1;
+      const { start, animate } = entrance.current;
+      const prog = animate ? Math.min(1, (now - start) / duration) : 1;
 
       const emphasisNow = s.selectedDataKey ?? s.focusDataKey;
       if (emphasisNow !== lastSelected) {

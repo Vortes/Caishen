@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart } from "~/components/dither-kit/bar-chart";
 import { Bar } from "~/components/dither-kit/bar";
 import {
@@ -28,6 +28,28 @@ export function configOf(items: ChartItem[]): ChartConfig {
       { label: item.name, color: ditherColor(item.slot) },
     ]),
   );
+}
+
+// The rows each chart last swept in with, kept across mounts. Dither Kit
+// replays its entrance whenever `data` changes identity, so rows equal to the
+// ones on screen keep their identity, and coming back to a chart that already
+// showed them skips the entrance.
+const shown = new Map<string, string>();
+
+export function useChartRows<T>(chart: string, rows: T[]) {
+  const signature = useMemo(() => JSON.stringify(rows), [rows]);
+  const [state, setState] = useState(() => ({
+    signature,
+    rows,
+    animate: shown.get(chart) !== signature,
+  }));
+  useEffect(() => {
+    shown.set(chart, signature);
+  }, [chart, signature]);
+  if (state.signature === signature) return state;
+  const next = { signature, rows, animate: true };
+  setState(next);
+  return next;
 }
 
 // Lives inside a chart root: spotlights the focused item (from the ranked
@@ -89,19 +111,23 @@ export function DitherTrends({
   average: number;
   highlight: Highlight;
 }) {
-  const data = useMemo(
-    () =>
-      trend.map((month) => ({
-        label: shortMonth(month.month),
-        ...month.values,
-      })),
-    [trend],
+  const { rows: data, animate } = useChartRows(
+    "trends",
+    useMemo(
+      () =>
+        trend.map((month) => ({
+          label: shortMonth(month.month),
+          ...month.values,
+        })),
+      [trend],
+    ),
   );
   const config = useMemo(() => configOf(items), [items]);
   return (
     <div className={`${styles.dither} ${styles.ditherTrends}`}>
       <BarChart
         data={data}
+        animate={animate}
         config={config}
         stackType="stacked"
         margins={{ top: 12, right: 64, bottom: 24, left: 52 }}

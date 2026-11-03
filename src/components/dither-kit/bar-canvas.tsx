@@ -61,6 +61,9 @@ export function BarCanvas() {
     state.current = ctx;
     targetsRef.current = targets;
   });
+  // The entrance outlives the paint loop, which restarts on every resize, so a
+  // resize repaints in place rather than growing in again.
+  const entrance = useRef({ revision: -1, start: 0, animate: false });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -77,13 +80,12 @@ export function BarCanvas() {
     }
 
     const reduce = prefersReducedMotion();
-    const animate = state.current.animate && !reduce;
     const duration = state.current.animationDuration;
     const fx = cols / Math.max(width, 1);
 
     // Eased grow factor for bar `i` at global progress `prog`.
     const barProgress = (i: number, len: number, prog: number) => {
-      if (!animate) return 1;
+      if (!entrance.current.animate) return 1;
       const start = len > 1 ? (i / (len - 1)) * STAGGER : 0;
       return easeOutCubic(clamp01((prog - start) / (1 - STAGGER)));
     };
@@ -128,9 +130,7 @@ export function BarCanvas() {
     };
 
     let raf = 0;
-    let animStart = 0;
     let lastProg = -1;
-    let lastRevision = state.current.revision;
     let intensity = 0;
     let needsFill = true;
     let lastPaintSig = "";
@@ -150,13 +150,17 @@ export function BarCanvas() {
           bloomCtx.drawImage(canvas, 0, 0);
         }
       }
-      if (s.revision !== lastRevision) {
-        lastRevision = s.revision;
-        animStart = 0; // re-play the wave on data change / replay
+      if (s.revision !== entrance.current.revision) {
+        // re-play the wave on data change / replay
+        entrance.current = {
+          revision: s.revision,
+          start: now,
+          animate: s.animate && !reduce,
+        };
         lastProg = -1;
       }
-      if (!animStart) animStart = now;
-      const prog = animate ? Math.min(1, (now - animStart) / duration) : 1;
+      const { start, animate } = entrance.current;
+      const prog = animate ? Math.min(1, (now - start) / duration) : 1;
 
       if (prog !== lastProg) {
         lastProg = prog;
