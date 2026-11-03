@@ -176,16 +176,11 @@
 }
 /* Starts where the choices' titles do (4px list, 4px row, 16px check, 6px
    gap), so the name heads their column. One line is as tall as the search
-   well; a long name takes a second line rather than losing its end, since
-   the list beside it truncates. */
+   well; a long name wraps in full, since the list beside it truncates. */
 .paneTitle {
-  display: -webkit-box;
   flex: none;
   margin: 12px 12px 8px 30px;
   padding: 6px 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
   color: var(--text-primary);
   font-weight: 500;
   line-height: 20px;
@@ -243,8 +238,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Too narrow for two panes, as on a phone: the detail goes under the list,
-   which keeps room for about six rows. */
+/* Stacked panes reserve room for amount choices even on a short screen.
+   The people list scrolls within its cap; the surface scrolls if needed. */
 @container (max-width: 519px) {
   .detailRoot {
     flex-direction: column;
@@ -252,7 +247,7 @@
   }
   .rail {
     flex: none;
-    max-height: 320px;
+    max-height: min(240px, 35dvh);
   }
   .pane {
     width: auto;

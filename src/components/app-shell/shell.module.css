@@ -1804,27 +1804,13 @@ button.actionItem:disabled {
   color: var(--text-tertiary);
   font-size: var(--type-small);
 }
-/* Reveals what a section keeps folded away, like settled people. */
+/* Places the action that reveals what a section keeps folded away, like
+   settled people, on a row of its own, in line with the names above it. */
 .navMore {
   display: flex;
   align-items: center;
-  width: 100%;
   height: var(--size-row-sm);
   padding: 0 8px 0 20px;
-  border: 0;
-  border-radius: var(--radius-row);
-  background: transparent;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: var(--type-small);
-  text-align: left;
-  transition:
-    background-color 150ms,
-    color 150ms;
-}
-.navMore:hover {
-  background: var(--surface-hover);
-  color: var(--text-secondary);
 }
 @media (pointer: coarse) {
   .navMore {

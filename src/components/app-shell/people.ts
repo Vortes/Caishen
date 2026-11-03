@@ -6,7 +6,7 @@ import type { Account } from "./model";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 
-// Every counterparty is a person (ADR 0013): someone who owes you, or whom
+// Every counterparty is a person (ADR 0014): someone who owes you, or whom
 // you owe. The one linked to the other member of the household is also on
 // Caishen, so what you share with them shows in their budget too.
 

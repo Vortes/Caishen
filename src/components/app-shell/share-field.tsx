@@ -85,7 +85,6 @@ export function ShareMenu({
   amount,
   share,
   saved,
-  remembered,
   onChange,
   children,
 }: {
@@ -94,8 +93,6 @@ export function ShareMenu({
   share?: CounterpartyShare | null;
   // The share as last saved, which "Just mine" writes off.
   saved?: CounterpartyShare | null;
-  // The payee whose last categorization prefilled this share.
-  remembered?: string;
   onChange: (share: CounterpartyShare | null) => string | null;
   children: ReactElement;
 }) {
@@ -114,7 +111,6 @@ export function ShareMenu({
         amounts={[amount]}
         share={share}
         saved={saved}
-        remembered={remembered}
         onChange={(next) => {
           const failure = onChange(next);
           if (!failure) setOpen(false);
@@ -137,7 +133,6 @@ export function ShareChoices({
   amounts,
   share,
   saved,
-  remembered,
   clearable = false,
   onChange,
 }: {
@@ -145,7 +140,6 @@ export function ShareChoices({
   amounts: number[];
   share?: CounterpartyShare | null;
   saved?: CounterpartyShare | null;
-  remembered?: string;
   // Some of several lines have a share that Just mine would clear.
   clearable?: boolean;
   onChange: (
@@ -310,13 +304,8 @@ export function ShareChoices({
                     />
                   </>
                 )}
-                {remembered && chosen && (
-                  <p className={styles.shareNote}>
-                    Prefilled from {remembered} last time.
-                  </p>
-                )}
                 {error?.key === key && (
-                  <div className={styles.shareNote}>
+                  <div className={styles.shareError}>
                     <FormError>{error.message}</FormError>
                   </div>
                 )}

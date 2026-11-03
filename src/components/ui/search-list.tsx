@@ -498,6 +498,8 @@ export function SearchListDetail({
     )?.focus();
   }, [crossing]);
   const cross = (id = current) => {
+    // A pending pointer highlight would change the detail under the choice.
+    window.clearTimeout(wait.current);
     if (id === null) return;
     setActive(id);
     setCrossing((count) => count + 1);
@@ -551,11 +553,6 @@ export function SearchListDetail({
       wait.current = window.setTimeout(() => setActive(id), HOVER_INTENT);
     else setActive(id);
   };
-  const pick = (id: string) => {
-    window.clearTimeout(wait.current);
-    cross(id);
-  };
-
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const element = event.currentTarget;
     const atEnd =
@@ -659,7 +656,7 @@ export function SearchListDetail({
                     pinned
                     active={current === CREATE}
                     onActivate={(event) => hover(CREATE, event)}
-                    onPick={() => pick(CREATE)}
+                    onPick={() => cross(CREATE)}
                   />
                 </div>
                 {visible.length > 0 && (
@@ -691,7 +688,7 @@ export function SearchListDetail({
                   tag={option.tag}
                   active={option.value === current}
                   onActivate={(event) => hover(option.value, event)}
-                  onPick={() => pick(option.value)}
+                  onPick={() => cross(option.value)}
                 />
               ))}
             </div>

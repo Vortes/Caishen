@@ -193,7 +193,9 @@ What it does, with nothing for the screen to wire:
 - Its height at open is the least it keeps, so a search that narrows the
   list never pulls the popover's edge in ([rows.md](rows.md#nothing-moves)).
   The list scrolls inside a 420px cap.
-- Under 520px wide, as on a phone, the detail stacks under the list. Rows
+- Under 520px wide, as on a phone, the detail stacks under the list. The
+  people pane is capped at the smaller of 240px and 35% of the viewport
+  height, leaving room to reach the amount choices. Rows
   and choices are 44px on touch, and the search's 16px text keeps the page
   from zooming.
 
@@ -232,8 +234,10 @@ for the highlighted one on the right, applied at once. The left pane is one
 flat list, the partner first with an "On Caishen" tag and balances beside
 names; no group headings or divider, and no footer: a new person comes
 only from a typed name, and Just mine is the right pane's last choice,
-shown only when the line has a share to clear. The right pane is the name
-and the choices; no balance line under the name and no note on who sees
+shown only when the line has a share to clear, including bulk selections.
+The search placeholder is the prompt; there is no extra header. The right
+pane is the full name and the choices; no remembered-share hint, no balance
+line under the name and no note on who sees
 the share. Rejected: Baseline, the single column it replaces (a person in a
 search field, then the amounts under it), which costs a step for every
 share; and Inline, people that open in place in the list to show their

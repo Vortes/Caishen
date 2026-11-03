@@ -60,8 +60,8 @@ export async function connectPartner({
 }) {
   await rm(outboxPath, { recursive: true, force: true });
   const email = await budgets.newcomer();
-  await page.goto(`${shellPath}/settings/partner`);
-  await page.getByLabel("Partner’s email").fill(email);
+  await page.goto(`${shellPath}/settings/people`);
+  await page.getByLabel("Their email", { exact: true }).fill(email);
   await page.getByRole("button", { name: "Write invitation" }).click();
   await page.getByRole("button", { name: "Turn over to sign" }).click();
   await page.getByRole("button", { name: "Sign with my name instead" }).click();

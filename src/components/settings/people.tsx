@@ -27,19 +27,15 @@ import { newId } from "~/components/budget/format";
 import { api } from "~/trpc/react";
 import additions from "~/components/entry/settings.module.css";
 
-// Every person you share costs with (ADR 0013). The one on Caishen sees
+// Every person you share costs with (ADR 0014). The one on Caishen sees
 // what you share in their own budget; everyone else is yours alone.
 export function PeopleSettings() {
-  const { accounts, partner } = useShellData();
-  const invitation = api.budget.invitation.useQuery();
+  const { accounts } = useShellData();
   const people = accounts.filter(isPerson);
   const others = people
     .filter((person) => !isLinked(person) && !person.closed)
     .sort((a, b) => a.name.localeCompare(b.name));
   const former = people.filter((person) => person.closed);
-  // One person in a household can be on Caishen, so an invitation waiting
-  // for an answer holds the place too.
-  const invitable = !partner && !(invitation.data && !invitation.data.expired);
   return (
     <SettingsPage>
       <SettingsSection
@@ -54,7 +50,7 @@ export function PeopleSettings() {
       >
         {others.map((person) => (
           <div key={person.id}>
-            <PersonRow person={person} invitable={invitable} />
+            <PersonRow person={person} />
             <SettingsDivider />
           </div>
         ))}
@@ -97,46 +93,22 @@ function balanceSentence(person: Account) {
     : `${sentence}.`;
 }
 
-// One person: their balance, a new name, and an invitation to Caishen.
-function PersonRow({
-  person,
-  invitable,
-}: {
-  person: Account;
-  invitable: boolean;
-}) {
-  const [open, setOpen] = useState<"rename" | "invite" | null>(null);
+// One person: their balance and a new name.
+function PersonRow({ person }: { person: Account }) {
+  const [renaming, setRenaming] = useState(false);
   return (
     <SettingRow
       label={person.name}
       description={balanceSentence(person)}
       below={
-        open === "rename" ? (
-          <RenamePerson person={person} onDone={() => setOpen(null)} />
-        ) : open === "invite" ? (
-          <InviteForm
-            label={`${person.name}’s email`}
-            hint={`When ${person.name} joins, what you share from then on shows in both budgets. What’s here under ${person.name} stays yours alone for now; it doesn’t move to their budget.`}
-            onCancel={() => setOpen(null)}
-            onSent={() => setOpen(null)}
-          />
+        renaming ? (
+          <RenamePerson person={person} onDone={() => setRenaming(false)} />
         ) : undefined
       }
     >
-      <Button
-        aria-expanded={open === "rename"}
-        onClick={() => setOpen(open === "rename" ? null : "rename")}
-      >
+      <Button aria-expanded={renaming} onClick={() => setRenaming(!renaming)}>
         Rename
       </Button>
-      {(invitable || open === "invite") && (
-        <Button
-          aria-expanded={open === "invite"}
-          onClick={() => setOpen(open === "invite" ? null : "invite")}
-        >
-          Invite to Caishen…
-        </Button>
-      )}
     </SettingRow>
   );
 }
@@ -436,20 +408,14 @@ function InviteByEmail({
   );
 }
 
-// The email and the invitation card it sends. Linking a person already in
-// your budget to whoever accepts isn't built yet: they join as a new
-// person on Caishen, and the person you invited from keeps their history.
+// The email and the invitation card it sends.
 function InviteForm({
   label,
-  hint,
   initialEmail = "",
-  onCancel,
   onSent,
 }: {
   label: string;
-  hint?: string;
   initialEmail?: string;
-  onCancel?: () => void;
   onSent: (sent: { email: string; expiresAt: Date }) => void;
 }) {
   const { user } = useUser();
@@ -486,7 +452,7 @@ function InviteForm({
           if (!problem) setWriting(true);
         }}
       >
-        <Field label={label} hint={hint} error={error ?? undefined}>
+        <Field label={label} error={error ?? undefined}>
           <div className={additions.joinRow}>
             <TextInput
               inputRef={input}
@@ -500,7 +466,6 @@ function InviteForm({
             />
             {/* While the invitation is being written, its Send is the
               card's one primary action. */}
-            {!writing && onCancel && <Button onClick={onCancel}>Cancel</Button>}
             {!writing && (
               <Button type="submit" variant="primary" disabled={!from}>
                 Write invitation

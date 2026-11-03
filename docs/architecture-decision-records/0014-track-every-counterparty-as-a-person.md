@@ -1,0 +1,33 @@
+---
+status: accepted
+---
+
+# Track every counterparty as a person
+
+ADR 0007 gave a budget a Reimbursements account whose entries named people in free text, and a separate Partner account for the mirrored ledger. Both track someone who owes you, or whom you owe. Every counterparty is now a **person** with a stable account identity; being the other Caishen user in the household is an optional link on that person. This gives shares, repayments, renames, and remembered choices one identity rule.
+
+- **One account per person.** A person is an account of kind `person` with one paired envelope in People. `person.add` creates them by name; `person.rename` renames the account and its envelope without changing either identity. Both commands compare active names with the same whitespace-normalizing, case-insensitive rule and refuse duplicates. Float, overspending, rollover, and Ready to Assign retain ADR 0007's paired-envelope accounting.
+- **Shares name the account, nothing else.** A share is `{ accountId, amount }`. The free-text counterparty name is gone from shares, repayments, history, and payee memory, so card credit, matching, and remembered shares key by account alone.
+- **The partner is the linked person.** `linkedUserId` identifies the other household member; no account ID means "partner." An existing linked person retains their account, envelope, name, and history. Conversion preserves legacy Partner and former-partner IDs. A new linked person uses `counterparty:person:linked-<userId>` with a collision suffix, keeping conversion pure and repeatable. A household still has at most two members, and each budget has exactly one live person linked to the other member. Wrong, self, and duplicate links are refused. The stored fallback name is "Partner"; the interface uses the available profile name without copying profile changes into the ledger.
+- **One way to be paid back, except where mirroring forbids it.** Recording a repayment works for every unlinked person from their register. The linked person is still settled only from both partners' bank imports, because a one-sided repayment can't keep the mirror equal. Bank repayment recognition matches deposits against person names, and a payee that is exactly one unlinked person's name defaults to their full share.
+- **Former partners are closed people.** Disconnecting (ADR 0012) makes the linked person unlinked and closed, preserving the frozen ledger. Joining another household creates or reuses its live linked person without changing the former ledger.
+- **One register and picker.** Every person uses the shared register and edits entries in place, including settlements. The linked person additionally supports the mirrored ledger, requests, and settlements; an unlinked person supports repayments. The share picker has people on the left and amounts on the right, with the search placeholder as its prompt and no remembered-share hint. "Just mine" is the last amount choice, present only when a share can be cleared, including bulk selections. On narrow screens the people list is capped so amount choices remain reachable. Settled unlinked people with no float are folded under "Show settled."
+- **Invitations connect households.** The general household invitation remains available (ADR 0011). It creates the linked person and does not attach an existing unlinked person's history. There is no invitation action on an individual person until linking that person can be implemented without accidentally disclosing or mirroring their private history.
+
+## Considered options
+
+Keeping Reimbursements and adding a per-name sub-ledger was rejected: it keeps two concepts and still has no entity to rename, invite, or remember. Making the partner a flag on the share rather than the account was rejected, because the mirror needs one account whose balance both budgets read as opposites. ADR 0007 rejected one account per person to keep the sidebar and the People group small; we now accept the extra rows and fold settled people away, because separate accounts are what make names reliable and the partner just another person.
+
+## Consequences
+
+This replaces ADR 0007's "Accounts" bullet and its considered option against per-person accounts. The people schema change is a nullable `Account.linkedUserId` column. Account IDs and names are not proof of a household link.
+
+Legacy kinds (`partner`, `reimbursements`, `former-partner`) and name-bearing share fields remain a permanent **stored-data compatibility rule**. They stay in the storage schema/type union so older budgets and backups can be read. Current commands and projections operate on people; household reads and writes gate unconverted data as maintenance. Stored settlement validation explicitly accepts legacy partner legs so conversion can run. This compatibility code is not a second current accounting model and does not depend on every household having loaded once.
+
+`withPeople` is pure and idempotent; `lacksPeople` detects a household needing conversion or repair. The first pull and write paths, onboarding, joining, and disconnecting convert before current accounting runs. A valid existing linked person is reused, and a missing paired envelope is restored. Multiple envelopes or colliding envelope IDs are refused. Conversion persists atomically, retries a revision race once, and otherwise leaves the household unchanged under maintenance.
+
+Reimbursements conversion uses the stored counterparty name, never the transaction payee. Each distinct, consistently spelled name becomes a person, with transaction and line shares, repayments, share history, remembered shares, and assignments redirected to its account or envelope. Missing names, different spellings of the same normalized name, and names already belonging to a person are refused. If the old envelope has assignments, exactly one person must receive them, in their original months, preserving each month's Ready to Assign. There is no "Someone" fallback, largest-debtor allocation, or automatic return of float to Ready to Assign. The known reimbursement history is one person; a general mapping workflow is outside this change.
+
+The conversion operation cannot be undone. Earlier operations retain their original change sets; undo succeeds only when the affected rows still match, and refuses rows changed by conversion instead of restoring stale identities.
+
+The glossary replaces Reimbursements account and Partner account with Person and Linked person ("On Caishen" in the interface), and Repayment and Settlement keep their meanings: a repayment is how any unlinked person pays you back, a settlement how the linked person does. "Reimbursements" no longer appears in the product.

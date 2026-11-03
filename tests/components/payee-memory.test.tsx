@@ -133,6 +133,44 @@ test("a new transaction takes its payee's remembered category", async () => {
   });
 });
 
+test("a share filled in from a payee's memory is noted once, under the form, and not again in the share picker", async () => {
+  const shell = await renderShell({
+    book: execute(withMom(), "owner", {
+      type: "transaction.upsert",
+      id: "seed-tea",
+      transactionId: "tea",
+      accountId: "checking",
+      categoryId: "gifts",
+      date: "2026-10-03",
+      payee: "Tea House",
+      amount: -1_000,
+      recordedAt: "2026-10-03T12:00:00Z",
+      counterpartyShare: { accountId: personAccountId("mom"), amount: 500 },
+    }),
+  });
+  const form = await newTransaction(shell);
+  await shell.user.type(
+    form.getByLabelText("Outflow", { exact: true }),
+    "10.00",
+  );
+  await shell.user.type(
+    form.getByLabelText("Payee", { exact: true }),
+    "Tea House",
+  );
+  expect(
+    form.getByText("Category and share filled in from Tea House last time"),
+  ).toBeTruthy();
+
+  await shell.user.click(form.getByRole("button", { name: /^Share/ }));
+  const picker = within(
+    screen.getByRole("dialog", { name: "Who this is for" }),
+  );
+  expect(
+    picker.getByRole("button", { name: /^Half/ }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(picker.queryByText(/last time/)).toBeNull();
+});
+
 test("a payee named after one of your people fills that person's full share", async () => {
   const shell = await renderShell({
     book: execute(withMom(), "owner", {

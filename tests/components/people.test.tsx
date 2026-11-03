@@ -393,3 +393,19 @@ test("a person is renamed from the People settings page", async () => {
   expect(await screen.findByText("Mother")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 });
+
+test("People settings invite through the household's one invitation, not from a person's row", async () => {
+  const { user } = await renderShell({ book: momOwes() });
+  await user.click(screen.getByRole("button", { name: "Component budget" }));
+  await user.click(screen.getByRole("menuitem", { name: "Settings" }));
+  await user.click(screen.getByRole("link", { name: "People" }));
+  await screen.findByRole("heading", { name: "Other people" });
+  expect(
+    await screen.findByRole("button", { name: "Write invitation" }),
+  ).toBeTruthy();
+
+  expect(screen.getByRole("button", { name: "Rename" })).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: /Invite to Caishen/ }),
+  ).toBeNull();
+});

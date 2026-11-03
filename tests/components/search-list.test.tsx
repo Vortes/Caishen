@@ -623,3 +623,27 @@ test("a pointer's pending highlight gives way to the arrow keys", async () => {
   await new Promise((resolve) => setTimeout(resolve, 200));
   expect(highlighted(search)).toMatch(/^Mei Chen/);
 });
+
+test.each(["{Enter}", "{ArrowRight}"])(
+  "a pointer's pending highlight never changes the detail %s crosses into",
+  async (key) => {
+    const { user, search } = await openPicker();
+
+    fireEvent.mouseMove(screen.getByRole("option", { name: /^Mom-/ }), {
+      clientX: 20,
+      clientY: 60,
+    });
+    fireEvent.mouseMove(screen.getByRole("option", { name: /^Sam/ }), {
+      clientX: 80,
+      clientY: 90,
+    });
+    await user.keyboard(key);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(highlighted(search)).toMatch(/^Mom-/);
+    expect(document.activeElement).toBe(
+      within(
+        screen.getByRole("group", { name: "How much is for Mom" }),
+      ).getByRole("button", { name: /^All of it/ }),
+    );
+  },
+);

@@ -82,21 +82,16 @@
 }
 
 /* The share picker: SearchListDetail in a column the popover can clamp,
-   so only its list scrolls. In the detail, the amount field and notes sit
-   at a form's 12px: the detail's 4px and 8px more. */
+   so only its list scrolls. In the detail, the amount field and an error
+   sit at a form's 12px: the detail's 4px and 8px more. */
 .sharePicker {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 .customShare,
-.shareNote {
+.shareError {
   padding: 8px;
-}
-.shareNote {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-  text-wrap: pretty;
 }
 .shareForm {
   display: flex;

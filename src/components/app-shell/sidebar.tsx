@@ -26,6 +26,7 @@ import {
 } from "react";
 import { newId } from "~/components/budget/format";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
+import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
 import { Menu, MenuItem, MenuSeparator } from "~/components/ui/menu";
 import { AccountEntry } from "./account-entry";
@@ -140,14 +141,16 @@ export function Sidebar({
       label: "People",
       empty: undefined,
       more: settled.length ? (
-        <button
-          type="button"
-          className={styles.navMore}
-          aria-expanded={showSettled}
-          onClick={() => setShowSettled((value) => !value)}
-        >
-          {showSettled ? "Hide settled" : `Show settled (${settled.length})`}
-        </button>
+        <div className={styles.navMore}>
+          <Button
+            variant="quiet"
+            size="sm"
+            aria-expanded={showSettled}
+            onClick={() => setShowSettled((value) => !value)}
+          >
+            {showSettled ? "Hide settled" : `Show settled (${settled.length})`}
+          </Button>
+        </div>
       ) : undefined,
       items: [
         ...people.filter(isLinked),

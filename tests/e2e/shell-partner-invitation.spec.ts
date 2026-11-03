@@ -18,8 +18,8 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(shellPath);
   await budgets.signIn(page, sender);
-  await page.goto(`${shellPath}/settings/partner`);
-  await page.getByLabel("Partner’s email").fill(email);
+  await page.goto(`${shellPath}/settings/people`);
+  await page.getByLabel("Their email", { exact: true }).fill(email);
   await page.getByRole("button", { name: "Write invitation" }).click();
   await page.getByRole("button", { name: "Turn over to sign" }).click();
   await page.getByRole("button", { name: "Sign with my name instead" }).click();
@@ -47,7 +47,9 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
     "href",
     new RegExp(`${path}\\?sign-in$`),
   );
-  await partner.getByLabel("Password", { exact: true }).fill(`Caishen!${randomUUID()}`);
+  await partner
+    .getByLabel("Password", { exact: true })
+    .fill(`Caishen!${randomUUID()}`);
   await partner.getByRole("button", { name: "Continue", exact: true }).click();
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");
@@ -106,6 +108,23 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   ).toBeVisible();
   await visitor.close();
   await page.reload();
-  await expect(page.getByText(/^Connected with /)).toBeVisible();
+  // The one invitation names whoever accepts as the household's partner,
+  // by the first name they gave, on Caishen and not among other people.
+  await expect(
+    page.getByText("Connected with Alex", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Invite someone to Caishen", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Budget navigation" })
+      .getByRole("link", { name: /^Alex/ }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Other people", exact: true })
+      .getByText(/Alex/),
+  ).toHaveCount(0);
   await context.close();
 });
