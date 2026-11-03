@@ -3,6 +3,7 @@
 import { PlusIcon } from "lucide-react";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -17,7 +18,7 @@ import { IconButton } from "~/components/ui/icon-button";
 import { Tooltip } from "~/components/ui/tooltip";
 import { useShellData } from "./shell-data";
 import { Popover } from "~/components/ui/popover";
-import { Select } from "~/components/ui/select";
+import { SearchList } from "~/components/ui/search-list";
 import { TextInput } from "~/components/ui/text-input";
 // The move-money popover's form fields.
 import styles from "./move-money.module.css";
@@ -136,7 +137,8 @@ export type NewCategory = { id: string; name: string; group: string };
 
 // Names a new category group, or a category in one. With a group the
 // category goes there; with a choice, the form asks which group, starting
-// from the one given.
+// from the one given, and a new group can be named there, made with the
+// category.
 function NameForm({
   group,
   choice,
@@ -153,36 +155,68 @@ function NameForm({
 }) {
   const { groups } = useShellData();
   const { send } = useAddCategory();
+  const choices = groups.filter((item) => !isSystemGroup(item));
   const [name, setName] = useState(choice?.name ?? "");
   const [chosen, setChosen] = useState(choice?.group ?? "");
+  // The new group's name while one is named in place of a choice. With no
+  // groups to choose from, the form starts there.
+  const [newGroup, setNewGroup] = useState<string | null>(
+    choice && choices.length === 0 ? "" : null,
+  );
   const [error, setError] = useState<{
-    field: "name" | "form";
+    field: "name" | "group" | "form";
     message: string;
   } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const target = choice ? chosen : group;
-  const choices = groups.filter((item) => !isSystemGroup(item));
+  const groupRef = useRef<HTMLInputElement>(null);
+  // Focus follows the switch between the group list and a new group's
+  // name, but stays on the category's name as the form opens.
+  const switching = useRef(false);
+  const listRef = useCallback((input: HTMLInputElement | null) => {
+    if (!input || !switching.current) return;
+    switching.current = false;
+    input.focus();
+  }, []);
+  const newGroupRef = useCallback((input: HTMLInputElement | null) => {
+    groupRef.current = input;
+    if (!input || !switching.current) return;
+    switching.current = false;
+    input.focus();
+  }, []);
+  // Where the category goes; empty for a form that adds a group.
+  const target = choice ? (newGroup?.trim() ?? chosen) : (group ?? "");
 
-  const fail = (message: string) => {
-    setError({ field: "name", message });
-    inputRef.current?.focus();
+  const fail = (field: "name" | "group", message: string) => {
+    setError({ field, message });
+    (field === "group" ? groupRef : inputRef).current?.focus();
   };
 
   const submit = () => {
     const trimmed = name.trim();
-    const same = (other: string) =>
-      other.toLowerCase() === trimmed.toLowerCase();
+    const same = (one: string, other: string) =>
+      one.toLowerCase() === other.toLowerCase();
     let command: Command;
     let summary: string;
     let added: Added;
     let category: NewCategory | undefined;
-    if (target) {
-      if (!trimmed) return fail("Enter a name for the category.");
+    if (choice ?? group) {
+      if (newGroup !== null) {
+        if (!target) return fail("group", "Enter a name for the group.");
+        const duplicate = groups.find((item) => same(item.name, target));
+        if (duplicate)
+          return fail(
+            "group",
+            `You already have a group called ${duplicate.name}.`,
+          );
+      }
+      if (!trimmed) return fail("name", "Enter a name for the category.");
       const duplicate = groups
         .find((item) => item.name === target)
-        ?.categories.find((item) => same(item.name));
-      if (duplicate) return fail(`${target} already has ${duplicate.name}.`);
+        ?.categories.find((item) => same(item.name, trimmed));
+      if (duplicate)
+        return fail("name", `${target} already has ${duplicate.name}.`);
       const categoryId = newId();
+      // A group the plan doesn't have yet is made with its first category.
       command = {
         type: "category.add",
         id: newId(),
@@ -190,14 +224,20 @@ function NameForm({
         name: trimmed,
         group: target,
       };
-      summary = `Added ${trimmed} to ${target}`;
+      summary =
+        newGroup !== null
+          ? `Added the ${target} group with ${trimmed}`
+          : `Added ${trimmed} to ${target}`;
       added = { type: "category", id: categoryId };
       category = { id: categoryId, name: trimmed, group: target };
     } else {
-      if (!trimmed) return fail("Enter a name for the group.");
-      const duplicate = groups.find((item) => same(item.name));
+      if (!trimmed) return fail("name", "Enter a name for the group.");
+      const duplicate = groups.find((item) => same(item.name, trimmed));
       if (duplicate)
-        return fail(`You already have a group called ${duplicate.name}.`);
+        return fail(
+          "name",
+          `You already have a group called ${duplicate.name}.`,
+        );
       command = { type: "group.add", id: newId(), name: trimmed };
       summary = `Added the ${trimmed} group`;
       added = { type: "group", name: trimmed };
@@ -225,13 +265,13 @@ function NameForm({
     >
       <div className={styles.fieldSlot}>
         <Field
-          label={target ? "Category name" : "Group name"}
+          label={(choice ?? group) ? "Category name" : "Group name"}
           error={error?.field === "name" ? error.message : undefined}
         >
           <TextInput
             inputRef={inputRef}
             maxLength={MAX_LENGTH}
-            placeholder={target ? "Groceries" : "Bills"}
+            placeholder={(choice ?? group) ? "Groceries" : "Bills"}
             value={name}
             onChange={(next) => {
               setName(next);
@@ -242,19 +282,58 @@ function NameForm({
       </div>
       {choice && (
         <div className={styles.fieldSlot}>
-          <Field label="Category group">
-            <Select
-              value={chosen}
-              onChange={(next) => {
-                setChosen(next);
-                setError(null);
-              }}
-              options={choices.map((item) => ({
-                value: item.name,
-                label: item.name,
-              }))}
-            />
-          </Field>
+          {newGroup === null ? (
+            <Field label="Category group">
+              <SearchList
+                inputRef={listRef}
+                value={chosen}
+                onChange={(next) => {
+                  setChosen(next);
+                  setError(null);
+                }}
+                options={choices.map((item) => ({
+                  value: item.name,
+                  label: item.name,
+                }))}
+                onCreate={{
+                  noun: "group",
+                  create: (typed) => {
+                    switching.current = true;
+                    setNewGroup(typed);
+                    setError(null);
+                  },
+                }}
+              />
+            </Field>
+          ) : (
+            <Field
+              label="New group"
+              error={error?.field === "group" ? error.message : undefined}
+            >
+              <TextInput
+                inputRef={newGroupRef}
+                maxLength={MAX_LENGTH}
+                placeholder="Bills"
+                value={newGroup}
+                onChange={(next) => {
+                  setNewGroup(next);
+                  setError(null);
+                }}
+                clear={
+                  choices.length > 0
+                    ? {
+                        label: "Back to existing groups",
+                        onClear: () => {
+                          switching.current = true;
+                          setNewGroup(null);
+                          setError(null);
+                        },
+                      }
+                    : undefined
+                }
+              />
+            </Field>
+          )}
         </div>
       )}
       {error?.field === "form" && (
@@ -267,7 +346,11 @@ function NameForm({
           Cancel
         </Button>
         <Button variant="primary" size="sm" type="submit">
-          {target ? "Add category" : "Add category group"}
+          {!(choice ?? group)
+            ? "Add category group"
+            : newGroup !== null
+              ? "Add group and category"
+              : "Add category"}
         </Button>
       </div>
     </form>
@@ -322,23 +405,18 @@ export function NewCategoryPopover({
           if (event.key === "Escape") event.stopPropagation();
         }}
       >
-        {start ? (
-          <NameForm
-            choice={{ name, group: start }}
-            onAdded={(_, category) => {
-              if (!category) return;
-              added.current = category;
-              onAdded(category);
-              onOpenChange(false);
-            }}
-            onSettled={onSettled}
-            onCancel={() => onOpenChange(false)}
-          />
-        ) : (
-          <p className={styles.empty}>
-            Add a category group on the plan first.
-          </p>
-        )}
+        {/* With no group yet, the form starts on naming one. */}
+        <NameForm
+          choice={{ name, group: start ?? "" }}
+          onAdded={(_, category) => {
+            if (!category) return;
+            added.current = category;
+            onAdded(category);
+            onOpenChange(false);
+          }}
+          onSettled={onSettled}
+          onCancel={() => onOpenChange(false)}
+        />
       </div>
     </Popover>
   );

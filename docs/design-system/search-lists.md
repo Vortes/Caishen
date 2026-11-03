@@ -46,7 +46,7 @@ The rows above the options:
 - `onCreate: { noun, create(name) }`: a New row pinned at the top
   ("New category “Rent”"). Enter takes it once nothing else matches.
   Only where the person can make the missing option on the spot (the
-  register's category).
+  register's category, and the group in its add-category form).
 - `action: { label, icon, onSelect }`: an action that shares the New row,
   such as the register's Split. It is not an option and never shows in
   the closed field.

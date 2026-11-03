@@ -31,6 +31,7 @@ export function AmountInput({
   TextInputProps,
   | "prefix"
   | "suffix"
+  | "clear"
   | "inputMode"
   | "type"
   | "autoComplete"

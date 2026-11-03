@@ -54,6 +54,44 @@
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
+/* TextInput's clear button, at the end of the well. */
+.clear {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: none;
+  cursor: pointer;
+  transition-property: color, background-color, transform;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+/* 20px to 32px, the well's height, without reaching past it. */
+.clear::before {
+  position: absolute;
+  inset: -6px;
+  content: "";
+}
+.clear:active {
+  transform: scale(0.96);
+}
+/* Two classes outrank the shell's button reset, which inherits color. */
+.well .clear {
+  color: var(--text-tertiary);
+}
+@media (hover: hover) and (pointer: fine) {
+  .well .clear:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+}
+
 .input {
   flex: 1;
   min-width: 0;
@@ -169,10 +207,14 @@
 }
 
 /* Touch: a taller well, and 16px text so focusing it doesn't zoom the
-   page. */
+   page. The clear button's hit area grows to the well's 44px. */
 @media (pointer: coarse) {
   .well {
     height: 44px;
+  }
+  .clear {
+    width: 32px;
+    height: 32px;
   }
   .input {
     font-size: var(--type-title);
@@ -180,7 +222,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .well {
+  .well,
+  .clear {
     transition: none;
   }
 }

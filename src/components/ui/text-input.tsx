@@ -1,7 +1,9 @@
 "use client";
 
+import { XIcon } from "lucide-react";
 import type { FocusEvent, HTMLAttributes, Ref } from "react";
 import { useFieldControl } from "./field";
+import { Tooltip } from "./tooltip";
 import styles from "./field.module.css";
 
 export type TextInputProps = {
@@ -28,6 +30,10 @@ export type TextInputProps = {
   // Short text in the well, before or after the value: "$", "%", "years".
   prefix?: string;
   suffix?: string;
+  // A button at the end of the well that clears what the field stands for,
+  // named by its label ("Back to existing groups"). Backspace in the empty
+  // well does the same.
+  clear?: { label: string; onClear: () => void };
   disabled?: boolean;
   readOnly?: boolean;
   inputRef?: Ref<HTMLInputElement>;
@@ -54,6 +60,7 @@ export function WellInput({
   autoComplete = "off",
   prefix,
   suffix,
+  clear,
   disabled,
   readOnly,
   inputRef,
@@ -102,6 +109,17 @@ export function WellInput({
         aria-invalid={field.invalid ? true : undefined}
         aria-describedby={field.describedBy}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={
+          clear &&
+          ((event) => {
+            // A held Backspace that empties the well stops there; only a
+            // fresh press in the empty well clears.
+            if (event.key !== "Backspace" || value !== "" || event.repeat)
+              return;
+            event.preventDefault();
+            clear.onClear();
+          })
+        }
         onFocus={onFocus}
         onBlur={onBlur}
       />
@@ -109,6 +127,18 @@ export function WellInput({
         <span className={styles.affix} aria-hidden>
           {suffix}
         </span>
+      )}
+      {clear && !disabled && !readOnly && (
+        <Tooltip label={clear.label}>
+          <button
+            type="button"
+            className={styles.clear}
+            aria-label={clear.label}
+            onClick={clear.onClear}
+          >
+            <XIcon size={14} aria-hidden />
+          </button>
+        </Tooltip>
       )}
     </div>
   );
