@@ -169,7 +169,8 @@ export function SearchList({
           onMouseDown={keepFocus}
           onClick={(event) =>
             fromWell(event, () => {
-              if (!open) show();
+              if (open) setExpanded(false);
+              else show();
             })
           }
         >
@@ -196,9 +197,6 @@ export function SearchList({
             onFocus={(event) => {
               if (!open && arrivedByKeyboard()) show();
               event.currentTarget.select();
-            }}
-            onClick={() => {
-              if (!open) show();
             }}
             onBlur={() => setExpanded(false)}
             onKeyDown={onKeyDown}
@@ -295,20 +293,20 @@ if (typeof document !== "undefined") {
 }
 const arrivedByKeyboard = () => !pointerLast;
 
-// A press on the well around the input, such as on the chevron, keeps
-// focus where it is, then the click focuses the input and opens the list.
-// The open is on click because iOS Safari sends mouse events only to
-// elements React marks as clickable, which takes an onClick.
+// A click anywhere in the well, the input or the chevron, opens the list
+// or closes it, and focuses the input. A press around the input keeps focus
+// where it is until then. The toggle is on click because iOS Safari sends
+// mouse events only to elements React marks as clickable, which takes an
+// onClick.
 function keepFocus(event: MouseEvent<HTMLDivElement>) {
   if (event.target !== event.currentTarget.querySelector("input"))
     event.preventDefault();
 }
-function fromWell(event: MouseEvent<HTMLDivElement>, open: () => void) {
+function fromWell(event: MouseEvent<HTMLDivElement>, toggle: () => void) {
   const input = event.currentTarget.querySelector("input");
-  if (!input || input.disabled || input.readOnly || event.target === input)
-    return;
+  if (!input || input.disabled || input.readOnly) return;
   input.focus();
-  open();
+  toggle();
 }
 
 function tone(cents: number) {
@@ -497,7 +495,8 @@ export function SearchSuggestions({
           onMouseDown={keepFocus}
           onClick={(event) =>
             fromWell(event, () => {
-              if (!expanded) show();
+              if (expanded) setExpanded(false);
+              else show();
             })
           }
         >
@@ -530,9 +529,6 @@ export function SearchSuggestions({
             onFocus={(event) => {
               if (arrivedByKeyboard()) show();
               event.currentTarget.select();
-            }}
-            onClick={() => {
-              if (!expanded) show();
             }}
             onBlur={() => setExpanded(false)}
             onKeyDown={onKeyDown}

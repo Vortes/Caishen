@@ -57,6 +57,8 @@ What it does, with nothing for the screen to wire:
 
 - Arriving (focus or a click) opens the list with the chosen name
   selected, so typing replaces it and filters by group and label.
+- A click anywhere in the well, on the input or the chevron, opens the
+  list or closes it. `SearchSuggestions` does the same.
 - ArrowDown and ArrowUp open the list or move the highlight. Enter or a
   click picks and calls `onPicked`, for a form that moves on by itself.
 - Tab takes the highlighted match once something is typed or an option is
