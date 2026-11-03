@@ -3,14 +3,13 @@ import {
   bookSchema,
   createBook,
   execute,
-  LINKED_PERSON_ACCOUNT_ID,
   personAccountId,
   personEnvelopeId,
   projectBook,
   type Command,
   type Target,
 } from "~/domain/engine";
-import { partnerEntryId } from "~/domain/partner-ledger";
+import { partnerAccountOf, partnerEntryId } from "~/domain/partner-ledger";
 import { withPeople } from "~/domain/people";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 export type SeedOperation = {
@@ -95,7 +94,9 @@ export function buildDevelopmentSeed({
     const limit = period === month ? Number(asOf.slice(8)) : 28;
     return `${period}-${String(Math.min(day, limit)).padStart(2, "0")}`;
   };
-  const partner = LINKED_PERSON_ACCOUNT_ID;
+  // Each member's person linked to the other.
+  const partnerOf = (memberId: string) =>
+    partnerAccountOf(book.budgets[memberId]!)!.id;
   // Alex's other people: an employer who reimburses work costs, a friend
   // who still owes for a concert and dinner, and a friend who is settled.
   const cedarLabs = personAccountId("cedar-labs");
@@ -361,7 +362,7 @@ export function buildDevelopmentSeed({
       // Float in the People envelopes: cash set aside for what each fronts
       // for the other until it's paid back.
       if (offset === -2) {
-        funding[personEnvelopeId(partner)] = index ? 130000 : 25000;
+        funding[personEnvelopeId(partnerOf(actorId))] = index ? 130000 : 25000;
         if (!index) funding[personEnvelopeId(cedarLabs)] = 60000;
       }
       for (const [categoryId, amount] of Object.entries(funding))
@@ -448,7 +449,7 @@ export function buildDevelopmentSeed({
         28000,
         "groceries",
         "checking",
-        share(period, 1, partner, 14000),
+        share(period, 1, partnerOf(userId), 14000),
       );
       categorizeSide(userId, "household-stock-up", "groceries");
       settle(
@@ -469,7 +470,7 @@ export function buildDevelopmentSeed({
       260000,
       "rent",
       "checking",
-      share(period, 2, partner, 130000),
+      share(period, 2, partnerOf(partnerId), 130000),
     );
     categorizeSide(partnerId, `rent-${suffix}`, "rent");
     buy(
@@ -481,7 +482,7 @@ export function buildDevelopmentSeed({
       18942,
       "utilities",
       "checking",
-      share(period, 3, partner, 9471),
+      share(period, 3, partnerOf(userId), 9471),
     );
     categorizeSide(userId, `utilities-${suffix}`, "utilities");
     buy(
@@ -493,7 +494,7 @@ export function buildDevelopmentSeed({
       12346,
       "groceries",
       "amex",
-      share(period, 4, partner, 6173),
+      share(period, 4, partnerOf(userId), 6173),
     );
     if (!current) categorizeSide(userId, `groceries-a-${suffix}`, "groceries");
     buy(
@@ -505,13 +506,13 @@ export function buildDevelopmentSeed({
       8793,
       "groceries",
       "amex",
-      share(period, 5, partner, 3000),
+      share(period, 5, partnerOf(partnerId), 3000),
     );
     categorizeSide(partnerId, `groceries-b-${suffix}`, "groceries");
     if (!current) {
       // Settle up each month: whoever owes pays the Partner balance.
       const owedToYou = projectBook(book, userId, period).accounts.find(
-        (account) => account.id === partner,
+        (account) => account.id === partnerOf(userId),
       )!.balance;
       if (owedToYou)
         settle(

@@ -4,7 +4,6 @@ import {
   addMember,
   createBook,
   execute,
-  LINKED_PERSON_ACCOUNT_ID,
   projectBook,
 } from "../../src/domain/engine";
 import { withPeople } from "../../src/domain/people";
@@ -75,7 +74,7 @@ void test("either partner can reject a settlement and restore both budgets", () 
         100_000,
       );
       assert.equal(
-        view.accounts.find((item) => item.id === LINKED_PERSON_ACCOUNT_ID)!
+        view.accounts.find((item) => item.linkedUserId && !item.closed)!
           .balance,
         0,
       );

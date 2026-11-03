@@ -14,7 +14,7 @@ import {
   type CommandSource,
 } from "../../src/domain/engine";
 import { withPeople } from "../../src/domain/people";
-import { personId, withPerson } from "./fixtures/people";
+import { linkedPersonId, personId, withPerson } from "./fixtures/people";
 
 const month = "2026-10";
 const date = "2026-10-10";
@@ -2334,7 +2334,7 @@ void test("direct register entries on either counterparty account use the accoun
     "alan",
     "Mom",
   );
-  for (const accountId of ["counterparty:partner", personId("Mom")])
+  for (const accountId of [linkedPersonId(book, "alan"), personId("Mom")])
     assert.throws(
       () =>
         execute(book, "alan", {

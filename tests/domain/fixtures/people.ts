@@ -124,3 +124,9 @@ export function asLegacyReimbursements(
     );
   return legacy;
 }
+
+/** The id of a member's person linked to the other member: the partner. */
+export const linkedPersonId = (book: Book, userId: string) =>
+  book.budgets[userId]!.accounts.find(
+    (account) => account.linkedUserId && !account.closed,
+  )!.id;

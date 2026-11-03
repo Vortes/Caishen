@@ -214,6 +214,8 @@ async function commandChangeSet(
     );
     if (target?.actorId !== actorId)
       throw new AccountingError("Undo access denied");
+    if (target.type === "budget.counterparties")
+      throw new AccountingError("This budget upgrade can't be undone");
     if (!target.changeSet)
       throw new AccountingError("This is too long ago to undo");
     const rows = ledger.personal

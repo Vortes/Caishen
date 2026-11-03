@@ -1,5 +1,11 @@
 import { applyChangeSet, rowsIn, toRowSet } from "~/domain/change-sets";
-import { budgetReferenceIssues, type Book, type Budget } from "~/domain/engine";
+import {
+  budgetReferenceIssues,
+  isLegacyCounterparty,
+  type Book,
+  type Budget,
+} from "~/domain/engine";
+import { lacksPeople } from "~/domain/people";
 import { rowIssues } from "~/domain/row-schemas";
 import {
   rowKeyParts,
@@ -64,7 +70,16 @@ export type HouseholdLedger =
       personal: boolean;
       failures: StoredDataFailure[];
     }
-  | { status: "maintenance"; failures: StoredDataFailure[] };
+  | {
+      status: "maintenance";
+      failures: StoredDataFailure[];
+      /**
+       * A household whose rows read but whose counterparties aren't all
+       * people yet (withPeople). It never runs as a budget; only the
+       * conversion reads it.
+       */
+      unconverted?: Book;
+    };
 
 const unreadableKey = (row: Pick<WireRow, "table" | "id">) =>
   `${row.table} ${row.id}`;
@@ -388,6 +403,8 @@ export function householdLedger(
     )
   )
     ledger = { status: "maintenance", failures };
+  else if (parts.book && lacksPeople(parts.book))
+    ledger = { status: "maintenance", failures, unconverted: parts.book };
   else if (parts.book)
     ledger = {
       status: "ready",
@@ -401,13 +418,15 @@ export function householdLedger(
       rowsIn(household.rows).filter((row) => rowVisibleTo(row, viewerId)),
       viewerId,
     );
-    ledger = {
-      status: "ready",
-      state,
-      budget: state.budget,
-      personal: true,
-      failures,
-    };
+    ledger = state.budget.accounts.some(isLegacyCounterparty)
+      ? { status: "maintenance", failures }
+      : {
+          status: "ready",
+          state,
+          budget: state.budget,
+          personal: true,
+          failures,
+        };
   }
   memo.set(viewerId, ledger);
   return ledger;

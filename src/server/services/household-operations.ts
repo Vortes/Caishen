@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { rowsIn } from "~/domain/change-sets";
 import {
+  AccountingError,
   closePartnerLedger,
   createBook,
   budgetReferenceIssues,
@@ -39,7 +40,7 @@ import {
   type RevisionObserver,
 } from "./household";
 import { domainError, operationHash } from "./safety";
-import { budgetMaintenance } from "./stored-data";
+import { budgetMaintenance, reportUnreadable } from "./stored-data";
 import { readInvitationToJoin } from "./partner-invites";
 
 // The server's household operations outside bank updates: creating a
@@ -107,46 +108,72 @@ export async function onboard(
 }
 
 /**
- * Gives a household's budgets the counterparty accounts and paired
- * envelopes they lack, as one operation; budgets made before these accounts
- * existed get them before their first pull or write. Does nothing while any
- * part of the household doesn't read, and leaves a write race to the next request.
+ * Converts a household's budgets to people (withPeople) as one operation
+ * before their first pull or write after they were stored another way. A
+ * household that can't be converted, or whose budget doesn't read, is left
+ * as it was and shows maintenance. A household where only the partner's
+ * budget doesn't read waits for it. Trying again once covers a write that
+ * got there first.
  */
 export async function addCounterpartyAccounts(
   db: Database,
   userId: string,
   observe?: RevisionObserver,
 ): Promise<{ previousRevision: number; revision: number } | undefined> {
-  if (!(await lacksCounterpartyAccounts(db, userId))) return;
-  const opened = await openHousehold(db, userId, observe);
-  if (!opened) return;
-  const { household, ledger } = opened;
-  if (ledger.status !== "ready" || ledger.personal || ledger.failures.length)
-    return;
-  const book = ledger.state as Book;
-  const changes = diffRows(bookToRows(book), bookToRows(withPeople(book)));
-  if (!changes.after.length) return;
-  const operationId = randomUUID();
-  try {
-    const written = await writeOperation(db, household, {
-      changeSet: { operationId, revision: 0, ...changes },
-      operation: {
-        actorId: userId,
-        source: "user",
-        type: "budget.counterparties",
-        inputHash: operationHash({ operationId }),
-        command: null,
-      },
-    });
-    observe?.(written.revision);
-    return { previousRevision: household.revision, revision: written.revision };
-  } catch (error) {
-    if (!(error instanceof RevisionConflictError)) throw error;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!(await lacksCounterpartyAccounts(db, userId))) return;
+    const opened = await openHousehold(db, userId, observe);
+    if (!opened) return;
+    const { household, ledger } = opened;
+    if (ledger.status === "ready") return;
+    if (!ledger.unconverted) throw budgetMaintenance();
+    const book = ledger.unconverted;
+    let converted: Book;
+    try {
+      converted = withPeople(book);
+    } catch (error) {
+      if (!(error instanceof AccountingError)) throw error;
+      reportUnreadable(
+        { record: "rows", workspaceId: household.workspaceId, userId },
+        [
+          {
+            part: "household",
+            issues: [
+              { path: ["people"], code: "custom", message: error.message },
+            ],
+          },
+        ],
+      );
+      throw budgetMaintenance();
+    }
+    const changes = diffRows(bookToRows(book), bookToRows(converted));
+    const operationId = randomUUID();
+    try {
+      const written = await writeOperation(db, household, {
+        changeSet: { operationId, revision: 0, ...changes },
+        operation: {
+          actorId: userId,
+          source: "user",
+          type: "budget.counterparties",
+          inputHash: operationHash({ operationId }),
+          command: null,
+        },
+      });
+      observe?.(written.revision);
+      return {
+        previousRevision: household.revision,
+        revision: written.revision,
+      };
+    } catch (error) {
+      if (!(error instanceof RevisionConflictError)) throw error;
+    }
   }
+  throw budgetMaintenance();
 }
 
 // Joining merges both whole households, so every part of each must read.
 async function wholeBook(db: Database, userId: string) {
+  await addCounterpartyAccounts(db, userId);
   const household = await households.load(db, userId);
   if (!household)
     throw new TRPCError({

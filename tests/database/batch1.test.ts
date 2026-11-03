@@ -164,6 +164,11 @@ void test("deleting a personal budget erases private data and freezes the partne
       name: "Food",
     });
   }
+  const partnerId = (
+    await owner.api.budget.state({ month })
+  ).view!.accounts.find(
+    (account) => account.linkedUserId === partner.id && !account.closed,
+  )!.id;
   await run(owner.api, {
     type: "transaction.upsert",
     id: randomUUID(),
@@ -173,7 +178,7 @@ void test("deleting a personal budget erases private data and freezes the partne
     date: "2026-10-02",
     payee: "Market",
     categoryId: "food",
-    counterpartyShare: { accountId: "counterparty:partner", amount: 5_000 },
+    counterpartyShare: { accountId: partnerId, amount: 5_000 },
   });
   const before = await partner.api.budget.state({ month });
   assert.equal(

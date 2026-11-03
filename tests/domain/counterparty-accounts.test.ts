@@ -9,7 +9,6 @@ import {
   addMember,
   createBook,
   execute,
-  LINKED_PERSON_ACCOUNT_ID,
   projectBook,
   type Book,
   type Command,
@@ -139,10 +138,6 @@ void test("partners each get a person linked to the other, ahead of everyone els
     accounts: [{ name: "Partner", balance: 0, linkedUserId: "alan" }],
     envelopes: [{ name: "Partner", group: "People", person: "Partner" }],
   });
-  assert.equal(
-    book.budgets.alan!.accounts.find((account) => account.linkedUserId)!.id,
-    LINKED_PERSON_ACCOUNT_ID,
-  );
   assert.deepEqual(withPeople(book), book);
 });
 
@@ -499,7 +494,7 @@ void test("a fully shared recorded partner purchase matches its bank import with
   assert.equal(view.personalSpending, 0);
   assert.equal(view.budget.transactions[0]!.categoryId, undefined);
   assert.equal(
-    view.accounts.find((item) => item.id === LINKED_PERSON_ACCOUNT_ID)!.balance,
+    view.accounts.find((item) => item.linkedUserId === "anna")!.balance,
     1_154,
   );
 });

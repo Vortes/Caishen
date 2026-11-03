@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { addMember, createBook, execute, type Command } from "~/domain/engine";
 import { withPeople } from "~/domain/people";
+import { linkedPersonId } from "../domain/fixtures/people";
 import {
   findToast,
   readyOverview,
@@ -201,7 +202,10 @@ test("an entry you paid opens its transaction from the selection island", async 
     payee: "Dinner",
     categoryId: "household",
     recordedAt: "2026-10-14T12:00:00Z",
-    counterpartyShare: { accountId: "counterparty:partner", amount: 4_000 },
+    counterpartyShare: {
+      accountId: linkedPersonId(book, "owner"),
+      amount: 4_000,
+    },
   });
   const shell = await renderShell({
     book,

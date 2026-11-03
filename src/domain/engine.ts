@@ -1303,9 +1303,7 @@ export function createBook(userId: string, name: string, month: string): Book {
 
 // Every counterparty is a person: one account and one paired envelope in
 // People each. The person linked to the other member of a partnered
-// household is the partner; their ids stay the ones the Partner account
-// always had, so the mirrored ledger keeps finding them.
-export const LINKED_PERSON_ACCOUNT_ID = "counterparty:partner";
+// household is the partner, found by linkedUserId under any id.
 /** A new person's account id. */
 export const personAccountId = (key: string) => `counterparty:person:${key}`;
 /** The paired envelope of a person's account. */

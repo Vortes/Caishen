@@ -3,10 +3,12 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import nextEnv from "@next/env";
 import {
+  addMember,
   createBook,
   execute,
   executeWithChanges,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
 import { bookToRows, tombstone, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
 import {
@@ -100,6 +102,14 @@ function people(rows: WireRow[]) {
   };
 }
 
+// The id of the account linked to a member, among a budget's rows.
+const linkedAccountId = (rows: WireRow[], userId: string) => {
+  const row = rows.find(
+    (row) => row.table === "account" && row.data?.linkedUserId === userId,
+  );
+  return row?.table === "account" ? row.data?.id : undefined;
+};
+
 const onboard = (who: Member, name: string) =>
   who.api.budget.onboard({ name, month, timezone: "America/Los_Angeles" });
 
@@ -153,11 +163,13 @@ void test("joining a partner gives each budget the person linked to the other an
   for (const [who, other] of [
     [alan, anna.userId],
     [anna, alan.userId],
-  ] as const)
-    assert.deepEqual(people((await pullAll(who)).rows), {
+  ] as const) {
+    const { rows } = await pullAll(who);
+    assert.deepEqual(people(rows), {
       accounts: [`person Partner ${other}`],
-      envelopes: [["Partner", "counterparty:partner"]],
+      envelopes: [["Partner", linkedAccountId(rows, other)]],
     });
+  }
   // The partner account goes by the partner's first name.
   await db.user.update({
     where: { clerkUserId: anna.userId },
@@ -548,4 +560,139 @@ void test("a legacy budget can undo its previous user change before pulling with
   assert.ok(
     !state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
+});
+
+void test("a budget whose Reimbursements entries can't be converted shows maintenance and stays as it was stored", async () => {
+  const ari = await member("Ari");
+  let book = withPerson(
+    createBook(ari.userId, "Ari", month),
+    ari.userId,
+    "Mom",
+  );
+  book = execute(book, ari.userId, {
+    type: "account.add",
+    id: randomUUID(),
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+  });
+  for (const [transactionId, day] of [
+    ["lunch", "05"],
+    ["dinner", "06"],
+  ] as const)
+    book = execute(book, ari.userId, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId,
+      accountId: "checking",
+      date: `2026-10-${day}`,
+      amount: -2_000,
+      payee: "Lunch",
+      counterpartyShare: { accountId: personId("Mom"), amount: 2_000 },
+      recordedAt: `2026-10-${day}T12:00:00Z`,
+    });
+  const legacy = asLegacyReimbursements(book, ari.userId);
+  // One entry spells Mom another way, so which person it names is unclear.
+  legacy.budgets[ari.userId]!.transactions.find(
+    (transaction) => transaction.id === "dinner",
+  )!.counterpartyShare!.counterpartyName = "mom";
+  workspaceIds.push(await createHousehold(db, legacy));
+
+  await assert.rejects(() => pullAll(ari), /maintenance/);
+  const state = await ari.api.budget.state({ month });
+  assert.deepEqual([state.status, state.revision], ["maintenance", 1]);
+  await assert.rejects(() => pullAll(ari), /maintenance/);
+});
+
+void test("a partner budget whose linked person is linked to its own member shows maintenance instead of being relinked", async () => {
+  const host = await member("SelfHost");
+  const guest = await member("SelfGuest");
+  const book = withPeople(
+    addMember(
+      createBook(host.userId, "Host", month),
+      guest.userId,
+      "Guest",
+      month,
+    ),
+  );
+  const budget = book.budgets[guest.userId]!;
+  budget.accounts = budget.accounts.map((account) =>
+    account.linkedUserId ? { ...account, linkedUserId: guest.userId } : account,
+  );
+  workspaceIds.push(await createHousehold(db, book));
+
+  for (const who of [host, guest])
+    await assert.rejects(() => pullAll(who), /maintenance/);
+});
+
+void test("a linked person missing their paired envelope gets it back on load, once", async () => {
+  const host = await member("EnvelopeHost");
+  const guest = await member("EnvelopeGuest");
+  const book = withPeople(
+    addMember(
+      createBook(host.userId, "Host", month),
+      guest.userId,
+      "Guest",
+      month,
+    ),
+  );
+  const budget = book.budgets[guest.userId]!;
+  budget.categories = budget.categories.filter(
+    (category) => !category.counterpartyAccountId,
+  );
+  workspaceIds.push(await createHousehold(db, book));
+
+  const first = await pullAll(guest);
+  assert.deepEqual(people(first.rows), {
+    accounts: [`person Partner ${host.userId}`],
+    envelopes: [["Partner", linkedAccountId(first.rows, host.userId)]],
+  });
+  const again = await pullAll(guest, first.revision);
+  assert.deepEqual([again.revision, again.rows], [first.revision, []]);
+});
+
+void test("undo cannot restore the legacy account format after the people upgrade", async () => {
+  const sam = await member("UpgradeUndo");
+  workspaceIds.push(await createHousehold(db, legacyBook(sam.userId, "Sam")));
+  const first = await pullAll(sam, 1);
+  assert.equal(first.confirmedOperationIds?.length, 1);
+
+  await assert.rejects(
+    () =>
+      sam.api.budget.execute({
+        clientId: "test",
+        baseRevision: first.revision,
+        command: {
+          type: "revert",
+          id: randomUUID(),
+          targetOperationId: first.confirmedOperationIds[0]!,
+        },
+      }),
+    /budget upgrade can't be undone/,
+  );
+  const again = await pullAll(sam, first.revision);
+  assert.deepEqual([again.revision, again.rows], [first.revision, []]);
+});
+
+void test("joining converts a legacy host budget even before the host's next pull", async () => {
+  const host = await member("LegacyHost");
+  const guest = await member("LegacyGuest");
+  workspaceIds.push(await createHousehold(db, legacyBook(host.userId, "Host")));
+  await onboard(guest, "Guest");
+
+  await guest.api.budget.joinInvitation({
+    id: await invitationFrom(db, host.userId),
+  });
+
+  for (const [who, other] of [
+    [host, guest.userId],
+    [guest, host.userId],
+  ] as const) {
+    const loaded = await pullAll(who);
+    assert.deepEqual(people(loaded.rows), {
+      accounts: [`person Partner ${other}`],
+      envelopes: [["Partner", linkedAccountId(loaded.rows, other)]],
+    });
+  }
 });

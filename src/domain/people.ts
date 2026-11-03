@@ -1,9 +1,9 @@
-import { shareContribution } from "./counterparty";
 import {
   AccountingError,
-  LINKED_PERSON_ACCOUNT_ID,
   PEOPLE_GROUP,
   isCounterparty,
+  isLegacyCounterparty,
+  isLinkedPerson,
   personAccountId,
   personEnvelopeId,
   type Account,
@@ -59,8 +59,10 @@ export function personNamed(
 /**
  * The book with every budget's counterparties as people: legacy accounts
  * converted, and the partner's linked person added once the household has
- * two members. Adds or converts only what is missing, so it runs on every
- * load and when a budget is created or a partner joins.
+ * two members, under an id of its own (`counterparty:person:linked-<user>`).
+ * Adds or converts only what is missing, so it runs on every load and when
+ * a budget is created or a partner joins. What it can't convert without a
+ * guess it refuses with an AccountingError, changing nothing.
  */
 export function withPeople(book: Book): Book {
   const result = structuredClone(book);
@@ -69,90 +71,108 @@ export function withPeople(book: Book): Book {
     const other = members.find((id) => id !== budget.userId);
     migrateLegacyCounterparties(budget, other);
     if (members.length === 2 && other) ensureLinkedPerson(budget, other);
+    else if (budget.accounts.some(isLinkedPerson))
+      throw new AccountingError(
+        "A linked person is stored in a budget without a partner",
+      );
   }
   return result;
 }
 
-/** Whether withPeople would change the book. */
+/** Whether withPeople would change the book, or refuse it. */
 export function lacksPeople(book: Book): boolean {
   const members = Object.keys(book.budgets);
-  return Object.values(book.budgets).some(
-    (budget) =>
-      budget.accounts.some(
-        (account) =>
-          account.kind === "partner" ||
-          account.kind === "reimbursements" ||
-          account.kind === "former-partner",
-      ) ||
-      (members.length === 2 &&
-        !budget.accounts.some(
-          (account) =>
-            account.id === LINKED_PERSON_ACCOUNT_ID &&
-            account.kind === "person" &&
-            account.linkedUserId &&
-            members.includes(account.linkedUserId),
-        )),
-  );
+  return Object.values(book.budgets).some((budget) => {
+    if (budget.accounts.some(isLegacyCounterparty)) return true;
+    const linked = budget.accounts.filter(isLinkedPerson);
+    const other = members.find((id) => id !== budget.userId);
+    if (members.length !== 2 || !other) return linked.length > 0;
+    return (
+      linked.length !== 1 ||
+      linked[0]!.linkedUserId !== other ||
+      envelopesOf(budget, linked[0]!.id).length !== 1
+    );
+  });
 }
 
+// The partner is whoever is linked to the other member, under any id. A
+// budget linked to anyone else, or to them twice, is refused rather than
+// relinked, so no money moves to a different person.
 function ensureLinkedPerson(budget: Budget, linkedUserId: string): void {
-  const accountId = LINKED_PERSON_ACCOUNT_ID;
-  const existing = budget.accounts.find((account) => account.id === accountId);
-  if (existing && existing.kind !== "person")
+  const linked = budget.accounts.filter(isLinkedPerson);
+  if (
+    linked.length > 1 ||
+    linked.some((account) => account.linkedUserId !== linkedUserId)
+  )
     throw new AccountingError(
-      "A budget account already uses the partner's account ID",
+      "A budget's linked person isn't the other member of its household",
     );
-  if (existing) existing.linkedUserId = linkedUserId;
-  else {
-    // The partner goes ahead of everyone else.
-    const first = budget.accounts.findIndex(isCounterparty);
-    budget.accounts.splice(first < 0 ? budget.accounts.length : first, 0, {
-      id: accountId,
-      name: "Partner",
-      kind: "person",
-      openingBalance: 0,
-      date: `${budget.startMonth}-01`,
-      linkedUserId,
-    });
+  if (linked[0]) {
+    ensureEnvelope(budget, linked[0].id, linked[0].name);
+    return;
   }
+  let accountId = personAccountId(`linked-${linkedUserId}`);
+  for (let n = 2; budget.accounts.some((item) => item.id === accountId); n++)
+    accountId = personAccountId(`linked-${linkedUserId}-${n}`);
+  // The partner goes ahead of everyone else.
+  const first = budget.accounts.findIndex(isCounterparty);
+  budget.accounts.splice(first < 0 ? budget.accounts.length : first, 0, {
+    id: accountId,
+    name: "Partner",
+    kind: "person",
+    openingBalance: 0,
+    date: `${budget.startMonth}-01`,
+    linkedUserId,
+  });
   ensureEnvelope(budget, accountId, "Partner");
 }
 
+const envelopesOf = (budget: Budget, accountId: string) =>
+  budget.categories.filter(
+    (category) => category.counterpartyAccountId === accountId,
+  );
+
 function ensureEnvelope(budget: Budget, accountId: string, name: string) {
+  const envelopes = envelopesOf(budget, accountId);
+  if (envelopes.length > 1)
+    throw new AccountingError("A person has more than one paired envelope");
+  if (envelopes.length) return;
   const envelopeId = personEnvelopeId(accountId);
-  const envelope = budget.categories.find((item) => item.id === envelopeId);
-  if (envelope && envelope.counterpartyAccountId !== accountId)
+  if (budget.categories.some((item) => item.id === envelopeId))
     throw new AccountingError("A category already uses a paired envelope's ID");
-  if (!envelope)
-    budget.categories.push({
-      id: envelopeId,
-      name,
-      group: PEOPLE_GROUP,
-      counterpartyAccountId: accountId,
-    });
+  budget.categories.push({
+    id: envelopeId,
+    name,
+    group: PEOPLE_GROUP,
+    counterpartyAccountId: accountId,
+  });
 }
 
 /**
  * Converts one budget's legacy counterparty accounts. The Partner account
- * becomes the linked person and a former partner's an unlinked, closed
- * person, both keeping their ids. Each name the Reimbursements account's
- * entries used, trimmed and compared without case, becomes a person with
- * their shares, repayments, and remembered shares; the Reimbursements
- * account and its envelope go. Its float moves, every month of it, to the
- * person who owes you most, so no month's Ready to Assign changes; with
- * nobody to move it to, it returns to Ready to Assign.
+ * becomes the person linked to the other member and a former partner's an
+ * unlinked, closed person, both keeping their ids. Each name the
+ * Reimbursements account's entries used becomes a person with their shares,
+ * repayments, share history, and remembered shares; the Reimbursements
+ * account and its envelope go, and its float moves, every month of it, to
+ * that person's envelope, so no month's Ready to Assign changes. Only the
+ * shapes stored budgets are known to hold convert: an entry without a name,
+ * a name spelled two ways, a float more than one person or nobody could
+ * hold, or a Partner account without a partner is refused, and the budget
+ * stays as it was.
  */
 function migrateLegacyCounterparties(
   budget: Budget,
   linkedUserId: string | undefined,
 ): void {
   budget.accounts = budget.accounts.map((account) => {
-    if (account.kind === "partner")
-      return {
-        ...account,
-        kind: "person",
-        ...(linkedUserId ? { linkedUserId } : {}),
-      };
+    if (account.kind === "partner") {
+      if (!linkedUserId)
+        throw new AccountingError(
+          "A Partner account is stored in a budget without a partner",
+        );
+      return { ...account, kind: "person", linkedUserId };
+    }
     if (account.kind === "former-partner")
       return { ...account, kind: "person" };
     return account;
@@ -166,21 +186,36 @@ function migrateLegacyCounterparties(
   );
 
   // Every name, in the order the entries first used it.
-  type Person = { key: string; name: string; id: string; owed: number };
+  type Person = { name: string; spelling: string; id: string };
   const people = new Map<string, Person>();
   const taken = new Set(budget.accounts.map((account) => account.id));
   const personFor = (name: string | undefined): Person => {
-    // A share stored without a name still needs someone to owe it.
-    const trimmed = name?.trim().replace(/\s+/g, " ");
-    const shown = trimmed?.length ? trimmed : "Someone";
+    const shown = name?.trim().replace(/\s+/g, " ");
+    if (!shown)
+      throw new AccountingError(
+        "A Reimbursements entry is stored without a name",
+      );
     const key = personKey(shown);
     let person = people.get(key);
+    if (person && person.spelling !== name)
+      throw new AccountingError(
+        "Reimbursements entries name one person spelled more than one way",
+      );
     if (!person) {
+      if (
+        budget.accounts.some(
+          (account) =>
+            isCounterparty(account) && personKey(account.name) === key,
+        )
+      )
+        throw new AccountingError(
+          "Reimbursements entries name someone who is already a person",
+        );
       let id = personAccountId(slug(shown));
       for (let n = 2; taken.has(id); n++)
         id = personAccountId(`${slug(shown)}-${n}`);
       taken.add(id);
-      person = { key, name: shown, id, owed: 0 };
+      person = { name: shown, spelling: name!, id };
       people.set(key, person);
     }
     return person;
@@ -189,17 +224,11 @@ function migrateLegacyCounterparties(
     a.date.localeCompare(b.date),
   );
   for (const transaction of transactions) {
-    if (transaction.linkedCounterpartyAccountId === legacy.id) {
-      const person = personFor(transaction.counterpartyName);
-      if (!transaction.removed) person.owed -= transaction.amount;
-    }
-    for (const line of transaction.lines ?? [transaction]) {
-      const share = line.counterpartyShare;
-      if (share?.accountId !== legacy.id) continue;
-      const person = personFor(share.counterpartyName);
-      if (!transaction.removed)
-        person.owed += shareContribution(line.amount, share);
-    }
+    if (transaction.linkedCounterpartyAccountId === legacy.id)
+      personFor(transaction.counterpartyName);
+    for (const line of transaction.lines ?? [transaction])
+      if (line.counterpartyShare?.accountId === legacy.id)
+        personFor(line.counterpartyShare.counterpartyName);
     for (const change of transaction.history)
       for (const share of change.shareChanges ?? [])
         for (const side of [share.previous, share.next])
@@ -249,12 +278,6 @@ function migrateLegacyCounterparties(
       Object.entries(budget.payeeMemory).flatMap(([key, memory]) => {
         const share = memory.counterpartyShare;
         if (!share) return [[key, memory]];
-        if (share.accountId === legacy.id && !share.counterpartyName?.trim()) {
-          if (memory.kind === "share") return [];
-          const kept = { ...memory };
-          delete kept.counterpartyShare;
-          return [[key, kept]];
-        }
         return [[key, { ...memory, counterpartyShare: point(share) }]];
       }),
     );
@@ -283,17 +306,17 @@ function migrateLegacyCounterparties(
   else budget.categories.splice(envelopeAt, 1, ...envelopes);
 
   if (envelope) {
-    // Ties go to whoever came first.
-    const heir = created.reduce<Person | undefined>(
-      (best, person) => (!best || person.owed > best.owed ? person : best),
-      undefined,
+    const float = budget.assignments.some(
+      (assignment) => assignment.categoryId === envelope.id,
     );
-    budget.assignments = budget.assignments.flatMap((assignment) =>
-      assignment.categoryId !== envelope.id
-        ? [assignment]
-        : heir
-          ? [{ ...assignment, categoryId: personEnvelopeId(heir.id) }]
-          : [],
+    if (float && created.length !== 1)
+      throw new AccountingError(
+        "A Reimbursements float needs exactly one person to hold it",
+      );
+    budget.assignments = budget.assignments.map((assignment) =>
+      assignment.categoryId === envelope.id
+        ? { ...assignment, categoryId: personEnvelopeId(created[0]!.id) }
+        : assignment,
     );
   }
 }
