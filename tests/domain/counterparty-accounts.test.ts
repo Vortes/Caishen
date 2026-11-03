@@ -435,52 +435,6 @@ void test("a fully reimbursable payee remembers the person without a purpose cat
   );
 });
 
-void test("a fully shared recorded partner purchase matches its bank import without a payer category", () => {
-  let book = withCounterpartyAccounts(
-    addMember(createBook("alan", "Alan", month), "anna", "Anna", month),
-  );
-  book = execute(book, "alan", {
-    type: "account.add",
-    id: "cash",
-    accountId: "cash",
-    name: "Checking",
-    kind: "cash",
-    openingBalance: 100_000,
-  });
-  book = execute(book, "alan", {
-    type: "partner.record",
-    id: "record",
-    entryId: "dinner",
-    payerId: "alan",
-    date: "2026-10-05",
-    payee: "Noodles Plus",
-    amount: 1_154,
-    share: 1_154,
-    recordedAt: "2026-10-05T12:00:00Z",
-  });
-  book = execute(book, "alan", {
-    type: "partner.match",
-    id: "match",
-    entryId: "dinner",
-    transactionId: "bank",
-    accountId: "cash",
-    date: "2026-10-05",
-    amount: -1_154,
-    status: "posted",
-    recordedAt: "2026-10-05T12:00:00Z",
-  });
-  const view = projectBook(book, "alan", month);
-  assert.equal(view.personalSpending, 0);
-  assert.equal(
-    view.budget.transactions.find(({ id }) => id === "bank")!.categoryId,
-    undefined,
-  );
-  assert.equal(
-    view.accounts.find((item) => item.kind === "partner")!.balance,
-    1_154,
-  );
-});
-
 void test("a bank amount update keeps a category-free purchase fully reimbursable", () => {
   const budget = solo();
   const purchase = {

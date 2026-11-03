@@ -202,7 +202,7 @@ void test("card balances include unreviewed posted payments while untouched pend
   assert.equal(card.uncleared, 0);
 });
 
-void test("already recorded activity and uncertain matches never count twice before the inbox refreshes", () => {
+void test("already recorded activity never counts twice before the inbox refreshes", () => {
   for (const providerId of [undefined, "provider-purchase"]) {
     const { run, data } = setup();
     run({
@@ -223,25 +223,6 @@ void test("already recorded activity and uncertain matches never count twice bef
       98_000,
     );
   }
-  const { data } = setup();
-  const possiblePartnerMatch = bankImport({
-    partnerMatches: [
-      {
-        entryId: "recorded-purchase",
-        date: "2026-10-20",
-        payee: "New merchant",
-        amount: 2_000,
-        share: 1_000,
-        payeesAlike: true,
-      },
-    ],
-  });
-  assert.equal(
-    data(month, month, [possiblePartnerMatch]).accounts.find(
-      ({ id }) => id === "checking",
-    )!.balance,
-    100_000,
-  );
 });
 
 void test("each account signals its own review work, while untouched pending imports have no review dot", () => {

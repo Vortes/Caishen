@@ -22,7 +22,6 @@ import { Register } from "~/components/ui/register";
 import { Popover } from "~/components/ui/popover";
 import { SearchList, type SearchListOption } from "~/components/ui/search-list";
 import { money, shortDay, type Account } from "./model";
-import { RecordPurchase } from "./partner-record";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
@@ -135,7 +134,6 @@ export function PartnerSummary({ account }: { account: Account }) {
           )}
         </dl>
         <div className={styles.summaryActions}>
-          <RecordPurchase account={account} />
           {account.balance > 0 ? (
             <RequestPopover account={account} />
           ) : account.balance < 0 ? (
@@ -367,14 +365,9 @@ function PayPopover({ account }: { account: Account }) {
 }
 
 // Whether you can give an entry your own category: your side of what your
-// partner paid, or of what you paid before its import arrives. A matched
-// import of yours carries its own category.
+// partner paid. What you paid carries its transaction's category.
 function categorizable(row: Row, you: string, closed: boolean) {
-  return (
-    !closed &&
-    Boolean(row.entryId) &&
-    (row.payerId !== you || Boolean(row.awaitingImport))
-  );
+  return !closed && Boolean(row.entryId) && row.payerId !== you;
 }
 
 type EditorField = "category" | "amount";
@@ -494,14 +487,6 @@ export function PartnerRegister({
           <span className={`${styles.truncate} ${local.payeeName}`}>
             {payee(row)}
           </span>
-          {row.awaitingImport && (
-            <LinkIcon
-              size={12}
-              className={styles.inlineIcon}
-              role="img"
-              aria-label="Waiting for a bank import to match"
-            />
-          )}
         </>
       ),
       category: row.needsCategory ? (
@@ -512,8 +497,6 @@ export function PartnerRegister({
         ) : (
           <span className={styles.faint}>Settlement</span>
         )
-      ) : row.awaitingImport && row.payerId === view.budget.userId ? (
-        <span className={styles.faint}>Waiting for your import</span>
       ) : row.kind === "repayment" ? (
         <span className={styles.faint}>Repayment</span>
       ) : row.you === 0 ? (
@@ -879,9 +862,7 @@ function EntryEditor({
         entryId: row.entryId!,
         categoryId,
       },
-      paid
-        ? `Your import of ${row.payee} will go in ${label}. Only you see that.`
-        : `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
+      `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
     );
   };
   const saveShare = (cents: number) => {
@@ -935,9 +916,7 @@ function EntryEditor({
       ? row.shareMode.reason
       : categoryEditable && row.needsCategory && categoryId
         ? `Filled in from ${row.payee} last time. Only you see your category.`
-        : categoryEditable && paid
-          ? "Your import takes this category when it arrives. Only you see it."
-          : undefined;
+        : undefined;
   const editable = shareEditable || categoryEditable;
   return (
     <EditorForm

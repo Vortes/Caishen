@@ -49,9 +49,7 @@ import {
   type SearchListOption,
 } from "~/components/ui/search-list";
 import { TextInput } from "~/components/ui/text-input";
-import { partnerMatchesOf } from "~/components/transactions/import-draft";
 import { money } from "./model";
-import { PartnerMatches } from "./partner-match";
 import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { ShareLabel, ShareMenu } from "./share-field";
@@ -125,7 +123,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   });
 
   const account = view.accounts.find((item) => item.id === draft.accountId);
-  const matches = session.imported ? partnerMatchesOf(session.imported) : [];
   const adjustment = initial?.kind === "adjustment";
   const destinations = adjustment ? [] : paymentPayees(view, draft);
   const destination = destinations.find((item) =>
@@ -592,19 +589,9 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           Save and add another
         </Button>
       )}
-      {matches.length ? (
-        <Button
-          size="sm"
-          disabled={removed}
-          onClick={() => entry.submit(false)}
-        >
-          Save as new
-        </Button>
-      ) : (
-        <Button variant="primary" size="sm" type="submit" disabled={removed}>
-          Save
-        </Button>
-      )}
+      <Button variant="primary" size="sm" type="submit" disabled={removed}>
+        Save
+      </Button>
     </>
   );
 
@@ -764,18 +751,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     <EditorForm
       id={formId}
       title={title}
-      onSubmit={() => {
-        // Enter matches an import to the one purchase it may be; with
-        // several, the payer picks one.
-        const [only] = matches;
-        if (only && matches.length === 1) entry.matchImport(only);
-        else if (matches.length)
-          document
-            .getElementById(formId)
-            ?.querySelector<HTMLElement>("[data-partner-match]")
-            ?.focus();
-        else void entry.submit(false);
-      }}
+      onSubmit={() => void entry.submit(false)}
       onCancel={entry.cancel}
     >
       {notice}
@@ -883,7 +859,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           </p>
         </div>
       )}
-      {matches.length > 0 && <PartnerMatches matches={matches} />}
       <EditorFooter actions={actions}>
         {remembered && (
           <span className={shareStyles.footerHint}>

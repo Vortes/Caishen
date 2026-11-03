@@ -407,7 +407,6 @@ async function prepareDuplicateBankRepair(
     bankInboxItems(
       sameConnection ? [retired] : [retired, replacement],
       budget,
-      opened.ledger.state,
     ).some((item) =>
       (sameConnection ? removedIds : affected).has(
         item.accountId ?? item.loanId ?? "",
@@ -1062,7 +1061,6 @@ export async function setupBankAccounts(
             readyConnection(connections[index]!, imports),
           ),
           budget,
-          ledger.state,
         );
         if (outstanding.some((item) => item.accountId === existing.id))
           throw new Error(

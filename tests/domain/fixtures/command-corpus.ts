@@ -464,38 +464,24 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     effectiveDate: "2026-01-01",
   });
   jordan({ type: "loan.reorder", loanIds: ["boat", "bike"] });
-  alex({
-    type: "partner.record",
-    entryId: "shared-market",
-    recordedAt: "2026-01-20T12:00:00Z",
-    payerId: "alex",
-    date: "2026-01-20",
-    payee: "Market",
-    amount: 4_000,
-    share: 2_000,
-    categoryId: "food",
-  });
+  alex(
+    purchase("market", -4_000, "food", {
+      recordedAt: "2026-01-20T12:00:00Z",
+      date: "2026-01-20",
+      payee: "Market",
+      counterpartyShare: { accountId: "counterparty:partner", amount: 2_000 },
+    }),
+  );
   jordan({
     type: "partner.categorize",
-    entryId: "shared-market",
+    entryId: "alex:market:market",
     categoryId: "household",
   });
   jordan({
     type: "partner.edit",
-    entryId: "shared-market",
+    entryId: "alex:market:market",
     share: 1_500,
     recordedAt: "2026-01-20T13:00:00Z",
-  });
-  alex({
-    type: "partner.match",
-    recordedAt: "2026-01-20T14:00:00Z",
-    entryId: "shared-market",
-    transactionId: "market-import",
-    accountId: "checking",
-    date: "2026-01-20",
-    amount: -4_000,
-    status: "posted",
-    providerId: "market-bank-import",
   });
   alex({
     type: "partner.request",

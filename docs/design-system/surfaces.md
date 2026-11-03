@@ -80,7 +80,7 @@ the occasional row:
 
 | Frequency                    | Surfaces                                                                                                                                                                                                                                                         | `motion`             |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| Frequent work                | Ready to Assign, move money / cover overspending, create category/group, target behavior, reconcile, transaction entry and sharing, bulk categorizing/sharing, record purchases/repayments, request/pay partner, month picker, Reflect filters and chart details | `frequent` (default) |
+| Frequent work                | Ready to Assign, move money / cover overspending, create category/group, target behavior, reconcile, transaction entry and sharing, bulk categorizing/sharing, record repayments, request/pay partner, month picker, Reflect filters and chart details | `frequent` (default) |
 | Occasional secondary actions | Profile, Banks, bank options, bank status, Add account                                                                                                                                                                                                           | `occasional`         |
 
 A new surface is frequent unless its frequency justifies opting in. Inside

@@ -79,9 +79,8 @@ report by Categories or Groups. When each option shows different content,
 use `Tabs`.
 
 Always controlled with `value` and `onValueChange`. Standing alone it has
-no visible label, so name it with `aria-label`. As a question in a form
-("Who paid" in `partner-record.tsx`), put it in a
-[`Field`](fields.md#field): the field's label names it and its hint or
+no visible label, so name it with `aria-label`. As a question in a form,
+put it in a [`Field`](fields.md#field): the field's label names it and its hint or
 error describes it, so it takes no `aria-label`.
 
 ```tsx
@@ -105,9 +104,8 @@ error describes it, so it takes no `aria-label`.
 
 `fill` spans the control across its container, its segments sharing the
 width. Use it only where the choice leads a form in a narrow panel (a
-target's Schedule in `target-editor.tsx`, "Who paid" in
-`partner-record.tsx`), so every option stays visible as the panel narrows.
-Everywhere else it takes its natural width.
+target's Schedule in `target-editor.tsx`), so every option stays visible
+as the panel narrows. Everywhere else it takes its natural width.
 
 ## Tabs
 

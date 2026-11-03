@@ -30,7 +30,6 @@ export type BankInboxItem = {
   payee?: string;
   error?: string | null;
   needsMatchReview?: boolean;
-  partnerMatches?: readonly unknown[];
 };
 
 function bankImportActionIssue(
@@ -343,7 +342,7 @@ export function classifyRegisterEntry(
       !record.ok
         ? record.reason
         : (item.error ??
-            (item.needsMatchReview || item.partnerMatches?.length
+            (item.needsMatchReview
               ? "Review the possible match before recording this bank activity"
               : null)),
     );
@@ -365,8 +364,7 @@ export function classifyRegisterEntry(
           record.ok &&
           (account?.kind === "cash" || account?.kind === "credit") &&
           !item.error &&
-          !item.needsMatchReview &&
-          !item.partnerMatches?.length
+          !item.needsMatchReview
             ? record
             : unavailable,
         record,
@@ -376,7 +374,6 @@ export function classifyRegisterEntry(
           (account?.kind === "cash" || account?.kind === "credit") &&
           !item.error &&
           !item.needsMatchReview &&
-          !item.partnerMatches?.length &&
           (item.amount < 0 ||
             (item.amount > 0 &&
               Boolean(item.categoryId) &&

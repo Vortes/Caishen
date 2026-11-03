@@ -35,7 +35,6 @@ export type BalanceImport = {
   needsMatchReview: boolean;
   error: string | null;
   quarantined: boolean;
-  partnerMatches?: readonly unknown[];
   history: readonly {
     before: { providerTransactionId: string } | null;
     after: { providerTransactionId: string } | null;
@@ -73,7 +72,6 @@ export function balanceImports(
       !item.needsMatchReview &&
       !item.quarantined &&
       !item.error &&
-      !item.partnerMatches?.length &&
       !recorded &&
       item.date <= cutoff
     );

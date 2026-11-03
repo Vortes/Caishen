@@ -29,8 +29,6 @@ export function prepareUserCommand(
     "counterparty.receive",
     "partner.edit",
     "partner.request",
-    "partner.record",
-    "partner.match",
     "account.add",
   ].includes(command.type);
   const date =
@@ -49,8 +47,6 @@ export function prepareUserCommand(
     command.type === "partner.edit" ||
     command.type === "partner.settlement.confirm" ||
     command.type === "partner.settlement.reject" ||
-    command.type === "partner.record" ||
-    command.type === "partner.match" ||
     command.type === "transaction.merge" ||
     command.type === "transaction.remove" ||
     command.type === "transaction.reject" ||
