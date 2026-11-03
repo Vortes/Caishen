@@ -1698,13 +1698,12 @@ void test("refund-backed cash can fund a purchase on a different card without du
 });
 
 void test("funding a payoff target meets this month without changing the month's original requirement", () => {
-  const setup = fixture(500_000, "2026-09");
+  const setup = fixture();
   setup.run({
     type: "account.add",
     accountId: "card",
     name: "Card",
     kind: "credit",
-    date: "2026-09-01",
     openingBalance: -120_000,
   });
   setup.run({
@@ -2538,6 +2537,38 @@ void test("a balance adjustment cannot become categorized spending or a payment 
       () => setup.run({ ...edit, ...change }),
       /balance adjustment/i,
     );
+});
+
+void test("a positive card Starting Balance funds same-day spending as cash", () => {
+  const setup = fixture(10_000);
+  setup.run({
+    type: "account.add",
+    accountId: "card",
+    name: "Card",
+    kind: "credit",
+    openingBalance: 10_000,
+    date,
+  });
+  setup.run({
+    type: "transaction.upsert",
+    transactionId: "same-day-purchase",
+    accountId: "card",
+    date,
+    amount: -2000,
+    payee: "Market",
+    categoryId: "food",
+  });
+  const view = setup.view();
+  assert.equal(
+    view.accounts.find((account) => account.id === "card")!.balance,
+    8000,
+  );
+  assert.equal(
+    view.categories.find((category) => category.id === "food")!
+      .cashOverspending,
+    2000,
+  );
+  assert.equal(view.readyToAssign, 20_000);
 });
 
 void test("accounts record Starting Balances once, and their adjustments can move earlier, change and be removed", () => {

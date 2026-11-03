@@ -1677,7 +1677,8 @@ type Materialized = {
 // month touches only its own rows, with ID lookups that keep the first match
 // as a list search would.
 type MonthRows = {
-  // Same-day outflows precede inflows; IDs only break ties within each side.
+  // Balance adjustments establish the day's balance before activity spends
+  // it. Other same-day outflows precede inflows; IDs break remaining ties.
   transactions: Transaction[];
   assignments: Assignment[];
   // The partner's ledger entries dated in the month, by date and then ID,
@@ -1727,6 +1728,7 @@ function indexReplay(book: AccountingState, budget: Budget): ReplayIndex {
     transactions.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
+        Number(b.kind === "adjustment") - Number(a.kind === "adjustment") ||
         Math.sign(a.amount) - Math.sign(b.amount) ||
         a.id.localeCompare(b.id),
     );
@@ -2523,7 +2525,7 @@ function targetProgress(
   currentMonth: string,
   snapshots: Map<string, Map<string, CategoryMonth>>,
   balance: number,
-  startingBalance: number,
+  payoffBalance: number,
   loan?: Loan,
 ): TargetProgress {
   const snoozed = target.snoozedMonths.includes(month);
@@ -2627,7 +2629,7 @@ function targetProgress(
     total = Math.max(0, -balance);
     funded = Math.max(0, state.available);
     const required = Math.ceil(
-      Math.max(0, -startingBalance - state.opening) / monthsRemaining,
+      Math.max(0, -payoffBalance - state.opening) / monthsRemaining,
     );
     return {
       needed: Math.max(0, required - state.assigned),
@@ -2785,6 +2787,20 @@ function projectAccountingState(
     activity,
   );
   const cutoff = endOf(month);
+  // Adjustments correct existing debt, including debt first entered this
+  // month. They belong in the payoff target without treating new purchases
+  // or payments as changes to the month's original requirement.
+  const payoffBalances = new Map(calculated.startingBalances);
+  for (const transaction of budget.transactions)
+    if (
+      active(transaction) &&
+      transaction.kind === "adjustment" &&
+      monthOf(transaction.date) === month
+    )
+      payoffBalances.set(
+        transaction.accountId,
+        safe(payoffBalances.get(transaction.accountId)! + transaction.amount),
+      );
   const personalSpending = sum(
     personalSpendingEntries(book, userId)
       .filter((entry) => entry.month === month)
@@ -2841,7 +2857,7 @@ function projectAccountingState(
                 ? calculated.accounts.get(category.pairedAccountId)!.balance
                 : 0,
               category.pairedAccountId
-                ? calculated.startingBalances.get(category.pairedAccountId)!
+                ? payoffBalances.get(category.pairedAccountId)!
                 : 0,
               category.pairedLoanId
                 ? budget.loans.find((loan) => loan.id === category.pairedLoanId)
