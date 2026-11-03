@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "~/generated/prisma";
 import { bookToRows, rowKey, rowsToBook } from "~/domain/rows";
-import { operationHash } from "~/server/services/safety";
+import { commandHash, operationHash } from "~/server/services/safety";
+import { invitationToken } from "~/server/services/partner-invites";
+import { importStateRows } from "~/server/services/bank-import-rows";
+import {
+  buildDevelopmentSeedBanks,
+  developmentSeedConnectionIds,
+} from "./seed-banks";
 import {
   forgetOperations,
   loadRows,
@@ -10,7 +16,11 @@ import {
   replaceRows,
   resetHouseholdRows,
 } from "~/server/storage/rows";
-import { buildDevelopmentSeed, developmentToday } from "./seed-scenarios";
+import {
+  buildDevelopmentSeed,
+  developmentToday,
+  type DevelopmentSeedScenario,
+} from "./seed-scenarios";
 import {
   assertDevelopmentDatabase,
   type EndpointLookup,
@@ -55,6 +65,7 @@ export type SeedDatabaseOptions = {
   asOf?: string;
   activate?: boolean;
   reset?: boolean;
+  scenario?: DevelopmentSeedScenario;
 };
 
 export function developmentSeedArchiveId(userId: string) {
@@ -91,11 +102,8 @@ export async function seedDevelopmentDatabase(
   const asOf = options.asOf ?? developmentToday();
   if (asOf > developmentToday())
     throw new Error("Seed activity cannot be dated in the future.");
-  const seed = buildDevelopmentSeed({ ...identity, asOf });
   const userIds = [identity.userId, identity.partnerId];
-  const connectionIds = userIds.map(
-    (_, index) => `${identity.workspaceId}:bank:${index}`,
-  );
+  const connectionIds = developmentSeedConnectionIds(identity.workspaceId);
   return seedTransaction(db, async (tx) => {
     const existing = await tx.workspace.findUnique({
       where: { id: identity.workspaceId },
@@ -106,8 +114,8 @@ export async function seedDevelopmentDatabase(
       : undefined;
     if (saved) {
       if (
-        Object.keys(saved.budgets).length !== 2 ||
-        userIds.some((id) => !saved.budgets[id]) ||
+        !saved.budgets[identity.userId] ||
+        Object.keys(saved.budgets).some((id) => !userIds.includes(id)) ||
         existing!.members.some(
           (member) => !userIds.includes(member.clerkUserId),
         )
@@ -116,6 +124,46 @@ export async function seedDevelopmentDatabase(
           "The demo workspace participants do not match. No data was changed.",
         );
     }
+    const savedScenario = saved
+      ? Object.keys(saved.budgets).length === 2
+        ? "household"
+        : (await tx.partnerInvite.count({
+              where: {
+                workspaceId: identity.workspaceId,
+                createdBy: identity.userId,
+                usedBy: null,
+                cancelledAt: null,
+              },
+            })) > 0
+          ? "invitation"
+          : "former-partner"
+      : undefined;
+    if (
+      savedScenario &&
+      options.scenario &&
+      savedScenario !== options.scenario &&
+      !options.reset
+    )
+      throw new Error("Use --reset to change the demo scenario.");
+    const scenario = options.scenario ?? savedScenario ?? "household";
+    if (
+      scenario !== "household" &&
+      identity.partnerId !== developmentSeedIdentity(identity.userId).partnerId
+    )
+      throw new Error(
+        "Solo scenarios use a mock former partner. Omit --partner.",
+      );
+    const seed = buildDevelopmentSeed({
+      ...identity,
+      asOf,
+      scenario,
+    });
+    const memberIds = Object.keys(seed.book.budgets);
+    const invitationId = `${identity.workspaceId}:invitation`;
+    const invitationPath =
+      seed.scenario === "invitation"
+        ? `/invite/${invitationToken(invitationId)}`
+        : null;
     const memberships = await tx.workspaceMember.findMany({
       where: { clerkUserId: { in: userIds } },
     });
@@ -210,7 +258,7 @@ export async function seedDevelopmentDatabase(
           )
           .sort()
           .at(-1) ?? asOf;
-      for (const clerkUserId of userIds)
+      for (const clerkUserId of memberIds)
         await tx.workspaceMember.upsert({
           where: { clerkUserId },
           create: { clerkUserId, workspaceId: identity.workspaceId },
@@ -221,6 +269,7 @@ export async function seedDevelopmentDatabase(
         revision: existing.revision,
         skipped: true,
         previousWorkspaces,
+        invitationPath,
         seed: {
           ...seed,
           book: saved,
@@ -230,28 +279,31 @@ export async function seedDevelopmentDatabase(
         },
       };
     }
-    await removeBankImports(tx, connectionIds, identity.userId);
+    const banks = buildDevelopmentSeedBanks(seed, identity.workspaceId);
+    const rows = [
+      ...bookToRows(seed.book),
+      ...banks.flatMap(({ data, imports }) =>
+        importStateRows(data.clerkUserId, data.id, imports),
+      ),
+    ];
     let revision: number;
     if (existing)
       // Browsers holding the old demo download it again.
-      revision = await resetHouseholdRows(
-        tx,
-        identity.workspaceId,
-        bookToRows(seed.book),
-      );
+      revision = await resetHouseholdRows(tx, identity.workspaceId, rows);
     else {
       revision = 1;
       await tx.workspace.create({
         data: { id: identity.workspaceId, revision, resetRevision: revision },
       });
-      await replaceRows(
-        tx,
-        identity.workspaceId,
-        bookToRows(seed.book),
-        revision,
-      );
+      await replaceRows(tx, identity.workspaceId, rows, revision);
     }
-    for (const clerkUserId of userIds)
+    await tx.workspaceMember.deleteMany({
+      where: {
+        workspaceId: identity.workspaceId,
+        clerkUserId: { notIn: memberIds },
+      },
+    });
+    for (const clerkUserId of memberIds)
       await tx.workspaceMember.upsert({
         where: { clerkUserId },
         create: { clerkUserId, workspaceId: identity.workspaceId },
@@ -261,6 +313,31 @@ export async function seedDevelopmentDatabase(
     await tx.partnerInvite.deleteMany({
       where: { workspaceId: identity.workspaceId },
     });
+    if (invitationPath)
+      await tx.partnerInvite.create({
+        data: {
+          id: invitationId,
+          tokenHash: commandHash(invitationToken(invitationId)),
+          workspaceId: identity.workspaceId,
+          createdBy: identity.userId,
+          expiresAt: new Date(Date.now() + 7 * 86400000),
+          email: "partner@example.test",
+          senderName: "Alex",
+          washi: "vermilion",
+          signature: [
+            {
+              points: [
+                { x: 30, y: 80, t: 0 },
+                { x: 52, y: 24, t: 50 },
+                { x: 74, y: 80, t: 100 },
+                { x: 45, y: 61, t: 150 },
+                { x: 93, y: 60, t: 200 },
+              ],
+            },
+          ],
+          emails: 0,
+        },
+      });
     await recordPastOperations(
       tx,
       identity.workspaceId,
@@ -276,6 +353,8 @@ export async function seedDevelopmentDatabase(
     await tx.bankConnection.deleteMany({
       where: { id: { in: connectionIds } },
     });
+    for (const bank of banks)
+      await tx.bankConnection.create({ data: bank.data });
     await tx.reviewEvidence.deleteMany({
       where: { id: { startsWith: `${identity.workspaceId}:statement:` } },
     });
@@ -284,6 +363,7 @@ export async function seedDevelopmentDatabase(
       revision,
       skipped: false,
       previousWorkspaces,
+      invitationPath,
       seed,
     };
   });
@@ -323,15 +403,24 @@ export async function restoreDevelopmentWorkspace(
       where: { clerkUserId: userId },
       data: { workspaceId },
     });
-    await removeBankImports(
-      tx,
-      [0, 1].map((index) => `${identity.workspaceId}:bank:${index}`),
-      userId,
+    await tx.partnerInvite.deleteMany({
+      where: { workspaceId: identity.workspaceId, createdBy: userId },
+    });
+    const demoConnections = await tx.bankConnection.findMany({
+      where: {
+        id: { in: developmentSeedConnectionIds(identity.workspaceId) },
+        clerkUserId: userId,
+      },
+      select: { id: true },
+    });
+    const demoConnectionIds = demoConnections.map(
+      (connection) => connection.id,
     );
+    await removeBankImports(tx, demoConnectionIds, userId);
     await tx.bankConnection.deleteMany({
       where: {
         id: {
-          in: [0, 1].map((index) => `${identity.workspaceId}:bank:${index}`),
+          in: demoConnectionIds,
         },
         clerkUserId: userId,
       },
