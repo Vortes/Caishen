@@ -5,10 +5,10 @@ import { expect, test } from "vitest";
 import { Field, FormError, FormFooter } from "~/components/ui/field";
 import { TextInput } from "~/components/ui/text-input";
 
-function Memo({ hint, error }: { hint?: string; error?: string }) {
+function PayeeField({ hint, error }: { hint?: string; error?: string }) {
   const [value, setValue] = useState("");
   return (
-    <Field label="Memo" hint={hint} error={error}>
+    <Field label="Payee" hint={hint} error={error}>
       <TextInput value={value} onChange={setValue} />
     </Field>
   );
@@ -16,29 +16,29 @@ function Memo({ hint, error }: { hint?: string; error?: string }) {
 
 test("the label names the input, and clicking it leaves the input alone", async () => {
   const user = userEvent.setup();
-  render(<Memo />);
+  render(<PayeeField />);
 
-  await user.click(screen.getByText("Memo"));
+  await user.click(screen.getByText("Payee"));
 
   expect(document.activeElement).not.toBe(
-    screen.getByRole("textbox", { name: "Memo" }),
+    screen.getByRole("textbox", { name: "Payee" }),
   );
 });
 
 test("the hint and the error describe the input, and the error marks it invalid", () => {
   render(
-    <Memo hint="Shown on the statement." error="Keep it under 200 letters." />,
+    <PayeeField hint="Shown on the statement." error="Keep it under 200 letters." />,
   );
 
   const input = screen.getByRole("textbox", {
-    name: "Memo",
+    name: "Payee",
     description: "Keep it under 200 letters. Shown on the statement.",
   });
   expect(input.getAttribute("aria-invalid")).toBe("true");
 });
 
 test("a field's error waits to be read at the field; it is not announced", () => {
-  render(<Memo error="Keep it under 200 letters." />);
+  render(<PayeeField error="Keep it under 200 letters." />);
 
   expect(screen.getByText("Keep it under 200 letters.")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
