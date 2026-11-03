@@ -13,15 +13,8 @@ import {
   cardPaymentCategoryLabel,
   transactionCategory,
 } from "~/components/transactions/transaction-category";
-import { CircleAlertIcon, PlusIcon, SplitIcon, XIcon } from "lucide-react";
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { CircleAlertIcon } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { newId, today } from "~/components/budget/format";
 import {
@@ -49,13 +42,13 @@ import {
   type SearchListOption,
 } from "~/components/ui/search-list";
 import { TextInput } from "~/components/ui/text-input";
-import { money } from "./model";
-import { NewCategoryPopover, type NewCategory } from "./add-category";
 import { useTransactionEntry, type DraftField } from "./transaction-entry";
 import { ShareLabel, ShareMenu } from "./share-field";
 import { ClearedMark, clearedState } from "./cleared-mark";
 import { EditorCell, EditorFooter, EditorForm } from "./editor-row";
 import { TransactionCategoryField } from "./transaction-category-field";
+import { spendingCategoryOptions } from "./category-field";
+import { SplitFooter, SplitLine, SplitLines } from "./split-lines";
 import shareStyles from "./share.module.css";
 import styles from "./transaction-entry.module.css";
 
@@ -85,16 +78,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
   const register = (name: Control) => (element: HTMLElement | null) => {
     controls.current[name] = element;
   };
-  // The name typed in Category while its Add form is open.
-  const [creating, setCreating] = useState<string | null>(null);
-  // A category added from here, shown as the choice until the plan has it,
-  // and the one whose add failed, which the draft lets go of.
-  const [added, setAdded] = useState<NewCategory | null>(null);
-  const [lost, setLost] = useState<string | null>(null);
-  useEffect(() => {
-    if (lost && draft.categoryId === lost) entry.change({ categoryId: "" });
-  }, [lost, draft.categoryId, entry]);
-
   // A field to focus once the next render shows it, such as a line just
   // added.
   const focusNext = useRef<Control | null>(null);
@@ -176,19 +159,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       })),
     [view.accounts],
   );
-  const spendingOptions: SearchListOption[] = view.categories
-    .filter(
-      (category) =>
-        !category.pairedAccountId &&
-        !category.counterpartyAccountId &&
-        (loan ? category.pairedLoanId === loan.id : !category.pairedLoanId),
-    )
-    .map((category) => ({
-      value: category.id,
-      label: category.name,
-      group: category.group,
-      amount: category.available,
-    }));
+  const spendingOptions = spendingCategoryOptions(view, loan?.id);
   const categoryOptions: SearchListOption[] = [
     {
       value: READY_TO_ASSIGN,
@@ -204,21 +175,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     },
     ...spendingOptions,
   ];
-  if (
-    added &&
-    added.id !== lost &&
-    !view.categories.some((item) => item.id === added.id)
-  ) {
-    // Under its group's other categories, so the group heads it once.
-    const last = categoryOptions
-      .map((option) => option.group)
-      .lastIndexOf(added.group);
-    categoryOptions.splice(last < 0 ? categoryOptions.length : last + 1, 0, {
-      value: added.id,
-      label: added.name,
-      group: added.group,
-    });
-  }
   const payees = useMemo(() => earlierPayees(view.budget), [view.budget]);
   const startDate = `${view.budget.startMonth}-01`;
   const minDate = startDate;
@@ -482,59 +438,28 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       disabled
     />
   ) : (
-    <NewCategoryPopover
-      open={creating !== null}
-      name={creating ?? ""}
-      group={
-        view.categories.find((item) => item.id === draft.categoryId)?.group
+    <TransactionCategoryField
+      amount={draftAmount(draft) ?? 0}
+      share={draft.counterpartyShare}
+      peopleEnabled={shareable && !split}
+      value={draft.categoryId}
+      split={split}
+      onSplit={
+        splittable
+          ? () => {
+              chooseCategory(SPLIT);
+              afterCategory(SPLIT);
+            }
+          : undefined
       }
-      onOpenChange={(open) => {
-        if (!open) setCreating(null);
-      }}
-      onAdded={(category) => {
-        setAdded(category);
-        setLost(null);
-        chooseCategory(category.id);
-      }}
-      onSettled={(category, saved) => {
-        if (!saved) setLost(category.id);
-      }}
-      onClosed={(category) => {
-        if (category) afterCategory(category.id);
-        else controls.current.categoryId?.focus({ preventScroll: true });
-      }}
-    >
-      <div>
-        <TransactionCategoryField
-          amount={draftAmount(draft) ?? 0}
-          share={draft.counterpartyShare}
-          peopleEnabled={shareable && !split}
-          value={split ? SPLIT : draft.categoryId}
-          displayValue={split ? "Split" : undefined}
-          action={
-            splittable
-              ? {
-                  label: "Split",
-                  icon: <SplitIcon size={13} strokeWidth={2.5} />,
-                  onSelect: () => {
-                    chooseCategory(SPLIT);
-                    afterCategory(SPLIT);
-                  },
-                }
-              : undefined
-          }
-          options={categoryOptions}
-          placeholder="Category"
-          inputRef={register("categoryId")}
-          onChange={chooseCategory}
-          onPicked={afterCategory}
-          // A loan's payment takes a category that already exists.
-          onCreate={
-            loan ? undefined : { noun: "category", create: setCreating }
-          }
-        />
-      </div>
-    </NewCategoryPopover>
+      options={categoryOptions}
+      placeholder="Category"
+      inputRef={register("categoryId")}
+      onChange={chooseCategory}
+      onPicked={afterCategory}
+      // A loan's payment takes a category that already exists.
+      creatable={!loan}
+    />
   );
   const accountControl = (
     <SearchList
@@ -595,14 +520,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
     </>
   );
 
-  // What the lines leave of the total: still to split, or split past it.
-  const remainingLabel =
-    remaining === undefined
-      ? ""
-      : remaining === 0 ||
-          Math.sign(remaining) === Math.sign(draftAmount(draft) ?? 0)
-        ? `Remaining ${money(Math.abs(remaining))}`
-        : `Over by ${money(Math.abs(remaining))}`;
   // The columns before Category, empty on a split's rows.
   const leadingColumns = (
     <>
@@ -631,10 +548,11 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
       />
     );
     return (
-      <div
+      <SplitLine
         key={line.lineId}
-        className={`${grid.columns} ${styles.entryRow} ${styles.lineRow}`}
-        data-accounts={accountColumn || undefined}
+        number={number}
+        accountColumn={accountColumn}
+        onRemove={() => removeLine(line.lineId)}
       >
         {leadingColumns}
         {cell(
@@ -651,6 +569,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
             peopleEnabled={shareable}
             value={line.categoryId}
             options={spendingOptions}
+            creatable={!loan}
             placeholder="Category"
             inputRef={register(lineId("categoryId"))}
             onChange={(categoryId, share) =>
@@ -687,16 +606,7 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           `Line ${number} inflow`,
           lineAmount("inflow"),
         )}
-        <div className={styles.removeLine} data-column="status">
-          <IconButton
-            label={`Remove line ${number}`}
-            size="sm"
-            onClick={() => removeLine(line.lineId)}
-          >
-            <XIcon aria-hidden />
-          </IconButton>
-        </div>
-      </div>
+      </SplitLine>
     );
   };
 
@@ -804,44 +714,20 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
         )}
       </div>
       {split && (
-        <div role="group" aria-label="Split" className={styles.lines}>
+        <SplitLines>
           {draft.lines.map((line, index) => lineRow(line, index))}
-          <div
-            className={`${grid.columns} ${styles.splitFooter}`}
-            data-accounts={accountColumn || undefined}
-          >
-            {leadingColumns}
-            <div data-column="category">
-              <Button
-                ref={register("addLine")}
-                variant="quiet"
-                size="sm"
-                onClick={addLine}
-              >
-                <PlusIcon aria-hidden />
-                Add line
-              </Button>
-            </div>
-            <div
-              ref={register("remaining")}
-              tabIndex={-1}
-              className={styles.remaining}
-              data-unsplit={remaining ? "" : undefined}
-              aria-live="polite"
-            >
-              <p>{remainingLabel}</p>
-              {fields.remaining && (
-                <p
-                  id={`${formId}-remaining-error`}
-                  className={styles.formError}
-                >
-                  <CircleAlertIcon size={13} aria-hidden />
-                  {fields.remaining}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+          <SplitFooter
+            leading={leadingColumns}
+            accountColumn={accountColumn}
+            addRef={register("addLine")}
+            onAdd={addLine}
+            remainingRef={register("remaining")}
+            remaining={remaining ?? 0}
+            total={draftAmount(draft) ?? 0}
+            error={fields.remaining}
+            errorId={`${formId}-remaining-error`}
+          />
+        </SplitLines>
       )}
       {loan && (
         <div className={styles.loanDetails}>

@@ -339,6 +339,20 @@
       }
     },
     {
+      "table": "partnerEntrySideLine",
+      "id": "alex/jordan:groceries-2026-08:groceries-2026-08/groceries-home",
+      "revision": 7,
+      "deleted": false,
+      "data": {
+        "id": "groceries-home",
+        "categoryId": "household",
+        "amount": -2000,
+        "userId": "alex",
+        "entryId": "jordan:groceries-2026-08:groceries-2026-08",
+        "sort": 0
+      }
+    },
+    {
       "table": "partnerSettlement",
       "id": "settlement-2026-08",
       "revision": 7,
@@ -502,6 +516,13 @@
     {
       "table": "partnerEntrySide",
       "id": "alex/jordan:rent-2026-08:rent-2026-08",
+      "revision": 6,
+      "deleted": true,
+      "data": null
+    },
+    {
+      "table": "partnerEntrySideLine",
+      "id": "alex/jordan:groceries-2026-08:groceries-2026-08/groceries-home",
       "revision": 6,
       "deleted": true,
       "data": null

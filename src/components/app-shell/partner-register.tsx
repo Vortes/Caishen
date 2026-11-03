@@ -20,13 +20,14 @@ import { Field, FormError } from "~/components/ui/field";
 import { Tag } from "~/components/ui/tag";
 import { Register } from "~/components/ui/register";
 import { Popover } from "~/components/ui/popover";
-import { SearchList, type SearchListOption } from "~/components/ui/search-list";
 import { money, shortDay, type Account } from "./model";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { EditorCell, EditorFooter, EditorForm, EditorText } from "./editor-row";
 import { CategorizeAction } from "./transaction-review";
+import { CategoryField, spendingCategoryOptions } from "./category-field";
+import { SplitFooter, SplitLine, SplitLines } from "./split-lines";
 import { Empty } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
@@ -449,7 +450,7 @@ export function PartnerRegister({
         <span className={styles.faint}>Not yours</span>
       ) : (
         <span className={styles.muted}>
-          {name(row.categoryId) ?? "No category"}
+          {row.lines ? "Split" : (name(row.categoryId) ?? "No category")}
         </span>
       ),
       // Each cell carries its own tone, so it reads the same in the row
@@ -703,6 +704,9 @@ function SettlementDetail({
 
 type RowCells = Record<"date" | "payee" | "category" | "balance", ReactNode>;
 
+// One line of your split as typed: its category and amount, unsigned.
+type SideLine = { lineId: string; categoryId: string; amount: string };
+
 // An entry, opened in place with the register's editor row. Its amount is
 // the share of the one who didn't pay, which either partner can change; the
 // category is your side of it, which only you see. The rest is the entry's,
@@ -737,22 +741,32 @@ function EntryEditor({
   // Until you pick one, your payee memory fills in the category you gave
   // this payee last time.
   const [categoryId, setCategoryId] = useState(
-    row.categoryId ?? row.suggestedCategoryId ?? "",
+    row.lines ? "" : (row.categoryId ?? row.suggestedCategoryId ?? ""),
   );
-  const [errors, setErrors] = useState<{ amount?: string; form?: string }>({});
-  const categoryOptions: SearchListOption[] = view.categories
-    .filter(
-      (category) =>
-        !category.pairedAccountId &&
-        !category.pairedLoanId &&
-        !category.counterpartyAccountId,
-    )
-    .map((category) => ({
-      value: category.id,
-      label: category.name,
-      group: category.group,
-      amount: category.available,
-    }));
+  // Your part split across categories; none when it has one category.
+  const [lines, setLines] = useState<SideLine[]>(
+    (row.lines ?? []).map((line) => ({
+      lineId: line.id,
+      categoryId: line.categoryId,
+      amount: (Math.abs(line.amount) / 100).toFixed(2),
+    })),
+  );
+  const split = lines.length > 0;
+  const [errors, setErrors] = useState<{
+    amount?: string;
+    form?: string;
+    remaining?: string;
+  }>({});
+  const categoryOptions = spendingCategoryOptions(view);
+  const lineInputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const addLineButton = useRef<HTMLButtonElement>(null);
+  const focusNext = useRef<string | null>(null);
+  useEffect(() => {
+    const target = focusNext.current;
+    if (!target) return;
+    focusNext.current = null;
+    lineInputs.current[target]?.focus({ preventScroll: true });
+  });
   // The field clicked takes focus, or the other one when it can't change.
   // Touch waits for a tap, so a keyboard doesn't cover the row before it's
   // read.
@@ -764,8 +778,89 @@ function EntryEditor({
         : (input.current ?? categoryInput.current);
     target?.focus({ preventScroll: true });
   }, [focus]);
+  // Your part as the amount reads now: the lines split what's typed there.
+  const typed = readAmount(text);
+  const part = paid ? row.you : typed.ok ? typed.cents : row.you;
+  const lineCents = (line: SideLine) => {
+    const reading = readAmount(line.amount);
+    return reading.ok ? reading.cents : 0;
+  };
+  const remaining =
+    part - lines.reduce((total, line) => total + lineCents(line), 0);
+  const lineKey = (lineId: string, field: "category" | "amount") =>
+    `${lineId}:${field}`;
+  const cents = (value: number) => (value / 100).toFixed(2);
+  // Splitting keeps the chosen category and your whole part on the first
+  // line, and adds an empty second line.
+  const startSplit = () => {
+    const first = newId();
+    setLines([
+      { lineId: first, categoryId, amount: cents(part) },
+      { lineId: newId(), categoryId: "", amount: "" },
+    ]);
+    setCategoryId("");
+    focusNext.current = lineKey(first, "category");
+  };
+  const changeLine = (lineId: string, next: Partial<SideLine>) => {
+    if (errors.remaining) setErrors({});
+    setLines((current) =>
+      current.map((line) =>
+        line.lineId === lineId ? { ...line, ...next } : line,
+      ),
+    );
+  };
+  const addLine = () => {
+    const line = {
+      lineId: newId(),
+      categoryId: "",
+      amount: remaining > 0 ? cents(remaining) : "",
+    };
+    setLines([...lines, line]);
+    focusNext.current = lineKey(line.lineId, "category");
+  };
+  // Removing the second-to-last line ends the split: the one left becomes
+  // your category.
+  const removeLine = (lineId: string) => {
+    const rest = lines.filter((line) => line.lineId !== lineId);
+    if (rest.length > 1) {
+      setLines(rest);
+      addLineButton.current?.focus({ preventScroll: true });
+      return;
+    }
+    setLines([]);
+    setCategoryId(rest[0]?.categoryId ?? "");
+    categoryInput.current?.focus({ preventScroll: true });
+  };
+  const unchangedSplit =
+    row.lines?.length === lines.length &&
+    row.lines.every(
+      (line, index) =>
+        line.id === lines[index]!.lineId &&
+        line.categoryId === lines[index]!.categoryId &&
+        Math.abs(line.amount) === lineCents(lines[index]!),
+    );
+  const saveSplit = () => {
+    if (unchangedSplit && !row.needsCategory) return null;
+    const sign = row.kind === "refund" ? 1 : -1;
+    return entry.saveCommand(
+      {
+        type: "partner.categorize",
+        id: newId(),
+        entryId: row.entryId!,
+        categoryId: null,
+        lines: lines.map((line) => ({
+          lineId: line.lineId,
+          categoryId: line.categoryId,
+          amount: sign * lineCents(line),
+        })),
+      },
+      `Your ${money(part)} of ${row.payee} is split across ${lines.length} categories. Only you see that.`,
+    );
+  };
   const saveCategory = () => {
-    if (!categoryEditable || !categoryId || categoryId === row.categoryId)
+    if (!categoryEditable) return null;
+    if (split) return saveSplit();
+    if (!categoryId || (categoryId === row.categoryId && !row.lines))
       return null;
     const label = categoryOptions.find(
       (option) => option.value === categoryId,
@@ -777,8 +872,18 @@ function EntryEditor({
         entryId: row.entryId!,
         categoryId,
       },
-      `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
+      `Your ${money(part)} of ${row.payee} is in ${label}. Only you see that.`,
     );
+  };
+  // Why the lines can't save yet, if they can't.
+  const splitIssue = () => {
+    if (!split) return null;
+    if (lines.some((line) => !line.categoryId))
+      return "Choose a category for every line.";
+    if (lines.some((line) => !readAmount(line.amount).ok || !lineCents(line)))
+      return "Enter an amount on every line.";
+    if (remaining) return `The lines must add up to your ${money(part)}.`;
+    return null;
   };
   const saveShare = (cents: number) => {
     if (cents === theirShare) return null;
@@ -817,7 +922,13 @@ function EntryEditor({
       return setErrors({
         amount: `A share can be at most ${money(row.shared)}.`,
       });
-    const failure = saveCategory() ?? saveShare(cents);
+    const issue = splitIssue();
+    if (issue) return setErrors({ remaining: issue });
+    // A split saves after the share, so its lines split the part the share
+    // leaves you.
+    const failure = split
+      ? (saveShare(cents) ?? saveCategory())
+      : (saveCategory() ?? saveShare(cents));
     if (failure) return setErrors({ form: failure });
     onClose();
   };
@@ -833,6 +944,13 @@ function EntryEditor({
         ? `Filled in from ${row.payee} last time. Only you see your category.`
         : undefined;
   const editable = shareEditable || categoryEditable;
+  // The columns before Category, empty on a split's rows.
+  const leadingColumns = (
+    <>
+      <span className={editorStyles.spacer} data-column="date" />
+      <span className={editorStyles.spacer} data-column="payee" />
+    </>
+  );
   return (
     <EditorForm
       id={formId}
@@ -845,13 +963,23 @@ function EntryEditor({
         {readOnly("payee", cells.payee)}
         {categoryEditable ? (
           <EditorCell column="category" label="Your category">
-            <SearchList
+            <CategoryField
               inputRef={categoryInput}
               value={categoryId}
+              split={split}
+              onSplit={part > 0 ? startSplit : undefined}
               options={categoryOptions}
               placeholder="Category"
-              onChange={setCategoryId}
-              onPicked={() => input.current?.focus({ preventScroll: true })}
+              onChange={(next) => {
+                setCategoryId(next);
+                setLines([]);
+              }}
+              onPicked={() => {
+                if (!window.matchMedia("(pointer: fine)").matches) return;
+                (input.current ?? categoryInput.current)?.focus({
+                  preventScroll: true,
+                });
+              }}
             />
           </EditorCell>
         ) : (
@@ -876,6 +1004,69 @@ function EntryEditor({
         {readOnly("balance", cells.balance, true)}
         <span data-column="status" aria-hidden />
       </div>
+      {split && (
+        <SplitLines>
+          {lines.map((line, index) => {
+            const number = index + 1;
+            return (
+              <SplitLine
+                key={line.lineId}
+                number={number}
+                onRemove={() => removeLine(line.lineId)}
+              >
+                {leadingColumns}
+                <EditorCell column="category" label={`Line ${number} category`}>
+                  <CategoryField
+                    inputRef={(element) => {
+                      lineInputs.current[lineKey(line.lineId, "category")] =
+                        element;
+                    }}
+                    value={line.categoryId}
+                    options={categoryOptions}
+                    placeholder="Category"
+                    onChange={(next) =>
+                      // A line takes what's left of your part when it has
+                      // no amount yet, so the last line needs no typing.
+                      changeLine(line.lineId, {
+                        categoryId: next,
+                        ...(!line.amount.trim() && remaining > 0
+                          ? { amount: cents(remaining) }
+                          : {}),
+                      })
+                    }
+                    onPicked={() => {
+                      if (!window.matchMedia("(pointer: fine)").matches) return;
+                      focusNext.current = lineKey(line.lineId, "amount");
+                    }}
+                  />
+                </EditorCell>
+                <EditorCell column="amount" label={`Line ${number} amount`}>
+                  <AmountInput
+                    inputRef={(element) => {
+                      lineInputs.current[lineKey(line.lineId, "amount")] =
+                        element;
+                    }}
+                    negative={row.change < 0}
+                    align="end"
+                    value={line.amount}
+                    onChange={(amount) => changeLine(line.lineId, { amount })}
+                  />
+                </EditorCell>
+                <span className={editorStyles.spacer} data-column="balance" />
+              </SplitLine>
+            );
+          })}
+          <SplitFooter
+            leading={leadingColumns}
+            addRef={addLineButton}
+            onAdd={addLine}
+            remaining={remaining}
+            total={part}
+            error={errors.remaining}
+            column="amount"
+          />
+        </SplitLines>
+      )}
       <EditorFooter
         actions={
           editable ? (

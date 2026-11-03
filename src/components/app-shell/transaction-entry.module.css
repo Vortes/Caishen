@@ -297,3 +297,7 @@
     grid-column: auto;
   }
 }
+/* A remainder under one amount column sits in it, not across two. */
+.remaining[data-column] {
+  grid-column: auto;
+}
