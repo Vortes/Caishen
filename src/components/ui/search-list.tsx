@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type Ref,
 } from "react";
@@ -161,10 +162,15 @@ export function SearchList({
       }}
       anchor={
         <div
-          className={field.well}
+          className={`${field.well} ${styles.well}`}
           data-well=""
           data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
+          onMouseDown={(event) =>
+            fromWell(event, () => {
+              if (!open) show();
+            })
+          }
         >
           <input
             ref={inputRef}
@@ -287,6 +293,17 @@ if (typeof document !== "undefined") {
   document.addEventListener("keydown", () => (pointerLast = false), true);
 }
 const arrivedByKeyboard = () => !pointerLast;
+
+// A press on the well around the input, such as on the chevron, works as one
+// on the input: it focuses the input and opens the list.
+function fromWell(event: MouseEvent<HTMLDivElement>, open: () => void) {
+  const input = event.currentTarget.querySelector("input");
+  if (!input || input.disabled || input.readOnly || event.target === input)
+    return;
+  event.preventDefault();
+  input.focus();
+  open();
+}
 
 function tone(cents: number) {
   return cents < 0 ? "negative" : cents > 0 ? "positive" : "zero";
@@ -467,10 +484,15 @@ export function SearchSuggestions({
       }}
       anchor={
         <div
-          className={field.well}
+          className={`${field.well} ${styles.well}`}
           data-well=""
           data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
+          onMouseDown={(event) =>
+            fromWell(event, () => {
+              if (!expanded) show();
+            })
+          }
         >
           <input
             ref={inputRef}

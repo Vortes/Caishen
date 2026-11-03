@@ -1,6 +1,8 @@
 /* The search list: the field's well as a combobox, and the list that floats
    under it on the Popover surface. The well itself is field.module.css's. */
 
+/* A press anywhere in the well opens the list, not only on the input. */
+.well:has(.input:not(:disabled, [readonly])),
 .input:not(:disabled) {
   cursor: pointer;
 }
