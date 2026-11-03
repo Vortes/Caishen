@@ -15,6 +15,7 @@ import type {
   FormerPartnerEntry,
   PartnerEntry,
   PartnerSide,
+  PartnerSideLine,
 } from "./partner-ledger";
 import type { PartnerRequest, PartnerSettlement } from "./partner-settlements";
 import type { PersonalLedger } from "./shared-ledger";
@@ -47,6 +48,7 @@ export const tableNames = [
   "payeeMemory",
   "partnerEntry",
   "partnerEntrySide",
+  "partnerEntrySideLine",
   "partnerSettlement",
   "partnerRequest",
   "formerPartnerEntry",
@@ -104,7 +106,9 @@ export type TableData = {
   // The partner ledger both budgets share, and each partner's private side
   // of its entries (src/domain/partner-ledger.ts).
   partnerEntry: Sorted & PartnerEntry;
-  partnerEntrySide: Owned & { entryId: string } & PartnerSide;
+  partnerEntrySide: Owned & { entryId: string } & Omit<PartnerSide, "lines">;
+  // One line of a partner's split side, in the split's order.
+  partnerEntrySideLine: Owned & Sorted & { entryId: string } & PartnerSideLine;
   // Settling up between the partners (src/domain/partner-settlements.ts).
   partnerSettlement: Sorted & PartnerSettlement;
   partnerRequest: Sorted & PartnerRequest;
@@ -176,6 +180,7 @@ const budgetTables = new Set<TableName>([
   "bankImport",
   "payeeMemory",
   "partnerEntrySide",
+  "partnerEntrySideLine",
   "formerPartnerEntry",
 ]);
 
@@ -371,10 +376,18 @@ export function partnerSideRows(
   return side
     ? [
         row("partnerEntrySide", rowKey(userId, entryId), {
-          ...side,
+          ...without(side, ["lines"]),
           userId,
           entryId,
         }),
+        ...(side.lines ?? []).map((line, sort) =>
+          row("partnerEntrySideLine", rowKey(userId, entryId, line.id), {
+            ...line,
+            userId,
+            entryId,
+            sort,
+          }),
+        ),
       ]
     : [];
 }
@@ -515,6 +528,7 @@ const parents: Partial<Record<TableName, [TableName, number]>> = {
   target: ["category", 2],
   transactionHistory: ["transaction", 2],
   transactionLine: ["transaction", 2],
+  partnerEntrySideLine: ["partnerEntrySide", 2],
   loanRate: ["loan", 2],
   loanPayment: ["loan", 2],
 };
@@ -713,6 +727,10 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
   );
   const memory = groupBy(data.payeeMemory, owner);
   const sides = groupBy(data.partnerEntrySide, owner);
+  const sideLines = groupBy(
+    [...data.partnerEntrySideLine].sort((a, b) => a.sort - b.sort),
+    (line) => childKey(line.userId, line.entryId),
+  );
   const former = groupBy(data.formerPartnerEntry, owner);
   const names = new Map(data.member.map((member) => [member.userId, member]));
   return userIds.map((userId): Budget => {
@@ -797,10 +815,22 @@ function budgetsFrom(data: Tables, userIds: string[]): Budget[] {
       ...(partnerSides
         ? {
             partnerSides: Object.fromEntries(
-              partnerSides.map((side) => [
-                side.entryId,
-                without(side, ["userId", "entryId"]),
-              ]),
+              partnerSides.map((side) => {
+                const split = sideLines.get(childKey(userId, side.entryId));
+                return [
+                  side.entryId,
+                  {
+                    ...without(side, ["userId", "entryId"]),
+                    ...(split
+                      ? {
+                          lines: split.map((line) =>
+                            without(line, ["userId", "entryId", "sort"]),
+                          ),
+                        }
+                      : {}),
+                  },
+                ];
+              }),
             ),
           }
         : {}),

@@ -336,7 +336,7 @@ test("a rejected import also rolls back edits made to its preview instead of cre
   ).toBeTruthy();
 });
 
-test("the island fully reimburses unequal imports to someone else without requiring a purpose category", async () => {
+test("the action bar fully reimburses unequal imports to someone else without requiring a purpose category", async () => {
   let imports = [
     bankImport("coffee", "Imported coffee", { amount: -2501 }),
     bankImport("lunch", "Imported lunch", { amount: -1501 }),
@@ -397,7 +397,7 @@ test("the island fully reimburses unequal imports to someone else without requir
   ).toBeNull();
 });
 
-test("the selection island splits each uncategorized import and categorizes only the personal portions", async () => {
+test("the action bar splits each uncategorized import and categorizes only the personal portions", async () => {
   let imports = [
     bankImport("coffee", "Imported coffee", { amount: -2501 }),
     bankImport("lunch", "Imported lunch", { amount: -1501 }),
@@ -754,18 +754,6 @@ test("the register offers Share for purchases and categorized refunds while bloc
           }),
           bankImport("match", "Import awaiting a match", {
             needsMatchReview: true,
-          }),
-          bankImport("partner-match", "Import matching a recorded purchase", {
-            partnerMatches: [
-              {
-                entryId: "recorded",
-                date: "2026-10-12",
-                payee: "Recorded purchase",
-                amount: 2500,
-                share: 1250,
-                payeesAlike: true,
-              },
-            ],
           }),
         ],
       }),

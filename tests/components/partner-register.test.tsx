@@ -1,6 +1,11 @@
 import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { addMember, createBook, execute, type Command } from "~/domain/engine";
+import {
+  addMember,
+  closePartnerLedger,
+  createBook,
+  execute,
+} from "~/domain/engine";
 import { withPeople } from "~/domain/people";
 import { linkedPersonId } from "../domain/fixtures/people";
 import {
@@ -25,28 +30,48 @@ function sharedBook() {
     categoryId: "household",
     name: "Household",
   });
-  const groceries = execute(withCategory, "partner", {
-    type: "partner.record",
-    id: "record",
-    recordedAt: "2026-10-12T12:00:00Z",
-    entryId: "groceries",
-    payerId: "partner",
-    date: "2026-10-12",
-    payee: "Groceries",
-    amount: 6_000,
-    share: 3_000,
+  const withPartnerCategory = execute(withCategory, "partner", {
+    type: "category.add",
+    id: "add-partner-food",
+    categoryId: "food",
+    name: "Food",
   });
-  return execute(groceries, "partner", {
-    type: "partner.record",
-    id: "record-pharmacy",
-    recordedAt: "2026-10-11T12:00:00Z",
-    entryId: "pharmacy",
-    payerId: "partner",
-    date: "2026-10-11",
-    payee: "Pharmacy",
-    amount: 2_000,
-    share: 1_000,
+  const withAccount = execute(withPartnerCategory, "partner", {
+    type: "account.add",
+    id: "add-partner-checking",
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    date: "2026-10-01",
+    openingBalance: 100_000,
   });
+  // Anna's purchases, shared half with Alan.
+  const shared = (id: string, payee: string, date: string, amount: number) =>
+    ({
+      type: "transaction.upsert",
+      id: `share-${id}`,
+      recordedAt: `${date}T12:00:00Z`,
+      transactionId: id,
+      accountId: "checking",
+      date,
+      payee,
+      amount: -amount,
+      status: "posted",
+      categoryId: "food",
+      counterpartyShare: {
+        accountId: linkedPersonId(book, "partner"),
+        amount: amount / 2,
+      },
+    }) as const;
+  return execute(
+    execute(
+      withAccount,
+      "partner",
+      shared("groceries", "Groceries", "2026-10-12", 6_000),
+    ),
+    "partner",
+    shared("pharmacy", "Pharmacy", "2026-10-11", 2_000),
+  );
 }
 
 const ledger = () => within(screen.getByRole("group", { name: "Anna ledger" }));
@@ -145,7 +170,7 @@ test("clicking an entry selects it, and clicking it again opens the field clicke
   );
 });
 
-test("checked entries are categorized together from the selection island", async () => {
+test("checked entries are categorized together from the action bar", async () => {
   const shell = await showLedger();
   await shell.user.click(
     ledger().getByRole("checkbox", { name: "Select Groceries" }),
@@ -153,11 +178,11 @@ test("checked entries are categorized together from the selection island", async
   await shell.user.click(
     ledger().getByRole("checkbox", { name: "Select Pharmacy" }),
   );
-  const island = within(
+  const actionBar = within(
     screen.getByRole("toolbar", { name: "Selected transactions" }),
   );
-  expect(island.getByText("2 transactions")).toBeTruthy();
-  await shell.user.click(island.getByRole("button", { name: "Categorize" }));
+  expect(actionBar.getByText("2 transactions")).toBeTruthy();
+  await shell.user.click(actionBar.getByRole("button", { name: "Categorize" }));
   await shell.user.click(screen.getByRole("menuitem", { name: "Everyday" }));
   expect(screen.getByRole("menuitem", { name: "Household" })).toBeTruthy();
   await shell.user.keyboard("{ArrowRight}{End}{Enter}");
@@ -183,7 +208,7 @@ test("an open entry keeps what's typed when another entry is clicked", async () 
   ).toHaveProperty("value", "12");
 });
 
-test("an entry you paid opens its transaction from the selection island", async () => {
+test("an entry you paid opens its transaction from the action bar", async () => {
   let book = execute(sharedBook(), "owner", {
     type: "account.add",
     id: "add-checking",
@@ -225,56 +250,28 @@ test("an entry you paid opens its transaction from the selection island", async 
   expect(transactionRow("Dinner").getAttribute("aria-current")).toBe("true");
 });
 
-test("a partner's purchase suggests your earlier payees, and a picked one brings its category", async () => {
-  const book = [
-    {
-      type: "account.add",
-      id: "add-checking",
-      accountId: "checking",
-      name: "Checking",
-      kind: "cash",
-      date: "2026-10-01",
-      openingBalance: 100_000,
-    },
-    {
-      type: "transaction.upsert",
-      id: "seed-trader-joes",
-      transactionId: "trader-joes",
-      accountId: "checking",
-      categoryId: "household",
-      date: "2026-10-03",
-      payee: "Trader Joe’s",
-      amount: -4_210,
-      status: "posted",
-    },
-  ] satisfies Command[];
-  const shell = await renderShell({
-    book: book.reduce(
-      (budget, command) => execute(budget, "owner", command),
-      sharedBook(),
-    ),
-    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+test("a filter chosen for one person doesn't narrow the next person's ledger", async () => {
+  // Anna's ledger is frozen as it stood when she left; Bea is the partner now.
+  const former = closePartnerLedger(sharedBook(), "owner", {
+    id: "anna",
+    name: "Anna",
+    at: "2026-10-20T12:00:00.000Z",
+    by: "owner",
   });
-  await shell.user.click(
-    await within(
-      screen.getByRole("navigation", { name: "Budget navigation" }),
-    ).findByRole("link", { name: /^Anna/ }),
+  const { user } = await renderShell({
+    book: withPeople(addMember(former, "bea", "Bea", "2026-10")),
+    overview: () => readyOverview({ partnerFirstName: "Bea" }),
+  });
+  const people = within(
+    screen.getByRole("navigation", { name: "Budget navigation" }),
   );
-  await shell.user.click(
-    screen.getByRole("button", { name: "Record purchase" }),
-  );
-  const form = within(
-    screen.getByRole("dialog", { name: "Record a shared purchase" }),
+  await user.click(await people.findByRole("link", { name: /^Bea/ }));
+  await user.click(screen.getByRole("button", { name: "Owed to you" }));
+  expect(screen.getByRole("button", { name: "Owed to you" }).ariaPressed).toBe(
+    "true",
   );
 
-  await shell.user.type(form.getByLabelText("Payee", { exact: true }), "tra");
-  await shell.user.click(screen.getByRole("option", { name: "Trader Joe’s" }));
-
-  expect(form.getByLabelText("Payee", { exact: true })).toHaveProperty(
-    "value",
-    "Trader Joe’s",
-  );
-  expect(
-    form.getByRole("combobox", { name: "Your category for your share" }),
-  ).toHaveProperty("value", "Household");
+  await user.click(people.getByRole("link", { name: /^Anna/ }));
+  expect(screen.getByRole("button", { name: "All" }).ariaPressed).toBe("true");
+  expect(entryRow("Groceries")).toBeTruthy();
 });

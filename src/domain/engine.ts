@@ -31,14 +31,10 @@ import {
 } from "./shared-ledger";
 import { personalSpendingEntries } from "./spending";
 import {
-  awaitingImport,
   entryCounts,
   formerPartnerEntrySchema,
   isPartnerLedger,
   ledgerEntries,
-  lineFacts,
-  matchEntry,
-  partnerLines,
   mirroredChange,
   mirroredEntries,
   partnerAccountOf,
@@ -46,7 +42,7 @@ import {
   partnerLedgerRows,
   partnerSideIssues,
   partnerSideSchema,
-  sideCategory,
+  sideSpending,
   spendingCategory,
   synchronizePartnerEntries,
   writeEntry,
@@ -218,38 +214,14 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: identifier,
     entryId: identifier,
     categoryId: identifier.nullable(),
-  }),
-  // A shared purchase recorded before its payer's bank import arrives, by
-  // either partner, and the payer's import matched to it once it does.
-  z.object({
-    type: z.literal("partner.record"),
-    id: identifier,
-    recordedAt: z.string().datetime().optional(),
-    entryId: identifier,
-    payerId: identifier,
-    date: daySchema,
-    payee: z.string().trim().min(1).max(240),
-    // The total paid, without its sign.
-    amount: positiveCents,
-    // The part of the partner who didn't pay.
-    share: positiveCents,
-    // The recorder's category for their part.
-    categoryId: identifier.optional(),
-  }),
-  z.object({
-    type: z.literal("partner.match"),
-    id: identifier,
-    recordedAt: z.string().datetime().optional(),
-    entryId: identifier,
-    transactionId: identifier,
-    accountId: identifier,
-    date: daySchema,
-    // The import's signed amount, which must be the entry's.
-    amount: cents,
-    status: z.enum(["pending", "posted"]),
-    providerId: identifier.optional(),
-    // The payer's category for their part; their side's when absent.
-    categoryId: identifier.optional(),
+    // A split of your part across categories, with categoryId null.
+    lines: z
+      .array(
+        z.object({ lineId: identifier, categoryId: identifier, amount: cents }),
+      )
+      .min(2)
+      .max(100)
+      .optional(),
   }),
   z.object({
     type: z.literal("partner.edit"),
@@ -605,7 +577,6 @@ export type Account = {
   // partnership ended, closed: its balance and entries never change again.
   // The legacy kinds are only read until withPeople converts them.
   kind: "cash" | "credit" | "tracking" | "person" | LegacyCounterpartyKind;
-  openingBalance: number;
   date: string;
   // The last time the cleared balance was confirmed against the bank's.
   reconciled?: { date: string; balance: number };
@@ -697,8 +668,8 @@ export type Transaction = {
   removed?: boolean;
   // Whether the bank has cleared it, independently of pending status.
   cleared?: boolean;
-  // Cleared and confirmed against the bank by a reconciliation. Its amount
-  // and cleared status are locked from then on.
+  // Cleared and confirmed against the bank by a reconciliation. Cleared
+  // status is locked; only balance adjustments can still change amount.
   reconciled?: boolean;
   history: TransactionHistory[];
 };
@@ -904,7 +875,6 @@ export const budgetShape = z.object({
         "reimbursements",
         "former-partner",
       ]),
-      openingBalance: cents,
       date: daySchema,
       reconciled: z.object({ date: daySchema, balance: cents }).optional(),
       linkedUserId: storedIdentifier.optional(),
@@ -1184,8 +1154,10 @@ export function categoriesWithHistory(
   }
   for (const assignment of budget.assignments)
     if (assignment.amount) add(assignment.categoryId);
-  for (const side of Object.values(budget.partnerSides ?? {}))
+  for (const side of Object.values(budget.partnerSides ?? {})) {
     add(side.categoryId);
+    for (const line of side.lines ?? []) add(line.categoryId);
+  }
   return used;
 }
 // Removes categories with their targets. Their history must have somewhere
@@ -1261,10 +1233,21 @@ function moveCategoryHistory(
     if (memory.categoryId && ids.has(memory.categoryId))
       changes.payeeMemory(budget, key)[key] = { ...memory, categoryId: moveTo };
   for (const [entryId, side] of Object.entries(budget.partnerSides ?? {}))
-    if (side.categoryId && ids.has(side.categoryId))
+    if (
+      ids.has(side.categoryId ?? "") ||
+      side.lines?.some((line) => ids.has(line.categoryId))
+    )
       changes.partnerSide(budget, entryId)[entryId] = {
         ...side,
-        categoryId: moveTo,
+        ...(side.categoryId ? { categoryId: moved(side.categoryId) } : {}),
+        ...(side.lines
+          ? {
+              lines: side.lines.map((line) => ({
+                ...line,
+                categoryId: moved(line.categoryId)!,
+              })),
+            }
+          : {}),
       };
 }
 const getCategory = (budget: Budget, id: string): Category =>
@@ -1522,7 +1505,6 @@ export function closePartnerLedger(
           id: accountId,
           name: close.name,
           kind: "person",
-          openingBalance: 0,
           date: account.date,
           closed: { at: close.at, by: close.by },
         }
@@ -1670,7 +1652,8 @@ type Materialized = {
 // month touches only its own rows, with ID lookups that keep the first match
 // as a list search would.
 type MonthRows = {
-  // Same-day outflows precede inflows; IDs only break ties within each side.
+  // Balance adjustments establish the day's balance before activity spends
+  // it. Other same-day outflows precede inflows; IDs break remaining ties.
   transactions: Transaction[];
   assignments: Assignment[];
   // The partner's ledger entries dated in the month, by date and then ID,
@@ -1720,6 +1703,7 @@ function indexReplay(book: AccountingState, budget: Budget): ReplayIndex {
     transactions.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
+        Number(b.kind === "adjustment") - Number(a.kind === "adjustment") ||
         Math.sign(a.amount) - Math.sign(b.amount) ||
         a.id.localeCompare(b.id),
     );
@@ -1979,9 +1963,6 @@ function replay(
       item.counterpartyAccountId ? [[item.counterpartyAccountId, item]] : [],
     ),
   );
-  // What the viewer's own recorded purchases, still waiting for their
-  // import, add to each partner ledger account so far.
-  const unpaidPartnerEntries = new Map<string, number>();
   for (
     let cursor = budget.startMonth;
     cursor <= month;
@@ -1999,10 +1980,6 @@ function replay(
       activity?.delete(categoryId);
       state.cashActivity = 0;
     }
-    for (const account of budget.accounts.filter(
-      (item) => monthOf(item.date) === cursor && item.date <= cutoff,
-    ))
-      accounts.get(account.id)!.balance = account.openingBalance;
     for (const [accountId, state] of accounts) {
       startingBalances.set(accountId, state.balance);
       state.priorBalance = state.balance;
@@ -2181,28 +2158,16 @@ function replay(
     }
     // The partner's purchases: what the viewer owes for them moves their
     // Partner account, and their paired envelope holds it. Their side's
-    // category, once chosen, spends the share as cash. The viewer's own
-    // purchases still waiting for their import move only the account: no
-    // account of theirs has paid them yet, so the envelope lacks nothing
-    // for them and no category spends. What the partner pays toward them
-    // before the import stays in the envelope for that payment.
+    // category, once chosen, spends the share as cash.
     for (const entry of rows.mirrored) {
       if (!entryCounts(entry, cutoff)) continue;
       const change = mirroredChange(entry, userId);
       const counterparty = accounts.get(entry.accountId)!;
       counterparty.balance = safe(counterparty.balance + change);
-      if (entry.payerId === userId) {
-        unpaidPartnerEntries.set(
-          entry.accountId,
-          safe((unpaidPartnerEntries.get(entry.accountId) ?? 0) + change),
-        );
-        continue;
-      }
-      const categoryId = sideCategory(budget, entry.id);
       for (const [id, amount] of [
-        [categoryId, change],
-        [pairedEnvelope.get(entry.accountId)?.id, -change],
-      ] as const) {
+        ...sideSpending(budget, entry.id, change),
+        [pairedEnvelope.get(entry.accountId)?.id, -change] as const,
+      ]) {
         if (!id || !amount) continue;
         const state = categories.get(id)!;
         state.activity = safe(state.activity + amount);
@@ -2438,13 +2403,8 @@ function replay(
           )
           .map((item) => item.amount),
       );
-      // The viewer's purchases still waiting for their import are owed to
-      // them but not yet paid by them, so the envelope holds against the
-      // rest of the account.
-      const unpaid =
-        unpaidPartnerEntries.get(category.counterpartyAccountId) ?? 0;
       state.available = safe(
-        float - accounts.get(category.counterpartyAccountId)!.balance + unpaid,
+        float - accounts.get(category.counterpartyAccountId)!.balance,
       );
       // Whatever the envelope lacks beyond its unfunded card credit was paid
       // in cash. It stays cash overspending until repaid or covered, since the
@@ -2519,7 +2479,7 @@ function targetProgress(
   currentMonth: string,
   snapshots: Map<string, Map<string, CategoryMonth>>,
   balance: number,
-  startingBalance: number,
+  payoffBalance: number,
   loan?: Loan,
 ): TargetProgress {
   const snoozed = target.snoozedMonths.includes(month);
@@ -2623,7 +2583,7 @@ function targetProgress(
     total = Math.max(0, -balance);
     funded = Math.max(0, state.available);
     const required = Math.ceil(
-      Math.max(0, -startingBalance - state.opening) / monthsRemaining,
+      Math.max(0, -payoffBalance - state.opening) / monthsRemaining,
     );
     return {
       needed: Math.max(0, required - state.assigned),
@@ -2781,6 +2741,20 @@ function projectAccountingState(
     activity,
   );
   const cutoff = endOf(month);
+  // Adjustments correct existing debt, including debt first entered this
+  // month. They belong in the payoff target without treating new purchases
+  // or payments as changes to the month's original requirement.
+  const payoffBalances = new Map(calculated.startingBalances);
+  for (const transaction of budget.transactions)
+    if (
+      active(transaction) &&
+      transaction.kind === "adjustment" &&
+      monthOf(transaction.date) === month
+    )
+      payoffBalances.set(
+        transaction.accountId,
+        safe(payoffBalances.get(transaction.accountId)! + transaction.amount),
+      );
   const personalSpending = sum(
     personalSpendingEntries(book, userId)
       .filter((entry) => entry.month === month)
@@ -2837,7 +2811,7 @@ function projectAccountingState(
                 ? calculated.accounts.get(category.pairedAccountId)!.balance
                 : 0,
               category.pairedAccountId
-                ? calculated.startingBalances.get(category.pairedAccountId)!
+                ? payoffBalances.get(category.pairedAccountId)!
                 : 0,
               category.pairedLoanId
                 ? budget.loans.find((loan) => loan.id === category.pairedLoanId)
@@ -2999,8 +2973,8 @@ function validateCardPayment(
   date: string,
   amount: number,
 ) {
-  requireCash(budget, cashAccountId, date);
-  if (accountAtDate(budget, cardAccountId, date).kind !== "credit")
+  requireCash(budget, cashAccountId);
+  if (getAccount(budget, cardAccountId).kind !== "credit")
     fail("Select a credit-card account");
   const calculated = materialize(book, budget.userId, monthOf(date), date);
   if (amount > calculated.accounts.get(cashAccountId)!.balance)
@@ -3033,16 +3007,6 @@ function appendTransaction(
   });
 }
 
-function accountAtDate(
-  budget: Budget,
-  accountId: string,
-  date: string,
-): Account {
-  const account = getAccount(budget, accountId);
-  if (date < account.date)
-    fail("Activity predates the account's confirmed opening balance");
-  return account;
-}
 function nextCleared(
   requested: boolean | undefined,
   status: "pending" | "posted",
@@ -3053,25 +3017,25 @@ function nextCleared(
     return status === "posted";
   return isCleared(existing);
 }
-// What the bank has finished processing: the opening balance plus every
-// cleared transaction, whatever its date.
+// What the bank has finished processing: every cleared transaction,
+// whatever its date.
 function clearedBalance(budget: Budget, account: Account): number {
   return budget.transactions
     .filter(
       (item) =>
         active(item) && item.accountId === account.id && isCleared(item),
     )
-    .reduce((total, item) => safe(total + item.amount), account.openingBalance);
+    .reduce((total, item) => safe(total + item.amount), 0);
 }
-// Reconciling confirmed these against the bank, so only what doesn't change
-// the cleared balance can still change.
+// Reconciled transactions keep their confirmed amount and status; balance
+// adjustments remain editable so an accepted difference can be corrected.
 function ensureReconciledUnchanged(
   existing: Transaction,
   next: { amount: number; status: "pending" | "posted"; cleared?: boolean },
 ): void {
   if (
     existing.reconciled &&
-    (existing.amount !== next.amount ||
+    ((existing.kind !== "adjustment" && existing.amount !== next.amount) ||
       existing.status !== next.status ||
       next.cleared === false)
   )
@@ -3079,14 +3043,8 @@ function ensureReconciledUnchanged(
       "This transaction is reconciled, so its amount and cleared status can't change",
     );
 }
-function requireCash(
-  budget: Budget,
-  accountId: string,
-  date?: string,
-): Account {
-  const account = date
-    ? accountAtDate(budget, accountId, date)
-    : getAccount(budget, accountId);
+function requireCash(budget: Budget, accountId: string): Account {
+  const account = getAccount(budget, accountId);
   return account.kind === "cash" ? account : fail("Select a cash account");
 }
 function requireDate(budget: Budget, date: string): void {
@@ -3262,6 +3220,35 @@ function executeAccountingState<T extends AccountingState>(
   return { book, changeSet: changes.changeSet(command.id) };
 }
 
+// One partner's split of their side of an entry across categories. Like a
+// split transaction's, it leaves their payee memory as it was.
+function splitSide(
+  budget: Budget,
+  entry: PartnerEntry,
+  lines: { lineId: string; categoryId: string; amount: number }[],
+  changes: Changes,
+): void {
+  if (new Set(lines.map((line) => line.lineId)).size !== lines.length)
+    fail("Each split line needs its own id");
+  for (const line of lines) {
+    if (!line.amount) fail("Enter an amount on every split line");
+    if (!spendingCategory(getCategory(budget, line.categoryId)))
+      fail("Choose a spending category for every split line");
+  }
+  if (
+    sum(lines.map((line) => line.amount)) !==
+    mirroredChange(entry, budget.userId)
+  )
+    fail("Split lines must add up to your part");
+  changes.partnerSide(budget, entry.id)[entry.id] = {
+    lines: lines.map(({ lineId, categoryId, amount }) => ({
+      id: lineId,
+      categoryId,
+      amount,
+    })),
+  };
+}
+
 // One partner's category for their side of an entry, which their payee
 // memory then remembers for the payee.
 function categorizeSide(
@@ -3294,69 +3281,6 @@ function categorizeSide(
       kind: "category",
       categoryId: category.id,
     };
-}
-
-// The payer's bank import of a purchase recorded before it arrived: it
-// becomes their transaction, sharing the entry's share with their Partner
-// account, and the entry's source from then on. The entry keeps its id,
-// history, and the other partner's side; the payer's own side becomes the
-// transaction's category.
-function matchPartnerImport(
-  book: AccountingState,
-  budget: Budget,
-  command: Extract<ParsedCommand, { type: "partner.match" }>,
-  source: CommandSource,
-  changes: Changes,
-): void {
-  const entry = partnerEntry(book, command.entryId);
-  if (entry.payerId !== budget.userId)
-    fail("Only the partner who paid can match their bank import");
-  if (!awaitingImport(entry))
-    fail("This shared entry is already matched to a bank import");
-  if (command.amount !== entry.amount)
-    fail("A bank import matches a recorded purchase of the same amount");
-  if (budget.transactions.some((item) => item.id === command.transactionId))
-    fail("This transaction ID already exists");
-  const partner = partnerAccountOf(budget);
-  if (!partner) fail("Link your partner's budget first");
-  const categoryId =
-    command.categoryId ?? budget.partnerSides?.[entry.id]?.categoryId;
-  if (!categoryId && entry.share !== Math.abs(entry.amount))
-    fail("Choose a category for your part of it");
-  applyCommand(
-    book,
-    budget,
-    {
-      type: "transaction.upsert",
-      id: command.id,
-      recordedAt: command.recordedAt,
-      transactionId: command.transactionId,
-      accountId: command.accountId,
-      date: command.date,
-      amount: entry.amount,
-      // The name it was recorded under, which both ledgers already show.
-      payee: entry.payee,
-      status: command.status,
-      categoryId,
-      counterpartyShare: { accountId: partner!.id, amount: entry.share },
-      providerId: command.providerId,
-      reviewed: false,
-    },
-    source,
-    changes,
-  );
-  const transaction = getTransaction(budget, command.transactionId);
-  const [line] = partnerLines(budget, transaction);
-  matchEntry(changes, entry, lineFacts(budget.userId, transaction, line!), {
-    actorId: budget.userId,
-    operationId: command.id,
-    at: command.recordedAt,
-  });
-  if (budget.partnerSides?.[entry.id]) {
-    const sides = changes.partnerSide(budget, entry.id);
-    delete sides[entry.id];
-    if (!Object.keys(sides).length) delete budget.partnerSides;
-  }
 }
 
 function partnerEntry(book: AccountingState, entryId: string): PartnerEntry {
@@ -3537,7 +3461,7 @@ function recordSettlement(
   for (const leg of command.legs) {
     const budget = book.budgets[leg.userId]!;
     requireDate(budget, leg.date);
-    const account = accountAtDate(budget, leg.accountId, leg.date);
+    const account = getAccount(budget, leg.accountId);
     if (
       account.kind !== "cash" &&
       !(account.kind === "credit" && leg.amount > 0)
@@ -3598,8 +3522,14 @@ function applyCommand(
         budget.formerPartnerEntries?.find(
           (item) => item.id === command.entryId,
         ) ?? partnerEntry(book, command.entryId);
-      if (entry.payerId === actorId && !awaitingImport(entry))
+      if (entry.payerId === actorId)
         fail("Categorize your own purchase on its transaction");
+      if (command.lines) {
+        if (command.categoryId !== null)
+          fail("Choose one category or split it, not both");
+        splitSide(budget, entry, command.lines, changes);
+        break;
+      }
       if (command.categoryId === null) {
         const sides = changes.partnerSide(budget, entry.id);
         delete sides[entry.id];
@@ -3609,59 +3539,14 @@ function applyCommand(
       categorizeSide(budget, entry, command.categoryId, source, changes);
       break;
     }
-    case "partner.record": {
-      const partner = partnerAccountOf(budget);
-      if (!partner) fail("Link your partner's budget first");
-      const members = isPersonalLedger(book)
-        ? book.members.map((member) => member.userId)
-        : Object.keys(book.budgets);
-      if (!members.includes(command.payerId))
-        fail("Choose you or your partner as who paid");
-      if (book.partnerEntries?.some((entry) => entry.id === command.entryId))
-        fail("This shared entry already exists");
-      if (command.share > command.amount)
-        fail("A share can't be more than the shared amount");
-      if (source === "user" && !command.recordedAt)
-        fail("Recorded purchases require their recorded time");
-      requireDate(budget, command.date);
-      const entry: PartnerEntry = {
-        id: command.entryId,
-        payerId: command.payerId,
-        date: command.date,
-        payee: command.payee,
-        status: "posted",
-        amount: -command.amount,
-        share: command.share,
-        history: [
-          {
-            actorId,
-            operationId: command.id,
-            ...(command.recordedAt ? { at: command.recordedAt } : {}),
-            reason: "recorded",
-          },
-        ],
-      };
-      changes.addPartnerEntry(entry);
-      if (command.categoryId)
-        categorizeSide(budget, entry, command.categoryId, source, changes);
-      break;
-    }
-    case "partner.match": {
-      matchPartnerImport(book, budget, command, source, changes);
-      break;
-    }
     case "partner.edit": {
       editPartnerEntry(book, budget, command, source, changes);
       break;
     }
     case "counterparty.receive": {
       requireDate(budget, command.date);
-      requireCash(budget, command.cashAccountId, command.date);
-      const counterparty = accountAtDate(
-        budget,
-        command.counterpartyAccountId,
-        command.date,
-      );
+      requireCash(budget, command.cashAccountId);
+      const counterparty = getAccount(budget, command.counterpartyAccountId);
       if (!isCounterparty(counterparty)) fail("Choose who paid you back");
       if (isFormerPartner(counterparty)) fail(frozenLedgerMessage);
       // A partner's payment changes both budgets' ledger, which a
@@ -3782,7 +3667,6 @@ function applyCommand(
         id: command.accountId,
         name: command.name,
         kind: "person",
-        openingBalance: 0,
         date: `${budget.startMonth}-01`,
       });
       changes.addCategory(budget, {
@@ -3814,8 +3698,18 @@ function applyCommand(
         id: command.accountId,
         name: command.name,
         kind: command.kind,
-        openingBalance: command.openingBalance,
         date,
+      });
+      appendTransaction(changes, budget, command.id, {
+        id: command.id,
+        accountId: command.accountId,
+        date,
+        amount: command.openingBalance,
+        payee: "Starting Balance",
+        status: "posted",
+        cleared: true,
+        expenseMonth: monthOf(date),
+        kind: "adjustment",
       });
       if (command.kind === "credit")
         changes.addCategory(budget, {
@@ -3840,7 +3734,7 @@ function applyCommand(
     }
     case "account.reconcile": {
       requireDate(budget, command.date);
-      const account = accountAtDate(budget, command.accountId, command.date);
+      const account = getAccount(budget, command.accountId);
       const difference = safe(
         command.balance - clearedBalance(budget, account),
       );
@@ -4161,7 +4055,7 @@ function applyCommand(
       )
         fail("Only a bank update can attach the other side's bank facts");
       requireDate(budget, command.date);
-      const account = accountAtDate(budget, command.accountId, command.date);
+      const account = getAccount(budget, command.accountId);
       const existing = budget.transactions.find(
         (transaction) => transaction.id === command.transactionId,
       );
@@ -4177,6 +4071,15 @@ function applyCommand(
           loanId: command.loanId,
         },
       );
+      if (
+        entry.shape.kind === "adjustment" &&
+        (command.categoryId ||
+          command.lines ||
+          command.counterpartyShare ||
+          command.transferAccountId ||
+          command.loanId)
+      )
+        fail("A balance adjustment's category and kind cannot change");
       // A bank update may restore a removed transaction: a posting replaces
       // the removed pending purchase it came from (banks.ts restoresPending).
       // The user may not.
@@ -4309,11 +4212,7 @@ function applyCommand(
             (source === "provider" || otherPrevious.providerId)
               ? otherPrevious.date
               : command.date);
-          const other = accountAtDate(
-            budget,
-            command.transferAccountId,
-            counterpartDate,
-          );
+          const other = getAccount(budget, command.transferAccountId);
           if (command.transferCounterpart) {
             requireDate(budget, command.transferCounterpart.date);
             if (
@@ -4407,7 +4306,7 @@ function applyCommand(
             reusable,
           );
         } else if (command.loanId) {
-          requireCash(budget, account.id, command.date);
+          requireCash(budget, account.id);
           const loan =
             budget.loans.find((item) => item.id === command.loanId) ??
             fail("Loan access denied");
@@ -4674,13 +4573,16 @@ function applyCommand(
           source === "user"
             ? (command.reviewed ?? existing?.reviewed ?? true)
             : reviewedPosting,
-        kind: statementCredit
-          ? "statement-credit"
-          : command.amount < 0
-            ? "purchase"
-            : categoryId || lines || counterpartyShare
-              ? "refund"
-              : "income",
+        kind:
+          existing?.kind === "adjustment"
+            ? "adjustment"
+            : statementCredit
+              ? "statement-credit"
+              : command.amount < 0
+                ? "purchase"
+                : categoryId || lines || counterpartyShare
+                  ? "refund"
+                  : "income",
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
@@ -4731,14 +4633,9 @@ function applyCommand(
     }
     case "transaction.remove": {
       const transaction = getTransaction(budget, command.transactionId);
-      if (
-        !["purchase", "refund", "income", "adjustment"].includes(
-          transaction.kind,
-        )
-      )
-        fail(
-          "Dedicated payment records cannot be deleted through transaction removal",
-        );
+      const capability = classifyRegisterEntry(budget, transaction).capabilities
+        .remove;
+      if (!capability.ok) fail(capability.reason);
       changes.transaction(budget, transaction).removed = true;
       transaction.history.push({
         revision: ++transaction.revision,

@@ -39,6 +39,43 @@ void test("the development budget provides cash and credit accounts with email d
   assert.equal(partner.budget.settings.emailEnabled, false);
 });
 
+void test("the development budget has expected income for this month and the next", () => {
+  const { seed, primary, partner } = seedFixture();
+  assert.equal(primary.expectedIncome, 650000);
+  assert.equal(partner.expectedIncome, 570000);
+  assert.equal(
+    projectBook(seed.book, "alex", "2026-11").expectedIncome,
+    650000,
+  );
+  assert.equal(
+    projectBook(seed.book, "jordan", "2026-11").expectedIncome,
+    570000,
+  );
+});
+
+void test("the former-partner seed keeps the closed ledger and frees the partner slot", () => {
+  const original = seedFixture().primary;
+  const seed = buildDevelopmentSeed({ ...options, scenario: "former-partner" });
+  const view = projectBook(seed.book, "alex", seed.month);
+  assert.equal(view.members.length, 1);
+  assert.equal(
+    view.accounts.some((account) => account.linkedUserId),
+    false,
+  );
+  const former = view.accounts.find(
+    (account) => account.kind === "person" && account.closed,
+  )!;
+  assert.equal(former.name, "Jordan");
+  assert.equal(former.closed?.by, "alex");
+  assert.equal(
+    former.balance,
+    original.accounts.find((account) => account.linkedUserId)!.balance,
+  );
+  assert.ok(view.formerPartnerLedgers[former.id]!.length > 0);
+  assert.equal(view.cash, original.cash);
+  assert.equal(view.readyToAssign, original.readyToAssign);
+});
+
 void test("the development budget includes overspent categories", () => {
   const { primary } = seedFixture();
   assert.ok(

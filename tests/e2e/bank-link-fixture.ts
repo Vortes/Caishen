@@ -25,11 +25,23 @@ const savings = {
   subtype: "savings",
 };
 export type Verdict = "all" | "some" | "none" | "unknown";
-const publicToken = (accounts: PlaidLinkMetadata["accounts"]) =>
-  `caishen-e2e-plaid:${Buffer.from(JSON.stringify({ id: randomUUID(), accounts })).toString("base64url")}`;
+type FixtureTransaction = {
+  transaction_id: string;
+  account_id: string;
+  pending: false;
+  amount: number;
+  iso_currency_code: "USD";
+  date: string;
+  name: string;
+};
+const publicToken = (
+  accounts: PlaidLinkMetadata["accounts"],
+  transactions: FixtureTransaction[] = [],
+) =>
+  `caishen-e2e-plaid:${Buffer.from(JSON.stringify({ id: randomUUID(), accounts, transactions })).toString("base64url")}`;
 
-export async function seedConnectedBank(page: Page, baseURL: string) {
-  const api = createTRPCClient<AppRouter>({
+function bankApi(page: Page, baseURL: string) {
+  return createTRPCClient<AppRouter>({
     links: [
       httpLink({
         url: `${baseURL}/api/trpc`,
@@ -55,6 +67,10 @@ export async function seedConnectedBank(page: Page, baseURL: string) {
       }),
     ],
   });
+}
+
+export async function seedConnectedBank(page: Page, baseURL: string) {
+  const api = bankApi(page, baseURL);
   await api.budget.plaidExchange.mutate({
     publicToken: publicToken([checking]),
     metadata: {
@@ -66,6 +82,51 @@ export async function seedConnectedBank(page: Page, baseURL: string) {
   await expect(
     page.getByRole("heading", { name: "Plan", exact: true }),
   ).toBeVisible();
+}
+
+// Uses the real connection, setup, and update APIs. Only Plaid's responses
+// are fixtures; matching the two partners' payments is application work.
+export async function connectSettlementBank(
+  page: Page,
+  baseURL: string,
+  payment: { date: string; amount: number; name: string },
+) {
+  const api = bankApi(page, baseURL);
+  const connection = await api.budget.plaidExchange.mutate({
+    publicToken: publicToken(
+      [checking],
+      [
+        {
+          transaction_id: `payment-${randomUUID()}`,
+          account_id: checking.id,
+          pending: false,
+          iso_currency_code: "USD",
+          ...payment,
+        },
+      ],
+    ),
+    metadata: {
+      institution: { institution_id: "ins-e2e-chase" },
+      accounts: [checking],
+    },
+  });
+  await api.budget.sync.mutate();
+  const { revision } = await api.budget.state.query({
+    month: payment.date.slice(0, 7),
+  });
+  await api.budget.setupBankAccounts.mutate({
+    connectionId: connection.id,
+    operationId: randomUUID(),
+    expectedRevision: revision,
+    accounts: [
+      {
+        providerAccountId: checking.id,
+        name: "Settlement checking",
+        expectedBalance: 1000,
+      },
+    ],
+  });
+  return { sync: () => api.budget.sync.mutate() };
 }
 
 export async function completePlaidLink(page: Page, verdict: Verdict) {

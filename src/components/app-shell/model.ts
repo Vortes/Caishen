@@ -38,7 +38,6 @@ import {
   importCategory,
   importShare,
   importRowId,
-  partnerMatchesOf,
 } from "~/components/transactions/import-draft";
 import { describeTarget } from "./target-draft";
 
@@ -173,15 +172,6 @@ export type Transaction = {
   history: { reason: string; amount: number }[];
 };
 
-export type OpeningBalance = {
-  source: "opening";
-  id: string;
-  accountId: string;
-  date: string;
-  payee: "Starting Balance";
-  amount: number;
-};
-
 export type ShellData = {
   budgetName: string;
   preferences?: View["budget"]["settings"];
@@ -200,10 +190,9 @@ export type ShellData = {
   accounts: Account[];
   loans: Loan[];
   transactions: Transaction[];
-  openingBalances: OpeningBalance[];
   costToBeMe: number;
   expectedIncome: number | null;
-  partner?: { name: string };
+  partner?: { name: string; imageUrl: string | null };
   // The latest former partner, when they were the one who disconnected.
   disconnectedBy?: { name: string; at: string };
 };
@@ -234,8 +223,6 @@ function importReviewReason(item: State["imports"][number]) {
   if (!item.accountId) return "Connect this bank account to a budget account";
   if (item.removed || item.error) return "The bank changed this transaction";
   if (item.needsMatchReview) return "Check that this matches the right entry";
-  if (partnerMatchesOf(item).length)
-    return "Match it to the purchase it was recorded as";
   if (!item.pending) return "Imported from your bank";
   return undefined;
 }
@@ -306,6 +293,8 @@ export type ShellSource = {
   // The partner's first name from their profile, which names the partner
   // account; a member's own name is their budget's.
   partnerFirstName?: string | null;
+  // The partner's profile photo, when they have one.
+  partnerImageUrl?: string | null;
 };
 
 export function toShellData(
@@ -702,20 +691,13 @@ export function toShellData(
       payments: item.payments.length,
     })),
     transactions,
-    openingBalances: view.budget.accounts
-      .filter((account) => account.kind === "cash" || account.kind === "credit")
-      .map((account) => ({
-        source: "opening",
-        id: `opening:${account.id}`,
-        accountId: account.id,
-        date: account.date,
-        payee: "Starting Balance",
-        amount: account.openingBalance,
-      })),
     costToBeMe: view.costToBeMe,
     expectedIncome: view.expectedIncome,
     // Settings names the partner like the shell does: by first name.
-    partner: partner && { name: state.partnerFirstName ?? partner.name },
+    partner: partner && {
+      name: state.partnerFirstName ?? partner.name,
+      imageUrl: state.partnerImageUrl ?? null,
+    },
     disconnectedBy:
       lastClosed && lastClosed.closed.by !== view.budget.userId
         ? { name: lastClosed.name, at: lastClosed.closed.at }

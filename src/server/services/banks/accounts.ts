@@ -252,6 +252,21 @@ async function prepareDuplicateBankRepair(
       "Choose the newer, fully synchronized connection to the same bank.",
     );
   const budget = opened.ledger.budget;
+  const untouchedAdjustment = (accountId: string) => {
+    const account = budget.accounts.find((item) => item.id === accountId);
+    const transactions = budget.transactions.filter(
+      (item) => item.accountId === accountId,
+    );
+    const transaction = transactions.length === 1 ? transactions[0] : undefined;
+    return transaction?.kind === "adjustment" &&
+      transaction.date === account?.date &&
+      transaction.revision === 1 &&
+      !transaction.removed &&
+      !transaction.reconciled &&
+      isCleared(transaction)
+      ? transaction
+      : undefined;
+  };
   const mappings = structuredClone(replacement.mappings);
   const accounts: {
     name: string;
@@ -318,18 +333,21 @@ async function prepareDuplicateBankRepair(
       );
     if (
       source.currentBalance !== target.currentBalance ||
-      (!sameConnection && keep.openingBalance !== remove.openingBalance) ||
+      (!sameConnection &&
+        untouchedAdjustment(keep.id)?.amount !==
+          untouchedAdjustment(remove.id)?.amount) ||
       bankAccountOpening(target).openingBalance !==
-        (sameConnection ? remove.openingBalance : keep.openingBalance)
+        untouchedAdjustment(sameConnection ? remove.id : keep.id)?.amount
     )
       throw new Error(
         "The duplicate starting balances disagree. Review these accounts manually.",
       );
     if (
-      budget.transactions.some((transaction) =>
-        (sameConnection ? [remove.id] : [keep.id, remove.id]).includes(
-          transaction.accountId,
-        ),
+      budget.transactions.some(
+        (transaction) =>
+          (sameConnection ? [remove.id] : [keep.id, remove.id]).includes(
+            transaction.accountId,
+          ) && transaction !== untouchedAdjustment(transaction.accountId),
       ) ||
       remove.reconciled
     )
@@ -389,7 +407,6 @@ async function prepareDuplicateBankRepair(
     bankInboxItems(
       sameConnection ? [retired] : [retired, replacement],
       budget,
-      opened.ledger.state,
     ).some((item) =>
       (sameConnection ? removedIds : affected).has(
         item.accountId ?? item.loanId ?? "",
@@ -422,6 +439,9 @@ async function prepareDuplicateBankRepair(
       .filter((category) => removedIds.has(category.pairedAccountId ?? ""))
       .map((category) => category.id),
   );
+  const removedAdjustmentIds = new Set(
+    [...removedIds].map((id) => untouchedAdjustment(id)?.id),
+  );
   const rows = rowsIn(opened.household.rows).filter((row) => !row.deleted);
   const before = rows.filter(
     (row) =>
@@ -432,6 +452,12 @@ async function prepareDuplicateBankRepair(
         (row.table === "category" &&
           row.data !== null &&
           categoryIds.has(row.data.id)) ||
+        (row.table === "transaction" &&
+          row.data !== null &&
+          removedIds.has(row.data.accountId)) ||
+        (row.table === "transactionHistory" &&
+          row.data !== null &&
+          removedAdjustmentIds.has(row.data.transactionId)) ||
         (!sameConnection &&
           row.table === "bankImport" &&
           row.data?.connectionId === retired.connection.id)),
@@ -1035,7 +1061,6 @@ export async function setupBankAccounts(
             readyConnection(connections[index]!, imports),
           ),
           budget,
-          ledger.state,
         );
         if (outstanding.some((item) => item.accountId === existing.id))
           throw new Error(

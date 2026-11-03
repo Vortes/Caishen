@@ -143,10 +143,15 @@ void test("change sets include the rows a command changes far from itself", () =
     (retired?.data as { removed?: boolean } | undefined)?.removed,
     true,
   );
-  // Recording a shared purchase writes the household's partner ledger.
+  // Sharing a purchase with the partner writes the household's ledger.
+  const market = corpus.steps.find(
+    (item) =>
+      item.command.type === "transaction.upsert" &&
+      item.command.transactionId === "market",
+  )!;
   assert.ok(
-    keys(step("partner.record").changeSet).includes(
-      `partnerEntry ${rowKey("shared-market")}`,
+    keys(market.changeSet).includes(
+      `partnerEntry ${rowKey("alex:market:market")}`,
     ),
   );
 });

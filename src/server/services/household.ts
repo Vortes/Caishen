@@ -232,9 +232,6 @@ async function commandChangeSet(
     await ensureBankReferencesKept(db, household, actorId, reverted.changeSet);
     return reverted.changeSet;
   }
-  // A match needs the bank's facts, so it's made from the import itself.
-  if (command.type === "partner.match")
-    throw new AccountingError("Match a bank import from the import itself");
   if (command.type === "account.reconcile") {
     await migrateBankAccounts(db, actorId);
     const connections = await withBankAccountSuccessors(

@@ -24,6 +24,7 @@ import { TRPCError } from "@trpc/server";
 import { readImportStates, importStateChange } from "../bank-import-rows";
 import { itemHealthChange } from "../bank-connection-status";
 import { decryptBankToken } from "~/server/token-crypto";
+import { isDevelopmentSeedBank } from "~/server/dev/seed-banks";
 import { RevisionConflictError, findOperation } from "~/server/storage/rows";
 import {
   isPrismaError,
@@ -45,11 +46,6 @@ import {
 import { type ChangeSet } from "~/domain/rows";
 import { type Command, executeWithChanges, type Budget } from "~/domain/engine";
 import {
-  planPartnerImports,
-  confirmedPartnerMatch,
-  inboxPartnerMatches,
-} from "../partner-imports";
-import {
   bankImportFingerprint as fingerprint,
   bankImportEligibility,
 } from "../bank-account-setup";
@@ -70,7 +66,6 @@ import {
   type BankInboxItem,
   type ImportEligibility,
   classifyRegisterEntry,
-  alreadyLinkedImportMessage,
 } from "~/domain/register-entry";
 import { prepareUserCommand } from "~/domain/user-command";
 import { migrateBankAccounts } from "../bank-account-migration";
@@ -144,6 +139,7 @@ export async function syncBanks(
     const read = readBankConnection(connection, readable);
     if (
       read.status === "maintenance" ||
+      isDevelopmentSeedBank(connection) ||
       read.state.disconnectedAt ||
       // No update can reach an Item the user has revoked or disconnected.
       ["revoked", "disconnected"].includes(connection.status)
@@ -448,14 +444,6 @@ async function applyBankUpdate(
     budgetOf(book, userId),
     [state],
   );
-  const partnerImports = planPartnerImports(
-    book,
-    budgetOf(book, userId),
-    plan.records,
-    importMappings,
-    old.resolved,
-    (record) => `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
-  );
   for (const change of plan.changes) {
     const record = change.after;
     const mapped = importMappings[record.current.providerAccountId];
@@ -476,23 +464,18 @@ async function applyBankUpdate(
         )
       )
         continue;
-      // A purchase a partner recorded first is matched, or waits to be.
-      const partnerImport = partnerImports.get(record.id);
-      if (partnerImport === "wait") continue;
-      const remembered =
-        partnerImport ??
-        (paymentDestinations(
-          mapped.accountId,
-          record.current.name,
-          -record.current.amountCents,
-        ).length
-          ? undefined
-          : rememberedImport(
-              budgetOf(book, userId),
-              mapped.accountId,
-              record,
-              `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
-            ));
+      const remembered = paymentDestinations(
+        mapped.accountId,
+        record.current.name,
+        -record.current.amountCents,
+      ).length
+        ? undefined
+        : rememberedImport(
+            budgetOf(book, userId),
+            mapped.accountId,
+            record,
+            `sync:${fresh.id}:${fingerprint(record).slice(0, 40)}`,
+          );
       if (!remembered) continue;
       try {
         const result = executeWithChanges(book, userId, remembered, "provider");
@@ -875,12 +858,6 @@ export async function resolveImport(
         pending: record.current.pending,
         error: state.errors[record.id],
         needsMatchReview: record.matchStatus === "needs_review",
-        partnerMatches: inboxPartnerMatches(
-          ledger.state,
-          ledger.budget,
-          mapping?.accountId ?? null,
-          record,
-        ),
         eligibility: (!mapping
           ? "unmapped"
           : ledger.budget.loans.some((loan) => loan.id === mapping.accountId)
@@ -943,21 +920,6 @@ export async function resolveImport(
                 .changeSet,
             );
         }
-      } else if (input.command?.type === "partner.match") {
-        // The payer confirmed which recorded purchase this import is.
-        if (state.resolved[record.id]?.transactionId)
-          throw new Error(alreadyLinkedImportMessage);
-        const command = confirmedPartnerMatch(input.command, mapping, record);
-        changeSets.push(
-          executeWithChanges(
-            ledger.state,
-            userId,
-            prepareUserCommand(budget, command),
-          ).changeSet,
-        );
-        transactionId = command.transactionId;
-        operationId = command.id;
-        submitted = saveIdentity(submittedCommand);
       } else {
         const command = input.command;
         const recordCapability = classifyRegisterEntry(budget, imported)

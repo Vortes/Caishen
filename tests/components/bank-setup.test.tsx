@@ -345,9 +345,7 @@ test("an account missing required bank data has a review action that explains wh
     }),
   );
   expect(
-    within(dialog).getByText(
-      "The bank hasn’t provided a current balance. Update and try again.",
-    ),
+    within(dialog).getByText("The bank hasn’t provided a current balance yet."),
   ).toBeTruthy();
 });
 

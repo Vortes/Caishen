@@ -74,6 +74,7 @@ export const readyOverview = (
   connections: [],
   imports: [],
   partnerFirstName: null,
+  partnerImageUrl: null,
   ...overview,
 });
 

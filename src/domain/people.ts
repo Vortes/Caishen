@@ -119,7 +119,6 @@ function ensureLinkedPerson(budget: Budget, linkedUserId: string): void {
     id: accountId,
     name: "Partner",
     kind: "person",
-    openingBalance: 0,
     date: `${budget.startMonth}-01`,
     linkedUserId,
   });
@@ -290,7 +289,6 @@ function migrateLegacyCounterparties(
       id: person.id,
       name: person.name,
       kind: "person",
-      openingBalance: 0,
       date: legacy.date,
     })),
   );

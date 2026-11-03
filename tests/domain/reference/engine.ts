@@ -137,10 +137,6 @@ export function referenceMaterialize(
       state.cashOverspending = 0;
       state.cashActivity = 0;
     }
-    for (const account of budget.accounts.filter(
-      (item) => monthOf(item.date) === cursor && item.date <= cutoff,
-    ))
-      accounts.get(account.id)!.balance = account.openingBalance;
     for (const [accountId, state] of accounts) {
       startingBalances.set(accountId, state.balance);
       state.priorBalance = state.balance;

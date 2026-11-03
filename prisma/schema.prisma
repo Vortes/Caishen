@@ -313,7 +313,6 @@ model Account {
   id                String
   name              String
   kind              String
-  openingBalance    BigInt
   date              String
   reconciledDate    String?
   reconciledBalance BigInt?
@@ -654,17 +653,35 @@ model PartnerEntry {
   @@index([workspaceId, revision])
 }
 
-// One partner's private side of a partner ledger entry: their category.
+// One partner's private side of a partner ledger entry: their category,
+// or the lines of their split.
 model PartnerEntrySide {
   workspaceId String
   userId      String
   entryId     String
   categoryId  String?
   revision    Int
-  deleted     Boolean @default(false)
-  member      Member  @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  deleted     Boolean                @default(false)
+  member      Member                 @relation(fields: [workspaceId, userId], references: [workspaceId, userId], onDelete: Cascade)
+  lines       PartnerEntrySideLine[]
 
   @@id([workspaceId, userId, entryId])
+  @@index([workspaceId, revision])
+}
+
+model PartnerEntrySideLine {
+  workspaceId String
+  userId      String
+  entryId     String
+  id          String
+  categoryId  String
+  amount      BigInt
+  sort        Int
+  revision    Int
+  deleted     Boolean          @default(false)
+  side        PartnerEntrySide @relation(fields: [workspaceId, userId, entryId], references: [workspaceId, userId, entryId], onDelete: Cascade)
+
+  @@id([workspaceId, userId, entryId, id])
   @@index([workspaceId, revision])
 }
 

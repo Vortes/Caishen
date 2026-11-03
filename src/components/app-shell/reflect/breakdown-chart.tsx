@@ -7,7 +7,7 @@ import { Popover } from "~/components/ui/popover";
 import type { SpendingEntry } from "~/domain/spending";
 import { money } from "../model";
 import type { Highlight } from "./chart-utils";
-import { ChartBridge, configOf } from "./dither-charts";
+import { ChartBridge, configOf, useChartRows } from "./dither-charts";
 import type { ChartItem, DrillPath } from "./report";
 import { RingSkeleton } from "./ring-skeleton";
 import { SlicePanel } from "./slice-popover";
@@ -129,11 +129,12 @@ export function BreakdownChart({
   const { labelled, ring, height } = stageSize(size.width, size.height, fill);
   const { width } = size;
 
-  // Dither Kit replays its entrance whenever `data` changes identity, so the
-  // rows are built once per report rather than on every hover.
-  const data = useMemo(
-    () => items.map((item) => ({ name: item.id, value: item.total })),
-    [items],
+  const { rows: data, animate } = useChartRows(
+    "breakdown",
+    useMemo(
+      () => items.map((item) => ({ name: item.id, value: item.total })),
+      [items],
+    ),
   );
   const config = useMemo(() => configOf(items), [items]);
   const labels = useMemo(
@@ -231,6 +232,7 @@ export function BreakdownChart({
             )}
             <PieChart
               data={data}
+              animate={animate}
               animationDuration={SWEEP}
               config={config}
               dataKey="value"

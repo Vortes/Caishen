@@ -2,24 +2,27 @@
 
 ## Selectable rows
 
-Use the transaction register's grouped outline whenever a table or list lets
-the user select rows for an action, including plan categories and future
-features. Use a named `Checkbox` from `src/components/ui/checkbox.tsx` to
-toggle membership. For navigation or an open detail row, use the current-row
-state instead; hover and keyboard focus are not selection.
+Use [Register](register.md) for checkable or selectable records with a
+column header. It owns the register's grid, selection gestures, checkboxes,
+editor placement and Action Bar slot. Its callers supply state and contents.
+
+Plain rows that join an action set use the grouped outline below and a named
+[`Checkbox`](../../src/components/ui/checkbox.tsx). Navigation and open
+details use the current-row state; hover and keyboard focus are separate.
 
 Reuse `src/components/ui/row-selection.module.css` (`list` and `row`) and
-`src/components/ui/use-row-selection.ts` (`useRowSelection`). They generalize
-the grouped-outline design from commit `7390a0c`; do not copy its
-register-specific CSS. Motion tokens live in `src/styles/tokens.css`.
+`src/components/ui/use-row-selection.ts` (`useRowSelection`) for the grouped
+outline. Motion tokens live in `src/styles/tokens.css`.
 
 Apply `list` and `listProps` to the list or table, and `row` and
 `rowProps(id)` to each selectable row wrapper or `<tr>`. Table outlines are
 drawn on cells so the first and last cells retain rounded outer corners.
-Real call sites: `PlanView` and `RegisterView` in
-`src/components/app-shell/views.tsx`, `CategoryTable` in
-`src/components/budget/category-table.tsx`, and `TransactionRegister` with
-`TransactionRow` in `src/components/transactions/`.
+`PlanView` with `PlanCategoryContents` in
+[`views.tsx`](../../src/components/app-shell/views.tsx) is the plain-row
+call site. Plan and Loans import [`moveSelection`](../../src/components/ui/move-selection.ts)
+for arrows; Plan uses [`RowCheckbox`](../../src/components/ui/row-checkbox.tsx).
+The Register owns its checkbox and [`SelectAll`](../../src/components/ui/select-all.tsx);
+register callers supply state instead of another selection handler.
 
 ### States and defaults
 
@@ -47,11 +50,9 @@ Selecting, hovering, focusing, or opening a row to edit moves no text, not
 by a pixel: text keeps its left edge, an amount its right, all their tops.
 
 - Draw state with fills, inset shadows and outlines, never with borders.
-- An editor's wells reach past their column by border and padding (8px);
-  amounts reach right. Cells set their own `align-self`: equal rules from
-  two stylesheets win by load order (`transaction-entry.module.css`).
-- Register rows use a whole-pixel 20px line (`.txColumns`). Chrome rounds
-  an input's line to a pixel and a row's not, so at 19.6px they part by one.
+- Follow [Register](register.md#layout-and-interaction) for column and input
+  alignment: `.columns` lives in [`register.module.css`](../../src/components/ui/register.module.css);
+  editor wells live in [`transaction-entry.module.css`](../../src/components/app-shell/transaction-entry.module.css).
 - `tests/e2e/shell-register-edit-in-place.spec.ts` compares the painted
   glyphs of a register and a partner row; a one-pixel shift fails it.
 
@@ -68,20 +69,17 @@ Adjacent selected sibling rows form one outlined group, not separate pills:
 - An unselected row, section heading, or editor breaks the run. Never join
   selection outlines across these boundaries.
 
-This makes selection read as one set without doubling outlines between rows.
-
 ### Reference examples
 
 The reference uses a presence attribute for checked membership; omit the
 attribute when false. `data-checked="false"` still matches `[data-checked]`.
 
+Correct: `PlanCategoryContents` in [`views.tsx`](../../src/components/app-shell/views.tsx)
+(excerpt). Register callers delegate this wrapper to [Register](register.md).
+
 ```tsx
-// Correct: RegisterView, selection on the whole row wrapper
-<div
-  key={item.id}
-  className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
-  {...selectionStyle.rowProps(item.id)}
->
+className={`${styles.rowWrap} ${selectionStyles.row}`}
+{...selectionStyle.rowProps(id)}
 ```
 
 ```css
@@ -130,8 +128,8 @@ state's styling for another.
 
 ## Group headers
 
-A list split into groups (plan category groups, the register's date
-headers) heads each group with a header row:
+Plan category groups use header rows. The Register's Pending heading and
+count use `sections`; follow the [Register page](register.md).
 
 - `--surface-group` fill, `--size-row-lg` tall, `--radius-row` corners,
   4px above it and 4px between it and its first row. Rows within a group

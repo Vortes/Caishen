@@ -44,11 +44,6 @@ import { jsonValue } from "../safety";
 import { TRPCError } from "@trpc/server";
 import { type Database, openHousehold } from "../household";
 import { type Budget } from "~/domain/engine";
-import type { AccountingState } from "~/domain/shared-ledger";
-import {
-  type InboxPartnerMatch,
-  inboxPartnerMatches,
-} from "../partner-imports";
 import { type ImportEligibility } from "~/domain/register-entry";
 import {
   quarantinedTransactions,
@@ -326,7 +321,6 @@ export async function bankInbox(db: Database, userId: string) {
   return bankInboxItems(
     connections.map((connection) => readBankConnection(connection, imports)),
     opened?.ledger.status === "ready" ? opened.ledger.budget : undefined,
-    opened?.ledger.status === "ready" ? opened.ledger.state : undefined,
   );
 }
 
@@ -334,7 +328,6 @@ export async function bankInbox(db: Database, userId: string) {
 export function bankInboxItems(
   connections: ReadConnection[],
   budget: Budget | undefined,
-  ledger?: Pick<AccountingState, "partnerEntries">,
 ) {
   const transactions = new Map(
     budget?.transactions.map((transaction) => [transaction.id, transaction]),
@@ -380,16 +373,6 @@ export function bankInboxItems(
             ? (categories.get(categoryId) ?? null)
             : null,
         };
-        // The purchases a partner recorded that this import may be.
-        const partnerMatches: InboxPartnerMatch[] =
-          budget && ledger && !transactionId && !loanId
-            ? inboxPartnerMatches(
-                ledger,
-                budget,
-                mapping?.accountId ?? null,
-                record,
-              )
-            : [];
         const eligibility: ImportEligibility = loanId
           ? "loan_activity"
           : !mapping
@@ -411,7 +394,6 @@ export function bankInboxItems(
           pending: record.current.pending,
           removed: record.removed,
           needsMatchReview: record.matchStatus === "needs_review",
-          ...(partnerMatches.length ? { partnerMatches } : {}),
           eligibility,
           error: state.errors[record.id] ?? null,
           history: record.history,

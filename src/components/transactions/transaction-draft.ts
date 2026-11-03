@@ -291,6 +291,7 @@ export function buildTransactionDraftCommand({
         payee,
         amount: draftAmount(draft) ?? 0,
         status: draft.status,
+        kind: transaction?.kind === "adjustment" ? "adjustment" : undefined,
         categoryId:
           categoryId === READY_TO_ASSIGN ? undefined : categoryId || undefined,
         transferAccountId: draft.transferAccountId || undefined,
@@ -320,9 +321,6 @@ export function buildTransactionDraftCommand({
   if (!isCalendarDate(date)) fields.date = "Enter a valid transaction date.";
   else if (date < `${view.budget.startMonth}-01`)
     fields.date = "The transaction date must be on or after the budget start.";
-  else if (account && date < account.date)
-    fields.date =
-      "The transaction date must be on or after the account opening date.";
   else if (date > budgetDay(view.budget.settings.timezone))
     fields.date = "The transaction date must be today or earlier.";
 
@@ -337,14 +335,22 @@ export function buildTransactionDraftCommand({
     fields.outflow = "Enter an outflow or an inflow, not both.";
     fields.inflow = fields.outflow;
   } else if (!outflowText && !inflowText) {
-    fields.outflow = "Enter an outflow or an inflow.";
-    fields.inflow = fields.outflow;
+    if (entry?.shape.kind !== "adjustment") {
+      fields.outflow = "Enter an outflow or an inflow.";
+      fields.inflow = fields.outflow;
+    }
   } else if (outflowText) {
-    const problem = amountProblem(outflowText);
+    const problem = amountProblem(
+      outflowText,
+      entry?.shape.kind === "adjustment",
+    );
     if (problem) fields.outflow = problem;
     else outflow = parseAmount(outflowText)!;
   } else {
-    const problem = amountProblem(inflowText);
+    const problem = amountProblem(
+      inflowText,
+      entry?.shape.kind === "adjustment",
+    );
     if (problem) fields.inflow = problem;
     else inflow = parseAmount(inflowText)!;
   }
@@ -448,7 +454,11 @@ export function buildTransactionDraftCommand({
     )
       fields.remaining =
         "Split the whole amount: the lines must add up to the total.";
-  } else if (!transfer && entry?.fields.category !== "none") {
+  } else if (
+    !transfer &&
+    entry?.fields.category !== "none" &&
+    entry?.shape.kind !== "adjustment"
+  ) {
     const category = view.categories.find((item) => item.id === categoryId);
     if (categoryId === READY_TO_ASSIGN) {
       if (outflowText)
@@ -512,6 +522,7 @@ export function buildTransactionDraftCommand({
         ? categoryId
         : draft.transferAccountId ||
             entry?.fields.category === "none" ||
+            entry?.shape.kind === "adjustment" ||
             categoryId === READY_TO_ASSIGN
           ? undefined
           : categoryId || undefined,
@@ -540,11 +551,12 @@ function parseAmount(text: string) {
   return reading.ok && reading.cents >= 0 ? reading.cents : undefined;
 }
 
-// Why typed text isn't an amount above zero, or undefined when it is.
-function amountProblem(text: string) {
+// Why the typed amount isn't allowed; adjustments may hold zero.
+function amountProblem(text: string, allowZero = false) {
   const reading = readAmount(text);
   if (!reading.ok) return reading.message;
-  if (reading.cents <= 0) return "Enter an amount above zero.";
+  if (reading.cents < 0 || (!allowZero && reading.cents === 0))
+    return "Enter an amount above zero.";
 }
 
 export function paymentPayees(view: View, draft: TransactionDraft) {

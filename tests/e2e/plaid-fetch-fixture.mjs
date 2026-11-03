@@ -8,6 +8,7 @@ if (process.env.CAISHEN_E2E_PLAID_FIXTURE !== "1")
   );
 const originalFetch = globalThis.fetch;
 const prefix = "caishen-e2e-plaid:";
+const delivered = new Set();
 function decode(token) {
   if (typeof token !== "string" || !token.startsWith(prefix))
     throw new Error(
@@ -18,7 +19,8 @@ function decode(token) {
   );
 }
 function accountRows(token) {
-  return decode(token).accounts.map(({ id, name, mask, type, subtype }) => ({
+  const item = decode(token);
+  return item.accounts.map(({ id, name, mask, type, subtype }) => ({
     account_id: id,
     name,
     mask,
@@ -26,12 +28,22 @@ function accountRows(token) {
     subtype,
     official_name: null,
     balances: {
-      current: 1000,
-      available: 1000,
+      current: balance(item, id),
+      available: balance(item, id),
       iso_currency_code: "USD",
       unofficial_currency_code: null,
     },
   }));
+}
+function balance(item, accountId) {
+  return (
+    1000 -
+    (delivered.has(item.id)
+      ? (item.transactions ?? [])
+          .filter((transaction) => transaction.account_id === accountId)
+          .reduce((total, transaction) => total + transaction.amount, 0)
+      : 0)
+  );
 }
 globalThis.fetch = async (input, init) => {
   const url = new URL(
@@ -80,17 +92,31 @@ globalThis.fetch = async (input, init) => {
         },
       };
       break;
-    case "/transactions/sync":
+    case "/transactions/sync": {
+      const item = decode(body.access_token);
+      const transactions = item.transactions ?? [];
+      // The first update establishes the opening balance. The next brings
+      // the payment, after the account has been added to the budget.
+      const send =
+        transactions.length > 0 &&
+        (body.cursor === "e2e-ready" ||
+          (!body.cursor && delivered.has(item.id)));
+      if (send) delivered.add(item.id);
       answer = {
         accounts: accountRows(body.access_token),
-        added: [],
+        added: send ? transactions : [],
         modified: [],
         removed: [],
-        next_cursor: "e2e-empty",
+        next_cursor: transactions.length
+          ? delivered.has(item.id)
+            ? "e2e-complete"
+            : "e2e-ready"
+          : "e2e-empty",
         has_more: false,
         transactions_update_status: "HISTORICAL_UPDATE_COMPLETE",
       };
       break;
+    }
     case "/item/remove":
       answer = {};
       break;

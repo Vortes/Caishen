@@ -1,47 +1,84 @@
 "use client";
 
-import {
-  CheckIcon,
-  CopyIcon,
-  LinkIcon,
-  SearchIcon,
-  UsersIcon,
-} from "lucide-react";
+import grid from "~/components/ui/register.module.css";
+
+import { CheckIcon, CopyIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
 import { Button } from "~/components/ui/button";
+import { ActionBar, type Way } from "~/components/ui/action-bar";
 import { Field, FormError } from "~/components/ui/field";
 import { Tag } from "~/components/ui/tag";
-import { useRowSelection } from "~/components/ui/use-row-selection";
-import selectionStyles from "~/components/ui/row-selection.module.css";
+import { Register } from "~/components/ui/register";
 import { Popover } from "~/components/ui/popover";
-import { SearchList, type SearchListOption } from "~/components/ui/search-list";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
-import { RecordPurchase } from "./partner-record";
 import { isLinked, owedSentence } from "./people";
 import { RecordRepayment } from "./record-repayment";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
 import { EditorCell, EditorFooter, EditorForm, EditorText } from "./editor-row";
-import {
-  CategorizeAction,
-  SelectAll,
-  SelectionBar,
-  type Way,
-} from "./transaction-review";
-import { Empty, moveSelection, RowCheckbox } from "./views";
+import { CategorizeAction } from "./transaction-review";
+import { CategoryField, spendingCategoryOptions } from "./category-field";
+import { SplitFooter, SplitLine, SplitLines } from "./split-lines";
+import { Empty } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
 import local from "./person-register.module.css";
 import editorStyles from "./transaction-entry.module.css";
-import reviewStyles from "./transaction-review.module.css";
+import { PersonAvatar, UserAvatar } from "./user-avatar";
 
 type Row = View["partnerLedger"][number];
+
+// Which way a shared cost runs: what they owe you for, or what you owe them
+// for. Settlements and repayments pay these down, so they show only with
+// everything.
+export type PersonSide = "owed" | "owing";
+
+function sideOf(row: Row): PersonSide | null {
+  if (row.kind !== "purchase" && row.kind !== "refund") return null;
+  return row.change > 0 ? "owed" : row.change < 0 ? "owing" : null;
+}
+
+// A ledger that runs both ways split by who owes whom, as filters over the
+// one register.
+export function PersonFilters({
+  value,
+  onChange,
+}: {
+  value: PersonSide | null;
+  onChange: (side: PersonSide | null) => void;
+}) {
+  const sides: [PersonSide, string][] = [
+    ["owed", "Owed to you"],
+    ["owing", "Owed by you"],
+  ];
+  return (
+    <>
+      <Button
+        size="sm"
+        aria-pressed={value === null}
+        onClick={() => onChange(null)}
+      >
+        All
+      </Button>
+      {sides.map(([side, label]) => (
+        <Button
+          key={side}
+          size="sm"
+          aria-pressed={value === side}
+          onClick={() => onChange(value === side ? null : side)}
+        >
+          {label}
+        </Button>
+      ))}
+    </>
+  );
+}
 
 // A person's account: what's owed either way, live, and the envelope beside
 // it that holds money against it. The partner, also on Caishen, settles up
@@ -112,7 +149,6 @@ export function PersonSummary({ account }: { account: Account }) {
               <span className={styles.reconciledLabel}>
                 On Caishen · shared with {account.name}
               </span>
-              <RecordPurchase account={account} />
               {balance > 0 ? (
                 <RequestPopover account={account} />
               ) : balance < 0 ? (
@@ -323,14 +359,9 @@ function PayPopover({ account }: { account: Account }) {
 }
 
 // Whether you can give an entry your own category: your side of what your
-// partner paid, or of what you paid before its import arrives. A matched
-// import of yours carries its own category.
+// partner paid. What you paid carries its transaction's category.
 function categorizable(row: Row, you: string, closed: boolean) {
-  return (
-    !closed &&
-    Boolean(row.entryId) &&
-    (row.payerId !== you || Boolean(row.awaitingImport))
-  );
+  return !closed && Boolean(row.entryId) && row.payerId !== you;
 }
 
 type EditorField = "category" | "amount";
@@ -374,10 +405,8 @@ function personLedger(view: View, account: Account): Row[] {
         needsCategory: false,
         transactionId: entry.transactionId,
         lineId: repayment ? undefined : entry.lineId,
-        awaitingImport: false,
-        // A repayment from a bank import waits for your review.
-        confirmed:
-          repayment && transaction?.reviewed === false ? false : undefined,
+        // A bank import waits for your review.
+        confirmed: transaction?.reviewed === false ? false : undefined,
         shareMode: { mode: "edit" },
         history: [],
       };
@@ -386,12 +415,13 @@ function personLedger(view: View, account: Account): Row[] {
 }
 
 // A person's ledger, as a register: clicking an entry selects it, and
-// clicking it again opens it at the field clicked. The
-// partner's entries you can categorize can be checked and categorized
+// clicking it again opens it at the field clicked, settlements included.
+// The partner's entries you can categorize can be checked and categorized
 // together.
 export function PersonRegister({
   account,
   query,
+  side,
   selectedId,
   onSelect,
   checked,
@@ -400,6 +430,7 @@ export function PersonRegister({
 }: {
   account: Account;
   query: string;
+  side: PersonSide | null;
   // Opens a transaction in its own account's register.
   onJump: (transaction: {
     id: string;
@@ -414,18 +445,15 @@ export function PersonRegister({
   const entry = useTransactionEntry();
   const { view } = entry;
   const you = view.budget.userId;
-  const register = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{
     id: string;
     field: EditorField;
   } | null>(null);
-  const selectionStyle = useRowSelection(checked);
-  // Shift-click checks, or clears, every entry from the last one clicked to
-  // this one, like the other registers.
-  const anchor = useRef<string | null>(null);
   // A former partner's ledger reads as it stood when it closed.
   const closed = Boolean(account.closed);
   const linked = isLinked(account);
+  const { partner } = useShellData();
+  const image = linked ? partner?.imageUrl : null;
   const ledger = closed
     ? (view.formerPartnerLedgers[account.id] ?? [])
     : linked
@@ -435,7 +463,8 @@ export function PersonRegister({
     view.categories.find((item) => item.id === id)?.name;
   const search = query.trim().toLowerCase();
   const payee = (row: Row) => settlementPayee(row, view, account.name);
-  const rows = ledger.filter(
+  const sided = side ? ledger.filter((row) => sideOf(row) === side) : ledger;
+  const rows = sided.filter(
     (row) =>
       !search ||
       [payee(row), name(row.categoryId), money(row.shared), money(row.change)]
@@ -443,28 +472,10 @@ export function PersonRegister({
         .toLowerCase()
         .includes(search),
   );
-  const selectable = rows.filter((row) => categorizable(row, you, closed));
-  const selected = selectable.filter((row) => checked.includes(row.id));
-  const order = selectable.map((row) => row.id);
-  const checkTo = (id: string, value: boolean) => {
-    const from = order.indexOf(anchor.current ?? selectedId ?? "");
-    const to = order.indexOf(id);
-    onCheck(
-      from < 0 ? [id] : order.slice(Math.min(from, to), Math.max(from, to) + 1),
-      value,
-    );
-    anchor.current = id;
-  };
-  const closeEditor = (id: string) => {
-    setEditing(null);
-    requestAnimationFrame(() =>
-      register.current
-        ?.querySelector<HTMLButtonElement>(
-          `[data-entry-row="${CSS.escape(id)}"]`,
-        )
-        ?.focus(),
-    );
-  };
+  const checkable = (row: Row) => categorizable(row, you, closed);
+  const selected = rows.filter(
+    (row) => checkable(row) && checked.includes(row.id),
+  );
   // The one selected entry you paid traces back to its transaction, in its
   // own account's register.
   const wayToTransaction = (): Way | null => {
@@ -485,284 +496,122 @@ export function PersonRegister({
       onGo: () => onJump(transaction),
     };
   };
-  if (!ledger.length)
-    return closed ? (
-      <Empty title="Nothing was shared." icon={UsersIcon}>
-        You and {account.name} didn’t share a cost before they parted.
-      </Empty>
-    ) : (
-      <Empty title="Nothing owed yet." icon={UsersIcon}>
-        {linked
-          ? `When you and ${account.name} share a cost, what one of you owes the other shows here, in both budgets.`
-          : `When you pay for ${account.name}, give the expense a share and what they owe you shows here. Only you see it.`}
-      </Empty>
-    );
-  if (!rows.length)
-    return (
-      <Empty title={`No entries match “${query.trim()}”.`} icon={SearchIcon}>
-        Search looks at payees, categories, and amounts.
-      </Empty>
-    );
-  return (
-    <div
-      ref={register}
-      className={`${styles.list} ${styles.register} ${local.register} ${reviewStyles.register} ${selectionStyles.list}`}
-      {...selectionStyle.listProps}
-      role="group"
-      aria-label={`${account.name} ledger`}
-      data-selecting={selected.length > 0 || undefined}
-      onKeyDown={(event) => {
-        // x toggles the focused entry's checkbox, like the other registers.
-        const id =
-          document.activeElement instanceof HTMLElement
-            ? document.activeElement.dataset.id
-            : undefined;
-        if (event.key === "x" && id) {
-          event.preventDefault();
-          anchor.current = id;
-          onCheck([id], !checked.includes(id));
-          return;
-        }
-        // e opens the selected entry at its amount.
-        const row = rows.find((item) => item.id === selectedId);
-        if (
-          event.key === "e" &&
-          !editing &&
-          row &&
-          document.activeElement instanceof HTMLElement &&
-          document.activeElement.dataset.entryRow === row.id &&
-          (row.entryId || row.settlementId)
-        ) {
-          event.preventDefault();
-          setEditing({ id: row.id, field: "amount" });
-          return;
-        }
-        moveSelection(event);
-      }}
-    >
-      <div className={`${styles.txColumns} ${styles.columnHeader}`}>
-        <SelectAll selection={{ selectable, selected }} onCheck={onCheck} />
-        <span data-optional aria-hidden>
-          Date
+  const rowCells = (row: Row): RowCells => {
+    const settlement = Boolean(row.settlementId);
+    const unconfirmed = row.confirmed === false;
+    // Who fronted the shared cost, or got its refund back. "Paid" alone
+    // could also mean paid back, which is what a settlement does.
+    const yours = row.payerId === view.budget.userId;
+    const paidBy =
+      row.kind === "repayment" || settlement
+        ? null
+        : row.kind === "refund"
+          ? `Refund to ${yours ? "you" : account.name}`
+          : `${yours ? "You" : account.name} fronted`;
+    const cells: RowCells = {
+      date: (
+        <span className={`${styles.truncate} ${styles.muted}`}>
+          {shortDay(row.date)}
         </span>
-        <span aria-hidden>Payee</span>
-        <span data-optional aria-hidden>
-          Paid by
-        </span>
-        <span aria-hidden>Your category</span>
-        <span className={styles.numeric} data-optional aria-hidden>
-          Amount
-        </span>
-        <span className={styles.numeric} aria-hidden>
-          Owed
-        </span>
-        <span className={styles.numeric} aria-hidden>
-          Balance
-        </span>
-        <span aria-hidden />
-      </div>
-      {rows.map((row) => {
-        const isSelected = selectedId === row.id;
-        const checkable = categorizable(row, you, closed);
-        const isChecked = checkable && checked.includes(row.id);
-        const settlement = Boolean(row.settlementId);
-        const unconfirmed = row.confirmed === false;
-        const opens = Boolean(row.entryId ?? row.lineId ?? row.settlementId);
-        const paidBy = row.payerId === you ? "You" : account.name;
-        const cells: RowCells = {
-          date: (
-            <>
-              <span
-                className={styles.reviewDot}
-                data-on={row.needsCategory || unconfirmed ? "" : undefined}
-              >
-                {(row.needsCategory || unconfirmed) && (
-                  <span className="sr-only">
-                    {unconfirmed ? "Needs confirming" : "Needs a category"}
-                  </span>
-                )}
-              </span>
-              <span className={`${styles.truncate} ${styles.muted}`}>
-                {shortDay(row.date)}
-              </span>
-            </>
-          ),
-          payee: (
-            <>
-              <span className={`${styles.truncate} ${local.payeeName}`}>
-                {payee(row)}
-              </span>
-              {row.awaitingImport && (
-                <LinkIcon
-                  size={12}
-                  className={styles.inlineIcon}
-                  role="img"
-                  aria-label="Waiting for a bank import to match"
-                />
+      ),
+      payee: (
+        <>
+          {/* Who fronted it leads the row, so a glance down the faces
+            shows who paid at the register. Settlements keep the space. */}
+          {paidBy ? (
+            <span className={local.fronted} title={paidBy}>
+              {row.payerId === view.budget.userId ? (
+                <UserAvatar fallback="You" />
+              ) : (
+                <PersonAvatar name={account.name} imageUrl={image} />
               )}
-            </>
-          ),
-          category: row.needsCategory ? (
-            <Tag tone="attention">Needs category</Tag>
-          ) : settlement ? (
-            unconfirmed ? (
-              <Tag tone="attention">Confirm</Tag>
-            ) : (
-              <span className={styles.faint}>Settlement</span>
-            )
-          ) : row.awaitingImport && row.payerId === view.budget.userId ? (
-            <span className={styles.faint}>Waiting for your import</span>
-          ) : row.kind === "repayment" ? (
-            unconfirmed ? (
-              <Tag tone="attention">Review</Tag>
-            ) : (
-              <span className={styles.faint}>Repayment</span>
-            )
-          ) : row.you === 0 ? (
-            <span className={styles.faint}>Not yours</span>
+              <span className="sr-only">{paidBy}</span>
+            </span>
           ) : (
-            <span className={styles.muted}>
-              {name(row.categoryId) ?? "No category"}
-            </span>
-          ),
-          // Truncates in the editor's cell as it does in the row.
-          paidBy: (
-            <span className={`${styles.truncate} ${styles.muted}`}>
-              {paidBy}
-            </span>
-          ),
-          // What it cost, whoever paid; settlements and repayments moved
-          // only what they settled.
-          amount: (
-            <span className={styles.muted}>
-              {money(
-                row.kind === "purchase" || row.kind === "refund"
-                  ? row.shared
-                  : Math.abs(row.change),
-              )}
-            </span>
-          ),
-          // Each cell carries its own tone, so it reads the same in the row
-          // and in the editor.
-          balance: <span className={styles.muted}>{money(row.balance)}</span>,
-        };
-        const edits = opens;
-        if (settlement && editing?.id === row.id)
-          return (
-            <SettlementEditor
-              key={row.id}
-              row={row}
-              cells={cells}
-              partnerName={account.name}
-              onClose={() => closeEditor(row.id)}
-            />
-          );
-        if (edits && editing?.id === row.id)
-          return (
-            <EntryEditor
-              key={row.id}
-              row={row}
-              cells={cells}
-              partnerName={account.name}
-              linked={linked}
-              categoryEditable={checkable}
-              focus={editing.field}
-              onClose={() => closeEditor(row.id)}
-            />
-          );
-        return (
-          <div
-            key={row.id}
-            className={`${styles.rowWrap} ${reviewStyles.checkable} ${selectionStyles.row}`}
-            {...selectionStyle.rowProps(row.id)}
-            onMouseDown={(event) => {
-              // Shift would otherwise extend a text selection across rows.
-              if (checkable && event.shiftKey) event.preventDefault();
-              // A double-click would select a word, and the click handler
-              // would take it for a text selection and not open the entry.
-              if (event.detail > 1) event.preventDefault();
-            }}
-          >
-            {checkable && (
-              <RowCheckbox
-                label={`Select ${row.payee}`}
-                state={isChecked}
-                onChange={() => {
-                  anchor.current = row.id;
-                  onCheck([row.id], !isChecked);
-                }}
-                onShiftClick={() => checkTo(row.id, !isChecked)}
-              />
-            )}
-            <button
-              type="button"
-              data-row
-              data-id={checkable ? row.id : undefined}
-              data-entry-row={row.id}
-              className={`${styles.txColumns} ${styles.row}`}
-              aria-current={isSelected ? "true" : undefined}
-              onClick={(event) => {
-                if (checkable && event.shiftKey) {
-                  checkTo(row.id, !isChecked);
-                  return;
-                }
-                // Finishing a text selection in the row doesn't click it.
-                if (event.detail > 0 && window.getSelection()?.toString())
-                  return;
-                anchor.current = row.id;
-                // A second pointer click on the one selected entry opens it
-                // at the field clicked: the category when you can change it,
-                // otherwise the amount. Enter and Space click with no
-                // position, and only select.
-                // Like a transaction's editor, an open entry stays open, with
-                // what's typed, until it's saved or canceled.
-                if (
-                  edits &&
-                  !editing &&
-                  isSelected &&
-                  checked.length === 1 &&
-                  checked[0] === row.id &&
-                  event.detail > 0
-                ) {
-                  const column =
-                    event.target instanceof Element
-                      ? event.target.closest<HTMLElement>("[data-column]")
-                          ?.dataset.column
-                      : undefined;
-                  setEditing({
-                    id: row.id,
-                    field:
-                      column === "category" && checkable
-                        ? "category"
-                        : "amount",
-                  });
-                  return;
-                }
-                onSelect(row.id);
-              }}
-            >
+            <span className={local.fronted} aria-hidden />
+          )}
+          <span className={`${styles.truncate} ${local.payeeName}`}>
+            {payee(row)}
+          </span>
+        </>
+      ),
+      category: row.needsCategory ? (
+        <Tag tone="attention">Needs category</Tag>
+      ) : settlement ? (
+        unconfirmed ? (
+          <Tag tone="attention">Confirm</Tag>
+        ) : (
+          <span className={styles.faint}>Settlement</span>
+        )
+      ) : row.kind === "repayment" ? (
+        unconfirmed ? (
+          <Tag tone="attention">Review</Tag>
+        ) : (
+          <span className={styles.faint}>Repayment</span>
+        )
+      ) : row.you === 0 ? (
+        <span className={styles.faint}>Not yours</span>
+      ) : (
+        <span className={styles.muted}>
+          {row.lines ? "Split" : (name(row.categoryId) ?? "No category")}
+        </span>
+      ),
+      // Each cell carries its own tone, so it reads the same in the row
+      // and in the editor.
+      balance: side ? null : (
+        <span className={styles.muted}>{money(row.balance)}</span>
+      ),
+    };
+    return cells;
+  };
+  const register = (
+    <Register
+      aria-label={`${account.name} ledger`}
+      // A running balance only adds up over every entry, so one side of
+      // the ledger shows its amounts alone.
+      columns={[
+        { key: "date", label: "Date", optional: true },
+        { key: "payee", label: "Payee" },
+        { key: "your-category", label: "Your category" },
+        { key: "amount", label: "Amount", numeric: true },
+        ...(side ? [] : [{ key: "balance", label: "Balance", numeric: true }]),
+        { key: "status", label: "" },
+      ]}
+      layout={
+        side
+          ? {
+              wide: "5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 16px",
+              narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 16px",
+            }
+          : {
+              wide: "5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 7rem 7rem 16px",
+              narrow: "minmax(0, 1.2fr) minmax(0, 1fr) 6rem 6rem 16px",
+            }
+      }
+      rows={rows}
+      cells={(row) => {
+        const cells = rowCells(row);
+        const settlement = Boolean(row.settlementId);
+        return {
+          label: row.payee,
+          review: row.needsCategory
+            ? "Needs a category"
+            : row.confirmed !== false
+              ? undefined
+              : settlement
+                ? "Needs confirming"
+                : "Needs review",
+          attributes: { "data-entry-row": row.id },
+          content: (
+            <>
               <span className={styles.rowName} data-column="date" data-optional>
                 {cells.date}
               </span>
               <span className={styles.rowName} data-column="payee">
                 {cells.payee}
               </span>
-              <span
-                className={styles.truncate}
-                data-column="paidBy"
-                data-optional
-              >
-                {cells.paidBy}
-              </span>
               <span className={styles.truncate} data-column="category">
                 {cells.category}
-              </span>
-              <span
-                className={styles.numeric}
-                data-column="total"
-                data-optional
-              >
-                {cells.amount}
               </span>
               <span
                 className={styles.numeric}
@@ -771,28 +620,109 @@ export function PersonRegister({
               >
                 {money(row.change, true)}
               </span>
-              <span className={styles.numeric} data-column="balance">
-                {cells.balance}
-              </span>
+              {cells.balance && (
+                <span className={styles.numeric} data-column="balance">
+                  {cells.balance}
+                </span>
+              )}
               <span />
-            </button>
-          </div>
-        );
-      })}
-      <PartnerSelection
-        selected={selected}
-        onCheck={onCheck}
-        disabled={Boolean(entry.session) || editing !== null}
-        way={wayToTransaction()}
-      />
-    </div>
+            </>
+          ),
+        };
+      }}
+      checkable={checkable}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      checked={checked}
+      onCheck={onCheck}
+      onOpen={(row, column) => {
+        if (editing || !(row.entryId ?? row.lineId ?? row.settlementId)) return;
+        setEditing({
+          id: row.id,
+          field:
+            column === "category" && checkable(row) ? "category" : "amount",
+        });
+      }}
+      editingId={rows.find((row) => row.id === editing?.id)?.id}
+      renderEditor={(row) =>
+        row &&
+        editing &&
+        (row.settlementId ? (
+          <SettlementEditor
+            row={row}
+            cells={rowCells(row)}
+            partnerName={account.name}
+            onClose={() => setEditing(null)}
+          />
+        ) : (
+          <EntryEditor
+            row={row}
+            cells={rowCells(row)}
+            partnerName={account.name}
+            linked={linked}
+            categoryEditable={checkable(row)}
+            focus={editing.field}
+            onClose={() => setEditing(null)}
+          />
+        ))
+      }
+      empty={
+        closed ? (
+          <Empty title="Nothing was shared." icon={UsersIcon}>
+            You and {account.name} didn’t share a cost before they parted.
+          </Empty>
+        ) : (
+          <Empty title="Nothing owed yet." icon={UsersIcon}>
+            {linked
+              ? `When you and ${account.name} share a cost, what one of you owes the other shows here, in both budgets.`
+              : `When you pay for ${account.name}, give the expense a share and what they owe you shows here. Only you see it.`}
+          </Empty>
+        )
+      }
+      noMatch={
+        sided.length ? (
+          <Empty
+            title={`No entries match “${query.trim()}”.`}
+            icon={SearchIcon}
+          >
+            Search looks at payees, categories, and amounts.
+          </Empty>
+        ) : ledger.length ? (
+          <Empty
+            title={
+              side === "owed"
+                ? `Nothing ${account.name} owes you for.`
+                : `Nothing you owe ${account.name} for.`
+            }
+            icon={UsersIcon}
+          >
+            {side === "owed"
+              ? `Costs you paid and shared with ${account.name} show here.`
+              : `Costs ${account.name} paid and shared with you show here.`}
+          </Empty>
+        ) : undefined
+      }
+      actionBar={
+        <PersonActions
+          selected={selected}
+          onCheck={onCheck}
+          disabled={Boolean(entry.session) || editing !== null}
+          way={wayToTransaction()}
+        />
+      }
+    />
+  );
+  return rows.length ? (
+    <div className={local.ledger}>{register}</div>
+  ) : (
+    register
   );
 }
 
-// The island over the ledger while entries are selected: the way to the
+// The action bar over the ledger while entries are selected: the way to the
 // selected entry's transaction, and the one thing checked entries share,
 // your category.
-function PartnerSelection({
+function PersonActions({
   selected,
   onCheck,
   disabled,
@@ -806,7 +736,7 @@ function PartnerSelection({
   const entry = useTransactionEntry();
   const ids = selected.map((row) => row.id);
   return (
-    <SelectionBar
+    <ActionBar
       count={selected.length}
       onClear={() => onCheck(ids, false)}
       way={way}
@@ -823,7 +753,7 @@ function PartnerSelection({
           )
         }
       />
-    </SelectionBar>
+    </ActionBar>
   );
 }
 
@@ -884,22 +814,18 @@ function SettlementEditor({
       onSubmit={confirm}
       onCancel={onClose}
     >
-      <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
+      <div className={`${grid.columns} ${editorStyles.entryRow}`}>
         <EditorText column="date">{cells.date}</EditorText>
         <EditorText column="payee">{cells.payee}</EditorText>
-        <EditorText column="paidBy" optional>
-          {cells.paidBy}
-        </EditorText>
         <EditorText column="category">{cells.category}</EditorText>
-        <EditorText column="total" numeric optional>
-          {cells.amount}
-        </EditorText>
         <EditorText column="amount" numeric>
           {money(row.change, true)}
         </EditorText>
-        <EditorText column="balance" numeric>
-          {cells.balance}
-        </EditorText>
+        {cells.balance && (
+          <EditorText column="balance" numeric>
+            {cells.balance}
+          </EditorText>
+        )}
         <span data-column="status" aria-hidden />
       </div>
       <EditorFooter
@@ -933,18 +859,18 @@ function SettlementEditor({
   );
 }
 
-type RowCells = Record<
-  "date" | "payee" | "paidBy" | "category" | "amount" | "balance",
-  ReactNode
->;
+type RowCells = Record<"date" | "payee" | "category" | "balance", ReactNode>;
 
-// How an entry's Owed figure reads aloud: which way it moved the balance,
-// whoever owed whom before it.
+// How an entry's amount reads aloud: which way it moved the balance, whoever
+// owed whom before it.
 function owedLabel(change: number) {
   if (change > 0) return `${money(change)} more owed to you`;
   if (change < 0) return `${money(-change)} less owed to you`;
   return "Nothing owed";
 }
+
+// One line of your split as typed: its category and amount, unsigned.
+type SideLine = { lineId: string; categoryId: string; amount: string };
 
 // An entry, opened in place with the register's editor row. Its amount is
 // the share of the one who didn't pay, which either partner can change; the
@@ -983,22 +909,32 @@ function EntryEditor({
   // Until you pick one, your payee memory fills in the category you gave
   // this payee last time.
   const [categoryId, setCategoryId] = useState(
-    row.categoryId ?? row.suggestedCategoryId ?? "",
+    row.lines ? "" : (row.categoryId ?? row.suggestedCategoryId ?? ""),
   );
-  const [errors, setErrors] = useState<{ amount?: string; form?: string }>({});
-  const categoryOptions: SearchListOption[] = view.categories
-    .filter(
-      (category) =>
-        !category.pairedAccountId &&
-        !category.pairedLoanId &&
-        !category.counterpartyAccountId,
-    )
-    .map((category) => ({
-      value: category.id,
-      label: category.name,
-      group: category.group,
-      amount: category.available,
-    }));
+  // Your part split across categories; none when it has one category.
+  const [lines, setLines] = useState<SideLine[]>(
+    (row.lines ?? []).map((line) => ({
+      lineId: line.id,
+      categoryId: line.categoryId,
+      amount: (Math.abs(line.amount) / 100).toFixed(2),
+    })),
+  );
+  const split = lines.length > 0;
+  const [errors, setErrors] = useState<{
+    amount?: string;
+    form?: string;
+    remaining?: string;
+  }>({});
+  const categoryOptions = spendingCategoryOptions(view);
+  const lineInputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const addLineButton = useRef<HTMLButtonElement>(null);
+  const focusNext = useRef<string | null>(null);
+  useEffect(() => {
+    const target = focusNext.current;
+    if (!target) return;
+    focusNext.current = null;
+    lineInputs.current[target]?.focus({ preventScroll: true });
+  });
   // The field clicked takes focus, or the other one when it can't change.
   // Touch waits for a tap, so a keyboard doesn't cover the row before it's
   // read.
@@ -1010,8 +946,89 @@ function EntryEditor({
         : (input.current ?? categoryInput.current);
     target?.focus({ preventScroll: true });
   }, [focus]);
+  // Your part as the amount reads now: the lines split what's typed there.
+  const typed = readAmount(text);
+  const part = paid ? row.you : typed.ok ? typed.cents : row.you;
+  const lineCents = (line: SideLine) => {
+    const reading = readAmount(line.amount);
+    return reading.ok ? reading.cents : 0;
+  };
+  const remaining =
+    part - lines.reduce((total, line) => total + lineCents(line), 0);
+  const lineKey = (lineId: string, field: "category" | "amount") =>
+    `${lineId}:${field}`;
+  const cents = (value: number) => (value / 100).toFixed(2);
+  // Splitting keeps the chosen category and your whole part on the first
+  // line, and adds an empty second line.
+  const startSplit = () => {
+    const first = newId();
+    setLines([
+      { lineId: first, categoryId, amount: cents(part) },
+      { lineId: newId(), categoryId: "", amount: "" },
+    ]);
+    setCategoryId("");
+    focusNext.current = lineKey(first, "category");
+  };
+  const changeLine = (lineId: string, next: Partial<SideLine>) => {
+    if (errors.remaining) setErrors({});
+    setLines((current) =>
+      current.map((line) =>
+        line.lineId === lineId ? { ...line, ...next } : line,
+      ),
+    );
+  };
+  const addLine = () => {
+    const line = {
+      lineId: newId(),
+      categoryId: "",
+      amount: remaining > 0 ? cents(remaining) : "",
+    };
+    setLines([...lines, line]);
+    focusNext.current = lineKey(line.lineId, "category");
+  };
+  // Removing the second-to-last line ends the split: the one left becomes
+  // your category.
+  const removeLine = (lineId: string) => {
+    const rest = lines.filter((line) => line.lineId !== lineId);
+    if (rest.length > 1) {
+      setLines(rest);
+      addLineButton.current?.focus({ preventScroll: true });
+      return;
+    }
+    setLines([]);
+    setCategoryId(rest[0]?.categoryId ?? "");
+    categoryInput.current?.focus({ preventScroll: true });
+  };
+  const unchangedSplit =
+    row.lines?.length === lines.length &&
+    row.lines.every(
+      (line, index) =>
+        line.id === lines[index]!.lineId &&
+        line.categoryId === lines[index]!.categoryId &&
+        Math.abs(line.amount) === lineCents(lines[index]!),
+    );
+  const saveSplit = () => {
+    if (unchangedSplit && !row.needsCategory) return null;
+    const sign = row.kind === "refund" ? 1 : -1;
+    return entry.saveCommand(
+      {
+        type: "partner.categorize",
+        id: newId(),
+        entryId: row.entryId!,
+        categoryId: null,
+        lines: lines.map((line) => ({
+          lineId: line.lineId,
+          categoryId: line.categoryId,
+          amount: sign * lineCents(line),
+        })),
+      },
+      `Your ${money(part)} of ${row.payee} is split across ${lines.length} categories. Only you see that.`,
+    );
+  };
   const saveCategory = () => {
-    if (!categoryEditable || !categoryId || categoryId === row.categoryId)
+    if (!categoryEditable) return null;
+    if (split) return saveSplit();
+    if (!categoryId || (categoryId === row.categoryId && !row.lines))
       return null;
     const label = categoryOptions.find(
       (option) => option.value === categoryId,
@@ -1023,10 +1040,18 @@ function EntryEditor({
         entryId: row.entryId!,
         categoryId,
       },
-      paid
-        ? `Your import of ${row.payee} will go in ${label}. Only you see that.`
-        : `Your ${money(row.you)} of ${row.payee} is in ${label}. Only you see that.`,
+      `Your ${money(part)} of ${row.payee} is in ${label}. Only you see that.`,
     );
+  };
+  // Why the lines can't save yet, if they can't.
+  const splitIssue = () => {
+    if (!split) return null;
+    if (lines.some((line) => !line.categoryId))
+      return "Choose a category for every line.";
+    if (lines.some((line) => !readAmount(line.amount).ok || !lineCents(line)))
+      return "Enter an amount on every line.";
+    if (remaining) return `The lines must add up to your ${money(part)}.`;
+    return null;
   };
   const saveShare = (cents: number) => {
     if (cents === theirShare) return null;
@@ -1065,7 +1090,13 @@ function EntryEditor({
       return setErrors({
         amount: `A share can be at most ${money(row.shared)}.`,
       });
-    const failure = saveCategory() ?? saveShare(cents);
+    const issue = splitIssue();
+    if (issue) return setErrors({ remaining: issue });
+    // A split saves after the share, so its lines split the part the share
+    // leaves you.
+    const failure = split
+      ? (saveShare(cents) ?? saveCategory())
+      : (saveCategory() ?? saveShare(cents));
     if (failure) return setErrors({ form: failure });
     onClose();
   };
@@ -1079,10 +1110,15 @@ function EntryEditor({
       ? row.shareMode.reason
       : categoryEditable && row.needsCategory && categoryId
         ? `Filled in from ${row.payee} last time. Only you see your category.`
-        : categoryEditable && paid
-          ? "Your import takes this category when it arrives. Only you see it."
-          : undefined;
+        : undefined;
   const editable = shareEditable || categoryEditable;
+  // The columns before Category, empty on a split's rows.
+  const leadingColumns = (
+    <>
+      <span className={editorStyles.spacer} data-column="date" />
+      <span className={editorStyles.spacer} data-column="payee" />
+    </>
+  );
   return (
     <EditorForm
       id={formId}
@@ -1090,29 +1126,33 @@ function EntryEditor({
       onSubmit={editable ? save : onClose}
       onCancel={onClose}
     >
-      <div className={`${styles.txColumns} ${editorStyles.entryRow}`}>
+      <div className={`${grid.columns} ${editorStyles.entryRow}`}>
         {readOnly("date", cells.date)}
         {readOnly("payee", cells.payee)}
-        <EditorText column="paidBy" optional>
-          {cells.paidBy}
-        </EditorText>
         {categoryEditable ? (
           <EditorCell column="category" label="Your category">
-            <SearchList
+            <CategoryField
               inputRef={categoryInput}
               value={categoryId}
+              split={split}
+              onSplit={part > 0 ? startSplit : undefined}
               options={categoryOptions}
               placeholder="Category"
-              onChange={setCategoryId}
-              onPicked={() => input.current?.focus({ preventScroll: true })}
+              onChange={(next) => {
+                setCategoryId(next);
+                setLines([]);
+              }}
+              onPicked={() => {
+                if (!window.matchMedia("(pointer: fine)").matches) return;
+                (input.current ?? categoryInput.current)?.focus({
+                  preventScroll: true,
+                });
+              }}
             />
           </EditorCell>
         ) : (
           readOnly("category", cells.category)
         )}
-        <EditorText column="total" numeric optional>
-          {cells.amount}
-        </EditorText>
         {shareEditable ? (
           <EditorCell column="amount" label={shareLabel} error={errors.amount}>
             <AmountInput
@@ -1129,9 +1169,72 @@ function EntryEditor({
         ) : (
           readOnly("amount", money(row.change, true), true)
         )}
-        {readOnly("balance", cells.balance, true)}
+        {cells.balance && readOnly("balance", cells.balance, true)}
         <span data-column="status" aria-hidden />
       </div>
+      {split && (
+        <SplitLines>
+          {lines.map((line, index) => {
+            const number = index + 1;
+            return (
+              <SplitLine
+                key={line.lineId}
+                number={number}
+                onRemove={() => removeLine(line.lineId)}
+              >
+                {leadingColumns}
+                <EditorCell column="category" label={`Line ${number} category`}>
+                  <CategoryField
+                    inputRef={(element) => {
+                      lineInputs.current[lineKey(line.lineId, "category")] =
+                        element;
+                    }}
+                    value={line.categoryId}
+                    options={categoryOptions}
+                    placeholder="Category"
+                    onChange={(next) =>
+                      // A line takes what's left of your part when it has
+                      // no amount yet, so the last line needs no typing.
+                      changeLine(line.lineId, {
+                        categoryId: next,
+                        ...(!line.amount.trim() && remaining > 0
+                          ? { amount: cents(remaining) }
+                          : {}),
+                      })
+                    }
+                    onPicked={() => {
+                      if (!window.matchMedia("(pointer: fine)").matches) return;
+                      focusNext.current = lineKey(line.lineId, "amount");
+                    }}
+                  />
+                </EditorCell>
+                <EditorCell column="amount" label={`Line ${number} amount`}>
+                  <AmountInput
+                    inputRef={(element) => {
+                      lineInputs.current[lineKey(line.lineId, "amount")] =
+                        element;
+                    }}
+                    negative={row.change < 0}
+                    align="end"
+                    value={line.amount}
+                    onChange={(amount) => changeLine(line.lineId, { amount })}
+                  />
+                </EditorCell>
+                <span className={editorStyles.spacer} data-column="balance" />
+              </SplitLine>
+            );
+          })}
+          <SplitFooter
+            leading={leadingColumns}
+            addRef={addLineButton}
+            onAdd={addLine}
+            remaining={remaining}
+            total={part}
+            error={errors.remaining}
+            column="amount"
+          />
+        </SplitLines>
+      )}
       <EditorFooter
         actions={
           editable ? (

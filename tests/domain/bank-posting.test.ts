@@ -61,13 +61,19 @@ void test("a bank posting preserves approval only for unchanged reviewed financi
     posting({ payee: "COFFEE SHOP #123" }),
     "agent",
   );
-  const transaction = posted.budgets.alice!.transactions[0]!;
+  const transaction = posted.budgets.alice!.transactions.find(
+    ({ id }) => id === "purchase",
+  )!;
   assert.equal(transaction.reviewed, true);
   assert.equal(transaction.status, "posted");
   assert.equal(transaction.categoryId, "dining");
   assert.equal(transaction.history.length, 2);
   assert.equal(transaction.providerId, "posted-record");
-  assert.equal(pending.budgets.alice!.transactions[0]!.status, "pending");
+  assert.equal(
+    pending.budgets.alice!.transactions.find(({ id }) => id === "purchase")!
+      .status,
+    "pending",
+  );
 });
 
 void test("new, unreviewed, or financially changed bank activity still requires approval", () => {
@@ -85,7 +91,9 @@ void test("new, unreviewed, or financially changed bank activity still requires 
       "agent",
     );
     assert.equal(
-      posted.budgets.alice!.transactions.at(-1)!.reviewed,
+      posted.budgets.alice!.transactions.find(
+        ({ id }) => id === (patch.transactionId ?? "purchase"),
+      )!.reviewed,
       false,
       JSON.stringify(patch),
     );
@@ -96,5 +104,9 @@ void test("new, unreviewed, or financially changed bank activity still requires 
     posting(),
     "agent",
   );
-  assert.equal(unreviewed.budgets.alice!.transactions[0]!.reviewed, false);
+  assert.equal(
+    unreviewed.budgets.alice!.transactions.find(({ id }) => id === "purchase")!
+      .reviewed,
+    false,
+  );
 });

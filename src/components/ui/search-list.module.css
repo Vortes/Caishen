@@ -1,15 +1,14 @@
 /* The search list: the field's well as a combobox, and the list that floats
    under it on the Popover surface. The well itself is field.module.css's. */
 
+/* A click anywhere in the well opens or closes the list. */
+.well:has(.input:not(:disabled, [readonly])),
 .input:not(:disabled) {
   cursor: pointer;
 }
 /* A name longer than the well ends in an ellipsis until it's focused. */
 .input {
   text-overflow: ellipsis;
-}
-.input[aria-expanded="true"] {
-  cursor: text;
 }
 .chevron {
   flex: none;
@@ -154,6 +153,10 @@
 .railSearch {
   flex: none;
   padding: 12px 12px 8px;
+}
+/* Its list never closes, so a click there only types. */
+.railSearch .input {
+  cursor: text;
 }
 .railList {
   display: flex;

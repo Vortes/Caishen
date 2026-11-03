@@ -46,7 +46,7 @@ What it does, with nothing for the screen to wire:
   button. The well is 44px with 16px text, as every field is.
 
 ```tsx
-// Correct (reimbursements-register.tsx)
+// Correct (record-repayment.tsx)
 <Field label="Date">
   <DateField
     value={date}

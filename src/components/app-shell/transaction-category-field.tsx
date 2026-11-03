@@ -6,9 +6,10 @@ import type { DraftShare } from "~/components/transactions/transaction-draft";
 import { Button } from "~/components/ui/button";
 import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
-import { SearchList, type SearchListOption } from "~/components/ui/search-list";
+import { type SearchListOption } from "~/components/ui/search-list";
 import { TextInput } from "~/components/ui/text-input";
 import { personKey } from "~/domain/people";
+import { CategoryField } from "./category-field";
 import { isLinked } from "./people";
 import { useShareParties } from "./share-field";
 import styles from "./share.module.css";
@@ -25,13 +26,15 @@ function shareCents(text: string) {
   return reading.ok ? reading.cents : null;
 }
 
+// The category field a transaction's editor extends: People, which share
+// the whole line with someone instead of giving it a category.
 export function TransactionCategoryField({
   amount,
   share,
   peopleEnabled,
   onChange,
   ...field
-}: Omit<ComponentProps<typeof SearchList>, "onChange"> & {
+}: Omit<ComponentProps<typeof CategoryField>, "onChange"> & {
   amount: number;
   share?: DraftShare | null;
   peopleEnabled: boolean;
@@ -74,7 +77,7 @@ export function TransactionCategoryField({
       autoFocus
       anchor={
         <div>
-          <SearchList
+          <CategoryField
             {...field}
             value={selected ? value(selected.id) : field.value}
             displayValue={selected?.name ?? field.displayValue}

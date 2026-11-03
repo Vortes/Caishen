@@ -17,7 +17,6 @@ import {
   type ReactNode,
 } from "react";
 import { useMediaQuery } from "~/components/shared/use-media-query";
-import { transactionSelectionActions } from "~/components/transactions/transaction-actions";
 import { AccountSummary, SearchField } from "./account";
 import type { Reconciling } from "./reconcile";
 import {
@@ -51,8 +50,13 @@ import { SettingsNav, Sidebar } from "./sidebar";
 import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
-import type { Way } from "./transaction-review";
-import { PersonRegister } from "./person-register";
+import type { Way } from "~/components/ui/action-bar";
+import { owesBothWays } from "./people";
+import {
+  PersonFilters,
+  PersonRegister,
+  type PersonSide,
+} from "./person-register";
 import type { Highlight } from "./reflect/chart-utils";
 import { SpendingList, SpendingListSkeleton } from "./reflect/spending-list";
 import { ReflectFilters } from "./reflect/filters";
@@ -225,9 +229,6 @@ export function AppShell({
         : current.filter((id) => !ids.includes(id)),
     );
   };
-  const selectedActions = transactionSelectionActions(
-    transactions.filter((transaction) => checked.includes(transaction.id)),
-  );
   const reviewOnly = budgetAddress.searchParams.get("view") === "review";
   const routeQuery = budgetAddress.searchParams.get("q") ?? "";
   // Keep the input responsive while Next applies its URL transition.
@@ -235,6 +236,16 @@ export function AppShell({
   const deferredQuery = useDeferredValue(query);
   const registerPath = budgetAddress.pathname;
   useEffect(() => setQuery(routeQuery), [registerPath, routeQuery]);
+  // Which way a person's register is narrowed, owed to you or by you, kept
+  // with the person it was chosen for.
+  const [narrowed, setNarrowed] = useState<{
+    accountId: string;
+    side: PersonSide;
+  } | null>(null);
+  const personSide =
+    account && owesBothWays(account) && narrowed?.accountId === account.id
+      ? narrowed.side
+      : null;
   // Transient selections and filters belong to the address they were opened on.
   const selectionSearch = new URLSearchParams(budgetAddress.searchParams);
   selectionSearch.delete("month");
@@ -461,13 +472,6 @@ export function AppShell({
         setAddingGroup(true);
       else if (event.key === "n" && recordable) {
         if (!entry.start({ accountId: screen.accountId })) return;
-      } else if (
-        event.key === "e" &&
-        screen.type === "register" &&
-        selectedActions.edit?.id === selectedId &&
-        selectedActions.edit?.kind === "transaction"
-      ) {
-        if (!entry.start({ transactionId: selectedActions.edit.id })) return;
       } else if (event.key === "Escape") {
         if (peekOpen) dismissPeek();
         else if (narrow && (drawer.sidebar || drawer.inspector)) {
@@ -507,7 +511,6 @@ export function AppShell({
     path,
     entry,
     selectedId,
-    selectedActions,
     settingsOpen,
     closeSettings,
   ]);
@@ -899,6 +902,18 @@ export function AppShell({
                           }}
                         />
                       )}
+                      {account && owesBothWays(account) && (
+                        <PersonFilters
+                          value={personSide}
+                          onChange={(next) => {
+                            setNarrowed(
+                              next && { accountId: account.id, side: next },
+                            );
+                            setSelectedId(null);
+                            setChecked([]);
+                          }}
+                        />
+                      )}
                       {recordable && (
                         <Button
                           size="sm"
@@ -912,11 +927,7 @@ export function AppShell({
                             setChecked([]);
                           }}
                         >
-                          <span
-                            className={styles.reviewDot}
-                            data-on
-                            data-inline
-                          />
+                          <span className={styles.reviewDot} data-on />
                           To review
                           <span className={styles.numeric}>{reviewCount}</span>
                         </Button>
@@ -1000,6 +1011,7 @@ export function AppShell({
                                 key={account.id}
                                 account={account}
                                 query={deferredQuery}
+                                side={personSide}
                                 onJump={jump}
                                 selectedId={selectedId}
                                 onSelect={selectOnly}

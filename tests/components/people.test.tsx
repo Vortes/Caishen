@@ -146,6 +146,63 @@ test("a person with nothing owed folds under Settled, and their register explain
   ).toBe("$0.00");
 });
 
+function sharedWithMom() {
+  return execute(withMom(), "owner", {
+    type: "transaction.upsert",
+    id: "noodles",
+    transactionId: "noodles",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -1_154,
+    payee: "Noodles Plus",
+    recordedAt: "2026-10-05T12:00:00Z",
+    counterpartyShare: { accountId: mom, amount: 1_154 },
+  });
+}
+
+const momLedger = () =>
+  within(screen.getByRole("group", { name: "Mom ledger" }));
+
+test("Enter keeps a person's selected entry in place, and the action bar opens its transaction", async () => {
+  const { user } = await renderShell({ book: sharedWithMom() });
+  await user.click(sidebar().getByRole("link", { name: /^Mom/ }));
+  const row = momLedger().getByRole("button", { name: /Noodles Plus/ });
+  await user.click(row);
+  await user.keyboard("{Enter}");
+
+  expect(screen.getByRole("heading", { name: "Mom" })).toBeTruthy();
+  expect(row.getAttribute("aria-current")).toBe("true");
+  expect(screen.queryByRole("form", { name: "Edit shared entry" })).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Open in Checking" }));
+  expect(screen.getByRole("heading", { name: "Checking" })).toBeTruthy();
+  expect(
+    within(screen.getByRole("group", { name: "Transactions" })).getByRole(
+      "button",
+      { name: /Noodles Plus/, current: true },
+    ),
+  ).toBeTruthy();
+});
+
+test("only a ledger that runs both ways splits into Owed to you and Owed by you", async () => {
+  const { user } = await renderShell({
+    book: withPeople(
+      addMember(sharedWithMom(), "anna", "Home budget", "2026-10"),
+    ),
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await user.click(sidebar().getByRole("link", { name: /^Mom/ }));
+  expect(
+    momLedger().getByRole("button", { name: /Noodles Plus/ }),
+  ).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Owed by you" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Owed to you" })).toBeNull();
+
+  await user.click(sidebar().getByRole("link", { name: /^Anna/ }));
+  expect(screen.getByRole("button", { name: "Owed to you" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Owed by you" })).toBeTruthy();
+});
+
 test("a new transaction can't go to a counterparty account or into a paired envelope", async () => {
   const { user } = await renderShell({ book: withMom() });
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));

@@ -13,12 +13,6 @@ export function importRowId(item: BankImport) {
   return `bank:${JSON.stringify([item.connectionId, item.logicalId])}`;
 }
 
-/** The purchases a partner recorded that a waiting import may be. */
-export function partnerMatchesOf(item: BankImport) {
-  return ("partnerMatches" in item ? item.partnerMatches : undefined) ?? [];
-}
-export type PartnerImportMatch = ReturnType<typeof partnerMatchesOf>[number];
-
 /**
  * The category a waiting bank import takes: the one it already has, else
  * what its payee's memory prefills (READY_TO_ASSIGN for Ready to Assign).

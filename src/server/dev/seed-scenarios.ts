@@ -1,6 +1,7 @@
 import {
   addMember,
   bookSchema,
+  closePartnerLedger,
   createBook,
   execute,
   personAccountId,
@@ -17,6 +18,13 @@ export type SeedOperation = {
   source: "user" | "agent";
   command: Command;
 };
+
+export const developmentSeedScenarios = [
+  "household",
+  "invitation",
+  "former-partner",
+] as const;
+export type DevelopmentSeedScenario = (typeof developmentSeedScenarios)[number];
 
 export function shiftMonth(month: string, offset: number): string {
   const date = new Date(`${month}-01T00:00:00Z`);
@@ -55,10 +63,12 @@ export function buildDevelopmentSeed({
   userId,
   partnerId,
   asOf = developmentToday(),
+  scenario = "household",
 }: {
   userId: string;
   partnerId: string;
   asOf?: string;
+  scenario?: DevelopmentSeedScenario;
 }) {
   if (userId === partnerId)
     throw new Error("Choose two different participants.");
@@ -211,6 +221,12 @@ export function buildDevelopmentSeed({
       emailEnabled: false,
       emailHour: index ? 9 : 8,
     });
+    for (let offset = -2; offset <= 1; offset++)
+      run(actorId, {
+        type: "income.expect",
+        month: shiftMonth(month, offset),
+        amount: index ? 570000 : 650000,
+      });
     for (const [accountId, name, kind, openingBalance] of [
       [
         "checking",
@@ -866,6 +882,13 @@ export function buildDevelopmentSeed({
       status: "posted",
     });
 
+  if (scenario !== "household")
+    book = closePartnerLedger(book, userId, {
+      id: "demo-partner",
+      name: "Jordan",
+      at: `${asOf}T20:00:00.000Z`,
+      by: userId,
+    });
   const parsed = bookSchema.parse(book);
   return {
     book: parsed,
@@ -875,6 +898,7 @@ export function buildDevelopmentSeed({
     asOf,
     userId,
     partnerId,
+    scenario,
   };
 }
 

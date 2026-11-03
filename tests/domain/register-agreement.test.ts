@@ -208,17 +208,6 @@ function agreementBook() {
       date: "2026-10-11",
       recordedAt: "2026-10-11T12:00:00Z",
     });
-    run(actor, {
-      type: "partner.record",
-      entryId: `awaiting-${actor}`,
-      payerId: actor,
-      payee: "Awaiting import",
-      date: "2026-10-12",
-      amount: 2000,
-      share: 1000,
-      categoryId: "food",
-      recordedAt: "2026-10-12T12:00:00Z",
-    });
     const balance = projectBook(book, actor, "2026-10").accounts.find(
       (account) => account.id === "savings",
     )!.cleared;

@@ -10,20 +10,22 @@ import {
   transactions,
 } from "./shell-controls";
 
-test("a cash opening stays read-only and counts once after a purchase and reload", async ({
+test("a cash Starting Balance can be edited and counts once after a purchase and reload", async ({
   page,
   budget,
 }) => {
   await expect(readyToAssign(page)).toHaveText("$700.00");
   await openRegister(page, budget.account);
-  const opening = page.getByRole("group", {
-    name: `Starting Balance for ${budget.account}`,
-    exact: true,
-  });
+  const opening = transactions(page).filter({ hasText: "Starting Balance" });
   await expect(opening).toContainText("$1,000.00");
   await expect(opening.getByLabel("Cleared", { exact: true })).toBeVisible();
-  await expect(opening.getByRole("button")).toHaveCount(0);
-  await expect(opening.getByRole("checkbox")).toHaveCount(0);
+  await expect(
+    page.getByRole("checkbox", {
+      name: "Select Starting Balance",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(opening).toContainText("Inflow: Ready to Assign");
   await expect(accountBalance(page)).toHaveText("$1,000.00");
 
   const form = await fillPurchase(page, budget, "Opening balance market", "30");
@@ -35,17 +37,33 @@ test("a cash opening stays read-only and counts once after a purchase and reload
   await openRegister(page, budget.account);
   await expect(opening).toHaveCount(1);
   await expect(accountBalance(page)).toHaveText("$970.00");
-  await expect(transactions(page)).toHaveCount(1);
+  await expect(transactions(page)).toHaveCount(2);
   await page.getByRole("checkbox", { name: "Select all", exact: true }).click();
   await expect(
     page.getByRole("toolbar", { name: "Selected transactions" }),
-  ).toContainText("1 transaction");
+  ).toContainText("2 transactions");
   await page.getByRole("checkbox", { name: "Select all", exact: true }).click();
   await page.getByRole("button", { name: /^To review/ }).click();
   await expect(opening).toHaveCount(0);
   await expect(
     page.getByText("Everything here is reviewed.", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: /^To review/ }).click();
+  await opening.getByText("Starting Balance", { exact: true }).dblclick();
+  const editor = page.getByRole("form", {
+    name: "Edit transaction",
+    exact: true,
+  });
+  await expect(editor.getByLabel("Category", { exact: true })).toBeDisabled();
+  await editor.getByLabel("Inflow", { exact: true }).fill("1200");
+  await editor.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await saved(page);
+  await reloadBudget(page, budget);
+  await expect(readyToAssign(page)).toHaveText("$900.00");
+  await openRegister(page, budget.account);
+  await expect(opening).toHaveCount(1);
+  await expect(accountBalance(page)).toHaveText("$1,170.00");
 });
 
 test("card debt and zero openings follow account, month, and search filters", async ({
@@ -67,17 +85,15 @@ test("card debt and zero openings follow account, month, and search filters", as
   await budgets.signIn(page, budget);
   await expect(readyToAssign(page)).toHaveText("$700.00");
   await openRegister(page, "Travel card");
-  const card = page.getByRole("group", {
-    name: "Starting Balance for Travel card",
-    exact: true,
-  });
+  const card = transactions(page)
+    .filter({ hasText: "Starting Balance" })
+    .filter({ hasText: "Category not needed" });
   await expect(card).toContainText("$1,200.00");
   await expect(accountBalance(page)).toHaveText("-$1,200.00");
   await expect(
-    page.getByRole("group", {
-      name: "Starting Balance for Checking",
-      exact: true,
-    }),
+    transactions(page)
+      .filter({ hasText: "Starting Balance" })
+      .filter({ hasText: "Inflow: Ready to Assign" }),
   ).toHaveCount(0);
   const purchase = await fillPurchase(page, budget, "Card market", "30");
   await purchase.getByRole("button", { name: "Save", exact: true }).click();
@@ -88,15 +104,10 @@ test("card debt and zero openings follow account, month, and search filters", as
   await openRegister(page, "Travel card");
   await expect(card).toContainText("$1,200.00");
   await expect(accountBalance(page)).toHaveText("-$1,230.00");
-  await page.goto(`/app?account=all&month=${budget.month}`);
-  const openings = page.getByRole("group", { name: /^Starting Balance for/ });
+  await page.goto(`/app/accounts?month=${budget.month}`);
+  const openings = transactions(page).filter({ hasText: "Starting Balance" });
   await expect(openings).toHaveCount(3);
-  await expect(
-    page.getByRole("group", {
-      name: "Starting Balance for Savings",
-      exact: true,
-    }),
-  ).toContainText("$0.00");
+  await expect(openings.filter({ hasText: "Savings" })).toContainText("$0.00");
   await page.getByRole("button", { name: "Next month", exact: true }).click();
   await expect(openings).toHaveCount(0);
   const search = page.getByPlaceholder("Search all accounts");
@@ -112,7 +123,7 @@ test("card debt and zero openings follow account, month, and search filters", as
   await expect(openings).toHaveCount(3);
 });
 
-test("compact all-account openings keep their account names visible", async ({
+test("compact all-account Starting Balances use ordinary adjustment rows", async ({
   page,
   budgets,
 }) => {
@@ -129,16 +140,15 @@ test("compact all-account openings keep their account names visible", async ({
   await page.goto(shellPath);
   await budgets.signIn(page, budget);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/app?account=all&month=${budget.month}`);
-  for (const name of ["Checking", "Travel card"])
-    await expect(
-      page
-        .getByRole("group", {
-          name: `Starting Balance for ${name}`,
-          exact: true,
-        })
-        .getByText(name, { exact: true }),
-    ).toBeVisible();
+  await page.goto(`/app/accounts?month=${budget.month}`);
+  const openings = transactions(page).filter({ hasText: "Starting Balance" });
+  await expect(openings).toHaveCount(2);
+  await expect(
+    openings.filter({ hasText: "Inflow: Ready to Assign" }),
+  ).toBeVisible();
+  await expect(
+    openings.filter({ hasText: "Category not needed" }),
+  ).toBeVisible();
 });
 
 test("compact positive openings retain the register's positive money treatment", async ({
@@ -146,12 +156,9 @@ test("compact positive openings retain the register's positive money treatment",
   budget,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/app?account=checking&month=${budget.month}`);
-  const amount = page
-    .getByRole("group", {
-      name: `Starting Balance for ${budget.account}`,
-      exact: true,
-    })
+  await page.goto(`/app/accounts/checking?month=${budget.month}`);
+  const amount = transactions(page)
+    .filter({ hasText: "Starting Balance" })
     .getByText("$1,000.00", { exact: true });
   await expect(amount).toBeVisible();
   const positiveColor = await amount.evaluate((el) => {

@@ -1,7 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 import { connectPartner } from "./partner-household";
 import { expect, shellPath, test } from "./shell-fixture";
-import { openRegister, transactionRow } from "./shell-controls";
+import {
+  fillPurchase,
+  openRegister,
+  saved,
+  transactionRow,
+} from "./shell-controls";
 
 // What's compared in a column: where its ink starts at the top, and its
 // left edge (text), its right edge (an amount, read off its last digits:
@@ -174,22 +179,20 @@ test("selecting a partner row and opening it to edit moves none of its text", as
     partnerName: "Alex Partner",
   });
 
+  // A purchase split with the partner, so their ledger has an entry.
   await page.goto(shellPath);
+  await openRegister(page, budget.account);
+  const form = await fillPurchase(page, budget, "Corner market", "60");
+  await form.getByRole("button", { name: /^Share/ }).click();
+  // The partner leads Who is this for, already chosen.
   await page
-    .getByRole("navigation", { name: "Budget navigation" })
-    .getByRole("link", { name: /^Alex/ })
+    .getByRole("dialog", { name: "Who this is for", exact: true })
+    .getByRole("group", { name: "How much is for Alex", exact: true })
+    .getByRole("button", { name: /^Half/ })
     .click();
-  await page.getByRole("button", { name: "Record purchase" }).click();
-  const record = page.getByRole("dialog", { name: "Record a shared purchase" });
-  await record.getByLabel("Payee", { exact: true }).fill("Corner market");
-  await record.getByLabel("Total paid", { exact: true }).fill("60");
-  // A category, so the row and its editor show the same text there.
-  const category = record.getByRole("combobox", { name: /^Your category/ });
-  await category.click();
-  await category.fill(budget.category);
-  await category.press("Enter");
-  await record.getByRole("button", { name: "Record", exact: true }).click();
-  await expect(record).toHaveCount(0);
+  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await saved(page);
+  await openRegister(page, "Alex");
 
   const row = page
     .locator("[data-entry-row]")

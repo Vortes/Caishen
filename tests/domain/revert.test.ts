@@ -112,8 +112,12 @@ void test("every command can be undone right away and redone", () => {
 });
 
 void test("an undo is refused when a row it restores changed since, including by the partner", () => {
-  // Jordan edited the partner entry Alex recorded.
-  const shared = find("partner.record");
+  // Jordan edited the partner entry Alex's purchase shares.
+  const shared = written.find(
+    (item) =>
+      item.command.type === "transaction.upsert" &&
+      item.command.transactionId === "market",
+  )!;
   assert.match(
     refusal(() => executeRevert(final, revertOf(shared), shared.stamped)),
     /changed again since/,

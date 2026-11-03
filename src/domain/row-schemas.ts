@@ -9,6 +9,7 @@ import {
 } from "./engine";
 import {
   partnerEntryObject,
+  partnerSideLineSchema,
   partnerSideSchema,
   shareWithinAmount,
 } from "./partner-ledger";
@@ -103,8 +104,13 @@ export const rowDataSchemas = {
     payeeKey: storedIdentifier,
   }),
   partnerEntry: partnerEntryObject.extend(sort).refine(...shareWithinAmount),
-  partnerEntrySide: partnerSideSchema.extend({
+  partnerEntrySide: partnerSideSchema.omit({ lines: true }).extend({
     ...owned,
+    entryId: storedIdentifier,
+  }),
+  partnerEntrySideLine: partnerSideLineSchema.extend({
+    ...owned,
+    ...sort,
     entryId: storedIdentifier,
   }),
   partnerSettlement: partnerSettlementSchema.extend(sort),

@@ -1,5 +1,7 @@
 "use client";
 
+import grid from "~/components/ui/register.module.css";
+
 import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { View } from "~/components/budget/types";
@@ -8,7 +10,6 @@ import type { CounterpartyShare, TransactionLine } from "~/domain/engine";
 import { money, type Transaction } from "./model";
 import { ShareLabel, ShareMenu, useShareParties } from "./share-field";
 import { useTransactionEntry } from "./transaction-entry";
-import shell from "./shell.module.css";
 import styles from "./share.module.css";
 
 type BudgetTransaction = View["budget"]["transactions"][number];
@@ -84,7 +85,7 @@ export function ShareCell({
   const payee = row.payee;
   const slot = (content: ReactNode) => (
     <div
-      className={`${shell.txColumns} ${styles.shareActions}`}
+      className={`${grid.columns} ${styles.shareActions}`}
       data-accounts={accountColumn || undefined}
     >
       <span className={styles.shareSlot}>{content}</span>

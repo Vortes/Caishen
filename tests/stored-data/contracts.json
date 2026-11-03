@@ -395,6 +395,7 @@
           "member",
           "partnerEntry",
           "partnerEntrySide",
+          "partnerEntrySideLine",
           "partnerRequest",
           "partnerSettlement",
           "payeeMemory",
@@ -418,6 +419,7 @@
           "member",
           "partnerEntry",
           "partnerEntrySide",
+          "partnerEntrySideLine",
           "partnerRequest",
           "partnerSettlement",
           "payeeMemory",
@@ -606,7 +608,6 @@
         "id",
         "kind",
         "name",
-        "openingBalance",
         "reconciled",
         "sort",
         "userId",
@@ -1061,6 +1062,21 @@
       "optional": [
         "categoryId"
       ],
+      "nullable": [],
+      "values": {}
+    }
+  ],
+  "rows.partnerEntrySideLine": [
+    {
+      "fields": [
+        "amount",
+        "categoryId",
+        "entryId",
+        "id",
+        "sort",
+        "userId"
+      ],
+      "optional": [],
       "nullable": [],
       "values": {}
     }

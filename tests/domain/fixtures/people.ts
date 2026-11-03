@@ -57,7 +57,6 @@ export function asLegacyReimbursements(
     id: LEGACY_ACCOUNT,
     name: "Reimbursements",
     kind: "reimbursements",
-    openingBalance: 0,
     date: `${budget.startMonth}-01`,
   });
   const envelopes = new Set(

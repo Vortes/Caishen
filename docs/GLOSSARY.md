@@ -47,13 +47,21 @@ A booking with no precedent that fits. It is still booked, its mark says it was 
 The first booking made from a new precedent: the agent watched the user categorize something, and now does it the same way. The daily review names each handoff.
 
 **Evidence**:
-What the agent may reason over: the import record, the user's own budget and history, and the partner ledger entries it already matches against. It may look up public facts about a merchant, such as the location a Costco store number names, but it never sends anything about the user to do so, and it never reaches the user's calendar, email, device location, or the partner's private categories.
+What the agent may reason over: the import record, and the user's own budget and history. It may look up public facts about a merchant, such as the location a Costco store number names, but it never sends anything about the user to do so, and it never reaches the user's calendar, email, device location, or the partner's private categories.
 
 **Payee**:
 An imported transaction's payee as the bank provides it: the bank's merchant name when it gives one, otherwise the raw statement descriptor. Caishen never rewrites it, and keeps the raw descriptor on the transaction so it can always be tied back to the card or bank statement.
 
 **Transaction**:
 A single financial activity, such as a purchase or repayment. Its reported amount can change as the activity is finalized without becoming a second purchase or repayment.
+
+**Starting Balance**:
+The earliest transaction in an account: a balance adjustment holding everything that happened in the account before it was added, as one amount.
+_Avoid_: Balance when added, opening row
+
+**Balance adjustment**:
+A transaction that changes an account's balance without being a purchase, income or transfer: a Starting Balance, or a difference the user accepts when reconciling. On a cash account it is money for Ready to Assign; on any other account it needs no category.
+_Avoid_: Correction, plug
 
 **Register entry**:
 A transaction or bank inbox item named once by the domain with its financial shape and the actions the register may offer. A permitted action still validates the values the user submits.
@@ -149,17 +157,11 @@ A difference between the recorded account and financial-institution records that
 The one record of what the partners owe each other, held by both budgets: each shared purchase's date, payee, amount, who paid, and the other partner's share, plus settlements between them. It shares no category, no line without a share, no other account, and nothing about any other person.
 
 **Source line facts**:
-The facts inside a mirrored partner entry's source that let either partner's browser enforce share-edit rules: whether the payer's line has a purpose category and whether it is on a split purchase. They disclose no category identifier or other private value. A recorded purchase awaiting its payer's import has no source yet.
+The facts inside a mirrored partner entry's source that let either partner's browser enforce share-edit rules: whether the payer's line has a purpose category and whether it is on a split purchase. They disclose no category identifier or other private value.
 _Avoid_: Shared category, provisional preview
 
 **Partner's purchase**:
 A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and is held from Ready to Assign until it has your own category, which the agent books from your precedent at that payee or which you choose. Your partner's category is never evidence for it.
-
-**Recorded purchase**:
-A partner ledger entry either partner records for a purchase before the payer's bank import arrives, naming who paid. It counts in both budgets at once; the payer's paired envelope doesn't move until the import pays it, so anything settled toward it meanwhile stays in that envelope.
-
-**Import match**:
-Pairing a payer's bank import with their recorded purchase, so the purchase counts once. A certain match is made as the import arrives; any other possible match waits in the review inbox for the payer to confirm, and the import doesn't count until then.
 
 **Repayment**:
 Money a person who isn't linked pays you back, recorded from their register or recognized in a bank import by their name. It reduces what they owe and restores their paired envelope; it is never income and never goes to Ready to Assign. The linked person pays you back by a settlement instead.

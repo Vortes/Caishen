@@ -54,9 +54,9 @@ The rows above the options:
 - `onCreate: { noun, create(name) }`: a New row pinned at the top
   ("New category “Rent”"). Enter takes it once nothing else matches.
   Only where the person can make the missing option on the spot (the
-  register's category, a share's person).
+  register's category, and the group in its add-category form).
 - `maxLength`: the longest name the New row can carry, so the well stops
-  typing where the server would refuse it (a share's person: 120).
+  typing where the server would refuse it.
 - `action: { label, icon, onSelect }`: an action that shares the New row,
   such as the register's Split. It is not an option and never shows in
   the closed field.
@@ -67,6 +67,8 @@ What it does, with nothing for the screen to wire:
 
 - Arriving (focus or a click) opens the list with the chosen name
   selected, so typing replaces it and filters by group and label.
+- A click anywhere in the well, on the input or the chevron, opens the
+  list or closes it. `SearchSuggestions` does the same.
 - ArrowDown and ArrowUp open the list or move the highlight. Enter or a
   click picks and calls `onPicked`, for a form that moves on by itself.
 - Tab takes the highlighted match once something is typed or an option is

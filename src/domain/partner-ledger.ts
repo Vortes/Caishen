@@ -35,19 +35,6 @@ import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 //   side's category, once chosen, carries their share as cash-backed
 //   spending. Until then the entry is uncategorized and the money owed is
 //   held from Ready to Assign.
-// - An entry without a `source` is a purchase recorded before the payer's
-//   bank import arrives (`partner.record`). It counts at once in both
-//   budgets: the non-payer's as above, and the payer's Partner account by
-//   the same change. The payer's paired envelope doesn't move, since no
-//   account of theirs has paid it yet; whatever the partner settles toward
-//   it before the import stays in that envelope until the import spends
-//   it, so it never reaches Ready to Assign. The payer's own part waits for
-//   the import; the category they chose for it, if they recorded it
-//   themselves, is their side until then.
-// - When the payer's import arrives it is matched to the entry
-//   (`partner.match`): the import becomes the payer's transaction with the
-//   entry's share, and the entry's `source` names it. The entry keeps its
-//   id, its history, and the non-payer's side.
 
 export const PARTNER_HISTORY_FIELDS = [
   "share",
@@ -61,8 +48,8 @@ export type PartnerEntryChange = {
   actorId: string;
   at?: string;
   operationId: string;
-  // "recorded": created before the payer's import, by whoever recorded it.
-  // "matched": linked to the payer's import, which is its source from then.
+  // "recorded" and "matched" come from purchases recorded before their
+  // payer's import, which stored entries still carry.
   reason:
     "created" | "recorded" | "matched" | "updated" | "removed" | "restored";
   changes?: {
@@ -93,7 +80,14 @@ export type PartnerEntry = {
   history: PartnerEntryChange[];
 };
 
-export type PartnerSide = { categoryId?: string };
+// One partner's side of an entry: one category, or lines across several
+// that add up to their part, like a split transaction's.
+export type PartnerSideLine = {
+  id: string;
+  categoryId: string;
+  amount: number;
+};
+export type PartnerSide = { categoryId?: string; lines?: PartnerSideLine[] };
 
 const identifier = z.string().min(1).max(1024);
 const cents = z.number().int().safe();
@@ -157,8 +151,14 @@ export const formerPartnerEntrySchema = partnerEntryObject
   .extend({ accountId: identifier })
   .refine(...shareWithinAmount);
 
+export const partnerSideLineSchema = z.object({
+  id: identifier,
+  categoryId: identifier,
+  amount: cents,
+});
 export const partnerSideSchema = z.object({
   categoryId: identifier.optional(),
+  lines: z.array(partnerSideLineSchema).optional(),
 });
 
 /** A mirrored entry's id: the payer's transaction line it mirrors. */
@@ -242,22 +242,16 @@ export function mirroredChange(entry: PartnerEntry, viewerId: string): number {
   return entry.payerId === viewerId ? payerChange : -payerChange || 0;
 }
 
-/** Whether an entry still waits for its payer's bank import. */
-export function awaitingImport(entry: PartnerEntry): boolean {
-  return !entry.source;
-}
-
 /**
  * The entries one partner's accounting takes from the shared ledger: the
- * other's purchases, and their own still waiting for their import.
+ * other's purchases. Their own come from their transactions.
  */
 export function mirroredEntries(
   entries: PartnerEntry[] | undefined,
   viewerId: string,
 ): PartnerEntry[] {
   return (entries ?? []).filter(
-    (entry) =>
-      !entry.removed && (entry.payerId !== viewerId || awaitingImport(entry)),
+    (entry) => !entry.removed && entry.payerId !== viewerId,
   );
 }
 
@@ -278,11 +272,6 @@ export function entriesBySource(
   );
 }
 
-/** Who recorded an entry before its payer's import, if anyone did. */
-export function recordedBy(entry: PartnerEntry): string | undefined {
-  return entry.history.find((change) => change.reason === "recorded")?.actorId;
-}
-
 /**
  * The category the viewer's side of an entry belongs to, when it names one
  * of their spending categories.
@@ -294,6 +283,32 @@ export function sideCategory(
   const categoryId = budget.partnerSides?.[entryId]?.categoryId;
   const category = budget.categories.find((item) => item.id === categoryId);
   return category && spendingCategory(category) ? category.id : undefined;
+}
+
+/**
+ * How the viewer's side of an entry spends its change: the whole change in
+ * its category, or each split line in its own. What the lines leave of the
+ * change, once the share is edited after the split, spends nowhere until
+ * it's categorized.
+ */
+export function sideSpending(
+  budget: Pick<Budget, "categories" | "partnerSides">,
+  entryId: string,
+  change: number,
+): [categoryId: string, amount: number][] {
+  const lines = budget.partnerSides?.[entryId]?.lines;
+  if (!lines) {
+    const categoryId = sideCategory(budget, entryId);
+    return categoryId ? [[categoryId, change]] : [];
+  }
+  return lines.flatMap((line) => {
+    const category = budget.categories.find(
+      (item) => item.id === line.categoryId,
+    );
+    return category && spendingCategory(category)
+      ? [[category.id, line.amount] as [string, number]]
+      : [];
+  });
 }
 
 export function spendingCategory(
@@ -310,13 +325,16 @@ export function spendingCategory(
 export function partnerSideIssues(
   budget: Pick<Budget, "categories" | "partnerSides">,
 ): string[] {
-  return Object.values(budget.partnerSides ?? {}).some((side) => {
-    if (side.categoryId === undefined) return false;
-    const category = budget.categories.find(
-      (item) => item.id === side.categoryId,
-    );
-    return !category || !spendingCategory(category);
-  })
+  return Object.values(budget.partnerSides ?? {}).some((side) =>
+    [
+      side.categoryId,
+      ...(side.lines ?? []).map((line) => line.categoryId),
+    ].some((categoryId) => {
+      if (categoryId === undefined) return false;
+      const category = budget.categories.find((item) => item.id === categoryId);
+      return !category || !spendingCategory(category);
+    }),
+  )
     ? ["Invalid partner entry category reference"]
     : [];
 }
@@ -336,6 +354,8 @@ export type PartnerLedgerRow = {
   change: number;
   balance: number;
   categoryId?: string;
+  // The viewer's split of their side of a partner's purchase.
+  lines?: PartnerSideLine[];
   // The viewer's payee memory for an entry they haven't categorized.
   suggestedCategoryId?: string;
   needsCategory: boolean;
@@ -347,10 +367,6 @@ export type PartnerLedgerRow = {
   settlementId?: string;
   method?: string;
   confirmed?: boolean;
-  // Recorded before the payer's import, which hasn't arrived yet.
-  awaitingImport: boolean;
-  // Who recorded it before the payer's import, when someone did.
-  recordedBy?: string;
   shareMode: { mode: "edit" } | { mode: "read"; reason: string };
   history: PartnerEntryChange[];
 };
@@ -400,7 +416,6 @@ export function partnerLedgerRows(
         settlementId: settlement?.id,
         method: settlement?.method,
         confirmed: settlement?.confirmed,
-        awaitingImport: false,
         shareMode: {
           mode: "read",
           reason: "Shares apply to purchases and refunds",
@@ -432,23 +447,28 @@ export function partnerLedgerRows(
         transactionId: transaction.id,
         lineId: line.id,
         entryId: entry?.id,
-        awaitingImport: false,
         shareMode:
           shareMode.mode === "none"
             ? { mode: "read", reason: "Shares apply to purchases and refunds" }
             : shareMode,
-        recordedBy: entry && recordedBy(entry),
         history: entry?.history ?? [],
       });
     }
   }
   for (const entry of mirroredEntries(entries, viewerId)) {
     if (!entryCounts(entry, cutoff)) continue;
-    const paid = entry.payerId === viewerId;
     const categoryId = sideCategory(budget, entry.id);
+    const lines = budget.partnerSides?.[entry.id]?.lines;
+    const change = mirroredChange(entry, viewerId);
     const shared = Math.abs(entry.amount);
-    // The payer categorizes their part once their import arrives.
-    const needsCategory = !paid && !categoryId && entry.share > 0;
+    // A split whose lines no longer add up, after a share edit, leaves the
+    // rest to categorize.
+    const needsCategory = lines
+      ? sideSpending(budget, entry.id, change).reduce(
+          (total, [, amount]) => total + amount,
+          0,
+        ) !== change
+      : !categoryId && entry.share > 0;
     rows.push({
       id: entry.id,
       kind: entry.amount > 0 ? "refund" : "purchase",
@@ -457,18 +477,17 @@ export function partnerLedgerRows(
       status: entry.status,
       payerId: entry.payerId,
       shared,
-      you: paid ? shared - entry.share : entry.share,
-      partner: paid ? entry.share : shared - entry.share,
-      change: mirroredChange(entry, viewerId),
+      you: entry.share,
+      partner: shared - entry.share,
+      change,
       categoryId,
+      ...(lines ? { lines } : {}),
       suggestedCategoryId:
-        needsCategory || (paid && !categoryId)
+        needsCategory && !lines
           ? rememberedSpendingCategory(budget, entry.payee)
           : undefined,
       needsCategory,
       entryId: entry.id,
-      awaitingImport: awaitingImport(entry),
-      recordedBy: recordedBy(entry),
       shareMode: { mode: "edit" },
       history: entry.history,
     });
@@ -593,32 +612,6 @@ export function writeEntry(
     ...(changed.length ? { changes: changed } : {}),
   });
   delete tracked.removed;
-}
-
-/**
- * Links an entry recorded before its payer's import to that import's line,
- * whose facts it takes from then on, recording what changed.
- */
-export function matchEntry(
-  changes: Changes,
-  entry: PartnerEntry,
-  facts: EntryFacts,
-  write: LedgerWrite,
-): void {
-  const changed = PARTNER_HISTORY_FIELDS.flatMap((field) =>
-    entry[field] === facts[field]
-      ? []
-      : [{ field, previous: entry[field], next: facts[field] }],
-  );
-  const tracked = changes.partnerEntry(entry);
-  Object.assign(tracked, facts);
-  tracked.history.push({
-    actorId: write.actorId,
-    operationId: write.operationId,
-    ...(write.at ? { at: write.at } : {}),
-    reason: "matched",
-    ...(changed.length ? { changes: changed } : {}),
-  });
 }
 
 function removeEntry(

@@ -505,7 +505,11 @@ void test("a legacy budget's first bank import keeps its original revision and r
   assert.deepEqual(await remy.api.budget.resolveImport(input), saved);
   const state = await remy.api.budget.state({ month });
   assert.equal(state.revision, 4);
-  assert.equal(state.view?.budget.transactions.length, 1);
+  assert.equal(
+    state.view?.budget.transactions.filter(({ id }) => id === "market")
+      .length,
+    1,
+  );
   assert.equal(state.view?.personalSpending, 1500);
   assert.ok(
     !state.view?.accounts.some((account) => account.kind === "reimbursements"),

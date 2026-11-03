@@ -171,7 +171,6 @@
 - [Split Transactions](https://support.ynab.com/en_us/split-transactions-a-guide-SJLEKwY0q)
 - [The Starting Balance transaction is wrong](https://support.ynab.com/en_us/the-starting-balance-transaction-is-wrong-S1JOWUavle)
 - [Transfer Transactions](https://support.ynab.com/en_us/transfer-transactions-a-guide-HJOsZz4Jj)
-- [Use Photos and Memos to Add Context to Transactions](https://support.ynab.com/en_us/add-context-to-transactions-HyCpTR4bg)
 - [What's the best way to categorize orders from big box stores like Amazon, Apple, Best Buy, Costco, eBay, Kroger, Sam's Club, Walmart, Square, and Target?](https://support.ynab.com/en_us/big-box-stores-Bkp2C7Vykl)
 
 ## Bank connections and imports
@@ -179,7 +178,6 @@
 - [Adding Transactions Without Direct Import](https://support.ynab.com/en_us/adding-transactions-without-direct-import-B1kBALVaxx)
 - [Apple Wallet Connections in YNAB: Using Apple Card, Apple Cash, and Savings with Apple Card](https://support.ynab.com/en_us/apple-connections-rkShEfrUh)
 - [Apple Wallet in YNAB: Authorized Bank Connections](https://support.ynab.com/en_us/apple-third-party-H1gE_0CRyg)
-- [Can I add a memo to an imported or pending transaction without approving the transaction?](https://support.ynab.com/en_us/memo-for-imported-and-pending-transactions-Bk6rJjIyl)
 - [Direct Import Experience](https://support.ynab.com/en_us/direct-import-experience-Sy3HmToST) — unavailable when indexed
 - [Direct Import in Europe](https://support.ynab.com/en_us/direct-import-in-europe-Syae1z_A9)
 - [File-Based Import](https://support.ynab.com/en_us/file-based-import-a-guide-Bkj4Sszyo)

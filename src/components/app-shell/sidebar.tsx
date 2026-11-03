@@ -711,7 +711,6 @@ function NavContents({
         <span
           className={styles.reviewDot}
           data-on={toReview ? "" : undefined}
-          data-inline
           role={toReview ? "img" : undefined}
           aria-label={toReview ? "Transactions to review" : undefined}
           aria-hidden={toReview ? undefined : true}

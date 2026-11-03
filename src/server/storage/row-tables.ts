@@ -97,7 +97,6 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
       text("id"),
       text("name"),
       text("kind"),
-      cents("openingBalance"),
       text("date"),
       {
         name: "reconciledDate",
@@ -368,6 +367,19 @@ const specs: Record<TableName, Omit<TableSpec, "table">> = {
     key: ["userId", "entryId"],
     visibleTo: "userId",
     columns: [userId, text("entryId"), text("categoryId", true)],
+  },
+  partnerEntrySideLine: {
+    model: "PartnerEntrySideLine",
+    key: ["userId", "entryId", "id"],
+    visibleTo: "userId",
+    columns: [
+      userId,
+      text("entryId"),
+      text("id"),
+      text("categoryId"),
+      cents("amount"),
+      sort,
+    ],
   },
   partnerSettlement: {
     model: "PartnerSettlement",

@@ -85,7 +85,7 @@ export async function connectPartner({
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");
   await expect(partner).toHaveURL(new RegExp(`${path}$`));
-  await budgets.claim(email);
+  const userId = await budgets.claim(email);
   await partner
     .getByRole("img", { name: "Caishen sent you something" })
     .click();
@@ -118,4 +118,5 @@ export async function connectPartner({
 
   await page.reload();
   await expect(page.getByText(/^Connected with /)).toBeVisible();
+  return { userId, email };
 }

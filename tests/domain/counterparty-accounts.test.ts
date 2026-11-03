@@ -311,8 +311,14 @@ void test("a purchase entirely for Mom needs no personal category and can be rev
     view.categories.find((item) => item.counterpartyAccountId)!.available,
     -1_154,
   );
-  assert.equal(view.budget.transactions[0]!.categoryId, undefined);
-  assert.equal(view.budget.transactions[0]!.reviewed, true);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "noodles")!.categoryId,
+    undefined,
+  );
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "noodles")!.reviewed,
+    true,
+  );
 });
 
 void test("repayment funds a fully shared card purchase and a later refund leaves money owed back to Mom", () => {
@@ -421,7 +427,11 @@ void test("taking back part or all of Mom's share asks for a personal category a
     -454,
   );
   budget.run({ ...purchase, categoryId: "dining", counterpartyShare: share });
-  assert.equal(budget.view().budget.transactions[0]!.categoryId, undefined);
+  assert.equal(
+    budget.view().budget.transactions.find(({ id }) => id === "noodles")!
+      .categoryId,
+    undefined,
+  );
   budget.run({ ...purchase, categoryId: "dining", counterpartyShare: null });
   assert.equal(budget.view().personalSpending, 1_154);
   assert.equal(
@@ -464,7 +474,11 @@ void test("a split keeps its fully reimbursable line without a category through 
     view.accounts.find((item) => item.id === personId("Mom"))!.balance,
     1_154,
   );
-  assert.equal(view.budget.transactions[0]!.lines![1]!.categoryId, undefined);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "dinner")!.lines![1]!
+      .categoryId,
+    undefined,
+  );
 });
 
 void test("a fully reimbursable payee remembers the person without a purpose category", () => {
@@ -492,49 +506,6 @@ void test("a fully reimbursable payee remembers the person without a purpose cat
   assert.equal(
     rememberedCounterpartyShare(restored, { ...next, amount: 2_000 }),
     undefined,
-  );
-});
-
-void test("a fully shared recorded partner purchase matches its bank import without a payer category", () => {
-  let book = withPeople(
-    addMember(createBook("alan", "Alan", month), "anna", "Anna", month),
-  );
-  book = execute(book, "alan", {
-    type: "account.add",
-    id: "cash",
-    accountId: "cash",
-    name: "Checking",
-    kind: "cash",
-    openingBalance: 100_000,
-  });
-  book = execute(book, "alan", {
-    type: "partner.record",
-    id: "record",
-    entryId: "dinner",
-    payerId: "alan",
-    date: "2026-10-05",
-    payee: "Noodles Plus",
-    amount: 1_154,
-    share: 1_154,
-    recordedAt: "2026-10-05T12:00:00Z",
-  });
-  book = execute(book, "alan", {
-    type: "partner.match",
-    id: "match",
-    entryId: "dinner",
-    transactionId: "bank",
-    accountId: "cash",
-    date: "2026-10-05",
-    amount: -1_154,
-    status: "posted",
-    recordedAt: "2026-10-05T12:00:00Z",
-  });
-  const view = projectBook(book, "alan", month);
-  assert.equal(view.personalSpending, 0);
-  assert.equal(view.budget.transactions[0]!.categoryId, undefined);
-  assert.equal(
-    view.accounts.find((item) => item.linkedUserId === "anna")!.balance,
-    1_154,
   );
 });
 
@@ -569,7 +540,10 @@ void test("a bank amount update keeps a category-free purchase fully reimbursabl
     view.accounts.find((item) => item.id === personId("Mom"))!.balance,
     1_500,
   );
-  assert.equal(view.budget.transactions[0]!.categoryId, undefined);
+  assert.equal(
+    view.budget.transactions.find(({ id }) => id === "noodles")!.categoryId,
+    undefined,
+  );
 });
 
 void test("rounding a bank amount update keeps fully reimbursable split lines whole", () => {
@@ -640,6 +614,10 @@ void test("batch categorization leaves fully reimbursable lines without a purpos
     transactionIds: ["noodles"],
     categoryId: "dining",
   });
-  assert.equal(budget.view().budget.transactions[0]!.categoryId, undefined);
+  assert.equal(
+    budget.view().budget.transactions.find(({ id }) => id === "noodles")!
+      .categoryId,
+    undefined,
+  );
   assert.equal(budget.view().personalSpending, 0);
 });

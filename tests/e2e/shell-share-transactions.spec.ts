@@ -37,21 +37,21 @@ const cases = [
     available: "$181.24",
   },
   {
-    entry: "island",
+    entry: "actionBar",
     amount: "full",
     shares: ["$25.01", "$15.03"],
     total: "$40.04",
     available: "$200.00",
   },
   {
-    entry: "island",
+    entry: "actionBar",
     amount: "half",
     shares: ["$12.50", "$7.51"],
     total: "$20.01",
     available: "$179.97",
   },
   {
-    entry: "island",
+    entry: "actionBar",
     amount: "custom",
     shares: ["$6.25", "$6.25"],
     total: "$12.50",
@@ -117,7 +117,7 @@ async function selectAll(page: Page, payees: readonly string[]) {
   });
 }
 
-// The island's confirmation: what's shared, a category for your portions
+// The action bar's confirmation: what's shared, a category for your portions
 // when any is left uncategorized, then Share.
 async function confirmShare(
   page: Page,
@@ -166,7 +166,7 @@ for (const scenario of cases) {
         "Needs category",
       );
 
-    if (scenario.entry === "island") {
+    if (scenario.entry === "actionBar") {
       const popover = await selectAll(
         page,
         shared.map((purchase) => purchase.payee),
@@ -215,7 +215,9 @@ for (const scenario of cases) {
       scenario.available,
     );
     await openRegister(page, budget.account);
-    await expect(transactions(page)).toHaveCount(shared.length);
+    await expect(
+      transactions(page).filter({ hasText: /Coffee for Mom|Lunch for Mom/ }),
+    ).toHaveCount(shared.length);
     await expect(accountBalance(page)).toHaveText(
       shared.length === 1 ? "$974.99" : "$959.96",
     );

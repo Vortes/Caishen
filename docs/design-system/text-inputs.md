@@ -9,8 +9,8 @@ tree). It sits in a [`Field`](fields.md#field) and throws without one.
 One line of text in the well. `value` and `onChange(value)` (always
 controlled; `name` still sends it with a form), `type`, `placeholder`,
 `autoComplete`, `required`, `minLength`, `maxLength`, `inputMode`,
-`disabled`, `readOnly`, `inputRef`, `prefix`, `suffix`. Nothing else
-exists. `WellInput`, also exported from `text-input.tsx`, is
+`disabled`, `readOnly`, `inputRef`, `prefix`, `suffix`, `clear`. Nothing
+else exists. `WellInput`, also exported from `text-input.tsx`, is
 `AmountInput`'s base; a screen never imports it.
 
 - `type`: `"text"` (the default), `"email"` or `"password"`. Never
@@ -29,6 +29,29 @@ exists. `WellInput`, also exported from `text-input.tsx`, is
 are strings only, never an icon or a button, so every well keeps one look.
 They are hidden from screen readers, so the label must name the field
 without them, and it doesn't repeat them: "APR", not "APR (%)".
+
+`clear: { label, onClear }` is the one button a well holds: an × at its
+end that backs out of what the field stands for, and Backspace in the
+empty well does the same. The label says where it goes, since the icon
+can't: "Back to existing groups". Use it where a field replaced a choice
+and the person may want the choice back, as the add-category form's new
+group replaces its group list. It never just empties the text; Backspace
+already does that.
+
+```tsx
+// Correct (add-category.tsx): a new group's name, in place of the list
+<Field label="New group">
+  <TextInput
+    value={newGroup}
+    onChange={setNewGroup}
+    clear={{ label: "Back to existing groups", onClear: backToList }}
+  />
+</Field>
+
+// Incorrect: a button beside the well, or an icon in a suffix
+<TextInput value={newGroup} onChange={setNewGroup} />
+<Button size="sm" onClick={backToList}>Choose an existing group</Button>
+```
 
 ```tsx
 // Correct (loan-setup-fields.tsx)

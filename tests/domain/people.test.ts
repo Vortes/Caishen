@@ -308,7 +308,6 @@ void test("the Partner account becomes the person linked to the other member, an
       id: LEGACY_PARTNER,
       name: "Partner",
       kind: "partner",
-      openingBalance: 0,
       date: `${month}-01`,
     });
     budget.categories.push({
@@ -322,7 +321,6 @@ void test("the Partner account becomes the person linked to the other member, an
     id: "counterparty:former:sam",
     name: "Sam",
     kind: "former-partner",
-    openingBalance: 0,
     date: `${month}-01`,
     closed: { at: "2026-09-01T00:00:00.000Z", by: "alan" },
   });
@@ -370,7 +368,6 @@ void test("a Partner account in a budget without a partner is refused instead of
     id: LEGACY_PARTNER,
     name: "Partner",
     kind: "partner",
-    openingBalance: 0,
     date: `${month}-01`,
   });
 

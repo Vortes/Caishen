@@ -17,6 +17,15 @@ export const isPerson = (account: Pick<Account, "kind">) =>
 export const isLinked = (account: Pick<Account, "linkedUserId" | "closed">) =>
   Boolean(account.linkedUserId) && !account.closed;
 
+/**
+ * Whether either of you can owe the other: the partner, and a former
+ * partner's frozen ledger. Anyone else's entries are what you paid for
+ * them and what they paid you back.
+ */
+export const owesBothWays = (
+  account: Pick<Account, "linkedUserId" | "closed">,
+) => Boolean(account.linkedUserId) || Boolean(account.closed);
+
 /** Whether nothing is owed either way and no money waits for them. */
 export const isSettled = (account: Account, float: number) =>
   account.balance === 0 && float === 0;
