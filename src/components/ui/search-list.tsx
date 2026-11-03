@@ -166,7 +166,8 @@ export function SearchList({
           data-well=""
           data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
-          onMouseDown={(event) =>
+          onMouseDown={keepFocus}
+          onClick={(event) =>
             fromWell(event, () => {
               if (!open) show();
             })
@@ -294,13 +295,18 @@ if (typeof document !== "undefined") {
 }
 const arrivedByKeyboard = () => !pointerLast;
 
-// A press on the well around the input, such as on the chevron, works as one
-// on the input: it focuses the input and opens the list.
+// A press on the well around the input, such as on the chevron, keeps
+// focus where it is, then the click focuses the input and opens the list.
+// The open is on click because iOS Safari sends mouse events only to
+// elements React marks as clickable, which takes an onClick.
+function keepFocus(event: MouseEvent<HTMLDivElement>) {
+  if (event.target !== event.currentTarget.querySelector("input"))
+    event.preventDefault();
+}
 function fromWell(event: MouseEvent<HTMLDivElement>, open: () => void) {
   const input = event.currentTarget.querySelector("input");
   if (!input || input.disabled || input.readOnly || event.target === input)
     return;
-  event.preventDefault();
   input.focus();
   open();
 }
@@ -488,7 +494,8 @@ export function SearchSuggestions({
           data-well=""
           data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
-          onMouseDown={(event) =>
+          onMouseDown={keepFocus}
+          onClick={(event) =>
             fromWell(event, () => {
               if (!expanded) show();
             })
