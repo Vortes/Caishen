@@ -6,7 +6,7 @@
 and its [stylesheet](../../src/components/ui/action-bar.module.css). Use for
 actions on checked register rows. Use the register's toolbar or account
 summary for actions independent of checked rows, such as Add transaction or
-Record purchase. Use a [`Menu`](menus.md) for an action list and a
+Request. Use a [`Menu`](menus.md) for an action list and a
 [`Popover`](popovers.md) for a form opened from the bar.
 
 There are no variants or sizes. `className` and `style` are not props.

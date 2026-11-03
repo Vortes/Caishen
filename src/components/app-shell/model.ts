@@ -38,7 +38,6 @@ import {
   importCategory,
   importShare,
   importRowId,
-  partnerMatchesOf,
 } from "~/components/transactions/import-draft";
 import { describeTarget } from "./target-draft";
 
@@ -227,8 +226,6 @@ function importReviewReason(item: State["imports"][number]) {
   if (!item.accountId) return "Connect this bank account to a budget account";
   if (item.removed || item.error) return "The bank changed this transaction";
   if (item.needsMatchReview) return "Check that this matches the right entry";
-  if (partnerMatchesOf(item).length)
-    return "Match it to the purchase it was recorded as";
   if (!item.pending) return "Imported from your bank";
   return undefined;
 }

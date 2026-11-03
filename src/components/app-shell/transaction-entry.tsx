@@ -33,7 +33,6 @@ import {
   createImportDraft,
   importRowId,
   type BankImport,
-  type PartnerImportMatch,
 } from "~/components/transactions/import-draft";
 import { transactionActions } from "~/components/transactions/transaction-actions";
 
@@ -601,51 +600,6 @@ export function useTransactionEntryController({
     focus("error");
   };
 
-  // Saves the open bank import as the purchase a partner recorded before
-  // it arrived, with the category the editor shows for the payer's part.
-  const matchImport = (match: PartnerImportMatch) => {
-    const imported = session?.imported;
-    if (!session || !imported?.accountId || removed) return;
-    const categoryId = session.draft.lines.length
-      ? ""
-      : session.draft.categoryId || (match.categoryId ?? "");
-    if (
-      match.share !== Math.abs(imported.amount) &&
-      (!categoryId || categoryId === READY_TO_ASSIGN)
-    ) {
-      patch({
-        fields: { categoryId: "Choose a category for your part of it." },
-        error: "",
-      });
-      focus("categoryId");
-      return;
-    }
-    const blocked = saver.saveImport(
-      imported,
-      {
-        type: "partner.match",
-        id: newId(),
-        recordedAt: new Date().toISOString(),
-        entryId: match.entryId,
-        transactionId: session.entityId,
-        accountId: imported.accountId,
-        date: imported.date,
-        amount: imported.amount,
-        status: imported.pending ? "pending" : "posted",
-        categoryId:
-          match.share === Math.abs(imported.amount) ? undefined : categoryId,
-      },
-      `Matched your import to ${match.payee}`,
-      reopenOnRefusal(session),
-    );
-    if (blocked) {
-      patch({ fields: {}, error: blocked });
-      focus("error");
-      return;
-    }
-    close();
-  };
-
   // Leaving the register would hide unsaved work, so it waits for Save or
   // Cancel. An untouched editor just closes. Returns whether to stay.
   const holdForDraft = () => {
@@ -863,7 +817,6 @@ export function useTransactionEntryController({
       change({ categoryId, lines: [] }, true),
     setCalendarOpen: (calendarOpen: boolean) => patch({ calendarOpen }),
     submit,
-    matchImport,
     cancel: () => close(),
     holdForDraft,
     // The pending focus move, taken once by whichever editor is showing.

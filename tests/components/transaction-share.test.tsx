@@ -744,18 +744,6 @@ test("the register offers Share for purchases and categorized refunds while bloc
           bankImport("match", "Import awaiting a match", {
             needsMatchReview: true,
           }),
-          bankImport("partner-match", "Import matching a recorded purchase", {
-            partnerMatches: [
-              {
-                entryId: "recorded",
-                date: "2026-10-12",
-                payee: "Recorded purchase",
-                amount: 2500,
-                share: 1250,
-                payeesAlike: true,
-              },
-            ],
-          }),
         ],
       }),
   });

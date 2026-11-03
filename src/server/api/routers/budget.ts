@@ -150,7 +150,7 @@ export const budgetRouter = createTRPCRouter({
       status: "ready" as const,
       services,
       connections: banks.map(bankConnectionView),
-      imports: bankInboxItems(banks, opened.ledger.budget, opened.ledger.state),
+      imports: bankInboxItems(banks, opened.ledger.budget),
       partnerFirstName: await partnerFirstName(
         ctx.db,
         opened.household.workspaceId,
@@ -196,7 +196,7 @@ export const budgetRouter = createTRPCRouter({
           revision: household.revision,
           services,
           connections,
-          imports: bankInboxItems(banks, ledger.budget, ledger.state),
+          imports: bankInboxItems(banks, ledger.budget),
           partnerFirstName: await partnerFirstName(
             ctx.db,
             household.workspaceId,
