@@ -3147,9 +3147,12 @@ export type BudgetProjection = ReturnType<typeof projectBook>;
  * What the viewer owes the linked person and how much of it their envelope
  * holds (ADR 0015). What you owe is the net amount; still to fund is what
  * the envelope lacks to pay it. Entries are the viewer's part of the
- * linked person's purchases in the month, and earlier ones still short or
- * without a category while something is still to fund, oldest first. Once
- * an assignment or a settlement covers the gap, the earlier ones drop off.
+ * linked person's purchases in the month, and earlier ones still short,
+ * oldest first. Each entry's set-aside amount is what its categories
+ * funded; its short amount is what's still to fund of it now, since money
+ * assigned to the envelope or a settlement later covers the earliest
+ * shortfalls first. So the short amounts add up to still to fund, and an
+ * earlier entry with nothing short left drops off.
  */
 function linkedFunding(
   budget: Budget,
@@ -3166,18 +3169,25 @@ function linkedFunding(
   const available = calculated.categories.get(envelope.id)!.available;
   // A red envelope is overspending, not a gap to fund.
   const stillToFund = Math.max(0, owed - Math.max(0, available));
+  let covered = safe(
+    sum(
+      [...linkedEntries.values()].map((item) => item.amount - item.setAside),
+    ) - stillToFund,
+  );
   return {
     accountId: account.id,
     categoryId: envelope.id,
     owed,
     stillToFund,
     entries: [...linkedEntries.values()]
-      .filter(
-        (item) =>
-          item.month === month ||
-          (stillToFund > 0 && item.setAside < item.amount),
-      )
-      .map(({ entry, month: entryMonth, amount, setAside }) => {
+      .map((item) => {
+        const short = safe(item.amount - item.setAside);
+        const coveredLater = Math.max(0, Math.min(short, covered));
+        covered = safe(covered - coveredLater);
+        return { ...item, short: safe(short - coveredLater) };
+      })
+      .filter((item) => item.month === month || item.short > 0)
+      .map(({ entry, month: entryMonth, amount, setAside, short }) => {
         const lines = budget.partnerSides?.[entry.id]?.lines;
         return {
           entryId: entry.id,
@@ -3188,7 +3198,7 @@ function linkedFunding(
           categoryId: sideCategory(budget, entry.id),
           ...(lines ? { lines: structuredClone(lines) } : {}),
           setAside,
-          short: safe(amount - setAside),
+          short,
           needsCategory: sideNeedsCategory(budget, entry, -amount),
         };
       }),

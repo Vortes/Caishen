@@ -712,3 +712,21 @@ void test("what your categories fund into the partner's envelope is its activity
     [home.groceries, home.parking].sort(),
   );
 });
+
+void test("money assigned later covers the earliest listed shortfalls first, so they add up to what's still to fund", () => {
+  const home = threePurchases();
+  home.run("alan", {
+    type: "assign",
+    categoryId: home.envelope,
+    month: "2026-11",
+    amount: 2_500,
+  });
+
+  const funding = home.view("2026-11").partnerFunding!;
+  // $25 covers Garage's $20 and $5 of the pharmacy run.
+  assert.equal(funding.stillToFund, 1_500);
+  assert.deepEqual(
+    funding.entries.map(({ entryId, short }) => ({ entryId, short })),
+    [{ entryId: home.pharmacy, short: 1_500 }],
+  );
+});
