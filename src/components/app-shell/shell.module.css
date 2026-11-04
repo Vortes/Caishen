@@ -935,6 +935,10 @@
   gap: 8px;
   padding-top: 10px;
 }
+/* A card action's error, under its buttons. */
+.cardError {
+  padding-top: 6px;
+}
 .figure[data-state="funded"] strong {
   color: var(--status-funded);
 }
@@ -1050,6 +1054,7 @@ button.actionItem:disabled {
   padding: 8px 2px 4px;
   color: var(--text-tertiary);
   font-size: var(--type-small);
+  font-variant-numeric: tabular-nums;
 }
 .meterTrack {
   height: 4px;
