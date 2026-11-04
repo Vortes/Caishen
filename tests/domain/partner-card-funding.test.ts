@@ -678,3 +678,37 @@ void test("disconnecting from your partner changes none of your envelope or cate
       selected,
     );
 });
+
+void test("what your categories fund into the partner's envelope is its activity, by purchase", () => {
+  const home = threePurchases();
+  home.alanPays(2_000);
+
+  const envelope = category(home.view(), home.envelope);
+  // Groceries funded all $40 of Store and Parking $10 of Garage; the
+  // pharmacy run has no category, and Alan paid Anna $20.
+  assert.deepEqual(
+    {
+      assigned: envelope.assigned,
+      activity: envelope.activity,
+      available: envelope.available,
+    },
+    { assigned: 0, activity: 3_000, available: 3_000 },
+  );
+  assert.deepEqual(
+    envelope.activityEntries
+      .map(({ source, amount }) => ({ source, amount }))
+      .sort((a, b) => a.amount - b.amount),
+    [
+      { source: "transaction", amount: -2_000 },
+      { source: "partner", amount: 1_000 },
+      { source: "partner", amount: 4_000 },
+    ],
+  );
+  assert.deepEqual(
+    envelope.activityEntries
+      .filter((entry) => entry.source === "partner")
+      .map((entry) => entry.id)
+      .sort(),
+    [home.groceries, home.parking].sort(),
+  );
+});

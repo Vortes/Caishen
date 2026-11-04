@@ -2063,10 +2063,11 @@ function replay(
       );
     carriedCounterpartyCredit.clear();
     const repaidByKey = new Map<string, number>();
-    // The categorized parts of the linked person's purchases this month, in
-    // date order.
-    const linkedParts: {
+    // The categorized parts of partner ledger entries this month, in date
+    // order: negative for a purchase, positive for a refund.
+    const ledgerParts: {
       entryId: string;
+      accountId: string;
       categoryId: string;
       amount: number;
     }[] = [];
@@ -2243,20 +2244,21 @@ function replay(
           );
           creditByCategory.set(id, cards);
         }
-        if (linkedEntries && entry.accountId === linked?.id && change < 0) {
+        for (const [categoryId, amount] of spending)
+          if (amount)
+            ledgerParts.push({
+              entryId: entry.id,
+              accountId: entry.accountId,
+              categoryId,
+              amount,
+            });
+        if (linkedEntries && entry.accountId === linked?.id && change < 0)
           linkedEntries.set(entry.id, {
             entry,
             month: cursor,
             amount: -change,
             setAside: 0,
           });
-          for (const [categoryId, amount] of spending)
-            linkedParts.push({
-              entryId: entry.id,
-              categoryId,
-              amount: -amount,
-            });
-        }
         // A share with no category is unfunded from the start.
         ledger.unfunded = safe(
           ledger.unfunded - change + sum(spending.map(([, amount]) => amount)),
@@ -2458,31 +2460,47 @@ function replay(
       if (ledger) ledger.unfunded = safe(ledger.unfunded + purchase.remaining);
     }
     // What each category funded goes to its earliest purchases first, so the
-    // latest ones are short.
-    if (linkedEntries) {
-      const covered = new Map<string, number>();
-      for (const part of linkedParts)
-        covered.set(
-          part.categoryId,
-          safe((covered.get(part.categoryId) ?? 0) + part.amount),
+    // latest ones are short, and what it released to its earliest refunds.
+    // Both are the envelope's activity, by purchase.
+    for (const [accountId, ledger] of cardLedgers) {
+      const parts = ledgerParts.filter((part) => part.accountId === accountId);
+      for (const categoryId of new Set(parts.map((part) => part.categoryId))) {
+        const inCategory = parts.filter(
+          (part) => part.categoryId === categoryId,
         );
-      for (const purchase of purchases)
-        if (purchase.cardId === linked?.id)
-          covered.set(
-            purchase.categoryId,
-            safe(covered.get(purchase.categoryId)! - purchase.remaining),
+        const left = (
+          items: { categoryId: string; cardId: string; remaining: number }[],
+        ) =>
+          sum(
+            items
+              .filter(
+                (item) =>
+                  item.categoryId === categoryId && item.cardId === accountId,
+              )
+              .map((item) => item.remaining),
           );
-      for (const part of linkedParts) {
-        const amount = Math.min(
-          part.amount,
-          Math.max(0, covered.get(part.categoryId)!),
+        // A refund in the same category offsets its purchases before
+        // anything moves.
+        let covered = safe(
+          sum(inCategory.map((part) => Math.max(0, -part.amount))) -
+            left(purchases),
         );
-        covered.set(
-          part.categoryId,
-          safe(covered.get(part.categoryId)! - amount),
+        let released = safe(
+          sum(inCategory.map((part) => Math.max(0, part.amount))) -
+            left(refunds),
         );
-        const funding = linkedEntries.get(part.entryId)!;
-        funding.setAside = safe(funding.setAside + amount);
+        for (const part of inCategory) {
+          const amount =
+            part.amount < 0
+              ? Math.min(-part.amount, covered)
+              : -Math.min(part.amount, released);
+          if (part.amount < 0) covered = safe(covered - amount);
+          else released = safe(released + amount);
+          addActivity(ledger.envelopeId, "partner", part.entryId, amount);
+          const funding = linkedEntries?.get(part.entryId);
+          if (funding && amount > 0)
+            funding.setAside = safe(funding.setAside + amount);
+        }
       }
     }
     // A refund the envelope couldn't release reduces the unfunded credit
@@ -2594,6 +2612,9 @@ function replay(
       // Paying them or moving money out leaves less of what categories
       // funded in the envelope.
       if (ledger) {
+        // Like a card's payment category, its activity is what funded
+        // purchases and payments moved in and out.
+        state.activity = safe(state.available - state.opening - state.assigned);
         ledger.setAside = Math.min(
           ledger.setAside,
           Math.max(0, safe(state.available + cardCredit)),
