@@ -773,3 +773,53 @@ void test("a closed person who was never your partner keeps other people's envel
     assert.equal(november.readyToAssign, 505_000);
   }
 });
+
+void test("a refund after an overpayment rolled over returns what you paid to the envelope once your partner repays it", () => {
+  // Groceries set aside $30 of Alan's $40 part, he paid Anna all $40 in
+  // October, and November's Ready to Assign covered the $10 he overpaid.
+  const home = shortGroceries();
+  home.alanPays(4_000);
+  const refund = home.annaBuys(-8_000, 4_000, { date: "2026-11-03" });
+  home.run("alan", {
+    type: "partner.categorize",
+    entryId: refund,
+    categoryId: "groceries",
+  });
+
+  let view = home.view("2026-11");
+  let envelope = category(view, home.envelope);
+  // The envelope already paid the $40 out, so there's nothing to give back
+  // to Groceries; Anna owes it to Alan now.
+  assert.deepEqual(
+    {
+      groceries: category(view, "groceries").available,
+      available: envelope.available,
+      cashOverspending: envelope.cashOverspending,
+      owed: view.partnerFunding?.owed,
+      stillToFund: view.partnerFunding?.stillToFund,
+      owedToYou: view.accounts.find((item) => item.id === home.anna)!.balance,
+      readyToAssign: view.readyToAssign,
+    },
+    {
+      groceries: 0,
+      available: 0,
+      cashOverspending: 0,
+      owed: 0,
+      stillToFund: 0,
+      owedToYou: 4_000,
+      readyToAssign: 496_000,
+    },
+  );
+
+  home.alanPays(-4_000, "2026-11-20");
+  view = home.view("2026-11");
+  envelope = category(view, home.envelope);
+  assert.deepEqual(
+    {
+      available: envelope.available,
+      readyToAssign: view.readyToAssign,
+      cash: view.cash,
+    },
+    { available: 4_000, readyToAssign: 496_000, cash: 500_000 },
+  );
+});
