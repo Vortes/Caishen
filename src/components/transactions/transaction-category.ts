@@ -52,12 +52,15 @@ export function prepareTransactionCategories(
       changes.push({
         rowIds: [rowId],
         imported,
-        command: buildTransactionDraftCommand({
-          draft,
-          view,
-          operationId: newId(),
-          entityId: newId(),
-        }),
+        command: {
+          ...buildTransactionDraftCommand({
+            draft,
+            view,
+            operationId: newId(),
+            entityId: newId(),
+          }),
+          reviewed: imported.pending,
+        },
         summary: `Categorized ${imported.payee}`,
       });
     }

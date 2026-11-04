@@ -5052,7 +5052,8 @@ function applyCommand(
           fail("Choose a spending category for this transfer");
         for (const item of [transaction, ...counterparts]) {
           changes.transaction(budget, item).categoryId = category.id;
-          item.reviewed = source === "user";
+          item.reviewed =
+            source === "user" && (item.reviewed || item.status === "pending");
           item.history.push({
             revision: ++item.revision,
             amount: item.amount,
@@ -5083,7 +5084,9 @@ function applyCommand(
         delete transaction.lines;
       }
       if (transaction.amount > 0) transaction.kind = "refund";
-      transaction.reviewed = source === "user";
+      transaction.reviewed =
+        source === "user" &&
+        (transaction.reviewed || transaction.status === "pending");
       transaction.history.push({
         revision: ++transaction.revision,
         amount: transaction.amount,
