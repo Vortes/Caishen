@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import base from "./playwright.config";
 import { e2eEnvironment, outboxPath, shellPath } from "./tests/e2e/environment";
+import { clerkWebhookSecret } from "./tests/e2e/clerk-webhook-fixture";
 
 const environment = e2eEnvironment({
   ...process.env,
@@ -25,14 +26,9 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
-      CLERK_WEBHOOK_SIGNING_SECRET: "",
+      CLERK_WEBHOOK_SIGNING_SECRET: clerkWebhookSecret,
       NEXT_DIST_DIR: ".next/cache/bank-e2e",
-      NODE_OPTIONS: ["plaid", "resend"]
-        .map(
-          (provider) =>
-            `--import=${pathToFileURL(resolve(`tests/e2e/${provider}-fetch-fixture.mjs`)).href}`,
-        )
-        .join(" "),
+      NODE_OPTIONS: `--import=${pathToFileURL(resolve("tests/e2e/bank-fetch-fixture.mjs")).href}`,
       CAISHEN_E2E_OUTBOX: resolve(outboxPath),
       RESEND_API_KEY: "e2e-resend-key",
       EMAIL_FROM: "Caishen <invites@caishen.example>",

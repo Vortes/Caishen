@@ -55,6 +55,7 @@ export async function connectPartner({
   budgets: {
     newcomer: () => Promise<string>;
     claim: (email: string) => Promise<string>;
+    syncProfile: (userId: string) => Promise<void>;
   };
   partnerName: string;
 }) {
@@ -111,6 +112,7 @@ export async function connectPartner({
     partner.getByRole("heading", { name: "A few questions about you" }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(partner).toHaveURL(/\/welcome$/);
+  await budgets.syncProfile(userId);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await expect(partner.getByText(/^Connected with /)).toBeVisible();

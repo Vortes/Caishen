@@ -56,7 +56,7 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
 
   // Back on the link, signed in: the card waits for a tap, then for ink.
   await expect(partner).toHaveURL(new RegExp(`${path}$`));
-  await budgets.claim(email);
+  const userId = await budgets.claim(email);
   await partner
     .getByRole("img", { name: "Caishen sent you something" })
     .click();
@@ -90,6 +90,7 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
     partner.getByRole("heading", { name: "A few questions about you" }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(partner).toHaveURL(/\/welcome$/);
+  await budgets.syncProfile(userId);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await expect(partner.getByText(/^Connected with Caishen/)).toBeVisible();
@@ -118,13 +119,14 @@ test("an invitation sent from Settings becomes a shared budget for someone new",
   ).toHaveCount(0);
   await expect(
     page
-      .getByRole("navigation", { name: "Budget navigation" })
-      .getByRole("link", { name: /^Alex/ }),
-  ).toBeVisible();
-  await expect(
-    page
       .getByRole("region", { name: "Other people", exact: true })
       .getByText(/Alex/),
   ).toHaveCount(0);
+  await page.getByRole("link", { name: "Back to app", exact: true }).click();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Budget navigation" })
+      .getByRole("link", { name: /^Alex/ }),
+  ).toBeVisible();
   await context.close();
 });
