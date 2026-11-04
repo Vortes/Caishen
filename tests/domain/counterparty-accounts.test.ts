@@ -10,17 +10,21 @@ import {
   createBook,
   execute,
   projectBook,
-  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
+import { envelopeOf, personId, withPerson } from "./fixtures/people";
 
 const month = "2026-10";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 
-// A personal budget with $1,000 in checking and its counterparty accounts.
+// A personal budget with $1,000 in checking and three people: Mom, Dad,
+// and a friend.
 function solo() {
-  let book = withCounterpartyAccounts(createBook("alan", "Alan", month));
+  let book = withPeople(createBook("alan", "Alan", month));
+  for (const name of ["Mom", "Dad", "Friend"])
+    book = withPerson(book, "alan", name);
   let sequence = 0;
   const run = (command: WithoutId<Command>) => {
     book = execute(book, "alan", {
@@ -49,67 +53,146 @@ const people = (book: Book, userId: string) => {
   const view = projectBook(book, userId, month);
   return {
     accounts: view.accounts
-      .filter((account) => ["partner", "reimbursements"].includes(account.kind))
-      .map(({ kind, balance }) => ({ kind, balance })),
+      .filter((account) => account.kind === "person")
+      .map(({ name, balance, linkedUserId }) => ({
+        name,
+        balance,
+        ...(linkedUserId ? { linkedUserId } : {}),
+      })),
     envelopes: view.categories
       .filter((category) => category.counterpartyAccountId)
       .map(({ name, group, counterpartyAccountId }) => ({
         name,
         group,
-        pairedKind: view.accounts.find(
+        person: view.accounts.find(
           (account) => account.id === counterpartyAccountId,
-        )?.kind,
+        )?.name,
       })),
   };
 };
 
-void test("a personal budget has a reimbursements account and its paired envelope in People", () => {
-  const book = withCounterpartyAccounts(createBook("alan", "Alan", month));
+void test("a personal budget starts with nobody, and each person added gets an account and paired envelope in People", () => {
+  const book = withPeople(createBook("alan", "Alan", month));
+  assert.deepEqual(people(book, "alan"), { accounts: [], envelopes: [] });
 
-  assert.deepEqual(people(book, "alan"), {
-    accounts: [{ kind: "reimbursements", balance: 0 }],
-    envelopes: [
-      { name: "Reimbursements", group: "People", pairedKind: "reimbursements" },
-    ],
+  assert.deepEqual(people(withPerson(book, "alan", "Mom"), "alan"), {
+    accounts: [{ name: "Mom", balance: 0 }],
+    envelopes: [{ name: "Mom", group: "People", person: "Mom" }],
   });
 });
 
-void test("partners each get a partner account and envelope, and adding them again changes nothing", () => {
-  const book = withCounterpartyAccounts(
-    addMember(createBook("alan", "Alan", month), "anna", "Anna", month),
+void test("adding a person whose name is already one of your people is refused", () => {
+  const book = withPerson(
+    withPeople(createBook("alan", "Alan", month)),
+    "alan",
+    "Mom",
   );
-
-  for (const userId of ["alan", "anna"])
-    assert.deepEqual(people(book, userId), {
-      accounts: [
-        { kind: "partner", balance: 0 },
-        { kind: "reimbursements", balance: 0 },
-      ],
-      envelopes: [
-        {
-          name: "Reimbursements",
-          group: "People",
-          pairedKind: "reimbursements",
-        },
-        { name: "Partner", group: "People", pairedKind: "partner" },
-      ],
-    });
-  assert.deepEqual(withCounterpartyAccounts(book), book);
+  assert.throws(
+    () =>
+      execute(book, "alan", {
+        type: "person.add",
+        id: "again",
+        accountId: personId("Mom 2"),
+        name: " mom ",
+      }),
+    /already one of your people/,
+  );
 });
 
-void test("a float assigned to the Reimbursements envelope comes out of Ready to Assign and stays available", () => {
+void test("renaming a person renames their account and paired envelope", () => {
+  const book = execute(
+    withPerson(withPeople(createBook("alan", "Alan", month)), "alan", "Mom"),
+    "alan",
+    {
+      type: "person.rename",
+      id: "rename",
+      accountId: personId("Mom"),
+      name: "Mother",
+    },
+  );
+  assert.deepEqual(people(book, "alan"), {
+    accounts: [{ name: "Mother", balance: 0 }],
+    envelopes: [{ name: "Mother", group: "People", person: "Mother" }],
+  });
+});
+
+void test("creating and renaming people use the same unique normalized name", () => {
+  const book = withPerson(
+    withPerson(createBook("alan", "Alan", month), "alan", "Mom Smith"),
+    "alan",
+    "Dad",
+  );
+  const before = structuredClone(book);
+  for (const command of [
+    {
+      type: "person.rename",
+      id: "rename-dad",
+      accountId: personId("Dad"),
+      name: " mom   SMITH ",
+    },
+    {
+      type: "person.add",
+      id: "add-duplicate",
+      accountId: "another-mom",
+      name: " mom   SMITH ",
+    },
+  ] satisfies Command[])
+    assert.throws(
+      () => execute(book, "alan", command),
+      /already one of your people/,
+    );
+  assert.deepEqual(book, before);
+
+  const renamed = execute(book, "alan", {
+    type: "person.rename",
+    id: "change-spelling",
+    accountId: personId("Mom Smith"),
+    name: "MOM SMITH",
+  });
+  assert.deepEqual(
+    people(renamed, "alan").accounts.map((account) => account.name),
+    ["MOM SMITH", "Dad"],
+  );
+});
+
+void test("partners each get a person linked to the other, ahead of everyone else, and adding them again changes nothing", () => {
+  let book = withPerson(
+    withPeople(createBook("alan", "Alan", month)),
+    "alan",
+    "Mom",
+  );
+  book = withPeople(addMember(book, "anna", "Anna", month));
+
+  assert.deepEqual(people(book, "alan"), {
+    accounts: [
+      { name: "Partner", balance: 0, linkedUserId: "anna" },
+      { name: "Mom", balance: 0 },
+    ],
+    envelopes: [
+      { name: "Mom", group: "People", person: "Mom" },
+      { name: "Partner", group: "People", person: "Partner" },
+    ],
+  });
+  assert.deepEqual(people(book, "anna"), {
+    accounts: [{ name: "Partner", balance: 0, linkedUserId: "alan" }],
+    envelopes: [{ name: "Partner", group: "People", person: "Partner" }],
+  });
+  assert.deepEqual(withPeople(book), book);
+});
+
+void test("a float assigned to a person's envelope comes out of Ready to Assign and stays available", () => {
   const budget = solo();
   assert.equal(budget.view().readyToAssign, 100_000);
 
   budget.run({
     type: "assign.set",
-    categoryId: "envelope:reimbursements",
+    categoryId: envelopeOf("Mom"),
     month,
     amount: 20_000,
   });
 
   const envelope = (view: ReturnType<typeof budget.view>) =>
-    view.categories.find((item) => item.id === "envelope:reimbursements")!;
+    view.categories.find((item) => item.id === envelopeOf("Mom"))!;
   assert.equal(budget.view().readyToAssign, 80_000);
   assert.equal(envelope(budget.view()).available, 20_000);
   // Next month the float is still there and still not Ready to Assign.
@@ -129,7 +212,7 @@ void test("spending can't be categorized into a paired envelope", () => {
   } as const;
 
   assert.throws(
-    () => budget.run({ ...purchase, categoryId: "envelope:reimbursements" }),
+    () => budget.run({ ...purchase, categoryId: envelopeOf("Mom") }),
     /paired envelope/,
   );
   budget.run(purchase);
@@ -138,7 +221,7 @@ void test("spending can't be categorized into a paired envelope", () => {
       budget.run({
         type: "transaction.categorize",
         transactionId: "lunch",
-        categoryId: "envelope:reimbursements",
+        categoryId: envelopeOf("Mom"),
       }),
     /paired envelope/,
   );
@@ -147,7 +230,7 @@ void test("spending can't be categorized into a paired envelope", () => {
       budget.run({
         type: "transaction.categorize.batch",
         transactionIds: ["lunch"],
-        categoryId: "envelope:reimbursements",
+        categoryId: envelopeOf("Mom"),
       }),
     /paired envelope/,
   );
@@ -155,14 +238,14 @@ void test("spending can't be categorized into a paired envelope", () => {
 
 void test("nothing is recorded on a counterparty account directly", () => {
   const budget = solo();
-  const entry = /come from shares and settlements/;
+  const entry = /come from shares, repayments, and settlements/;
 
   assert.throws(
     () =>
       budget.run({
         type: "transaction.upsert",
         transactionId: "owed",
-        accountId: "counterparty:reimbursements",
+        accountId: personId("Mom"),
         date: "2026-10-05",
         amount: 4_000,
         payee: "Sam",
@@ -175,7 +258,7 @@ void test("nothing is recorded on a counterparty account directly", () => {
         type: "transaction.upsert",
         transactionId: "repaid",
         accountId: "checking",
-        transferAccountId: "counterparty:reimbursements",
+        transferAccountId: personId("Mom"),
         date: "2026-10-05",
         amount: 4_000,
         payee: "Transfer",
@@ -186,7 +269,7 @@ void test("nothing is recorded on a counterparty account directly", () => {
     () =>
       budget.run({
         type: "account.reconcile",
-        accountId: "counterparty:reimbursements",
+        accountId: personId("Mom"),
         date: "2026-10-05",
         balance: 4_000,
         adjustmentId: "adjust",
@@ -206,8 +289,7 @@ void test("a purchase entirely for Mom needs no personal category and can be rev
     amount: -1_154,
     payee: "Noodles Plus",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 1_154,
     },
     recordedAt: "2026-10-05T12:00:00Z",
@@ -222,7 +304,7 @@ void test("a purchase entirely for Mom needs no personal category and can be rev
     98_846,
   );
   assert.equal(
-    view.accounts.find((item) => item.kind === "reimbursements")!.balance,
+    view.accounts.find((item) => item.id === personId("Mom"))!.balance,
     1_154,
   );
   assert.equal(
@@ -256,8 +338,7 @@ void test("repayment funds a fully shared card purchase and a later refund leave
     amount: -1_154,
     payee: "Noodles Plus",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 1_154,
     },
     recordedAt: "2026-10-05T12:00:00Z",
@@ -268,9 +349,8 @@ void test("repayment funds a fully shared card purchase and a later refund leave
   );
   budget.run({
     type: "counterparty.receive",
-    counterpartyAccountId: "counterparty:reimbursements",
+    counterpartyAccountId: personId("Mom"),
     cashAccountId: "checking",
-    counterpartyName: "Mom",
     date: "2026-10-06",
     amount: 1_154,
     recordedAt: "2026-10-06T12:00:00Z",
@@ -287,8 +367,7 @@ void test("repayment funds a fully shared card purchase and a later refund leave
     amount: 1_154,
     payee: "Noodles Plus",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 1_154,
     },
     recordedAt: "2026-10-07T12:00:00Z",
@@ -300,7 +379,7 @@ void test("repayment funds a fully shared card purchase and a later refund leave
   );
   assert.equal(view.accounts.find((item) => item.id === "card")!.balance, 0);
   assert.equal(
-    view.accounts.find((item) => item.kind === "reimbursements")!.balance,
+    view.accounts.find((item) => item.id === personId("Mom"))!.balance,
     -1_154,
   );
   assert.equal(
@@ -324,8 +403,7 @@ void test("taking back part or all of Mom's share asks for a personal category a
     recordedAt: "2026-10-05T12:00:00Z",
   } as const;
   const share = {
-    accountId: "counterparty:reimbursements",
-    counterpartyName: "Mom",
+    accountId: personId("Mom"),
     amount: 1_154,
   };
   budget.run({ ...purchase, counterpartyShare: share });
@@ -357,8 +435,7 @@ void test("taking back part or all of Mom's share asks for a personal category a
   budget.run({ ...purchase, categoryId: "dining", counterpartyShare: null });
   assert.equal(budget.view().personalSpending, 1_154);
   assert.equal(
-    budget.view().accounts.find((item) => item.kind === "reimbursements")!
-      .balance,
+    budget.view().accounts.find((item) => item.id === personId("Mom"))!.balance,
     0,
   );
 });
@@ -380,8 +457,7 @@ void test("a split keeps its fully reimbursable line without a category through 
         lineId: "mom",
         amount: -1_154,
         counterpartyShare: {
-          accountId: "counterparty:reimbursements",
-          counterpartyName: "Mom",
+          accountId: personId("Mom"),
           amount: 1_154,
         },
       },
@@ -395,7 +471,7 @@ void test("a split keeps its fully reimbursable line without a category through 
     -846,
   );
   assert.equal(
-    view.accounts.find((item) => item.kind === "reimbursements")!.balance,
+    view.accounts.find((item) => item.id === personId("Mom"))!.balance,
     1_154,
   );
   assert.equal(
@@ -416,8 +492,7 @@ void test("a fully reimbursable payee remembers the person without a purpose cat
     payee: "Noodles Plus",
     recordedAt: "2026-10-05T12:00:00Z",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 1_154,
     },
   });
@@ -425,8 +500,7 @@ void test("a fully reimbursable payee remembers the person without a purpose cat
   const next = { payee: "NOODLES PLUS", accountId: "checking", amount: -2_000 };
   assert.equal(rememberedCategory(restored, next), undefined);
   assert.deepEqual(rememberedCounterpartyShare(restored, next), {
-    accountId: "counterparty:reimbursements",
-    counterpartyName: "Mom",
+    accountId: personId("Mom"),
     amount: 2_000,
   });
   assert.equal(
@@ -450,8 +524,7 @@ void test("a bank amount update keeps a category-free purchase fully reimbursabl
   budget.run({
     ...purchase,
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 1_154,
     },
   });
@@ -464,7 +537,7 @@ void test("a bank amount update keeps a category-free purchase fully reimbursabl
   const view = projectBook(updated, "alan", month);
   assert.equal(view.personalSpending, 0);
   assert.equal(
-    view.accounts.find((item) => item.kind === "reimbursements")!.balance,
+    view.accounts.find((item) => item.id === personId("Mom"))!.balance,
     1_500,
   );
   assert.equal(
@@ -490,8 +563,7 @@ void test("rounding a bank amount update keeps fully reimbursable split lines wh
       lineId: `person-${index}`,
       amount: -amount,
       counterpartyShare: {
-        accountId: "counterparty:reimbursements",
-        counterpartyName: ["Mom", "Dad", "Friend"][index]!,
+        accountId: personId(["Mom", "Dad", "Friend"][index]!),
         amount,
       },
     })),
@@ -509,7 +581,9 @@ void test("rounding a bank amount update keeps fully reimbursable split lines wh
   const view = projectBook(updated, "alan", month);
   assert.equal(view.personalSpending, 0);
   assert.equal(
-    view.accounts.find((item) => item.kind === "reimbursements")!.balance,
+    view.accounts
+      .filter((item) => item.kind === "person")
+      .reduce((total, item) => total + item.balance, 0),
     1_101,
   );
 });
@@ -531,8 +605,7 @@ void test("batch categorization leaves fully reimbursable lines without a purpos
     payee: "Noodles Plus",
     recordedAt: "2026-10-05T12:00:00Z",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 1_154,
     },
   });

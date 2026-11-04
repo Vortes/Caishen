@@ -197,7 +197,7 @@ void test("the former-partner preset persists a solo budget and can reset to a h
   assert.equal(state.view!.members.length, 1);
   assert.equal(state.partnerFirstName, null);
   const former = state.view.accounts.find(
-    (account) => account.kind === "former-partner",
+    (account) => account.kind === "person" && account.closed,
   )!;
   assert.equal(former.name, "Jordan");
   assert.ok(state.view.formerPartnerLedgers[former.id]!.length > 0);
@@ -218,7 +218,7 @@ void test("the former-partner preset persists a solo budget and can reset to a h
   assert.equal(household.partnerFirstName, "Jordan (demo)");
   assert.equal(
     household.view.accounts.some(
-      (account) => account.kind === "former-partner",
+      (account) => account.kind === "person" && account.closed,
     ),
     false,
   );

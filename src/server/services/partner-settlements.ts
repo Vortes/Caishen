@@ -14,7 +14,7 @@ import { composeChangeSets } from "~/domain/change-sets";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import {
   AccountingError,
-  counterpartyId,
+  isCounterparty,
   executeWithChanges,
   type Book,
   type Budget,
@@ -56,7 +56,7 @@ import {
 // - a payment between the partners, once both partners' imports of it have
 //   arrived and match (src/lib/settlement-recognition.ts), becomes one
 //   settlement with both legs, and each import is linked to its leg;
-// - a deposit naming someone who owes you through Reimbursements, for no
+// - a deposit naming a person (not the partner) who owes you, for no
 //   more than they owe, becomes their repayment, waiting for your review.
 //
 // Runs after a bank update, as its own operation, so a match can use
@@ -405,16 +405,23 @@ async function settleOnce(db: Database, userId: string) {
     }
   }
 
-  // Your own deposits from someone who owes you through Reimbursements.
+  // Your own deposits from a person who owes you, by their account's name.
+  // The partner's payments are settlements instead.
   const budget = budgetOf(book, userId);
+  const people = new Map(
+    budget.accounts
+      .filter(
+        (account) =>
+          isCounterparty(account) && !account.linkedUserId && !account.closed,
+      )
+      .map((account) => [account.id, account.name]),
+  );
   const owed = new Map<string, number>();
-  for (const entry of counterpartyRegisterEntries(budget, {
-    accountId: counterpartyId("reimbursements"),
-  }))
-    if (entry.counterpartyName)
+  for (const entry of counterpartyRegisterEntries(budget))
+    if (people.has(entry.accountId))
       owed.set(
-        entry.counterpartyName,
-        (owed.get(entry.counterpartyName) ?? 0) + entry.amount,
+        entry.accountId,
+        (owed.get(entry.accountId) ?? 0) + entry.amount,
       );
   for (const candidate of candidates) {
     if (
@@ -425,31 +432,28 @@ async function settleOnce(db: Database, userId: string) {
     )
       continue;
     const from = [...owed].filter(
-      ([person, amount]) =>
-        amount >= candidate.amount && namesPerson(candidate.text, person),
+      ([accountId, amount]) =>
+        amount >= candidate.amount &&
+        namesPerson(candidate.text, people.get(accountId)!),
     );
     if (from.length !== 1) continue;
-    const [counterpartyName] = from[0]!;
+    const [personId] = from[0]!;
     const id = `repaid:${digest([candidate.key])}`;
     try {
       run(
         {
           type: "counterparty.receive",
           id,
-          counterpartyAccountId: counterpartyId("reimbursements"),
+          counterpartyAccountId: personId,
           cashAccountId: candidate.accountId,
           date: candidate.date,
           amount: candidate.amount,
-          counterpartyName,
           payee: candidate.text.slice(0, 240),
           providerId: candidate.record.current.providerTransactionId,
         },
         [[candidate, `${id}:receipt`]],
       );
-      owed.set(
-        counterpartyName,
-        owed.get(counterpartyName)! - candidate.amount,
-      );
+      owed.set(personId, owed.get(personId)! - candidate.amount);
     } catch {
       // Left in the inbox for the user.
     }

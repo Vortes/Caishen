@@ -19,6 +19,7 @@ import type { AppRouter } from "../../src/server/api/root";
 import { e2eEnvironment, shellPath } from "./environment";
 import { RunJournal, cleanupRun } from "./cleanup";
 import { cleanupServices } from "./cleanup-clients";
+import { deliverClerkProfile } from "./clerk-webhook-fixture";
 import { calendarAt } from "./calendar";
 import { showMonth } from "./shell-controls";
 
@@ -56,6 +57,7 @@ type Budgets = {
   newcomer: () => Promise<string>;
   // Marks the account signed up with `email` as this run's, for cleanup.
   claim: (email: string) => Promise<string>;
+  syncProfile: (userId: string) => Promise<void>;
   signIn: (page: Page, budget: TestBudget) => Promise<void>;
   signOut: (page: Page) => Promise<void>;
 };
@@ -74,6 +76,12 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
     const auth = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
     const db = new PrismaClient();
     const journal = await RunJournal.create();
+    const syncProfile = async (userId: string) => {
+      const user = await auth.users.getUser(userId);
+      if (user.privateMetadata.caishenE2ERun !== journal.runId)
+        throw new Error("Refusing to sync a profile outside this E2E run.");
+      await deliverClerkProfile(journeyContext.request, user);
+    };
     const calendar = calendarAt(new Date());
     const { month } = calendar;
     const signIn = async (page: Page, budget: TestBudget) => {
@@ -91,6 +99,7 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
       await provide({
         signIn,
         signOut,
+        syncProfile,
         newcomer: () => journal.reserveIdentity(),
         claim: async (email) => {
           const [user] = (
@@ -112,6 +121,7 @@ export const test = base.extend<{ budgets: Budgets; budget: TestBudget }>({
             privateMetadata: { caishenE2ERun: journal.runId },
           });
           await journal.recordIdentity(email, user.id);
+          await syncProfile(user.id);
           const budget: TestBudget = {
             userId: user.id,
             email,

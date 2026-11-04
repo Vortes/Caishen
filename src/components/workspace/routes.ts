@@ -7,16 +7,18 @@ export type Screen =
   | { type: "register"; accountId: string | null }
   | { type: "loans"; loanId: string | null };
 
-export type SettingsPage = "profile" | "appearance" | "partner";
+export type SettingsPage = "profile" | "appearance" | "people";
 
 const settingsPages: Record<SettingsPage, string> = {
   profile: SETTINGS_PATH,
   appearance: `${SETTINGS_PATH}/appearance`,
-  partner: `${SETTINGS_PATH}/partner`,
+  people: `${SETTINGS_PATH}/people`,
 };
 
-// The settings page an address shows, or null for the shell itself.
+// The settings page an address shows, or null for the shell itself. The
+// Partner page became People; its old address still opens it.
 export function settingsPageAt(pathname: string) {
+  if (pathname === `${SETTINGS_PATH}/partner`) return "people";
   const entry = Object.entries(settingsPages).find(
     ([, path]) => path === pathname,
   );

@@ -8,10 +8,13 @@ import { Field } from "~/components/ui/field";
 import { Popover } from "~/components/ui/popover";
 import { type SearchListOption } from "~/components/ui/search-list";
 import { TextInput } from "~/components/ui/text-input";
+import { personKey } from "~/domain/people";
 import { CategoryField } from "./category-field";
+import { isLinked } from "./people";
 import { useShareParties } from "./share-field";
 import styles from "./share.module.css";
 
+const PERSON = "\u0000person:";
 const NEW_PERSON = "\u0000person:new";
 
 // The name box takes focus as the form opens.
@@ -37,50 +40,32 @@ export function TransactionCategoryField({
   peopleEnabled: boolean;
   onChange: (categoryId: string, share?: DraftShare | null) => void;
 }) {
-  const { partner, reimbursements, people, who } = useShareParties();
+  const { people, addPerson } = useShareParties();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  // A person in the category list owes the whole line.
   const full = share && shareCents(share.amount) === Math.abs(amount);
-  const parties = [
-    ...(partner ? [{ accountId: partner.id, name: partner.name }] : []),
-    ...(reimbursements
-      ? [
-          ...new Set([
-            ...people,
-            ...(share?.counterpartyName ? [share.counterpartyName] : []),
-          ]),
-        ].map((name) => ({ accountId: reimbursements.id, name }))
-      : []),
-  ].map((party) => ({
-    ...party,
-    value: `\u0000person:${JSON.stringify([party.accountId, party.name])}`,
-  }));
+  const value = (accountId: string) => `${PERSON}${accountId}`;
   const selected = full
-    ? parties.find(
-        (party) =>
-          party.accountId === share.accountId &&
-          party.name ===
-            who({ ...share, amount: shareCents(share.amount) ?? 0 }),
-      )
+    ? people.find((person) => person.id === share.accountId)
     : undefined;
   const options: SearchListOption[] = [
     ...field.options,
     ...(peopleEnabled
-      ? parties.map((party) => ({
-          value: party.value,
-          label: party.name,
+      ? people.map((person) => ({
+          value: value(person.id),
+          label: person.name,
           group: "People",
         }))
       : []),
-    ...(peopleEnabled && reimbursements
-      ? [{ value: NEW_PERSON, label: "Someone else…", group: "People" }]
+    ...(peopleEnabled
+      ? [{ value: NEW_PERSON, label: "New person…", group: "People" }]
       : []),
   ];
-  const pickPerson = (accountId: string, name: string) =>
+  const pickPerson = (accountId: string) =>
     onChange("", {
       accountId,
-      ...(accountId === reimbursements?.id ? { counterpartyName: name } : {}),
       amount: (Math.abs(amount) / 100).toFixed(2),
     });
   return (
@@ -94,22 +79,22 @@ export function TransactionCategoryField({
         <div>
           <CategoryField
             {...field}
-            value={selected?.value ?? field.value}
+            value={selected ? value(selected.id) : field.value}
             displayValue={selected?.name ?? field.displayValue}
             options={options}
-            onChange={(value) => {
-              if (value === NEW_PERSON) {
+            onChange={(next) => {
+              if (next === NEW_PERSON) {
                 setName("");
                 setError("");
                 setAdding(true);
                 return;
               }
-              const party = parties.find((party) => party.value === value);
-              if (party) pickPerson(party.accountId, party.name);
-              else onChange(value, full ? null : undefined);
+              const person = people.find((item) => value(item.id) === next);
+              if (person) pickPerson(person.id);
+              else onChange(next, full ? null : undefined);
             }}
-            onPicked={(value) => {
-              if (value !== NEW_PERSON) field.onPicked?.(value);
+            onPicked={(next) => {
+              if (next !== NEW_PERSON) field.onPicked?.(next);
             }}
           />
         </div>
@@ -123,20 +108,29 @@ export function TransactionCategoryField({
         onSubmit={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (!name.trim()) return setError("Name who owes it.");
-          pickPerson(reimbursements!.id, name.trim());
+          const trimmed = name.trim().replace(/\s+/g, " ");
+          if (!trimmed) return setError("Enter their name.");
+          const known = people.find(
+            (person) =>
+              !isLinked(person) &&
+              personKey(person.name) === personKey(trimmed),
+          );
+          const added = known ? { accountId: known.id } : addPerson(trimmed);
+          if (added.failure !== undefined) return setError(added.failure);
+          pickPerson(added.accountId);
           setAdding(false);
         }}
       >
         <Field
-          label="Who owes it"
-          hint="The full amount goes to Reimbursements."
+          label="New person"
+          hint="They owe you the full amount. Only you see them."
           error={error || undefined}
         >
           <TextInput
             inputRef={focusName}
-            maxLength={240}
+            maxLength={120}
             value={name}
+            placeholder="Name or company"
             onChange={(next) => {
               setName(next);
               setError("");
@@ -148,7 +142,7 @@ export function TransactionCategoryField({
             Cancel
           </Button>
           <Button size="sm" variant="primary" type="submit">
-            Apply
+            Add
           </Button>
         </div>
       </form>

@@ -2,16 +2,16 @@ import {
   addMember,
   bookSchema,
   closePartnerLedger,
-  counterpartyId,
   createBook,
   execute,
-  pairedEnvelopeId,
+  personAccountId,
+  personEnvelopeId,
   projectBook,
-  withCounterpartyAccounts,
   type Command,
   type Target,
 } from "~/domain/engine";
-import { partnerEntryId } from "~/domain/partner-ledger";
+import { partnerAccountOf, partnerEntryId } from "~/domain/partner-ledger";
+import { withPeople } from "~/domain/people";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 export type SeedOperation = {
   actorId: string;
@@ -79,7 +79,7 @@ export function buildDevelopmentSeed({
     throw new Error("Use a valid YYYY-MM-DD seed date.");
   const month = asOf.slice(0, 7);
   const firstMonth = shiftMonth(month, -2);
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(
       createBook(userId, "Demo · Alex’s budget", firstMonth),
       partnerId,
@@ -104,17 +104,28 @@ export function buildDevelopmentSeed({
     const limit = period === month ? Number(asOf.slice(8)) : 28;
     return `${period}-${String(Math.min(day, limit)).padStart(2, "0")}`;
   };
-  const partner = counterpartyId("partner");
-  const reimbursements = counterpartyId("reimbursements");
+  // Each member's person linked to the other.
+  const partnerOf = (memberId: string) =>
+    partnerAccountOf(book.budgets[memberId]!)!.id;
+  // Alex's other people: an employer who reimburses work costs, a friend
+  // who still owes for a concert and dinner, and a friend who is settled.
+  const cedarLabs = personAccountId("cedar-labs");
+  const mia = personAccountId("mia");
+  const sam = personAccountId("sam");
+  for (const [accountId, name] of [
+    [cedarLabs, "Cedar Labs"],
+    [mia, "Mia"],
+    [sam, "Sam"],
+  ] as const)
+    run(userId, { type: "person.add", accountId, name });
   // A purchase line shared with a counterparty, recorded when it was made.
   const share = (
     period: string,
     day: number,
     accountId: string,
     amount: number,
-    counterpartyName?: string,
   ) => ({
-    counterpartyShare: { accountId, amount, counterpartyName },
+    counterpartyShare: { accountId, amount },
     recordedAt: `${date(period, day)}T20:00:00.000Z`,
   });
   // The non-payer's side of a shared purchase, in their own category.
@@ -367,8 +378,8 @@ export function buildDevelopmentSeed({
       // Float in the People envelopes: cash set aside for what each fronts
       // for the other until it's paid back.
       if (offset === -2) {
-        funding[pairedEnvelopeId("partner")] = index ? 130000 : 25000;
-        if (!index) funding[pairedEnvelopeId("reimbursements")] = 60000;
+        funding[personEnvelopeId(partnerOf(actorId))] = index ? 130000 : 25000;
+        if (!index) funding[personEnvelopeId(cedarLabs)] = 60000;
       }
       for (const [categoryId, amount] of Object.entries(funding))
         run(actorId, { type: "assign", categoryId, amount, month: period });
@@ -454,7 +465,7 @@ export function buildDevelopmentSeed({
         28000,
         "groceries",
         "checking",
-        share(period, 1, partner, 14000),
+        share(period, 1, partnerOf(userId), 14000),
       );
       categorizeSide(userId, "household-stock-up", "groceries");
       settle(
@@ -475,7 +486,7 @@ export function buildDevelopmentSeed({
       260000,
       "rent",
       "checking",
-      share(period, 2, partner, 130000),
+      share(period, 2, partnerOf(partnerId), 130000),
     );
     categorizeSide(partnerId, `rent-${suffix}`, "rent");
     buy(
@@ -487,7 +498,7 @@ export function buildDevelopmentSeed({
       18942,
       "utilities",
       "checking",
-      share(period, 3, partner, 9471),
+      share(period, 3, partnerOf(userId), 9471),
     );
     categorizeSide(userId, `utilities-${suffix}`, "utilities");
     buy(
@@ -499,7 +510,7 @@ export function buildDevelopmentSeed({
       12346,
       "groceries",
       "amex",
-      share(period, 4, partner, 6173),
+      share(period, 4, partnerOf(userId), 6173),
     );
     if (!current) categorizeSide(userId, `groceries-a-${suffix}`, "groceries");
     buy(
@@ -511,13 +522,13 @@ export function buildDevelopmentSeed({
       8793,
       "groceries",
       "amex",
-      share(period, 5, partner, 3000),
+      share(period, 5, partnerOf(partnerId), 3000),
     );
     categorizeSide(partnerId, `groceries-b-${suffix}`, "groceries");
     if (!current) {
       // Settle up each month: whoever owes pays the Partner balance.
       const owedToYou = projectBook(book, userId, period).accounts.find(
-        (account) => account.id === partner,
+        (account) => account.id === partnerOf(userId),
       )!.balance;
       if (owedToYou)
         settle(
@@ -556,40 +567,107 @@ export function buildDevelopmentSeed({
     annualRateBps: 675,
     effectiveDate: date(month, 1),
   });
-  buy(
-    userId,
-    month,
-    6,
+  // The other people's entries run over the last six weeks, counted back
+  // from the seed date, so their registers read as weeks of history
+  // whatever day of the month it is.
+  const ago = (days: number): [string, number] => {
+    const day = new Date(`${asOf}T12:00:00Z`);
+    day.setUTCDate(day.getUTCDate() - days);
+    const iso = day.toISOString();
+    return [iso.slice(0, 7), Number(iso.slice(8, 10))];
+  };
+  const shared = (
+    days: number,
+    transactionId: string,
+    payee: string,
+    amount: number,
+    categoryId: string,
+    accountId: string,
+    person: string,
+    theirs: number,
+  ) => {
+    const [period, day] = ago(days);
+    buy(
+      userId,
+      period,
+      day,
+      transactionId,
+      payee,
+      amount,
+      categoryId,
+      accountId,
+      share(period, day, person, theirs),
+    );
+  };
+  const repaid = (days: number, amount: number, accountId: string) => {
+    const on = date(...ago(days));
+    run(userId, {
+      type: "counterparty.receive",
+      counterpartyAccountId: accountId,
+      cashAccountId: "checking",
+      date: on,
+      amount,
+      recordedAt: `${on}T20:00:00.000Z`,
+    });
+  };
+  // Cedar Labs, Alex's employer, pays back work costs in part, then in
+  // full: $280.00 still owed.
+  shared(
+    38,
     "conference-hotel",
     "Hyatt Regency · work conference",
     48000,
     "work",
     "amex",
-    share(month, 6, reimbursements, 48000, "Cedar Labs"),
+    cedarLabs,
+    48000,
   );
-  const repaid = (day: number, amount: number) =>
-    run(userId, {
-      type: "counterparty.receive",
-      counterpartyAccountId: reimbursements,
-      cashAccountId: "checking",
-      date: date(month, day),
-      amount,
-      counterpartyName: "Cedar Labs",
-      recordedAt: `${date(month, day)}T20:00:00.000Z`,
-    });
-  repaid(10, 20000);
-  buy(
-    userId,
-    month,
-    7,
+  repaid(30, 20000, cedarLabs);
+  shared(
+    20,
     "work-train",
     "Amtrak · client visit",
     8500,
     "work",
     "checking",
-    share(month, 7, reimbursements, 8500, "Cedar Labs"),
+    cedarLabs,
+    8500,
   );
-  repaid(11, 8500);
+  repaid(12, 8500, cedarLabs);
+  // Mia owes half of two nights out, less what she sent: $77.00.
+  shared(
+    26,
+    "mia-concert-tickets",
+    "Ticketmaster · two concert tickets",
+    13000,
+    "gifts",
+    "amex",
+    mia,
+    6500,
+  );
+  repaid(19, 3000, mia);
+  shared(
+    9,
+    "mia-dinner",
+    "Nopa · dinner with Mia",
+    8400,
+    "dining",
+    "amex",
+    mia,
+    4200,
+  );
+  // Sam paid back his half of a ski rental, so he's settled.
+  shared(
+    33,
+    "sam-ski-rental",
+    "Tahoe ski rental",
+    5000,
+    "travel",
+    "checking",
+    sam,
+    2500,
+  );
+  repaid(24, 2500, sam);
   buy(
     userId,
     month,

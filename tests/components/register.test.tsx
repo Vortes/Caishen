@@ -4,9 +4,10 @@ import {
   addMember,
   createBook,
   execute,
-  withCounterpartyAccounts,
+  personAccountId,
   type Command,
 } from "~/domain/engine";
+import { withPeople } from "~/domain/people";
 import { SyncError } from "~/components/sync/transport";
 import {
   budgetFixture,
@@ -743,9 +744,16 @@ test("choosing and removing a transfer payee changes category requirements witho
   ).toBeTruthy();
 });
 
-test("F3: the new transaction account picker excludes Partner and Reimbursements", async () => {
-  const book = withCounterpartyAccounts(
-    addMember(budgetFixture(), "partner", "Anna", "2026-10"),
+test("F3: the new transaction account picker excludes people", async () => {
+  const book = execute(
+    withPeople(addMember(budgetFixture(), "partner", "Anna", "2026-10")),
+    "owner",
+    {
+      type: "person.add",
+      id: "add-mom",
+      accountId: personAccountId("mom"),
+      name: "Mom",
+    },
   );
   const shell = await renderShell({
     book,
@@ -758,9 +766,7 @@ test("F3: the new transaction account picker excludes Partner and Reimbursements
   const form = within(screen.getByRole("form", { name: "New transaction" }));
   await shell.user.click(form.getByRole("combobox", { name: "Account" }));
   expect(screen.getByRole("option", { name: /Checking/ })).toBeTruthy();
-  expect(
-    screen.queryByRole("option", { name: /Partner|Anna|Reimbursements/ }),
-  ).toBeNull();
+  expect(screen.queryByRole("option", { name: /Partner|Anna|Mom/ })).toBeNull();
 });
 
 test("cash, card and tracking adjustments use the existing editor with their category fixed", async () => {

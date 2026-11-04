@@ -3,12 +3,13 @@ import {
   createBook,
   executeWithChanges,
   projectBook,
-  withCounterpartyAccounts,
   type Book,
   type Command,
   type CommandSource,
 } from "../../../src/domain/engine";
 import type { ChangeSet } from "../../../src/domain/rows";
+import { withPeople } from "../../../src/domain/people";
+import { linkedPersonId, personId } from "./people";
 
 // A two-partner household driven through every command type, including the
 // changes that reach far from the command: reconciling marks every cleared
@@ -29,7 +30,7 @@ export type CorpusStep = {
 const start = "2026-01";
 
 export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("alex", "Alex", start), "jordan", "Jordan", start),
   );
   const steps: CorpusStep[] = [];
@@ -111,6 +112,16 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     name: "Brokerage",
     kind: "tracking",
     openingBalance: 100_000,
+  });
+  alex({
+    type: "person.add",
+    accountId: personId("Employer"),
+    name: "Employr",
+  });
+  alex({
+    type: "person.rename",
+    accountId: personId("Employer"),
+    name: "Employer",
   });
   alex({ type: "group.add", name: "Bills" });
   alex({ type: "group.add", name: "Fun" });
@@ -207,9 +218,8 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
         categoryId: "food",
         amount: -6_000,
         counterpartyShare: {
-          accountId: "counterparty:reimbursements",
+          accountId: personId("Employer"),
           amount: 1_000,
-          counterpartyName: "Employer",
         },
       },
       { lineId: "warehouse-fun", categoryId: "dining", amount: -3_000 },
@@ -464,12 +474,15 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     effectiveDate: "2026-01-01",
   });
   jordan({ type: "loan.reorder", loanIds: ["boat", "bike"] });
-  alex(
+  alex((book) =>
     purchase("market", -4_000, "food", {
       recordedAt: "2026-01-20T12:00:00Z",
       date: "2026-01-20",
       payee: "Market",
-      counterpartyShare: { accountId: "counterparty:partner", amount: 2_000 },
+      counterpartyShare: {
+        accountId: linkedPersonId(book, "alex"),
+        amount: 2_000,
+      },
     }),
   );
   jordan({
@@ -477,12 +490,15 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     entryId: "alex:market:market",
     categoryId: "household",
   });
-  alex(
+  alex((book) =>
     purchase("hardware", -6_000, "food", {
       recordedAt: "2026-01-20T12:30:00Z",
       date: "2026-01-20",
       payee: "Hardware",
-      counterpartyShare: { accountId: "counterparty:partner", amount: 3_000 },
+      counterpartyShare: {
+        accountId: linkedPersonId(book, "alex"),
+        amount: 3_000,
+      },
     }),
   );
   jordan({
@@ -542,19 +558,17 @@ export function buildCommandCorpus(): { book: Book; steps: CorpusStep[] } {
     recordedAt: "2026-01-22T12:00:00Z",
     date: "2026-01-22",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
+      accountId: personId("Employer"),
       amount: 1_000,
-      counterpartyName: "Employer",
     },
   });
   alex({
     type: "counterparty.receive",
     recordedAt: "2026-01-23T12:00:00Z",
-    counterpartyAccountId: "counterparty:reimbursements",
+    counterpartyAccountId: personId("Employer"),
     cashAccountId: "checking",
     date: "2026-01-23",
     amount: 1_000,
-    counterpartyName: "Employer",
   });
   alex({
     type: "category.reorder",

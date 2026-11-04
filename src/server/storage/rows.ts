@@ -655,9 +655,10 @@ export async function readHouseholdRevision(db: Database, userId: string) {
 }
 
 /**
- * Whether a member's household lacks a counterparty account its budgets
- * should hold: reimbursements for every member, and partner for both once
- * there are two. Cheap enough to ask on every pull.
+ * Whether a member's household isn't all people yet, as lacksPeople asks of
+ * the book: an account of a kind stored before every counterparty became a
+ * person, or a budget without exactly one live person linked to the other
+ * member with one paired envelope. Cheap enough to ask on every pull.
  */
 export async function lacksCounterpartyAccounts(
   db: Database,
@@ -667,25 +668,46 @@ export async function lacksCounterpartyAccounts(
     where: { members: { some: { clerkUserId: userId } } },
     select: {
       id: true,
-      _count: { select: { budgetMembers: { where: { deleted: false } } } },
+      budgetMembers: { where: { deleted: false }, select: { userId: true } },
     },
   });
   if (!workspace) return false;
   const workspaceId = workspace.id;
-  const members = workspace._count.budgetMembers;
+  const members = workspace.budgetMembers.map((member) => member.userId);
   const accounts = await db.account.findMany({
     where: {
       workspaceId,
       deleted: false,
-      kind: { in: ["partner", "reimbursements"] },
+      OR: [
+        { kind: { in: ["partner", "reimbursements", "former-partner"] } },
+        { linkedUserId: { not: null }, closedAt: null },
+      ],
     },
-    select: { kind: true },
+    select: { userId: true, id: true, kind: true, linkedUserId: true },
   });
-  const count = (kind: string) =>
-    accounts.filter((account) => account.kind === kind).length;
-  return (
-    count("reimbursements") < members || (members === 2 && count("partner") < 2)
-  );
+  if (accounts.some((account) => account.kind !== "person")) return true;
+  if (members.length !== 2) return accounts.length > 0;
+  const envelopes = await db.category.findMany({
+    where: {
+      workspaceId,
+      deleted: false,
+      counterpartyAccountId: { in: accounts.map((account) => account.id) },
+    },
+    select: { userId: true, counterpartyAccountId: true },
+  });
+  return members.some((member) => {
+    const linked = accounts.filter((account) => account.userId === member);
+    return (
+      linked.length !== 1 ||
+      linked[0]!.linkedUserId === member ||
+      !members.includes(linked[0]!.linkedUserId!) ||
+      envelopes.filter(
+        (envelope) =>
+          envelope.userId === member &&
+          envelope.counterpartyAccountId === linked[0]!.id,
+      ).length !== 1
+    );
+  });
 }
 
 /** A member's operations written after one revision, through another. */

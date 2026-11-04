@@ -15,14 +15,15 @@ import {
   createBook,
   execute,
   personalLedger,
-  withCounterpartyAccounts,
   executeWithChanges,
   projectBook,
   type Command,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
+import { linkedPersonId, personId, withPerson } from "./fixtures/people";
 
 void test("F1: the non-payer and household refuse a share reduction without the payer's purpose category", () => {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
   );
   book = execute(book, "a", {
@@ -41,7 +42,7 @@ void test("F1: the non-payer and household refuse a share reduction without the 
     date: "2026-10-10",
     payee: "Shared dinner",
     amount: -5000,
-    counterpartyShare: { accountId: "counterparty:partner", amount: 5000 },
+    counterpartyShare: { accountId: linkedPersonId(book, "a"), amount: 5000 },
     recordedAt: "2026-10-10T12:00:00Z",
   });
   const command = {
@@ -60,9 +61,10 @@ void test("F1: the non-payer and household refuse a share reduction without the 
 
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 function agreementBook() {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
   );
+  for (const actor of ["a", "b"]) book = withPerson(book, actor, "Employer");
   let sequence = 0;
   const run = (actor: string, command: WithoutId<Command>) => {
     book = execute(book, actor, { ...command, id: `matrix-${++sequence}` });
@@ -123,7 +125,10 @@ function agreementBook() {
     run(actor, {
       ...base,
       transactionId: "partial",
-      counterpartyShare: { accountId: "counterparty:partner", amount: 1000 },
+      counterpartyShare: {
+        accountId: linkedPersonId(book, actor),
+        amount: 1000,
+      },
     });
     for (const [transactionId, categoryId] of [
       ["full", undefined],
@@ -133,7 +138,10 @@ function agreementBook() {
         ...base,
         transactionId,
         categoryId,
-        counterpartyShare: { accountId: "counterparty:partner", amount: 2000 },
+        counterpartyShare: {
+          accountId: linkedPersonId(book, actor),
+          amount: 2000,
+        },
       });
     run(actor, {
       ...base,
@@ -145,7 +153,7 @@ function agreementBook() {
           lineId: "shared",
           amount: -1000,
           counterpartyShare: {
-            accountId: "counterparty:partner",
+            accountId: linkedPersonId(book, actor),
             amount: 1000,
           },
         },
@@ -188,17 +196,15 @@ function agreementBook() {
       ...base,
       transactionId: "reimbursable",
       counterpartyShare: {
-        accountId: "counterparty:reimbursements",
+        accountId: personId("Employer"),
         amount: 1000,
-        counterpartyName: "Employer",
       },
     });
     run(actor, {
       type: "counterparty.receive",
-      counterpartyAccountId: "counterparty:reimbursements",
+      counterpartyAccountId: personId("Employer"),
       cashAccountId: "cash",
       amount: 500,
-      counterpartyName: "Employer",
       date: "2026-10-11",
       recordedAt: "2026-10-11T12:00:00Z",
     });
@@ -319,7 +325,7 @@ void test("register capabilities and UI commands agree across both members' Pers
             transaction.lines?.find((line) => line.counterpartyShare)
               ?.counterpartyShare;
           const shared = share ?? {
-            accountId: "counterparty:partner",
+            accountId: linkedPersonId(book, actor),
             amount: Math.floor(Math.abs(transaction.amount) / 2),
           };
           const lines = transaction.lines?.map((line) => ({
@@ -392,7 +398,7 @@ void test("register capabilities and UI commands agree across both members' Pers
 });
 
 void test("source line facts follow a non-payer's full-share edit before the next preview", () => {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
   );
   book = execute(book, "a", {
@@ -418,7 +424,7 @@ void test("source line facts follow a non-payer's full-share edit before the nex
     payee: "Shared dinner",
     amount: -5000,
     categoryId: "food",
-    counterpartyShare: { accountId: "counterparty:partner", amount: 2500 },
+    counterpartyShare: { accountId: linkedPersonId(book, "a"), amount: 2500 },
     recordedAt: "2026-10-10T12:00:00Z",
   });
   const command = {

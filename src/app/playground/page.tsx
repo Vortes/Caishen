@@ -3,6 +3,12 @@ import styles from "~/components/playground/playground.module.css";
 
 const pages = [
   {
+    href: "/playground/people",
+    title: "People picker stress cases",
+    description:
+      "Long names, large balances, empty lists, and 1,000 people in the real picker primitive.",
+  },
+  {
     href: "/playground/partner-invite",
     title: "Partner invite lab",
     description:

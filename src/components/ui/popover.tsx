@@ -109,13 +109,14 @@ export function Popover(props: TriggerProps | AnchorProps) {
           onOpenAutoFocus={autoFocus ? undefined : prevent}
           onCloseAutoFocus={anchored ? prevent : props.onCloseAutoFocus}
           onEscapeKeyDown={(event) => {
-            // Escape closes an open list inside the popover before the
-            // popover itself.
-            const target = event.target as Element | null;
+            // A control that uses Escape itself first, such as an open list
+            // or a search with text to clear, carries data-holds-escape
+            // while it does, and the popover stays open for that press.
+            const target = event.target;
             if (
               anchored ||
-              (target?.getAttribute("role") === "combobox" &&
-                target.getAttribute("aria-expanded") === "true")
+              (target instanceof Element &&
+                target.hasAttribute("data-holds-escape"))
             )
               event.preventDefault();
           }}

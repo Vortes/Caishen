@@ -59,17 +59,17 @@ void test("the former-partner seed keeps the closed ledger and frees the partner
   const view = projectBook(seed.book, "alex", seed.month);
   assert.equal(view.members.length, 1);
   assert.equal(
-    view.accounts.some((account) => account.kind === "partner"),
+    view.accounts.some((account) => account.linkedUserId),
     false,
   );
   const former = view.accounts.find(
-    (account) => account.kind === "former-partner",
+    (account) => account.kind === "person" && account.closed,
   )!;
   assert.equal(former.name, "Jordan");
   assert.equal(former.closed?.by, "alex");
   assert.equal(
     former.balance,
-    original.accounts.find((account) => account.kind === "partner")!.balance,
+    original.accounts.find((account) => account.linkedUserId)!.balance,
   );
   assert.ok(view.formerPartnerLedgers[former.id]!.length > 0);
   assert.equal(view.cash, original.cash);

@@ -38,6 +38,7 @@ import {
   writeChangeSet,
   type PullPosition,
 } from "../../src/server/storage/rows";
+import { withPeople } from "../../src/domain/people";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
@@ -57,11 +58,8 @@ type WithoutId<T> = T extends unknown ? Omit<T, "id"> : never;
 // Alex and Jordan's household: accounts, categories, a shared category,
 // and some spending on it.
 function startingBook(): Book {
-  let book = addMember(
-    createBook(alex, "Alex", "2026-09"),
-    jordan,
-    "Jordan",
-    "2026-09",
+  let book = withPeople(
+    addMember(createBook(alex, "Alex", "2026-09"), jordan, "Jordan", "2026-09"),
   );
   let sequence = 0;
   const run = (actorId: string, command: WithoutId<Command>) => {

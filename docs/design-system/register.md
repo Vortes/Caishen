@@ -4,8 +4,8 @@
 
 [`src/components/ui/register.tsx`](../../src/components/ui/register.tsx)
 and its [stylesheet](../../src/components/ui/register.module.css). Use for
-checkable or selectable records with a column header: Transactions, the
-Partner ledger and Reimbursements. Use [plain rows](rows.md) for the Plan
+checkable or selectable records with a column header: Transactions and
+every person's ledger. Use [plain rows](rows.md) for the Plan
 and Loans; they keep their own row structure and `moveSelection` calls.
 Plan also uses `useRowSelection` directly.
 
@@ -37,13 +37,13 @@ new register gets the same behavior.
 - Supply `checkable(row)` when rows can join an action set. A false result
   leaves that row selectable and openable but excludes it from checkboxes,
   ranges, `x` and Select all. Transactions uses `row.actions.select`;
-  the Partner uses its categorization eligibility.
-- Omit `checkable` when the register never checks rows, as Reimbursements
-  does. Pass `checked={[]}` and `onCheck={() => undefined}`. It renders no checkboxes,
+  a person's register uses its categorization eligibility, which only the
+  partner's entries have.
+- Omit `checkable` when the register never checks rows. Pass `checked={[]}` and `onCheck={() => undefined}`. It renders no checkboxes,
   Select all or checked styling, and its current-row frame stays square.
 - `onOpen(row, column?)` decides what opening means and whether it is
-  allowed. Transactions starts its editor at the clicked field; the Partner
-  opens its ledger editor; Reimbursements jumps to the source transaction.
+  allowed. Transactions starts its editor at the clicked field; a person's
+  register opens the entry, a settlement included, in its own editor row.
   A keyboard open has no column.
 - `editingId` replaces the matching row with `renderEditor(row)`. An id
   absent from `rows` calls `renderEditor(undefined)` in the sticky dock
@@ -59,7 +59,8 @@ new register gets the same behavior.
   over it when `rows` is empty and there is no docked editor. The caller
   decides which message fits its filter; the Register hides the header.
 - `actionBar` renders after the rows. Transactions passes `TransactionActions`;
-  the Partner passes `PartnerActions` with its Open in account destination.
+  a person's register passes `PersonActions` with its Open in account
+  destination.
   Keep eligibility, actions and callbacks in those callers. The frame is
   [`ActionBar`](action-bar.md), not another selection implementation.
 - `aria-label` names the register group and defaults to Register. `ref`
@@ -67,7 +68,7 @@ new register gets the same behavior.
 
 ### Layout and interaction
 
-Set column widths through `layout`, as all three callers do. Its required
+Set column widths through `layout`, as both callers do. Its required
 `wide` and optional `narrow` and `compact` feed `--columns-wide`,
 `--columns-narrow` and `--columns-compact`. The left gutter, `--row-gutter`,
 is fixed at 42px in every register, with or without checkboxes: the
@@ -105,32 +106,32 @@ instead of calling these helpers again.
 
 ### Examples
 
-Correct: the selection and opening props from `ReimbursementsRegister` in
-[`reimbursements-register.tsx`](../../src/components/app-shell/reimbursements-register.tsx)
-(excerpt). The full call omits `checkable`: opening goes to the transaction,
-and there is no checked-row action set.
+Correct: the selection and opening props from `PersonRegister` in
+[`person-register.tsx`](../../src/components/app-shell/person-register.tsx)
+(excerpt). Only the partner's entries can be checked, but every entry
+selects, and anything with something to edit opens in place.
 
 ```tsx
-rows={rows}
+checkable={checkable}
 selectedId={selectedId}
 onSelect={onSelect}
-checked={[]}
-onCheck={() => undefined}
-onOpen={(entry) =>
-  onJump({
-    id: entry.transactionId,
-    accountId: entry.accountId,
-    date: entry.date,
-  })
-}
+checked={checked}
+onCheck={onCheck}
+onOpen={(row, column) => {
+  if (editing || !(row.entryId ?? row.lineId ?? row.settlementId)) return;
+  setEditing({
+    id: row.id,
+    field: column === "category" && checkable(row) ? "category" : "amount",
+  });
+}}
 ```
 
 Incorrect for a Register caller: the replaced Partner grid override in
 [`partner-register.module.css`](../../src/components/app-shell/partner-register.module.css)
 before #249 (`git show a02f7a9b^:src/components/app-shell/partner-register.module.css`).
-The doubled selector used to outrank the shell grid. `PartnerRegister` now
+The doubled selector used to outrank the shell grid. `PersonRegister` now
 passes those widths through `layout` in
-[`partner-register.tsx`](../../src/components/app-shell/partner-register.tsx).
+[`person-register.tsx`](../../src/components/app-shell/person-register.tsx).
 
 ```css
 .register.register {

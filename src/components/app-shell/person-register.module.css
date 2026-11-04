@@ -29,24 +29,6 @@
   color: var(--status-credit);
 }
 
-/* A settlement's source: how both budgets recognized it. */
-.source {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--type-small);
-}
-.source > svg {
-  flex: none;
-  color: var(--text-tertiary);
-}
-.detailActions {
-  display: flex;
-  gap: 8px;
-}
-
 /* An open request: what's been paid toward it since it was asked. */
 .requestStrip {
   display: flex;
@@ -100,31 +82,4 @@
 }
 .fieldPair > :last-child {
   padding-left: 4px;
-}
-
-/* A waiting import's possible recorded purchases, in its editor. */
-.matches {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px calc(var(--space-row-x) + 16px + 16px - 8px) 0 var(--row-gutter);
-}
-.match {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--type-small);
-}
-.match > svg {
-  flex: none;
-  color: var(--text-tertiary);
-}
-.match > p {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: 0;
-  color: var(--text-secondary);
-}
-.matchHint {
-  color: var(--text-tertiary);
 }

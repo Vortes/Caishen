@@ -176,7 +176,10 @@ export function partnerEntryId(
 export function partnerAccountOf(
   budget: Pick<Budget, "accounts">,
 ): Budget["accounts"][number] | undefined {
-  return budget.accounts.find((account) => account.kind === "partner");
+  return budget.accounts.find(
+    (account) =>
+      account.kind === "person" && !!account.linkedUserId && !account.closed,
+  );
 }
 
 /**
@@ -196,8 +199,8 @@ export function partnerLines(
 
 /** Whether an account holds a partner ledger: the partner's, or a former one's. */
 export const isPartnerLedger = (
-  account: Pick<Budget["accounts"][number], "kind">,
-) => account.kind === "partner" || account.kind === "former-partner";
+  account: Pick<Budget["accounts"][number], "kind" | "linkedUserId" | "closed">,
+) => account.kind === "person" && (!!account.linkedUserId || !!account.closed);
 
 /**
  * The ledger entries behind one partner ledger account: the household's
@@ -210,8 +213,9 @@ export function ledgerEntries(
   accountId: string,
 ): PartnerEntry[] {
   const account = budget.accounts.find((item) => item.id === accountId);
-  if (account?.kind === "partner") return shared ?? [];
-  if (account?.kind !== "former-partner") return [];
+  if (account?.kind !== "person") return [];
+  if (account.linkedUserId && !account.closed) return shared ?? [];
+  if (!account.closed) return [];
   return (budget.formerPartnerEntries ?? []).filter(
     (entry) => entry.accountId === accountId,
   );
@@ -490,7 +494,7 @@ export function partnerLedgerRows(
   }
   rows.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   // A former partner's ledger is closed: its shares can't change.
-  const frozen = partner.kind === "former-partner";
+  const frozen = !!partner.closed;
   let balance = 0;
   return rows
     .map((row) => {

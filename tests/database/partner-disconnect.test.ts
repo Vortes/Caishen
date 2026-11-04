@@ -8,7 +8,7 @@ import {
   CLIENT_FORMAT,
   CLIENT_FORMAT_HEADER,
 } from "../../src/domain/client-format";
-import type { Command } from "../../src/domain/engine";
+import type { Account, Command } from "../../src/domain/engine";
 import { partnerEntryId } from "../../src/domain/partner-ledger";
 import { invitationFrom } from "./fixtures";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
@@ -70,7 +70,11 @@ async function member(firstName: string) {
   return { id, api, run, view };
 }
 
-const shared = (transactionId: string, amount: number, share: number) =>
+const shared = (
+  transactionId: string,
+  amount: number,
+  counterpartyShare?: { accountId: string; amount: number },
+) =>
   ({
     type: "transaction.upsert",
     id: randomUUID(),
@@ -80,8 +84,15 @@ const shared = (transactionId: string, amount: number, share: number) =>
     date: `${month}-02`,
     payee: "Market",
     categoryId: "food",
-    counterpartyShare: { accountId: "counterparty:partner", amount: share },
+    counterpartyShare,
   }) satisfies Command;
+
+// The person linked to the other member, among a member's accounts.
+const linkedPeople = <T extends Account>(view: { accounts: T[] }) =>
+  view.accounts.filter(
+    (account) =>
+      account.kind === "person" && account.linkedUserId && !account.closed,
+  );
 
 const workspaceOf = async (userId: string) =>
   (
@@ -96,8 +107,20 @@ void test("disconnecting splits the household and freezes the partner ledger on 
   await alex.api.budget.joinInvitation({
     id: await invitationFrom(db, jordan.id),
   });
-  await jordan.run(shared("dinner", -10_000, 5_000));
-  await alex.run(shared("groceries", -6_000, 3_000));
+  const partnerOf = async (person: typeof jordan) =>
+    linkedPeople(await person.view())[0]!.id;
+  await jordan.run(
+    shared("dinner", -10_000, {
+      accountId: await partnerOf(jordan),
+      amount: 5_000,
+    }),
+  );
+  await alex.run(
+    shared("groceries", -6_000, {
+      accountId: await partnerOf(alex),
+      amount: 3_000,
+    }),
+  );
   await alex.run({
     type: "partner.categorize",
     id: randomUUID(),
@@ -106,7 +129,7 @@ void test("disconnecting splits the household and freezes the partner ledger on 
   });
   const before = { jordan: await jordan.view(), alex: await alex.view() };
   const partnerBalance = (view: typeof before.jordan) =>
-    view.accounts.find((account) => account.kind === "partner")?.balance;
+    linkedPeople(view)[0]?.balance;
   assert.equal(partnerBalance(before.jordan), 2_000);
   assert.equal(partnerBalance(before.alex), -2_000);
 
@@ -120,7 +143,7 @@ void test("disconnecting splits the household and freezes the partner ledger on 
     const was = before[person === jordan ? "jordan" : "alex"];
     assert.equal(view.members.length, 1, "each person is on their own");
     assert.equal(partnerBalance(view), undefined, "the partner slot is free");
-    const closed = view.accounts.filter((a) => a.kind === "former-partner");
+    const closed = view.accounts.filter((a) => a.kind === "person" && a.closed);
     assert.equal(closed.length, 1);
     assert.equal(closed[0]!.name, formerName);
     assert.equal(closed[0]!.balance, balance, "the balance is frozen");
@@ -140,21 +163,18 @@ void test("disconnecting splits the household and freezes the partner ledger on 
     // Nothing new reaches the closed account, nor changes what it holds.
     await assert.rejects(
       () =>
-        person.run({
-          ...shared(`late-${person.id}`, -2_000, 1_000),
-          counterpartyShare: { accountId: closed[0]!.id, amount: 1_000 },
-        }),
+        person.run(
+          shared(`late-${person.id}`, -2_000, {
+            accountId: closed[0]!.id,
+            amount: 1_000,
+          }),
+        ),
       { message: /frozen/ },
     );
   }
-  await assert.rejects(
-    () =>
-      jordan.run({
-        ...shared("dinner", -20_000, 10_000),
-        counterpartyShare: undefined,
-      }),
-    { message: /frozen/ },
-  );
+  await assert.rejects(() => jordan.run(shared("dinner", -20_000)), {
+    message: /frozen/,
+  });
   await assert.rejects(() => alex.api.budget.disconnect(), {
     message: /partner/,
   });
@@ -164,10 +184,13 @@ void test("disconnecting splits the household and freezes the partner ledger on 
     id: await invitationFrom(db, alex.id),
   });
   const again = await jordan.view();
+  for (const view of [again, await alex.view()])
+    assert.equal(linkedPeople(view).length, 1, "one partner each again");
   assert.equal(partnerBalance(again), 0);
   assert.equal(
-    again.accounts.find((account) => account.kind === "former-partner")
-      ?.balance,
+    again.accounts.find(
+      (account) => account.kind === "person" && account.closed,
+    )?.balance,
     2_000,
   );
   assert.equal(again.readyToAssign, before.jordan.readyToAssign);

@@ -50,7 +50,7 @@ you use.
 | [text-inputs.md](text-inputs.md)   | `TextInput`                                                    |
 | [amounts.md](amounts.md)           | `AmountInput`, `readAmount`, the operator row                  |
 | [selects.md](selects.md)           | `Select`                                                       |
-| [search-lists.md](search-lists.md) | `SearchList`, `SearchSuggestions`; which to use                |
+| [search-lists.md](search-lists.md) | `SearchList`, `SearchSuggestions`, `SearchListDetail`; which   |
 | [dates.md](dates.md)               | `DateField`                                                    |
 | [choices.md](choices.md)           | `Switch`, `Checkbox`, `SegmentedControl`, `Tabs`; which to use |
 | [rows.md](rows.md)                 | Shared row-selection outline, grouping, states, motion         |

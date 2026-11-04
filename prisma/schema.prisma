@@ -316,6 +316,8 @@ model Account {
   date              String
   reconciledDate    String?
   reconciledBalance BigInt?
+  // A person who is also a Caishen user in this household: the partner.
+  linkedUserId      String?
   // A former partner's closed account: when it closed, and who disconnected.
   closedAt          String?
   closedBy          String?

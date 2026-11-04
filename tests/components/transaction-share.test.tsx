@@ -1,6 +1,13 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { addMember, withCounterpartyAccounts } from "~/domain/engine";
+import {
+  addMember,
+  execute,
+  personAccountId,
+  type Book,
+} from "~/domain/engine";
+import { withPeople } from "~/domain/people";
+import type userEvent from "@testing-library/user-event";
 import { SyncError } from "~/components/sync/transport";
 import {
   budgetFixture,
@@ -11,6 +18,28 @@ import {
   renderShell,
   type Overview,
 } from "./shell-harness";
+
+// The household's budgets with one person, Mom, in the owner's.
+const withMom = (book: Book) =>
+  execute(withPeople(book), "owner", {
+    type: "person.add",
+    id: "add-mom",
+    accountId: personAccountId("mom"),
+    name: "Mom",
+  });
+
+// Picks a person under "Who is this for?", then how much is theirs.
+async function pickShare(
+  user: ReturnType<typeof userEvent.setup>,
+  person: string,
+  amount: RegExp,
+) {
+  await user.click(screen.getByRole("combobox", { name: "Who is this for" }));
+  await user.click(
+    screen.getByRole("option", { name: new RegExp(`^${person}`) }),
+  );
+  await user.click(screen.getByRole("button", { name: amount }));
+}
 
 function bankImport(
   logicalId: string,
@@ -43,7 +72,7 @@ function bankImport(
 
 test("mixed selections offer Share for eligible purchases and leave transfers selected", async () => {
   const shell = await renderShell({
-    book: withCounterpartyAccounts(
+    book: withMom(
       budgetFixture({
         seedCommands: [
           {
@@ -89,11 +118,7 @@ test("mixed selections offer Share for eligible purchases and leave transfers se
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await shell.user.click(
-    screen.getByRole("button", { name: /Someone else owes/ }),
-  );
-  await shell.user.type(screen.getByLabelText("Who owes it"), "Mom");
-  await shell.user.click(screen.getByRole("button", { name: "Apply" }));
+  await pickShare(shell.user, "Mom", /^All of it/);
   await shell.user.click(
     screen.getByRole("button", { name: "Share 1 transaction" }),
   );
@@ -107,7 +132,7 @@ test("mixed selections offer Share for eligible purchases and leave transfers se
   await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
   expect(
     await screen.findByRole("button", {
-      name: "Mom's share of Coffee: $25.00. Change",
+      name: "Mom’s share of Coffee: $25.00. Change",
     }),
   ).toBeTruthy();
   expect(
@@ -126,7 +151,7 @@ test("sharing previews the whole selection before the server answers and restore
     bankImport("lunch", "Imported lunch", { amount: -1501 }),
   ];
   const { user } = await renderShell({
-    book: withCounterpartyAccounts(
+    book: withMom(
       budgetFixture({
         seedCommands: [
           {
@@ -172,9 +197,7 @@ test("sharing previews the whole selection before the server answers and restore
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await user.click(screen.getByRole("button", { name: /Someone else owes/ }));
-  await user.type(screen.getByLabelText("Who owes it"), "Mom");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await pickShare(user, "Mom", /^All of it/);
   await user.click(
     screen.getByRole("button", { name: "Share 3 transactions" }),
   );
@@ -186,7 +209,7 @@ test("sharing previews the whole selection before the server answers and restore
   ]) {
     expect(
       screen.getByRole("button", {
-        name: `Mom's share of ${payee}: ${amount}. Change`,
+        name: `Mom’s share of ${payee}: ${amount}. Change`,
       }),
     ).toBeTruthy();
     expect(
@@ -201,7 +224,7 @@ test("sharing previews the whole selection before the server answers and restore
   await waitFor(() =>
     expect(
       screen.queryByRole("button", {
-        name: "Mom's share of Imported coffee: $25.01. Change",
+        name: "Mom’s share of Imported coffee: $25.01. Change",
       }),
     ).toBeNull(),
   );
@@ -217,12 +240,12 @@ test("sharing previews the whole selection before the server answers and restore
   ).toBe("false");
   expect(
     screen.getByRole("button", {
-      name: "Mom's share of Market: $10.00. Change",
+      name: "Mom’s share of Market: $10.00. Change",
     }),
   ).toBeTruthy();
   expect(
     screen.getByRole("button", {
-      name: "Mom's share of Imported lunch: $15.01. Change",
+      name: "Mom’s share of Imported lunch: $15.01. Change",
     }),
   ).toBeTruthy();
   await user.click(
@@ -230,21 +253,19 @@ test("sharing previews the whole selection before the server answers and restore
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await user.click(screen.getByRole("button", { name: /Someone else owes/ }));
-  await user.type(screen.getByLabelText("Who owes it"), "Mom");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await pickShare(user, "Mom", /^All of it/);
   await user.click(screen.getByRole("button", { name: "Share 1 transaction" }));
   await waitFor(() =>
     expect(
       screen.getByRole("button", {
-        name: "Mom's share of Imported coffee: $25.01. Change",
+        name: "Mom’s share of Imported coffee: $25.01. Change",
       }),
     ).toBeTruthy(),
   );
   await user.click(
     within(
       screen.getByRole("navigation", { name: "Budget navigation" }),
-    ).getByRole("link", { name: /^Reimbursements/ }),
+    ).getByRole("link", { name: /^Mom/ }),
   );
   expect(screen.getByText("$50.02", { selector: "dd" })).toBeTruthy();
 });
@@ -252,7 +273,7 @@ test("sharing previews the whole selection before the server answers and restore
 test("a rejected import also rolls back edits made to its preview instead of creating an unlinked purchase", async () => {
   const sending = deferred<void>();
   const { user } = await renderShell({
-    book: withCounterpartyAccounts(budgetFixture()),
+    book: withMom(budgetFixture()),
     overview: () =>
       readyOverview({ imports: [bankImport("coffee", "Imported coffee")] }),
     resolveImport: async () => {
@@ -267,15 +288,13 @@ test("a rejected import also rolls back edits made to its preview instead of cre
   await user.click(
     screen.getByRole("button", { name: "Share Imported coffee" }),
   );
-  await user.click(screen.getByRole("button", { name: /Someone else owes/ }));
-  await user.type(screen.getByLabelText("Who owes it"), "Mom");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await pickShare(user, "Mom", /^All of it/);
   let form = within(screen.getByRole("form", { name: "Edit transaction" }));
   await user.click(form.getByRole("button", { name: "Save" }));
   expect(screen.queryByRole("form", { name: "Edit transaction" })).toBeNull();
   await user.click(
     screen.getByRole("button", {
-      name: "Mom's share of Imported coffee: $25.00. Change",
+      name: "Mom’s share of Imported coffee: $25.00. Change",
     }),
   );
   await user.click(screen.getByRole("button", { name: /Just mine/ }));
@@ -323,7 +342,7 @@ test("the action bar fully reimburses unequal imports to someone else without re
     bankImport("lunch", "Imported lunch", { amount: -1501 }),
   ];
   const { user } = await renderShell({
-    book: withCounterpartyAccounts(budgetFixture()),
+    book: withMom(budgetFixture()),
     overview: () => readyOverview({ imports }),
     resolveImport: (input, server) => {
       const result = server.execute("owner", {
@@ -347,9 +366,7 @@ test("the action bar fully reimburses unequal imports to someone else without re
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await user.click(screen.getByRole("button", { name: /Someone else owes/ }));
-  await user.type(screen.getByLabelText("Who owes it"), "Mom");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await pickShare(user, "Mom", /^All of it/);
   const form = within(screen.getByRole("form", { name: "Share transactions" }));
   expect(
     form.queryByRole("combobox", { name: "Category for your portion" }),
@@ -359,12 +376,12 @@ test("the action bar fully reimburses unequal imports to someone else without re
   await waitFor(() => {
     expect(
       screen.getByRole("button", {
-        name: "Mom's share of Imported coffee: $25.01. Change",
+        name: "Mom’s share of Imported coffee: $25.01. Change",
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Mom's share of Imported lunch: $15.01. Change",
+        name: "Mom’s share of Imported lunch: $15.01. Change",
       }),
     ).toBeTruthy();
   });
@@ -387,9 +404,7 @@ test("the action bar splits each uncategorized import and categorizes only the p
     bankImport("tiny", "One cent purchase", { amount: -1 }),
   ];
   const { user } = await renderShell({
-    book: withCounterpartyAccounts(
-      addMember(budgetFixture(), "anna", "Anna budget", "2026-10"),
-    ),
+    book: withMom(addMember(budgetFixture(), "anna", "Anna budget", "2026-10")),
     overview: () => readyOverview({ imports, partnerFirstName: "Anna" }),
     resolveImport: (input, server) => {
       const result = server.execute("owner", {
@@ -416,7 +431,7 @@ test("the action bar splits each uncategorized import and categorizes only the p
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await user.click(screen.getByRole("button", { name: /Split with Anna/ }));
+  await pickShare(user, "Anna", /^Half/);
   const form = within(screen.getByRole("form", { name: "Share transactions" }));
   await user.type(
     form.getByRole("combobox", { name: "Category for your portion" }),
@@ -426,12 +441,12 @@ test("the action bar splits each uncategorized import and categorizes only the p
   await waitFor(() => {
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported coffee: $12.50. Change",
+        name: "Anna’s share of Imported coffee: $12.50. Change",
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported lunch: $7.50. Change",
+        name: "Anna’s share of Imported lunch: $7.50. Change",
       }),
     ).toBeTruthy();
   });
@@ -462,9 +477,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
   ];
   let refuse = true;
   const { user } = await renderShell({
-    book: withCounterpartyAccounts(
-      addMember(budgetFixture(), "anna", "Anna budget", "2026-10"),
-    ),
+    book: withMom(addMember(budgetFixture(), "anna", "Anna budget", "2026-10")),
     overview: () => readyOverview({ imports, partnerFirstName: "Anna" }),
     resolveImport: (input, server) => {
       if (input.logicalId === "coffee" && refuse) {
@@ -495,7 +508,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await user.click(screen.getByRole("button", { name: /All Anna's/ }));
+  await pickShare(user, "Anna", /^All of it/);
   await user.click(
     within(screen.getByRole("form", { name: "Share transactions" })).getByRole(
       "button",
@@ -520,7 +533,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await user.click(screen.getByRole("button", { name: /All Anna's/ }));
+  await pickShare(user, "Anna", /^All of it/);
   const form = within(screen.getByRole("form", { name: "Share transactions" }));
   expect(
     form.queryByRole("combobox", { name: "Category for your portion" }),
@@ -529,7 +542,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
   await waitFor(() =>
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported coffee: $25.00. Change",
+        name: "Anna’s share of Imported coffee: $25.00. Change",
       }),
     ).toBeTruthy(),
   );
@@ -541,7 +554,7 @@ test("a refused shared import stays selected for retry while saved rows leave th
 test("sharing a saved purchase and a bank import keeps keyboard focus and needs no category for full shares", async () => {
   let imports = [bankImport("coffee", "Imported coffee", { amount: -1800 })];
   const { user } = await renderShell({
-    book: withCounterpartyAccounts(
+    book: withMom(
       addMember(
         budgetFixture({
           seedCommands: [
@@ -583,7 +596,7 @@ test("sharing a saved purchase and a bank import keeps keyboard focus and needs 
       screen.getByRole("toolbar", { name: "Selected transactions" }),
     ).getByRole("button", { name: "Share" }),
   );
-  await user.click(screen.getByRole("button", { name: /All Anna's/ }));
+  await pickShare(user, "Anna", /^All of it/);
   const form = within(screen.getByRole("form", { name: "Share transactions" }));
   const save = form.getByRole("button", { name: "Share 2 transactions" });
   expect(document.activeElement).toBe(save);
@@ -592,12 +605,12 @@ test("sharing a saved purchase and a bank import keeps keyboard focus and needs 
   await waitFor(() => {
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Market: $30.00. Change",
+        name: "Anna’s share of Market: $30.00. Change",
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Anna's share of Imported coffee: $18.00. Change",
+        name: "Anna’s share of Imported coffee: $18.00. Change",
       }),
     ).toBeTruthy();
   });
@@ -615,7 +628,7 @@ test.each([
       bankImport("coffee", "Imported coffee", { pending, accountId }),
     ];
     const shell = await renderShell({
-      book: withCounterpartyAccounts(
+      book: withMom(
         addMember(
           budgetFixture({
             seedCommands: [
@@ -656,9 +669,7 @@ test.each([
     await shell.user.click(
       screen.getByRole("button", { name: "Share Imported coffee" }),
     );
-    await shell.user.click(
-      screen.getByRole("button", { name: /Split with Anna/ }),
-    );
+    await pickShare(shell.user, "Anna", /^Half/);
 
     const form = within(screen.getByRole("form", { name: "Edit transaction" }));
     expect(form.getByRole("combobox", { name: "Category" })).toBe(
@@ -680,7 +691,7 @@ test.each([
     await waitFor(() =>
       expect(
         screen.getByRole("button", {
-          name: "Anna's share of Imported coffee: $12.50. Change",
+          name: "Anna’s share of Imported coffee: $12.50. Change",
         }),
       ).toBeTruthy(),
     );
@@ -702,7 +713,7 @@ test.each([
 
 test("the register offers Share for purchases and categorized refunds while blocked imports and income stay excluded", async () => {
   const shell = await renderShell({
-    book: withCounterpartyAccounts(
+    book: withMom(
       budgetFixture({
         seedCommands: [
           {
@@ -755,4 +766,66 @@ test("the register offers Share for purchases and categorized refunds while bloc
     screen.getByRole("button", { name: "Share Categorized refund" }),
   ).toBeTruthy();
   expect(screen.getAllByRole("button", { name: /^Share / })).toHaveLength(2);
+});
+
+// Two lines in Checking, Tea with Mom's half of it when shared.
+const twoLines = (shared: boolean) =>
+  execute(
+    execute(withMom(budgetFixture()), "owner", {
+      type: "transaction.upsert",
+      id: "tea",
+      transactionId: "tea",
+      accountId: "checking",
+      date: "2026-10-06",
+      payee: "Tea",
+      amount: -1_000,
+      categoryId: "gifts",
+      recordedAt: "2026-10-06T12:00:00Z",
+      counterpartyShare: shared
+        ? { accountId: personAccountId("mom"), amount: 500 }
+        : undefined,
+    }),
+    "owner",
+    {
+      type: "transaction.upsert",
+      id: "cake",
+      transactionId: "cake",
+      accountId: "checking",
+      date: "2026-10-06",
+      payee: "Cake",
+      amount: -2_000,
+      categoryId: "gifts",
+    },
+  );
+
+async function shareBoth(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("checkbox", { name: "Select Tea" }));
+  await user.click(screen.getByRole("checkbox", { name: "Select Cake" }));
+  await user.click(
+    within(
+      screen.getByRole("toolbar", { name: "Selected transactions" }),
+    ).getByRole("button", { name: "Share" }),
+  );
+  return within(
+    screen.getByRole("dialog", { name: "Share selected transactions" }),
+  );
+}
+
+test("the selection's Share has no Just mine when nothing selected is shared", async () => {
+  const { user } = await renderShell({ book: twoLines(false) });
+  const popover = await shareBoth(user);
+  expect(popover.getByRole("button", { name: /^Half/ })).toBeTruthy();
+  expect(popover.queryByRole("button", { name: /^Just mine/ })).toBeNull();
+});
+
+test("the selection's Share offers Just mine once a selected line has a share to clear", async () => {
+  const { user } = await renderShell({ book: twoLines(true) });
+  const popover = await shareBoth(user);
+  await user.click(popover.getByRole("button", { name: /^Just mine/ }));
+  expect(
+    within(screen.getByRole("form", { name: "Share transactions" })).getByText(
+      "Keep these just yours",
+    ),
+  ).toBeTruthy();
 });

@@ -45,9 +45,11 @@ export function isWorktreeBranchName(name: string | undefined) {
   );
 }
 
-// Accepts dev-caishen itself, or a branch named in NEON_BRANCH that Neon
-// confirms is a direct child of dev-caishen and serves these exact hosts.
-// Returns the branch name the URLs point at.
+const localHosts = ["localhost", "127.0.0.1", "[::1]"];
+
+// Accepts a Postgres on this machine, dev-caishen itself, or a branch named
+// in NEON_BRANCH that Neon confirms is a direct child of dev-caishen and
+// serves these exact hosts. Returns the branch name the URLs point at.
 export function assertDevelopmentDatabase(
   env: Record<string, string | undefined>,
   lookup: EndpointLookup = neonEndpointBranch,
@@ -55,6 +57,12 @@ export function assertDevelopmentDatabase(
   if (env.NODE_ENV === "production" || env.VERCEL_ENV === "production")
     throw new Error("Development data cannot be used in production.");
   if (!env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
+  if (
+    [env.DATABASE_URL, env.DATABASE_URL_UNPOOLED]
+      .filter((value): value is string => !!value)
+      .every((value) => localHosts.includes(new URL(value).hostname))
+  )
+    return "local";
   const urls = [env.DATABASE_URL, env.DATABASE_URL_UNPOOLED]
     .filter((value): value is string => !!value)
     .map(neonEndpointId);

@@ -1,16 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  addMember,
-  createBook,
-  execute,
-  withCounterpartyAccounts,
-} from "../../src/domain/engine";
+import { addMember, createBook, execute } from "../../src/domain/engine";
 import {
   classifyRegisterEntry,
   directEntryAccounts,
 } from "../../src/domain/register-entry";
 import { buildCommandCorpus } from "./fixtures/command-corpus";
+import { withPeople } from "../../src/domain/people";
+import { personId, withPerson } from "./fixtures/people";
 
 void test("register entries name every transaction shape and its register edit capability", () => {
   const { steps, book } = buildCommandCorpus();
@@ -58,7 +55,7 @@ void test("register entries name every transaction shape and its register edit c
 });
 
 void test("F3: direct entry accounts include cash, credit and tracking but exclude both counterparties", () => {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(createBook("a", "A", "2026-10"), "b", "B", "2026-10"),
   );
   for (const kind of ["cash", "credit", "tracking"] as const)
@@ -78,11 +75,15 @@ void test("F3: direct entry accounts include cash, credit and tracking but exclu
 });
 
 void test("F3: an existing counterparty entry cannot be edited as a direct transaction", () => {
-  const book = withCounterpartyAccounts(createBook("a", "A", "2026-10"));
+  const book = withPerson(
+    withPeople(createBook("a", "A", "2026-10")),
+    "a",
+    "Sam",
+  );
   const budget = book.budgets.a!;
   const entry = classifyRegisterEntry(budget, {
     id: "direct",
-    accountId: "counterparty:reimbursements",
+    accountId: personId("Sam"),
     date: "2026-10-10",
     amount: -100,
     payee: "Sam",
@@ -96,7 +97,7 @@ void test("F3: an existing counterparty entry cannot be edited as a direct trans
   assert.deepEqual(entry.capabilities.edit, {
     ok: false,
     reason:
-      "Entries on Partner and Reimbursements come from shares and settlements, not from the register",
+      "Entries on a person's account come from shares, repayments, and settlements, not from the register",
   });
 });
 

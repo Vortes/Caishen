@@ -228,6 +228,7 @@ export function DateField({
             aria-haspopup="dialog"
             aria-expanded={shown}
             aria-controls={shown ? calendarId : undefined}
+            data-holds-escape={shown ? "" : undefined}
             aria-invalid={field.invalid ? true : undefined}
             aria-describedby={field.describedBy}
             readOnly={readOnly}

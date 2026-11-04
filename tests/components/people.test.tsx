@@ -1,22 +1,38 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { addMember, execute, withCounterpartyAccounts } from "~/domain/engine";
+import { addMember, execute, personAccountId } from "~/domain/engine";
+import { withPeople } from "~/domain/people";
 import { budgetFixture, readyOverview, renderShell } from "./shell-harness";
 
-// The owner's budget as every budget now is: with its reimbursements account
-// and paired envelope.
-const withPeople = () => withCounterpartyAccounts(budgetFixture());
+const mom = personAccountId("mom");
+// The owner's budget with one person, Mom, and her paired envelope.
+const withMom = () =>
+  execute(budgetFixture(), "owner", {
+    type: "person.add",
+    id: "add-mom",
+    accountId: mom,
+    name: "Mom",
+  });
 
 const sidebar = () =>
   within(screen.getByRole("navigation", { name: "Budget navigation" }));
 const plan = () => within(screen.getByRole("group", { name: "Categories" }));
 
-test("People holds the Reimbursements account in the sidebar and leads the plan with its envelope", async () => {
-  await renderShell({ book: withPeople() });
+test("People lists each person in the sidebar and leads the plan with their envelope", async () => {
+  // A person with a float isn't settled, so they stay in the list.
+  await renderShell({
+    book: execute(withMom(), "owner", {
+      type: "assign",
+      id: "float",
+      categoryId: "envelope:person:mom",
+      month: "2026-10",
+      amount: 5_000,
+    }),
+  });
 
   const people = sidebar().getByRole("button", { name: /^People/ });
   expect(people.getAttribute("aria-expanded")).toBe("true");
-  expect(sidebar().getByRole("link", { name: /^Reimbursements/ })).toBeTruthy();
+  expect(sidebar().getByRole("link", { name: /^Mom/ })).toBeTruthy();
 
   // The column header's toggle opens and folds every group.
   const groups = plan()
@@ -24,9 +40,7 @@ test("People holds the Reimbursements account in the sidebar and leads the plan 
     .map((button) => button.getAttribute("aria-label"))
     .filter((name) => name !== "Collapse all groups");
   expect(groups[0]).toMatch(/^People/);
-  expect(
-    plan().getByRole("checkbox", { name: "Select Reimbursements" }),
-  ).toBeTruthy();
+  expect(plan().getByRole("checkbox", { name: "Select Mom" })).toBeTruthy();
   // People holds only the system's envelopes.
   expect(
     plan().queryByRole("button", { name: "Add a category to People" }),
@@ -48,18 +62,18 @@ async function setFloat(
 ) {
   await user.click(
     plan().getByRole("button", {
-      name: /assigned to Reimbursements\. Edit assigned amount$/,
+      name: /assigned to Mom\. Edit assigned amount$/,
     }),
   );
   const field = plan().getByRole("textbox", {
-    name: "Assigned amount for Reimbursements",
+    name: "Assigned amount for Mom",
   });
   await user.clear(field);
   await user.type(field, `${amount}{Enter}`);
 }
 
-test("a float on Reimbursements comes out of Ready to Assign and shows as the envelope's available money", async () => {
-  const { user } = await renderShell({ book: withPeople() });
+test("a float on a person comes out of Ready to Assign and shows as the envelope's available money", async () => {
+  const { user } = await renderShell({ book: withMom() });
   expect(readyToAssign()).toBe("$900.00");
 
   await setFloat(user, "200");
@@ -67,7 +81,7 @@ test("a float on Reimbursements comes out of Ready to Assign and shows as the en
   expect(readyToAssign()).toBe("$700.00");
   expect(
     plan().getByRole("button", {
-      name: /^\$200\.00 available in Reimbursements\./,
+      name: /^\$200\.00 available in Mom\./,
     }),
   ).toBeTruthy();
 });
@@ -79,41 +93,47 @@ const property = (label: string) =>
   ).nextElementSibling!.textContent;
 
 test("the envelope's details show its float minus what's owed as its available money", async () => {
-  const { user } = await renderShell({ book: withPeople() });
+  const { user } = await renderShell({ book: withMom() });
   await setFloat(user, "200");
 
-  await user.click(
-    plan().getByRole("checkbox", { name: "Select Reimbursements" }),
-  );
+  await user.click(plan().getByRole("checkbox", { name: "Select Mom" }));
 
   expect(property("Float")).toBe("$200.00");
   expect(property("Owed to you")).toBe("$0.00");
   expect(property("Available")).toBe("$200.00");
-  expect(property("Account")).toBe("Reimbursements");
+  expect(property("Account")).toBe("Mom");
 });
 
-test("with a partner, People lists the partner by first name before Reimbursements", async () => {
+test("with a partner, People lists the partner by first name before everyone else", async () => {
   // A member's name is their budget's; the first name is their profile's.
+  let book = withPeople(addMember(withMom(), "anna", "Home budget", "2026-10"));
+  book = execute(book, "owner", {
+    type: "assign",
+    id: "float",
+    categoryId: "envelope:person:mom",
+    month: "2026-10",
+    amount: 5_000,
+  });
   await renderShell({
-    book: withCounterpartyAccounts(
-      addMember(budgetFixture(), "anna", "Home budget", "2026-10"),
-    ),
+    book,
     overview: () => readyOverview({ partnerFirstName: "Anna" }),
   });
 
   await waitFor(() =>
     expect(
       sidebar()
-        .getAllByRole("link", { name: /^(Anna|Reimbursements|Partner)/ })
+        .getAllByRole("link", { name: /^(Anna|Mom|Partner)/ })
         .map((button) => button.textContent?.replace(/\$.*/, "")),
-    ).toEqual(["Anna", "Reimbursements"]),
+    ).toEqual(["Anna", "Mom"]),
   );
 });
 
-test("Reimbursements opens its register, which explains where its entries come from and offers no way to add one", async () => {
-  const { user } = await renderShell({ book: withPeople() });
+test("a person with nothing owed folds under Settled, and their register explains where its entries come from and offers no way to add one", async () => {
+  const { user } = await renderShell({ book: withMom() });
 
-  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
+  expect(sidebar().queryByRole("link", { name: /^Mom/ })).toBeNull();
+  await user.click(sidebar().getByRole("button", { name: "Show settled (1)" }));
+  await user.click(sidebar().getByRole("link", { name: /^Mom/ }));
 
   expect(screen.getByText("Nothing owed yet.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Add transaction" })).toBeNull();
@@ -121,13 +141,13 @@ test("Reimbursements opens its register, which explains where its entries come f
   expect(screen.queryByRole("button", { name: "File import" })).toBeNull();
   // No bank clears these entries, so the balance is simply what's owed.
   expect(screen.queryByText("Cleared")).toBeNull();
-  expect(screen.getByText("Owed to you").nextElementSibling?.textContent).toBe(
-    "$0.00",
-  );
+  expect(
+    screen.getByText("You and Mom are even").nextElementSibling?.textContent,
+  ).toBe("$0.00");
 });
 
-function reimbursedPurchase() {
-  return execute(withPeople(), "owner", {
+function sharedWithMom() {
+  return execute(withMom(), "owner", {
     type: "transaction.upsert",
     id: "noodles",
     transactionId: "noodles",
@@ -136,28 +156,25 @@ function reimbursedPurchase() {
     amount: -1_154,
     payee: "Noodles Plus",
     recordedAt: "2026-10-05T12:00:00Z",
-    counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
-      amount: 1_154,
-    },
+    counterpartyShare: { accountId: mom, amount: 1_154 },
   });
 }
 
-test("Enter keeps the selected Reimbursements row in place and a second pointer click opens its account", async () => {
-  const { user } = await renderShell({ book: reimbursedPurchase() });
-  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
-  const row = within(
-    screen.getByRole("group", { name: "Reimbursements" }),
-  ).getByRole("button", { name: /Noodles Plus/ });
+const momLedger = () =>
+  within(screen.getByRole("group", { name: "Mom ledger" }));
+
+test("Enter keeps a person's selected entry in place, and the action bar opens its transaction", async () => {
+  const { user } = await renderShell({ book: sharedWithMom() });
+  await user.click(sidebar().getByRole("link", { name: /^Mom/ }));
+  const row = momLedger().getByRole("button", { name: /Noodles Plus/ });
   await user.click(row);
   await user.keyboard("{Enter}");
 
-  expect(screen.getByRole("heading", { name: "Reimbursements" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Mom" })).toBeTruthy();
   expect(row.getAttribute("aria-current")).toBe("true");
-  expect(row.title).toBe("Open in Checking");
+  expect(screen.queryByRole("form", { name: "Edit shared entry" })).toBeNull();
 
-  await user.click(row);
+  await user.click(screen.getByRole("button", { name: "Open in Checking" }));
   expect(screen.getByRole("heading", { name: "Checking" })).toBeTruthy();
   expect(
     within(screen.getByRole("group", { name: "Transactions" })).getByRole(
@@ -167,44 +184,45 @@ test("Enter keeps the selected Reimbursements row in place and a second pointer 
   ).toBeTruthy();
 });
 
-test("the selected Reimbursements row survives switching views and coming back", async () => {
-  const { user } = await renderShell({ book: reimbursedPurchase() });
-  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
-  await user.click(
-    within(screen.getByRole("group", { name: "Reimbursements" })).getByRole(
-      "button",
-      { name: /Noodles Plus/ },
+test("only a ledger that runs both ways splits into Owed to you and Owed by you", async () => {
+  const { user } = await renderShell({
+    book: withPeople(
+      addMember(sharedWithMom(), "anna", "Home budget", "2026-10"),
     ),
-  );
-  await user.click(sidebar().getByRole("link", { name: "Plan" }));
-  await user.click(sidebar().getByRole("link", { name: /^Reimbursements/ }));
-
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await user.click(sidebar().getByRole("link", { name: /^Mom/ }));
   expect(
-    within(screen.getByRole("group", { name: "Reimbursements" })).getByRole(
-      "button",
-      { name: /Noodles Plus/, current: true },
-    ),
-  ).toBe(document.activeElement);
+    momLedger().getByRole("button", { name: /Noodles Plus/ }),
+  ).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Owed by you" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Owed to you" })).toBeNull();
+
+  await user.click(sidebar().getByRole("link", { name: /^Anna/ }));
+  expect(screen.getByRole("button", { name: "Owed to you" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Owed by you" })).toBeTruthy();
 });
 
 test("a new transaction can't go to a counterparty account or into a paired envelope", async () => {
-  const { user } = await renderShell({ book: withPeople() });
+  const { user } = await renderShell({ book: withMom() });
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
   await user.click(screen.getByRole("button", { name: "Add transaction" }));
   await user.keyboard("{Escape}");
   const form = within(screen.getByRole("form", { name: "New transaction" }));
 
   await user.click(form.getByLabelText("Payee", { exact: true }));
-  expect(screen.queryByRole("option", { name: /Reimbursements/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /^Mom/ })).toBeNull();
 
   await user.click(form.getByRole("combobox", { name: "Category" }));
   expect(screen.getByRole("option", { name: /Gifts/ })).toBeTruthy();
-  expect(screen.queryByRole("option", { name: /Reimbursements/ })).toBeNull();
+  // Mom is offered once, as the person the whole purchase is for, never
+  // as her envelope.
+  expect(screen.getAllByRole("option", { name: /^Mom/ })).toHaveLength(1);
 });
 
 test("categorizing selected transactions doesn't offer a paired envelope", async () => {
   const { user } = await renderShell({
-    book: withCounterpartyAccounts(
+    book: execute(
       budgetFixture({
         seedCommands: [
           {
@@ -219,6 +237,8 @@ test("categorizing selected transactions doesn't offer a paired envelope", async
           },
         ],
       }),
+      "owner",
+      { type: "person.add", id: "add-mom", accountId: mom, name: "Mom" },
     ),
   });
   await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
@@ -235,5 +255,214 @@ test("categorizing selected transactions doesn't offer a paired envelope", async
   await user.click(menu.getByRole("menuitem", { name: "Everyday" }));
   await user.keyboard("{ArrowRight}");
   expect(screen.getByRole("menuitem", { name: /Gifts/ })).toBeTruthy();
-  expect(screen.queryByRole("menuitem", { name: /Reimbursements/ })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: /^Mom/ })).toBeNull();
+});
+
+// Mom owes the owner $20.00 for a dinner paid from checking.
+const momOwes = () =>
+  execute(withMom(), "owner", {
+    type: "transaction.upsert",
+    id: "dinner",
+    transactionId: "dinner",
+    accountId: "checking",
+    date: "2026-10-05",
+    payee: "Dinner",
+    amount: -2_000,
+    recordedAt: "2026-10-05T12:00:00Z",
+    counterpartyShare: { accountId: mom, amount: 2_000 },
+  });
+
+const lunch = () =>
+  execute(withMom(), "owner", {
+    type: "transaction.upsert",
+    id: "lunch",
+    transactionId: "lunch",
+    accountId: "checking",
+    date: "2026-10-06",
+    payee: "Lunch",
+    amount: -3_000,
+    categoryId: "gifts",
+  });
+
+test("picking a person who already has an account shares half with them", async () => {
+  const { user } = await renderShell({ book: lunch() });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  // The only person is already highlighted; Half applies at once.
+  expect(
+    menu.getByRole("combobox", { name: "Who is this for" }),
+  ).toHaveProperty("value", "");
+  const amounts = within(
+    menu.getByRole("group", { name: "How much is for Mom" }),
+  );
+  await user.click(amounts.getByRole("button", { name: /^Half/ }));
+
+  expect(
+    await screen.findByRole("button", {
+      name: "Mom’s share of Lunch: $15.00. Change",
+    }),
+  ).toBeTruthy();
+});
+
+test("a name typed in Who is this for adds that person with the share", async () => {
+  const { user } = await renderShell({ book: lunch() });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  const who = menu.getByRole("combobox", { name: "Who is this for" });
+  await user.clear(who);
+  await user.type(who, "Sam");
+  await user.click(screen.getByRole("option", { name: "New person “Sam”" }));
+  // Nobody is added until the share applies.
+  expect(sidebar().queryByRole("link", { name: /^Sam/ })).toBeNull();
+  await user.click(menu.getByRole("button", { name: /^All of it/ }));
+
+  expect(
+    await screen.findByRole("button", {
+      name: "Sam’s share of Lunch: $30.00. Change",
+    }),
+  ).toBeTruthy();
+  await user.click(sidebar().getByRole("link", { name: /^Sam/ }));
+  expect(screen.getByText("Sam owes you").nextElementSibling?.textContent).toBe(
+    "$30.00",
+  );
+});
+
+test("New person shows only for a typed name nobody has, and takes the highlight once nothing else matches", async () => {
+  const { user } = await renderShell({ book: lunch() });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  expect(menu.queryByRole("option", { name: /New person/ })).toBeNull();
+
+  await user.keyboard("Sa");
+  const who = menu.getByRole("combobox", { name: "Who is this for" });
+  expect(
+    document.getElementById(who.getAttribute("aria-activedescendant") ?? "")
+      ?.textContent,
+  ).toBe("New person “Sa”");
+  await user.keyboard("m");
+  const amounts = within(
+    menu.getByRole("group", { name: "How much is for Sam" }),
+  );
+  // Nothing says who will see them; the pane holds only the amounts.
+  expect(menu.queryByText(/Only you see them/)).toBeNull();
+  await user.click(amounts.getByRole("button", { name: /^Half/ }));
+
+  expect(
+    await screen.findByRole("button", {
+      name: "Sam’s share of Lunch: $15.00. Change",
+    }),
+  ).toBeTruthy();
+});
+
+test("among several people and no partner, nobody is chosen for a new share", async () => {
+  const book = execute(lunch(), "owner", {
+    type: "person.add",
+    id: "add-sam",
+    accountId: personAccountId("sam"),
+    name: "Sam",
+  });
+  const { user } = await renderShell({ book });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  const who = menu.getByRole("combobox", { name: "Who is this for" });
+  expect(who.getAttribute("aria-activedescendant")).toBeNull();
+  const amounts = within(menu.getByRole("group", { name: "How much" }));
+  for (const amount of [/^Half/, /^All of it/, /^An amount/])
+    expect(amounts.getByRole("button", { name: amount })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  // Nothing is shared yet, so there is nothing for Just mine to clear.
+  expect(menu.queryByRole("button", { name: /^Just mine/ })).toBeNull();
+});
+
+test("the person on Caishen leads Who is this for, and everyone gets the same amounts", async () => {
+  const book = withPeople(addMember(lunch(), "anna", "Home budget", "2026-10"));
+  const { user } = await renderShell({
+    book,
+    overview: () => readyOverview({ partnerFirstName: "Anna" }),
+  });
+  await user.click(sidebar().getByRole("link", { name: /^Checking/ }));
+  await user.click(screen.getByRole("button", { name: "Share Lunch" }));
+  const menu = within(screen.getByRole("dialog", { name: "Who this is for" }));
+  expect(
+    menu.getByRole("group", { name: "How much is for Anna" }),
+  ).toBeTruthy();
+  const options = screen
+    .getAllByRole("option")
+    .map((option) => option.textContent);
+  // One flat list: the partner first, marked, with no group headings.
+  expect(options[0]).toMatch(/^AnnaOn Caishen/);
+  expect(options[1]).toMatch(/^Mom/);
+  expect(
+    within(menu.getByRole("listbox", { name: "Who is this for" })).queryByText(
+      "People",
+    ),
+  ).toBeNull();
+  await user.click(screen.getByRole("option", { name: /^Mom/ }));
+  const amounts = within(
+    menu.getByRole("group", { name: "How much is for Mom" }),
+  );
+  for (const amount of [/^Half/, /^All of it/, /^An amount/])
+    expect(amounts.getByRole("button", { name: amount })).toBeTruthy();
+});
+
+test("a repayment recorded from a person's register clears what they owe", async () => {
+  const { user } = await renderShell({ book: momOwes() });
+  await user.click(sidebar().getByRole("link", { name: /^Mom/ }));
+  expect(screen.getByText("Mom owes you").nextElementSibling?.textContent).toBe(
+    "$20.00",
+  );
+
+  await user.click(screen.getByRole("button", { name: "Record repayment" }));
+  const popover = within(
+    screen.getByRole("dialog", { name: "Record a repayment from Mom" }),
+  );
+  // What Mom owes and the only cash account are filled in.
+  expect(popover.getByLabelText("Amount")).toHaveProperty("value", "20.00");
+  await user.click(popover.getByRole("button", { name: "Record" }));
+
+  expect(
+    (await screen.findByText("You and Mom are even")).nextElementSibling
+      ?.textContent,
+  ).toBe("$0.00");
+  expect(screen.getByText("Repayment")).toBeTruthy();
+});
+
+test("a person is renamed from the People settings page", async () => {
+  const { user } = await renderShell({ book: momOwes() });
+  await user.click(screen.getByRole("button", { name: "Component budget" }));
+  await user.click(screen.getByRole("menuitem", { name: "Settings" }));
+  await user.click(screen.getByRole("link", { name: "People" }));
+  await screen.findByRole("heading", { name: "Other people" });
+  expect(screen.getByText("Mom owes you $20.00.")).toBeTruthy();
+
+  await user.click(screen.getByRole("button", { name: "Rename" }));
+  const name = screen.getByLabelText("Name");
+  await user.clear(name);
+  await user.type(name, "Mother");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByText("Mother")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+});
+
+test("People settings invite through the household's one invitation, not from a person's row", async () => {
+  const { user } = await renderShell({ book: momOwes() });
+  await user.click(screen.getByRole("button", { name: "Component budget" }));
+  await user.click(screen.getByRole("menuitem", { name: "Settings" }));
+  await user.click(screen.getByRole("link", { name: "People" }));
+  await screen.findByRole("heading", { name: "Other people" });
+  expect(
+    await screen.findByRole("button", { name: "Write invitation" }),
+  ).toBeTruthy();
+
+  expect(screen.getByRole("button", { name: "Rename" })).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: /Invite to Caishen/ }),
+  ).toBeNull();
 });

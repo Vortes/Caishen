@@ -28,7 +28,7 @@ export function ShareSelection({
 }) {
   const entry = useTransactionEntry();
   const { holdOpen } = entry;
-  const { partner, reimbursements, who } = useShareParties();
+  const { who } = useShareParties();
   const categoryInput = useRef<HTMLInputElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -91,7 +91,7 @@ export function ShareSelection({
       setError(result.error);
     } else setOpen(false);
   };
-  if (!open && (!eligible.length || (!partner && !reimbursements))) return null;
+  if (!open && !eligible.length) return null;
   return (
     <Popover
       label="Share selected transactions"
@@ -115,7 +115,8 @@ export function ShareSelection({
       }}
       side="top"
       align="end"
-      size="form"
+      // The picker is two panes; the confirmation after it is a form.
+      size={choice ? "form" : "wide"}
     >
       {/* Keys typed here stay out of the action bar and register around it. */}
       <div
@@ -124,6 +125,7 @@ export function ShareSelection({
       >
         <ShareChoices
           amounts={targets.map((row) => Math.abs(row.amount))}
+          clearable={targets.some((row) => row.shareLabel)}
           onChange={(share, basis) => {
             setChoice({ share, basis });
             return null;

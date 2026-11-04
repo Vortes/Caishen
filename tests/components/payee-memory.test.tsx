@@ -1,10 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import {
-  execute,
-  withCounterpartyAccounts,
-  type Command,
-} from "~/domain/engine";
+import { execute, personAccountId, type Command } from "~/domain/engine";
 import {
   findToast,
   findTransactionRow,
@@ -56,6 +52,15 @@ const bankImport = (
 
 const editor = () =>
   within(screen.getByRole("form", { name: "Edit transaction" }));
+
+// The owner's budget with one person, Mom.
+const withMom = () =>
+  execute(budgetFixture(), "owner", {
+    type: "person.add",
+    id: "add-mom",
+    accountId: personAccountId("mom"),
+    name: "Mom",
+  });
 
 test("a waiting bank import from a remembered payee shows and saves its remembered category", async () => {
   const shell = await renderShell({
@@ -128,9 +133,47 @@ test("a new transaction takes its payee's remembered category", async () => {
   });
 });
 
-test("an existing reimbursement person's payee fills that person's full category", async () => {
+test("a share filled in from a payee's memory is noted once, under the form, and not again in the share picker", async () => {
   const shell = await renderShell({
-    book: execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+    book: execute(withMom(), "owner", {
+      type: "transaction.upsert",
+      id: "seed-tea",
+      transactionId: "tea",
+      accountId: "checking",
+      categoryId: "gifts",
+      date: "2026-10-03",
+      payee: "Tea House",
+      amount: -1_000,
+      recordedAt: "2026-10-03T12:00:00Z",
+      counterpartyShare: { accountId: personAccountId("mom"), amount: 500 },
+    }),
+  });
+  const form = await newTransaction(shell);
+  await shell.user.type(
+    form.getByLabelText("Outflow", { exact: true }),
+    "10.00",
+  );
+  await shell.user.type(
+    form.getByLabelText("Payee", { exact: true }),
+    "Tea House",
+  );
+  expect(
+    form.getByText("Category and share filled in from Tea House last time"),
+  ).toBeTruthy();
+
+  await shell.user.click(form.getByRole("button", { name: /^Share/ }));
+  const picker = within(
+    screen.getByRole("dialog", { name: "Who this is for" }),
+  );
+  expect(
+    picker.getByRole("button", { name: /^Half/ }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(picker.queryByText(/last time/)).toBeNull();
+});
+
+test("a payee named after one of your people fills that person's full share", async () => {
+  const shell = await renderShell({
+    book: execute(withMom(), "owner", {
       type: "transaction.upsert",
       id: "seed-mom",
       transactionId: "for-mom",
@@ -140,8 +183,7 @@ test("an existing reimbursement person's payee fills that person's full category
       amount: -1154,
       recordedAt: "2026-10-03T12:00:00Z",
       counterpartyShare: {
-        accountId: "counterparty:reimbursements",
-        counterpartyName: "Mom",
+        accountId: personAccountId("mom"),
         amount: 1154,
       },
     }),
@@ -168,8 +210,8 @@ test("an existing reimbursement person's payee fills that person's full category
   ).toBeTruthy();
 });
 
-test("opening an uncategorized transaction already named Mom fills and saves her reimbursement category", async () => {
-  let book = execute(withCounterpartyAccounts(budgetFixture()), "owner", {
+test("opening an uncategorized transaction already named Mom fills and saves her full share", async () => {
+  let book = execute(withMom(), "owner", {
     type: "transaction.upsert",
     id: "known-mom",
     transactionId: "known-mom",
@@ -179,8 +221,7 @@ test("opening an uncategorized transaction already named Mom fills and saves her
     amount: -1_000,
     recordedAt: "2026-10-03T12:00:00Z",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personAccountId("mom"),
       amount: 1_000,
     },
   });

@@ -167,7 +167,8 @@ test("Escape closes an open list inside a popover before the popover", async () 
   expect(screen.queryByRole("dialog", { name: "Move money" })).toBeNull();
 });
 
-// A combobox whose list opens on focus and closes on Escape.
+// A combobox whose list opens on focus and closes on Escape. While open it
+// holds Escape, as the ui search lists do.
 function ListField() {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -176,6 +177,7 @@ function ListField() {
       aria-label="To"
       aria-controls="to-list"
       aria-expanded={expanded}
+      data-holds-escape={expanded ? "" : undefined}
       onFocus={() => setExpanded(true)}
       onKeyDown={(event) => {
         if (event.key === "Escape") setExpanded(false);

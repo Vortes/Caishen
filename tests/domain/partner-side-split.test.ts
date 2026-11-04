@@ -5,10 +5,11 @@ import {
   createBook,
   execute,
   projectBook,
-  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
+import { linkedPersonId } from "./fixtures/people";
 
 const month = "2026-10";
 type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
@@ -16,7 +17,7 @@ type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
 // Anna pays a $100 dinner and shares half with Alan, who covered Steve with
 // her: his $50 is $25 of his own dinner and $25 of a gift.
 function dinner() {
-  let book: Book = withCounterpartyAccounts(
+  let book: Book = withPeople(
     addMember(createBook("alan", "Alan", month), "anna", "Anna", month),
   );
   let sequence = 0;
@@ -44,13 +45,18 @@ function dinner() {
     payee: "Noodle House",
     status: "posted",
     categoryId: "food",
-    counterpartyShare: { accountId: "counterparty:partner", amount: 5_000 },
+    counterpartyShare: {
+      accountId: linkedPersonId(book, "anna"),
+      amount: 5_000,
+    },
     recordedAt: "2026-10-12T20:00:00Z",
   });
   run("alan", { type: "category.add", categoryId: "dining", name: "Dining" });
   run("alan", { type: "category.add", categoryId: "gifts", name: "Gifts" });
   return {
     run,
+    // Anna, as Alan's linked person.
+    partnerId: linkedPersonId(book, "alan"),
     entryId: "anna:dinner:dinner",
     view: () => projectBook(book, "alan", month),
   };
@@ -100,7 +106,7 @@ void test("a split that doesn't add up to your part, or names a paired envelope,
   const envelope = household
     .view()
     .categories.find(
-      (category) => category.counterpartyAccountId === "counterparty:partner",
+      (category) => category.counterpartyAccountId === household.partnerId,
     )!;
   assert.throws(
     split([

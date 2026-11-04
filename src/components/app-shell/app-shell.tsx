@@ -25,7 +25,7 @@ import {
   type Added,
 } from "./add-category";
 import { AppearanceSettings } from "./appearance";
-import { PartnerSettings } from "~/components/settings/partner";
+import { PeopleSettings } from "~/components/settings/people";
 import { ProfileSettings } from "~/components/settings/profile";
 import { Inspector } from "./inspector";
 import { MonthNav } from "./month-picker";
@@ -51,15 +51,12 @@ import { usePanelLimits } from "./panel-widths";
 import { usePanel, type PanelState } from "./use-panel";
 import { LoansView, PlanView, RegisterView } from "./views";
 import type { Way } from "~/components/ui/action-bar";
+import { owesBothWays } from "./people";
 import {
-  PartnerFilters,
-  PartnerRegister,
-  type PartnerSide,
-} from "./partner-register";
-import {
-  ReimbursementFilters,
-  ReimbursementsRegister,
-} from "./reimbursements-register";
+  PersonFilters,
+  PersonRegister,
+  type PersonSide,
+} from "./person-register";
 import type { Highlight } from "./reflect/chart-utils";
 import { SpendingList, SpendingListSkeleton } from "./reflect/spending-list";
 import { ReflectFilters } from "./reflect/filters";
@@ -97,7 +94,7 @@ import type { UpdatePreferences } from "~/components/entry/profile-preferences";
 const settingsTitles: Record<SettingsPage, string> = {
   profile: "Profile",
   appearance: "Appearance",
-  partner: "Partner",
+  people: "People",
 };
 
 // A panel nobody has resized fills the window's cap; a resized one keeps its
@@ -185,8 +182,8 @@ export function AppShell({
     screen.type === "register"
       ? accounts.find((item) => item.id === screen.accountId)
       : undefined;
-  // Partner and Reimbursements fill from shares and settlements, not from
-  // entries or bank statements.
+  // A person's account fills from shares, repayments, and settlements, not
+  // from entries or bank statements.
   const recordable =
     screen.type === "register" && !(account && isCounterparty(account));
   const [reportKind, setReportKind] = useState<ReportKind>("breakdown");
@@ -239,13 +236,16 @@ export function AppShell({
   const deferredQuery = useDeferredValue(query);
   const registerPath = budgetAddress.pathname;
   useEffect(() => setQuery(routeQuery), [registerPath, routeQuery]);
-  // The person or organization the Reimbursements register is narrowed to.
-  const [owedBy, setOwedBy] = useState<string | null>(null);
-  // Which way the Partner register is narrowed: owed to you, or by you.
-  const [partnerSide, setPartnerSide] = useState<PartnerSide | null>(null);
-  const [reimbursementSelectedId, setReimbursementSelectedId] = useState<
-    string | null
-  >(null);
+  // Which way a person's register is narrowed, owed to you or by you, kept
+  // with the person it was chosen for.
+  const [narrowed, setNarrowed] = useState<{
+    accountId: string;
+    side: PersonSide;
+  } | null>(null);
+  const personSide =
+    account && owesBothWays(account) && narrowed?.accountId === account.id
+      ? narrowed.side
+      : null;
   // Transient selections and filters belong to the address they were opened on.
   const selectionSearch = new URLSearchParams(budgetAddress.searchParams);
   selectionSearch.delete("month");
@@ -258,7 +258,6 @@ export function AppShell({
     setChecked(
       routeSelection && screen.type === "register" ? [routeSelection] : [],
     );
-    setOwedBy(null);
   }, [selectionAddress, routeSelection, screen.type]);
   const [addingGroup, setAddingGroup] = useState(false);
   const [revealed, setRevealed] = useState<Added | null>(null);
@@ -486,8 +485,6 @@ export function AppShell({
               new URLSearchParams(window.location.search),
             ),
           );
-        } else if (account?.kind === "reimbursements") {
-          setReimbursementSelectedId(null);
         } else if (checked.length) {
           setChecked([]);
           setSelectedId(null);
@@ -509,7 +506,6 @@ export function AppShell({
     drawer,
     peekOpen,
     checked.length,
-    account?.kind,
     screen,
     recordable,
     path,
@@ -858,8 +854,8 @@ export function AppShell({
                       className={styles.content}
                       tabIndex={-1}
                     >
-                      {settingsPage === "partner" ? (
-                        <PartnerSettings />
+                      {settingsPage === "people" ? (
+                        <PeopleSettings />
                       ) : settingsPage === "profile" ? (
                         <ProfileSettings
                           onRename={renameBudget}
@@ -882,7 +878,6 @@ export function AppShell({
                         accounts={account ? [account] : accounts}
                         account={account}
                         reconciling={reconciling}
-                        owedBy={owedBy}
                       />
                     )}
 
@@ -907,22 +902,16 @@ export function AppShell({
                           }}
                         />
                       )}
-                      {(account?.kind === "partner" ||
-                        account?.kind === "former-partner") && (
-                        <PartnerFilters
-                          value={partnerSide}
+                      {account && owesBothWays(account) && (
+                        <PersonFilters
+                          value={personSide}
                           onChange={(next) => {
-                            setPartnerSide(next);
+                            setNarrowed(
+                              next && { accountId: account.id, side: next },
+                            );
                             setSelectedId(null);
                             setChecked([]);
                           }}
-                        />
-                      )}
-                      {account?.kind === "reimbursements" && (
-                        <ReimbursementFilters
-                          account={account}
-                          value={owedBy}
-                          onChange={setOwedBy}
                         />
                       )}
                       {recordable && (
@@ -1017,28 +1006,17 @@ export function AppShell({
                         )}
                         {screen.type === "register" && (
                           <>
-                            {account?.kind === "partner" ||
-                            account?.kind === "former-partner" ? (
-                              <PartnerRegister
+                            {account?.kind === "person" ? (
+                              <PersonRegister
                                 key={account.id}
                                 account={account}
                                 query={deferredQuery}
-                                side={partnerSide}
+                                side={personSide}
                                 onJump={jump}
                                 selectedId={selectedId}
                                 onSelect={selectOnly}
                                 checked={checked}
                                 onCheck={check}
-                              />
-                            ) : account?.kind === "reimbursements" ? (
-                              <ReimbursementsRegister
-                                key={account.id}
-                                account={account}
-                                who={owedBy}
-                                query={deferredQuery}
-                                selectedId={reimbursementSelectedId}
-                                onSelect={setReimbursementSelectedId}
-                                onJump={jump}
                               />
                             ) : (
                               <RegisterView

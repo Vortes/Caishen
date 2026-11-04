@@ -2,13 +2,7 @@
 
 import grid from "~/components/ui/register.module.css";
 
-import {
-  CheckIcon,
-  CopyIcon,
-  LinkIcon,
-  SearchIcon,
-  UsersIcon,
-} from "lucide-react";
+import { CheckIcon, CopyIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { newId, today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
@@ -20,7 +14,10 @@ import { Field, FormError } from "~/components/ui/field";
 import { Tag } from "~/components/ui/tag";
 import { Register } from "~/components/ui/register";
 import { Popover } from "~/components/ui/popover";
+import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import { money, shortDay, type Account } from "./model";
+import { isLinked, owedSentence } from "./people";
+import { RecordRepayment } from "./record-repayment";
 import moveStyles from "./move-money.module.css";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
@@ -31,32 +28,32 @@ import { SplitFooter, SplitLine, SplitLines } from "./split-lines";
 import { Empty } from "./views";
 import styles from "./shell.module.css";
 import share from "./share.module.css";
-import local from "./partner-register.module.css";
+import local from "./person-register.module.css";
 import editorStyles from "./transaction-entry.module.css";
 import { PersonAvatar, UserAvatar } from "./user-avatar";
 
 type Row = View["partnerLedger"][number];
 
-// Which way a shared cost runs: what your partner owes you for, or what you
-// owe them for. Settlements and repayments pay these down, so they show
-// only with everything.
-export type PartnerSide = "owed" | "owing";
+// Which way a shared cost runs: what they owe you for, or what you owe them
+// for. Settlements and repayments pay these down, so they show only with
+// everything.
+export type PersonSide = "owed" | "owing";
 
-function sideOf(row: Row): PartnerSide | null {
+function sideOf(row: Row): PersonSide | null {
   if (row.kind !== "purchase" && row.kind !== "refund") return null;
   return row.change > 0 ? "owed" : row.change < 0 ? "owing" : null;
 }
 
-// The partner ledger split by who owes whom, as filters over the one
-// register.
-export function PartnerFilters({
+// A ledger that runs both ways split by who owes whom, as filters over the
+// one register.
+export function PersonFilters({
   value,
   onChange,
 }: {
-  value: PartnerSide | null;
-  onChange: (side: PartnerSide | null) => void;
+  value: PersonSide | null;
+  onChange: (side: PersonSide | null) => void;
 }) {
-  const sides: [PartnerSide, string][] = [
+  const sides: [PersonSide, string][] = [
     ["owed", "Owed to you"],
     ["owing", "Owed by you"],
   ];
@@ -83,30 +80,37 @@ export function PartnerFilters({
   );
 }
 
-function owedSentence(name: string, balance: number) {
-  if (balance > 0) return `${name} owes you`;
-  if (balance < 0) return `You owe ${name}`;
-  return `You and ${name} are even`;
-}
-
-// The Partner account: the one ledger both budgets share. Its balance is
-// what's owed, live, and the envelope beside it holds money against it.
-export function PartnerSummary({ account }: { account: Account }) {
+// A person's account: what's owed either way, live, and the envelope beside
+// it that holds money against it. The partner, also on Caishen, settles up
+// through both budgets' bank imports; anyone else pays you back by hand or
+// in an import of yours. A former partner's reads as it stood when it
+// closed.
+export function PersonSummary({ account }: { account: Account }) {
   const { categories } = useShellData();
   const { view } = useTransactionEntry();
   const envelope = categories.find(
     (category) => category.pairs?.accountId === account.id,
   );
-  const request = view.partnerRequest;
+  const linked = isLinked(account);
+  const request = linked ? view.partnerRequest : undefined;
   const asker =
     request?.requesterId === view.budget.userId ? "You" : account.name;
+  const balance = account.balance;
   return (
     <>
       <div className={styles.accountSummary}>
         <dl className={styles.balances}>
           <div data-total>
-            <dt>{owedSentence(account.name, account.balance)}</dt>
-            <dd className={local.owed}>{money(Math.abs(account.balance))}</dd>
+            <dt>
+              {!account.closed
+                ? owedSentence(account.name, balance)
+                : balance > 0
+                  ? `${account.name} owed you`
+                  : balance < 0
+                    ? `You owed ${account.name}`
+                    : `You and ${account.name} were even`}
+            </dt>
+            <dd className={local.owed}>{money(Math.abs(balance))}</dd>
           </div>
           {request && (
             <div>
@@ -121,7 +125,7 @@ export function PartnerSummary({ account }: { account: Account }) {
               </dd>
             </div>
           )}
-          {envelope && (
+          {envelope && !account.closed && (
             <div>
               <dt>
                 {envelope.name} envelope
@@ -135,11 +139,30 @@ export function PartnerSummary({ account }: { account: Account }) {
           )}
         </dl>
         <div className={styles.summaryActions}>
-          {account.balance > 0 ? (
-            <RequestPopover account={account} />
-          ) : account.balance < 0 ? (
-            <PayPopover account={account} />
-          ) : null}
+          {account.closed ? (
+            <span className={styles.reconciledLabel}>
+              Closed {shortDay(account.closed.at.slice(0, 10))} · frozen as it
+              stood
+            </span>
+          ) : linked ? (
+            <>
+              <span className={styles.reconciledLabel}>
+                On Caishen · shared with {account.name}
+              </span>
+              {balance > 0 ? (
+                <RequestPopover account={account} />
+              ) : balance < 0 ? (
+                <PayPopover account={account} />
+              ) : null}
+            </>
+          ) : (
+            <>
+              <span className={styles.reconciledLabel}>
+                Only you see {account.name}.
+              </span>
+              <RecordRepayment account={account} />
+            </>
+          )}
         </div>
       </div>
       {request && request.left > 0 && (
@@ -150,36 +173,6 @@ export function PartnerSummary({ account }: { account: Account }) {
         />
       )}
     </>
-  );
-}
-
-// A former partner's closed account: what was owed when the partnership
-// ended, kept as it stood. Nothing settles it or adds to it in the app.
-export function FormerPartnerSummary({ account }: { account: Account }) {
-  const balance = account.balance;
-  return (
-    <div className={styles.accountSummary}>
-      <dl className={styles.balances}>
-        <div data-total>
-          <dt>
-            {balance > 0
-              ? `${account.name} owed you`
-              : balance < 0
-                ? `You owed ${account.name}`
-                : `You and ${account.name} were even`}
-          </dt>
-          <dd className={local.owed}>{money(Math.abs(balance))}</dd>
-        </div>
-      </dl>
-      {account.closed && (
-        <div className={styles.summaryActions}>
-          <span className={styles.reconciledLabel}>
-            Closed {shortDay(account.closed.at.slice(0, 10))} · frozen as it
-            stood
-          </span>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -373,10 +366,59 @@ function categorizable(row: Row, you: string, closed: boolean) {
 
 type EditorField = "category" | "amount";
 
-// The partner ledger, as a register: clicking an entry selects it, and
-// clicking it again opens it at the field clicked. Entries you can
-// categorize can be checked and categorized together.
-export function PartnerRegister({
+// An unlinked person's entries as ledger rows, newest first, so every
+// person reads through one register: your shares of what you paid for
+// them, refunds of those, and what they paid you back.
+function personLedger(view: View, account: Account): Row[] {
+  let balance = 0;
+  return counterpartyRegisterEntries(view.budget, { accountId: account.id })
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((entry): Row => {
+      const transaction = view.budget.transactions.find(
+        (item) => item.id === entry.transactionId,
+      );
+      const line =
+        transaction?.lines?.find((item) => item.id === entry.lineId) ??
+        transaction;
+      const repayment = entry.kind === "repayment";
+      const theirs = Math.abs(entry.amount);
+      const shared = repayment ? theirs : Math.abs(line?.amount ?? theirs);
+      balance += entry.amount;
+      return {
+        id: entry.id,
+        kind: repayment
+          ? "repayment"
+          : entry.kind === "refund"
+            ? "refund"
+            : "purchase",
+        date: entry.date,
+        payee: entry.payee,
+        status: transaction?.status ?? "posted",
+        // They paid you back; you paid for everything else.
+        payerId: repayment ? account.id : view.budget.userId,
+        shared,
+        you: repayment ? 0 : shared - theirs,
+        partner: theirs,
+        change: entry.amount,
+        balance,
+        categoryId: repayment ? undefined : line?.categoryId,
+        needsCategory: false,
+        transactionId: entry.transactionId,
+        lineId: repayment ? undefined : entry.lineId,
+        // A bank import waits for your review.
+        confirmed: transaction?.reviewed === false ? false : undefined,
+        shareMode: { mode: "edit" },
+        history: [],
+      };
+    })
+    .reverse();
+}
+
+// A person's ledger, as a register: clicking an entry selects it, and
+// clicking it again opens it at the field clicked, settlements included.
+// The partner's entries you can categorize can be checked and categorized
+// together.
+export function PersonRegister({
   account,
   query,
   side,
@@ -388,7 +430,7 @@ export function PartnerRegister({
 }: {
   account: Account;
   query: string;
-  side: PartnerSide | null;
+  side: PersonSide | null;
   // Opens a transaction in its own account's register.
   onJump: (transaction: {
     id: string;
@@ -408,12 +450,15 @@ export function PartnerRegister({
     field: EditorField;
   } | null>(null);
   // A former partner's ledger reads as it stood when it closed.
-  const closed = account.kind === "former-partner";
+  const closed = Boolean(account.closed);
+  const linked = isLinked(account);
   const { partner } = useShellData();
-  const partnerImage = closed ? null : partner?.imageUrl;
+  const image = linked ? partner?.imageUrl : null;
   const ledger = closed
     ? (view.formerPartnerLedgers[account.id] ?? [])
-    : view.partnerLedger;
+    : linked
+      ? view.partnerLedger
+      : personLedger(view, account);
   const name = (id: string | undefined) =>
     view.categories.find((item) => item.id === id)?.name;
   const search = query.trim().toLowerCase();
@@ -478,7 +523,7 @@ export function PartnerRegister({
               {row.payerId === view.budget.userId ? (
                 <UserAvatar fallback="You" />
               ) : (
-                <PersonAvatar name={account.name} imageUrl={partnerImage} />
+                <PersonAvatar name={account.name} imageUrl={image} />
               )}
               <span className="sr-only">{paidBy}</span>
             </span>
@@ -499,7 +544,11 @@ export function PartnerRegister({
           <span className={styles.faint}>Settlement</span>
         )
       ) : row.kind === "repayment" ? (
-        <span className={styles.faint}>Repayment</span>
+        unconfirmed ? (
+          <Tag tone="attention">Review</Tag>
+        ) : (
+          <span className={styles.faint}>Repayment</span>
+        )
       ) : row.you === 0 ? (
         <span className={styles.faint}>Not yours</span>
       ) : (
@@ -543,19 +592,16 @@ export function PartnerRegister({
       cells={(row) => {
         const cells = rowCells(row);
         const settlement = Boolean(row.settlementId);
-        const isSelected = selectedId === row.id;
         return {
           label: row.payee,
-          review:
-            row.confirmed === false
-              ? "Needs confirming"
-              : row.needsCategory
-                ? "Needs a category"
-                : undefined,
-          attributes: {
-            "data-entry-row": row.id,
-            "aria-expanded": settlement ? isSelected : undefined,
-          },
+          review: row.needsCategory
+            ? "Needs a category"
+            : row.confirmed !== false
+              ? undefined
+              : settlement
+                ? "Needs confirming"
+                : "Needs review",
+          attributes: { "data-entry-row": row.id },
           content: (
             <>
               <span className={styles.rowName} data-column="date" data-optional>
@@ -567,7 +613,11 @@ export function PartnerRegister({
               <span className={styles.truncate} data-column="category">
                 {cells.category}
               </span>
-              <span className={styles.numeric} data-column="amount">
+              <span
+                className={styles.numeric}
+                data-column="amount"
+                aria-label={owedLabel(row.change)}
+              >
                 {money(row.change, true)}
               </span>
               {cells.balance && (
@@ -578,9 +628,6 @@ export function PartnerRegister({
               <span />
             </>
           ),
-          controls: isSelected && settlement && (
-            <SettlementDetail row={row} partnerName={account.name} />
-          ),
         };
       }}
       checkable={checkable}
@@ -589,7 +636,7 @@ export function PartnerRegister({
       checked={checked}
       onCheck={onCheck}
       onOpen={(row, column) => {
-        if (editing || row.settlementId || !(row.entryId ?? row.lineId)) return;
+        if (editing || !(row.entryId ?? row.lineId ?? row.settlementId)) return;
         setEditing({
           id: row.id,
           field:
@@ -599,16 +646,25 @@ export function PartnerRegister({
       editingId={rows.find((row) => row.id === editing?.id)?.id}
       renderEditor={(row) =>
         row &&
-        editing && (
+        editing &&
+        (row.settlementId ? (
+          <SettlementEditor
+            row={row}
+            cells={rowCells(row)}
+            partnerName={account.name}
+            onClose={() => setEditing(null)}
+          />
+        ) : (
           <EntryEditor
             row={row}
             cells={rowCells(row)}
             partnerName={account.name}
+            linked={linked}
             categoryEditable={checkable(row)}
             focus={editing.field}
             onClose={() => setEditing(null)}
           />
-        )
+        ))
       }
       empty={
         closed ? (
@@ -617,8 +673,9 @@ export function PartnerRegister({
           </Empty>
         ) : (
           <Empty title="Nothing owed yet." icon={UsersIcon}>
-            When you and {account.name} share a cost, what one of you owes the
-            other shows here, in both budgets.
+            {linked
+              ? `When you and ${account.name} share a cost, what one of you owes the other shows here, in both budgets.`
+              : `When you pay for ${account.name}, give the expense a share and what they owe you shows here. Only you see it.`}
           </Empty>
         )
       }
@@ -646,7 +703,7 @@ export function PartnerRegister({
         ) : undefined
       }
       actionBar={
-        <PartnerActions
+        <PersonActions
           selected={selected}
           onCheck={onCheck}
           disabled={Boolean(entry.session) || editing !== null}
@@ -665,7 +722,7 @@ export function PartnerRegister({
 // The action bar over the ledger while entries are selected: the way to the
 // selected entry's transaction, and the one thing checked entries share,
 // your category.
-function PartnerActions({
+function PersonActions({
   selected,
   onCheck,
   disabled,
@@ -708,86 +765,109 @@ function settlementPayee(row: Row, view: View, partnerName: string) {
   return `${row.method} ${sent ? "to" : "from"} ${partnerName}`;
 }
 
-// A settlement, opened: what it moved, how both budgets recognized it, and
-// the one confirmation that resolves both sides.
-function SettlementDetail({
+// A settlement, opened in place like any entry. Its amount and date came
+// from both banks, so every cell only reads; what's left is confirming it,
+// which confirms the partner's side too, or rejecting a wrong match.
+function SettlementEditor({
   row,
+  cells,
   partnerName,
+  onClose,
 }: {
   row: Row;
+  cells: RowCells;
   partnerName: string;
+  onClose: () => void;
 }) {
+  const formId = useId();
   const { saveCommand } = useTransactionEntry();
   const [error, setError] = useState("");
+  const run = (command: Parameters<typeof saveCommand>[0], notice: string) => {
+    const failure = saveCommand(command, notice);
+    if (failure) setError(failure);
+    else onClose();
+  };
+  const confirm = () =>
+    row.confirmed
+      ? onClose()
+      : run(
+          {
+            type: "partner.settlement.confirm",
+            id: newId(),
+            settlementId: row.settlementId!,
+          },
+          `Confirmed. ${partnerName}’s side is confirmed too.`,
+        );
+  const reject = () =>
+    run(
+      {
+        type: "partner.settlement.reject",
+        id: newId(),
+        settlementId: row.settlementId!,
+      },
+      "Match rejected. Both bank imports are back in review.",
+    );
   return (
-    <div
-      className={share.detail}
-      onKeyDown={(event) => event.stopPropagation()}
+    <EditorForm
+      id={formId}
+      title={`Settlement ${row.change >= 0 ? "to" : "from"} ${partnerName}`}
+      onSubmit={confirm}
+      onCancel={onClose}
     >
-      <div className={share.detailMain}>
-        <dl className={share.facts}>
-          <div>
-            <dt>
-              {row.change >= 0
-                ? `You paid ${partnerName}`
-                : `${partnerName} paid you`}
-            </dt>
-            <dd>{money(Math.abs(row.change))}</dd>
-          </div>
-        </dl>
-        <p className={local.source}>
-          <LinkIcon size={13} aria-hidden />
-          {row.confirmed
-            ? "Matched in both budgets"
-            : "Imported in both budgets. Confirm it in either one."}
-          {" Reject a wrong match to review both bank imports separately."}
-        </p>
-        <div className={local.detailActions}>
-          {!row.confirmed && (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() =>
-                setError(
-                  saveCommand(
-                    {
-                      type: "partner.settlement.confirm",
-                      id: newId(),
-                      settlementId: row.settlementId!,
-                    },
-                    `Confirmed. ${partnerName}’s side is confirmed too.`,
-                  ) ?? "",
-                )
-              }
-            >
-              Confirm settlement
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() =>
-              setError(
-                saveCommand(
-                  {
-                    type: "partner.settlement.reject",
-                    id: newId(),
-                    settlementId: row.settlementId!,
-                  },
-                  "Match rejected. Both bank imports are back in review.",
-                ) ?? "",
-              )
-            }
-          >
-            Reject match
-          </Button>
-        </div>
-        {error && <FormError>{error}</FormError>}
+      <div className={`${grid.columns} ${editorStyles.entryRow}`}>
+        <EditorText column="date">{cells.date}</EditorText>
+        <EditorText column="payee">{cells.payee}</EditorText>
+        <EditorText column="category">{cells.category}</EditorText>
+        <EditorText column="amount" numeric>
+          {money(row.change, true)}
+        </EditorText>
+        {cells.balance && (
+          <EditorText column="balance" numeric>
+            {cells.balance}
+          </EditorText>
+        )}
+        <span data-column="status" aria-hidden />
       </div>
-    </div>
+      <EditorFooter
+        actions={
+          <>
+            <Button size="sm" onClick={onClose}>
+              {row.confirmed ? "Close" : "Cancel"}
+            </Button>
+            <Button size="sm" onClick={reject}>
+              Reject match
+            </Button>
+            {!row.confirmed && (
+              <Button variant="primary" size="sm" type="submit" autoFocus>
+                Confirm settlement
+              </Button>
+            )}
+          </>
+        }
+      >
+        {error ? (
+          <FormError>{error}</FormError>
+        ) : (
+          <span className={share.footerHint}>
+            {row.confirmed
+              ? "Confirmed in both budgets."
+              : `Imported in both budgets. Confirming here confirms ${partnerName}’s side too.`}
+          </span>
+        )}
+      </EditorFooter>
+    </EditorForm>
   );
 }
 
 type RowCells = Record<"date" | "payee" | "category" | "balance", ReactNode>;
+
+// How an entry's amount reads aloud: which way it moved the balance, whoever
+// owed whom before it.
+function owedLabel(change: number) {
+  if (change > 0) return `${money(change)} more owed to you`;
+  if (change < 0) return `${money(-change)} less owed to you`;
+  return "Nothing owed";
+}
 
 // One line of your split as typed: its category and amount, unsigned.
 type SideLine = { lineId: string; categoryId: string; amount: string };
@@ -800,6 +880,7 @@ function EntryEditor({
   row,
   cells,
   partnerName,
+  linked,
   categoryEditable,
   focus,
   onClose,
@@ -807,6 +888,8 @@ function EntryEditor({
   row: Row;
   cells: RowCells;
   partnerName: string;
+  // Whether the entry shows in the person's budget too.
+  linked: boolean;
   categoryEditable: boolean;
   // The field clicked to open it, which takes focus.
   focus: EditorField;
@@ -974,8 +1057,8 @@ function EntryEditor({
     if (cents === theirShare) return null;
     const notice =
       cents === 0
-        ? `Wrote off the share of ${row.payee}. Both ledgers show $0.00 now.`
-        : `${shareLabel} of ${row.payee} is ${money(cents)}. Both budgets updated.`;
+        ? `Wrote off the share of ${row.payee}.${linked ? " Both ledgers show $0.00 now." : ""}`
+        : `${shareLabel} of ${row.payee} is ${money(cents)}.${linked ? " Both budgets updated." : ""}`;
     // Your own imported purchase saves like its Share cell; anything else
     // goes through the shared entry, which changes the payer's transaction.
     return row.transactionId
@@ -1071,7 +1154,7 @@ function EntryEditor({
           readOnly("category", cells.category)
         )}
         {shareEditable ? (
-          <EditorCell column="amount" label="Amount" error={errors.amount}>
+          <EditorCell column="amount" label={shareLabel} error={errors.amount}>
             <AmountInput
               inputRef={input}
               negative={row.change < 0}

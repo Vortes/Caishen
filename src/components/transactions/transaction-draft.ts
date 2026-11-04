@@ -2,7 +2,7 @@ import { readAmount } from "~/components/budget/amount";
 import { today } from "~/components/budget/format";
 import type { View } from "~/components/budget/types";
 import type { BankImport } from "./import-draft";
-import { isCleared, isCounterparty, type Command } from "~/domain/engine";
+import { isCleared, type Command } from "~/domain/engine";
 import {
   classifyRegisterEntry,
   directEntryAccounts,
@@ -33,7 +33,6 @@ export const SPLIT = "\u0000split";
 export type DraftShare = {
   accountId: string;
   amount: string;
-  counterpartyName?: string;
 };
 
 // One line of a split: part of the amount, in one category.
@@ -209,7 +208,6 @@ export function draftShareFacts(draft: TransactionDraft) {
     share
       ? {
           accountId: share.accountId,
-          counterpartyName: share.counterpartyName,
           amount: parseAmount(share.amount.trim()) ?? 0,
         }
       : undefined;
@@ -393,24 +391,10 @@ export function buildTransactionDraftCommand({
     const amount = parseAmount(share.amount.trim());
     if (amount === undefined || amount > Math.abs(total))
       fields[field] = "Enter a share between $0 and the full line amount.";
-    if (
-      !view.accounts.some(
-        (item) => item.id === share.accountId && isCounterparty(item),
-      )
-    )
-      fields[field] = "Choose Partner or Reimbursements.";
-    if (
-      share.accountId === "counterparty:reimbursements" &&
-      !share.counterpartyName?.trim()
-    )
-      fields[field] = "Enter the person or organization that owes you.";
-    return {
-      ...share,
-      counterpartyName: share.counterpartyName?.trim()
-        ? share.counterpartyName.trim()
-        : undefined,
-      amount: amount ?? 0,
-    };
+    // A person added with this share may not be on screen yet; the
+    // engine refuses an account that isn't a person's.
+    if (!share.accountId) fields[field] = "Choose who this is for.";
+    return { ...share, amount: amount ?? 0 };
   };
   const split = draft.lines.length > 0;
   const lines: {

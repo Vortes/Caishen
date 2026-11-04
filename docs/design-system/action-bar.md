@@ -24,15 +24,15 @@ eligibility, disabled states and the actions in `children`.
 - `way` defaults to `null`. A `Way` has `name`, `label`, `onGo` and optional
   `forward`. Use `name` for the short destination and `label` for its full
   accessible name and tooltip. `forward` defaults to a back arrow; `true`
-  uses the outward arrow, as Open in Checking does in the Partner account.
+  uses the outward arrow, as Open in Checking does in a person's register.
 - With zero checked rows, `way` alone stays visible without a count,
   actions or toolbar role. With no `way`, the frame renders nothing.
 - `hint` is an optional string or `false`. It appears beside the count in
   `--feedback-attention`, as the transaction review limit does. Omit it
   when there is no constraint to explain.
 
-Correct: the checked-row frame from `PartnerActions` in
-[`partner-register.tsx`](../../src/components/app-shell/partner-register.tsx).
+Correct: the checked-row frame from `PersonActions` in
+[`person-register.tsx`](../../src/components/app-shell/person-register.tsx).
 It clears the same rows it counts and keeps categorization in the caller.
 
 ```tsx

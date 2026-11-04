@@ -16,7 +16,6 @@ import { PrismaClient } from "../../src/generated/prisma";
 import {
   execute,
   isCounterparty,
-  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "../../src/domain/engine";
@@ -58,6 +57,8 @@ import {
   decryptBankToken,
   encryptBankToken,
 } from "../../src/server/token-crypto";
+import { withPeople } from "../../src/domain/people";
+import { personId, withPerson } from "../domain/fixtures/people";
 
 // The bank service against a real household (ADR 0006): its import state
 // and budget live in rows, with Plaid answered by fetch mocks.
@@ -4739,21 +4740,28 @@ void test("a remembered expense category does not consume a card payment before 
 void test("a saved full reimbursement is remembered on the next bank import without a category", async () => {
   const h = await linkedHarness();
   await h.setBook(
-    execute(withCounterpartyAccounts(await h.book()), alice, {
-      type: "transaction.upsert",
-      id: "remember-mom",
-      transactionId: "first",
-      accountId: "cash",
-      date: "2026-10-02",
-      amount: -1_154,
-      payee: "Trader Joe's",
-      recordedAt: "2026-10-02T12:00:00Z",
-      counterpartyShare: {
-        accountId: "counterparty:reimbursements",
-        counterpartyName: "Mom",
-        amount: 1_154,
+    execute(
+      withPerson(
+        withPerson(withPeople(await h.book()), alice, "Mom"),
+        alice,
+        "Anna",
+      ),
+      alice,
+      {
+        type: "transaction.upsert",
+        id: "remember-mom",
+        transactionId: "first",
+        accountId: "cash",
+        date: "2026-10-02",
+        amount: -1_154,
+        payee: "Trader Joe's",
+        recordedAt: "2026-10-02T12:00:00Z",
+        counterpartyShare: {
+          accountId: personId("Mom"),
+          amount: 1_154,
+        },
       },
-    }),
+    ),
   );
   syncPages([
     { added: [groceryRun("for-mom", "2026-10-19")], next_cursor: "1" },
@@ -4767,7 +4775,7 @@ void test("a saved full reimbursement is remembered on the next bank import with
     "the imported purchase retains its remembered full share",
   );
   assert.equal(transaction.categoryId, undefined);
-  assert.equal(transaction.counterpartyShare?.counterpartyName, "Mom");
+  assert.equal(transaction.counterpartyShare?.accountId, personId("Mom"));
   assert.equal(transaction.counterpartyShare?.amount, 4_210);
   assert.equal(transaction.reviewed, false);
 });
@@ -4775,21 +4783,28 @@ void test("a saved full reimbursement is remembered on the next bank import with
 void test("a bank import already named Mom gets Mom's full reimbursement category", async () => {
   const h = await linkedHarness();
   await h.setBook(
-    execute(withCounterpartyAccounts(await h.book()), alice, {
-      type: "transaction.upsert",
-      id: "known-mom",
-      transactionId: "noodles-for-mom",
-      accountId: "cash",
-      date: "2026-10-02",
-      amount: -1_000,
-      payee: "Noodles Plus",
-      recordedAt: "2026-10-02T12:00:00Z",
-      counterpartyShare: {
-        accountId: "counterparty:reimbursements",
-        counterpartyName: "Mom",
-        amount: 1_000,
+    execute(
+      withPerson(
+        withPerson(withPeople(await h.book()), alice, "Mom"),
+        alice,
+        "Anna",
+      ),
+      alice,
+      {
+        type: "transaction.upsert",
+        id: "known-mom",
+        transactionId: "noodles-for-mom",
+        accountId: "cash",
+        date: "2026-10-02",
+        amount: -1_000,
+        payee: "Noodles Plus",
+        recordedAt: "2026-10-02T12:00:00Z",
+        counterpartyShare: {
+          accountId: personId("Mom"),
+          amount: 1_000,
+        },
       },
-    }),
+    ),
   );
   syncPages([
     {
@@ -4820,8 +4835,7 @@ void test("a bank import already named Mom gets Mom's full reimbursement categor
   assert.ok(mom);
   assert.equal(mom.categoryId, undefined);
   assert.deepEqual(mom.counterpartyShare, {
-    accountId: "counterparty:reimbursements",
-    counterpartyName: "Mom",
+    accountId: personId("Mom"),
     amount: 2_000,
   });
   assert.deepEqual(
@@ -4830,9 +4844,63 @@ void test("a bank import already named Mom gets Mom's full reimbursement categor
   );
 });
 
+void test("a deposit naming a person who owes you is recorded as their repayment", async () => {
+  const h = await linkedHarness();
+  let book = withPerson(withPeople(await h.book()), alice, "Mom");
+  book = withPerson(book, alice, "Bob");
+  for (const [transactionId, accountId] of [
+    ["for-mom", personId("Mom")],
+    ["for-bob", personId("Bob")],
+  ] as const)
+    book = execute(book, alice, {
+      type: "transaction.upsert",
+      id: transactionId,
+      transactionId,
+      accountId: "cash",
+      date: "2026-10-02",
+      amount: -1_154,
+      payee: "Noodles Plus",
+      recordedAt: "2026-10-02T12:00:00Z",
+      counterpartyShare: { accountId, amount: 1_154 },
+    });
+  await h.setBook(book);
+  syncPages([
+    {
+      added: [
+        plaidTransaction({
+          transaction_id: "zelle-from-mom",
+          name: "Zelle payment from MOM",
+          amount: -11.54,
+        }),
+      ],
+      next_cursor: "repaid",
+    },
+  ]);
+  await syncBanks(h.db, alice);
+
+  const view = (await h.state()).view!;
+  const repayment = view.budget.transactions.find(
+    (item) => item.providerId === "zelle-from-mom",
+  );
+  assert.equal(repayment?.linkedCounterpartyAccountId, personId("Mom"));
+  assert.equal(repayment?.amount, 1_154);
+  assert.equal(
+    view.accounts.find((item) => item.id === personId("Mom"))!.balance,
+    0,
+  );
+  assert.equal(
+    view.accounts.find((item) => item.id === personId("Bob"))!.balance,
+    1_154,
+  );
+});
+
 void test("a bank update fills existing uncategorized Mom outflows and preserves explicit choices", async () => {
   const h = await linkedHarness();
-  let book = withCounterpartyAccounts(await h.book());
+  let book = withPerson(
+    withPerson(withPeople(await h.book()), alice, "Mom"),
+    alice,
+    "Anna",
+  );
   const commands: Command[] = [
     {
       type: "transaction.upsert",
@@ -4844,8 +4912,7 @@ void test("a bank update fills existing uncategorized Mom outflows and preserves
       payee: "Noodles",
       recordedAt: "2026-10-02T12:00:00Z",
       counterpartyShare: {
-        accountId: "counterparty:reimbursements",
-        counterpartyName: "Mom",
+        accountId: personId("Mom"),
         amount: 1_000,
       },
     },
@@ -4878,8 +4945,7 @@ void test("a bank update fills existing uncategorized Mom outflows and preserves
       payee: "Mom",
       recordedAt: "2026-10-05T12:00:00Z",
       counterpartyShare: {
-        accountId: "counterparty:reimbursements",
-        counterpartyName: "Anna",
+        accountId: personId("Anna"),
         amount: 400,
       },
     },
@@ -4903,8 +4969,7 @@ void test("a bank update fills existing uncategorized Mom outflows and preserves
     after.budget.transactions.find((item) => item.id === "empty-mom")!
       .counterpartyShare,
     {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 2_000,
     },
   );

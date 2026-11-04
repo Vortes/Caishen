@@ -6,7 +6,6 @@ import { PrismaClient } from "../../src/generated/prisma";
 import {
   createBook,
   execute,
-  withCounterpartyAccounts,
   type Book,
   type Command,
 } from "../../src/domain/engine";
@@ -21,6 +20,7 @@ import { commandHash, jsonValue } from "../../src/server/services/safety";
 import { bankMappingsSchema } from "../../src/server/services/bank-account-setup";
 import { assertDevelopmentDatabase } from "../../src/server/dev/development-database";
 import { createBankConnection, createHousehold } from "./fixtures";
+import { withPeople } from "../../src/domain/people";
 
 assertDevelopmentDatabase(process.env);
 
@@ -190,10 +190,7 @@ void test(
         [aliceId, "alice"],
         [bobId, "bob"],
       ] as const) {
-        await createHousehold(
-          db,
-          withCounterpartyAccounts(fixtureBook(userId, prefix)),
-        );
+        await createHousehold(db, withPeople(fixtureBook(userId, prefix)));
       }
       await createBankConnection(db, {
         data: {
@@ -445,10 +442,7 @@ void test(
     const record = fixtureRecord(connectionId, "history-purchase");
     try {
       await db.user.create({ data: { clerkUserId: userId } });
-      await createHousehold(
-        db,
-        withCounterpartyAccounts(fixtureBook(userId, "history")),
-      );
+      await createHousehold(db, withPeople(fixtureBook(userId, "history")));
       await createBankConnection(db, {
         data: {
           id: connectionId,

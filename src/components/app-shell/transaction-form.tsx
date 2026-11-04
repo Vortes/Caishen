@@ -638,7 +638,6 @@ function TransactionForm({ accountColumn }: { accountColumn: boolean }) {
           amount={Math.abs(lineAmount)}
           share={share}
           saved={saved}
-          remembered={name === "counterpartyShare" ? remembered : undefined}
           onChange={(next) => {
             const amount = next ? (next.amount / 100).toFixed(2) : "";
             onChange(

@@ -36,18 +36,12 @@ function shareTotal(who: Who, transaction: BudgetTransaction) {
     .map((line) => line.counterpartyShare)
     .filter((share): share is CounterpartyShare => Boolean(share?.amount));
   if (!shares.length) return null;
-  const first = shares[0]!;
-  const same = shares.every(
-    (share) =>
-      share.accountId === first.accountId &&
-      share.counterpartyName === first.counterpartyName,
-  );
   return {
-    ...first,
-    counterpartyName: same
-      ? first.counterpartyName
-      : [...new Set(shares.map((share) => who(share)))].join(", "),
-    amount: shares.reduce((sum, share) => sum + share.amount, 0),
+    share: {
+      ...shares[0]!,
+      amount: shares.reduce((sum, share) => sum + share.amount, 0),
+    },
+    name: [...new Set(shares.map((share) => who(share)))].join(", "),
   };
 }
 
@@ -57,12 +51,8 @@ function shareNotice(
   before: CounterpartyShare | null | undefined,
   share: CounterpartyShare | null,
 ) {
-  if (share?.amount) {
-    const name = who(share);
-    return share.counterpartyName
-      ? `${name} owes you ${money(share.amount)} for ${payee}.`
-      : `${name}'s share of ${payee} is ${money(share.amount)}.`;
-  }
+  if (share?.amount)
+    return `${who(share)}’s share of ${payee} is ${money(share.amount)}.`;
   return before?.amount && share
     ? `Wrote off the share of ${payee}.`
     : `${payee} is all yours now.`;
@@ -91,7 +81,7 @@ export function ShareCell({
     ? shareLines(transaction)
     : [{ id: row.id, categoryId: row.categoryId ?? "", amount: row.amount }];
   const total = transaction ? shareTotal(who, transaction) : null;
-  const label = total && <ShareLabel share={total} />;
+  const label = total && <ShareLabel share={total.share} name={total.name} />;
   const payee = row.payee;
   const slot = (content: ReactNode) => (
     <div
@@ -108,7 +98,7 @@ export function ShareCell({
       data-empty={!label || undefined}
       aria-label={
         total
-          ? `${who(total)}'s share of ${payee}: ${money(total.amount)}. Change`
+          ? `${total.name}’s share of ${payee}: ${money(total.share.amount)}. Change`
           : `Share ${payee}`
       }
       onClick={

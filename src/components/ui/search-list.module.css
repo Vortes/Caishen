@@ -6,6 +6,10 @@
 .input:not(:disabled) {
   cursor: pointer;
 }
+/* A name longer than the well ends in an ellipsis until it's focused. */
+.input {
+  text-overflow: ellipsis;
+}
 .chevron {
   flex: none;
   color: var(--text-tertiary);
@@ -100,6 +104,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tag {
+  flex: none;
+  white-space: nowrap;
+}
 .amount {
   flex: none;
   font-variant-numeric: tabular-nums;
@@ -119,9 +127,147 @@
   text-align: center;
 }
 
-/* Touch: rows as tall as a Select's. The well's 16px text is the field's. */
+/* SearchListDetail: the search and its list on the left, the highlighted
+   row's detail on the right, in a size="wide" popover. The list takes what
+   the detail's 240px leaves. Both start their rows on one line: the title
+   is as tall as the search well beside it. */
+.detailFrame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  container-type: inline-size;
+}
+.detailRoot {
+  display: flex;
+  min-height: 0;
+  max-height: 420px;
+}
+.rail {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+/* The search sits at a form's 12px; the list under it keeps a list's 4px. */
+.railSearch {
+  flex: none;
+  padding: 12px 12px 8px;
+}
+/* Its list never closes, so a click there only types. */
+.railSearch .input {
+  cursor: text;
+}
+.railList {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 4px 4px;
+}
+.railList > .scroll {
+  flex: 1 1 auto;
+}
+.pane {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 240px;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--border-subtle);
+}
+/* Starts where the choices' titles do (4px list, 4px row, 16px check, 6px
+   gap), so the name heads their column. One line is as tall as the search
+   well; a long name wraps in full, since the list beside it truncates. */
+.paneTitle {
+  flex: none;
+  margin: 12px 12px 8px 30px;
+  padding: 6px 0;
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.paneTitle[data-placeholder] {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.paneBody {
+  display: flex;
+  flex-direction: column;
+  padding: 0 4px 4px;
+}
+/* A choice is a list row as a button: check column, title, figure. Focus
+   moves onto it, so it shows the highlight on focus and on a real hover. */
+.choice {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: var(--size-row-sm);
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: var(--radius-row);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.choice:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+@media (hover: hover) {
+  .choice:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+}
+.choice[aria-pressed="true"] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.choice:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.choiceDetail {
+  flex: none;
+  color: var(--text-tertiary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stacked panes reserve room for amount choices even on a short screen.
+   The people list scrolls within its cap; the surface scrolls if needed. */
+@container (max-width: 519px) {
+  .detailRoot {
+    flex-direction: column;
+    max-height: none;
+  }
+  .rail {
+    flex: none;
+    max-height: min(240px, 35dvh);
+  }
+  .pane {
+    width: auto;
+    overflow-y: visible;
+    border-top: 1px solid var(--border-subtle);
+    border-left: 0;
+  }
+}
+
+/* Touch: rows as tall as a Select's. The well's 16px text is the field's;
+   the detail's title stays as tall as the 44px well. */
 @media (pointer: coarse) {
-  .option {
+  .option,
+  .choice {
     min-height: var(--size-row-lg);
+  }
+  .paneTitle {
+    padding: 12px 0;
   }
 }

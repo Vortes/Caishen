@@ -96,13 +96,10 @@ type CategoryGroup = { id: string; name: string; categories: Category[] };
 export type Account = {
   id: string;
   name: string;
-  kind:
-    | "cash"
-    | "credit"
-    | "tracking"
-    | "partner"
-    | "reimbursements"
-    | "former-partner";
+  // A person is what one person owes you, or you owe them.
+  kind: "cash" | "credit" | "tracking" | "person";
+  // A person who is also on Caishen, in this household: the partner.
+  linkedUserId?: string;
   balance: number;
   uncleared: number;
   // Today's cleared balance, whatever month is showing: what reconciling
@@ -245,9 +242,8 @@ function importCategoryLabel(
       : categoryId
         ? (item.categoryName ?? categoryName.get(categoryId))
         : share?.amount === Math.abs(item.amount)
-          ? (share.counterpartyName ??
-            view.accounts.find((account) => account.id === share.accountId)
-              ?.name)
+          ? view.accounts.find((account) => account.id === share.accountId)
+              ?.name
           : undefined;
   return label
     ? { categoryId, categoryLabel: label, needsCategory: false }
@@ -312,8 +308,8 @@ export function toShellData(
     view.accounts.map((item) => [item.id, item.name]),
   );
   const loanName = new Map(view.loans.map((item) => [item.id, item.name]));
-  // Counterparty accounts go by who they are with: the partner's first name,
-  // or Reimbursements for everyone else.
+  // People go by their own name; the partner by the first name on their
+  // Caishen profile.
   const displayName = (account: { id: string; name: string }) =>
     (account.id === partnerAccountOf(view.budget)?.id
       ? state.partnerFirstName
@@ -493,13 +489,10 @@ export function toShellData(
           (item.lines ?? [item])
             .map((line) => line.counterpartyShare)
             .filter((share) => share?.amount)
-            .map(
-              (share) =>
-                share!.counterpartyName ??
-                view.budget.accounts.find(
-                  (account) => account.id === share!.accountId,
-                )?.name,
-            ),
+            .map((share) => {
+              const person = counterparty.get(share!.accountId);
+              return person && displayName(person);
+            }),
         ),
       ];
       return {
@@ -553,7 +546,7 @@ export function toShellData(
         shareLabel: shareNames.join(" ") || undefined,
         repayment: repaidFrom
           ? {
-              from: item.counterpartyName ?? displayName(repaidFrom),
+              from: displayName(repaidFrom),
               account: displayName(repaidFrom),
               settlementId: item.partnerSettlementId,
             }
@@ -620,7 +613,8 @@ export function toShellData(
     return {
       id: item.id,
       name: displayName(item),
-      kind: item.kind,
+      kind: item.kind as Account["kind"],
+      ...(item.linkedUserId ? { linkedUserId: item.linkedUserId } : {}),
       balance: item.balance + balance,
       // The engine leaves pending inflows out of the balance until they
       // post, so they are not part of uncleared money in it either.

@@ -409,6 +409,7 @@
 }
 /* Reserves room for the sidebar toggle only while the sidebar is closed. */
 .toggleSlot {
+  flex: none;
   display: grid;
   grid-template-columns: 0fr;
   margin-right: -8px;
@@ -435,11 +436,14 @@
   min-width: 0;
 }
 .headerTitle {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   font-size: var(--type-body);
   font-weight: 500;
   letter-spacing: inherit;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .crumb {
   color: var(--text-tertiary);
@@ -476,6 +480,7 @@
   color: var(--text-primary);
 }
 .monthNav {
+  flex: none;
   display: flex;
   align-items: center;
   margin-left: 4px;
@@ -1575,6 +1580,19 @@ button.actionItem:disabled {
   padding: 4px 8px 4px 20px;
   color: var(--text-tertiary);
   font-size: var(--type-small);
+}
+/* Places the action that reveals what a section keeps folded away, like
+   settled people, on a row of its own, in line with the names above it. */
+.navMore {
+  display: flex;
+  align-items: center;
+  height: var(--size-row-sm);
+  padding: 0 8px 0 20px;
+}
+@media (pointer: coarse) {
+  .navMore {
+    height: var(--size-row-lg);
+  }
 }
 /* ---------- Collapsed sidebar peek ---------- */
 

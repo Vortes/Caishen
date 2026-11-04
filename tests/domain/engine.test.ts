@@ -10,11 +10,12 @@ import {
   forecastLoan,
   mergeBooks,
   projectBook,
-  withCounterpartyAccounts,
   type Book,
   type Command,
   type CommandSource,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
+import { linkedPersonId, personId, withPerson } from "./fixtures/people";
 
 const month = "2026-10";
 const date = "2026-10-10";
@@ -489,7 +490,7 @@ void test("paying a card beyond its reserve leaves credit-overspent categories c
 
 void test("paying a card beyond its reserve makes a paired envelope's card share cash-backed", () => {
   const setup = fixture(100_000);
-  setup.book = withCounterpartyAccounts(setup.book);
+  setup.book = withPerson(withPeople(setup.book), "alan", "Mom");
   setup.run({
     type: "account.add",
     accountId: "card",
@@ -505,8 +506,7 @@ void test("paying a card beyond its reserve makes a paired envelope's card share
     amount: -2000,
     payee: "Noodles Plus",
     counterpartyShare: {
-      accountId: "counterparty:reimbursements",
-      counterpartyName: "Mom",
+      accountId: personId("Mom"),
       amount: 2000,
     },
     recordedAt: "2026-10-10T12:00:00Z",
@@ -524,8 +524,7 @@ void test("paying a card beyond its reserve makes a paired envelope's card share
   const view = setup.view();
   assert.equal(
     view.categories.find(
-      (category) =>
-        category.counterpartyAccountId === "counterparty:reimbursements",
+      (category) => category.counterpartyAccountId === personId("Mom"),
     )?.cashOverspending,
     2000,
   );
@@ -2366,13 +2365,12 @@ void test("an agent cannot add a category group", () => {
 });
 
 void test("direct register entries on either counterparty account use the account picker's refusal", () => {
-  const book = withCounterpartyAccounts(
-    addMember(fixture().book, "anna", "Anna", month),
+  const book = withPerson(
+    withPeople(addMember(fixture().book, "anna", "Anna", month)),
+    "alan",
+    "Mom",
   );
-  for (const accountId of [
-    "counterparty:partner",
-    "counterparty:reimbursements",
-  ])
+  for (const accountId of [linkedPersonId(book, "alan"), personId("Mom")])
     assert.throws(
       () =>
         execute(book, "alan", {
@@ -2386,7 +2384,7 @@ void test("direct register entries on either counterparty account use the accoun
         }),
       {
         message:
-          "Entries on Partner and Reimbursements come from shares and settlements, not from the register",
+          "Entries on a person's account come from shares, repayments, and settlements, not from the register",
       },
     );
 });
@@ -2572,7 +2570,7 @@ void test("a positive card Starting Balance funds same-day spending as cash", ()
 });
 
 void test("accounts record Starting Balances once, and their adjustments can move earlier, change and be removed", () => {
-  let book = withCounterpartyAccounts(
+  let book = withPeople(
     addMember(
       createBook("alan", "Alan", "2026-09"),
       "partner",
@@ -2765,7 +2763,7 @@ void test("accounts record Starting Balances once, and their adjustments can mov
       .map((a) => a.id),
   );
   assert.equal(
-    book.budgets.alan!.accounts.some((a) => a.kind === "former-partner"),
+    book.budgets.alan!.accounts.some((a) => a.kind === "person" && a.closed),
     true,
   );
   assert.equal(

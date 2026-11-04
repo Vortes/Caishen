@@ -26,7 +26,7 @@ import {
 } from "~/components/app-shell/banks";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { SHELL_PATH } from "~/components/workspace/routes";
-import { PartnerSettings } from "~/components/settings/partner";
+import { PartnerSettings } from "~/components/settings/people";
 import { ShellDataProvider } from "~/components/app-shell/shell-data";
 import { toShellData } from "~/components/app-shell/model";
 import {

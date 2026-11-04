@@ -81,55 +81,17 @@
   }
 }
 
-.shareOptions {
+/* The share picker: SearchListDetail in a column the popover can clamp,
+   so only its list scrolls. In the detail, the amount field and an error
+   sit at a form's 12px: the detail's 4px and 8px more. */
+.sharePicker {
   display: flex;
   flex-direction: column;
-  padding: 4px;
+  min-height: 0;
 }
-.shareOption {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-}
-.shareOption:hover,
-.shareOption:focus-visible {
-  background: var(--surface-hover);
-  color: var(--text-primary);
-}
-.shareOption[aria-pressed="true"] {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-.optionDetail {
-  flex: none;
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-.optionKey {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  color: var(--text-tertiary);
-  font-family: inherit;
-  font-size: var(--type-caption);
-}
-@media (hover: none) {
-  .optionKey {
-    display: none;
-  }
-}
-.popoverHint {
-  margin: 0;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
+.customShare,
+.shareError {
+  padding: 8px;
 }
 .shareForm {
   display: flex;
@@ -167,10 +129,6 @@
   flex: 0 0 104px;
   min-width: 0;
 }
-.shareFormActions {
-  display: flex;
-  justify-content: flex-end;
-}
 .shareForm .fullShare {
   display: flex;
   align-items: center;
@@ -195,50 +153,6 @@
   font-size: var(--type-small);
 }
 
-/* A settlement, opened under its row: what it moved and how both budgets
-   recognized it. */
-.detail {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 24px;
-  margin: 2px 0 10px var(--row-gutter);
-  padding: 14px 16px 16px;
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-card);
-  background: var(--surface-raised);
-}
-@container (max-width: 760px) {
-  .detail {
-    grid-template-columns: minmax(0, 1fr);
-    margin-left: var(--space-row-x);
-  }
-}
-.detailMain {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 24px;
-  margin: 0;
-}
-.facts > div {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 2px;
-}
-.facts dt {
-  color: var(--text-tertiary);
-  font-size: var(--type-small);
-}
-.facts dd {
-  margin: 0;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
 @media (pointer: coarse) {
   .shareForm input {
     font-size: var(--type-title);

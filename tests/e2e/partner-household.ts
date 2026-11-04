@@ -55,13 +55,14 @@ export async function connectPartner({
   budgets: {
     newcomer: () => Promise<string>;
     claim: (email: string) => Promise<string>;
+    syncProfile: (userId: string) => Promise<void>;
   };
   partnerName: string;
 }) {
   await rm(outboxPath, { recursive: true, force: true });
   const email = await budgets.newcomer();
-  await page.goto(`${shellPath}/settings/partner`);
-  await page.getByLabel("Partner’s email").fill(email);
+  await page.goto(`${shellPath}/settings/people`);
+  await page.getByLabel("Their email", { exact: true }).fill(email);
   await page.getByRole("button", { name: "Write invitation" }).click();
   await page.getByRole("button", { name: "Turn over to sign" }).click();
   await page.getByRole("button", { name: "Sign with my name instead" }).click();
@@ -85,7 +86,7 @@ export async function connectPartner({
   // Clerk's test addresses take a fixed code.
   await partner.getByLabel("Enter verification code").fill("424242");
   await expect(partner).toHaveURL(new RegExp(`${path}$`));
-  await budgets.claim(email);
+  const userId = await budgets.claim(email);
   await partner
     .getByRole("img", { name: "Caishen sent you something" })
     .click();
@@ -111,6 +112,7 @@ export async function connectPartner({
     partner.getByRole("heading", { name: "A few questions about you" }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(partner).toHaveURL(/\/welcome$/);
+  await budgets.syncProfile(userId);
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await partner.getByRole("button", { name: "Skip for now" }).click();
   await expect(partner.getByText(/^Connected with /)).toBeVisible();
@@ -118,4 +120,5 @@ export async function connectPartner({
 
   await page.reload();
   await expect(page.getByText(/^Connected with /)).toBeVisible();
+  return { userId, email };
 }

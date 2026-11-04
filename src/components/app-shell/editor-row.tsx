@@ -96,10 +96,13 @@ export function EditorCell({
 export function EditorText({
   column,
   numeric = false,
+  optional = false,
   children,
 }: {
   column: string;
   numeric?: boolean;
+  // Hidden with its column when the register narrows.
+  optional?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -107,6 +110,7 @@ export function EditorText({
       className={`${styles.cell} ${styles.staticCell}`}
       data-column={column}
       data-numeric={numeric || undefined}
+      data-optional={optional || undefined}
     >
       {children}
     </div>

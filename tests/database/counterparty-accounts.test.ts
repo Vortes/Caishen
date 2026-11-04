@@ -3,11 +3,12 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import nextEnv from "@next/env";
 import {
+  addMember,
   createBook,
   execute,
   executeWithChanges,
-  withCounterpartyAccounts,
 } from "../../src/domain/engine";
+import { withPeople } from "../../src/domain/people";
 import { bookToRows, tombstone, type WireRow } from "../../src/domain/rows";
 import { PrismaClient } from "../../src/generated/prisma";
 import {
@@ -28,10 +29,17 @@ import {
   normalizePlaidTransaction,
 } from "../../src/server/integrations/transactions";
 import { bankSetupDate } from "../../src/server/services/bank-account-setup";
+import {
+  asLegacyReimbursements,
+  envelopeOf,
+  personId,
+  withPerson,
+} from "../domain/fixtures/people";
 
-// Every budget holds its counterparty accounts and their paired envelopes:
-// from creation, from joining a partner, and, for budgets made before they
-// existed, from the first time a browser loads the budget.
+// Every counterparty is a person with an account and paired envelope: added
+// one at a time, the partner's linked person from joining, and, for budgets
+// stored with a Reimbursements account, converted the first time a browser
+// loads the budget.
 nextEnv.loadEnvConfig(process.cwd(), true);
 assertDevelopmentDatabase(process.env);
 const db = new PrismaClient();
@@ -67,7 +75,7 @@ async function pullAll(who: Member, since: number | null = null) {
   return { ...first, rows };
 }
 
-// The counterparty accounts and paired envelopes among a member's rows.
+// The people and paired envelopes among a member's rows.
 function people(rows: WireRow[]) {
   const data = (row: WireRow) => row.data as Record<string, unknown>;
   return {
@@ -75,9 +83,15 @@ function people(rows: WireRow[]) {
       .filter(
         (row) =>
           row.table === "account" &&
-          ["partner", "reimbursements"].includes(String(data(row).kind)),
+          ["person", "partner", "reimbursements"].includes(
+            String(data(row).kind),
+          ),
       )
-      .map((row) => data(row).kind)
+      .map((row) =>
+        [data(row).kind, data(row).name, data(row).linkedUserId ?? null].join(
+          " ",
+        ),
+      )
       .sort(),
     envelopes: rows
       .filter(
@@ -87,6 +101,14 @@ function people(rows: WireRow[]) {
       .sort(),
   };
 }
+
+// The id of the account linked to a member, among a budget's rows.
+const linkedAccountId = (rows: WireRow[], userId: string) => {
+  const row = rows.find(
+    (row) => row.table === "account" && row.data?.linkedUserId === userId,
+  );
+  return row?.table === "account" ? row.data?.id : undefined;
+};
 
 const onboard = (who: Member, name: string) =>
   who.api.budget.onboard({ name, month, timezone: "America/Los_Angeles" });
@@ -112,17 +134,23 @@ test.after(async () => {
   await db.$disconnect();
 });
 
-void test("a new budget starts with the reimbursements account and its envelope", async () => {
+// A legacy budget: a checking account and the empty Reimbursements account
+// and envelope every budget was given before people.
+function legacyBook(userId: string, name: string, startMonth = month) {
+  return asLegacyReimbursements(createBook(userId, name, startMonth), userId);
+}
+
+void test("a new budget starts with nobody", async () => {
   const alan = await member("Alan");
   await onboard(alan, "Alan");
 
   assert.deepEqual(people((await pullAll(alan)).rows), {
-    accounts: ["reimbursements"],
-    envelopes: [["Reimbursements", "counterparty:reimbursements"]],
+    accounts: [],
+    envelopes: [],
   });
 });
 
-void test("joining a partner gives each budget a partner account and its envelope", async () => {
+void test("joining a partner gives each budget the person linked to the other and their envelope", async () => {
   const alan = await member("Host");
   const anna = await member("Guest");
   await onboard(alan, "Alan");
@@ -132,14 +160,16 @@ void test("joining a partner gives each budget a partner account and its envelop
     id: await invitationFrom(db, alan.userId),
   });
 
-  for (const who of [alan, anna])
-    assert.deepEqual(people((await pullAll(who)).rows), {
-      accounts: ["partner", "reimbursements"],
-      envelopes: [
-        ["Partner", "counterparty:partner"],
-        ["Reimbursements", "counterparty:reimbursements"],
-      ],
+  for (const [who, other] of [
+    [alan, anna.userId],
+    [anna, alan.userId],
+  ] as const) {
+    const { rows } = await pullAll(who);
+    assert.deepEqual(people(rows), {
+      accounts: [`person Partner ${other}`],
+      envelopes: [["Partner", linkedAccountId(rows, other)]],
     });
+  }
   // The partner account goes by the partner's first name.
   await db.user.update({
     where: { clerkUserId: anna.userId },
@@ -155,20 +185,50 @@ void test("joining a partner gives each budget a partner account and its envelop
   assert.equal(state.status === "ready" && state.partnerFirstName, "Anna");
 });
 
-void test("a budget made before counterparty accounts gets them once, the first time it loads", async () => {
+void test("a budget stored with a Reimbursements account gets a person for each name once, the first time it loads", async () => {
   const sam = await member("Sam");
+  let book = withPerson(
+    createBook(sam.userId, "Sam", month),
+    sam.userId,
+    "Mom",
+  );
+  book = execute(book, sam.userId, {
+    type: "account.add",
+    id: randomUUID(),
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+  });
+  book = execute(book, sam.userId, {
+    type: "transaction.upsert",
+    id: randomUUID(),
+    transactionId: "lunch",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -2_000,
+    payee: "Lunch",
+    counterpartyShare: { accountId: personId("Mom"), amount: 2_000 },
+    recordedAt: "2026-10-05T12:00:00Z",
+  });
   const household = await createHousehold(
     db,
-    createBook(sam.userId, "Sam", month),
+    asLegacyReimbursements(book, sam.userId),
   );
   workspaceIds.push(household);
 
   const first = await pullAll(sam);
   assert.equal(first.revision, 2);
   assert.deepEqual(people(first.rows), {
-    accounts: ["reimbursements"],
-    envelopes: [["Reimbursements", "counterparty:reimbursements"]],
+    accounts: ["person Mom "],
+    envelopes: [["Mom", personId("Mom")]],
   });
+  const state = await sam.api.budget.state({ month });
+  assert.equal(
+    state.view?.accounts.find((account) => account.id === personId("Mom"))
+      ?.balance,
+    2_000,
+  );
   // Later loads find them there and write nothing.
   const again = await pullAll(sam, first.revision);
   assert.deepEqual([again.revision, again.rows], [first.revision, []]);
@@ -180,9 +240,9 @@ void test("a budget under maintenance shows maintenance instead of being upgrade
   const household = await createHousehold(db, book);
   workspaceIds.push(household);
   // A newer release saved an account kind this code doesn't know.
-  const account = bookToRows(
-    withCounterpartyAccounts(createBook(kim.userId, "Kim", month)),
-  ).find((row) => row.table === "account")!;
+  const account = bookToRows(legacyBook(kim.userId, "Kim")).find(
+    (row) => row.table === "account",
+  )!;
   const unknown = {
     ...account,
     data: { ...account.data!, kind: "crypto" },
@@ -209,9 +269,13 @@ void test("a budget under maintenance shows maintenance instead of being upgrade
   await assert.rejects(() => pullAll(kim), /maintenance/);
 });
 
-void test("a legacy budget's first direct command creates its paired envelopes before assigning a float and retries only once", async () => {
+void test("a legacy budget's first direct command creates its people's envelopes before assigning a float and retries only once", async () => {
   const lee = await member("Lee");
-  let book = createBook(lee.userId, "Lee", month);
+  let book = withPerson(
+    createBook(lee.userId, "Lee", month),
+    lee.userId,
+    "Mom",
+  );
   book = execute(book, lee.userId, {
     type: "account.add",
     id: randomUUID(),
@@ -220,11 +284,24 @@ void test("a legacy budget's first direct command creates its paired envelopes b
     kind: "cash",
     openingBalance: 100_000,
   });
-  workspaceIds.push(await createHousehold(db, book));
+  book = execute(book, lee.userId, {
+    type: "transaction.upsert",
+    id: randomUUID(),
+    transactionId: "lunch",
+    accountId: "checking",
+    date: "2026-10-05",
+    amount: -2_000,
+    payee: "Lunch",
+    counterpartyShare: { accountId: personId("Mom"), amount: 2_000 },
+    recordedAt: "2026-10-05T12:00:00Z",
+  });
+  workspaceIds.push(
+    await createHousehold(db, asLegacyReimbursements(book, lee.userId)),
+  );
   const command = {
     type: "assign.set" as const,
     id: randomUUID(),
-    categoryId: "envelope:reimbursements",
+    categoryId: envelopeOf("Mom"),
     month,
     amount: 20_000,
   };
@@ -241,17 +318,16 @@ void test("a legacy budget's first direct command creates its paired envelopes b
   assert.equal(state.view?.readyToAssign, 80_000);
   assert.equal(
     state.view?.categories.find(
-      (category) =>
-        category.counterpartyAccountId === "counterparty:reimbursements",
+      (category) => category.counterpartyAccountId === personId("Mom"),
     )?.available,
-    20_000,
+    18_000,
   );
 });
 
 void test("a legacy budget's first category import upgrades its accounts without invalidating the request revision", async () => {
   const robin = await member("Robin");
   workspaceIds.push(
-    await createHousehold(db, createBook(robin.userId, "Robin", month)),
+    await createHousehold(db, legacyBook(robin.userId, "Robin")),
   );
 
   const saved = await robin.api.budget.execute({
@@ -267,7 +343,7 @@ void test("a legacy budget's first category import upgrades its accounts without
   });
   const state = await robin.api.budget.state({ month });
   assert.ok(
-    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+    !state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
   assert.ok(
     state.view?.categories.some((category) => category.id === "groceries"),
@@ -279,7 +355,7 @@ void test("a legacy budget's first category import upgrades its accounts without
 void test("a future command revision is still refused when it happens to equal the upgrade's revision", async () => {
   const quinn = await member("Quinn");
   workspaceIds.push(
-    await createHousehold(db, createBook(quinn.userId, "Quinn", month)),
+    await createHousehold(db, legacyBook(quinn.userId, "Quinn")),
   );
 
   await assert.rejects(
@@ -303,7 +379,7 @@ void test("a legacy budget can add its first bank account before pulling and ret
   const today = bankSetupDate("America/Los_Angeles");
   const bankMonth = today.slice(0, 7);
   workspaceIds.push(
-    await createHousehold(db, createBook(dana.userId, "Dana", bankMonth)),
+    await createHousehold(db, legacyBook(dana.userId, "Dana", bankMonth)),
   );
   const connectionId = randomUUID();
   await createBankConnection(db, {
@@ -349,7 +425,7 @@ void test("a legacy budget can add its first bank account before pulling and ret
   assert.equal(state.revision, 3);
   assert.equal(state.view?.readyToAssign, 100_000);
   assert.ok(
-    state.view?.categories.some(
+    !state.view?.categories.some(
       (category) =>
         category.counterpartyAccountId === "counterparty:reimbursements",
     ),
@@ -358,7 +434,7 @@ void test("a legacy budget can add its first bank account before pulling and ret
 
 void test("a legacy budget's first bank import keeps its original revision and records the purchase once", async () => {
   const remy = await member("Remy");
-  let book = createBook(remy.userId, "Remy", month);
+  let book = legacyBook(remy.userId, "Remy");
   book = execute(book, remy.userId, {
     type: "account.add",
     id: randomUUID(),
@@ -436,20 +512,23 @@ void test("a legacy budget's first bank import keeps its original revision and r
   );
   assert.equal(state.view?.personalSpending, 1500);
   assert.ok(
-    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+    !state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
 });
 
+// Converting a legacy budget removes its Reimbursements envelope, which
+// renumbers the categories after it, so this change is one that converting
+// leaves alone.
 void test("a legacy budget can undo its previous user change before pulling without undoing the system accounts", async () => {
   const noa = await member("Noa");
-  const book = createBook(noa.userId, "Noa", month);
+  const book = legacyBook(noa.userId, "Noa");
   const workspaceId = await createHousehold(db, book);
   workspaceIds.push(workspaceId);
   const command = {
-    type: "category.add" as const,
+    type: "income.expect" as const,
     id: randomUUID(),
-    categoryId: "old-category",
-    name: "Old category",
+    month,
+    amount: 50_000,
   };
   const legacy = executeWithChanges(book, noa.userId, command);
   await writeChangeSet(db, {
@@ -481,11 +560,225 @@ void test("a legacy budget can undo its previous user change before pulling with
     rebased: false,
   });
   const state = await noa.api.budget.state({ month });
-  assert.equal(
-    state.view?.categories.some((category) => category.id === "old-category"),
-    false,
-  );
+  assert.equal(state.view?.budget.expectedIncome[month], undefined);
   assert.ok(
-    state.view?.accounts.some((account) => account.kind === "reimbursements"),
+    !state.view?.accounts.some((account) => account.kind === "reimbursements"),
   );
+});
+
+void test("a budget whose Reimbursements entries can't be converted shows maintenance and stays as it was stored", async () => {
+  const ari = await member("Ari");
+  let book = withPerson(
+    createBook(ari.userId, "Ari", month),
+    ari.userId,
+    "Mom",
+  );
+  book = execute(book, ari.userId, {
+    type: "account.add",
+    id: randomUUID(),
+    accountId: "checking",
+    name: "Checking",
+    kind: "cash",
+    openingBalance: 100_000,
+  });
+  for (const [transactionId, day] of [
+    ["lunch", "05"],
+    ["dinner", "06"],
+  ] as const)
+    book = execute(book, ari.userId, {
+      type: "transaction.upsert",
+      id: randomUUID(),
+      transactionId,
+      accountId: "checking",
+      date: `2026-10-${day}`,
+      amount: -2_000,
+      payee: "Lunch",
+      counterpartyShare: { accountId: personId("Mom"), amount: 2_000 },
+      recordedAt: `2026-10-${day}T12:00:00Z`,
+    });
+  const legacy = asLegacyReimbursements(book, ari.userId);
+  // One entry spells Mom another way, so which person it names is unclear.
+  legacy.budgets[ari.userId]!.transactions.find(
+    (transaction) => transaction.id === "dinner",
+  )!.counterpartyShare!.counterpartyName = "mom";
+  workspaceIds.push(await createHousehold(db, legacy));
+
+  await assert.rejects(() => pullAll(ari), /maintenance/);
+  const state = await ari.api.budget.state({ month });
+  assert.deepEqual([state.status, state.revision], ["maintenance", 1]);
+  await assert.rejects(() => pullAll(ari), /maintenance/);
+});
+
+void test("a partner budget whose linked person is linked to its own member shows maintenance instead of being relinked", async () => {
+  const host = await member("SelfHost");
+  const guest = await member("SelfGuest");
+  const book = withPeople(
+    addMember(
+      createBook(host.userId, "Host", month),
+      guest.userId,
+      "Guest",
+      month,
+    ),
+  );
+  const budget = book.budgets[guest.userId]!;
+  budget.accounts = budget.accounts.map((account) =>
+    account.linkedUserId ? { ...account, linkedUserId: guest.userId } : account,
+  );
+  workspaceIds.push(await createHousehold(db, book));
+
+  for (const who of [host, guest])
+    await assert.rejects(() => pullAll(who), /maintenance/);
+});
+
+void test("a linked person missing their paired envelope gets it back on load, once", async () => {
+  const host = await member("EnvelopeHost");
+  const guest = await member("EnvelopeGuest");
+  const book = withPeople(
+    addMember(
+      createBook(host.userId, "Host", month),
+      guest.userId,
+      "Guest",
+      month,
+    ),
+  );
+  const budget = book.budgets[guest.userId]!;
+  budget.categories = budget.categories.filter(
+    (category) => !category.counterpartyAccountId,
+  );
+  workspaceIds.push(await createHousehold(db, book));
+
+  const first = await pullAll(guest);
+  assert.deepEqual(people(first.rows), {
+    accounts: [`person Partner ${host.userId}`],
+    envelopes: [["Partner", linkedAccountId(first.rows, host.userId)]],
+  });
+  const again = await pullAll(guest, first.revision);
+  assert.deepEqual([again.revision, again.rows], [first.revision, []]);
+});
+
+void test("undo cannot restore the legacy account format after the people upgrade", async () => {
+  const sam = await member("UpgradeUndo");
+  workspaceIds.push(await createHousehold(db, legacyBook(sam.userId, "Sam")));
+  const first = await pullAll(sam, 1);
+  assert.equal(first.confirmedOperationIds?.length, 1);
+
+  await assert.rejects(
+    () =>
+      sam.api.budget.execute({
+        clientId: "test",
+        baseRevision: first.revision,
+        command: {
+          type: "revert",
+          id: randomUUID(),
+          targetOperationId: first.confirmedOperationIds[0]!,
+        },
+      }),
+    /budget upgrade can't be undone/,
+  );
+  const again = await pullAll(sam, first.revision);
+  assert.deepEqual([again.revision, again.rows], [first.revision, []]);
+});
+
+void test("joining converts a legacy host budget even before the host's next pull", async () => {
+  const host = await member("LegacyHost");
+  const guest = await member("LegacyGuest");
+  workspaceIds.push(await createHousehold(db, legacyBook(host.userId, "Host")));
+  await onboard(guest, "Guest");
+
+  await guest.api.budget.joinInvitation({
+    id: await invitationFrom(db, host.userId),
+  });
+
+  for (const [who, other] of [
+    [host, guest.userId],
+    [guest, host.userId],
+  ] as const) {
+    const loaded = await pullAll(who);
+    assert.deepEqual(people(loaded.rows), {
+      accounts: [`person Partner ${other}`],
+      envelopes: [["Partner", linkedAccountId(loaded.rows, other)]],
+    });
+  }
+});
+
+void test("legacy partner settlement legs load through conversion and keep both budgets' balances", async () => {
+  const host = await member("SettlementHost");
+  const guest = await member("SettlementGuest");
+  let book = withPeople(
+    addMember(
+      createBook(host.userId, "Host", month),
+      guest.userId,
+      "Guest",
+      month,
+    ),
+  );
+  for (const who of [host, guest])
+    book = execute(book, who.userId, {
+      type: "account.add",
+      id: `checking-${who.userId}`,
+      accountId: "checking",
+      name: "Checking",
+      kind: "cash",
+      openingBalance: 100_000,
+    });
+  book = execute(
+    book,
+    host.userId,
+    {
+      type: "partner.settle",
+      id: "settlement",
+      settlementId: "payment",
+      method: "Venmo",
+      legs: [
+        {
+          userId: host.userId,
+          accountId: "checking",
+          date: `${month}-12`,
+          amount: -5_000,
+          payee: "Venmo to Guest",
+          providerId: "payment-sent",
+        },
+        {
+          userId: guest.userId,
+          accountId: "checking",
+          date: `${month}-12`,
+          amount: 5_000,
+          payee: "Venmo from Host",
+          providerId: "payment-received",
+        },
+      ],
+    },
+    "provider",
+  );
+  for (const budget of Object.values(book.budgets))
+    for (const account of budget.accounts)
+      if (account.linkedUserId) {
+        account.kind = "partner";
+        delete account.linkedUserId;
+      }
+  workspaceIds.push(await createHousehold(db, book));
+
+  const first = await pullAll(host);
+  assert.equal(first.revision, 2);
+  for (const [who, bankBalance, personBalance] of [
+    [host, 95_000, 5_000],
+    [guest, 105_000, -5_000],
+  ] as const) {
+    const state = await who.api.budget.state({ month });
+    assert.equal(state.status, "ready");
+    assert.equal(state.revision, 2);
+    assert.equal(state.view?.readyToAssign, 100_000);
+    assert.equal(
+      state.view?.accounts.find((account) => account.id === "checking")
+        ?.balance,
+      bankBalance,
+    );
+    assert.equal(
+      state.view?.accounts.find((account) => account.linkedUserId)?.balance,
+      personBalance,
+    );
+    assert.equal(state.view?.partnerSettlements[0]?.amount, 5_000);
+    const again = await pullAll(who, state.revision);
+    assert.deepEqual([again.revision, again.rows], [2, []]);
+  }
 });

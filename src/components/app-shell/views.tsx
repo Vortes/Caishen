@@ -8,7 +8,6 @@ import {
   CopyrightIcon,
   LandmarkIcon,
   SearchIcon,
-  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -25,7 +24,6 @@ import { Tag } from "~/components/ui/tag";
 import { useRowSelection } from "~/components/ui/use-row-selection";
 import selectionStyles from "~/components/ui/row-selection.module.css";
 import {
-  isCounterparty,
   shortDay,
   money,
   type Category,
@@ -1104,16 +1102,7 @@ export function RegisterView({
     session && rows.some((item) => item.id === editingId)
       ? editingId
       : undefined;
-  const counterparty = accounts.find(
-    (entry) => entry.id === accountId && isCounterparty(entry),
-  );
-  const empty = counterparty ? (
-    <Empty title="Nothing owed yet." icon={UsersIcon}>
-      {counterparty.kind === "partner"
-        ? `When you and ${counterparty.name} share a cost, what one of you owes the other shows here.`
-        : "When you pay for someone, what they owe you shows here. Its envelope in People can set money aside to cover it."}
-    </Empty>
-  ) : reviewOnly ? (
+  const empty = reviewOnly ? (
     <Empty title="Everything here is reviewed." icon={CheckIcon} done>
       New bank imports will show up as they arrive.
     </Empty>

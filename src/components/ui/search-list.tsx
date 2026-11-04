@@ -2,6 +2,7 @@
 
 import { CheckIcon, ChevronDownIcon, PlusIcon } from "lucide-react";
 import {
+  useEffect,
   useId,
   useRef,
   useState,
@@ -15,6 +16,7 @@ import { useFieldControl } from "./field";
 import field from "./field.module.css";
 import { Popover } from "./popover";
 import styles from "./search-list.module.css";
+import { Tag } from "./tag";
 
 export type SearchListOption = {
   value: string;
@@ -22,6 +24,9 @@ export type SearchListOption = {
   group?: string;
   // A balance shown beside the option in the open list, in cents.
   amount?: number;
+  // A short neutral label beside the name, for the one option that stands
+  // apart, such as the person also on Caishen.
+  tag?: string;
   disabled?: boolean;
 };
 
@@ -38,6 +43,7 @@ export function SearchList({
   placeholder,
   disabled,
   readOnly,
+  maxLength,
   inputRef,
   onPicked,
   onCreate,
@@ -50,6 +56,8 @@ export function SearchList({
   placeholder?: string;
   disabled?: boolean;
   readOnly?: boolean;
+  // The longest name onCreate can take.
+  maxLength?: number;
   inputRef?: Ref<HTMLInputElement>;
   // Moves on to the next field after a click or Enter takes an option.
   onPicked?: (value: string) => void;
@@ -189,8 +197,10 @@ export function SearchList({
             }
             aria-invalid={control.invalid ? true : undefined}
             aria-describedby={control.describedBy}
+            data-holds-escape={open ? "" : undefined}
             disabled={disabled}
             readOnly={readOnly}
+            maxLength={maxLength}
             placeholder={placeholder}
             value={open ? query : (chosen?.label ?? displayValue ?? "")}
             onChange={(event) => show(event.target.value)}
@@ -272,6 +282,7 @@ export function SearchList({
               selected={option.value === value}
               disabled={option.disabled}
               amount={option.amount}
+              tag={option.tag}
               active={option === current}
               onActivate={() => setActive(option.value)}
               onPick={() => pick(option)}
@@ -326,6 +337,7 @@ function Row({
   selected = false,
   disabled,
   amount,
+  tag,
   active,
   pinned,
   compact,
@@ -340,12 +352,13 @@ function Row({
   selected?: boolean;
   disabled?: boolean;
   amount?: number;
+  tag?: string;
   active: boolean;
   // New or the action, above the options.
   pinned?: boolean;
   // Sized to its label, so the row beside it keeps the room.
   compact?: boolean;
-  onActivate: () => void;
+  onActivate: (event: MouseEvent) => void;
   onPick: () => void;
 }) {
   return (
@@ -365,6 +378,11 @@ function Row({
         {icon}
       </span>
       <span className={styles.label}>{label}</span>
+      {tag && (
+        <span className={styles.tag}>
+          <Tag>{tag}</Tag>
+        </span>
+      )}
       {amount !== undefined && (
         <span className={styles.amount} data-tone={tone(amount)}>
           {formatMoney(amount)}
@@ -372,6 +390,389 @@ function Row({
       )}
     </div>
   );
+}
+
+export type SearchListHighlight =
+  | { kind: "option"; option: SearchListOption }
+  // The New row, with the name typed for it.
+  | { kind: "create"; name: string };
+
+// A pointer moving toward the detail waits this long before the rows it
+// crosses on the way take the highlight (scale.md, Motion).
+const HOVER_INTENT = 140;
+
+const normalize = (text: string) => text.trim().replace(/\s+/g, " ");
+
+// What a search shows: the options holding the typed text, whether the New
+// row is due, and the order the arrow keys walk.
+function narrowed(
+  options: readonly SearchListOption[],
+  query: string,
+  createNoun: string | undefined,
+) {
+  const search = normalize(query).toLowerCase();
+  const visible = search
+    ? options.filter((option) => option.label.toLowerCase().includes(search))
+    : options;
+  const creatable =
+    createNoun !== undefined &&
+    search !== "" &&
+    !options.some((option) => normalize(option.label).toLowerCase() === search);
+  const rows = [
+    ...(creatable ? [CREATE] : []),
+    ...visible.filter((option) => !option.disabled).map((o) => o.value),
+  ];
+  return { visible, creatable, rows };
+}
+
+// Its height at open is the least it keeps, so a search that narrows the
+// list doesn't pull the edge up under the pointer (rows.md, Nothing moves).
+function lockHeight(element: HTMLDivElement | null) {
+  if (element && !element.style.minHeight)
+    element.style.minHeight = `${element.offsetHeight}px`;
+}
+
+// A search over a list that is always open, with the highlighted row's
+// detail beside it: who on the left, what for them on the right. Focus stays
+// in the search while the arrow keys or the pointer move the highlight, and
+// the detail follows. Enter, a click, or ArrowRight at the end of the text
+// crosses into the detail's choices (DetailOption); there the arrow keys move
+// between them, and ArrowLeft or a letter comes back to the search. Escape
+// clears the search, then closes the popover around it. It stands alone in a
+// popover, not in a Field: label names the search and the list.
+export function SearchListDetail({
+  label,
+  options,
+  value,
+  defaultHighlight,
+  createNoun,
+  placeholder,
+  maxLength,
+  inputRef,
+  empty,
+  detail,
+}: {
+  label: string;
+  options: readonly SearchListOption[];
+  // The chosen option's value, checked in the list; "" for none.
+  value: string;
+  // The option highlighted at open. Without one, nothing is, and the detail
+  // waits for a choice.
+  defaultHighlight?: string;
+  // Offers a New row for a typed name that matches no option. It only
+  // highlights: the detail decides what taking it does.
+  createNoun?: string;
+  placeholder?: string;
+  maxLength?: number;
+  inputRef?: Ref<HTMLInputElement>;
+  // What the list says when there are no options and nothing is typed.
+  empty?: string;
+  // The detail for the highlighted row, or for none: its accessible name, the
+  // title over it, lined up with the search, and its DetailOptions.
+  detail: (highlight: SearchListHighlight | null) => {
+    label: string;
+    title: string;
+    children: ReactNode;
+  };
+}) {
+  const listId = useId();
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState<string | null>(defaultHighlight ?? null);
+  // Bumped to cross into the detail once it shows the new highlight.
+  const [crossing, setCrossing] = useState(0);
+  const input = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const { visible, creatable, rows } = narrowed(options, query, createNoun);
+  const current = active !== null && rows.includes(active) ? active : null;
+  const highlightOption = options.find((option) => option.value === current);
+  const highlight: SearchListHighlight | null =
+    current === CREATE
+      ? { kind: "create", name: normalize(query) }
+      : highlightOption
+        ? { kind: "option", option: highlightOption }
+        : null;
+  const optionId = (id: string) =>
+    id === CREATE
+      ? `${listId}-create`
+      : `${listId}-${options.findIndex((option) => option.value === id)}`;
+
+  // The highlight at open may be far down a long list.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector("[data-active]")
+      ?.scrollIntoView({ block: "nearest" });
+  }, []);
+  const choices = () => [
+    ...(paneRef.current?.querySelectorAll<HTMLButtonElement>(
+      "[data-detail-option]:not(:disabled)",
+    ) ?? []),
+  ];
+  useEffect(() => {
+    if (!crossing) return;
+    const buttons = choices();
+    (
+      buttons.find(
+        (button) => button.getAttribute("aria-pressed") === "true",
+      ) ?? buttons[0]
+    )?.focus();
+  }, [crossing]);
+  const cross = (id = current) => {
+    // A pending pointer highlight would change the detail under the choice.
+    window.clearTimeout(wait.current);
+    if (id === null) return;
+    setActive(id);
+    setCrossing((count) => count + 1);
+  };
+  const back = (text = query) => {
+    const element = input.current;
+    if (!element) return;
+    element.focus();
+    element.setSelectionRange(text.length, text.length);
+  };
+
+  // Hover intent: a pointer moving right, toward the detail, doesn't
+  // highlight every row it crosses. The highlight waits until the pointer
+  // rests or moves along the list.
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const wait = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(wait.current), []);
+  // Typing narrows the list: the highlight takes the first match, or New
+  // once nothing matches. Clearing the text keeps it where it was.
+  const narrow = (text: string) => {
+    window.clearTimeout(wait.current);
+    setQuery(text);
+    if (!normalize(text)) return;
+    // The first match takes the highlight, so the list starts at the top.
+    if (listRef.current) listRef.current.scrollTop = 0;
+    const next = narrowed(options, text, createNoun);
+    setActive(next.rows.find((id) => id !== CREATE) ?? next.rows[0] ?? null);
+  };
+  const step = (by: number) => {
+    window.clearTimeout(wait.current);
+    const index = current === null ? -1 : rows.indexOf(current);
+    const next =
+      index < 0
+        ? rows[by > 0 ? 0 : rows.length - 1]
+        : rows[Math.min(rows.length - 1, Math.max(0, index + by))];
+    if (next === undefined) return;
+    setActive(next);
+    listRef.current?.parentElement
+      ?.querySelector(`[id="${optionId(next)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  };
+
+  const hover = (id: string, event: MouseEvent) => {
+    const last = pointer.current;
+    pointer.current = { x: event.clientX, y: event.clientY };
+    window.clearTimeout(wait.current);
+    if (id === current) return;
+    const dx = last ? event.clientX - last.x : 0;
+    const dy = last ? event.clientY - last.y : 0;
+    if (dx > 0 && dx * 2 >= Math.abs(dy))
+      wait.current = window.setTimeout(() => setActive(id), HOVER_INTENT);
+    else setActive(id);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const element = event.currentTarget;
+    const atEnd =
+      element.selectionStart === element.value.length &&
+      element.selectionEnd === element.value.length;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      step(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter" || (event.key === "ArrowRight" && atEnd)) {
+      event.preventDefault();
+      cross();
+    } else if (event.key === "Escape" && query) {
+      // data-holds-escape keeps the popover open for this one.
+      event.preventDefault();
+      event.stopPropagation();
+      narrow("");
+    }
+  };
+  const onPaneKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLTextAreaElement
+    )
+      return;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      back();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const buttons = choices();
+      const index = buttons.indexOf(event.target as HTMLButtonElement);
+      const by = event.key === "ArrowDown" ? 1 : -1;
+      buttons[(index + by + buttons.length) % buttons.length]?.focus();
+    } else if (
+      event.key.length === 1 &&
+      event.key !== " " &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    ) {
+      // A letter typed in the detail searches again, from the end.
+      event.preventDefault();
+      const text =
+        maxLength !== undefined && query.length >= maxLength
+          ? query
+          : query + event.key;
+      narrow(text);
+      back(text);
+    }
+  };
+
+  const pane = detail(highlight);
+  return (
+    <div className={styles.detailFrame}>
+      <div ref={lockHeight} className={styles.detailRoot}>
+        <div className={styles.rail}>
+          <div className={styles.railSearch}>
+            <div className={field.well} data-well="">
+              <input
+                ref={(element) => {
+                  input.current = element;
+                  if (typeof inputRef === "function") inputRef(element);
+                  else if (inputRef) inputRef.current = element;
+                }}
+                role="combobox"
+                aria-label={label}
+                // The list is always showing.
+                aria-expanded="true"
+                aria-controls={listId}
+                aria-autocomplete="list"
+                aria-activedescendant={
+                  current !== null ? optionId(current) : undefined
+                }
+                data-holds-escape={query ? "" : undefined}
+                className={`${field.input} ${styles.input}`}
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={maxLength}
+                placeholder={placeholder}
+                value={query}
+                onChange={(event) => narrow(event.target.value)}
+                onKeyDown={onKeyDown}
+              />
+            </div>
+          </div>
+          <div
+            id={listId}
+            role="listbox"
+            aria-label={label}
+            className={styles.railList}
+            // Keeps focus in the search while the pointer picks.
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            {creatable && (
+              <>
+                <div className={styles.pinned}>
+                  <Row
+                    id={optionId(CREATE)}
+                    icon={<PlusIcon size={13} strokeWidth={2.5} />}
+                    label={`New ${createNoun} “${normalize(query)}”`}
+                    pinned
+                    active={current === CREATE}
+                    onActivate={(event) => hover(CREATE, event)}
+                    onPick={() => cross(CREATE)}
+                  />
+                </div>
+                {visible.length > 0 && (
+                  <hr className={styles.divider} aria-hidden />
+                )}
+              </>
+            )}
+            <div ref={listRef} className={styles.scroll}>
+              {visible.length === 0 && !creatable && (
+                <p className={styles.empty}>
+                  {normalize(query)
+                    ? `No matches for “${normalize(query)}”`
+                    : empty}
+                </p>
+              )}
+              {visible.map((option) => (
+                <Row
+                  key={option.value}
+                  id={optionId(option.value)}
+                  icon={
+                    option.value === value && (
+                      <CheckIcon size={13} strokeWidth={2.5} />
+                    )
+                  }
+                  label={option.label}
+                  selected={option.value === value}
+                  disabled={option.disabled}
+                  amount={option.amount}
+                  tag={option.tag}
+                  active={option.value === current}
+                  onActivate={(event) => hover(option.value, event)}
+                  onPick={() => cross(option.value)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div
+          ref={paneRef}
+          role="group"
+          aria-label={pane.label}
+          className={styles.pane}
+          onKeyDown={onPaneKeyDown}
+          onMouseMove={() => window.clearTimeout(wait.current)}
+        >
+          <p
+            className={styles.paneTitle}
+            data-placeholder={highlight ? undefined : ""}
+          >
+            {pane.title}
+          </p>
+          <div className={styles.paneBody}>{pane.children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One choice in a SearchListDetail's detail: a title, an optional figure,
+// and a check while it is the choice as it stands (pressed). The detail's
+// arrow keys move between these; the first one Enter crosses to is the
+// pressed one.
+export function DetailOption({
+  title,
+  detail,
+  pressed = false,
+  disabled,
+  onClick,
+}: {
+  title: string;
+  detail?: string;
+  pressed?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-detail-option=""
+      className={styles.choice}
+      aria-pressed={pressed}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className={styles.icon} aria-hidden>
+        {pressed && <CheckIcon size={13} strokeWidth={2.5} />}
+      </span>
+      <span className={styles.label}>{title}</span>
+      {detail && <span className={styles.choiceDetail}>{detail}</span>}
+    </button>
+  );
+}
+
+// Sets a choice that undoes the others apart from them.
+export function DetailSeparator() {
+  return <hr className={styles.divider} aria-hidden />;
 }
 
 // Free text, with earlier names suggested under the well, such as a
@@ -516,6 +917,7 @@ export function SearchSuggestions({
             }
             aria-invalid={control.invalid ? true : undefined}
             aria-describedby={control.describedBy}
+            data-holds-escape={open ? "" : undefined}
             disabled={disabled}
             readOnly={readOnly}
             placeholder={placeholder}

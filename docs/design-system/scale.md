@@ -65,7 +65,8 @@ rows line up across panels.
 | `--size-toolbar`        | 52px   | Toolbar under the header                   |
 
 `Popover size="form"` is `--size-popover` (320px) wide; `size="wide"`, for
-a table of transactions, is `--size-popover-wide` (560px). A `Dialog` is
+a table of transactions or a `SearchListDetail`, is `--size-popover-wide`
+(560px). A `Dialog` is
 `--size-dialog` (400px) wide; `size="wide"` is `--size-dialog-wide` (480px).
 
 ## Spacing
@@ -96,6 +97,10 @@ Hover and press feedback is 150ms on color and 100ms on transform. A
 skeleton's shine takes `--duration-shimmer` (1600ms) per pass. Under
 `prefers-reduced-motion`, panel motion is 0ms and skeletons hold still;
 never add animation that ignores it.
+
+Hover intent is 140ms: in a `SearchListDetail`, a pointer moving toward
+the detail waits that long before a row it crosses takes the highlight.
+It lives in the component, not a token, because only script reads it.
 
 Frequent-use popovers and menus open and close instantly. Only occasional
 secondary actions opt in with [`motion="occasional"`](surfaces.md#motion),

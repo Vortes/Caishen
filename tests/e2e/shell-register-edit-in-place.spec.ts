@@ -184,9 +184,11 @@ test("selecting a partner row and opening it to edit moves none of its text", as
   await openRegister(page, budget.account);
   const form = await fillPurchase(page, budget, "Corner market", "60");
   await form.getByRole("button", { name: /^Share/ }).click();
+  // The partner leads Who is this for, already chosen.
   await page
-    .getByRole("dialog", { name: "Who this is for" })
-    .getByRole("button", { name: /^Split with Alex/ })
+    .getByRole("dialog", { name: "Who this is for", exact: true })
+    .getByRole("group", { name: "How much is for Alex", exact: true })
+    .getByRole("button", { name: /^Half/ })
     .click();
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await saved(page);

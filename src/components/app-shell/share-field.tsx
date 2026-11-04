@@ -1,9 +1,8 @@
 "use client";
 
-import { CheckIcon, UsersIcon } from "lucide-react";
+import { UsersIcon } from "lucide-react";
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type ReactElement,
@@ -11,85 +10,81 @@ import {
 } from "react";
 import { readAmount, sameAmount } from "~/components/budget/amount";
 import { AmountInput } from "~/components/ui/amount-input";
-import { Checkbox } from "~/components/ui/checkbox";
-import { Field, FieldError, FormError } from "~/components/ui/field";
+import { Field, FormError } from "~/components/ui/field";
 import { PopoverSteps } from "./popover-steps";
 import { Button } from "~/components/ui/button";
 import { Popover } from "~/components/ui/popover";
-import { SearchSuggestions } from "~/components/ui/search-list";
+import {
+  DetailOption,
+  DetailSeparator,
+  SearchListDetail,
+  type SearchListHighlight,
+} from "~/components/ui/search-list";
 import {
   halfOf,
   keepShare,
   type ShareBasis,
 } from "~/components/transactions/transaction-share";
 import type { CounterpartyShare } from "~/domain/engine";
-import { reimbursementPeople } from "~/domain/counterparty";
 import { money } from "./model";
-import { useShellData } from "./shell-data";
-import { useTransactionEntry } from "./transaction-entry";
-import moveStyles from "./move-money.module.css";
+import { isLinked, usePeople } from "./people";
 import styles from "./share.module.css";
 
-// Who a line's cost is for: nothing shared, half or all of it the
-// partner's, a custom partner amount, or someone else's, tracked in the
-// Reimbursements account. Presets cover the common cases in one pick.
+// Who a line's cost is for: nobody else, or one person, for half of it,
+// all of it, or an amount. Every person is picked the same way; the one
+// also on Caishen is listed first.
 
-type Preset = "mine" | "split" | "theirs" | "custom" | "other";
+type Preset = "mine" | "half" | "all" | "amount";
 
-// Half is a fixed 50/50; the partner's half rounds down to the cent.
+// Half is a fixed 50/50; the person's half rounds down to the cent.
 export { halfOf } from "~/components/transactions/transaction-share";
 
-// Who a share can be with: the partner, by the name the shell shows, and
-// the people already in the Reimbursements account, most recent first.
+// Who a share can be with, and the name each share goes by.
 export function useShareParties() {
-  const { accounts } = useShellData();
-  const { view } = useTransactionEntry();
-  const partner = accounts.find((item) => item.kind === "partner");
-  const reimbursements = accounts.find(
-    (item) => item.kind === "reimbursements",
-  );
-  const people = reimbursementPeople(view.budget);
-  const who = (share: CounterpartyShare) =>
-    share.counterpartyName ??
-    accounts.find((item) => item.id === share.accountId)?.name ??
-    "Someone";
-  return { view, partner, reimbursements, people, who };
+  const { view, people, partner, nameOf, addPerson } = usePeople();
+  const who = (share: CounterpartyShare) => nameOf(share.accountId);
+  return { view, people, partner, who, addPerson };
 }
 
 function presetOf(
   share: CounterpartyShare | null | undefined,
   amount: number,
-  partnerId: string | undefined,
 ): Preset {
   if (!share?.amount) return "mine";
-  if (share.accountId !== partnerId) return "other";
-  if (share.amount === halfOf(amount)) return "split";
-  if (share.amount === amount) return "theirs";
-  return "custom";
+  if (share.amount === halfOf(amount)) return "half";
+  if (share.amount === amount) return "all";
+  return "amount";
 }
 
 export { keepShare } from "~/components/transactions/transaction-share";
 
-export function ShareLabel({ share }: { share?: CounterpartyShare | null }) {
+export function ShareLabel({
+  share,
+  name,
+}: {
+  share?: CounterpartyShare | null;
+  // Who it's with, when that isn't the share's own person: several
+  // people's shares on one split.
+  name?: string;
+}) {
   const { who } = useShareParties();
   if (!share?.amount) return null;
   return (
     <>
       <UsersIcon size={12} aria-hidden className={styles.shareIcon} />
-      <span className={styles.shareWho}>{who(share)}</span>
+      <span className={styles.shareWho}>{name ?? who(share)}</span>
       <span className={styles.shareAmount}>{money(share.amount)}</span>
     </>
   );
 }
 
-// The menu that opens from a Share cell. Picking a preset applies it at
-// once; a custom amount and someone else open a field first. onChange
-// returns why the share can't apply, which keeps the menu open.
+// The popover that opens from a Share cell. Picking Half, All of it, or
+// Just mine applies at once; An amount… opens a field first. onChange returns why
+// the share can't apply, which keeps the popover open.
 export function ShareMenu({
   amount,
   share,
   saved,
-  remembered,
   onChange,
   children,
 }: {
@@ -98,8 +93,6 @@ export function ShareMenu({
   share?: CounterpartyShare | null;
   // The share as last saved, which "Just mine" writes off.
   saved?: CounterpartyShare | null;
-  // The payee whose last categorization prefilled this share.
-  remembered?: string;
   onChange: (share: CounterpartyShare | null) => string | null;
   children: ReactElement;
 }) {
@@ -110,7 +103,7 @@ export function ShareMenu({
       trigger={children}
       open={open}
       onOpenChange={setOpen}
-      size="form"
+      size="wide"
       arrow
     >
       <ShareChoices
@@ -118,7 +111,6 @@ export function ShareMenu({
         amounts={[amount]}
         share={share}
         saved={saved}
-        remembered={remembered}
         onChange={(next) => {
           const failure = onChange(next);
           if (!failure) setOpen(false);
@@ -129,35 +121,56 @@ export function ShareMenu({
   );
 }
 
+// The longest name person.add takes.
+const PERSON_NAME_MAX = 120;
+
+// Who it's for on the left, searched by typing, with the partner first;
+// how much for whoever is highlighted on the right. A typed name nobody has
+// is a New row, and the person is added only once a share applies. Just
+// mine, last on the right, clears a share there is.
 export function ShareChoices({
   confirmation,
   amounts,
   share,
   saved,
-  remembered,
+  clearable = false,
   onChange,
 }: {
   confirmation?: ReactNode;
   amounts: number[];
   share?: CounterpartyShare | null;
   saved?: CounterpartyShare | null;
-  remembered?: string;
+  // Some of several lines have a share that Just mine would clear.
+  clearable?: boolean;
   onChange: (
     share: CounterpartyShare | null,
     basis: ShareBasis,
   ) => string | null;
 }) {
-  const { partner, reimbursements, people } = useShareParties();
+  const { people, partner, addPerson } = useShareParties();
   const amount = Math.min(...amounts);
   const multiple = amounts.length > 1;
-  const [error, setError] = useState("");
-  const current = presetOf(share, amount, partner?.id);
-  const [form, setForm] = useState<"custom" | "other" | null>(
-    current === "custom" || current === "other" ? current : null,
+  const current = presetOf(share, amount);
+  // Whoever the share is with. With no share yet, the partner, or the only
+  // person there is; among several others, nobody is a safe guess.
+  const [only] = people;
+  const initial = share?.amount
+    ? share.accountId
+    : (partner?.id ?? (people.length === 1 && only ? only.id : undefined));
+  // A refusal, for the person it was about.
+  const [error, setError] = useState<{ key: string; message: string } | null>(
+    null,
   );
+  // The person whose amount field is open, and whether it takes focus as it
+  // shows: on a click, or at open, not when the highlight comes back to it.
+  const [form, setForm] = useState<{ key: string; focus: boolean } | null>(
+    current === "amount" && initial ? { key: initial, focus: true } : null,
+  );
+
   const pick = (
     next: CounterpartyShare | null,
-    basis: ShareBasis = "fixed",
+    basis: ShareBasis,
+    key: string,
   ) => {
     const failure = onChange(
       multiple && basis !== "fixed"
@@ -165,150 +178,151 @@ export function ShareChoices({
         : keepShare(saved, next, partner?.id),
       basis,
     );
-    if (failure) setError(failure);
+    if (failure) setError({ key, message: failure });
   };
+  // A share for the highlighted person, adding them first when they're new.
+  const apply = (
+    highlight: SearchListHighlight,
+    cents: number,
+    basis: ShareBasis,
+  ) => {
+    const key = keyOf(highlight);
+    let accountId: string;
+    if (highlight.kind === "create") {
+      const added = addPerson(highlight.name);
+      if (added.failure !== undefined)
+        return setError({ key, message: added.failure });
+      accountId = added.accountId;
+    } else accountId = highlight.option.value;
+    pick({ accountId, amount: cents }, basis, key);
+  };
+
   const half = halfOf(amount);
-  const options: {
-    id: Preset;
-    label: string;
-    detail: string;
-    apply?: () => void;
-  }[] = [
+  // A line with no amount yet has no half or whole to share; only an
+  // amount typed here can be the share.
+  const sized = multiple || amount > 0;
+  const options = [
     {
-      id: "mine",
-      label: "Just mine",
-      detail: "Nothing shared",
-      apply: () => pick(null),
+      id: "half",
+      label: "Half",
+      detail: multiple ? "50% of each" : money(half),
+      cents: half,
+      basis: "half",
     },
-    ...(partner
-      ? [
-          {
-            id: "split" as const,
-            label: `Split with ${partner.name}`,
-            detail: multiple ? "50% of each" : money(half),
-            apply: () => pick({ accountId: partner.id, amount: half }, "half"),
-          },
-          {
-            id: "theirs" as const,
-            label: `All ${partner.name}'s`,
-            detail: multiple ? "Full amount each" : money(amount),
-            apply: () => pick({ accountId: partner.id, amount }, "full"),
-          },
-          {
-            id: "custom" as const,
-            label: `${partner.name}'s share is…`,
-            detail: "",
-          },
-        ]
-      : []),
-    ...(reimbursements
-      ? [{ id: "other" as const, label: "Someone else owes…", detail: "" }]
-      : []),
-  ];
+    {
+      id: "all",
+      label: "All of it",
+      detail: multiple ? "Full amount each" : money(amount),
+      cents: amount,
+      basis: "full",
+    },
+  ] as const;
+  // Nothing to clear without a share.
+  const mine = current !== "mine" || clearable;
+  if (confirmation)
+    return <PopoverSteps step="confirmation">{confirmation}</PopoverSteps>;
   return (
-    <PopoverSteps step={confirmation ? "confirmation" : (form ?? "presets")}>
-      {confirmation ?? (
-        <div
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.target instanceof HTMLInputElement) return;
-            const items = [
-              ...event.currentTarget.querySelectorAll<HTMLElement>(
-                "[data-share-option]",
-              ),
-            ];
-            if (/^[1-9]$/.test(event.key)) {
-              items[Number(event.key) - 1]?.click();
-              event.preventDefault();
-            } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              const index = items.indexOf(
-                document.activeElement as HTMLElement,
-              );
-              items[
-                (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-                  items.length
-              ]?.focus();
-              event.preventDefault();
-            }
-          }}
-        >
-          <div className={moveStyles.header}>
-            <strong>Who is this for?</strong>
-            <span className={moveStyles.balance}>
-              {money(amounts.reduce((sum, value) => sum + value, 0))}
-            </span>
-          </div>
-          <div className={styles.shareOptions} role="group">
-            {options.map((option, index) => (
-              <button
-                key={option.id}
-                type="button"
-                data-share-option
-                autoFocus={option.id === current}
-                className={`${moveStyles.option} ${styles.shareOption}`}
-                aria-pressed={option.id === current}
-                onClick={() =>
-                  option.apply
-                    ? option.apply()
-                    : setForm(option.id as "custom" | "other")
-                }
-              >
-                <span className={moveStyles.check}>
-                  {option.id === current && <CheckIcon size={14} aria-hidden />}
-                </span>
-                <span>{option.label}</span>
-                <span className={styles.optionDetail}>{option.detail}</span>
-                <kbd className={styles.optionKey}>{index + 1}</kbd>
-              </button>
-            ))}
-          </div>
-          {form === "custom" && partner && (
-            <CustomShare
-              key="custom"
-              label={`${partner.name}'s share${multiple ? " per transaction" : ""}`}
-              amount={amount}
-              initial={
-                share?.accountId === partner.id && share.amount
-                  ? share.amount
-                  : half
-              }
-              onApply={(value) =>
-                pick({ accountId: partner.id, amount: value })
-              }
-            />
-          )}
-          {form === "other" && reimbursements && (
-            <OtherShare
-              amounts={amounts}
-              people={people}
-              initial={share?.accountId === reimbursements.id ? share : null}
-              onApply={(name, value, basis) =>
-                pick(
-                  {
-                    accountId: reimbursements.id,
-                    amount: value,
-                    counterpartyName: name,
-                  },
-                  basis,
-                )
-              }
-            />
-          )}
-          {error && (
-            <div className={styles.popoverHint}>
-              <FormError>{error}</FormError>
-            </div>
-          )}
-          {remembered && (
-            <p className={styles.popoverHint}>
-              Prefilled from {remembered} last time.
-            </p>
-          )}
-        </div>
-      )}
-    </PopoverSteps>
+    // The keys typed here stay out of the register around the popover.
+    <div
+      className={styles.sharePicker}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <SearchListDetail
+        label="Who is this for"
+        placeholder={
+          people.length === 0 ? "Their name or company" : "Find or add a person"
+        }
+        empty="Type a name to share with someone"
+        maxLength={PERSON_NAME_MAX}
+        createNoun="person"
+        value={share?.amount ? share.accountId : ""}
+        defaultHighlight={initial}
+        options={people.map((item) => ({
+          value: item.id,
+          label: item.name,
+          tag: isLinked(item) ? "On Caishen" : undefined,
+          amount: item.balance,
+        }))}
+        detail={(highlight) => {
+          const key = highlight ? keyOf(highlight) : "";
+          const name =
+            highlight?.kind === "option"
+              ? highlight.option.label
+              : highlight?.name;
+          // The share as it stands shows as chosen while its person is.
+          const chosen =
+            highlight?.kind === "option" &&
+            share?.amount &&
+            share.accountId === highlight.option.value
+              ? current
+              : null;
+          return {
+            label: name ? `How much is for ${name}` : "How much",
+            title:
+              name ??
+              (people.length === 0
+                ? "Who is this for?"
+                : "Choose who it’s for"),
+            children: (
+              <>
+                {options.map((option) => (
+                  <DetailOption
+                    key={option.id}
+                    title={option.label}
+                    detail={option.detail}
+                    pressed={option.id === chosen}
+                    disabled={!highlight || !sized}
+                    onClick={() =>
+                      highlight && apply(highlight, option.cents, option.basis)
+                    }
+                  />
+                ))}
+                <DetailOption
+                  title="An amount…"
+                  pressed={chosen === "amount"}
+                  disabled={!highlight}
+                  onClick={() => setForm({ key, focus: true })}
+                />
+                {highlight && form?.key === key && name && (
+                  <CustomShare
+                    key={key}
+                    label={`${name}’s share${multiple ? " per transaction" : ""}`}
+                    amount={amount}
+                    initial={chosen === "amount" ? share!.amount : half}
+                    focus={form.focus}
+                    onFocused={() => setForm({ key, focus: false })}
+                    onApply={(cents) => apply(highlight, cents, "fixed")}
+                  />
+                )}
+                {mine && (
+                  <>
+                    <DetailSeparator />
+                    <DetailOption
+                      title="Just mine"
+                      detail="Nothing shared"
+                      onClick={() => pick(null, "fixed", key)}
+                    />
+                  </>
+                )}
+                {error?.key === key && (
+                  <div className={styles.shareError}>
+                    <FormError>{error.message}</FormError>
+                  </div>
+                )}
+              </>
+            ),
+          };
+        }}
+      />
+    </div>
   );
 }
+
+// Which highlight a refusal or an open amount field belongs to.
+const keyOf = (highlight: SearchListHighlight) =>
+  highlight.kind === "create"
+    ? `\u0000new:${highlight.name}`
+    : highlight.option.value;
 
 // A share typed in a field, in cents, or why it can't be one. A line with
 // no amount yet takes the share as its amount, so nothing caps it.
@@ -329,20 +343,34 @@ function CustomShare({
   label,
   amount,
   initial,
+  focus,
+  onFocused,
   onApply,
 }: {
   label: string;
   amount: number;
   initial: number;
+  // Takes focus as it shows, then says so.
+  focus: boolean;
+  onFocused: () => void;
   onApply: (value: number) => void;
 }) {
   const [text, setText] = useState((initial / 100).toFixed(2));
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
+  useEffect(() => {
+    if (!focus) return;
+    input.current?.focus();
+    // Stacked on a phone, the field can open below the popover's clamped
+    // height; the popover can only scroll to it once it has been placed.
+    requestAnimationFrame(() =>
+      input.current?.scrollIntoView({ block: "nearest" }),
+    );
+    onFocused();
+  }, [focus, onFocused]);
   return (
     <form
-      className={styles.shareForm}
+      className={styles.customShare}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
@@ -367,109 +395,6 @@ function CustomShare({
           </Button>
         </div>
       </Field>
-    </form>
-  );
-}
-
-function OtherShare({
-  amounts,
-  people,
-  initial,
-  onApply,
-}: {
-  amounts: number[];
-  people: string[];
-  initial: CounterpartyShare | null;
-  onApply: (name: string, value: number, basis: ShareBasis) => void;
-}) {
-  const amount = Math.min(...amounts);
-  const multiple = amounts.length > 1;
-  const [full, setFull] = useState(multiple && !initial);
-  const nameInput = useRef<HTMLInputElement>(null);
-  useEffect(() => nameInput.current?.focus(), []);
-  const [name, setName] = useState(initial?.counterpartyName ?? "");
-  const [text, setText] = useState(
-    ((initial?.amount ?? amount) / 100).toFixed(2),
-  );
-  const [error, setError] = useState<{
-    field: "name" | "amount";
-    message: string;
-  } | null>(null);
-  // The two fields share a row, so their error sits once under it.
-  const errorId = useId();
-  return (
-    <form
-      className={styles.shareForm}
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!name.trim())
-          return setError({ field: "name", message: "Name who owes it." });
-        const share = full
-          ? { ok: true as const, cents: amount }
-          : readShare(text, amount);
-        if (!share.ok)
-          return setError({ field: "amount", message: share.message });
-        onApply(name.trim(), share.cents, full ? "full" : "fixed");
-      }}
-    >
-      <div className={styles.shareFormRow} data-fields>
-        <div className={styles.shareFormField}>
-          <Field
-            label="Who owes it"
-            sharedErrorId={error?.field === "name" ? errorId : undefined}
-          >
-            <SearchSuggestions
-              inputRef={nameInput}
-              value={name}
-              suggestions={people}
-              placeholder="Name or company"
-              onChange={(value) => {
-                setName(value);
-                setError(null);
-              }}
-            />
-          </Field>
-        </div>
-        {!full && (
-          <div className={styles.shareFormField} data-narrow>
-            <Field
-              label={multiple ? "Amount each" : "Amount"}
-              sharedErrorId={error?.field === "amount" ? errorId : undefined}
-            >
-              <AmountInput
-                value={text}
-                onChange={(value) => {
-                  if (!sameAmount(text, value)) setError(null);
-                  setText(value);
-                }}
-              />
-            </Field>
-          </div>
-        )}
-      </div>
-      {error && <FieldError id={errorId}>{error.message}</FieldError>}
-      {multiple && (
-        <label className={styles.fullShare}>
-          <Checkbox
-            checked={full}
-            onCheckedChange={(value) => {
-              setFull(value === true);
-              setError(null);
-            }}
-          />
-          Full amount of each transaction
-        </label>
-      )}
-      <p className={styles.formHint}>
-        Tracked in your Reimbursements account. Only you see it.
-      </p>
-      <div className={styles.shareFormActions}>
-        <Button size="sm" variant="primary" type="submit">
-          Apply
-        </Button>
-      </div>
     </form>
   );
 }

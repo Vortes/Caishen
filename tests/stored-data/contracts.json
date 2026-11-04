@@ -615,11 +615,13 @@
         "reconciled.date",
         "closed",
         "closed.at",
-        "closed.by"
+        "closed.by",
+        "linkedUserId"
       ],
       "optional": [
         "reconciled",
-        "closed"
+        "closed",
+        "linkedUserId"
       ],
       "nullable": [],
       "values": {
@@ -628,6 +630,7 @@
           "credit",
           "former-partner",
           "partner",
+          "person",
           "reimbursements",
           "tracking"
         ]

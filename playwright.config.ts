@@ -3,6 +3,7 @@ import { defineConfig } from "@playwright/test";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { e2eEnvironment, outboxPath, shellPath } from "./tests/e2e/environment";
+import { clerkWebhookSecret } from "./tests/e2e/clerk-webhook-fixture";
 
 nextEnv.loadEnvConfig(process.cwd(), true);
 const environment = e2eEnvironment(process.env);
@@ -19,7 +20,7 @@ export default defineConfig({
   ],
   webServer: {
     env: {
-      CLERK_WEBHOOK_SIGNING_SECRET: "",
+      CLERK_WEBHOOK_SIGNING_SECRET: clerkWebhookSecret,
       // Email goes to files the specs can open, never to Resend.
       NODE_OPTIONS: `--import=${pathToFileURL(resolve("tests/e2e/resend-fetch-fixture.mjs")).href}`,
       CAISHEN_E2E_OUTBOX: resolve(outboxPath),

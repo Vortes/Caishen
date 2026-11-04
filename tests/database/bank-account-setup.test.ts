@@ -4,11 +4,7 @@ import { randomUUID } from "node:crypto";
 import test, { type TestContext } from "node:test";
 
 import { PrismaClient } from "../../src/generated/prisma";
-import {
-  createBook,
-  isCounterparty,
-  withCounterpartyAccounts,
-} from "../../src/domain/engine";
+import { createBook, isCounterparty } from "../../src/domain/engine";
 import { createDatabaseCaller as createCaller } from "./fixtures";
 import { ObservedRevision } from "../../src/server/api/trpc";
 import {
@@ -26,6 +22,7 @@ import {
   createHousehold,
   setConnectionImports,
 } from "./fixtures";
+import { withPeople } from "../../src/domain/people";
 
 assertDevelopmentDatabase(process.env);
 async function fixture(t: TestContext) {
@@ -137,10 +134,7 @@ async function fixture(t: TestContext) {
     data: users.map((clerkUserId) => ({ clerkUserId })),
   });
   for (const userId of users)
-    await createHousehold(
-      db,
-      withCounterpartyAccounts(createBook(userId, "Fixture", month)),
-    );
+    await createHousehold(db, withPeople(createBook(userId, "Fixture", month)));
   await createBankConnection(db, {
     data: {
       id: connectionId,

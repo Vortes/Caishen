@@ -181,14 +181,14 @@ function summary(
         loans: view.loans.length,
         expectedIncomeCents: view.expectedIncome,
         formerPartners: view.accounts.filter(
-          (account) => account.kind === "former-partner",
+          (account) => account.kind === "person" && account.closed,
         ).length,
         needsReview: view.budget.transactions.filter(
           (transaction) => !transaction.removed && !transaction.reviewed,
         ).length,
         // Positive: the partner owes this budget.
         partnerBalanceCents: view.accounts.find(
-          (account) => account.kind === "partner",
+          (account) => account.linkedUserId && !account.closed,
         )?.balance,
         overspentCategories: view.categories
           .filter((category) => category.available < 0)
