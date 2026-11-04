@@ -2933,6 +2933,9 @@ function projectAccountingState(
       return {
         ...structuredClone(category),
         ...state,
+        ...(category.id === partnerFunding?.categoryId
+          ? { stillToFund: partnerFunding.stillToFund }
+          : {}),
         activityEntries: activity.get(category.id) ?? [],
         // Card purchases plus any card refunds the payment reserve could not
         // return, so the breakdown always adds up to Available.

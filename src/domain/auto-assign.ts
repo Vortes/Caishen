@@ -19,6 +19,8 @@ export type AutoAssignCategory = {
     dueMonth?: string;
   };
   pairedAccountId?: string;
+  // The linked person's envelope: what it lacks to pay what you owe them.
+  stillToFund?: number;
   // Up to 12 previous months, oldest first. Spent is positive.
   history: { assigned: number[]; spent: number[] };
 };
@@ -42,11 +44,13 @@ export type AutoAssignPlan = {
   stuck: number;
 };
 
-// Underfunded covers overspending and fully funds the target, whichever needs more.
+// Underfunded covers overspending and fully funds the target, or what's still to
+// fund for the partner, whichever needs more.
 export function underfunded(category: AutoAssignCategory) {
   return Math.max(
     category.targetProgress?.needed ?? 0,
     -Math.min(0, category.available),
+    category.stillToFund ?? 0,
   );
 }
 

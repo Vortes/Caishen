@@ -210,6 +210,7 @@ void test("what a short category couldn't cover stays on the partner's envelope 
   for (const selected of [month, "2026-11"]) {
     const view = home.view(selected);
     assert.equal(category(view, home.envelope).available, 3_000);
+    assert.equal(category(view, home.envelope).stillToFund, 1_000, selected);
     assert.deepEqual(
       {
         owed: view.partnerFunding?.owed,
