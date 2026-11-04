@@ -70,8 +70,6 @@ Disabled controls are the one exception, and the primitives already apply it.
 
 - `--border-subtle`: dividers between rows and sections. The default.
 - `--border-card`: the edge of a card.
-- `--border-panel`: the edge of the main panel. Barely above the panel, so
-  the change in surface draws the shape. Nothing else.
 - `--border-strong`: checkbox outlines, tooltip edges, anything that must
   read as a boundary on its own.
 - `--border-edge-lit`: the highlight on a panel resize handle. Nothing else.

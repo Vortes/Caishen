@@ -47,9 +47,6 @@
   --surface-selected: oklch(0.245 calc(var(--tint) * 1.5) var(--hue));
 
   --border-subtle: oklch(0.24 var(--tint) var(--hue));
-  /* The main panel's edge: close to the panel, so the change in surface
-     draws the panel's shape and the line only crisps it. */
-  --border-panel: oklch(0.21 var(--tint) var(--hue));
   --border-card: oklch(0.25 var(--tint) var(--hue));
   --border-strong: oklch(0.34 var(--tint) var(--hue));
   --border-edge-lit: oklch(0.56 var(--tint) var(--hue));
@@ -132,7 +129,6 @@
   --surface-selected: oklch(0.928 calc(var(--tint) * 1.5) var(--hue));
 
   --border-subtle: oklch(0.25 var(--tint) var(--hue) / 0.09);
-  --border-panel: oklch(0.25 var(--tint) var(--hue) / 0.09);
   --border-card: oklch(0.25 var(--tint) var(--hue) / 0.08);
   --border-strong: oklch(0.25 var(--tint) var(--hue) / 0.18);
   --border-edge-lit: oklch(0.25 var(--tint) var(--hue) / 0.45);
