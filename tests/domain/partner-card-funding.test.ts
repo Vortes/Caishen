@@ -678,3 +678,172 @@ void test("disconnecting from your partner changes none of your envelope or cate
       selected,
     );
 });
+
+void test("what your categories fund into the partner's envelope is its activity, by purchase", () => {
+  const home = threePurchases();
+  home.alanPays(2_000);
+
+  const envelope = category(home.view(), home.envelope);
+  // Groceries funded all $40 of Store and Parking $10 of Garage; the
+  // pharmacy run has no category, and Alan paid Anna $20.
+  assert.deepEqual(
+    {
+      assigned: envelope.assigned,
+      activity: envelope.activity,
+      available: envelope.available,
+    },
+    { assigned: 0, activity: 3_000, available: 3_000 },
+  );
+  assert.deepEqual(
+    envelope.activityEntries
+      .map(({ source, amount }) => ({ source, amount }))
+      .sort((a, b) => a.amount - b.amount),
+    [
+      { source: "transaction", amount: -2_000 },
+      { source: "partner", amount: 1_000 },
+      { source: "partner", amount: 4_000 },
+    ],
+  );
+  assert.deepEqual(
+    envelope.activityEntries
+      .filter((entry) => entry.source === "partner")
+      .map((entry) => entry.id)
+      .sort(),
+    [home.groceries, home.parking].sort(),
+  );
+});
+
+void test("money assigned later covers the earliest listed shortfalls first, so they add up to what's still to fund", () => {
+  const home = threePurchases();
+  home.run("alan", {
+    type: "assign",
+    categoryId: home.envelope,
+    month: "2026-11",
+    amount: 2_500,
+  });
+
+  const funding = home.view("2026-11").partnerFunding!;
+  // $25 covers Garage's $20 and $5 of the pharmacy run.
+  assert.equal(funding.stillToFund, 1_500);
+  assert.deepEqual(
+    funding.entries.map(({ entryId, short }) => ({ entryId, short })),
+    [{ entryId: home.pharmacy, short: 1_500 }],
+  );
+});
+
+void test("a closed person who was never your partner keeps other people's envelope rules", () => {
+  const home = household();
+  home.run("alan", { type: "person.add", accountId: "mom", name: "Mom" });
+  const mom = home
+    .view()
+    .categories.find((item) => item.counterpartyAccountId === "mom")!.id;
+  // A store refunds $50 that was all Mom's, so Alan owes her $50, and he
+  // moves that $50 out of her envelope. Then he fronts $20 of hers.
+  for (const [transactionId, date, amount] of [
+    ["mom-refund", "2026-10-12", 5_000],
+    ["mom-lunch", "2026-10-14", -2_000],
+  ] as const) {
+    if (amount < 0)
+      home.run("alan", {
+        type: "assign",
+        categoryId: mom,
+        month,
+        amount: -5_000,
+      });
+    home.run("alan", {
+      type: "transaction.upsert",
+      transactionId,
+      accountId: "checking",
+      date,
+      amount,
+      payee: "Store",
+      counterpartyShare: { accountId: "mom", amount: Math.abs(amount) },
+      recordedAt: `${date}T12:00:00Z`,
+    });
+  }
+  const closed = structuredClone(home.book);
+  closed.budgets.alan!.accounts.find((item) => item.id === "mom")!.closed = {
+    at: "2026-10-20T12:00:00.000Z",
+    by: "alan",
+  };
+
+  for (const book of [home.book, closed]) {
+    const november = projectBook(book, "alan", "2026-11");
+    assert.equal(category(november, mom).available, -2_000);
+    assert.equal(november.readyToAssign, 505_000);
+  }
+});
+
+void test("a refund after an overpayment rolled over returns what you paid to the envelope once your partner repays it", () => {
+  // Groceries set aside $30 of Alan's $40 part, he paid Anna all $40 in
+  // October, and November's Ready to Assign covered the $10 he overpaid.
+  const home = shortGroceries();
+  home.alanPays(4_000);
+  const refund = home.annaBuys(-8_000, 4_000, { date: "2026-11-03" });
+  home.run("alan", {
+    type: "partner.categorize",
+    entryId: refund,
+    categoryId: "groceries",
+  });
+
+  let view = home.view("2026-11");
+  let envelope = category(view, home.envelope);
+  // The envelope already paid the $40 out, so there's nothing to give back
+  // to Groceries; Anna owes it to Alan now.
+  assert.deepEqual(
+    {
+      groceries: category(view, "groceries").available,
+      available: envelope.available,
+      cashOverspending: envelope.cashOverspending,
+      owed: view.partnerFunding?.owed,
+      stillToFund: view.partnerFunding?.stillToFund,
+      owedToYou: view.accounts.find((item) => item.id === home.anna)!.balance,
+      readyToAssign: view.readyToAssign,
+    },
+    {
+      groceries: 0,
+      available: 0,
+      cashOverspending: 0,
+      owed: 0,
+      stillToFund: 0,
+      owedToYou: 4_000,
+      readyToAssign: 496_000,
+    },
+  );
+
+  home.alanPays(-4_000, "2026-11-20");
+  view = home.view("2026-11");
+  envelope = category(view, home.envelope);
+  assert.deepEqual(
+    {
+      available: envelope.available,
+      readyToAssign: view.readyToAssign,
+      cash: view.cash,
+    },
+    { available: 4_000, readyToAssign: 496_000, cash: 500_000 },
+  );
+});
+
+void test("the partner's funding says how much of what you owe is set aside", () => {
+  const short = shortGroceries();
+  // Paying Anna $60 with nothing set aside leaves the envelope red, with
+  // $40 still owed and none of it set aside.
+  const red = household();
+  red.annaBuys(20_000, 10_000);
+  red.alanPays(6_000);
+
+  const funding = (home: ReturnType<typeof household>) => {
+    const { owed, setAside, stillToFund } = home.view().partnerFunding!;
+    return { owed, setAside, stillToFund };
+  };
+  assert.deepEqual(funding(short), {
+    owed: 4_000,
+    setAside: 3_000,
+    stillToFund: 1_000,
+  });
+  assert.deepEqual(funding(red), {
+    owed: 4_000,
+    setAside: 0,
+    stillToFund: 4_000,
+  });
+});

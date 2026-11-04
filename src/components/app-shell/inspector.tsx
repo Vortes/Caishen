@@ -11,7 +11,11 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
+import {
+  optionAmount,
+  underfunded,
+  type AutoAssignOption,
+} from "~/domain/auto-assign";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { newId } from "~/components/budget/format";
@@ -307,18 +311,14 @@ function CategoryDetails({
       >
         <Figure
           value={money(category.available)}
-          caption={
-            partner && category.available >= 0
-              ? partnerCaption(category.name, partner)
-              : category.status || fallback
-          }
+          caption={partner?.caption ?? (category.status || fallback)}
           tone={category.funding}
         />
         {partner && partner.owed > 0 && (
           <Meter
             ratio={category.fundedRatio}
             tone={category.funding}
-            label={`${money(partner.owed - Math.min(partner.owed, partner.stillToFund))} of ${money(partner.owed)} set aside`}
+            label={`${money(partner.setAside)} of ${money(partner.owed)} set aside`}
           />
         )}
         <div className={styles.cardActions}>
@@ -379,17 +379,8 @@ function CategoryDetails({
   );
 }
 
-// The partner's envelope says what it still needs to pay them, like a
-// card's payment category short of its balance (ADR 0015).
-function partnerCaption(name: string, funding: PartnerFunding) {
-  if (funding.stillToFund > 0)
-    return `${money(funding.stillToFund)} more needed to pay ${name}`;
-  if (funding.owed > 0) return `Everything you owe ${name} is set aside`;
-  return `You don’t owe ${name} anything`;
-}
-
-// Assigns what's still to fund for the partner, as much as Ready to Assign
-// holds.
+// Assigns what's still to fund for the partner, and any overspending, as
+// much as Ready to Assign holds: the envelope's Underfunded amount.
 function AssignStillToFund({
   category,
   funding,
@@ -401,8 +392,8 @@ function AssignStillToFund({
 }) {
   const { readyToAssign, month } = useShellData();
   const { move } = useMoveMoney();
-  const amount = Math.min(funding.stillToFund, readyToAssign);
-  if (amount <= 0) return null;
+  const amount = Math.min(underfunded(category.autoAssign), readyToAssign);
+  if (funding.stillToFund <= 0 || amount <= 0) return null;
   return (
     <Button
       variant={category.available < 0 ? "secondary" : "primary"}

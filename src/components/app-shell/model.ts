@@ -86,10 +86,15 @@ export type Category = {
 };
 
 export type PartnerFunding = {
+  // The side panel's caption: what's still needed to pay them, or that
+  // it's all set aside.
+  caption: string;
   owed: number;
+  // How much of what you owe the envelope holds.
+  setAside: number;
   stillToFund: number;
   // Your part of the partner's purchases in the month, and earlier ones
-  // still short or without a category, oldest first.
+  // still short, newest first.
   purchases: PartnerPurchase[];
 };
 
@@ -102,7 +107,7 @@ export type PartnerPurchase = {
   // Its category's name, or "Split (n)"; none while it needs a category.
   category?: string;
   state: "set-aside" | "short" | "needs-category";
-  // How much of your part its category couldn't set aside.
+  // How much of your part is still to fund.
   short: number;
 };
 
@@ -409,27 +414,50 @@ export function toShellData(
       card && !item.target && month === activeMonth
         ? Math.max(0, -card.balance - item.available)
         : 0;
-    const partnerFunding =
+    const name = categoryName.get(item.id)!;
+    const owing =
       item.id === view.partnerFunding?.categoryId
-        ? partnerFundingOf(view.partnerFunding, categoryName)
+        ? view.partnerFunding
         : undefined;
     // What's still to fund for the partner is underfunded, like a card's
-    // payment short of its balance.
-    const stillToFund =
-      partnerFunding && item.available >= 0 ? partnerFunding.stillToFund : 0;
+    // payment short of its balance. A red envelope shows its overspending
+    // first.
+    const stillToFund = owing?.stillToFund ?? 0;
     const funding =
       card && item.available < 0
         ? "overspent"
-        : paymentNeeded > 0 || stillToFund > 0
+        : item.available >= 0 && (paymentNeeded > 0 || stillToFund > 0)
           ? "underfunded"
           : categoryStatus(item);
+    const needed =
+      funding === "underfunded" && stillToFund > 0
+        ? `${money(stillToFund)} more needed`
+        : undefined;
+    const status =
+      paymentNeeded > 0 && item.available >= 0
+        ? `${money(paymentNeeded)} more needed to pay in full`
+        : (needed ?? statusLine(item, funding));
+    // The side panel says the same as the row, and whom it's for.
+    const partnerFunding =
+      owing &&
+      partnerFundingOf(
+        owing,
+        categoryName,
+        item.available < 0
+          ? status
+          : needed
+            ? `${needed} to pay ${name}`
+            : owing.owed > 0
+              ? `Everything you owe ${name} is set aside`
+              : `You don’t owe ${name} anything`,
+      );
     const progress = item.targetProgress;
     const pair = item.counterpartyAccountId
       ? counterparty.get(item.counterpartyAccountId)
       : undefined;
     return {
       id: item.id,
-      name: categoryName.get(item.id)!,
+      name,
       group: item.group,
       assigned: item.assigned,
       activity: item.activity,
@@ -438,8 +466,7 @@ export function toShellData(
       carryover: item.opening,
       funding,
       fundedRatio: partnerFunding?.owed
-        ? Math.max(0, partnerFunding.owed - partnerFunding.stillToFund) /
-          partnerFunding.owed
+        ? partnerFunding.setAside / partnerFunding.owed
         : progress
           ? progress.total > 0
             ? Math.min(1, progress.funded / progress.total)
@@ -447,12 +474,7 @@ export function toShellData(
           : item.available > 0
             ? 1
             : 0,
-      status:
-        paymentNeeded > 0 && item.available >= 0
-          ? `${money(paymentNeeded)} more needed to pay in full`
-          : stillToFund > 0
-            ? `${money(stillToFund)} more needed`
-            : statusLine(item, funding),
+      status,
       target:
         item.target && progress
           ? {
@@ -746,11 +768,14 @@ export function toShellData(
 function partnerFundingOf(
   funding: NonNullable<View["partnerFunding"]>,
   categoryName: Map<string, string>,
+  caption: string,
 ): PartnerFunding {
   return {
+    caption,
     owed: funding.owed,
+    setAside: funding.setAside,
     stillToFund: funding.stillToFund,
-    purchases: funding.entries.map((entry) => ({
+    purchases: [...funding.entries].reverse().map((entry) => ({
       entryId: entry.entryId,
       date: entry.date,
       payee: entry.payee,

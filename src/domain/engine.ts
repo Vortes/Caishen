@@ -1988,25 +1988,36 @@ function replay(
   // A partner ledger's account works like a credit card (ADR 0015): your
   // side of their purchases is credit spending, and what no category funded
   // carries on the account as unfunded credit. A former partner's frozen
-  // ledger keeps these rules, so disconnecting changes no numbers.
+  // ledger keeps these rules, so disconnecting changes no numbers; a former
+  // partner is the closed person its frozen entries belong to. Other closed
+  // people keep ADR 0007's rules.
   const linked = partnerAccountOf(budget);
+  const formerPartners = new Set(
+    (budget.formerPartnerEntries ?? []).map((entry) => entry.accountId),
+  );
   const cardLedgers = new Map<string, CardLedger>(
-    budget.accounts.filter(isPartnerLedger).flatMap((account) => {
-      const envelope = pairedEnvelope.get(account.id);
-      return envelope
-        ? [
-            [
-              account.id,
-              {
-                envelopeId: envelope.id,
-                unfunded: 0,
-                setAside: 0,
-                overpaid: 0,
-              },
-            ],
-          ]
-        : [];
-    }),
+    budget.accounts
+      .filter(
+        (account) =>
+          account.id === linked?.id ||
+          (isFormerPartner(account) && formerPartners.has(account.id)),
+      )
+      .flatMap((account) => {
+        const envelope = pairedEnvelope.get(account.id);
+        return envelope
+          ? [
+              [
+                account.id,
+                {
+                  envelopeId: envelope.id,
+                  unfunded: 0,
+                  setAside: 0,
+                  overpaid: 0,
+                },
+              ],
+            ]
+          : [];
+      }),
   );
   for (
     let cursor = budget.startMonth;
@@ -2063,10 +2074,11 @@ function replay(
       );
     carriedCounterpartyCredit.clear();
     const repaidByKey = new Map<string, number>();
-    // The categorized parts of the linked person's purchases this month, in
-    // date order.
-    const linkedParts: {
+    // The categorized parts of partner ledger entries this month, in date
+    // order: negative for a purchase, positive for a refund.
+    const ledgerParts: {
       entryId: string;
+      accountId: string;
       categoryId: string;
       amount: number;
     }[] = [];
@@ -2243,20 +2255,21 @@ function replay(
           );
           creditByCategory.set(id, cards);
         }
-        if (linkedEntries && entry.accountId === linked?.id && change < 0) {
+        for (const [categoryId, amount] of spending)
+          if (amount)
+            ledgerParts.push({
+              entryId: entry.id,
+              accountId: entry.accountId,
+              categoryId,
+              amount,
+            });
+        if (linkedEntries && entry.accountId === linked?.id && change < 0)
           linkedEntries.set(entry.id, {
             entry,
             month: cursor,
             amount: -change,
             setAside: 0,
           });
-          for (const [categoryId, amount] of spending)
-            linkedParts.push({
-              entryId: entry.id,
-              categoryId,
-              amount: -amount,
-            });
-        }
         // A share with no category is unfunded from the start.
         ledger.unfunded = safe(
           ledger.unfunded - change + sum(spending.map(([, amount]) => amount)),
@@ -2458,31 +2471,47 @@ function replay(
       if (ledger) ledger.unfunded = safe(ledger.unfunded + purchase.remaining);
     }
     // What each category funded goes to its earliest purchases first, so the
-    // latest ones are short.
-    if (linkedEntries) {
-      const covered = new Map<string, number>();
-      for (const part of linkedParts)
-        covered.set(
-          part.categoryId,
-          safe((covered.get(part.categoryId) ?? 0) + part.amount),
+    // latest ones are short, and what it released to its earliest refunds.
+    // Both are the envelope's activity, by purchase.
+    for (const [accountId, ledger] of cardLedgers) {
+      const parts = ledgerParts.filter((part) => part.accountId === accountId);
+      for (const categoryId of new Set(parts.map((part) => part.categoryId))) {
+        const inCategory = parts.filter(
+          (part) => part.categoryId === categoryId,
         );
-      for (const purchase of purchases)
-        if (purchase.cardId === linked?.id)
-          covered.set(
-            purchase.categoryId,
-            safe(covered.get(purchase.categoryId)! - purchase.remaining),
+        const left = (
+          items: { categoryId: string; cardId: string; remaining: number }[],
+        ) =>
+          sum(
+            items
+              .filter(
+                (item) =>
+                  item.categoryId === categoryId && item.cardId === accountId,
+              )
+              .map((item) => item.remaining),
           );
-      for (const part of linkedParts) {
-        const amount = Math.min(
-          part.amount,
-          Math.max(0, covered.get(part.categoryId)!),
+        // A refund in the same category offsets its purchases before
+        // anything moves.
+        let covered = safe(
+          sum(inCategory.map((part) => Math.max(0, -part.amount))) -
+            left(purchases),
         );
-        covered.set(
-          part.categoryId,
-          safe(covered.get(part.categoryId)! - amount),
+        let released = safe(
+          sum(inCategory.map((part) => Math.max(0, part.amount))) -
+            left(refunds),
         );
-        const funding = linkedEntries.get(part.entryId)!;
-        funding.setAside = safe(funding.setAside + amount);
+        for (const part of inCategory) {
+          const amount =
+            part.amount < 0
+              ? Math.min(-part.amount, covered)
+              : -Math.min(part.amount, released);
+          if (part.amount < 0) covered = safe(covered - amount);
+          else released = safe(released + amount);
+          addActivity(ledger.envelopeId, "partner", part.entryId, amount);
+          const funding = linkedEntries?.get(part.entryId);
+          if (funding && amount > 0)
+            funding.setAside = safe(funding.setAside + amount);
+        }
       }
     }
     // A refund the envelope couldn't release reduces the unfunded credit
@@ -2594,6 +2623,9 @@ function replay(
       // Paying them or moving money out leaves less of what categories
       // funded in the envelope.
       if (ledger) {
+        // Like a card's payment category, its activity is what funded
+        // purchases and payments moved in and out.
+        state.activity = safe(state.available - state.opening - state.assigned);
         ledger.setAside = Math.min(
           ledger.setAside,
           Math.max(0, safe(state.available + cardCredit)),
@@ -3126,9 +3158,12 @@ export type BudgetProjection = ReturnType<typeof projectBook>;
  * What the viewer owes the linked person and how much of it their envelope
  * holds (ADR 0015). What you owe is the net amount; still to fund is what
  * the envelope lacks to pay it. Entries are the viewer's part of the
- * linked person's purchases in the month, and earlier ones still short or
- * without a category while something is still to fund, oldest first. Once
- * an assignment or a settlement covers the gap, the earlier ones drop off.
+ * linked person's purchases in the month, and earlier ones still short,
+ * oldest first. Each entry's set-aside amount is what its categories
+ * funded; its short amount is what's still to fund of it now, since money
+ * assigned to the envelope or a settlement later covers the earliest
+ * shortfalls first. So the short amounts add up to still to fund, and an
+ * earlier entry with nothing short left drops off.
  */
 function linkedFunding(
   budget: Budget,
@@ -3143,20 +3178,30 @@ function linkedFunding(
   if (!account || !envelope) return undefined;
   const owed = Math.max(0, -calculated.accounts.get(account.id)!.balance);
   const available = calculated.categories.get(envelope.id)!.available;
-  // A red envelope is overspending, not a gap to fund.
-  const stillToFund = Math.max(0, owed - Math.max(0, available));
+  // What the envelope holds toward what you owe. A red envelope is
+  // overspending, not a gap to fund.
+  const setAside = Math.min(owed, Math.max(0, available));
+  const stillToFund = safe(owed - setAside);
+  let covered = safe(
+    sum(
+      [...linkedEntries.values()].map((item) => item.amount - item.setAside),
+    ) - stillToFund,
+  );
   return {
     accountId: account.id,
     categoryId: envelope.id,
     owed,
+    setAside,
     stillToFund,
     entries: [...linkedEntries.values()]
-      .filter(
-        (item) =>
-          item.month === month ||
-          (stillToFund > 0 && item.setAside < item.amount),
-      )
-      .map(({ entry, month: entryMonth, amount, setAside }) => {
+      .map((item) => {
+        const short = safe(item.amount - item.setAside);
+        const coveredLater = Math.max(0, Math.min(short, covered));
+        covered = safe(covered - coveredLater);
+        return { ...item, short: safe(short - coveredLater) };
+      })
+      .filter((item) => item.month === month || item.short > 0)
+      .map(({ entry, month: entryMonth, amount, setAside, short }) => {
         const lines = budget.partnerSides?.[entry.id]?.lines;
         return {
           entryId: entry.id,
@@ -3167,7 +3212,7 @@ function linkedFunding(
           categoryId: sideCategory(budget, entry.id),
           ...(lines ? { lines: structuredClone(lines) } : {}),
           setAside,
-          short: safe(amount - setAside),
+          short,
           needsCategory: sideNeedsCategory(budget, entry, -amount),
         };
       }),

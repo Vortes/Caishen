@@ -98,13 +98,17 @@ function PurchaseRow({ purchase }: { purchase: PartnerPurchase }) {
             </span>
           )}
         </span>
-        <span className={styles.state} data-state={purchase.state}>
-          {purchase.state === "set-aside"
-            ? "Set aside"
-            : purchase.state === "short"
-              ? `${money(purchase.short)} short`
-              : "Not set aside"}
-        </span>
+        {/* Once nothing of it is still to fund, a purchase that needs a
+            category only says so. */}
+        {(!needsCategory || purchase.short > 0) && (
+          <span className={styles.state} data-state={purchase.state}>
+            {purchase.state === "set-aside"
+              ? "Set aside"
+              : purchase.state === "short"
+                ? `${money(purchase.short)} short`
+                : "Not set aside"}
+          </span>
+        )}
       </span>
       {needsCategory && <PurchaseCategory purchase={purchase} />}
     </li>

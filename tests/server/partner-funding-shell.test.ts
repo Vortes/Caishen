@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { toShellData } from "../../src/components/app-shell/model";
+import { underfunded } from "../../src/domain/auto-assign";
 import { execute, projectBook, type Command } from "../../src/domain/engine";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 
@@ -96,12 +97,29 @@ void test("each of the partner's purchases shows your part, its category and whe
         short,
       }),
     ),
+    // Newest first.
     [
       {
-        payee: "H Mart",
+        payee: "Trader Joe’s",
+        date: "2026-10-03",
+        amount: 3_342,
+        category: undefined,
+        state: "needs-category",
+        short: 3_342,
+      },
+      {
+        payee: "Platinum Parking",
+        date: "2026-10-02",
+        amount: 7_100,
+        category: "Parking",
+        state: "short",
+        short: 2_000,
+      },
+      {
+        payee: "Shake Shack",
         date: "2026-10-01",
-        amount: 1_338,
-        category: "Groceries",
+        amount: 883,
+        category: "Dining out",
         state: "set-aside",
         short: 0,
       },
@@ -114,28 +132,12 @@ void test("each of the partner's purchases shows your part, its category and whe
         short: 0,
       },
       {
-        payee: "Shake Shack",
+        payee: "H Mart",
         date: "2026-10-01",
-        amount: 883,
-        category: "Dining out",
+        amount: 1_338,
+        category: "Groceries",
         state: "set-aside",
         short: 0,
-      },
-      {
-        payee: "Platinum Parking",
-        date: "2026-10-02",
-        amount: 7_100,
-        category: "Parking",
-        state: "short",
-        short: 2_000,
-      },
-      {
-        payee: "Trader Joe’s",
-        date: "2026-10-03",
-        amount: 3_342,
-        category: undefined,
-        state: "needs-category",
-        short: 3_342,
       },
     ],
   );
@@ -147,7 +149,7 @@ void test("earlier short purchases leave the list once nothing is still to fund"
     jordan(home.shell("2026-11")).partnerFunding?.purchases.map(
       ({ payee }) => payee,
     );
-  assert.deepEqual(listed(), ["Platinum Parking", "Trader Joe’s"]);
+  assert.deepEqual(listed(), ["Trader Joe’s", "Platinum Parking"]);
 
   home.run({
     type: "assign",
@@ -157,4 +159,61 @@ void test("earlier short purchases leave the list once nothing is still to fund"
   });
 
   assert.deepEqual(listed(), []);
+});
+
+void test("a red partner's row shows its overspending, and Underfunded also covers what's still to fund", () => {
+  const home = simple();
+  // Alex pays Jordan $1,460.00 of the $1,488.58 owed, $24.84 more than the
+  // $1,435.16 set aside, so $28.58 is still to fund.
+  home.run({
+    type: "partner.settle",
+    settlementId: "test-settlement",
+    method: "Bank transfer",
+    legs: [
+      {
+        userId: "alex",
+        accountId: "checking",
+        date: `${month}-15`,
+        amount: -146_000,
+        payee: "Jordan",
+      },
+      {
+        userId: "jordan",
+        accountId: "checking",
+        date: `${month}-15`,
+        amount: 146_000,
+        payee: "Alex",
+      },
+    ],
+  });
+  const row = jordan(home.shell());
+
+  assert.deepEqual(
+    {
+      available: row.available,
+      funding: row.funding,
+      stillToFund: row.partnerFunding?.stillToFund,
+      underfunded: underfunded(row.autoAssign),
+    },
+    {
+      available: -2_484,
+      funding: "overspent",
+      stillToFund: 2_858,
+      underfunded: 5_342,
+    },
+  );
+});
+
+void test("the partner's details caption says what's still needed to pay them, or that it's all set aside", () => {
+  const home = simple();
+  const caption = () => jordan(home.shell()).partnerFunding?.caption;
+  assert.equal(caption(), "$53.42 more needed to pay Jordan");
+
+  home.run({
+    type: "assign",
+    categoryId: jordan(home.shell()).id,
+    month,
+    amount: 5_342,
+  });
+  assert.equal(caption(), "Everything you owe Jordan is set aside");
 });

@@ -148,7 +148,56 @@ void test("underfunded includes what's still to fund for your partner", () => {
         month,
       }),
     ),
-    ["anna:500"],
+    // Rent's end-of-month target comes before what's still to fund.
+    ["rent:500"],
+  );
+});
+
+void test("a red partner's envelope is underfunded by its overspending plus what's still to fund", () => {
+  // Alan paid Anna $60 with nothing set aside and still owes her $40.
+  const scope = [category("anna", { available: -6000, stillToFund: 4000 })];
+
+  assert.equal(optionAmount("underfunded", scope), 10000);
+  assert.deepEqual(
+    ids(
+      planAutoAssign({
+        option: "underfunded",
+        scope,
+        readyToAssign: 50000,
+        month,
+      }),
+    ),
+    ["anna:10000"],
+  );
+});
+
+void test("what's still to fund for your partner comes after dated targets, like a card payment", () => {
+  const rent = category("rent", {
+    target: target({ cadence: "monthly", amount: 150000, monthDay: 1 }),
+    needed: 150000,
+  });
+  const groceries = category("groceries", {
+    target: target({ cadence: "monthly", amount: 5000 }),
+    needed: 5000,
+  });
+  const plan = (anna: AutoAssignCategory, readyToAssign: number) =>
+    ids(
+      planAutoAssign({
+        option: "underfunded",
+        scope: [anna, rent, groceries],
+        readyToAssign,
+        month,
+      }),
+    );
+
+  assert.deepEqual(
+    plan(category("anna", { available: 3000, stillToFund: 1000 }), 155500),
+    ["rent:150000", "groceries:5000", "anna:500"],
+  );
+  // A red envelope's overspending still comes first.
+  assert.deepEqual(
+    plan(category("anna", { available: -6000, stillToFund: 4000 }), 163000),
+    ["anna:8000", "rent:150000", "groceries:5000"],
   );
 });
 
