@@ -19,6 +19,7 @@ import {
 import {
   buildDevelopmentSeed,
   developmentToday,
+  soloSeedScenario,
   type DevelopmentSeedScenario,
 } from "./seed-scenarios";
 import {
@@ -147,7 +148,7 @@ export async function seedDevelopmentDatabase(
       throw new Error("Use --reset to change the demo scenario.");
     const scenario = options.scenario ?? savedScenario ?? "household";
     if (
-      scenario !== "household" &&
+      soloSeedScenario(scenario) &&
       identity.partnerId !== developmentSeedIdentity(identity.userId).partnerId
     )
       throw new Error(
@@ -279,7 +280,10 @@ export async function seedDevelopmentDatabase(
         },
       };
     }
-    const banks = buildDevelopmentSeedBanks(seed, identity.workspaceId);
+    const banks =
+      seed.scenario === "simple"
+        ? []
+        : buildDevelopmentSeedBanks(seed, identity.workspaceId);
     const rows = [
       ...bookToRows(seed.book),
       ...banks.flatMap(({ data, imports }) =>
