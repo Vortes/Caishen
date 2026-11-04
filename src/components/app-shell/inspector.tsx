@@ -322,7 +322,7 @@ function CategoryDetails({
           <Meter
             ratio={category.fundedRatio}
             tone={category.funding}
-            label={`${money(partner.owed - Math.min(partner.owed, partner.stillToFund))} of ${money(partner.owed)} set aside`}
+            label={`${money(partner.setAside)} of ${money(partner.owed)} set aside`}
           />
         )}
         <div className={styles.cardActions}>

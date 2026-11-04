@@ -11,7 +11,7 @@ export type FundingBarCategory = Pick<
 > & {
   target?: { sections: number[] };
   pays?: Category["pays"];
-  partnerFunding?: Pick<PartnerFunding, "owed" | "stillToFund">;
+  partnerFunding?: Pick<PartnerFunding, "owed" | "setAside">;
 };
 
 // The bar has three colors, per YNAB: red for overspending, yellow while a
@@ -43,10 +43,9 @@ export function fundingPieces(category: FundingBarCategory): Piece[] {
   if (owing?.owed && category.available >= 0) {
     const tone: Tone =
       category.funding === "underfunded" ? "underfunded" : "funded";
-    const needed = Math.min(owing.owed, owing.stillToFund);
     return [
-      { kind: "available" as const, tone, size: owing.owed - needed },
-      { kind: "needed" as const, tone, size: needed },
+      { kind: "available" as const, tone, size: owing.setAside },
+      { kind: "needed" as const, tone, size: owing.owed - owing.setAside },
     ].filter((piece) => piece.size > 0);
   }
   // Money the category has had this month: what's left plus what's gone.

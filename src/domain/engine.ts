@@ -3178,8 +3178,10 @@ function linkedFunding(
   if (!account || !envelope) return undefined;
   const owed = Math.max(0, -calculated.accounts.get(account.id)!.balance);
   const available = calculated.categories.get(envelope.id)!.available;
-  // A red envelope is overspending, not a gap to fund.
-  const stillToFund = Math.max(0, owed - Math.max(0, available));
+  // What the envelope holds toward what you owe. A red envelope is
+  // overspending, not a gap to fund.
+  const setAside = Math.min(owed, Math.max(0, available));
+  const stillToFund = safe(owed - setAside);
   let covered = safe(
     sum(
       [...linkedEntries.values()].map((item) => item.amount - item.setAside),
@@ -3189,6 +3191,7 @@ function linkedFunding(
     accountId: account.id,
     categoryId: envelope.id,
     owed,
+    setAside,
     stillToFund,
     entries: [...linkedEntries.values()]
       .map((item) => {

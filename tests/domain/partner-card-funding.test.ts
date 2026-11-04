@@ -823,3 +823,27 @@ void test("a refund after an overpayment rolled over returns what you paid to th
     { available: 4_000, readyToAssign: 496_000, cash: 500_000 },
   );
 });
+
+void test("the partner's funding says how much of what you owe is set aside", () => {
+  const short = shortGroceries();
+  // Paying Anna $60 with nothing set aside leaves the envelope red, with
+  // $40 still owed and none of it set aside.
+  const red = household();
+  red.annaBuys(20_000, 10_000);
+  red.alanPays(6_000);
+
+  const funding = (home: ReturnType<typeof household>) => {
+    const { owed, setAside, stillToFund } = home.view().partnerFunding!;
+    return { owed, setAside, stillToFund };
+  };
+  assert.deepEqual(funding(short), {
+    owed: 4_000,
+    setAside: 3_000,
+    stillToFund: 1_000,
+  });
+  assert.deepEqual(funding(red), {
+    owed: 4_000,
+    setAside: 0,
+    stillToFund: 4_000,
+  });
+});

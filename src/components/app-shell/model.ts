@@ -87,6 +87,8 @@ export type Category = {
 
 export type PartnerFunding = {
   owed: number;
+  // How much of what you owe the envelope holds.
+  setAside: number;
   stillToFund: number;
   // Your part of the partner's purchases in the month, and earlier ones
   // still short or without a category, oldest first.
@@ -438,8 +440,7 @@ export function toShellData(
       carryover: item.opening,
       funding,
       fundedRatio: partnerFunding?.owed
-        ? Math.max(0, partnerFunding.owed - partnerFunding.stillToFund) /
-          partnerFunding.owed
+        ? partnerFunding.setAside / partnerFunding.owed
         : progress
           ? progress.total > 0
             ? Math.min(1, progress.funded / progress.total)
@@ -749,6 +750,7 @@ function partnerFundingOf(
 ): PartnerFunding {
   return {
     owed: funding.owed,
+    setAside: funding.setAside,
     stillToFund: funding.stillToFund,
     purchases: funding.entries.map((entry) => ({
       entryId: entry.entryId,
