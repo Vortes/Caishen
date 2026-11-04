@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   addMember,
+  closePartnerLedger,
   createBook,
   execute,
   personEnvelopeId,
@@ -177,7 +178,7 @@ function shortGroceries() {
     entryId,
     categoryId: "groceries",
   });
-  return { ...home, entryId };
+  return Object.assign(home, { entryId });
 }
 
 void test("a category that can't cover your part is overspent on credit, not cash", () => {
@@ -262,7 +263,7 @@ function fundedGroceries() {
     entryId,
     categoryId: "groceries",
   });
-  return { ...home, entryId };
+  return Object.assign(home, { entryId });
 }
 
 void test("paying your partner spends from their envelope and never touches Ready to Assign", () => {
@@ -298,6 +299,39 @@ void test("paying your partner more than their envelope holds is cash overspendi
   );
   assert.equal(view.partnerFunding?.owed, 0);
   assert.equal(view.readyToAssign, 497_000);
+});
+
+void test("an overpayment left uncovered reduces next month's Ready to Assign, but another person's shortfall carries", () => {
+  const home = shortGroceries();
+  home.alanPays(4_000);
+  home.run("alan", { type: "person.add", accountId: "mom", name: "Mom" });
+  home.run("alan", {
+    type: "transaction.upsert",
+    transactionId: "mom-lunch",
+    accountId: "checking",
+    date: "2026-10-14",
+    amount: -1_500,
+    payee: "Lunch",
+    counterpartyShare: { accountId: "mom", amount: 1_500 },
+    recordedAt: "2026-10-14T12:00:00Z",
+  });
+  const mom = home
+    .view()
+    .categories.find((item) => item.counterpartyAccountId === "mom")!.id;
+
+  assert.equal(home.view().readyToAssign, 497_000);
+  const november = home.view("2026-11");
+  const envelope = category(november, home.envelope);
+  assert.deepEqual(
+    {
+      available: envelope.available,
+      cashOverspending: envelope.cashOverspending,
+      stillToFund: november.partnerFunding?.stillToFund,
+    },
+    { available: 0, cashOverspending: 0, stillToFund: 0 },
+  );
+  assert.equal(category(november, mom).available, -1_500);
+  assert.equal(november.readyToAssign, 496_000);
 });
 
 void test("when you owe each other, the envelope only needs what you owe on net", () => {
@@ -372,6 +406,22 @@ void test("when your partner owes you overall, fronting works as before", () => 
     { available: 0, cashOverspending: 0 },
   );
   assert.equal(view.readyToAssign, 490_000);
+});
+
+void test("a red partner's envelope is overspending, never also still to fund", () => {
+  const overpaid = shortGroceries();
+  overpaid.alanPays(4_000);
+  const owedToYou = shortGroceries();
+  owedToYou.alanBuys(6_500);
+
+  for (const home of [overpaid, owedToYou]) {
+    const view = home.view();
+    const envelope = category(view, home.envelope);
+    assert.ok(envelope.available < 0);
+    assert.ok(envelope.cashOverspending > 0);
+    assert.equal(envelope.stillToFund, 0);
+    assert.equal(view.partnerFunding?.stillToFund, 0);
+  }
 });
 
 void test("a refund of your partner's purchase releases what was set aside back to its category", () => {
@@ -515,7 +565,7 @@ function threePurchases() {
     date: "2026-10-16",
     payee: "Pharmacy",
   });
-  return { ...home, groceries: home.entryId, parking, pharmacy };
+  return Object.assign(home, { groceries: home.entryId, parking, pharmacy });
 }
 
 void test("each of your partner's purchases shows how much of your part is set aside", () => {
@@ -595,4 +645,36 @@ void test("earlier purchases still short or without a category stay in the list"
       { entryId: bakery, month: "2026-11", short: 500 },
     ],
   );
+});
+
+void test("disconnecting from your partner changes none of your envelope or category numbers", () => {
+  const home = threePurchases();
+  home.alanPays(7_000);
+  const former = closePartnerLedger(home.book, "alan", {
+    id: "parted",
+    name: "Anna",
+    at: "2026-11-05T12:00:00.000Z",
+    by: "anna",
+  });
+  const numbers = (view: View, envelopeId: string) => ({
+    readyToAssign: view.readyToAssign,
+    categories: Object.fromEntries(
+      view.categories.map((item) => [
+        item.id === envelopeId ? "envelope" : item.id,
+        {
+          assigned: item.assigned,
+          activity: item.activity,
+          available: item.available,
+          cashOverspending: item.cashOverspending,
+        },
+      ]),
+    ),
+  });
+
+  for (const selected of [month, "2026-11"])
+    assert.deepEqual(
+      numbers(projectBook(former, "alan", selected), "envelope:former:parted"),
+      numbers(home.view(selected), home.envelope),
+      selected,
+    );
 });
