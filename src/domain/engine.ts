@@ -1649,6 +1649,17 @@ type LinkedEntryFunding = {
   amount: number;
   setAside: number;
 };
+// A partner ledger's account as a card (ADR 0015): what of your part of
+// their purchases no category funded, and what the envelope holds for it.
+type CardLedger = {
+  envelopeId: string;
+  unfunded: number;
+  // What categories funded into the envelope that it still holds: only this
+  // goes back to a category when a share is refunded.
+  setAside: number;
+  // What last month paid them beyond what the envelope held.
+  overpaid: number;
+};
 type Materialized = {
   cash: number;
   readyToAssign: number;
@@ -1974,14 +1985,29 @@ function replay(
       item.counterpartyAccountId ? [[item.counterpartyAccountId, item]] : [],
     ),
   );
-  // The linked person's account works like a credit card (ADR 0015): your
+  // A partner ledger's account works like a credit card (ADR 0015): your
   // side of their purchases is credit spending, and what no category funded
-  // carries on the account as unfunded credit.
+  // carries on the account as unfunded credit. A former partner's frozen
+  // ledger keeps these rules, so disconnecting changes no numbers.
   const linked = partnerAccountOf(budget);
-  let linkedUnfunded = 0;
-  // What categories funded into the linked envelope that it still holds:
-  // only this goes back to a category when a share is refunded.
-  let linkedSetAside = 0;
+  const cardLedgers = new Map<string, CardLedger>(
+    budget.accounts.filter(isPartnerLedger).flatMap((account) => {
+      const envelope = pairedEnvelope.get(account.id);
+      return envelope
+        ? [
+            [
+              account.id,
+              {
+                envelopeId: envelope.id,
+                unfunded: 0,
+                setAside: 0,
+                overpaid: 0,
+              },
+            ],
+          ]
+        : [];
+    }),
+  );
   for (
     let cursor = budget.startMonth;
     cursor <= month;
@@ -1998,6 +2024,17 @@ function replay(
       state.cashOverspending = 0;
       activity?.delete(categoryId);
       state.cashActivity = 0;
+    }
+    // Overpaying a partner left uncovered resets at month end, like a card
+    // payment category left negative: that cash paid off unfunded credit,
+    // and it came out of Ready to Assign.
+    for (const ledger of cardLedgers.values()) {
+      if (!ledger.overpaid) continue;
+      const state = categories.get(ledger.envelopeId)!;
+      state.opening = safe(state.opening + ledger.overpaid);
+      state.available = state.opening;
+      ledger.unfunded = safe(ledger.unfunded - ledger.overpaid);
+      ledger.overpaid = 0;
     }
     for (const [accountId, state] of accounts) {
       startingBalances.set(accountId, state.balance);
@@ -2183,14 +2220,15 @@ function replay(
       }
     }
     // The partner's purchases: what the viewer owes for them moves their
-    // Partner account, and their paired envelope holds it. Their side's
-    // category, once chosen, spends the share as cash.
+    // Partner account. Their side's category, once chosen, spends the share
+    // on credit, as on a card.
     for (const entry of rows.mirrored) {
       if (!entryCounts(entry, cutoff)) continue;
       const change = mirroredChange(entry, userId);
       const counterparty = accounts.get(entry.accountId)!;
       counterparty.balance = safe(counterparty.balance + change);
-      if (entry.accountId === linked?.id) {
+      const ledger = cardLedgers.get(entry.accountId);
+      if (ledger) {
         const spending = sideSpending(budget, entry.id, change);
         for (const [id, amount] of spending) {
           if (!amount) continue;
@@ -2199,10 +2237,13 @@ function replay(
           addActivity(id, "partner", entry.id, amount);
           state.available = safe(state.available + amount);
           const cards = creditByCategory.get(id) ?? new Map<string, number>();
-          cards.set(linked.id, safe((cards.get(linked.id) ?? 0) - amount));
+          cards.set(
+            entry.accountId,
+            safe((cards.get(entry.accountId) ?? 0) - amount),
+          );
           creditByCategory.set(id, cards);
         }
-        if (linkedEntries && change < 0) {
+        if (linkedEntries && entry.accountId === linked?.id && change < 0) {
           linkedEntries.set(entry.id, {
             entry,
             month: cursor,
@@ -2217,8 +2258,8 @@ function replay(
             });
         }
         // A share with no category is unfunded from the start.
-        linkedUnfunded = safe(
-          linkedUnfunded - change + sum(spending.map(([, amount]) => amount)),
+        ledger.unfunded = safe(
+          ledger.unfunded - change + sum(spending.map(([, amount]) => amount)),
         );
         continue;
       }
@@ -2278,16 +2319,16 @@ function replay(
           refunds.push({ categoryId, cardId, remaining: -amount });
       }
     }
-    const linkedEnvelope = linked && pairedEnvelope.get(linked.id)?.id;
     const fund = (purchase: (typeof purchases)[number], amount: number) => {
-      // What a category funds of the linked person's purchases moves into
-      // their envelope, which holds it to pay them.
-      if (purchase.cardId === linked?.id && linkedEnvelope) {
+      // What a category funds of a partner's purchases moves into their
+      // envelope, which holds it to pay them.
+      const ledger = cardLedgers.get(purchase.cardId);
+      if (ledger) {
         liquidity.set(
-          linkedEnvelope,
-          safe((liquidity.get(linkedEnvelope) ?? 0) + amount),
+          ledger.envelopeId,
+          safe((liquidity.get(ledger.envelopeId) ?? 0) + amount),
         );
-        linkedSetAside = safe(linkedSetAside + amount);
+        ledger.setAside = safe(ledger.setAside + amount);
       } else {
         const card = accounts.get(purchase.cardId)!;
         card.reserve = safe(card.reserve + amount);
@@ -2337,19 +2378,20 @@ function replay(
         moved = true;
       }
       for (const refund of refunds) {
-        if (refund.cardId === linked?.id && linkedEnvelope) {
+        const ledger = cardLedgers.get(refund.cardId);
+        if (ledger) {
           const amount = Math.min(
             refund.remaining,
             Math.max(
               0,
-              Math.min(linkedSetAside, liquidity.get(linkedEnvelope) ?? 0),
+              Math.min(ledger.setAside, liquidity.get(ledger.envelopeId) ?? 0),
             ),
           );
           if (!amount) continue;
-          linkedSetAside = safe(linkedSetAside - amount);
+          ledger.setAside = safe(ledger.setAside - amount);
           liquidity.set(
-            linkedEnvelope,
-            safe(liquidity.get(linkedEnvelope)! - amount),
+            ledger.envelopeId,
+            safe(liquidity.get(ledger.envelopeId)! - amount),
           );
           liquidity.set(
             refund.categoryId,
@@ -2409,11 +2451,12 @@ function replay(
         state.reserve - reserveBeforePayments.get(account.id)!,
       );
     }
-    // What no category funded of the linked person's purchases carries on
-    // their account.
-    for (const purchase of purchases)
-      if (purchase.cardId === linked?.id)
-        linkedUnfunded = safe(linkedUnfunded + purchase.remaining);
+    // What no category funded of a partner's purchases carries on their
+    // account.
+    for (const purchase of purchases) {
+      const ledger = cardLedgers.get(purchase.cardId);
+      if (ledger) ledger.unfunded = safe(ledger.unfunded + purchase.remaining);
+    }
     // What each category funded goes to its earliest purchases first, so the
     // latest ones are short.
     if (linkedEntries) {
@@ -2444,9 +2487,10 @@ function replay(
     }
     // A refund the envelope couldn't release reduces the unfunded credit
     // instead, below zero when it returns what the envelope paid out.
-    for (const refund of refunds)
-      if (refund.cardId === linked?.id)
-        linkedUnfunded = safe(linkedUnfunded - refund.remaining);
+    for (const refund of refunds) {
+      const ledger = cardLedgers.get(refund.cardId);
+      if (ledger) ledger.unfunded = safe(ledger.unfunded - refund.remaining);
+    }
     // Paired envelope card spending still unfunded carries into later months.
     // Card debt that cash paid before a reserve funded it is cash-backed now,
     // so it leaves the carried credit and the payment's shortfall.
@@ -2532,10 +2576,11 @@ function replay(
           )
           .map((item) => item.amount),
       );
+      const ledger = cardLedgers.get(category.counterpartyAccountId);
       state.available = safe(
         float -
           accounts.get(category.counterpartyAccountId)!.balance -
-          (category.counterpartyAccountId === linked?.id ? linkedUnfunded : 0),
+          (ledger?.unfunded ?? 0),
       );
       // Whatever the envelope lacks beyond its unfunded card credit was paid
       // in cash. It stays cash overspending until repaid or covered, since the
@@ -2548,11 +2593,22 @@ function replay(
       state.cashOverspending = Math.max(0, safe(-state.available - cardCredit));
       // Paying them or moving money out leaves less of what categories
       // funded in the envelope.
-      if (category.counterpartyAccountId === linked?.id)
-        linkedSetAside = Math.min(
-          linkedSetAside,
+      if (ledger) {
+        ledger.setAside = Math.min(
+          ledger.setAside,
           Math.max(0, safe(state.available + cardCredit)),
         );
+        // What they owe you carries, as in any person's envelope; the rest
+        // of the cash overspending paid them more than the envelope held.
+        const owedToYou = Math.max(
+          0,
+          accounts.get(category.counterpartyAccountId)!.balance,
+        );
+        ledger.overpaid = Math.min(
+          state.cashOverspending,
+          Math.max(0, safe(-state.available - owedToYou)),
+        );
+      }
     }
     snapshots.set(
       cursor,
@@ -3087,7 +3143,8 @@ function linkedFunding(
   if (!account || !envelope) return undefined;
   const owed = Math.max(0, -calculated.accounts.get(account.id)!.balance);
   const available = calculated.categories.get(envelope.id)!.available;
-  const stillToFund = Math.max(0, owed - available);
+  // A red envelope is overspending, not a gap to fund.
+  const stillToFund = Math.max(0, owed - Math.max(0, available));
   return {
     accountId: account.id,
     categoryId: envelope.id,
