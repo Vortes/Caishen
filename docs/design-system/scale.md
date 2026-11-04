@@ -76,16 +76,17 @@ Spacing has its own rules by role: see [spacing.md](spacing.md).
 
 Inner radii are fixed. An outer radius is the inner radius plus the padding
 between them, including a 1px border, so nested corners stay concentric.
-Never pick an outer radius by eye.
+Never pick an outer radius by eye. The main panel is the one exception: its
+12px corners match Linear's rather than wrapping the cards inside it.
 
-| Token                | Value      | Use                                   |
-| -------------------- | ---------- | ------------------------------------- |
-| `--radius-row`       | 6px        | Rows, quiet controls, segmented items |
-| `--radius-card`      | 12px       | Cards                                 |
-| `--radius-segmented` | row + 3px  | A segmented control around its items  |
-| `--radius-menu`      | row + 5px  | A popover around its rows             |
-| `--radius-peek`      | row + 9px  | The peeking sidebar                   |
-| `--radius-panel`     | card + 9px | A panel around its cards              |
+| Token                | Value     | Use                                   |
+| -------------------- | --------- | ------------------------------------- |
+| `--radius-row`       | 6px       | Rows, quiet controls, segmented items |
+| `--radius-card`      | 12px      | Cards                                 |
+| `--radius-segmented` | row + 3px | A segmented control around its items  |
+| `--radius-menu`      | row + 5px | A popover around its rows             |
+| `--radius-peek`      | row + 9px | The peeking sidebar                   |
+| `--radius-panel`     | 12px      | The main panel                        |
 
 Pills (buttons, tags) use `999px`; that is a shape, not a size.
 

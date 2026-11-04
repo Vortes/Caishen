@@ -47,6 +47,9 @@
   --surface-selected: oklch(0.245 calc(var(--tint) * 1.5) var(--hue));
 
   --border-subtle: oklch(0.24 var(--tint) var(--hue));
+  /* The main panel's edge: close to the panel, so the change in surface
+     draws the panel's shape and the line only crisps it, like Linear's. */
+  --border-panel: oklch(0.21 var(--tint) var(--hue));
   --border-card: oklch(0.25 var(--tint) var(--hue));
   --border-strong: oklch(0.34 var(--tint) var(--hue));
   --border-edge-lit: oklch(0.56 var(--tint) var(--hue));
@@ -129,6 +132,7 @@
   --surface-selected: oklch(0.928 calc(var(--tint) * 1.5) var(--hue));
 
   --border-subtle: oklch(0.25 var(--tint) var(--hue) / 0.09);
+  --border-panel: oklch(0.25 var(--tint) var(--hue) / 0.09);
   --border-card: oklch(0.25 var(--tint) var(--hue) / 0.08);
   --border-strong: oklch(0.25 var(--tint) var(--hue) / 0.18);
   --border-edge-lit: oklch(0.25 var(--tint) var(--hue) / 0.45);
@@ -247,10 +251,11 @@
 
   /* Concentric corners: outer radius = inner radius + padding, where the
      padding includes the container's 1px border. Inner radii are the fixed
-     choices; containers grow to fit them. */
+     choices; containers grow to fit them. The main panel is the exception:
+     its corners match Linear's, not the cards inside it. */
   --radius-row: 6px;
   --radius-card: 12px;
-  --radius-panel: calc(var(--radius-card) + var(--space-inset) + 1px);
+  --radius-panel: 12px;
   --radius-peek: calc(var(--radius-row) + 8px + 1px);
   --radius-menu: calc(var(--radius-row) + 4px + 1px);
   --radius-segmented: calc(var(--radius-row) + 2px + 1px);

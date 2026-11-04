@@ -23,6 +23,7 @@
   --surface-raised: oklch(from var(--mt-bg) calc(l + 0.027) c h);
   --surface-hover: oklch(from var(--mt-bg) calc(l + 0.044) c h);
   --control-bg-hover: oklch(from var(--mt-bg) calc(l + 0.054) c h);
+  --border-panel: oklch(from var(--mt-bg) calc(l + 0.032) c h);
   --border-subtle: oklch(from var(--mt-bg) calc(l + 0.062) c h);
   --surface-selected: oklch(from var(--mt-bg) calc(l + 0.067) c h);
   --border-card: oklch(from var(--mt-bg) calc(l + 0.072) c h);
@@ -393,7 +394,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-panel);
   border-radius: var(--radius-panel);
   background: var(--surface-panel);
 }
