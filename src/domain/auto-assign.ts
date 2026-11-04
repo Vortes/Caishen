@@ -44,13 +44,13 @@ export type AutoAssignPlan = {
   stuck: number;
 };
 
-// Underfunded covers overspending and fully funds the target, or what's still to
-// fund for the partner, whichever needs more.
+// Underfunded covers overspending and fully funds the target, whichever needs
+// more. The partner's envelope also needs what's still to fund on top of any
+// overspending, since that only counts what it holds above zero.
 export function underfunded(category: AutoAssignCategory) {
   return Math.max(
     category.targetProgress?.needed ?? 0,
-    -Math.min(0, category.available),
-    category.stillToFund ?? 0,
+    -Math.min(0, category.available) + (category.stillToFund ?? 0),
   );
 }
 

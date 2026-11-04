@@ -152,6 +152,24 @@ void test("underfunded includes what's still to fund for your partner", () => {
   );
 });
 
+void test("a red partner's envelope is underfunded by its overspending plus what's still to fund", () => {
+  // Alan paid Anna $60 with nothing set aside and still owes her $40.
+  const scope = [category("anna", { available: -6000, stillToFund: 4000 })];
+
+  assert.equal(optionAmount("underfunded", scope), 10000);
+  assert.deepEqual(
+    ids(
+      planAutoAssign({
+        option: "underfunded",
+        scope,
+        readyToAssign: 50000,
+        month,
+      }),
+    ),
+    ["anna:10000"],
+  );
+});
+
 void test("weekly targets are funded one week at a time between other due dates", () => {
   // October 2026 Saturdays: 3, 10, 17, 24, 31. $400 already covers the first four.
   const scope = [

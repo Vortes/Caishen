@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { toShellData } from "../../src/components/app-shell/model";
+import { underfunded } from "../../src/domain/auto-assign";
 import { execute, projectBook, type Command } from "../../src/domain/engine";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 
@@ -157,4 +158,47 @@ void test("earlier short purchases leave the list once nothing is still to fund"
   });
 
   assert.deepEqual(listed(), []);
+});
+
+void test("a red partner's row shows its overspending, and Underfunded also covers what's still to fund", () => {
+  const home = simple();
+  // Alex pays Jordan $1,460.00 of the $1,488.58 owed, $24.84 more than the
+  // $1,435.16 set aside, so $28.58 is still to fund.
+  home.run({
+    type: "partner.settle",
+    settlementId: "test-settlement",
+    method: "Bank transfer",
+    legs: [
+      {
+        userId: "alex",
+        accountId: "checking",
+        date: `${month}-15`,
+        amount: -146_000,
+        payee: "Jordan",
+      },
+      {
+        userId: "jordan",
+        accountId: "checking",
+        date: `${month}-15`,
+        amount: 146_000,
+        payee: "Alex",
+      },
+    ],
+  });
+  const row = jordan(home.shell());
+
+  assert.deepEqual(
+    {
+      available: row.available,
+      funding: row.funding,
+      stillToFund: row.partnerFunding?.stillToFund,
+      underfunded: underfunded(row.autoAssign),
+    },
+    {
+      available: -2_484,
+      funding: "overspent",
+      stillToFund: 2_858,
+      underfunded: 5_342,
+    },
+  );
 });

@@ -151,3 +151,39 @@ test("Assign covers what's still to fund for the partner, up to what Ready to As
     amount: 3_705,
   });
 });
+
+test("Assign on a red partner's envelope covers its overspending and what's still to fund", async () => {
+  const home = simple();
+  // You pay Jordan $1,460.00 of the $1,488.58 you owe, $24.84 more than
+  // the $1,435.16 set aside, so $28.58 is still to fund.
+  home.run("owner", {
+    type: "partner.settle",
+    settlementId: "test-settlement",
+    method: "Bank transfer",
+    legs: [
+      {
+        userId: "owner",
+        accountId: "checking",
+        date: "2026-10-15",
+        amount: -146_000,
+        payee: "Jordan",
+      },
+      {
+        userId: "partner",
+        accountId: "checking",
+        date: "2026-10-15",
+        amount: 146_000,
+        payee: "Alex",
+      },
+    ],
+  });
+  const { user, execute } = await showJordan(home.book);
+
+  await user.click(details().getByRole("button", { name: "Assign $53.42" }));
+
+  expect(sent(execute).at(-1)).toMatchObject({
+    type: "assign",
+    month: "2026-10",
+    amount: 5_342,
+  });
+});

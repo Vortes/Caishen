@@ -414,13 +414,13 @@ export function toShellData(
         ? partnerFundingOf(view.partnerFunding, categoryName)
         : undefined;
     // What's still to fund for the partner is underfunded, like a card's
-    // payment short of its balance.
-    const stillToFund =
-      partnerFunding && item.available >= 0 ? partnerFunding.stillToFund : 0;
+    // payment short of its balance. A red envelope shows its overspending
+    // first.
+    const stillToFund = partnerFunding?.stillToFund ?? 0;
     const funding =
       card && item.available < 0
         ? "overspent"
-        : paymentNeeded > 0 || stillToFund > 0
+        : item.available >= 0 && (paymentNeeded > 0 || stillToFund > 0)
           ? "underfunded"
           : categoryStatus(item);
     const progress = item.targetProgress;
@@ -450,7 +450,7 @@ export function toShellData(
       status:
         paymentNeeded > 0 && item.available >= 0
           ? `${money(paymentNeeded)} more needed to pay in full`
-          : stillToFund > 0
+          : funding === "underfunded" && stillToFund > 0
             ? `${money(stillToFund)} more needed`
             : statusLine(item, funding),
       target:

@@ -11,7 +11,11 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { optionAmount, type AutoAssignOption } from "~/domain/auto-assign";
+import {
+  optionAmount,
+  underfunded,
+  type AutoAssignOption,
+} from "~/domain/auto-assign";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { newId } from "~/components/budget/format";
@@ -388,8 +392,8 @@ function partnerCaption(name: string, funding: PartnerFunding) {
   return `You don’t owe ${name} anything`;
 }
 
-// Assigns what's still to fund for the partner, as much as Ready to Assign
-// holds.
+// Assigns what's still to fund for the partner, and any overspending, as
+// much as Ready to Assign holds: the envelope's Underfunded amount.
 function AssignStillToFund({
   category,
   funding,
@@ -401,8 +405,8 @@ function AssignStillToFund({
 }) {
   const { readyToAssign, month } = useShellData();
   const { move } = useMoveMoney();
-  const amount = Math.min(funding.stillToFund, readyToAssign);
-  if (amount <= 0) return null;
+  const amount = Math.min(underfunded(category.autoAssign), readyToAssign);
+  if (funding.stillToFund <= 0 || amount <= 0) return null;
   return (
     <Button
       variant={category.available < 0 ? "secondary" : "primary"}
