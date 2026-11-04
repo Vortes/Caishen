@@ -1988,25 +1988,36 @@ function replay(
   // A partner ledger's account works like a credit card (ADR 0015): your
   // side of their purchases is credit spending, and what no category funded
   // carries on the account as unfunded credit. A former partner's frozen
-  // ledger keeps these rules, so disconnecting changes no numbers.
+  // ledger keeps these rules, so disconnecting changes no numbers; a former
+  // partner is the closed person its frozen entries belong to. Other closed
+  // people keep ADR 0007's rules.
   const linked = partnerAccountOf(budget);
+  const formerPartners = new Set(
+    (budget.formerPartnerEntries ?? []).map((entry) => entry.accountId),
+  );
   const cardLedgers = new Map<string, CardLedger>(
-    budget.accounts.filter(isPartnerLedger).flatMap((account) => {
-      const envelope = pairedEnvelope.get(account.id);
-      return envelope
-        ? [
-            [
-              account.id,
-              {
-                envelopeId: envelope.id,
-                unfunded: 0,
-                setAside: 0,
-                overpaid: 0,
-              },
-            ],
-          ]
-        : [];
-    }),
+    budget.accounts
+      .filter(
+        (account) =>
+          account.id === linked?.id ||
+          (isFormerPartner(account) && formerPartners.has(account.id)),
+      )
+      .flatMap((account) => {
+        const envelope = pairedEnvelope.get(account.id);
+        return envelope
+          ? [
+              [
+                account.id,
+                {
+                  envelopeId: envelope.id,
+                  unfunded: 0,
+                  setAside: 0,
+                  overpaid: 0,
+                },
+              ],
+            ]
+          : [];
+      }),
   );
   for (
     let cursor = budget.startMonth;

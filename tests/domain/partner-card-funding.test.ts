@@ -730,3 +730,46 @@ void test("money assigned later covers the earliest listed shortfalls first, so 
     [{ entryId: home.pharmacy, short: 1_500 }],
   );
 });
+
+void test("a closed person who was never your partner keeps other people's envelope rules", () => {
+  const home = household();
+  home.run("alan", { type: "person.add", accountId: "mom", name: "Mom" });
+  const mom = home
+    .view()
+    .categories.find((item) => item.counterpartyAccountId === "mom")!.id;
+  // A store refunds $50 that was all Mom's, so Alan owes her $50, and he
+  // moves that $50 out of her envelope. Then he fronts $20 of hers.
+  for (const [transactionId, date, amount] of [
+    ["mom-refund", "2026-10-12", 5_000],
+    ["mom-lunch", "2026-10-14", -2_000],
+  ] as const) {
+    if (amount < 0)
+      home.run("alan", {
+        type: "assign",
+        categoryId: mom,
+        month,
+        amount: -5_000,
+      });
+    home.run("alan", {
+      type: "transaction.upsert",
+      transactionId,
+      accountId: "checking",
+      date,
+      amount,
+      payee: "Store",
+      counterpartyShare: { accountId: "mom", amount: Math.abs(amount) },
+      recordedAt: `${date}T12:00:00Z`,
+    });
+  }
+  const closed = structuredClone(home.book);
+  closed.budgets.alan!.accounts.find((item) => item.id === "mom")!.closed = {
+    at: "2026-10-20T12:00:00.000Z",
+    by: "alan",
+  };
+
+  for (const book of [home.book, closed]) {
+    const november = projectBook(book, "alan", "2026-11");
+    assert.equal(category(november, mom).available, -2_000);
+    assert.equal(november.readyToAssign, 505_000);
+  }
+});
