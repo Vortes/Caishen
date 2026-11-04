@@ -19,9 +19,10 @@ import { Card } from "~/components/ui/card";
 import { FormError } from "~/components/ui/field";
 import { FoldProvider, Figure, Property, Section } from "./cards";
 import { useAutoAssign } from "./assign-money";
-import { money, type Category } from "./model";
+import { money, type Category, type PartnerFunding } from "./model";
 import { ExpectedIncomeProperty } from "./expected-income";
-import { MoveMoneyPopover } from "./move-money";
+import { MoveMoneyPopover, useMoveMoney } from "./move-money";
+import { PartnerPurchases } from "./partner-purchases";
 import { RtaCard } from "./ready-to-assign";
 import { useShellData } from "./shell-data";
 import { TargetEditor, useTargetEditing } from "./target-editor";
@@ -294,6 +295,8 @@ function CategoryDetails({
 }) {
   const fallback =
     category.available > 0 ? "Money available" : "No money assigned yet";
+  const partner = category.partnerFunding;
+  const [assignError, setAssignError] = useState<string | null>(null);
   return (
     <>
       <Section
@@ -304,10 +307,28 @@ function CategoryDetails({
       >
         <Figure
           value={money(category.available)}
-          caption={category.status || fallback}
+          caption={
+            partner && category.available >= 0
+              ? partnerCaption(category.name, partner)
+              : category.status || fallback
+          }
           tone={category.funding}
         />
+        {partner && partner.owed > 0 && (
+          <Meter
+            ratio={category.fundedRatio}
+            tone={category.funding}
+            label={`${money(partner.owed - Math.min(partner.owed, partner.stillToFund))} of ${money(partner.owed)} set aside`}
+          />
+        )}
         <div className={styles.cardActions}>
+          {partner && (
+            <AssignStillToFund
+              category={category}
+              funding={partner}
+              onError={setAssignError}
+            />
+          )}
           <MoveMoneyPopover category={category} align="start">
             {category.available < 0 ? (
               <Button variant="primary">Cover overspending</Button>
@@ -316,8 +337,17 @@ function CategoryDetails({
             )}
           </MoveMoneyPopover>
         </div>
+        {assignError && (
+          <div className={styles.cardError}>
+            <FormError>{assignError}</FormError>
+          </div>
+        )}
       </Section>
-      {category.pairs && <PairedBalance category={category} />}
+      {partner ? (
+        <PartnerPurchases category={category} funding={partner} />
+      ) : (
+        category.pairs && <PairedBalance category={category} />
+      )}
       <Card>
         <Property label="Assigned">{money(category.assigned)}</Property>
         <Property label="Activity">
@@ -346,6 +376,60 @@ function CategoryDetails({
       </Section>
       <AutoAssign scope={[category]} />
     </>
+  );
+}
+
+// The partner's envelope says what it still needs to pay them, like a
+// card's payment category short of its balance (ADR 0015).
+function partnerCaption(name: string, funding: PartnerFunding) {
+  if (funding.stillToFund > 0)
+    return `${money(funding.stillToFund)} more needed to pay ${name}`;
+  if (funding.owed > 0) return `Everything you owe ${name} is set aside`;
+  return `You don’t owe ${name} anything`;
+}
+
+// Assigns what's still to fund for the partner, as much as Ready to Assign
+// holds.
+function AssignStillToFund({
+  category,
+  funding,
+  onError,
+}: {
+  category: Category;
+  funding: PartnerFunding;
+  onError: (error: string | null) => void;
+}) {
+  const { readyToAssign, month } = useShellData();
+  const { move } = useMoveMoney();
+  const amount = Math.min(funding.stillToFund, readyToAssign);
+  if (amount <= 0) return null;
+  return (
+    <Button
+      variant={category.available < 0 ? "secondary" : "primary"}
+      onClick={(event) => {
+        const actions = event.currentTarget.parentElement;
+        const failure = move(
+          {
+            type: "assign",
+            id: newId(),
+            categoryId: category.id,
+            month: month.key,
+            amount,
+          },
+          `Assigned ${money(amount)} to ${category.name}`,
+        );
+        onError(failure);
+        // Covering all of it takes the button away; focus stays in the
+        // card, on the action beside it.
+        if (!failure)
+          requestAnimationFrame(() => {
+            if (document.activeElement === document.body)
+              actions?.querySelector("button")?.focus({ preventScroll: true });
+          });
+      }}
+    >
+      Assign {money(amount)}
+    </Button>
   );
 }
 
