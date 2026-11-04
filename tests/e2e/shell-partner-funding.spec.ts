@@ -4,7 +4,8 @@ import { connectPartner } from "./partner-household";
 import { expect, shellPath, test } from "./shell-fixture";
 import { editAssigned, openRegister, saved } from "./shell-controls";
 
-// Your partner pays for something and shares half of it with you.
+// Your partner pays for something that's all yours and shares it with you,
+// so none of it needs a category in their budget.
 async function sharePurchase(
   partner: Page,
   date: string,
@@ -28,7 +29,7 @@ async function sharePurchase(
   await partner
     .getByRole("dialog", { name: "Who this is for", exact: true })
     .getByRole("group", { name: "How much is for Caishen E2E", exact: true })
-    .getByRole("button", { name: /^Half/ })
+    .getByRole("button", { name: /^All of it/ })
     .click();
   await form.getByRole("button", { name: "Save", exact: true }).click();
   await saved(partner);
@@ -77,9 +78,8 @@ test("what's still to fund for your partner is set aside by categorizing their p
       .getByRole("button", { name: "Add account", exact: true })
       .click();
     await openRegister(partner, "Jordan checking");
-    // Your half is $71.00 and $33.42.
-    await sharePurchase(partner, budget.date, "Platinum Parking", "142");
-    await sharePurchase(partner, budget.date, "Trader Joe’s", "66.84");
+    await sharePurchase(partner, budget.date, "Platinum Parking", "71");
+    await sharePurchase(partner, budget.date, "Trader Joe’s", "33.42");
   } finally {
     await context.close();
   }
