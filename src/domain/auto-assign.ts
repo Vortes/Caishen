@@ -123,7 +123,8 @@ type Chunk = { categoryId: string; amount: number; rank: [number, number] };
 
 // YNAB's Underfunded order: overspent categories first, then targets due on a day this
 // month by date (weekly targets split per week), then end-of-month targets, then targets
-// due in a later month by due date, then credit card payments. Ties go top to bottom.
+// due in a later month by due date, then credit card payments and what's still to fund
+// for the partner. Ties go top to bottom.
 export function underfundedOrder(
   scope: AutoAssignCategory[],
   month: string,
@@ -135,7 +136,17 @@ export function underfundedOrder(
     const target = category.target;
     const push = (rank: [number, number], value = amount) =>
       chunks.push({ categoryId: category.id, amount: value, rank });
-    if (category.available < 0 || !target || category.targetProgress?.snoozed)
+    if (category.stillToFund) {
+      // What's still to fund for the partner comes with card payments, after
+      // any overspending.
+      const overspent = -Math.min(0, category.available);
+      if (overspent) push([0, 0], overspent);
+      if (amount > overspent) push([4, 0], amount - overspent);
+    } else if (
+      category.available < 0 ||
+      !target ||
+      category.targetProgress?.snoozed
+    )
       push([0, 0]);
     else if (
       category.pairedAccountId ||
