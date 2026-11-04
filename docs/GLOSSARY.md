@@ -96,7 +96,7 @@ A linked person who disconnected, or whose account was deleted. Each side keeps 
 _Avoid_: Ex-partner, removed member
 
 **Paired envelope**:
-The budget category that belongs to a counterparty account and holds its cash, including the entire cost of a fully reimbursable purchase. Its available amount is its float minus the account's balance, and it never resets at monthly rollover.
+The budget category that belongs to a person's account and holds its cash, including the entire cost of a fully reimbursable purchase. Its available amount is its float minus the account's balance, and it never resets at monthly rollover. The linked person's envelope works like a card's payment category: it also subtracts their unfunded credit, so it holds only your float and what your categories funded of their purchases.
 
 **Float**:
 Your own cash assigned to a paired envelope, set aside to front costs for a counterparty until they repay. Assigning float lowers Ready to Assign like any other assignment.
@@ -161,7 +161,10 @@ The facts inside a mirrored partner entry's source that let either partner's bro
 _Avoid_: Shared category, provisional preview
 
 **Partner's purchase**:
-A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and is held from Ready to Assign until it has your own category, which the agent books from your precedent at that payee or which you choose. Your partner's category is never evidence for it.
+A partner ledger entry your partner paid for. Your part of it counts in your budget immediately and works like a credit card purchase, with the linked person's account as the card. Once it has your own category, which the agent books from your precedent at that payee or which you choose, that category funds it into the linked person's envelope from what it holds. What the category can't cover is credit overspending, and stays on the envelope as still to fund. Until it has a category it is unfunded and holds nothing from Ready to Assign. A refund, share change or write-off returns what was set aside for it to its category. Your partner's category is never evidence for it.
+
+**Still to fund**:
+What the linked person's envelope lacks to pay what you owe them on net: what you owe, minus the envelope's available amount, never below zero. A short category, a share without a category, or money moved out of the envelope adds to it. Assigning to the envelope covers it, and Auto-Assign's Underfunded includes it.
 
 **Repayment**:
 Money a person who isn't linked pays you back, recorded from their register or recognized in a bank import by their name. It reduces what they owe and restores their paired envelope; it is never income and never goes to Ready to Assign. The linked person pays you back by a settlement instead.
@@ -193,11 +196,11 @@ A comparison showing how an additional loan payment would affect a payoff foreca
 A credit applied to a credit-card account that reduces the amount owed, rather than depositing cash into a bank account. Once posted, it releases any existing payment reserve no longer needed to cover the remaining card balance into Ready to Assign.
 
 **Overspending**:
-Spending that exceeds the money available in a budget category. In a paired envelope, only what you fronted in cash counts as cash overspending, and it stays visible until it is repaid or covered with float. A card payment larger than its reserve is cash overspending in the card's payment category; the spending categories it paid for keep their own state.
+Spending that exceeds the money available in a budget category. In a paired envelope, only what you fronted in cash counts as cash overspending, and it stays visible until it is repaid or covered with float. A category short on your part of a partner's purchase is overspent on credit, and paying the linked person more than their envelope holds is cash overspending in the envelope. A card payment larger than its reserve is cash overspending in the card's payment category; the spending categories it paid for keep their own state.
 
 **Overspending coverage**:
 Moving budgeted money from another category to cover overspending. Choosing the source is always the user's decision.
 _Avoid_: Recategorization
 
 **Monthly rollover**:
-The transition to a new budget month: positive available category balances carry forward, uncovered cash overspending reduces the next month's Ready to Assign, including a card payment category left negative by a payment, and uncovered credit spending remains debt requiring funding. Paired envelopes carry forward unchanged, including any shortfall, so money owed to you never reaches Ready to Assign.
+The transition to a new budget month: positive available category balances carry forward, uncovered cash overspending reduces the next month's Ready to Assign, including a card payment category left negative by a payment, and uncovered credit spending remains debt requiring funding, including your part of a partner's purchase, which stays on the linked person's envelope as still to fund. Paired envelopes carry forward unchanged, including any shortfall, so money owed to you never reaches Ready to Assign.

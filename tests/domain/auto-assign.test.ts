@@ -129,6 +129,29 @@ void test("underfunded stops when Ready to Assign runs out and reports the short
   assert.equal(plan.short, 106500);
 });
 
+void test("underfunded includes what's still to fund for your partner", () => {
+  const scope = [
+    category("rent", {
+      target: target({ cadence: "monthly", amount: 150000 }),
+      needed: 150000,
+    }),
+    category("anna", { available: 3000, stillToFund: 1000 }),
+  ];
+
+  assert.equal(optionAmount("underfunded", scope), 151000);
+  assert.deepEqual(
+    ids(
+      planAutoAssign({
+        option: "underfunded",
+        scope,
+        readyToAssign: 500,
+        month,
+      }),
+    ),
+    ["anna:500"],
+  );
+});
+
 void test("weekly targets are funded one week at a time between other due dates", () => {
   // October 2026 Saturdays: 3, 10, 17, 24, 31. $400 already covers the first four.
   const scope = [
