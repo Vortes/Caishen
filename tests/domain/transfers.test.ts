@@ -567,3 +567,27 @@ void test("bulk categorization updates both brokerage sides once and rolls back 
   );
   assert.deepEqual(f.book, before);
 });
+
+void test("categorizing a posted transfer preserves approval on both sides", () => {
+  const f = fixture();
+  f.run({ type: "category.add", categoryId: "other", name: "Other" });
+  f.run({
+    type: "transaction.upsert",
+    transactionId: "import",
+    accountId: "checking",
+    transferAccountId: "brokerage",
+    categoryId: "investing",
+    date,
+    amount: -5000,
+    payee: "Brokerage",
+    reviewed: false,
+  });
+  f.run({
+    type: "transaction.categorize",
+    transactionId: "import",
+    categoryId: "other",
+  });
+  const sent = f.transaction("import");
+  assert.equal(sent.reviewed, false);
+  assert.equal(transferCounterparts(f.view().budget, sent)[0]!.reviewed, false);
+});

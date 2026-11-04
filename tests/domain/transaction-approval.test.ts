@@ -116,3 +116,23 @@ void test("approval rejects more than 500 recorded transactions before changing 
     [false, false],
   );
 });
+
+void test("categorizing posted purchases leaves approval separate, including in a batch", () => {
+  const book = execute(recordedPurchases(), "owner", {
+    type: "transaction.categorize.batch",
+    id: "categorize-both",
+    transactionIds: ["categorized", "uncategorized"],
+    categoryId: "food",
+  });
+  const view = projectBook(book, "owner", "2026-10");
+  assert.deepEqual(
+    view.budget.transactions
+      .filter(({ kind }) => kind === "purchase")
+      .map(({ reviewed }) => reviewed),
+    [false, false],
+  );
+  assert.equal(
+    view.categories.find(({ id }) => id === "food")!.available,
+    17_000,
+  );
+});

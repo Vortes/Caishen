@@ -361,3 +361,53 @@ void test("a removed newly created entry never permits an ambiguous create retry
     ),
   );
 });
+
+void test("categorizing bank imports previews pending approval separately from posted review", async () => {
+  const { prepareTransactionCategories } =
+    await import("../../src/components/transactions/transaction-category");
+  const { importRowId } =
+    await import("../../src/components/transactions/import-draft");
+  const setup = fixture();
+  for (const pending of [false, true]) {
+    const imported = {
+      connectionId: "connection",
+      logicalId: "purchase",
+      transactionId: undefined,
+      fingerprint: "a".repeat(64),
+      providerAccountId: "provider-checking",
+      accountId: "checking",
+      categoryId: null,
+      date,
+      payee: "Market",
+      amount: -2000,
+      pending,
+      removed: false,
+      needsMatchReview: false,
+      error: null,
+      history: [],
+      eligibility: "eligible" as const,
+      reviewEvidence: [],
+      quarantined: false,
+    };
+    const [change] = prepareTransactionCategories(
+      setup.view(),
+      [imported],
+      [importRowId(imported)],
+      "food",
+    );
+    const preview = projectBook(
+      execute(setup.book, "alan", change!.command),
+      "alan",
+      month,
+    );
+    const purchase = preview.budget.transactions.find(
+      ({ payee }) => payee === "Market",
+    )!;
+    assert.equal(purchase.reviewed, pending);
+    assert.equal(purchase.cleared, !pending);
+    assert.equal(
+      preview.categories.find(({ id }) => id === "food")!.available,
+      8000,
+    );
+  }
+});
