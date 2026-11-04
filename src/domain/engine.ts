@@ -3071,7 +3071,8 @@ export type BudgetProjection = ReturnType<typeof projectBook>;
  * holds (ADR 0015). What you owe is the net amount; still to fund is what
  * the envelope lacks to pay it. Entries are the viewer's part of the
  * linked person's purchases in the month, and earlier ones still short or
- * without a category, oldest first.
+ * without a category while something is still to fund, oldest first. Once
+ * an assignment or a settlement covers the gap, the earlier ones drop off.
  */
 function linkedFunding(
   budget: Budget,
@@ -3086,13 +3087,18 @@ function linkedFunding(
   if (!account || !envelope) return undefined;
   const owed = Math.max(0, -calculated.accounts.get(account.id)!.balance);
   const available = calculated.categories.get(envelope.id)!.available;
+  const stillToFund = Math.max(0, owed - available);
   return {
     accountId: account.id,
     categoryId: envelope.id,
     owed,
-    stillToFund: Math.max(0, owed - available),
+    stillToFund,
     entries: [...linkedEntries.values()]
-      .filter((item) => item.month === month || item.setAside < item.amount)
+      .filter(
+        (item) =>
+          item.month === month ||
+          (stillToFund > 0 && item.setAside < item.amount),
+      )
       .map(({ entry, month: entryMonth, amount, setAside }) => {
         const lines = budget.partnerSides?.[entry.id]?.lines;
         return {

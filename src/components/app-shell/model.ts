@@ -77,9 +77,33 @@ export type Category = {
   // A paired envelope's counterparty account: available is the float set
   // aside minus what the account says is owed to you.
   pairs?: { accountId: string; name: string; balance: number };
+  // The linked person's envelope, which works like a card's payment
+  // category (ADR 0015): what you owe them on net and what it still lacks.
+  partnerFunding?: PartnerFunding;
   autoAssign: AutoAssignCategory;
   // Has transactions or assigned money, which deleting it moves elsewhere.
   used: boolean;
+};
+
+export type PartnerFunding = {
+  owed: number;
+  stillToFund: number;
+  // Your part of the partner's purchases in the month, and earlier ones
+  // still short or without a category, oldest first.
+  purchases: PartnerPurchase[];
+};
+
+export type PartnerPurchase = {
+  entryId: string;
+  date: string;
+  payee: string;
+  // Your part, in cents.
+  amount: number;
+  // Its category's name, or "Split (n)"; none while it needs a category.
+  category?: string;
+  state: "set-aside" | "short" | "needs-category";
+  // How much of your part its category couldn't set aside.
+  short: number;
 };
 
 export type ActivityEntry = {
@@ -385,10 +409,18 @@ export function toShellData(
       card && !item.target && month === activeMonth
         ? Math.max(0, -card.balance - item.available)
         : 0;
+    const partnerFunding =
+      item.id === view.partnerFunding?.categoryId
+        ? partnerFundingOf(view.partnerFunding, categoryName)
+        : undefined;
+    // What's still to fund for the partner is underfunded, like a card's
+    // payment short of its balance.
+    const stillToFund =
+      partnerFunding && item.available >= 0 ? partnerFunding.stillToFund : 0;
     const funding =
       card && item.available < 0
         ? "overspent"
-        : paymentNeeded > 0
+        : paymentNeeded > 0 || stillToFund > 0
           ? "underfunded"
           : categoryStatus(item);
     const progress = item.targetProgress;
@@ -405,17 +437,22 @@ export function toShellData(
       available: item.available,
       carryover: item.opening,
       funding,
-      fundedRatio: progress
-        ? progress.total > 0
-          ? Math.min(1, progress.funded / progress.total)
-          : 1
-        : item.available > 0
-          ? 1
-          : 0,
+      fundedRatio: partnerFunding?.owed
+        ? Math.max(0, partnerFunding.owed - partnerFunding.stillToFund) /
+          partnerFunding.owed
+        : progress
+          ? progress.total > 0
+            ? Math.min(1, progress.funded / progress.total)
+            : 1
+          : item.available > 0
+            ? 1
+            : 0,
       status:
         paymentNeeded > 0 && item.available >= 0
           ? `${money(paymentNeeded)} more needed to pay in full`
-          : statusLine(item, funding),
+          : stillToFund > 0
+            ? `${money(stillToFund)} more needed`
+            : statusLine(item, funding),
       target:
         item.target && progress
           ? {
@@ -450,6 +487,7 @@ export function toShellData(
         name: displayName(pair),
         balance: pair.balance,
       },
+      partnerFunding,
       autoAssign: item,
       used: used.has(item.id),
     };
@@ -702,6 +740,33 @@ export function toShellData(
       lastClosed && lastClosed.closed.by !== view.budget.userId
         ? { name: lastClosed.name, at: lastClosed.closed.at }
         : undefined,
+  };
+}
+
+function partnerFundingOf(
+  funding: NonNullable<View["partnerFunding"]>,
+  categoryName: Map<string, string>,
+): PartnerFunding {
+  return {
+    owed: funding.owed,
+    stillToFund: funding.stillToFund,
+    purchases: funding.entries.map((entry) => ({
+      entryId: entry.entryId,
+      date: entry.date,
+      payee: entry.payee,
+      amount: entry.amount,
+      category: entry.needsCategory
+        ? undefined
+        : entry.lines
+          ? `Split (${entry.lines.length})`
+          : entry.categoryId && categoryName.get(entry.categoryId),
+      state: entry.needsCategory
+        ? "needs-category"
+        : entry.short > 0
+          ? "short"
+          : "set-aside",
+      short: entry.short,
+    })),
   };
 }
 
