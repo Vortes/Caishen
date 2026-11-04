@@ -249,7 +249,7 @@
      padding includes the container's 1px border. Inner radii are the fixed
      choices; containers grow to fit them. */
   --radius-row: 6px;
-  --radius-card: 12px;
+  --radius-card: 8px;
   --radius-panel: calc(var(--radius-card) + var(--space-inset) + 1px);
   --radius-peek: calc(var(--radius-row) + 8px + 1px);
   --radius-menu: calc(var(--radius-row) + 4px + 1px);

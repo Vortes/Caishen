@@ -81,7 +81,7 @@ Never pick an outer radius by eye.
 | Token                | Value      | Use                                   |
 | -------------------- | ---------- | ------------------------------------- |
 | `--radius-row`       | 6px        | Rows, quiet controls, segmented items |
-| `--radius-card`      | 12px       | Cards                                 |
+| `--radius-card`      | 8px        | Cards                                 |
 | `--radius-segmented` | row + 3px  | A segmented control around its items  |
 | `--radius-menu`      | row + 5px  | A popover around its rows             |
 | `--radius-peek`      | row + 9px  | The peeking sidebar                   |
