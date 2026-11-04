@@ -9,6 +9,8 @@
 // Format 10 stores Starting Balances as adjustments instead of account amounts.
 // Format 11 reads every counterparty as a person account, and shares and
 // repayments without a counterparty name (ADR 0014).
-export const CLIENT_FORMAT = 11;
-export const MINIMUM_CLIENT_FORMAT = 11;
+// Format 12 funds the linked person's purchases like a credit card's
+// (ADR 0015).
+export const CLIENT_FORMAT = 12;
+export const MINIMUM_CLIENT_FORMAT = 12;
 export const CLIENT_FORMAT_HEADER = "x-caishen-client-format";
