@@ -202,3 +202,17 @@ void test("a red partner's row shows its overspending, and Underfunded also cove
     },
   );
 });
+
+void test("the partner's details caption says what's still needed to pay them, or that it's all set aside", () => {
+  const home = simple();
+  const caption = () => jordan(home.shell()).partnerFunding?.caption;
+  assert.equal(caption(), "$53.42 more needed to pay Jordan");
+
+  home.run({
+    type: "assign",
+    categoryId: jordan(home.shell()).id,
+    month,
+    amount: 5_342,
+  });
+  assert.equal(caption(), "Everything you owe Jordan is set aside");
+});

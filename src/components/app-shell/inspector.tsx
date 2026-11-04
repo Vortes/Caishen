@@ -311,11 +311,7 @@ function CategoryDetails({
       >
         <Figure
           value={money(category.available)}
-          caption={
-            partner && category.available >= 0
-              ? partnerCaption(category.name, partner)
-              : category.status || fallback
-          }
+          caption={partner?.caption ?? (category.status || fallback)}
           tone={category.funding}
         />
         {partner && partner.owed > 0 && (
@@ -381,15 +377,6 @@ function CategoryDetails({
       <AutoAssign scope={[category]} />
     </>
   );
-}
-
-// The partner's envelope says what it still needs to pay them, like a
-// card's payment category short of its balance (ADR 0015).
-function partnerCaption(name: string, funding: PartnerFunding) {
-  if (funding.stillToFund > 0)
-    return `${money(funding.stillToFund)} more needed to pay ${name}`;
-  if (funding.owed > 0) return `Everything you owe ${name} is set aside`;
-  return `You don’t owe ${name} anything`;
 }
 
 // Assigns what's still to fund for the partner, and any overspending, as

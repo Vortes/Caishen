@@ -86,6 +86,9 @@ export type Category = {
 };
 
 export type PartnerFunding = {
+  // The side panel's caption: what's still needed to pay them, or that
+  // it's all set aside.
+  caption: string;
   owed: number;
   // How much of what you owe the envelope holds.
   setAside: number;
@@ -411,27 +414,50 @@ export function toShellData(
       card && !item.target && month === activeMonth
         ? Math.max(0, -card.balance - item.available)
         : 0;
-    const partnerFunding =
+    const name = categoryName.get(item.id)!;
+    const owing =
       item.id === view.partnerFunding?.categoryId
-        ? partnerFundingOf(view.partnerFunding, categoryName)
+        ? view.partnerFunding
         : undefined;
     // What's still to fund for the partner is underfunded, like a card's
     // payment short of its balance. A red envelope shows its overspending
     // first.
-    const stillToFund = partnerFunding?.stillToFund ?? 0;
+    const stillToFund = owing?.stillToFund ?? 0;
     const funding =
       card && item.available < 0
         ? "overspent"
         : item.available >= 0 && (paymentNeeded > 0 || stillToFund > 0)
           ? "underfunded"
           : categoryStatus(item);
+    const needed =
+      funding === "underfunded" && stillToFund > 0
+        ? `${money(stillToFund)} more needed`
+        : undefined;
+    const status =
+      paymentNeeded > 0 && item.available >= 0
+        ? `${money(paymentNeeded)} more needed to pay in full`
+        : (needed ?? statusLine(item, funding));
+    // The side panel says the same as the row, and whom it's for.
+    const partnerFunding =
+      owing &&
+      partnerFundingOf(
+        owing,
+        categoryName,
+        item.available < 0
+          ? status
+          : needed
+            ? `${needed} to pay ${name}`
+            : owing.owed > 0
+              ? `Everything you owe ${name} is set aside`
+              : `You don’t owe ${name} anything`,
+      );
     const progress = item.targetProgress;
     const pair = item.counterpartyAccountId
       ? counterparty.get(item.counterpartyAccountId)
       : undefined;
     return {
       id: item.id,
-      name: categoryName.get(item.id)!,
+      name,
       group: item.group,
       assigned: item.assigned,
       activity: item.activity,
@@ -448,12 +474,7 @@ export function toShellData(
           : item.available > 0
             ? 1
             : 0,
-      status:
-        paymentNeeded > 0 && item.available >= 0
-          ? `${money(paymentNeeded)} more needed to pay in full`
-          : funding === "underfunded" && stillToFund > 0
-            ? `${money(stillToFund)} more needed`
-            : statusLine(item, funding),
+      status,
       target:
         item.target && progress
           ? {
@@ -747,8 +768,10 @@ export function toShellData(
 function partnerFundingOf(
   funding: NonNullable<View["partnerFunding"]>,
   categoryName: Map<string, string>,
+  caption: string,
 ): PartnerFunding {
   return {
+    caption,
     owed: funding.owed,
     setAside: funding.setAside,
     stillToFund: funding.stillToFund,
