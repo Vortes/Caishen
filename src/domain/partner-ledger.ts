@@ -38,8 +38,9 @@ import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 //   the category and unfunded credit on the account. An uncategorized share
 //   is unfunded and holds nothing from Ready to Assign. The envelope's
 //   available amount is its float minus the account's balance and its
-//   unfunded credit. A former partner's frozen entries keep ADR 0007's
-//   cash-backed accounting.
+//   unfunded credit. Paying them more than it holds is cash overspending
+//   that resets at month end, as a card payment category's does. A former
+//   partner's frozen entries keep these rules.
 
 export const PARTNER_HISTORY_FIELDS = [
   "share",
