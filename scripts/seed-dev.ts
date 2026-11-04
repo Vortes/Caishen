@@ -11,6 +11,7 @@ import {
   buildDevelopmentSeed,
   developmentSeedScenarios,
   developmentToday,
+  soloSeedScenario,
 } from "../src/server/dev/seed-scenarios";
 import { buildDevelopmentSeedBanks } from "../src/server/dev/seed-banks";
 
@@ -34,15 +35,16 @@ async function main() {
 
 --partner <ID>   Use a second development login; defaults to a database-only mock partner
 --date YYYY-MM-DD  End the three-month sample on this date (defaults to today in Los Angeles)
---scenario <name>  household (default), invitation, or former-partner
+--scenario <name>  household (default), simple, invitation, or former-partner
 --dry-run        Validate the scenarios and print a summary without database writes
 --activate       Switch the selected login to the demo workspace; retain its original workspace
 --reset          Rebuild only this seed's demo workspace after trying features
 --restore <ID>   Switch your login back to the original workspace ID printed during activation
 
+The simple preset is one month with five categories and five of Jordan's purchases, no banks or loans.
 The invitation preset shows a pending invitation after a previous partnership.
 Bank connections contain offline sample data. No external bank requests or emails are sent.
-Solo presets use a mock former partner; --partner is for the household preset.
+Solo presets use a mock former partner; --partner is for the household and simple presets.
 Existing seed data is left intact unless --reset is supplied.`);
     return;
   }
@@ -79,7 +81,7 @@ Existing seed data is left intact unless --reset is supplied.`);
   );
   if (
     scenario &&
-    scenario !== "household" &&
+    soloSeedScenario(scenario) &&
     identity.partnerId !== developmentSeedIdentity(userId).partnerId
   )
     throw new Error(
@@ -90,7 +92,10 @@ Existing seed data is left intact unless --reset is supplied.`);
     throw new Error("Seed activity cannot be dated in the future.");
   if (values["dry-run"]) {
     const seed = buildDevelopmentSeed({ ...identity, asOf, scenario });
-    const banks = buildDevelopmentSeedBanks(seed, identity.workspaceId);
+    const banks =
+      seed.scenario === "simple"
+        ? []
+        : buildDevelopmentSeedBanks(seed, identity.workspaceId);
     console.log(
       JSON.stringify(
         {
@@ -190,9 +195,11 @@ function summary(
         partnerBalanceCents: view.accounts.find(
           (account) => account.linkedUserId && !account.closed,
         )?.balance,
-        overspentCategories: view.categories
-          .filter((category) => category.available < 0)
-          .map((category) => category.name),
+        overspentCategoriesCents: Object.fromEntries(
+          view.categories
+            .filter((category) => category.available < 0)
+            .map((category) => [category.name, category.available]),
+        ),
       };
     }),
   };
