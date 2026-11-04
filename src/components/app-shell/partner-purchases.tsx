@@ -33,7 +33,8 @@ export function PartnerPurchases({
   const { month } = useShellData();
   const [all, setAll] = useState(false);
   const title = `Your part of ${category.name}’s purchases`;
-  const { purchases } = funding;
+  const moved = `Moved out of ${category.name}’s envelope`;
+  const { purchases, movedOut } = funding;
   const shown = all ? purchases : purchases.slice(0, FIRST);
   const list = useRef<HTMLUListElement>(null);
   // Show all goes away once pressed, so focus moves to the first purchase
@@ -52,6 +53,18 @@ export function PartnerPurchases({
         purchases.length ? undefined : `No purchases in ${month.short}.`
       }
     >
+      {/* Money moved out after categories funded the purchases, which no
+          purchase shows as short, so the list adds up to what's needed. */}
+      {movedOut > 0 && (
+        <p className={`${styles.row} ${styles.movedOut}`}>
+          <strong className={styles.payee} title={moved}>
+            {moved}
+          </strong>
+          <span className={styles.state} data-state="short">
+            {money(movedOut)} short
+          </span>
+        </p>
+      )}
       {purchases.length > 0 && (
         <ul ref={list} className={styles.list} aria-label={title}>
           {shown.map((purchase) => (

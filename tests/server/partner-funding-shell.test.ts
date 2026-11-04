@@ -3,6 +3,7 @@ import test from "node:test";
 import { toShellData } from "../../src/components/app-shell/model";
 import { underfunded } from "../../src/domain/auto-assign";
 import { execute, projectBook, type Command } from "../../src/domain/engine";
+import { partnerEntryId } from "../../src/domain/partner-ledger";
 import { buildDevelopmentSeed } from "../../src/server/dev/seed-scenarios";
 
 const month = "2026-10";
@@ -140,6 +141,40 @@ void test("each of the partner's purchases shows your part, its category and whe
         short: 0,
       },
     ],
+  );
+});
+
+void test("money moved out of the partner's envelope is still needed, though every purchase is set aside", () => {
+  // Parking covers the rest of Platinum Parking and Groceries covers
+  // Trader Joe's, then $30.00 moves out of Jordan's envelope.
+  const home = simple();
+  home.run({ type: "assign", categoryId: "parking", month, amount: 2_000 });
+  home.run({
+    type: "partner.categorize",
+    entryId: partnerEntryId(
+      "jordan",
+      "simple-trader-joes",
+      "simple-trader-joes",
+    ),
+    categoryId: "groceries",
+  });
+  home.run({
+    type: "assign",
+    categoryId: jordan(home.shell()).id,
+    month,
+    amount: -3_000,
+  });
+  const row = jordan(home.shell());
+
+  assert.deepEqual(
+    {
+      status: row.status,
+      movedOut: row.partnerFunding?.movedOut,
+      short: row.partnerFunding?.purchases.filter(
+        (purchase) => purchase.short > 0,
+      ),
+    },
+    { status: "$30.00 more needed", movedOut: 3_000, short: [] },
   );
 });
 

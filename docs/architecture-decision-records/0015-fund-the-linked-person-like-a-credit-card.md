@@ -18,7 +18,7 @@ This amends ADR 0014's line "Float, overspending, rollover, and Ready to Assign 
 
 ## Considered options
 
-The display was chosen from a prototype, tried first in a playground and then in the live app. The chosen design is "By purchase": the row fills in yellow toward what you owe, says "$X more needed", and turns green when everything is set aside. Its side panel lists your part of each purchase and whether it is set aside, short or needs a category. Three displays were rejected:
+The display was chosen from a prototype, tried first in a playground and then in the live app. The chosen design is "By purchase": the row fills in yellow toward what you owe, says "$X more needed", and turns green when everything is set aside. Its side panel lists your part of each purchase and whether it is set aside, short or needs a category. Money moved out of the envelope after its purchases were funded gets its own line above them, so the list always adds up to what's still needed. Three displays were rejected:
 
 - **Today's screen**, which shows everything you owe as green beside red categories, was rejected because that is the confusion this fixes.
 - **Like a card**, a row with only a yellow pill and no bar or status, was rejected because the gap is visible only after selecting the row.

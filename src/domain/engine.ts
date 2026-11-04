@@ -3162,8 +3162,10 @@ export type BudgetProjection = ReturnType<typeof projectBook>;
  * oldest first. Each entry's set-aside amount is what its categories
  * funded; its short amount is what's still to fund of it now, since money
  * assigned to the envelope or a settlement later covers the earliest
- * shortfalls first. So the short amounts add up to still to fund, and an
- * earlier entry with nothing short left drops off.
+ * shortfalls first. An earlier entry with nothing short left drops off.
+ * Moved out is what the envelope lacks beyond every entry's shortfall:
+ * money taken back out after categories funded the purchases. The short
+ * amounts and moved out add up to still to fund.
  */
 function linkedFunding(
   budget: Budget,
@@ -3193,6 +3195,7 @@ function linkedFunding(
     owed,
     setAside,
     stillToFund,
+    movedOut: Math.max(0, -covered),
     entries: [...linkedEntries.values()]
       .map((item) => {
         const short = safe(item.amount - item.setAside);

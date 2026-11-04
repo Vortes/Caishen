@@ -266,6 +266,46 @@ function fundedGroceries() {
   return Object.assign(home, { entryId });
 }
 
+void test("money moved out of a funded envelope is still to fund, though no purchase is short", () => {
+  const home = fundedGroceries();
+  home.run("alan", {
+    type: "assign",
+    categoryId: home.envelope,
+    month,
+    amount: -1_500,
+  });
+
+  const view = home.view();
+  assert.deepEqual(
+    {
+      stillToFund: view.partnerFunding?.stillToFund,
+      movedOut: view.partnerFunding?.movedOut,
+      short: view.partnerFunding?.entries.map((entry) => entry.short),
+    },
+    { stillToFund: 1_500, movedOut: 1_500, short: [0] },
+  );
+});
+
+void test("only money moved out past what purchases are short counts as moved out", () => {
+  const home = shortGroceries();
+  home.run("alan", {
+    type: "assign",
+    categoryId: home.envelope,
+    month,
+    amount: -500,
+  });
+
+  const view = home.view();
+  assert.deepEqual(
+    {
+      stillToFund: view.partnerFunding?.stillToFund,
+      movedOut: view.partnerFunding?.movedOut,
+      short: view.partnerFunding?.entries.map((entry) => entry.short),
+    },
+    { stillToFund: 1_500, movedOut: 500, short: [1_000] },
+  );
+});
+
 void test("paying your partner spends from their envelope and never touches Ready to Assign", () => {
   const home = fundedGroceries();
   home.alanPays(4_000);

@@ -212,3 +212,37 @@ test("once nothing is still to fund, a purchase that needs a category only says 
   expect(purchase("Trader Joe’s").getByText("Needs a category")).toBeTruthy();
   expect(purchase("Trader Joe’s").queryByText("Not set aside")).toBeNull();
 });
+
+test("money moved out of the partner's envelope is listed above the purchases it was set aside for", async () => {
+  // Parking covers the rest of Platinum Parking and Groceries covers
+  // Trader Joe's, then $30.00 moves out of Jordan's envelope.
+  const home = simple();
+  home.run("owner", {
+    type: "assign",
+    categoryId: "parking",
+    month: "2026-10",
+    amount: 2_000,
+  });
+  home.run("owner", {
+    type: "partner.categorize",
+    entryId: partnerEntryId(
+      "partner",
+      "simple-trader-joes",
+      "simple-trader-joes",
+    ),
+    categoryId: "groceries",
+  });
+  home.run("owner", {
+    type: "assign",
+    categoryId: personEnvelopeId(
+      partnerAccountOf(home.book.budgets.owner!)!.id,
+    ),
+    month: "2026-10",
+    amount: -3_000,
+  });
+  await showJordan(home.book);
+
+  const movedOut = details().getByText("Moved out of Jordan’s envelope");
+  expect(movedOut.closest("p")?.textContent).toContain("$30.00 short");
+  expect(purchases().queryByText(/short$/)).toBeNull();
+});

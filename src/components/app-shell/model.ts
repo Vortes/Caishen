@@ -93,6 +93,9 @@ export type PartnerFunding = {
   // How much of what you owe the envelope holds.
   setAside: number;
   stillToFund: number;
+  // What was moved out of the envelope after categories funded the
+  // purchases, so no purchase shows it as short.
+  movedOut: number;
   // Your part of the partner's purchases in the month, and earlier ones
   // still short, newest first.
   purchases: PartnerPurchase[];
@@ -775,6 +778,7 @@ function partnerFundingOf(
     owed: funding.owed,
     setAside: funding.setAside,
     stillToFund: funding.stillToFund,
+    movedOut: funding.movedOut,
     purchases: [...funding.entries].reverse().map((entry) => ({
       entryId: entry.entryId,
       date: entry.date,
