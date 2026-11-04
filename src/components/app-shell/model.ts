@@ -94,7 +94,7 @@ export type PartnerFunding = {
   setAside: number;
   stillToFund: number;
   // Your part of the partner's purchases in the month, and earlier ones
-  // still short or without a category, oldest first.
+  // still short, newest first.
   purchases: PartnerPurchase[];
 };
 
@@ -107,7 +107,7 @@ export type PartnerPurchase = {
   // Its category's name, or "Split (n)"; none while it needs a category.
   category?: string;
   state: "set-aside" | "short" | "needs-category";
-  // How much of your part its category couldn't set aside.
+  // How much of your part is still to fund.
   short: number;
 };
 
@@ -775,7 +775,7 @@ function partnerFundingOf(
     owed: funding.owed,
     setAside: funding.setAside,
     stillToFund: funding.stillToFund,
-    purchases: funding.entries.map((entry) => ({
+    purchases: [...funding.entries].reverse().map((entry) => ({
       entryId: entry.entryId,
       date: entry.date,
       payee: entry.payee,

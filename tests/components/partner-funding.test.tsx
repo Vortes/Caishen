@@ -83,11 +83,20 @@ test("the partner's details list your part of each purchase and whether it's set
   home.jordanBuys("Walgreens", "2026-10-06", 4_000);
   const { user } = await showJordan(home.book);
 
-  // The oldest six, then the rest on request.
-  expect(purchases().getAllByRole("listitem")).toHaveLength(6);
-  expect(purchases().getByText("Costco")).toBeTruthy();
-  expect(purchases().queryByText("Walgreens")).toBeNull();
-  expect(purchase("H Mart").getByText("Set aside")).toBeTruthy();
+  // The newest six, then the rest on request.
+  expect(
+    purchases()
+      .getAllByRole("listitem")
+      .map((item) => item.querySelector("strong")?.textContent),
+  ).toEqual([
+    "Walgreens",
+    "Costco",
+    "Trader Joe’s",
+    "Platinum Parking",
+    "Shake Shack",
+    "BILT · rent",
+  ]);
+  expect(purchase("Shake Shack").getByText("Set aside")).toBeTruthy();
   expect(purchase("Platinum Parking").getByText("$71.00")).toBeTruthy();
   expect(purchase("Platinum Parking").getByText("Parking")).toBeTruthy();
   expect(purchase("Platinum Parking").getByText("$20.00 short")).toBeTruthy();
@@ -97,7 +106,7 @@ test("the partner's details list your part of each purchase and whether it's set
   await user.click(details().getByRole("button", { name: "Show all 7" }));
 
   expect(purchases().getAllByRole("listitem")).toHaveLength(7);
-  expect(purchases().getByText("Walgreens")).toBeTruthy();
+  expect(purchase("H Mart").getByText("Set aside")).toBeTruthy();
 });
 
 test("choosing a category for a purchase in the partner's details saves your category for it", async () => {
@@ -186,4 +195,20 @@ test("Assign on a red partner's envelope covers its overspending and what's stil
     month: "2026-10",
     amount: 5_342,
   });
+});
+
+test("once nothing is still to fund, a purchase that needs a category only says so", async () => {
+  const home = simple();
+  home.run("owner", {
+    type: "assign",
+    categoryId: personEnvelopeId(
+      partnerAccountOf(home.book.budgets.owner!)!.id,
+    ),
+    month: "2026-10",
+    amount: 5_342,
+  });
+  await showJordan(home.book);
+
+  expect(purchase("Trader Joe’s").getByText("Needs a category")).toBeTruthy();
+  expect(purchase("Trader Joe’s").queryByText("Not set aside")).toBeNull();
 });

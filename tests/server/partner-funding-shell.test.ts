@@ -97,12 +97,29 @@ void test("each of the partner's purchases shows your part, its category and whe
         short,
       }),
     ),
+    // Newest first.
     [
       {
-        payee: "H Mart",
+        payee: "Trader Joe’s",
+        date: "2026-10-03",
+        amount: 3_342,
+        category: undefined,
+        state: "needs-category",
+        short: 3_342,
+      },
+      {
+        payee: "Platinum Parking",
+        date: "2026-10-02",
+        amount: 7_100,
+        category: "Parking",
+        state: "short",
+        short: 2_000,
+      },
+      {
+        payee: "Shake Shack",
         date: "2026-10-01",
-        amount: 1_338,
-        category: "Groceries",
+        amount: 883,
+        category: "Dining out",
         state: "set-aside",
         short: 0,
       },
@@ -115,28 +132,12 @@ void test("each of the partner's purchases shows your part, its category and whe
         short: 0,
       },
       {
-        payee: "Shake Shack",
+        payee: "H Mart",
         date: "2026-10-01",
-        amount: 883,
-        category: "Dining out",
+        amount: 1_338,
+        category: "Groceries",
         state: "set-aside",
         short: 0,
-      },
-      {
-        payee: "Platinum Parking",
-        date: "2026-10-02",
-        amount: 7_100,
-        category: "Parking",
-        state: "short",
-        short: 2_000,
-      },
-      {
-        payee: "Trader Joe’s",
-        date: "2026-10-03",
-        amount: 3_342,
-        category: undefined,
-        state: "needs-category",
-        short: 3_342,
       },
     ],
   );
@@ -148,7 +149,7 @@ void test("earlier short purchases leave the list once nothing is still to fund"
     jordan(home.shell("2026-11")).partnerFunding?.purchases.map(
       ({ payee }) => payee,
     );
-  assert.deepEqual(listed(), ["Platinum Parking", "Trader Joe’s"]);
+  assert.deepEqual(listed(), ["Trader Joe’s", "Platinum Parking"]);
 
   home.run({
     type: "assign",
