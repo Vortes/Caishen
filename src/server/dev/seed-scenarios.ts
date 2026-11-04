@@ -21,10 +21,15 @@ export type SeedOperation = {
 
 export const developmentSeedScenarios = [
   "household",
+  "simple",
   "invitation",
   "former-partner",
 ] as const;
 export type DevelopmentSeedScenario = (typeof developmentSeedScenarios)[number];
+
+// The presets with a mock former partner instead of a live one.
+export const soloSeedScenario = (scenario: DevelopmentSeedScenario) =>
+  scenario === "invitation" || scenario === "former-partner";
 
 export function shiftMonth(month: string, offset: number): string {
   const date = new Date(`${month}-01T00:00:00Z`);
@@ -77,6 +82,8 @@ export function buildDevelopmentSeed({
     new Date(`${asOf}T00:00:00Z`).toISOString().slice(0, 10) !== asOf
   )
     throw new Error("Use a valid YYYY-MM-DD seed date.");
+  if (scenario === "simple")
+    return buildSimpleSeed({ userId, partnerId, asOf });
   const month = asOf.slice(0, 7);
   const firstMonth = shiftMonth(month, -2);
   let book = withPeople(
@@ -903,3 +910,147 @@ export function buildDevelopmentSeed({
 }
 
 export type DevelopmentSeed = ReturnType<typeof buildDevelopmentSeed>;
+
+// A small household to read at a glance: this month only, a checking
+// account and one card each, five categories, and five of Jordan's
+// purchases Alex shares. Parking can't cover Alex's part of Jordan's
+// parking, and Trader Joe's has no category yet. No loans, banks, other
+// people, or history.
+function buildSimpleSeed({
+  userId,
+  partnerId,
+  asOf,
+}: {
+  userId: string;
+  partnerId: string;
+  asOf: string;
+}) {
+  const month = asOf.slice(0, 7);
+  let book = withPeople(
+    addMember(
+      createBook(userId, "Demo · Alex’s budget", month),
+      partnerId,
+      "Demo · Jordan’s budget",
+      month,
+    ),
+  );
+  const operations: SeedOperation[] = [];
+  const run = (actorId: string, input: WithoutId<Command>) => {
+    const command: Command = {
+      ...input,
+      id: `dev-seed:${operations.length + 1}`,
+    };
+    book = execute(book, actorId, command, "user");
+    operations.push({ actorId, source: "user", command });
+  };
+  const date = (day: number) =>
+    `${month}-${String(Math.min(day, Number(asOf.slice(8)))).padStart(2, "0")}`;
+  const partnerOf = (memberId: string) =>
+    partnerAccountOf(book.budgets[memberId]!)!.id;
+  const buy = (
+    actorId: string,
+    day: number,
+    transactionId: string,
+    payee: string,
+    amount: number,
+    categoryId: string,
+    accountId: string,
+    share?: number,
+  ) =>
+    run(actorId, {
+      type: "transaction.upsert",
+      transactionId,
+      accountId,
+      date: date(day),
+      amount: -amount,
+      payee,
+      categoryId,
+      ...(share && {
+        counterpartyShare: { accountId: partnerOf(actorId), amount: share },
+        recordedAt: `${date(day)}T20:00:00.000Z`,
+      }),
+    });
+
+  for (const [index, actorId] of [userId, partnerId].entries()) {
+    run(actorId, {
+      type: "settings.update",
+      timezone: "America/Los_Angeles",
+      emailEnabled: false,
+      emailHour: 8,
+    });
+    run(actorId, { type: "income.expect", month, amount: 500000 });
+    for (const [accountId, name, kind, openingBalance] of [
+      ["checking", "Demo · Checking", "cash", index ? 600000 : 400000],
+      ["card", "Demo · Visa", "credit", 0],
+    ] as const)
+      run(actorId, {
+        type: "account.add",
+        accountId,
+        name,
+        kind,
+        openingBalance,
+        date: `${month}-01`,
+      });
+    run(actorId, {
+      type: "category.import",
+      categories: [
+        ["rent", "Rent", "Home"],
+        ["parking", "Parking", "Home"],
+        ["groceries", "Groceries", "Everyday"],
+        ["dining", "Dining out", "Everyday"],
+        ["fun", "Fun money", "Everyday"],
+      ].map(([categoryId, name, group]) => ({
+        categoryId: categoryId!,
+        name: name!,
+        group: group!,
+      })),
+    });
+    for (const [categoryId, amount] of [
+      ["rent", 136195],
+      ["parking", index ? 7100 : 5100],
+      ["groceries", 40000],
+      ["dining", 15000],
+      ["fun", 10000],
+    ] as const)
+      run(actorId, { type: "assign", categoryId, amount, month });
+  }
+  // Alex's own spending.
+  buy(userId, 1, "simple-safeway", "Safeway", 20000, "groceries", "card");
+  buy(userId, 2, "simple-coffee", "Blue Bottle Coffee", 1200, "dining", "card");
+  // Jordan's purchases, half Alex's. Alex's side is categorized except
+  // Trader Joe's.
+  for (const [day, id, payee, amount, share, categoryId] of [
+    [1, "simple-rent", "BILT · rent", 272390, 136195, "rent"],
+    [2, "simple-parking", "Platinum Parking", 14200, 7100, "parking"],
+    [1, "simple-hmart", "H Mart", 2676, 1338, "groceries"],
+    [1, "simple-shake-shack", "Shake Shack", 1766, 883, "dining"],
+    [3, "simple-trader-joes", "Trader Joe’s", 6684, 3342, null],
+  ] as const) {
+    buy(
+      partnerId,
+      day,
+      id,
+      payee,
+      amount,
+      categoryId ?? "groceries",
+      "card",
+      share,
+    );
+    if (categoryId)
+      run(userId, {
+        type: "partner.categorize",
+        entryId: partnerEntryId(partnerId, id, id),
+        categoryId,
+      });
+  }
+  return {
+    book: bookSchema.parse(book),
+    operations,
+    month,
+    firstMonth: month,
+    asOf,
+    userId,
+    partnerId,
+    scenario: "simple" as DevelopmentSeedScenario,
+  };
+}

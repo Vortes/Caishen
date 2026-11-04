@@ -77,9 +77,41 @@ export type Category = {
   // A paired envelope's counterparty account: available is the float set
   // aside minus what the account says is owed to you.
   pairs?: { accountId: string; name: string; balance: number };
+  // The linked person's envelope, which works like a card's payment
+  // category (ADR 0015): what you owe them on net and what it still lacks.
+  partnerFunding?: PartnerFunding;
   autoAssign: AutoAssignCategory;
   // Has transactions or assigned money, which deleting it moves elsewhere.
   used: boolean;
+};
+
+export type PartnerFunding = {
+  // The side panel's caption: what's still needed to pay them, or that
+  // it's all set aside.
+  caption: string;
+  owed: number;
+  // How much of what you owe the envelope holds.
+  setAside: number;
+  stillToFund: number;
+  // What was moved out of the envelope after categories funded the
+  // purchases, so no purchase shows it as short.
+  movedOut: number;
+  // Your part of the partner's purchases in the month, and earlier ones
+  // still short, newest first.
+  purchases: PartnerPurchase[];
+};
+
+export type PartnerPurchase = {
+  entryId: string;
+  date: string;
+  payee: string;
+  // Your part, in cents.
+  amount: number;
+  // Its category's name, or "Split (n)"; none while it needs a category.
+  category?: string;
+  state: "set-aside" | "short" | "needs-category";
+  // How much of your part is still to fund.
+  short: number;
 };
 
 export type ActivityEntry = {
@@ -385,19 +417,50 @@ export function toShellData(
       card && !item.target && month === activeMonth
         ? Math.max(0, -card.balance - item.available)
         : 0;
+    const name = categoryName.get(item.id)!;
+    const owing =
+      item.id === view.partnerFunding?.categoryId
+        ? view.partnerFunding
+        : undefined;
+    // What's still to fund for the partner is underfunded, like a card's
+    // payment short of its balance. A red envelope shows its overspending
+    // first.
+    const stillToFund = owing?.stillToFund ?? 0;
     const funding =
       card && item.available < 0
         ? "overspent"
-        : paymentNeeded > 0
+        : item.available >= 0 && (paymentNeeded > 0 || stillToFund > 0)
           ? "underfunded"
           : categoryStatus(item);
+    const needed =
+      funding === "underfunded" && stillToFund > 0
+        ? `${money(stillToFund)} more needed`
+        : undefined;
+    const status =
+      paymentNeeded > 0 && item.available >= 0
+        ? `${money(paymentNeeded)} more needed to pay in full`
+        : (needed ?? statusLine(item, funding));
+    // The side panel says the same as the row, and whom it's for.
+    const partnerFunding =
+      owing &&
+      partnerFundingOf(
+        owing,
+        categoryName,
+        item.available < 0
+          ? status
+          : needed
+            ? `${needed} to pay ${name}`
+            : owing.owed > 0
+              ? `Everything you owe ${name} is set aside`
+              : `You don’t owe ${name} anything`,
+      );
     const progress = item.targetProgress;
     const pair = item.counterpartyAccountId
       ? counterparty.get(item.counterpartyAccountId)
       : undefined;
     return {
       id: item.id,
-      name: categoryName.get(item.id)!,
+      name,
       group: item.group,
       assigned: item.assigned,
       activity: item.activity,
@@ -405,17 +468,16 @@ export function toShellData(
       available: item.available,
       carryover: item.opening,
       funding,
-      fundedRatio: progress
-        ? progress.total > 0
-          ? Math.min(1, progress.funded / progress.total)
-          : 1
-        : item.available > 0
-          ? 1
-          : 0,
-      status:
-        paymentNeeded > 0 && item.available >= 0
-          ? `${money(paymentNeeded)} more needed to pay in full`
-          : statusLine(item, funding),
+      fundedRatio: partnerFunding?.owed
+        ? partnerFunding.setAside / partnerFunding.owed
+        : progress
+          ? progress.total > 0
+            ? Math.min(1, progress.funded / progress.total)
+            : 1
+          : item.available > 0
+            ? 1
+            : 0,
+      status,
       target:
         item.target && progress
           ? {
@@ -450,6 +512,7 @@ export function toShellData(
         name: displayName(pair),
         balance: pair.balance,
       },
+      partnerFunding,
       autoAssign: item,
       used: used.has(item.id),
     };
@@ -702,6 +765,37 @@ export function toShellData(
       lastClosed && lastClosed.closed.by !== view.budget.userId
         ? { name: lastClosed.name, at: lastClosed.closed.at }
         : undefined,
+  };
+}
+
+function partnerFundingOf(
+  funding: NonNullable<View["partnerFunding"]>,
+  categoryName: Map<string, string>,
+  caption: string,
+): PartnerFunding {
+  return {
+    caption,
+    owed: funding.owed,
+    setAside: funding.setAside,
+    stillToFund: funding.stillToFund,
+    movedOut: funding.movedOut,
+    purchases: [...funding.entries].reverse().map((entry) => ({
+      entryId: entry.entryId,
+      date: entry.date,
+      payee: entry.payee,
+      amount: entry.amount,
+      category: entry.needsCategory
+        ? undefined
+        : entry.lines
+          ? `Split (${entry.lines.length})`
+          : entry.categoryId && categoryName.get(entry.categoryId),
+      state: entry.needsCategory
+        ? "needs-category"
+        : entry.short > 0
+          ? "short"
+          : "set-aside",
+      short: entry.short,
+    })),
   };
 }
 

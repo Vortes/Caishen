@@ -1,0 +1,86 @@
+/* Your part of the partner's purchases in their envelope's details: one
+   row per purchase, its payee and amount over its date, category and
+   whether it's set aside. */
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 2px;
+}
+/* Money moved out of the envelope, above the purchases: one line, its
+   shortfall where a purchase's amount sits. */
+.movedOut {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.row + .row,
+.row + .list > .row:first-child {
+  border-top: 1px solid var(--border-subtle);
+}
+.line,
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.payee {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.amount,
+.state {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* As tall as the tag a purchase needing a category shows, so every row's
+   second line is the same height. */
+.meta {
+  min-height: var(--size-pill);
+  color: var(--text-tertiary);
+  font-size: var(--type-small);
+}
+.where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.date {
+  flex: none;
+}
+.category {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.state[data-state="short"],
+.state[data-state="needs-category"] {
+  color: var(--status-underfunded);
+}
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+}
+.more {
+  padding-top: 4px;
+}

@@ -30,11 +30,17 @@ import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 //   from which the entry follows. An entry whose source loses its partner
 //   share, or is removed, is marked removed and keeps its history.
 // - The payer's accounting is the line's own (src/domain/counterparty.ts).
-//   The other partner's accounting is the entry's: their Partner account
-//   moves by mirroredChange, their paired envelope holds it, and their
-//   side's category, once chosen, carries their share as cash-backed
-//   spending. Until then the entry is uncategorized and the money owed is
-//   held from Ready to Assign.
+//   The other partner's accounting is the entry's, and works like a credit
+//   card purchase with their Partner account as the card (ADR 0015): the
+//   account moves by mirroredChange, and their side's category, once
+//   chosen, carries their share as credit spending. What the category holds
+//   funds it into the paired envelope; the rest is credit overspending in
+//   the category and unfunded credit on the account. An uncategorized share
+//   is unfunded and holds nothing from Ready to Assign. The envelope's
+//   available amount is its float minus the account's balance and its
+//   unfunded credit. Paying them more than it holds is cash overspending
+//   that resets at month end, as a card payment category's does. A former
+//   partner's frozen entries keep these rules.
 
 export const PARTNER_HISTORY_FIELDS = [
   "share",
@@ -311,6 +317,24 @@ export function sideSpending(
   });
 }
 
+/**
+ * Whether the viewer's side of an entry still needs a category: it has
+ * none, or it's a split whose lines no longer add up to the change after a
+ * share edit.
+ */
+export function sideNeedsCategory(
+  budget: Pick<Budget, "categories" | "partnerSides">,
+  entry: Pick<PartnerEntry, "id" | "share">,
+  change: number,
+): boolean {
+  return budget.partnerSides?.[entry.id]?.lines
+    ? sideSpending(budget, entry.id, change).reduce(
+        (total, [, amount]) => total + amount,
+        0,
+      ) !== change
+    : !sideCategory(budget, entry.id) && entry.share > 0;
+}
+
 export function spendingCategory(
   category: Budget["categories"][number],
 ): boolean {
@@ -461,14 +485,7 @@ export function partnerLedgerRows(
     const lines = budget.partnerSides?.[entry.id]?.lines;
     const change = mirroredChange(entry, viewerId);
     const shared = Math.abs(entry.amount);
-    // A split whose lines no longer add up, after a share edit, leaves the
-    // rest to categorize.
-    const needsCategory = lines
-      ? sideSpending(budget, entry.id, change).reduce(
-          (total, [, amount]) => total + amount,
-          0,
-        ) !== change
-      : !categoryId && entry.share > 0;
+    const needsCategory = sideNeedsCategory(budget, entry, change);
     rows.push({
       id: entry.id,
       kind: entry.amount > 0 ? "refund" : "purchase",

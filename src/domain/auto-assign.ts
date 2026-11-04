@@ -19,6 +19,8 @@ export type AutoAssignCategory = {
     dueMonth?: string;
   };
   pairedAccountId?: string;
+  // The linked person's envelope: what it lacks to pay what you owe them.
+  stillToFund?: number;
   // Up to 12 previous months, oldest first. Spent is positive.
   history: { assigned: number[]; spent: number[] };
 };
@@ -42,11 +44,13 @@ export type AutoAssignPlan = {
   stuck: number;
 };
 
-// Underfunded covers overspending and fully funds the target, whichever needs more.
+// Underfunded covers overspending and fully funds the target, whichever needs
+// more. The partner's envelope also needs what's still to fund on top of any
+// overspending, since that only counts what it holds above zero.
 export function underfunded(category: AutoAssignCategory) {
   return Math.max(
     category.targetProgress?.needed ?? 0,
-    -Math.min(0, category.available),
+    -Math.min(0, category.available) + (category.stillToFund ?? 0),
   );
 }
 
@@ -119,7 +123,8 @@ type Chunk = { categoryId: string; amount: number; rank: [number, number] };
 
 // YNAB's Underfunded order: overspent categories first, then targets due on a day this
 // month by date (weekly targets split per week), then end-of-month targets, then targets
-// due in a later month by due date, then credit card payments. Ties go top to bottom.
+// due in a later month by due date, then credit card payments and what's still to fund
+// for the partner. Ties go top to bottom.
 export function underfundedOrder(
   scope: AutoAssignCategory[],
   month: string,
@@ -131,7 +136,17 @@ export function underfundedOrder(
     const target = category.target;
     const push = (rank: [number, number], value = amount) =>
       chunks.push({ categoryId: category.id, amount: value, rank });
-    if (category.available < 0 || !target || category.targetProgress?.snoozed)
+    if (category.stillToFund) {
+      // What's still to fund for the partner comes with card payments, after
+      // any overspending.
+      const overspent = -Math.min(0, category.available);
+      if (overspent) push([0, 0], overspent);
+      if (amount > overspent) push([4, 0], amount - overspent);
+    } else if (
+      category.available < 0 ||
+      !target ||
+      category.targetProgress?.snoozed
+    )
       push([0, 0]);
     else if (
       category.pairedAccountId ||

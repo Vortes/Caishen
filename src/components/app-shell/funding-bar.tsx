@@ -1,14 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { Category, Funding } from "./model";
+import type { Category, Funding, PartnerFunding } from "./model";
 import styles from "./funding-bar.module.css";
 
 // What the bar needs from a category; the design system builds these by hand.
 export type FundingBarCategory = Pick<
   Category,
   "funding" | "activity" | "available" | "status"
-> & { target?: { sections: number[] }; pays?: Category["pays"] };
+> & {
+  target?: { sections: number[] };
+  pays?: Category["pays"];
+  partnerFunding?: Pick<PartnerFunding, "owed" | "setAside">;
+};
 
 // The bar has three colors, per YNAB: red for overspending, yellow while a
 // target is unmet, and green otherwise (met, snoozed, or no target).
@@ -32,6 +36,18 @@ type Piece = {
 // section, and spending past the money assigned adds a red one, so a bar is
 // partly red when overspent and entirely red when nothing was assigned.
 export function fundingPieces(category: FundingBarCategory): Piece[] {
+  // The partner's envelope fills toward what you owe them on net, like a
+  // card's payment category toward its balance (ADR 0015). Paying them
+  // lowers what you owe, so it isn't drawn as spending.
+  const owing = category.partnerFunding;
+  if (owing?.owed && category.available >= 0) {
+    const tone: Tone =
+      category.funding === "underfunded" ? "underfunded" : "funded";
+    return [
+      { kind: "available" as const, tone, size: owing.setAside },
+      { kind: "needed" as const, tone, size: owing.owed - owing.setAside },
+    ].filter((piece) => piece.size > 0);
+  }
   // Money the category has had this month: what's left plus what's gone.
   // Counting it this way includes inflows such as funded card spending moving
   // into a card payment category, or a refund.
