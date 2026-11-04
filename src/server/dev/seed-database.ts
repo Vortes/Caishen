@@ -127,7 +127,13 @@ export async function seedDevelopmentDatabase(
     }
     const savedScenario = saved
       ? Object.keys(saved.budgets).length === 2
-        ? "household"
+        ? Object.values(saved.budgets).some((budget) =>
+            budget.transactions.some((transaction) =>
+              transaction.id.startsWith("simple-"),
+            ),
+          )
+          ? "simple"
+          : "household"
         : (await tx.partnerInvite.count({
               where: {
                 workspaceId: identity.workspaceId,

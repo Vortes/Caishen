@@ -44,7 +44,7 @@ async function main() {
 The simple preset is one month with five categories and five of Jordan's purchases, no banks or loans.
 The invitation preset shows a pending invitation after a previous partnership.
 Bank connections contain offline sample data. No external bank requests or emails are sent.
-Solo presets use a mock former partner; --partner is for the household preset.
+Solo presets use a mock former partner; --partner is for the household and simple presets.
 Existing seed data is left intact unless --reset is supplied.`);
     return;
   }
@@ -195,9 +195,11 @@ function summary(
         partnerBalanceCents: view.accounts.find(
           (account) => account.linkedUserId && !account.closed,
         )?.balance,
-        overspentCategories: view.categories
-          .filter((category) => category.available < 0)
-          .map((category) => category.name),
+        overspentCategoriesCents: Object.fromEntries(
+          view.categories
+            .filter((category) => category.available < 0)
+            .map((category) => [category.name, category.available]),
+        ),
       };
     }),
   };
