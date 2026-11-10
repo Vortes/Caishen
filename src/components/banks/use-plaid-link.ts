@@ -16,25 +16,31 @@ import {
   type PlaidLinkSession,
 } from "./plaid-link-session";
 
-type Phase =
-  "idle" | "loading" | "link" | "review" | "saving" | "syncing" | "complete";
-type FlowState = {
-  phase: Phase;
-  error: string;
-  message: string;
-  saved: boolean;
-  needsSync: boolean;
-  connectionId?: string;
-  canonicalOrigin?: string;
-  review?: RouterOutputs["budget"]["plaidLinkReview"];
-};
-const initial: FlowState = {
-  phase: "idle",
-  error: "",
-  message: "",
-  saved: false,
-  needsSync: false,
-};
+// Each step of connecting a bank, carrying only what that step needs. The
+// connection id is the one being reconnected until a save names the result.
+type FlowState =
+  | { step: "idle" }
+  // Ended without saving anything, for the reason the member is told.
+  | { step: "failed"; error: string }
+  // Plaid returns only to `origin`, so the flow has to start there.
+  | { step: "elsewhere"; origin: string; error: string }
+  | { step: "loading"; connectionId?: string }
+  | { step: "link"; connectionId?: string }
+  // Plaid finished on accounts an existing connection may already cover.
+  | {
+      step: "review";
+      review: RouterOutputs["budget"]["plaidLinkReview"];
+      error?: string;
+    }
+  | { step: "saving"; connectionId?: string }
+  | { step: "syncing"; connectionId: string }
+  | { step: "connected"; connectionId: string }
+  // Saved, but its first update failed; the member can retry.
+  | { step: "syncFailed"; connectionId: string; error: string };
+const initial: FlowState = { step: "idle" };
+// Ending without a reason to give is ending idle.
+const failed = (error: string): FlowState =>
+  error ? { step: "failed", error } : initial;
 const failureMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
@@ -104,14 +110,10 @@ export function usePlaidLink() {
         metadata: PlaidLinkMetadata,
         reviewId?: string,
       ) => {
-        let saved = Boolean(session.connectionId);
+        // The saved connection: the one reconnecting, or the exchange's.
+        let saved = session.connectionId;
         try {
-          setState((value) => ({
-            ...value,
-            phase: "saving",
-            error: "",
-            review: undefined,
-          }));
+          setState({ step: "saving", connectionId: session.connectionId });
           if (!session.connectionId && !reviewId) {
             const checked = await operations.current.review.mutateAsync({
               metadata,
@@ -120,11 +122,7 @@ export function usePlaidLink() {
             if (checked.connections.length) {
               pendingReview.current = (confirmed) =>
                 finish(publicToken, metadata, confirmed);
-              setState((value) => ({
-                ...value,
-                phase: "review",
-                review: checked,
-              }));
+              setState({ step: "review", review: checked });
               return;
             }
             reviewId = checked.reviewId;
@@ -139,26 +137,14 @@ export function usePlaidLink() {
                 metadata,
                 reviewId,
               });
-          saved = true;
+          saved = result.id;
           pendingReview.current = null;
           if (generation.current !== current) return;
-          setState((value) => ({
-            ...value,
-            saved: true,
-            phase: "syncing",
-            connectionId: result.id,
-          }));
+          setState({ step: "syncing", connectionId: result.id });
           await operations.current.sync.mutateAsync();
           await operations.current.utils.budget.invalidate();
           if (generation.current === current)
-            setState((value) => ({
-              ...value,
-              phase: "complete",
-              needsSync: false,
-              message: result.warning
-                ? `Bank connection saved. ${result.warning}`
-                : "Bank connected. Name your accounts to add them to Cash or Credit. Transactions can take a few minutes to become available.",
-            }));
+            setState({ step: "connected", connectionId: result.id });
         } catch (error) {
           if (
             !saved &&
@@ -174,15 +160,14 @@ export function usePlaidLink() {
               if (generation.current !== current) return;
               pendingReview.current = (confirmed) =>
                 finish(publicToken, metadata, confirmed);
-              setState((value) => ({
-                ...value,
-                phase: "review",
+              setState({
+                step: "review",
                 review: checked,
                 error: failureMessage(
                   error,
                   "Review the updated bank accounts before continuing.",
                 ),
-              }));
+              });
               return;
             } catch (reviewFailure) {
               error = reviewFailure;
@@ -195,18 +180,20 @@ export function usePlaidLink() {
               .catch(() => undefined);
           }
           if (generation.current === current)
-            setState((value) => ({
-              ...value,
-              phase: saved ? "complete" : "idle",
-              saved,
-              needsSync: saved,
-              error: saved
-                ? `Your bank connection is saved, but its activity isn’t available yet. ${failureMessage(error, "We’ll retry automatically.")}`
-                : failureMessage(
-                    error,
-                    "The bank connection could not be saved. Try connecting again.",
+            setState(
+              saved
+                ? {
+                    step: "syncFailed",
+                    connectionId: saved,
+                    error: `Your bank connection is saved, but its activity isn’t available yet. ${failureMessage(error, "We’ll retry automatically.")}`,
+                  }
+                : failed(
+                    failureMessage(
+                      error,
+                      "The bank connection could not be saved. Try connecting again.",
+                    ),
                   ),
-            }));
+            );
         } finally {
           if (generation.current === current) busy.current = false;
         }
@@ -239,21 +226,18 @@ export function usePlaidLink() {
             .catch((failure: unknown) =>
               console.error("Link exit could not be recorded", failure),
             );
-          setState((value) => ({
-            ...value,
-            phase: "idle",
-            error: error
-              ? (error.display_message ??
-                error.error_message ??
-                "Your bank connection ended before completion. Try again.")
-              : "",
-            message: error
-              ? ""
-              : "Bank connection canceled. You can connect again when you’re ready.",
-          }));
+          setState(
+            failed(
+              error
+                ? (error.display_message ??
+                    error.error_message ??
+                    "Your bank connection ended before completion. Try again.")
+                : "",
+            ),
+          );
         },
       });
-      setState((value) => ({ ...value, phase: "link" }));
+      setState({ step: "link", connectionId: session.connectionId });
       handler.current.open();
     },
     [],
@@ -265,7 +249,7 @@ export function usePlaidLink() {
       busy.current = true;
       pendingReview.current = null;
       const current = ++generation.current;
-      setState({ ...initial, phase: "loading", connectionId });
+      setState({ step: "loading", connectionId });
       let pendingSession: { storage: Storage; linkToken: string } | undefined;
       try {
         const storage = window.localStorage;
@@ -280,8 +264,8 @@ export function usePlaidLink() {
         if (canonicalOrigin) {
           busy.current = false;
           setState({
-            ...initial,
-            canonicalOrigin,
+            step: "elsewhere",
+            origin: canonicalOrigin,
             error:
               "Open Caishen at its bank connection address before connecting. Your bank needs to return to the same site where you started.",
           });
@@ -305,13 +289,14 @@ export function usePlaidLink() {
             pendingSession.linkToken,
           );
         cancel();
-        setState({
-          ...initial,
-          error: failureMessage(
-            error,
-            "Your bank connection could not start. Try again.",
+        setState(
+          failed(
+            failureMessage(
+              error,
+              "Your bank connection could not start. Try again.",
+            ),
           ),
-        });
+        );
       }
     },
     [cancel, open, userId],
@@ -321,7 +306,7 @@ export function usePlaidLink() {
     if (!userId || busy.current) return;
     busy.current = true;
     const current = ++generation.current;
-    setState({ ...initial, phase: "loading" });
+    setState({ step: "loading" });
     try {
       // Allow effect cleanup to cancel an initial Strict Mode resume before it clears storage.
       await Promise.resolve();
@@ -330,21 +315,19 @@ export function usePlaidLink() {
       const stored = readPlaidLinkSession(storage, userId);
       if (!stored.session) throw new Error(stored.error);
       const redirectUri = plaidReceivedRedirectUri(window.location.href);
-      setState((value) => ({
-        ...value,
-        connectionId: stored.session.connectionId,
-      }));
+      setState({ step: "loading", connectionId: stored.session.connectionId });
       await open(stored.session, storage, current, redirectUri);
     } catch (error) {
       if (generation.current !== current) return;
       cancel();
-      setState({
-        ...initial,
-        error: failureMessage(
-          error,
-          "Your bank connection could not resume. Return to your budget and connect again.",
+      setState(
+        failed(
+          failureMessage(
+            error,
+            "Your bank connection could not resume. Return to your budget and connect again.",
+          ),
         ),
-      });
+      );
     }
   }, [cancel, open, userId]);
 
@@ -352,51 +335,55 @@ export function usePlaidLink() {
     if (!userId || busy.current) return;
     busy.current = true;
     const current = ++generation.current;
-    setState((value) => ({
-      ...value,
-      phase: "syncing",
-      error: "",
-      message: "",
-    }));
+    // Only a saved connection whose update failed is retried.
+    setState((value) =>
+      value.step === "syncFailed"
+        ? { step: "syncing", connectionId: value.connectionId }
+        : value,
+    );
     try {
       await operations.current.sync.mutateAsync();
       await operations.current.utils.budget.invalidate();
       if (generation.current === current)
-        setState((value) => ({
-          ...value,
-          phase: "complete",
-          needsSync: false,
-          message:
-            "Bank activity updated. Check your review inbox. New transactions may take a few minutes to become available.",
-        }));
+        setState((value) =>
+          value.step === "syncing"
+            ? { step: "connected", connectionId: value.connectionId }
+            : value,
+        );
     } catch (error) {
       if (generation.current === current)
-        setState((value) => ({
-          ...value,
-          phase: "complete",
-          needsSync: true,
-          error: failureMessage(
-            error,
-            "Bank activity isn’t available yet. We’ll retry automatically.",
-          ),
-        }));
+        setState((value) =>
+          value.step === "syncing"
+            ? {
+                step: "syncFailed",
+                connectionId: value.connectionId,
+                error: failureMessage(
+                  error,
+                  "Bank activity isn’t available yet. We’ll retry automatically.",
+                ),
+              }
+            : value,
+        );
     } finally {
       if (generation.current === current) busy.current = false;
     }
   }, [userId]);
 
   return {
-    ...state,
+    flow: state,
     isLoaded,
     userId,
-    busy: !["idle", "complete"].includes(state.phase),
+    // A flow is underway, from asking for its Link token to its first update.
+    busy: ["loading", "link", "review", "saving", "syncing"].includes(
+      state.step,
+    ),
     start,
     resume,
     retrySync,
     confirmReview: () => {
       if (
         busy.current ||
-        !state.review ||
+        state.step !== "review" ||
         state.review.verdict === "all" ||
         !pendingReview.current
       )
