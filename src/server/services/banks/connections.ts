@@ -24,6 +24,10 @@ import {
   plaidLinkMetadataSchema,
 } from "~/lib/plaid-link-metadata";
 import { bankLinkVerdict } from "~/lib/bank-account-identity";
+import {
+  isBankConnectionDisconnected,
+  isBankConnectionTerminal,
+} from "~/lib/bank-connection-lifecycle";
 import { recordBankLinkOutcome } from "../bank-provider-events";
 import {
   readHouseholdRevision,
@@ -66,7 +70,14 @@ export function fetchPlaidWebhookKey(db: Database, keyId: string) {
 function requireConnected(connection: StoredConnection) {
   const details = readConnectionColumn(connection);
   if (!details) throw connectionMaintenance();
-  if (details.disconnectedAt)
+  // A revoked connection can still be reconnected; a disconnected one has
+  // no token left to reconnect with.
+  if (
+    isBankConnectionDisconnected({
+      status: connection.status,
+      disconnectedAt: details.disconnectedAt,
+    })
+  )
     throw new Error(
       "This bank is disconnected. Choose Link again to authorize a new connection.",
     );
@@ -136,9 +147,10 @@ function reviewBankLinkConnections(
       const details = readConnectionColumn(connection);
       if (!details) throw connectionMaintenance();
       if (
-        details.disconnectedAt ||
-        connection.status === "revoked" ||
-        connection.status === "disconnected" ||
+        isBankConnectionTerminal({
+          status: connection.status,
+          disconnectedAt: details.disconnectedAt,
+        }) ||
         details.institutionId !== institutionId
       )
         return [];

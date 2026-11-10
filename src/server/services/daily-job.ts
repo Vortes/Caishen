@@ -1,5 +1,6 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { bankImportNeedsReview } from "~/lib/bank-import-review";
+import { terminalBankConnectionStatuses } from "~/lib/bank-connection-lifecycle";
 import {
   buildDailyReviewMessage,
   createResendClient,
@@ -226,7 +227,7 @@ async function dueConnections(db: Database, now: Date) {
   const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
   const connections = await db.bankConnection.findMany({
     where: {
-      status: { notIn: ["revoked", "disconnected"] },
+      status: { notIn: [...terminalBankConnectionStatuses] },
       user: { active: true },
     },
     select: {
@@ -300,7 +301,7 @@ async function staleConnections(
   const connections = await db.bankConnection.findMany({
     where: {
       id: { in: failed },
-      status: { notIn: ["login_required", "revoked", "disconnected"] },
+      status: { notIn: ["login_required", ...terminalBankConnectionStatuses] },
     },
     select: { id: true, createdAt: true, lastSyncedAt: true },
     orderBy: { id: "asc" },

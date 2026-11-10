@@ -13,6 +13,7 @@ import {
 } from "~/components/budget/format";
 import type { State, View } from "~/components/budget/types";
 import { partnerOf } from "~/components/partner/partner";
+import { needsAttention } from "~/components/banks/connection-attention";
 import {
   cardPaymentCategoryLabel,
   transactionCategory,
@@ -706,7 +707,7 @@ export function toShellData(
       connection: connection && {
         institution: connection.institutionName ?? "Connected bank",
         synced: syncedLabel(connection.lastSyncedAt, connection.error),
-        needsAttention: Boolean(connection.error),
+        needsAttention: needsAttention(connection),
       },
     };
   });

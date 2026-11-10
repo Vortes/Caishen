@@ -1,3 +1,5 @@
+import { isBankConnectionTerminal } from "./bank-connection-lifecycle";
+
 /** The ranked account identity rules shared by Link, refresh, setup, and recovery (ADR 0009). */
 export type BankAccountIdentity = {
   accountId: string;
@@ -216,9 +218,7 @@ export function isBankAccountLive(
   providerId: string,
 ) {
   return (
-    connection.status !== "revoked" &&
-    connection.status !== "disconnected" &&
-    !connection.disconnectedAt &&
+    !isBankConnectionTerminal(connection) &&
     !connection.unavailableAccountIds?.includes(providerId) &&
     connection.accounts.some((account) => account.accountId === providerId)
   );

@@ -23,6 +23,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { readImportStates, importStateChange } from "../bank-import-rows";
 import { itemHealthChange } from "../bank-connection-status";
+import { isBankConnectionTerminal } from "~/lib/bank-connection-lifecycle";
 import { decryptBankToken } from "~/server/token-crypto";
 import { isDevelopmentSeedBank } from "~/server/dev/seed-banks";
 import { RevisionConflictError, findOperation } from "~/server/storage/rows";
@@ -140,9 +141,10 @@ export async function syncBanks(
     if (
       read.status === "maintenance" ||
       isDevelopmentSeedBank(connection) ||
-      read.state.disconnectedAt ||
-      // No update can reach an Item the user has revoked or disconnected.
-      ["revoked", "disconnected"].includes(connection.status)
+      isBankConnectionTerminal({
+        status: connection.status,
+        disconnectedAt: read.state.disconnectedAt,
+      })
     ) {
       outcomes.push({ connectionId: connection.id, kind: "skipped" });
       continue;

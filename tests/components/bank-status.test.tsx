@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { State } from "~/components/budget/types";
 import { readyOverview, renderShell } from "./shell-harness";
@@ -118,3 +118,25 @@ test.each([
     expect(within(banks).getByRole("button", { name: action })).toBeTruthy();
   },
 );
+
+test("the sidebar warns on an account whose bank needs signing in again", async () => {
+  const shell = await renderShell({
+    overview: () =>
+      readyOverview({
+        connections: [chase({ status: "login_required" })],
+        services: [{ name: "Plaid", status: "configured", detail: "Ready" }],
+      }),
+  });
+  const checking = () =>
+    within(
+      screen.getByRole("navigation", { name: "Budget navigation" }),
+    ).getByRole("link", { name: "Checking $1,000.00" });
+  await waitFor(() =>
+    expect(
+      within(checking()).getByRole("img", {
+        name: "Connection needs attention",
+      }),
+    ).toBeTruthy(),
+  );
+  expect(shell.execute).not.toHaveBeenCalled();
+});
