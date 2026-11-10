@@ -96,7 +96,7 @@ function ReconcileForm({
     (item) =>
       item.accountId === account.id &&
       item.source === "budget" &&
-      item.status === "posted" &&
+      item.cleared &&
       !item.reconciled,
   ).length;
   const locks = `${unlocked} cleared ${unlocked === 1 ? "transaction" : "transactions"}`;
