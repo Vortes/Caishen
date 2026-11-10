@@ -105,7 +105,7 @@ export function useBankConnections({
   resumeReturn?: boolean;
 }) {
   const link = usePlaidLink();
-  const { isLoaded, userId, resume, cancel, retrySync } = link;
+  const { flow, isLoaded, userId, resume, cancel, retrySync } = link;
   useEffect(() => {
     if (!resumeReturn || !isLoaded || !userId) return;
     void resume();
@@ -125,36 +125,45 @@ export function useBankConnections({
 
   // Whether the running flow signs an existing connection back in.
   const reconnect = useRef(false);
-  // Reacts once to each step the flow lands on.
-  const phase = useRef(link.phase);
+  // Reacts once to each step the flow lands on: a failure, or a connection
+  // whose first update went through.
+  const landed = useRef(restingStep(flow.step));
   const latest = useRef({ state, notify, link });
   latest.current = { state, notify, link };
   useEffect(() => {
-    const previous = phase.current;
-    phase.current = link.phase;
-    if (previous === link.phase) return;
-    const { state, notify, link: flow } = latest.current;
-    if (link.phase === "idle" && flow.error && !flow.canonicalOrigin)
-      notify(flow.error, "attention");
-    if (link.phase !== "complete" || flow.needsSync) return;
-    const connection = state.connections.find(
-      (item) => item.id === flow.connectionId,
-    );
-    if (connection?.error) notify(connection.error, "attention");
-    else if (connection && addableAccounts(connection).length) {
-      setDismissed(false);
-      setSetupRequest({ connectionId: connection.id, updated: true });
-    } else
-      notify(
-        `${reconnect.current ? "Reconnected" : "Connected"} ${bankName(connection)}`,
-      );
-  }, [link.phase]);
+    const previous = landed.current;
+    landed.current = restingStep(flow.step);
+    if (previous === landed.current) return;
+    const {
+      state,
+      notify,
+      link: { flow: landing },
+    } = latest.current;
+    switch (landing.step) {
+      case "failed":
+        notify(landing.error, "attention");
+        return;
+      case "connected": {
+        const connection = state.connections.find(
+          (item) => item.id === landing.connectionId,
+        );
+        if (connection?.error) notify(connection.error, "attention");
+        else if (connection && addableAccounts(connection).length) {
+          setDismissed(false);
+          setSetupRequest({ connectionId: connection.id, updated: true });
+        } else
+          notify(
+            `${reconnect.current ? "Reconnected" : "Connected"} ${bankName(connection)}`,
+          );
+      }
+    }
+  }, [flow.step]);
 
   useEffect(() => {
-    if (dismissed || link.phase !== "complete" || !link.needsSync) return;
+    if (dismissed || flow.step !== "syncFailed") return;
     const timer = window.setTimeout(() => void retrySync(), 30_000);
     return () => window.clearTimeout(timer);
-  }, [dismissed, link.phase, link.needsSync, retrySync]);
+  }, [dismissed, flow.step, retrySync]);
 
   const setup = state.connections.find(
     (item) => item.id === setupRequest?.connectionId,
@@ -170,23 +179,19 @@ export function useBankConnections({
         }
       : dismissed
         ? null
-        : link.phase === "review" && link.review
-          ? { type: "duplicate", review: link.review, error: link.error }
-          : link.phase === "saving" || link.phase === "syncing"
-            ? { type: "progress", phase: link.phase }
-            : link.phase === "complete" && link.needsSync
-              ? { type: "sync-failed", error: link.error }
-              : link.canonicalOrigin
-                ? { type: "elsewhere", origin: link.canonicalOrigin }
-                : null;
+        : flowView(flow);
 
   // Undo and redo wait while the dialog is up.
   const showing = view !== null;
   useEffect(() => (showing ? holdOpen() : undefined), [showing, holdOpen]);
 
   return {
-    error: link.error,
-    saved: link.saved,
+    // What the Plaid return page says once no dialog is up.
+    error: "error" in flow ? (flow.error ?? "") : "",
+    saved:
+      flow.step === "syncing" ||
+      flow.step === "connected" ||
+      flow.step === "syncFailed",
     connections: state.connections.filter(
       (item) =>
         !item.disconnectedAt ||
@@ -194,12 +199,13 @@ export function useBankConnections({
     ),
     available,
     // Getting Plaid ready: the link token and its script, before its window.
-    opening: link.phase === "loading",
+    opening: flow.step === "loading",
     // Plaid's own window is up.
-    plaidOpen: link.phase === "link",
+    plaidOpen: flow.step === "link",
     busy: link.busy,
     // The connection being reconnected, while that runs.
-    reconnecting: link.busy ? link.connectionId : undefined,
+    reconnecting:
+      link.busy && "connectionId" in flow ? flow.connectionId : undefined,
     view,
     state,
     notify,
@@ -214,7 +220,7 @@ export function useBankConnections({
     disconnect: (connectionId: string) => setDisconnectId(connectionId),
     confirmReview: link.confirmReview,
     close: () => {
-      if (link.phase === "review") link.dismissReview();
+      if (flow.step === "review") link.dismissReview();
       setSetupRequest(null);
       setDisconnectId(null);
       setDismissed(true);
@@ -222,11 +228,39 @@ export function useBankConnections({
   };
 }
 
+type PlaidFlow = ReturnType<typeof usePlaidLink>["flow"];
+
+// Where a flow comes to rest, whatever it ended with. The flow reacts on
+// arriving there, not when one ending replaces another with no step between.
+const restingStep = (step: PlaidFlow["step"]) =>
+  step === "failed" || step === "elsewhere"
+    ? "idle"
+    : step === "syncFailed"
+      ? "connected"
+      : step;
+
+// The dialog each step of the flow shows, if any.
+function flowView(flow: PlaidFlow): DialogView | null {
+  switch (flow.step) {
+    case "review":
+      return { type: "duplicate", review: flow.review, error: flow.error };
+    case "saving":
+    case "syncing":
+      return { type: "progress", phase: flow.step };
+    case "syncFailed":
+      return { type: "sync-failed", error: flow.error };
+    case "elsewhere":
+      return { type: "elsewhere", origin: flow.origin };
+    default:
+      return null;
+  }
+}
+
 type DialogView =
   | {
       type: "duplicate";
-      review: NonNullable<ReturnType<typeof usePlaidLink>["review"]>;
-      error: string;
+      review: Extract<PlaidFlow, { step: "review" }>["review"];
+      error?: string;
     }
   | { type: "disconnect"; connection: Connection }
   | { type: "progress"; phase: "saving" | "syncing" }
