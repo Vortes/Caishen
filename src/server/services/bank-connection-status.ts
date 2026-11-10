@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PlaidItemHealth } from "~/server/integrations/plaid";
 import type { PlaidWebhook } from "~/server/plaid-webhook";
+import { isBankConnectionTerminal } from "~/lib/bank-connection-lifecycle";
 
 // A bank connection's status is set from what Plaid reports through Item
 // webhooks and /item/get, never inferred from an account going unmentioned
@@ -27,8 +28,9 @@ export interface ConnectionStatusChange {
 /**
  * The connection columns an account update stores from /item/get. A sign-in
  * problem the Item reports marks the connection; an Item with no error after
- * one was login required is connected again. A pending disconnect or
- * revocation is only ever lifted by the webhook or reconnect that resolves it.
+ * one was login required is connected again. A pending disconnect is only
+ * ever lifted by the webhook or reconnect that resolves it, and a revoked or
+ * disconnected connection keeps that status.
  */
 export function itemHealthChange(
   item: PlaidItemHealth,
@@ -38,8 +40,9 @@ export function itemHealthChange(
     consentExpiresAt: item.consentExpiresAt,
     lastSuccessfulUpdateAt: item.lastSuccessfulUpdateAt,
     lastFailedUpdateAt: item.lastFailedUpdateAt,
-    status:
-      item.errorCode === "ITEM_LOGIN_REQUIRED"
+    status: isBankConnectionTerminal({ status: current })
+      ? current
+      : item.errorCode === "ITEM_LOGIN_REQUIRED"
         ? "login_required"
         : item.errorCode === null && current === "login_required"
           ? "connected"
@@ -49,10 +52,24 @@ export function itemHealthChange(
 
 /**
  * What an Item webhook changes on its connection, and whether it asks for an
- * account update; null for a webhook this app does not act on.
+ * account update; null for a webhook this app does not act on. A webhook that
+ * arrives after a revocation or disconnect leaves that status in place.
  * https://plaid.com/docs/api/items/#webhooks
  */
 export function webhookChange(
+  webhook: PlaidWebhook,
+  current: BankConnectionStatus,
+  now: Date,
+): { change: ConnectionStatusChange; update: boolean } | null {
+  const decision = itemWebhookChange(webhook, current, now);
+  if (!decision || !isBankConnectionTerminal({ status: current }))
+    return decision;
+  const change = { ...decision.change };
+  delete change.status;
+  return { ...decision, change };
+}
+
+function itemWebhookChange(
   webhook: PlaidWebhook,
   current: BankConnectionStatus,
   now: Date,
