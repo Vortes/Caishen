@@ -67,6 +67,7 @@ import { canonicalJson } from "./canonical-json";
 import { Changes } from "./changes";
 import { payeeKey, rememberCategorizations } from "./payee-memory";
 import { personKey } from "./person-name";
+import { keepsCardRules, personRole } from "./person-role";
 import { foldAssignments, type ChangeSet } from "./rows";
 
 const identifier = z.string().min(1).max(160);
@@ -1320,7 +1321,7 @@ function requireUniquePersonName(
       (account) =>
         account.id !== accountId &&
         isCounterparty(account) &&
-        !account.closed &&
+        !isFormerPartner(account) &&
         personKey(account.name) === personKey(name),
     )
   )
@@ -1336,11 +1337,12 @@ export const isLegacyCounterparty = (account: Pick<Account, "kind">) =>
 /** The person linked to the other member of the household: the partner. */
 export const isLinkedPerson = (
   account: Pick<Account, "kind" | "linkedUserId" | "closed">,
-) => account.kind === "person" && !!account.linkedUserId && !account.closed;
+) => personRole(account) === "partner";
 
 /** A former partner's closed account, frozen as the partnership ended. */
-export const isFormerPartner = (account: Pick<Account, "kind" | "closed">) =>
-  account.kind === "person" && !!account.closed;
+export const isFormerPartner = (
+  account: Pick<Account, "kind" | "linkedUserId" | "closed">,
+) => personRole(account) === "former-partner";
 
 export const frozenLedgerMessage =
   "Shared balances with a former partner are frozen. New spending stays in your own budget";
@@ -1988,20 +1990,12 @@ function replay(
   // A partner ledger's account works like a credit card (ADR 0015): your
   // side of their purchases is credit spending, and what no category funded
   // carries on the account as unfunded credit. A former partner's frozen
-  // ledger keeps these rules, so disconnecting changes no numbers; a former
-  // partner is the closed person its frozen entries belong to. Other closed
-  // people keep ADR 0007's rules.
+  // ledger keeps these rules, so disconnecting changes no numbers. A ledger
+  // frozen with no entries keeps ADR 0007's rules.
   const linked = partnerAccountOf(budget);
-  const formerPartners = new Set(
-    (budget.formerPartnerEntries ?? []).map((entry) => entry.accountId),
-  );
   const cardLedgers = new Map<string, CardLedger>(
     budget.accounts
-      .filter(
-        (account) =>
-          account.id === linked?.id ||
-          (isFormerPartner(account) && formerPartners.has(account.id)),
-      )
+      .filter((account) => keepsCardRules(account, budget))
       .flatMap((account) => {
         const envelope = pairedEnvelope.get(account.id);
         return envelope

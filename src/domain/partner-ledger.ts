@@ -6,6 +6,7 @@ import { isPending } from "./cleared";
 import { counterpartyLines, shareContribution } from "./counterparty";
 import type { PartnerSettlement } from "./partner-settlements";
 import { payeeKey } from "./payee-memory";
+import { personRole } from "./person-role";
 import { isPersonalLedger, type AccountingState } from "./shared-ledger";
 
 // The partner ledger: the one ledger both partners' budgets share (shared
@@ -182,10 +183,7 @@ export function partnerEntryId(
 export function partnerAccountOf(
   budget: Pick<Budget, "accounts">,
 ): Budget["accounts"][number] | undefined {
-  return budget.accounts.find(
-    (account) =>
-      account.kind === "person" && !!account.linkedUserId && !account.closed,
-  );
+  return budget.accounts.find((account) => personRole(account) === "partner");
 }
 
 /**
@@ -206,7 +204,10 @@ export function partnerLines(
 /** Whether an account holds a partner ledger: the partner's, or a former one's. */
 export const isPartnerLedger = (
   account: Pick<Budget["accounts"][number], "kind" | "linkedUserId" | "closed">,
-) => account.kind === "person" && (!!account.linkedUserId || !!account.closed);
+) => {
+  const role = personRole(account);
+  return role === "partner" || role === "former-partner";
+};
 
 /**
  * The ledger entries behind one partner ledger account: the household's
@@ -219,9 +220,9 @@ export function ledgerEntries(
   accountId: string,
 ): PartnerEntry[] {
   const account = budget.accounts.find((item) => item.id === accountId);
-  if (account?.kind !== "person") return [];
-  if (account.linkedUserId && !account.closed) return shared ?? [];
-  if (!account.closed) return [];
+  const role = account && personRole(account);
+  if (role === "partner") return shared ?? [];
+  if (role !== "former-partner") return [];
   return (budget.formerPartnerEntries ?? []).filter(
     (entry) => entry.accountId === accountId,
   );
@@ -511,7 +512,7 @@ export function partnerLedgerRows(
   }
   rows.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   // A former partner's ledger is closed: its shares can't change.
-  const frozen = !!partner.closed;
+  const frozen = personRole(partner) === "former-partner";
   let balance = 0;
   return rows
     .map((row) => {

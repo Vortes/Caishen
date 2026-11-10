@@ -8,6 +8,7 @@ import type {
 import { READY_TO_ASSIGN } from "./transfers";
 import { isFullShare } from "./counterparty";
 import { personNamed } from "./people";
+import { personRole } from "./person-role";
 
 // Payee memory, like YNAB's memorized payee category: the user's most recent
 // categorization of each payee prefills that payee's new bank imports and
@@ -139,7 +140,8 @@ export function rememberedCounterpartyShare(
   const counterparty = budget.accounts.find(
     (item) => item.id === share.accountId,
   );
-  if (counterparty?.kind !== "person" || counterparty.closed) return undefined;
+  const role = counterparty && personRole(counterparty);
+  if (role !== "person" && role !== "partner") return undefined;
   return {
     ...share,
     amount:

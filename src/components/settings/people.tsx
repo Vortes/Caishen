@@ -16,12 +16,8 @@ import { useUser } from "@clerk/nextjs";
 import { ComposeInvitation } from "~/components/partner-invite/compose";
 import { useShellData } from "~/components/app-shell/shell-data";
 import { money, type Account } from "~/components/app-shell/model";
-import {
-  isLinked,
-  isPerson,
-  owedSentence,
-  usePeople,
-} from "~/components/app-shell/people";
+import { owedSentence, usePeople } from "~/components/app-shell/people";
+import { personRole } from "~/domain/person-role";
 import { useTransactionEntry } from "~/components/app-shell/transaction-entry";
 import { newId } from "~/components/budget/format";
 import { api } from "~/trpc/react";
@@ -31,11 +27,12 @@ import additions from "~/components/entry/settings.module.css";
 // what you share in their own budget; everyone else is yours alone.
 export function PeopleSettings() {
   const { accounts } = useShellData();
-  const people = accounts.filter(isPerson);
-  const others = people
-    .filter((person) => !isLinked(person) && !person.closed)
+  const others = accounts
+    .filter((person) => personRole(person) === "person")
     .sort((a, b) => a.name.localeCompare(b.name));
-  const former = people.filter((person) => person.closed);
+  const former = accounts.filter(
+    (person) => personRole(person) === "former-partner",
+  );
   return (
     <SettingsPage>
       <SettingsSection
