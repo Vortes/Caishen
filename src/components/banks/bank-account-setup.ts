@@ -245,7 +245,8 @@ export function useBankAccountSetupForm({
   const refreshed = hasRefreshed(refresh);
   const updating = refresh.status === "running";
   const submitting = submission.status === "saving";
-  const busy = submitting || updating;
+  // Checking the bank again after it has updated leaves the fields alone.
+  const busy = submitting || (updating && !refreshed);
   const fieldErrors = submission.status === "failed" ? submission.fields : {};
   const current = useRef({ sync, utils });
   current.current = { sync, utils };
@@ -253,7 +254,10 @@ export function useBankAccountSetupForm({
   const updateBank = useCallback(async () => {
     if (activity.current) return;
     activity.current = "refreshing";
-    setRefresh({ status: "running", refreshed: false });
+    setRefresh((previous) => ({
+      status: "running",
+      refreshed: hasRefreshed(previous),
+    }));
     try {
       await current.current.sync.mutateAsync();
       await current.current.utils.budget.invalidate();
@@ -441,6 +445,7 @@ export function useBankAccountSetupForm({
     }
     activity.current = "saving";
     setSubmission({ status: "saving" });
+    let outcome: Submit = { status: "idle" };
     try {
       submittedAccounts.current ??= selected.map((account) => {
         const draft = drafts[account.accountId]!;
@@ -479,29 +484,30 @@ export function useBankAccountSetupForm({
         `Added ${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}`,
       );
       await utils.budget.invalidate();
-      setSubmission({ status: "idle" });
       onSaved(accounts.length);
     } catch (failure) {
       // The budget client only gives up on a save the server refused.
       submittedAccounts.current = null;
       setOperationId(crypto.randomUUID());
-      setSubmission({
+      outcome = {
         status: "failed",
         error:
           failure instanceof Error
             ? failure.message
             : "Your accounts couldn’t be added. Try again.",
         fields: {},
-      });
+      };
       await utils.budget.invalidate();
     } finally {
       activity.current = null;
+      setSubmission(outcome);
     }
   };
 
   // Why the form can't save yet, when the bank's data isn't ready for it.
   let waiting: string | null = null;
-  if (updating) waiting = "Preparing your accounts and recent activity…";
+  if (updating && !refreshed)
+    waiting = "Preparing your accounts and recent activity…";
   else if (!refreshed)
     waiting =
       "Your bank is taking longer than usual. We’ll keep trying automatically. Your account names are saved here.";
@@ -530,6 +536,8 @@ export function useBankAccountSetupForm({
     submitting,
     // Closing mid-save would lose track of whether the accounts were added.
     locked: () => activity.current === "saving",
-    canSubmit: !busy && ready && refreshed && selected.length > 0,
+    // Saving waits for a bank check to finish, so it sends what the check
+    // found.
+    canSubmit: !busy && !updating && ready && refreshed && selected.length > 0,
   };
 }
