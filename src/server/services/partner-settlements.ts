@@ -14,13 +14,13 @@ import { composeChangeSets } from "~/domain/change-sets";
 import { counterpartyRegisterEntries } from "~/domain/counterparty";
 import {
   AccountingError,
-  isCounterparty,
   executeWithChanges,
   type Book,
   type Budget,
   type Command,
   type Transaction,
 } from "~/domain/engine";
+import { personRole } from "~/domain/person-role";
 import {
   isRejectedSettlementImport,
   settlementLegId,
@@ -410,10 +410,7 @@ async function settleOnce(db: Database, userId: string) {
   const budget = budgetOf(book, userId);
   const people = new Map(
     budget.accounts
-      .filter(
-        (account) =>
-          isCounterparty(account) && !account.linkedUserId && !account.closed,
-      )
+      .filter((account) => personRole(account) === "person")
       .map((account) => [account.id, account.name]),
   );
   const owed = new Map<string, number>();

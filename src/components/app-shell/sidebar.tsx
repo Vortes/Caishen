@@ -25,6 +25,7 @@ import {
   type MouseEvent,
 } from "react";
 import { newId } from "~/components/budget/format";
+import { personRole } from "~/domain/person-role";
 import { deleteStoredBudgets } from "~/components/sync/indexed-db";
 import { Button } from "~/components/ui/button";
 import { IconButton } from "~/components/ui/icon-button";
@@ -153,9 +154,9 @@ export function Sidebar({
         </div>
       ) : undefined,
       items: [
-        ...people.filter(isLinked),
-        ...people.filter((account) => !isLinked(account) && !account.closed),
-        ...people.filter((account) => account.closed),
+        ...people.filter((account) => personRole(account) === "partner"),
+        ...people.filter((account) => personRole(account) === "person"),
+        ...people.filter((account) => personRole(account) === "former-partner"),
       ]
         .filter((account) => showSettled || !settled.includes(account))
         .map((account) => ({

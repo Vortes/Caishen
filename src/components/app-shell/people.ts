@@ -1,7 +1,9 @@
 "use client";
 
 import { newId } from "~/components/budget/format";
-import { personAccountId } from "~/domain/engine";
+import { isFormerPartner, personAccountId } from "~/domain/engine";
+import { isPartnerLedger } from "~/domain/partner-ledger";
+import { personRole } from "~/domain/person-role";
 import type { Account } from "./model";
 import { useShellData } from "./shell-data";
 import { useTransactionEntry } from "./transaction-entry";
@@ -14,8 +16,9 @@ export const isPerson = (account: Pick<Account, "kind">) =>
   account.kind === "person";
 
 /** Whether a person is also on Caishen: the partner. */
-export const isLinked = (account: Pick<Account, "linkedUserId" | "closed">) =>
-  Boolean(account.linkedUserId) && !account.closed;
+export const isLinked = (
+  account: Pick<Account, "kind" | "linkedUserId" | "closed">,
+) => personRole(account) === "partner";
 
 /**
  * Whether either of you can owe the other: the partner, and a former
@@ -23,8 +26,8 @@ export const isLinked = (account: Pick<Account, "linkedUserId" | "closed">) =>
  * them and what they paid you back.
  */
 export const owesBothWays = (
-  account: Pick<Account, "linkedUserId" | "closed">,
-) => Boolean(account.linkedUserId) || Boolean(account.closed);
+  account: Pick<Account, "kind" | "linkedUserId" | "closed">,
+) => isPartnerLedger(account);
 
 /** Whether nothing is owed either way and no money waits for them. */
 export const isSettled = (account: Account, float: number) =>
@@ -54,7 +57,7 @@ export function usePeople() {
         lastUsed.set(id, transaction.date);
   }
   const people = accounts
-    .filter((item) => isPerson(item) && !item.closed)
+    .filter((item) => isPerson(item) && !isFormerPartner(item))
     .sort(
       (a, b) =>
         Number(isLinked(b)) - Number(isLinked(a)) ||

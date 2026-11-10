@@ -12,6 +12,7 @@ import {
   type CounterpartyShare,
 } from "./engine";
 import { personKey } from "./person-name";
+import { personRole } from "./person-role";
 
 export { personKey } from "./person-name";
 
@@ -35,8 +36,8 @@ export function peopleOf<
 >(accounts: T[]): T[] {
   const people = accounts.filter(isCounterparty);
   return [
-    ...people.filter((account) => account.linkedUserId && !account.closed),
-    ...people.filter((account) => !account.linkedUserId || account.closed),
+    ...people.filter(isLinkedPerson),
+    ...people.filter((account) => !isLinkedPerson(account)),
   ];
 }
 
@@ -47,9 +48,7 @@ export function personNamed(
 ): Account | undefined {
   const named = accounts.filter(
     (account) =>
-      isCounterparty(account) &&
-      !account.closed &&
-      !account.linkedUserId &&
+      personRole(account) === "person" &&
       personKey(account.name) === personKey(name),
   );
   return named.length === 1 ? named[0] : undefined;
