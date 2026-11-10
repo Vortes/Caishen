@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { State } from "~/components/budget/types";
+import { SyncError } from "~/components/sync/transport";
 import type { RouterInputs } from "~/trpc/react";
-import { readyOverview, renderShell } from "./shell-harness";
+import { deferred, readyOverview, renderShell } from "./shell-harness";
 
 function connection(): State["connections"][number] {
   return {
@@ -388,6 +389,117 @@ test("a loan balance arriving during setup replaces the missing balance field", 
       .getByRole("textbox", { name: "Current principal owed" })
       .getAttribute("value"),
   ).toBe("123.45");
+});
+
+// Checking is ready to add; savings is still preparing at the bank.
+function partlyPreparedBank(): State["connections"][number] {
+  const account = {
+    ...connection().accounts[0]!,
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 250,
+    availableBalance: 250,
+  };
+  return {
+    ...connection(),
+    synchronizedAccountIds: ["checking"],
+    accounts: [
+      { ...account, accountId: "checking", name: "Discover checking" },
+      { ...account, accountId: "savings", name: "Discover savings" },
+    ],
+  };
+}
+
+// Answers each bank update when the test lets it finish.
+function bankChecks() {
+  const checks: ReturnType<typeof deferred<void>>[] = [];
+  return {
+    checks,
+    sync: async (server: { revision: number }) => {
+      const check = deferred<void>();
+      checks.push(check);
+      await check.promise;
+      return {
+        imported: 0,
+        updated: 0,
+        revision: server.revision,
+        changeSet: null,
+        rebased: false as const,
+      };
+    },
+  };
+}
+
+// Opens setup from the Banks panel and finishes its first bank update on a
+// clock the test moves, so the test can reach the next automatic check.
+async function openSetup(
+  user: Awaited<ReturnType<typeof renderShell>>["user"],
+  checks: ReturnType<typeof bankChecks>["checks"],
+) {
+  await user.click(screen.getByRole("button", { name: "Banks" }));
+  await user.click(screen.getByRole("button", { name: "Discover options" }));
+  await user.click(await screen.findByRole("menuitem", { name: /^Add / }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Add Discover to your budget",
+  });
+  await waitFor(() => expect(checks).toHaveLength(1));
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout"],
+    now: new Date("2026-10-20T19:00:00Z"),
+  });
+  checks[0]!.resolve();
+  const add = within(dialog).getByRole("button", { name: "Add accounts" });
+  await vi.waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+  expect(
+    within(dialog).getByText(/Some accounts are still preparing/),
+  ).toBeTruthy();
+  return { dialog, add };
+}
+
+test("a refused save's error stays while the bank keeps preparing other accounts", async () => {
+  const bank = partlyPreparedBank();
+  const { checks, sync } = bankChecks();
+  const shell = await renderShell({
+    overview: () => readyOverview({ connections: [bank] }),
+    sync,
+    setupBankAccounts: () => {
+      throw new SyncError("rejected", "Your bank changed these accounts.");
+    },
+  });
+  const { dialog, add } = await openSetup(shell.user, checks);
+  fireEvent.click(add);
+  await vi.waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+  expect(
+    within(dialog).getByText("Your bank changed these accounts."),
+  ).toBeTruthy();
+
+  // The bank is checked again for the account still preparing.
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(checks).toHaveLength(2);
+  checks[1]!.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(
+    within(dialog).getByText("Your bank changed these accounts."),
+  ).toBeTruthy();
+});
+
+test("checking the bank again in the background leaves the ready accounts editable", async () => {
+  const bank = partlyPreparedBank();
+  const { checks, sync } = bankChecks();
+  const shell = await renderShell({
+    overview: () => readyOverview({ connections: [bank] }),
+    sync,
+  });
+  const { dialog } = await openSetup(shell.user, checks);
+  const name = within(dialog).getByRole("textbox", { name: "Name" });
+
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(checks).toHaveLength(2);
+  expect(name.hasAttribute("disabled")).toBe(false);
+  expect(
+    within(dialog).getByText(/Some accounts are still preparing/),
+  ).toBeTruthy();
+  checks[1]!.resolve();
 });
 
 test("a failed bank update's status names the Plaid request id for support", async () => {
