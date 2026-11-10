@@ -200,3 +200,16 @@ void test("a bank update that changes a transfer's amount still requires approva
     [false, false],
   );
 });
+
+void test("each side of a transfer posts on its bank's own day without losing approval", () => {
+  const posted = execute(
+    pendingTransfer(),
+    "alice",
+    transferPosting({ date: "2026-10-22" }),
+    "agent",
+  );
+  assert.deepEqual(
+    transferSides(posted).map(({ reviewed }) => reviewed),
+    [true, true],
+  );
+});

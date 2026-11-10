@@ -1,4 +1,5 @@
 import type { CommandSource, Transaction } from "./engine";
+import { isTransfer } from "./transfers";
 
 // What a person approves about a transaction. A change to anything else,
 // such as the bank's wording of the payee or a pending one posting, leaves
@@ -9,9 +10,21 @@ const approvedFacts = [
   "amount",
   "categoryId",
   "expenseMonth",
+] as const satisfies (keyof Transaction)[];
+// A transfer or payment is approved as money moving between two accounts.
+// Each side posts at its own bank on its own day, so the dates are the
+// banks' to set.
+const approvedPairFacts = [
+  "amount",
   "kind",
 ] as const satisfies (keyof Transaction)[];
-type Approved = Pick<Transaction, (typeof approvedFacts)[number]>;
+type Approved = Pick<
+  Transaction,
+  (typeof approvedFacts)[number] | (typeof approvedPairFacts)[number]
+>;
+
+const paired = (transaction: Pick<Transaction, "kind">) =>
+  isTransfer(transaction) || transaction.kind === "loan-payment";
 
 /**
  * Whether a transaction is approved once a save replaces `before` with
@@ -28,7 +41,9 @@ export function approvalAfterSave(
   if (source === "user") return requested ?? before?.reviewed ?? true;
   return Boolean(
     before?.reviewed &&
-    approvedFacts.every((key) => before[key] === after[key]),
+    (paired(after) ? approvedPairFacts : approvedFacts).every(
+      (key) => before[key] === after[key],
+    ),
   );
 }
 
