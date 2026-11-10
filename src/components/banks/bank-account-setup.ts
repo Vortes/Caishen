@@ -127,6 +127,28 @@ export function accountSetupType(
   };
 }
 
+// Updating the bank. `refreshed` remembers that an earlier update finished,
+// so checking again in the background keeps the form usable.
+type Refresh =
+  | { status: "idle" }
+  | { status: "done" }
+  | { status: "running"; refreshed: boolean }
+  | { status: "failed"; refreshed: boolean; error: string };
+
+// Adding the chosen accounts. A failure keeps why, for the whole form and per
+// account, until the user changes something or tries again.
+type Submit =
+  | { status: "idle" }
+  | { status: "saving" }
+  | {
+      status: "failed";
+      error: string;
+      fields: Partial<Record<string, string>>;
+    };
+
+const hasRefreshed = (refresh: Refresh) =>
+  refresh.status === "done" || (refresh.status !== "idle" && refresh.refreshed);
+
 // Reuses the update from Link, or updates on mount when opening setup later.
 // One operation id per set of choices keeps retries from adding accounts twice.
 export function useBankAccountSetupForm({
@@ -202,17 +224,15 @@ export function useBankAccountSetupForm({
       ]),
     ),
   );
-  const [error, setError] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<
-    Partial<Record<string, string>>
-  >({});
   const [operationId, setOperationId] = useState(() => crypto.randomUUID());
-  const [updating, setUpdating] = useState(false);
-  const [refreshed, setRefreshed] = useState(updated);
-  const [submitting, setSubmitting] = useState(false);
-  const updateInFlight = useRef(false);
+  const [refresh, setRefresh] = useState<Refresh>({
+    status: updated ? "done" : "idle",
+  });
+  const [submission, setSubmission] = useState<Submit>({ status: "idle" });
+  // Updating and saving take turns; set before either starts, so a second
+  // click or a timer firing in the same tick can't start another.
+  const activity = useRef<"refreshing" | "saving" | null>(null);
   const attemptedUpdate = useRef(false);
-  const saving = useRef(false);
   const submittedAccounts = useRef<
     Parameters<typeof save.mutateAsync>[0]["accounts"] | null
   >(null);
@@ -222,29 +242,33 @@ export function useBankAccountSetupForm({
     "INITIAL_UPDATE_COMPLETE",
     "HISTORICAL_UPDATE_COMPLETE",
   ].includes(connection.transactionStatus ?? "");
+  const refreshed = hasRefreshed(refresh);
+  const updating = refresh.status === "running";
+  const submitting = submission.status === "saving";
   const busy = submitting || updating;
+  const fieldErrors = submission.status === "failed" ? submission.fields : {};
   const current = useRef({ sync, utils });
   current.current = { sync, utils };
 
   const updateBank = useCallback(async () => {
-    if (updateInFlight.current || saving.current) return;
-    updateInFlight.current = true;
-    setUpdating(true);
-    setRefreshed(false);
-    setError("");
+    if (activity.current) return;
+    activity.current = "refreshing";
+    setRefresh({ status: "running", refreshed: false });
     try {
       await current.current.sync.mutateAsync();
       await current.current.utils.budget.invalidate();
-      setRefreshed(true);
+      setRefresh({ status: "done" });
     } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "Your bank couldn’t update. Try again.",
-      );
+      setRefresh((previous) => ({
+        status: "failed",
+        refreshed: hasRefreshed(previous),
+        error:
+          failure instanceof Error
+            ? failure.message
+            : "Your bank couldn’t update. Try again.",
+      }));
     } finally {
-      updateInFlight.current = false;
-      setUpdating(false);
+      activity.current = null;
     }
   }, []);
 
@@ -270,14 +294,14 @@ export function useBankAccountSetupForm({
         ...next,
       },
     }));
-    setFieldErrors((previous) => {
-      const next = { ...previous };
-      delete next[accountId];
-      return next;
+    setSubmission((previous) => {
+      if (previous.status !== "failed") return previous;
+      const fields = { ...previous.fields };
+      delete fields[accountId];
+      return { status: "failed", error: "", fields };
     });
     submittedAccounts.current = null;
     setOperationId(crypto.randomUUID());
-    setError("");
   }
 
   const mappedAccountIds = new Set(
@@ -365,7 +389,7 @@ export function useBankAccountSetupForm({
   });
 
   const submit = async () => {
-    if (saving.current || busy || !ready || !refreshed) return;
+    if (activity.current || busy || !ready || !refreshed) return;
     const errors: Record<string, string> = {};
     // A new loan's terms as checked here are the ones sent.
     const loans = new Map<string, LoanTerms>();
@@ -404,16 +428,19 @@ export function useBankAccountSetupForm({
       }
     }
     if (Object.keys(errors).length) {
-      setFieldErrors(errors);
+      setSubmission({ status: "failed", error: "", fields: errors });
       return;
     }
     if (!selected.length) {
-      setError("Choose at least one account to add.");
+      setSubmission({
+        status: "failed",
+        error: "Choose at least one account to add.",
+        fields: {},
+      });
       return;
     }
-    saving.current = true;
-    setSubmitting(true);
-    setError("");
+    activity.current = "saving";
+    setSubmission({ status: "saving" });
     try {
       submittedAccounts.current ??= selected.map((account) => {
         const draft = drafts[account.accountId]!;
@@ -452,34 +479,46 @@ export function useBankAccountSetupForm({
         `Added ${accounts.length} ${accounts.length === 1 ? "account" : "accounts"}`,
       );
       await utils.budget.invalidate();
+      setSubmission({ status: "idle" });
       onSaved(accounts.length);
     } catch (failure) {
       // The budget client only gives up on a save the server refused.
       submittedAccounts.current = null;
       setOperationId(crypto.randomUUID());
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "Your accounts couldn’t be added. Try again.",
-      );
+      setSubmission({
+        status: "failed",
+        error:
+          failure instanceof Error
+            ? failure.message
+            : "Your accounts couldn’t be added. Try again.",
+        fields: {},
+      });
       await utils.budget.invalidate();
     } finally {
-      saving.current = false;
-      setSubmitting(false);
+      activity.current = null;
     }
   };
 
   // Why the form can't save yet, when the bank's data isn't ready for it.
-  const waiting =
-    !ready || !refreshed || updating || preparingAccounts
-      ? updating
-        ? "Preparing your accounts and recent activity…"
-        : !refreshed
-          ? "Your bank is taking longer than usual. We’ll keep trying automatically. Your account names are saved here."
-          : preparingAccounts && ready && selected.length > 0
-            ? "Some accounts are still preparing. You can add the ready accounts now. The others will appear automatically when they’re ready."
-            : "Your bank is still preparing activity. We’ll keep checking automatically."
-      : null;
+  let waiting: string | null = null;
+  if (updating) waiting = "Preparing your accounts and recent activity…";
+  else if (!refreshed)
+    waiting =
+      "Your bank is taking longer than usual. We’ll keep trying automatically. Your account names are saved here.";
+  else if (preparingAccounts && ready && selected.length > 0)
+    waiting =
+      "Some accounts are still preparing. You can add the ready accounts now. The others will appear automatically when they’re ready.";
+  else if (preparingAccounts || !ready)
+    waiting =
+      "Your bank is still preparing activity. We’ll keep checking automatically.";
+
+  // Why the last save failed, then why the bank couldn't update.
+  const error = [
+    submission.status === "failed" ? submission.error : "",
+    refresh.status === "failed" ? refresh.error : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return {
     rows,
@@ -490,7 +529,7 @@ export function useBankAccountSetupForm({
     busy,
     submitting,
     // Closing mid-save would lose track of whether the accounts were added.
-    locked: () => saving.current,
+    locked: () => activity.current === "saving",
     canSubmit: !busy && ready && refreshed && selected.length > 0,
   };
 }

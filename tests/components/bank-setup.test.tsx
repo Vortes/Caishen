@@ -1,6 +1,7 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { State } from "~/components/budget/types";
+import { SyncError } from "~/components/sync/transport";
 import type { RouterInputs } from "~/trpc/react";
 import { readyOverview, renderShell } from "./shell-harness";
 
@@ -388,6 +389,81 @@ test("a loan balance arriving during setup replaces the missing balance field", 
       .getByRole("textbox", { name: "Current principal owed" })
       .getAttribute("value"),
   ).toBe("123.45");
+});
+
+test("a refused save's error stays while the bank keeps preparing other accounts", async () => {
+  const account = {
+    ...connection().accounts[0]!,
+    type: "depository",
+    subtype: "checking",
+    currentBalance: 250,
+    availableBalance: 250,
+  };
+  const bank: State["connections"][number] = {
+    ...connection(),
+    synchronizedAccountIds: ["checking"],
+    accounts: [
+      { ...account, accountId: "checking", name: "Discover checking" },
+      { ...account, accountId: "savings", name: "Discover savings" },
+    ],
+  };
+  let syncs = 0;
+  const shell = await renderShell({
+    overview: () => readyOverview({ connections: [bank] }),
+    sync: (server) => {
+      syncs++;
+      return {
+        imported: 0,
+        updated: 0,
+        revision: server.revision,
+        changeSet: null,
+        rebased: false,
+      };
+    },
+    setupBankAccounts: () => {
+      throw new SyncError("rejected", "Your bank changed these accounts.");
+    },
+  });
+  await shell.user.click(screen.getByRole("button", { name: "Banks" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "Discover options" }),
+  );
+  await shell.user.click(
+    await screen.findByRole("menuitem", { name: /^Add / }),
+  );
+  const dialog = await screen.findByRole("dialog", {
+    name: "Add Discover to your budget",
+  });
+  const add = within(dialog).getByRole("button", { name: "Add accounts" });
+  await waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+  expect(
+    within(dialog).getByText(/Some accounts are still preparing/),
+  ).toBeTruthy();
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout"],
+    now: new Date("2026-10-20T19:00:00Z"),
+  });
+  try {
+    fireEvent.click(add);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      within(dialog).getByText("Your bank changed these accounts."),
+    ).toBeTruthy();
+    expect(syncs).toBe(1);
+
+    // The bank is checked again for the accounts still preparing.
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(syncs).toBe(2));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      within(dialog).getByText("Your bank changed these accounts."),
+    ).toBeTruthy();
+  } finally {
+    vi.useFakeTimers({
+      toFake: ["Date"],
+      now: new Date("2026-10-20T19:00:00Z"),
+    });
+  }
 });
 
 test("a failed bank update's status names the Plaid request id for support", async () => {
