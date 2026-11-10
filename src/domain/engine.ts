@@ -6,6 +6,7 @@ import {
   purposeCategoryMessage,
 } from "./register-entry";
 import { z } from "zod";
+import { approvalAfterCategorize, approvalAfterSave } from "./approval";
 import { isCleared, isPending } from "./cleared";
 export { isCleared, isPending } from "./cleared";
 import {
@@ -4466,15 +4467,12 @@ function applyCommand(
             ...facts,
             reconciled: before?.reconciled,
             revision,
-            reviewed:
-              source === "user"
-                ? (previous?.reviewed ?? command.reviewed ?? true)
-                : Boolean(
-                    before?.reviewed &&
-                    before.amount === facts.amount &&
-                    before.status === facts.status &&
-                    before.kind === facts.kind,
-                  ),
+            reviewed: approvalAfterSave(
+              source,
+              source === "user" ? previous : before,
+              facts,
+              command.reviewed,
+            ),
             history: [
               ...(before?.history ?? []),
               {
@@ -4851,16 +4849,16 @@ function applyCommand(
         : (command.revision ?? 1);
       const expenseMonth =
         command.expenseMonth ?? existing?.expenseMonth ?? monthOf(command.date);
-      const reviewedPosting = Boolean(
-        existing?.reviewed &&
-        existing.status === "pending" &&
-        command.status === "posted" &&
-        existing.accountId === account.id &&
-        existing.date === command.date &&
-        existing.amount === command.amount &&
-        existing.categoryId === categoryId &&
-        existing.expenseMonth === expenseMonth,
-      );
+      const kind: Transaction["kind"] =
+        existing?.kind === "adjustment"
+          ? "adjustment"
+          : statementCredit
+            ? "statement-credit"
+            : command.amount < 0
+              ? "purchase"
+              : categoryId || lines || counterpartyShare
+                ? "refund"
+                : "income";
       const transaction: Transaction = {
         id: command.transactionId,
         accountId: account.id,
@@ -4875,20 +4873,20 @@ function applyCommand(
         expenseMonth,
         providerId: command.providerId ?? existing?.providerId,
         revision,
-        reviewed:
-          source === "user"
-            ? (command.reviewed ?? existing?.reviewed ?? true)
-            : reviewedPosting,
-        kind:
-          existing?.kind === "adjustment"
-            ? "adjustment"
-            : statementCredit
-              ? "statement-credit"
-              : command.amount < 0
-                ? "purchase"
-                : categoryId || lines || counterpartyShare
-                  ? "refund"
-                  : "income",
+        reviewed: approvalAfterSave(
+          source,
+          existing,
+          {
+            accountId: account.id,
+            date: command.date,
+            amount: command.amount,
+            categoryId,
+            expenseMonth,
+            kind,
+          },
+          command.reviewed,
+        ),
+        kind,
         reconciled: existing?.reconciled,
         history: [
           ...(existing?.history ?? []),
@@ -5052,8 +5050,7 @@ function applyCommand(
           fail("Choose a spending category for this transfer");
         for (const item of [transaction, ...counterparts]) {
           changes.transaction(budget, item).categoryId = category.id;
-          item.reviewed =
-            source === "user" && (item.reviewed || item.status === "pending");
+          item.reviewed = approvalAfterCategorize(source, item);
           item.history.push({
             revision: ++item.revision,
             amount: item.amount,
@@ -5084,9 +5081,7 @@ function applyCommand(
         delete transaction.lines;
       }
       if (transaction.amount > 0) transaction.kind = "refund";
-      transaction.reviewed =
-        source === "user" &&
-        (transaction.reviewed || transaction.status === "pending");
+      transaction.reviewed = approvalAfterCategorize(source, transaction);
       transaction.history.push({
         revision: ++transaction.revision,
         amount: transaction.amount,
