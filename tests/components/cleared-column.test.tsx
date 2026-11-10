@@ -86,3 +86,43 @@ test("clearing an entered pending deposit counts it in the balance, and uncleari
   ).toBeTruthy();
   expect(summary("Working balance")).toBe("$1,000.00");
 });
+
+test("reconciling says it locks the cleared transactions, not every posted one", async () => {
+  const purchase = (id: string, payee: string, cleared: boolean) => ({
+    type: "transaction.upsert" as const,
+    id,
+    transactionId: id,
+    accountId: "checking",
+    date: "2026-10-04",
+    payee,
+    amount: -1_000,
+    categoryId: "gifts",
+    cleared,
+  });
+  const shell = await renderShell({
+    seedCommands: [
+      purchase("grocer", "Corner Grocer", true),
+      purchase("bakery", "Bakery", false),
+    ],
+  });
+  await shell.user.click(screen.getByRole("link", { name: /^Checking/ }));
+  await shell.user.click(screen.getByRole("button", { name: "Reconcile" }));
+  await shell.user.click(
+    screen.getByRole("button", { name: "No, enter bank balance" }),
+  );
+  await shell.user.type(
+    screen.getByLabelText("Current balance at your bank"),
+    summary("Cleared")!.replace("$", ""),
+  );
+  await shell.user.click(screen.getByRole("button", { name: "Next" }));
+  const result = await screen.findByRole("form", { name: "Reconcile result" });
+  expect(result.textContent).toContain("They match.");
+  const locked = Number(/locks (\d+) cleared/.exec(result.textContent)![1]);
+
+  await shell.user.click(screen.getByRole("button", { name: "Finish" }));
+  await findToast("Reconciled Checking");
+  expect(await screen.findAllByLabelText("Reconciled")).toHaveLength(locked);
+  expect(
+    within(transactionRow("Bakery")).getByLabelText("Uncleared"),
+  ).toBeTruthy();
+});

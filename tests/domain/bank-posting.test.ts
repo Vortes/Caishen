@@ -110,3 +110,106 @@ void test("new, unreviewed, or financially changed bank activity still requires 
     false,
   );
 });
+
+void test("a bank update that changes nothing approved keeps a purchase approved", () => {
+  const posted = execute(pendingPurchase(), "alice", posting(), "agent");
+  const resent = execute(
+    posted,
+    "alice",
+    posting({ id: "bank-resent", payee: "COFFEE SHOP #123" }),
+    "agent",
+  );
+  assert.equal(
+    resent.budgets.alice!.transactions.find(({ id }) => id === "purchase")!
+      .reviewed,
+    true,
+  );
+});
+
+function pendingTransfer() {
+  let book = pendingPurchase();
+  book = execute(book, "alice", {
+    type: "account.add",
+    id: "savings",
+    accountId: "savings",
+    name: "Savings",
+    kind: "cash",
+    openingBalance: 0,
+  });
+  return execute(book, "alice", {
+    type: "transaction.upsert",
+    id: "pending-transfer",
+    transactionId: "move",
+    accountId: "cash",
+    transferAccountId: "savings",
+    date: "2026-10-20",
+    amount: -5000,
+    payee: "Savings",
+    status: "pending",
+  });
+}
+
+const transferPosting = (
+  patch: Partial<Extract<Command, { type: "transaction.upsert" }>> = {},
+) => ({
+  type: "transaction.upsert" as const,
+  id: "transfer-posted",
+  transactionId: "move",
+  accountId: "cash",
+  transferAccountId: "savings",
+  date: "2026-10-20",
+  amount: -5000,
+  payee: "Savings",
+  status: "posted" as const,
+  revision: 2,
+  ...patch,
+});
+
+const transferSides = (book: ReturnType<typeof pendingTransfer>) =>
+  book.budgets.alice!.transactions.filter(
+    ({ kind, removed }) => kind === "transfer" && !removed,
+  );
+
+void test("a bank posting keeps an approved transfer approved on both sides", () => {
+  const posted = execute(
+    pendingTransfer(),
+    "alice",
+    transferPosting(),
+    "agent",
+  );
+  const sides = transferSides(posted);
+  assert.equal(sides.length, 2);
+  assert.deepEqual(
+    sides.map(({ status, reviewed }) => ({ status, reviewed })),
+    [
+      { status: "posted", reviewed: true },
+      { status: "posted", reviewed: true },
+    ],
+  );
+});
+
+void test("a bank update that changes a transfer's amount still requires approval", () => {
+  const posted = execute(
+    pendingTransfer(),
+    "alice",
+    transferPosting({ amount: -5500 }),
+    "agent",
+  );
+  assert.deepEqual(
+    transferSides(posted).map(({ reviewed }) => reviewed),
+    [false, false],
+  );
+});
+
+void test("each side of a transfer posts on its bank's own day without losing approval", () => {
+  const posted = execute(
+    pendingTransfer(),
+    "alice",
+    transferPosting({ date: "2026-10-22" }),
+    "agent",
+  );
+  assert.deepEqual(
+    transferSides(posted).map(({ reviewed }) => reviewed),
+    [true, true],
+  );
+});
