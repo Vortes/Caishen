@@ -18,6 +18,12 @@ For request handling and persistence, start looking in `src/server/` and `src/ap
 - Import the generated Prisma client through `~/generated/prisma`. Regenerate it instead of editing generated files in `src/generated/prisma/`.
 - Preserve database migration history when removing unused application code.
 
+## Sign in as the agent
+
+To check a change in a running dev server yourself, sign in as the shared agent login: `caishen-agent+clerk_test@example.com`, then the code `424242`. It's a Clerk test address in the development instance, so no email is sent and production refuses it. Use a private browser profile so the user's own session stays signed in.
+
+Its data is the seed's demo household (Alex and Jordan) on dev-caishen, so every worktree branch from `npm run db:worktree` already has it. To rebuild it, run `npm run db:seed -- --user user_3LcjYOqPPgKtT9fQ0vB4nNuEBcN --reset` against dev-caishen from main.
+
 ## Requested documentation
 
 Do not preserve the introductory product brief as a project document.
