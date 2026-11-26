@@ -1,10 +1,10 @@
 import type { CSSProperties } from "react";
 
 // Monkeytype's dark themes, as raw color tokens for the Appearance
-// settings. Source: monkeytypegame/monkeytype, frontend/src/ts/constants/
-// themes.ts. "Dark" means the background's relative luminance is under 0.1;
-// alpha channels are dropped. shell.module.css maps these onto the shell's
-// surface, text, and accent tokens.
+// settings. Source: monkeytypegame/monkeytype (GPL-3.0), frontend/src/ts/
+// constants/themes.ts. "Dark" means the background's relative luminance is
+// under 0.1; alpha channels are dropped. shell.module.css maps these onto
+// the shell's surface, text, and accent tokens.
 export type Palette = {
   name: string;
   bg: string;

@@ -17,6 +17,7 @@ For request handling and persistence, start looking in `src/server/` and `src/ap
 
 - Import the generated Prisma client through `~/generated/prisma`. Regenerate it instead of editing generated files in `src/generated/prisma/`.
 - Preserve database migration history when removing unused application code.
+- Development data lives in the Neon project named by the `NEON_*` ids in `.env.local`; `.env.example` lists them. `assertDevelopmentDatabase` refuses any database that is not that project's `dev-caishen` branch, a worktree branch under it, or on localhost.
 
 ## Requested documentation
 
@@ -24,4 +25,4 @@ Do not preserve the introductory product brief as a project document.
 
 ## Sandbox smoke test
 
-`npm run test:sandbox` runs the real Chase Sandbox API smoke scenario on this worktree's Neon branch. It requires `PLAID_SANDBOX_CLIENT_ID` and `PLAID_SANDBOX_SECRET`; the nightly workflow also requires `NEON_API_KEY`. It creates and removes its own Sandbox Item and fixture budget. It does not complete Link re-consent; changed-ID behavior is covered by deterministic service tests, and real re-consent remains a separate manual check.
+`npm run test:sandbox` runs the real Chase Sandbox API smoke scenario on this worktree's Neon branch. It requires `PLAID_SANDBOX_CLIENT_ID` and `PLAID_SANDBOX_SECRET`; the nightly workflow also requires the `NEON_API_KEY` secret and the four `NEON_*` ids as repository variables. It creates and removes its own Sandbox Item and fixture budget. It does not complete Link re-consent; changed-ID behavior is covered by deterministic service tests, and real re-consent remains a separate manual check.

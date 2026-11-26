@@ -27,7 +27,10 @@ test("the label names the input, and clicking it leaves the input alone", async 
 
 test("the hint and the error describe the input, and the error marks it invalid", () => {
   render(
-    <PayeeField hint="Shown on the statement." error="Keep it under 200 letters." />,
+    <PayeeField
+      hint="Shown on the statement."
+      error="Keep it under 200 letters."
+    />,
   );
 
   const input = screen.getByRole("textbox", {

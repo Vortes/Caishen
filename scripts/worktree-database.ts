@@ -1,20 +1,21 @@
 import { execFileSync } from "node:child_process";
 import { readFile, rename, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { parseEnv } from "node:util";
 import {
-  developmentBranch,
   isWorktreeBranchName,
   neonApi,
-  neonProjectId,
-  productionBranchId,
+  neonDevelopment,
   setEnvValues,
   worktreeBranchName,
   type NeonBranch,
+  type NeonDevelopment,
 } from "../src/server/dev/development-database";
 
 const ttlDays = 7;
 const database = { name: "neondb", role: "neondb_owner" };
-const branches = `/projects/${neonProjectId}/branches`;
+const branchesOf = (neon: NeonDevelopment) =>
+  `/projects/${neon.projectId}/branches`;
 
 const usage = `Usage: npm run db:worktree [-- --help]
        npm run db:worktree:delete
@@ -35,7 +36,8 @@ db:worktree:delete  Delete this worktree's branch (the one named in
                     NEON_BRANCH, or "dev-<git branch>") and point .env.local
                     back at dev-caishen.
 
-Requires the neon CLI, logged in with access to project ${neonProjectId}.
+Requires the neon CLI, logged in with access to the project that .env.local
+names in NEON_PROJECT_ID (see .env.example).
 Only branches named "dev-..." whose parent is dev-caishen are ever created,
 changed, or deleted; production and dev-caishen are refused.`;
 
@@ -61,12 +63,15 @@ async function main() {
       `${envPath} is missing; copy .env.local from the main checkout first.`,
     );
   });
-  assertDevelopmentParent();
+  // Like `node --env-file`, the shell's environment wins over the file.
+  const neon = neonDevelopment({ ...parseEnv(env), ...process.env });
+  const branches = branchesOf(neon);
+  assertDevelopmentParent(neon);
 
   if (command === "create") {
     const name = worktreeBranchName(git("branch", "--show-current"));
-    const branch = await ensureBranch(name);
-    await writeEnv(envPath, env, branch);
+    const branch = await ensureBranch(neon, name);
+    await writeEnv(neon, envPath, env, branch);
     console.log(
       `${envPath} now uses Neon branch ${name} (${branch.id}), expiring ${branch.expires_at}.`,
     );
@@ -77,17 +82,17 @@ async function main() {
   const name = isWorktreeBranchName(current)
     ? current!
     : worktreeBranchName(git("branch", "--show-current"));
-  const branch = findBranch(name);
+  const branch = findBranch(neon, name);
   if (branch) {
-    assertWorktreeBranch(branch);
+    assertWorktreeBranch(neon, branch);
     neonApi(`${branches}/${branch.id}`, ["-X", "DELETE"]);
     console.log(`Deleted Neon branch ${name} (${branch.id}).`);
   } else console.log(`Neon branch ${name} does not exist.`);
   const parent = neonApi<{ branch: NeonBranch }>(
-    `${branches}/${developmentBranch.id}`,
+    `${branches}/${neon.developmentBranch.id}`,
   ).branch;
-  await writeEnv(envPath, env, parent);
-  console.log(`${envPath} now uses ${developmentBranch.name}.`);
+  await writeEnv(neon, envPath, env, parent);
+  console.log(`${envPath} now uses ${neon.developmentBranch.name}.`);
 }
 
 function git(...args: string[]) {
@@ -96,36 +101,36 @@ function git(...args: string[]) {
   return output;
 }
 
-function assertDevelopmentParent() {
+function assertDevelopmentParent(neon: NeonDevelopment) {
   const { branch } = neonApi<{ branch: NeonBranch }>(
-    `${branches}/${developmentBranch.id}`,
+    `${branchesOf(neon)}/${neon.developmentBranch.id}`,
   );
   if (
-    branch.name !== developmentBranch.name ||
+    branch.name !== neon.developmentBranch.name ||
     branch.default ||
-    branch.id === productionBranchId
+    branch.id === neon.productionBranchId
   )
     throw new Error(
-      `Branch ${developmentBranch.id} is no longer the non-default dev-caishen branch; refusing to continue.`,
+      `Branch ${neon.developmentBranch.id} is not the non-default dev-caishen branch; refusing to continue.`,
     );
 }
 
-function assertWorktreeBranch(branch: NeonBranch) {
+function assertWorktreeBranch(neon: NeonDevelopment, branch: NeonBranch) {
   if (
     !isWorktreeBranchName(branch.name) ||
     branch.default ||
-    branch.id === productionBranchId ||
-    branch.id === developmentBranch.id ||
-    branch.parent_id !== developmentBranch.id ||
-    branch.project_id !== neonProjectId
+    branch.id === neon.productionBranchId ||
+    branch.id === neon.developmentBranch.id ||
+    branch.parent_id !== neon.developmentBranch.id ||
+    branch.project_id !== neon.projectId
   )
     throw new Error(
       `Neon branch ${branch.name} (${branch.id}) is not a dev-caishen child branch; refusing to change it.`,
     );
 }
 
-function findBranch(name: string) {
-  const matches = neonApi<{ branches: NeonBranch[] }>(branches, [
+function findBranch(neon: NeonDevelopment, name: string) {
+  const matches = neonApi<{ branches: NeonBranch[] }>(branchesOf(neon), [
     "-Q",
     `search=${name}`,
   ]).branches.filter((branch) => branch.name === name);
@@ -136,13 +141,14 @@ function findBranch(name: string) {
   return matches[0];
 }
 
-async function ensureBranch(name: string) {
+async function ensureBranch(neon: NeonDevelopment, name: string) {
+  const branches = branchesOf(neon);
   const expiresAt = new Date(
     Date.now() + ttlDays * 24 * 60 * 60 * 1000,
   ).toISOString();
-  const existing = findBranch(name);
+  const existing = findBranch(neon, name);
   if (existing) {
-    assertWorktreeBranch(existing);
+    assertWorktreeBranch(neon, existing);
     neonApi(`${branches}/${existing.id}`, [
       "-X",
       "PATCH",
@@ -150,7 +156,7 @@ async function ensureBranch(name: string) {
       `branch.expires_at=${expiresAt}`,
     ]);
     console.log(`Reusing Neon branch ${name} (${existing.id}).`);
-    return waitUntilReady(existing.id);
+    return waitUntilReady(neon, existing.id);
   }
   const { branch } = neonApi<{ branch: NeonBranch }>(branches, [
     "-X",
@@ -159,43 +165,57 @@ async function ensureBranch(name: string) {
     JSON.stringify({
       branch: {
         name,
-        parent_id: developmentBranch.id,
+        parent_id: neon.developmentBranch.id,
         expires_at: expiresAt,
       },
       endpoints: [{ type: "read_write" }],
     }),
   ]);
-  assertWorktreeBranch(branch);
+  assertWorktreeBranch(neon, branch);
   console.log(`Created Neon branch ${name} (${branch.id}).`);
-  return waitUntilReady(branch.id);
+  return waitUntilReady(neon, branch.id);
 }
 
-async function waitUntilReady(id: string) {
+async function waitUntilReady(neon: NeonDevelopment, id: string) {
   for (let attempt = 0; attempt < 60; attempt++) {
-    const { branch } = neonApi<{ branch: NeonBranch }>(`${branches}/${id}`);
+    const { branch } = neonApi<{ branch: NeonBranch }>(
+      `${branchesOf(neon)}/${id}`,
+    );
     if (branch.current_state === "ready") return branch;
     await new Promise((done) => setTimeout(done, 2000));
   }
   throw new Error(`Neon branch ${id} did not become ready within 2 minutes.`);
 }
 
-function connectionUri(branchId: string, pooled: boolean) {
-  return neonApi<{ uri: string }>(`/projects/${neonProjectId}/connection_uri`, [
-    "-Q",
-    `branch_id=${branchId}`,
-    "-Q",
-    `database_name=${database.name}`,
-    "-Q",
-    `role_name=${database.role}`,
-    "-Q",
-    `pooled=${pooled}`,
-  ]).uri;
+function connectionUri(
+  neon: NeonDevelopment,
+  branchId: string,
+  pooled: boolean,
+) {
+  return neonApi<{ uri: string }>(
+    `/projects/${neon.projectId}/connection_uri`,
+    [
+      "-Q",
+      `branch_id=${branchId}`,
+      "-Q",
+      `database_name=${database.name}`,
+      "-Q",
+      `role_name=${database.role}`,
+      "-Q",
+      `pooled=${pooled}`,
+    ],
+  ).uri;
 }
 
-async function writeEnv(path: string, original: string, branch: NeonBranch) {
+async function writeEnv(
+  neon: NeonDevelopment,
+  path: string,
+  original: string,
+  branch: NeonBranch,
+) {
   const next = setEnvValues(original, {
-    DATABASE_URL: connectionUri(branch.id, true),
-    DATABASE_URL_UNPOOLED: connectionUri(branch.id, false),
+    DATABASE_URL: connectionUri(neon, branch.id, true),
+    DATABASE_URL_UNPOOLED: connectionUri(neon, branch.id, false),
     NEON_BRANCH: branch.name,
   });
   const temporary = `${path}.${process.pid}.tmp`;

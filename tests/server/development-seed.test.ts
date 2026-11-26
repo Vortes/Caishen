@@ -6,10 +6,6 @@ import {
   developmentSeedIdentity,
 } from "../../src/server/dev/seed-database";
 import {
-  developmentBranch,
-  neonProjectId,
-} from "../../src/server/dev/development-database";
-import {
   buildDevelopmentSeed,
   developmentToday,
 } from "../../src/server/dev/seed-scenarios";
@@ -215,9 +211,16 @@ void test("seed dates work at month/year boundaries and never create future acti
 });
 
 void test("seeding rejects production, lookalike endpoints, and live auth keys", () => {
+  const neon = {
+    NEON_PROJECT_ID: "calm-meadow-12345678",
+    NEON_DEVELOPMENT_BRANCH_ID: "br-still-pond-a1b2c3d4",
+    NEON_DEVELOPMENT_ENDPOINT_ID: "ep-still-pond-a1b2c3d4",
+    NEON_PRODUCTION_BRANCH_ID: "br-tall-pine-a1b2c3d4",
+  };
   const development = {
+    ...neon,
     DATABASE_URL:
-      "postgresql://user:pass@ep-odd-voice-b4sie2v1-pooler.us-east-1.aws.neon.tech/db",
+      "postgresql://user:pass@ep-still-pond-a1b2c3d4-pooler.us-east-1.aws.neon.tech/db",
   };
   assert.doesNotThrow(() => assertDevelopmentSeedEnvironment(development));
   assert.doesNotThrow(() =>
@@ -226,16 +229,17 @@ void test("seeding rejects production, lookalike endpoints, and live auth keys",
     }),
   );
   const worktree = {
+    ...neon,
     DATABASE_URL:
       "postgresql://user:pass@ep-quiet-lake-a1b2c3d4-pooler.us-east-1.aws.neon.tech/db",
     NEON_BRANCH: "dev-worktree-db",
   };
   const child = {
-    projectId: neonProjectId,
+    projectId: neon.NEON_PROJECT_ID,
     hosts: ["ep-quiet-lake-a1b2c3d4-pooler.us-east-1.aws.neon.tech"],
     branchId: "br-child-a1b2c3d4",
     branchName: "dev-worktree-db",
-    parentId: developmentBranch.id,
+    parentId: neon.NEON_DEVELOPMENT_BRANCH_ID,
   };
   assert.doesNotThrow(() =>
     assertDevelopmentSeedEnvironment(worktree, () => child),
@@ -252,16 +256,19 @@ void test("seeding rejects production, lookalike endpoints, and live auth keys",
     { ...development, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_live_example" },
     { ...development, CLERK_SECRET_KEY: "sk_live_example" },
     {
+      ...neon,
       DATABASE_URL:
         "postgresql://user:pass@ep-production.us-east-1.aws.neon.tech/db",
     },
     {
+      ...neon,
       DATABASE_URL:
-        "postgresql://user:pass@ep-odd-voice-b4sie2v1.evil.example/db",
+        "postgresql://user:pass@ep-still-pond-a1b2c3d4.evil.example/db",
     },
     {
+      ...neon,
       DATABASE_URL:
-        "postgresql://user:pass@ep-odd-voice-b4sie2v1-extra.us-east-1.aws.neon.tech/db",
+        "postgresql://user:pass@ep-still-pond-a1b2c3d4-extra.us-east-1.aws.neon.tech/db",
     },
   ])
     assert.throws(() => assertDevelopmentSeedEnvironment(env));

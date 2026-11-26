@@ -18,6 +18,10 @@ jobs:
     timeout-minutes: 15
     env:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      NEON_DEVELOPMENT_BRANCH_ID: ${{ vars.NEON_DEVELOPMENT_BRANCH_ID }}
+      NEON_DEVELOPMENT_ENDPOINT_ID: ${{ vars.NEON_DEVELOPMENT_ENDPOINT_ID }}
+      NEON_PRODUCTION_BRANCH_ID: ${{ vars.NEON_PRODUCTION_BRANCH_ID }}
       PLAID_SANDBOX_CLIENT_ID: ${{ secrets.PLAID_SANDBOX_CLIENT_ID }}
       PLAID_SANDBOX_SECRET: ${{ secrets.PLAID_SANDBOX_SECRET }}
       NODE_ENV: test
@@ -28,13 +32,19 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - name: Check required secrets
+      - name: Check required secrets and variables
         shell: bash
         run: |
           missing=0
           for name in NEON_API_KEY PLAID_SANDBOX_CLIENT_ID PLAID_SANDBOX_SECRET; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Configure repository secret $name"
+              missing=1
+            fi
+          done
+          for name in NEON_PROJECT_ID NEON_DEVELOPMENT_BRANCH_ID NEON_DEVELOPMENT_ENDPOINT_ID NEON_PRODUCTION_BRANCH_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Configure repository variable $name"
               missing=1
             fi
           done
