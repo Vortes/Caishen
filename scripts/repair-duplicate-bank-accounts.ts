@@ -2,10 +2,9 @@ import { parseArgs } from "node:util";
 import { PrismaClient } from "../src/generated/prisma";
 import {
   assertDevelopmentDatabase,
+  neonDevelopment,
   neonEndpointBranch,
   neonEndpointId,
-  neonProjectId,
-  productionBranchId,
 } from "../src/server/dev/development-database";
 import {
   previewDuplicateBankRepair,
@@ -76,11 +75,12 @@ async function main() {
       "Use --apply with a plan hash and operation ID, or omit all three to preview.",
     );
   if (values.production) {
+    const neon = neonDevelopment(process.env);
     const { endpointId } = neonEndpointId(process.env.DATABASE_URL ?? "");
-    const endpoint = neonEndpointBranch(endpointId);
+    const endpoint = neonEndpointBranch(endpointId, neon.projectId);
     if (
-      endpoint.projectId !== neonProjectId ||
-      endpoint.branchId !== productionBranchId
+      endpoint.projectId !== neon.projectId ||
+      endpoint.branchId !== neon.productionBranchId
     )
       throw new Error(
         "--production requires this project's production database.",

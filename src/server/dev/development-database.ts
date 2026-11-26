@@ -3,14 +3,14 @@ import { execFileSync } from "node:child_process";
 // Development data lives on the dev-caishen Neon branch and on per-worktree
 // branches created from it (`npm run db:worktree`). Production is never a
 // child of dev-caishen, so a verified parent rules it out.
-export const neonProjectId = "curly-forest-34798878";
-export const developmentBranch = {
-  id: "br-withered-hill-b4isbmm6",
-  name: "dev-caishen",
-  endpointId: "ep-odd-voice-b4sie2v1",
-} as const;
-export const productionBranchId = "br-ancient-boat-b4ol3iq1";
+export const developmentBranchName = "dev-caishen";
 export const worktreeBranchPrefix = "dev-";
+
+export type NeonDevelopment = {
+  projectId: string;
+  developmentBranch: { id: string; name: string; endpointId: string };
+  productionBranchId: string;
+};
 
 export type EndpointBranch = {
   projectId: string;
@@ -19,9 +19,56 @@ export type EndpointBranch = {
   branchName: string;
   parentId: string | null;
 };
-export type EndpointLookup = (endpointId: string) => EndpointBranch;
+export type EndpointLookup = (
+  endpointId: string,
+  projectId: string,
+) => EndpointBranch;
 
 const endpointPattern = /^ep-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const branchPattern = /^br-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const projectPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+// Which Neon project holds development data is each developer's own, named
+// in .env.local (see .env.example). The ids go into Neon API paths, so each
+// must look like the id it claims to be.
+export function neonDevelopment(
+  env: Record<string, string | undefined>,
+): NeonDevelopment {
+  const read = (key: string, pattern: RegExp) => {
+    const value = env[key];
+    return value && pattern.test(value) ? value : undefined;
+  };
+  const projectId = read("NEON_PROJECT_ID", projectPattern);
+  const branchId = read("NEON_DEVELOPMENT_BRANCH_ID", branchPattern);
+  const endpointId = read("NEON_DEVELOPMENT_ENDPOINT_ID", endpointPattern);
+  const productionBranchId = read("NEON_PRODUCTION_BRANCH_ID", branchPattern);
+  if (!projectId || !branchId || !endpointId || !productionBranchId) {
+    const missing = Object.entries({
+      NEON_PROJECT_ID: projectId,
+      NEON_DEVELOPMENT_BRANCH_ID: branchId,
+      NEON_DEVELOPMENT_ENDPOINT_ID: endpointId,
+      NEON_PRODUCTION_BRANCH_ID: productionBranchId,
+    })
+      .filter(([, value]) => !value)
+      .map(([key]) => key);
+    throw new Error(
+      `A Neon development database needs ${missing.join(", ")} set to this project's ids; see .env.example.`,
+    );
+  }
+  if (branchId === productionBranchId)
+    throw new Error(
+      "NEON_DEVELOPMENT_BRANCH_ID names the production branch; development data needs its own branch.",
+    );
+  return {
+    projectId,
+    developmentBranch: {
+      id: branchId,
+      name: developmentBranchName,
+      endpointId,
+    },
+    productionBranchId,
+  };
+}
 
 export function neonEndpointId(value: string) {
   const url = new URL(value);
@@ -41,7 +88,7 @@ export function isWorktreeBranchName(name: string | undefined) {
     !!name &&
     name.startsWith(worktreeBranchPrefix) &&
     name.length > worktreeBranchPrefix.length &&
-    name !== developmentBranch.name
+    name !== developmentBranchName
   );
 }
 
@@ -69,19 +116,20 @@ export function assertDevelopmentDatabase(
   const { endpointId } = urls[0]!;
   if (urls.some((url) => url.endpointId !== endpointId))
     throw new Error("Database URLs must point at the same Neon endpoint.");
-  if (endpointId === developmentBranch.endpointId)
-    return developmentBranch.name;
+  const neon = neonDevelopment(env);
+  if (endpointId === neon.developmentBranch.endpointId)
+    return neon.developmentBranch.name;
 
   const name = env.NEON_BRANCH;
   if (!isWorktreeBranchName(name))
     throw new Error(
       `Use dev-caishen or a worktree branch from \`npm run db:worktree\`; NEON_BRANCH must name a "${worktreeBranchPrefix}" branch.`,
     );
-  const branch = lookup(endpointId);
+  const branch = lookup(endpointId, neon.projectId);
   if (
-    branch.projectId !== neonProjectId ||
-    branch.branchId === productionBranchId ||
-    branch.parentId !== developmentBranch.id ||
+    branch.projectId !== neon.projectId ||
+    branch.branchId === neon.productionBranchId ||
+    branch.parentId !== neon.developmentBranch.id ||
     branch.branchName !== name ||
     urls.some((url) => !branch.hosts.includes(url.hostname))
   )
@@ -124,8 +172,12 @@ export type NeonBranch = {
 
 const verified = new Map<string, EndpointBranch>();
 
-export function neonEndpointBranch(endpointId: string): EndpointBranch {
-  const known = verified.get(endpointId);
+export function neonEndpointBranch(
+  endpointId: string,
+  projectId: string,
+): EndpointBranch {
+  const key = `${projectId}/${endpointId}`;
+  const known = verified.get(key);
   if (known) return known;
   const { endpoint } = neonApi<{
     endpoint: {
@@ -134,9 +186,9 @@ export function neonEndpointBranch(endpointId: string): EndpointBranch {
       host: string;
       hosts?: { read_write_host?: string; read_write_pooled_host?: string };
     };
-  }>(`/projects/${neonProjectId}/endpoints/${endpointId}`);
+  }>(`/projects/${projectId}/endpoints/${endpointId}`);
   const { branch } = neonApi<{ branch: NeonBranch }>(
-    `/projects/${neonProjectId}/branches/${endpoint.branch_id}`,
+    `/projects/${projectId}/branches/${endpoint.branch_id}`,
   );
   const result = {
     projectId: endpoint.project_id,
@@ -150,7 +202,7 @@ export function neonEndpointBranch(endpointId: string): EndpointBranch {
     branchName: branch.name,
     parentId: branch.parent_id ?? null,
   };
-  verified.set(endpointId, result);
+  verified.set(key, result);
   return result;
 }
 

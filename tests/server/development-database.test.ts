@@ -2,32 +2,40 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertDevelopmentDatabase,
-  developmentBranch,
-  neonProjectId,
-  productionBranchId,
+  neonDevelopment,
   setEnvValues,
   worktreeBranchName,
   type EndpointBranch,
 } from "../../src/server/dev/development-database";
 
+const neon = {
+  NEON_PROJECT_ID: "calm-meadow-12345678",
+  NEON_DEVELOPMENT_BRANCH_ID: "br-still-pond-a1b2c3d4",
+  NEON_DEVELOPMENT_ENDPOINT_ID: "ep-still-pond-a1b2c3d4",
+  NEON_PRODUCTION_BRANCH_ID: "br-tall-pine-a1b2c3d4",
+};
+const developmentHost = "ep-still-pond-a1b2c3d4.c-6.us-east-2.aws.neon.tech";
 const host = "ep-quiet-lake-a1b2c3d4.c-6.us-east-2.aws.neon.tech";
 const pooledHost = "ep-quiet-lake-a1b2c3d4-pooler.c-6.us-east-2.aws.neon.tech";
 const worktree = {
+  ...neon,
   DATABASE_URL: `postgresql://user:pass@${pooledHost}/neondb`,
   DATABASE_URL_UNPOOLED: `postgresql://user:pass@${host}/neondb`,
   NEON_BRANCH: "dev-plan-storage",
 };
 const child: EndpointBranch = {
-  projectId: neonProjectId,
+  projectId: neon.NEON_PROJECT_ID,
   hosts: [host, pooledHost],
   branchId: "br-child-a1b2c3d4",
   branchName: "dev-plan-storage",
-  parentId: developmentBranch.id,
+  parentId: neon.NEON_DEVELOPMENT_BRANCH_ID,
 };
-const lookupOf = (branch: EndpointBranch) => (endpointId: string) => {
-  assert.equal(endpointId, "ep-quiet-lake-a1b2c3d4");
-  return branch;
-};
+const lookupOf =
+  (branch: EndpointBranch) => (endpointId: string, projectId: string) => {
+    assert.equal(endpointId, "ep-quiet-lake-a1b2c3d4");
+    assert.equal(projectId, neon.NEON_PROJECT_ID);
+    return branch;
+  };
 const unreachable = () => {
   throw new Error("Neon must not be consulted.");
 };
@@ -36,12 +44,57 @@ void test("dev-caishen is accepted by endpoint without consulting Neon", () => {
   assert.equal(
     assertDevelopmentDatabase(
       {
-        DATABASE_URL:
-          "postgresql://user:pass@ep-odd-voice-b4sie2v1-pooler.c-6.us-east-2.aws.neon.tech/neondb",
+        ...neon,
+        DATABASE_URL: `postgresql://user:pass@${developmentHost.replace(".c-6", "-pooler.c-6")}/neondb`,
       },
       unreachable,
     ),
     "dev-caishen",
+  );
+});
+
+void test("the Neon project is the one the environment names, and every id must be present and well formed", () => {
+  assert.deepEqual(neonDevelopment(neon), {
+    projectId: "calm-meadow-12345678",
+    developmentBranch: {
+      id: "br-still-pond-a1b2c3d4",
+      name: "dev-caishen",
+      endpointId: "ep-still-pond-a1b2c3d4",
+    },
+    productionBranchId: "br-tall-pine-a1b2c3d4",
+  });
+  for (const key of Object.keys(neon))
+    for (const value of [undefined, "", "../branches", "BR-UPPER"])
+      assert.throws(
+        () => neonDevelopment({ ...neon, [key]: value }),
+        (error: Error) =>
+          error.message.includes(key) && error.message.includes(".env.example"),
+      );
+  assert.throws(
+    () =>
+      neonDevelopment({
+        ...neon,
+        NEON_DEVELOPMENT_BRANCH_ID: neon.NEON_PRODUCTION_BRANCH_ID,
+      }),
+    /production branch/,
+  );
+});
+
+void test("a Neon database is refused until its project is named, and a local one never needs it", () => {
+  assert.throws(
+    () =>
+      assertDevelopmentDatabase(
+        { ...worktree, NEON_PROJECT_ID: undefined },
+        unreachable,
+      ),
+    /NEON_PROJECT_ID/,
+  );
+  assert.equal(
+    assertDevelopmentDatabase(
+      { DATABASE_URL: "postgresql://user:pass@localhost/caishen" },
+      unreachable,
+    ),
+    "local",
   );
 });
 
@@ -51,10 +104,10 @@ void test("a worktree branch is accepted only when Neon confirms it is a named c
     "dev-plan-storage",
   );
   for (const branch of [
-    { ...child, parentId: productionBranchId },
+    { ...child, parentId: neon.NEON_PRODUCTION_BRANCH_ID },
     { ...child, parentId: null },
     { ...child, parentId: "br-other-a1b2c3d4" },
-    { ...child, branchId: productionBranchId },
+    { ...child, branchId: neon.NEON_PRODUCTION_BRANCH_ID },
     { ...child, branchName: "dev-renamed" },
     { ...child, projectId: "other-project-123" },
     { ...child, hosts: [host] },
@@ -76,8 +129,7 @@ void test("production, lookalikes, and unnamed branches are refused before any l
     { DATABASE_URL: `postgresql://user:pass@${host}.example.com/neondb` },
     { DATABASE_URL: `mysql://user:pass@${host}/neondb` },
     {
-      DATABASE_URL_UNPOOLED:
-        "postgresql://user:pass@ep-odd-voice-b4sie2v1.c-6.us-east-2.aws.neon.tech/neondb",
+      DATABASE_URL_UNPOOLED: `postgresql://user:pass@${developmentHost}/neondb`,
     },
   ])
     assert.throws(
