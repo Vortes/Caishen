@@ -834,9 +834,10 @@ export function buildDevelopmentSeed({
     transactionId: "uncategorized",
     categoryId: "groceries",
   });
+  // Categorizing a posted purchase leaves it to be approved, so approve it.
   run(userId, {
     type: "transaction.approve",
-    transactionIds: ["review-groceries", "review-transit"],
+    transactionIds: ["review-groceries", "review-transit", "uncategorized"],
   });
   buy(
     userId,

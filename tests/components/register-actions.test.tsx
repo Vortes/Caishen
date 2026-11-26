@@ -284,11 +284,13 @@ test.each([
         { exact: true },
       ),
     ).toBeTruthy();
+    // Approving one side approves both. Categorizing a posted transfer
+    // leaves the approval still to give, from either side.
     expect(
       within(
         screen.getByRole("toolbar", { name: "Selected transactions" }),
-      ).queryAllByRole("button", { name: /^Approve|^Reject$/ }),
-    ).toHaveLength(0);
+      ).queryAllByRole("button", { name: "Approve (1)" }),
+    ).toHaveLength(kind === "tracking" ? 1 : 0);
   },
 );
 
