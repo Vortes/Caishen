@@ -3,10 +3,35 @@ import { createBook, execute, type Command } from "../../../src/domain/engine";
 export function storedLineBook() {
   let book = createBook("alan", "Alan", "2026-10");
   const commands: Command[] = [
-    { type: "account.add", id: "cash", accountId: "checking", name: "Checking", kind: "cash", openingBalance: 100_000 },
-    { type: "category.add", id: "food", categoryId: "groceries", name: "Groceries" },
-    { type: "category.add", id: "home", categoryId: "household", name: "Household" },
-    { type: "transaction.upsert", id: "purchase", transactionId: "costco", accountId: "checking", date: "2026-10-10", payee: "Costco", amount: -20_000 },
+    {
+      type: "account.add",
+      id: "cash",
+      accountId: "checking",
+      name: "Checking",
+      kind: "cash",
+      openingBalance: 100_000,
+    },
+    {
+      type: "category.add",
+      id: "food",
+      categoryId: "groceries",
+      name: "Groceries",
+    },
+    {
+      type: "category.add",
+      id: "home",
+      categoryId: "household",
+      name: "Household",
+    },
+    {
+      type: "transaction.upsert",
+      id: "purchase",
+      transactionId: "costco",
+      accountId: "checking",
+      date: "2026-10-10",
+      payee: "Costco",
+      amount: -20_000,
+    },
   ];
   for (const command of commands) book = execute(book, "alan", command, "user");
   const budget = book.budgets.alan!;
@@ -15,7 +40,7 @@ export function storedLineBook() {
     budgets: {
       alan: {
         ...budget,
-        transactions: budget.transactions.map(transaction =>
+        transactions: budget.transactions.map((transaction) =>
           transaction.id === "costco"
             ? {
                 ...transaction,
