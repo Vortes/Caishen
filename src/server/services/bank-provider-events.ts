@@ -147,7 +147,7 @@ export async function recordBankWebhookReceipt(
   });
 }
 
-/** Operational records (data-retention policy, section 4). */
+/** Operational records are kept no longer than 90 days. */
 export const BANK_PROVIDER_EVENT_RETENTION_DAYS = 90;
 
 /** Removes events past the retention window; the daily job's scheduled purge. */
